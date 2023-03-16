@@ -24,6 +24,7 @@ These are the commands available from you:
 - View all running GTP-4 Instances and Kill them.
 - Navigate to a website and perform general actions like click on buttons, input text <text> or register an account <username>
 - Register new account <username> on <website>
+- Transcribe and Summarise Youtube Video <url>
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
