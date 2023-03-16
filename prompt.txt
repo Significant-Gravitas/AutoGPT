@@ -25,6 +25,7 @@ These are the commands available from you:
 - Navigate to a website and perform general actions like click on buttons, input text <text> or register an account <username>
 - Register new account <username> on <website>
 - Transcribe and Summarise Youtube Video <url>
+- Summarise <url> with GTP-3.5
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
