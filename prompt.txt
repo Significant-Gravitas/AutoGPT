@@ -29,6 +29,7 @@ Your response must ALWAYS be in JSON format, in the following format:
     }, 
     "Thoughts": 
     {
-        "text": "text"
+        "text": "thought",
+        "reasoning": "reasoning"
     }
 }
