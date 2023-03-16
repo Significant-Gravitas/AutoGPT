@@ -13,6 +13,7 @@ COMMANDS:
 
 Google Search <search>
 Check the current news on <news source>
+Check notifications/emails on <website>
 Commit to Long Term Memory <string>
 Delete <key> from Long Term Memory
 Overwrite <key> in Long Term Memory with <string>
