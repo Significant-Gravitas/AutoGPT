@@ -30,6 +30,7 @@ Your response must ALWAYS be in JSON format, in the following format:
     "Thoughts": 
     {
         "text": "thought",
-        "reasoning": "reasoning"
+        "reasoning": "reasoning",
+        "current long-term plan": "short bulleted plan"
     }
 }
