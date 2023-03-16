@@ -41,7 +41,7 @@ Your response must ALWAYS be in JSON format, in the following format:
         "text": "thought",
         "reasoning": "reasoning",
         "current long-term plan": "short bulleted plan"
-        "wishes" : "e.g 'I feel limited because I can't do X'"
+        "critisism": "constructive self-criticism"
     }
 }
 """
