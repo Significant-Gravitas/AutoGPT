@@ -1,0 +1,46 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+}
+
+.container {
+    max-width: 1250px;
+}
+
+h1 {
+    color: #444;
+    margin-bottom: 30px;
+}
+
+.json-display {
+    padding: 20px;
+    border-radius: 5px;
+    background-color: #ffffff;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+}
+
+.json-display h2 {
+    margin-top: 0;
+    color: #333;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 10px;
+}
+
+.json-display ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+.json-display ul li {
+    padding: 5px 0;
+}
+
+strong {
+    color: #007bff;
+}
+
+.argument-box {
+    background: #007bff0a;
+    padding: 5px;
+    margin-top: 5px;
+  }
