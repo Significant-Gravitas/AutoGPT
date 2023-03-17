@@ -1,6 +1,7 @@
 body {
     font-family: Arial, sans-serif;
-    background-color: #f4f4f4;
+    background-color: #1a1a1a;
+    color: #f5f5f5;
 }
 
 .container {
@@ -8,20 +9,20 @@ body {
 }
 
 h1 {
-    color: #444;
+    color: #f5f5f5;
     margin-bottom: 30px;
 }
 
 .json-display {
     padding: 20px;
     border-radius: 5px;
-    background-color: #ffffff;
-    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+    background-color: #2b2b2b;
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.3);
 }
 
 .json-display h2 {
     margin-top: 0;
-    color: #333;
+    color: #f5f5f5;
     border-bottom: 1px solid #e0e0e0;
     padding-bottom: 10px;
 }
@@ -40,7 +41,7 @@ strong {
 }
 
 .argument-box {
-    background: #007bff0a;
+    background: #007bff1c;
     padding: 5px;
     margin-top: 5px;
-  }
+}
