@@ -45,3 +45,18 @@ strong {
     padding: 5px;
     margin-top: 5px;
 }
+
+.twitter-handles {
+    /* Center horizontally */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.twitter-profile-pic {
+    height: 30px;
+    border-radius: 50%;
+    margin-left: 5px;
+    margin-right: 5px;
+  }
+  
