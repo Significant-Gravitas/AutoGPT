@@ -55,7 +55,7 @@ RESPONSE FORMAT:
 "argument name": "argument value"
 }
 },
-"Thoughts":
+"thoughts":
 {
 "text": "thought",
 "reasoning": "reasoning",
