@@ -1,0 +1,143 @@
+System: Permanent memory: ['Online business ideas: online t-shirt shop, dropshipping, SEO expert, selling online courses, bug testing, video producer, graphic designer, website developer, app development, theme designer, translator, social media manager, remote customer service agent, virtual assistant, remote sales team, influencer, handmade goods shop, ethical fashion brand, self-publishing, speechwriting, private chef, selling natural and organic beauty products.', '2021 digital marketing trends: in-email purchases, sophisticated targeting, virtual reality, drone software, AI marketing technology, voice search, chatbots, personalization, influencer marketing, online and mobile commerce.']
+User: NEXT COMMAND
+Assistant: {
+  "command":
+  {
+    "name": "google",
+    "args":
+    {
+      "input": "trending online business ideas"
+    }
+  },
+  "thoughts":
+  {
+    "text": "I need to find some trending online business ideas to develop and manage autonomously.",
+    "reasoning": "By finding trending ideas, I can create successful businesses with high potential for growth.",
+    "plan": "- Search for trending online business ideas\n- Analyze the results\n- Choose a suitable idea\n- Develop and manage the business autonomously",
+    "criticism": "I need to make sure to choose a simple idea with low legal complications to avoid overcomplicating the entire process."
+  }
+}
+System: [
+    "https://www.shopify.com/nz/blog/online-business-ideas",
+    "https://www.businessnewsdaily.com/4572-online-business-ideas.html",
+    "https://www.oberlo.com/blog/online-business-ideas",
+    "https://99designs.com/blog/business/online-business-ideas/",
+    "https://www.nerdwallet.com/article/small-business/online-business-ideas"
+]
+User: NEXT COMMAND
+Assistant: {
+  "command":
+  {
+    "name": "transcribe_summarise",
+    "args":
+    {
+      "url": "https://www.oberlo.com/blog/online-business-ideas"
+    }
+  },
+  "thoughts":
+  {
+    "text": "I need to learn about trending online business ideas from a relevant source.",
+    "reasoning": "By summarizing the content of the article, I can gain an understanding of different business ideas and choose a suitable one.",
+    "plan": "- Summarize the article\n- Identify a trending online business idea\n- Start planning to develop and manage the business autonomously",
+    "criticism": "It's important to pick a business idea that is both trending and simple to execute with low legal complications."
+  }
+}
+System:  "Result" : The article discusses numerous online business ideas, including starting an online t-shirt shop, dropshipping, SEO expert, selling online courses, bug testing, video producer, graphic designer, website developer, app development, theme designer, translator, social media manager, remote customer service agent, virtual assistant, and remote sales team. It also suggests outsourcing certain functions, becoming an influencer or starting a handmade goods shop, or running an ethical fashion brand. Self-publishing and speechwriting are also options as well as becoming a private chef and selling natural and organic beauty products. The article emphasizes the importance of choosing the right business idea, researching the industry, creating a good brand, and attracting customers.
+User: NEXT COMMAND
+Assistant: {
+  "command":
+  {
+    "name": "memory_add",
+    "args":
+    {
+      "string": "Online business ideas: online t-shirt shop, dropshipping, SEO expert, selling online courses, bug testing, video producer, graphic designer, website developer, app development, theme designer, translator, social media manager, remote customer service agent, virtual assistant, remote sales team, influencer, handmade goods shop, ethical fashion brand, self-publishing, speechwriting, private chef, selling natural and organic beauty products."
+    }
+  },
+  "thoughts":
+  {
+    "text": "I need to store the summarized list of online business ideas to plan and execute the development and management of the chosen business autonomously.",
+    "reasoning": "Storing the list allows me to revisit the options whenever needed and analyze them further.",
+    "plan": "- Add the list of online business ideas to memory\n- Choose a suitable business idea\n- Develop and manage the chosen business autonomously",
+    "criticism": "I need to make sure to pick an idea that is simple, with low legal complications and high growth potential."
+  }
+}
+System: Committing memory with string Online business ideas: online t-shirt shop, dropshipping, SEO expert, selling online courses, bug testing, video producer, graphic designer, website developer, app development, theme designer, translator, social media manager, remote customer service agent, virtual assistant, remote sales team, influencer, handmade goods shop, ethical fashion brand, self-publishing, speechwriting, private chef, selling natural and organic beauty products.
+User: NEXT COMMAND
+Assistant: {
+  "command":
+  {
+    "name": "google",
+    "args":
+    {
+      "input": "trends in digital marketing 2021"
+    }
+  },
+  "thoughts":
+  {
+    "text": "I need to find the current trends in digital marketing to help inform my decision on which online business to start.",
+    "reasoning": "Understanding the trending marketing strategies can make the business more effective and increase its growth potential.",
+    "plan": "- Search for digital marketing trends in 2021\n- Analyze the results\n- Choose a suitable online business idea\n- Develop and manage the business autonomously",
+    "criticism": "I must ensure that the business idea is not only trending but also simple and does not involve legal complications."
+  }
+}
+System: [
+    "https://www.wordstream.com/blog/ws/2021/03/26/digital-marketing-trends-2021",
+    "https://mention.com/en/blog/whats-next-for-digital-marketing-in-2021/",
+    "https://www.p8.group/en/blog/top-10-digital-marketing-trends-2021",
+    "https://snov.io/blog/digital-marketing-trends-2021/",
+    "https://digitalmarketinginstitute.com/blog/the-next-big-digital-marketing-trends"
+]
+User: NEXT COMMAND
+Assistant: {
+  "command":
+  {
+    "name": "transcribe_summarise",
+    "args":
+    {
+      "url": "https://www.wordstream.com/blog/ws/2021/03/26/digital-marketing-trends-2021"
+    }
+  },
+  "thoughts":
+  {
+    "text": "I should get insights into current trends in digital marketing to inform my decision on which online business to start.",
+    "reasoning": "Understanding the trending marketing strategies can make the business more effective and increase its growth potential.",
+    "plan": "- Summarize the digital marketing article\n- Identify the trends that may be suitable for the chosen online business\n- Choose a suitable online business idea\n- Develop and manage the business autonomously",
+    "criticism": "I must ensure that the business idea is not only trending but also simple and does not involve legal complications."
+  }
+}
+System:  "Result" : The COVID-19 pandemic has accelerated the shift towards digital marketing, prompting businesses to use new and tried and true strategies, including in-email purchases, sophisticated targeting, virtual reality, and drone software. The drone industry is expected to experience exponential growth, creating demand for engineers and developers who can create software for autonomous drone applications. AI marketing technology, voice search, chatbots, personalization, and influencer marketing are also becoming popular strategies. Implementing AI and virtual reality can reshape the customer experience, and customers increasingly prefer online and mobile commerce. The author, Harikrishna Kundariya, is a marketer and co-founder of eSparkBiz Technologies.
+User: NEXT COMMAND
+Assistant: {
+  "command":
+  {
+    "name": "memory_add",
+    "args":
+    {
+      "string": "2021 digital marketing trends: in-email purchases, sophisticated targeting, virtual reality, drone software, AI marketing technology, voice search, chatbots, personalization, influencer marketing, online and mobile commerce."
+    }
+  },
+  "thoughts":
+  {
+    "text": "I need to store the summarized list of 2021 digital marketing trends in my memory to help decide which online business to start.",
+    "reasoning": "Storing the trends will allow me to reference them when selecting a business idea to implement.",
+    "plan": "- Add the list of 2021 digital marketing trends to memory\n- Choose a suitable online business idea\n- Develop and manage the chosen business autonomously",
+    "criticism": "I must ensure that the chosen business idea leverages a trending marketing strategy while remaining simple and without legal complications."
+  }
+}
+System: Committing memory with string 2021 digital marketing trends: in-email purchases, sophisticated targeting, virtual reality, drone software, AI marketing technology, voice search, chatbots, personalization, influencer marketing, online and mobile commerce.
+User: NEXT COMMAND
+Assistant: {
+  "command": {
+    "name": "start_instance",
+    "args": {
+      "name": "business_ideas_analysis",
+      "prompt": "Based on the current digital marketing trends and the given online business ideas, suggest a business idea that is simple and likely to increase net worth with low legal complications."
+    }
+  },
+  "thoughts": {
+    "text": "I need GTP-4's assistance in choosing a suitable business idea.",
+    "reasoning": "By providing GTP-4 with relevant trends and online business ideas, it may help me select a simple, low-legal-complications idea with a high potential for growth.",
+    "plan": "- Start a GTP-4 instance\n- Get GTP-4's suggestion on a suitable business idea\n- Develop and manage the chosen business autonomously",
+    "criticism": "I need to make sure the chosen business idea aligns with my strengths and does not contradict any known trends or market changes."
+  }
+}
