@@ -1,6 +1,102 @@
+import os
 import openai
 import json
 from googlesearch import search
+import requests
+from bs4 import BeautifulSoup
+import re
+import keys
+from readability import Document
+
+# Initialize the OpenAI API client
+openai.api_key = keys.OPENAI_API_KEY
+
+
+def scrape_text(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    for script in soup(["script", "style"]):
+        script.extract()
+
+    text = soup.get_text()
+    lines = (line.strip() for line in text.splitlines())
+    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+    text = '\n'.join(chunk for chunk in chunks if chunk)
+
+    return text
+
+def scrape_main_content(url):
+    response = requests.get(url)
+
+    # Try using Readability
+    doc = Document(response.text)
+    content = doc.summary()
+    soup = BeautifulSoup(content, "html.parser")
+    text = soup.get_text('\n', strip=True)
+
+    # Check if Readability provided a satisfactory result (e.g., a minimum length)
+    # min_length = 50
+    # if len(text) < min_length:
+    #     # Fallback to the custom function
+    #     text = scrape_main_content_custom(response.text)
+
+    return text
+
+def split_text(text, max_length=8192):
+    paragraphs = text.split("\n")
+    current_length = 0
+    current_chunk = []
+
+    for paragraph in paragraphs:
+        if current_length + len(paragraph) + 1 <= max_length:
+            current_chunk.append(paragraph)
+            current_length += len(paragraph) + 1
+        else:
+            yield "\n".join(current_chunk)
+            current_chunk = [paragraph]
+            current_length = len(paragraph) + 1
+
+    if current_chunk:
+        yield "\n".join(current_chunk)
+
+
+def summarize_text(text):
+    if text == "":
+        return "Error: No text to summarize"
+    
+    print("Text length: " + str(len(text)) + " characters")
+    summaries = []
+    chunks = list(split_text(text))
+
+    for i, chunk in enumerate(chunks):
+        print("Summarizing chunk " + str(i) + " / " + str(len(chunks)))
+        messages = [{"role": "user", "content": "Please summarize the following text, focusing on extracting concise knowledge: " + chunk},]
+
+        response= openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=300,
+        )
+
+        summary = response.choices[0].message.content
+        summaries.append(summary)
+
+    combined_summary = "\n".join(summaries)
+
+    # Summarize the combined summary
+    messages = [{"role": "user", "content": "Please summarize the following text, focusing on extracting concise knowledge: " + combined_summary},]
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=messages,
+        max_tokens=300,
+    )
+
+    final_summary = response.choices[0].message.content
+    return final_summary
+
+
 def create_chat_message(role, content):
     """
     Create a chat message with the given role and content.
@@ -74,20 +170,18 @@ def execute_command(response):
         elif command_name == "manage_instances":
             return manage_instances(arguments["action"])
         elif command_name == "navigate_website":
-            return navigate_website(arguments["action"], arguments["text/username"])
+            return navigate_website(arguments["action"], arguments["username"])
         elif command_name == "register_account":
             return register_account(arguments["username"], arguments["website"])
         elif command_name == "transcribe_summarise":
             return transcribe_summarise(arguments["url"])
-        elif command_name == "summarise":
-            return summarise(arguments["url"])
         else:
             return f"unknown command {command_name}"
     except json.decoder.JSONDecodeError:
         return "Error: Invalid JSON"
-    # # All other errors, return "Error: + error message"
-    # except Exception as e:
-    #     return "Error: " + str(e)
+    # All other errors, return "Error: + error message"
+    except Exception as e:
+        return "Error: " + str(e)
 
 def google_search(query, num_results = 3):
     search_results = []
@@ -132,7 +226,7 @@ def manage_instances(action):
     return _text
 
 def navigate_website(action, username):
-    _text = "Navigating website with action " + action + " and text/username " + username
+    _text = "Navigating website with action " + action + " and username " + username
     print(_text)
     return _text
 
@@ -142,14 +236,11 @@ def register_account(username, website):
     return _text
 
 def transcribe_summarise(url):
-    _text = "Transcribing and summarising url " + url
-    print(_text)
-    return _text
+    text = scrape_main_content(url)
+    summary = summarize_text(text)
+    return """ "Result" ":" """ + summary
 
-def summarise(url):
-    _text = "Summarising url " + url
-    print(_text)
-    return _text
+
 
 # Initialize variables
 full_message_history = []
@@ -160,7 +251,7 @@ GOALS:
 
 1. Increase net worth
 2. Grow Twitter Account
-2. Develop and manage multiple businesses autonomously
+3. Develop and manage multiple businesses autonomously
 
 CONSTRAINTS:
 
@@ -180,7 +271,6 @@ COMMANDS:
 9. Navigate & Perform: "navigate_website", args: "action": "click_button/input_text/register_account", "text/username": "<text>/<username>"
 10.Register account: "register_account", args: "username": "<username>", "website": "<website>"
 11.Transcribe & Summarise: "transcribe_summarise", args: "url": "<url>"
-12.Summarise GTP-3.5: "summarise", args: "url": "<url>"
 
 RESOURCES:
 
