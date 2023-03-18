@@ -1,4 +1,5 @@
 import openai
+import json
 def create_chat_message(role, content):
     """
     Create a chat message with the given role and content.
@@ -28,22 +29,124 @@ def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, tok
     """
     current_context = [create_chat_message("system", prompt), create_chat_message("system", f"Permanent memory: {permanent_memory}")]
     current_context.extend(full_message_history[-(token_limit - len(prompt) - len(permanent_memory) - 10):])
+    current_context.extend([create_chat_message("user", user_input)])
 
     # Debug print the current context
     print("---------------------------")
     print("Current Context:")
     for message in current_context:
+        # Skip printing the prompt
+        if message["role"] == "system" and message["content"] == prompt:
+            continue
         print(f"{message['role'].capitalize()}: {message['content']}")
-    # Print user input
-    print(f"User: {user_input}")
 
     response = openai.ChatCompletion.create(
         model="gpt-4",
-        messages=current_context + [create_chat_message("user", user_input)]
+        messages=current_context,
     )
 
     assistant_reply = response.choices[0].message["content"]
     return assistant_reply
+
+def execute_command(response):
+    # If not valid json, return "Error: Invalid JSON"
+    try:
+        response_json = json.loads(response)
+        command = response_json["command"]
+        command_name = command["name"]
+        arguments = command["args"]
+
+        if command_name == "google":
+            return google_search(arguments["input"])
+        elif command_name == "check_news":
+            return check_news(arguments["source"])
+        elif command_name == "check_notifications":
+            return check_notifications(arguments["website"])
+        elif command_name == "commit_memory":
+            return commit_memory(arguments["string"])
+        elif command_name == "delete_memory":
+            return delete_memory(arguments["key"])
+        elif command_name == "overwrite_memory":
+            return overwrite_memory(arguments["key"], arguments["string"])
+        elif command_name == "start_instance":
+            return start_instance(arguments["name"], arguments["prompt"])
+        elif command_name == "manage_instances":
+            return manage_instances(arguments["action"])
+        elif command_name == "navigate_website":
+            return navigate_website(arguments["action"], arguments["text/username"])
+        elif command_name == "register_account":
+            return register_account(arguments["username"], arguments["website"])
+        elif command_name == "transcribe_summarise":
+            return transcribe_summarise(arguments["url"])
+        elif command_name == "summarise":
+            return summarise(arguments["url"])
+        else:
+            return f"unknown command {command_name}"
+    except json.decoder.JSONDecodeError:
+        return "Error: Invalid JSON"
+    # # All other errors, return "Error: + error message"
+    # except Exception as e:
+    #     return "Error: " + str(e)
+
+def google_search(search):
+    _text = "Executing Google Search with term " + search
+    print(_text)
+    return _text
+
+def check_news(source):
+    _text = "Checking news from " + source
+    print(_text)
+    return _text
+
+def check_notifications(website):
+    _text = "Checking notifications from " + website
+    print(_text)
+    return _text
+
+def commit_memory(string):
+    _text = "Committing memory with string " + string
+    print(_text)
+    return _text
+
+def delete_memory(key):
+    _text = "Deleting memory with key " + key
+    print(_text)
+    return _text
+
+def overwrite_memory(key, string):
+    _text = "Overwriting memory with key " + key + " and string " + string
+    print(_text)
+    return _text
+
+def start_instance(name, prompt):
+    _text = "Starting instance with name " + name + " and prompt " + prompt
+    print(_text)
+    return _text
+
+def manage_instances(action):
+    _text = "Managing instances with action " + action
+    print(_text)
+    return _text
+
+def navigate_website(action, username):
+    _text = "Navigating website with action " + action + " and text/username " + username
+    print(_text)
+    return _text
+
+def register_account(username, website):
+    _text = "Registering account with username " + username + " and website " + website
+    print(_text)
+    return _text
+
+def transcribe_summarise(url):
+    _text = "Transcribing and summarising url " + url
+    print(_text)
+    return _text
+
+def summarise(url):
+    _text = "Summarising url " + url
+    print(_text)
+    return _text
 
 # Initialize variables
 full_message_history = []
@@ -121,14 +224,20 @@ ACCOUNTS:
 2. Twitter: @En_GPT
 3. Github: E-GPT
 4. Substack: entrepreneurgpt@gmail.com"""
-token_limit = 2000  # The maximum number of tokens allowed in the API call
-
+token_limit = 6000  # The maximum number of tokens allowed in the API call
+result = None
+# Example loop for interaction
 # Example loop for interaction
 while True:
     user_input = input("User: ")
 
     if user_input.lower() == "exit":
         break
+
+    # Check if there's a result from the previous iteration and append it to the message history
+    if result != None:
+        full_message_history.append(create_chat_message("system", result))
+        print("system: " + result)
 
     assistant_reply = chat_with_ai(prompt, user_input, full_message_history, permanent_memory, token_limit)
     print(f"Assistant: {assistant_reply}")
@@ -138,13 +247,4 @@ while True:
     full_message_history.append(create_chat_message("user", user_input))
     full_message_history.append(create_chat_message("assistant", assistant_reply))
 
-    # Debug Print Everything
-    # print("Full Message History:")
-    # for message in full_message_history:
-    #     print(f"{message['role'].capitalize()}: {message['content']}")
-    # print("-------------------------")
-    # print("Permanent Memory:")
-    # print(permanent_memory)
-
-    # print("============================")
-
+    result = execute_command(assistant_reply)
