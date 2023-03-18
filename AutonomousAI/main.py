@@ -11,7 +11,6 @@ from readability import Document
 # Initialize the OpenAI API client
 openai.api_key = keys.OPENAI_API_KEY
 
-
 def scrape_text(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, "html.parser")
@@ -60,7 +59,6 @@ def split_text(text, max_length=8192):
     if current_chunk:
         yield "\n".join(current_chunk)
 
-
 def summarize_text(text):
     if text == "":
         return "Error: No text to summarize"
@@ -96,7 +94,6 @@ def summarize_text(text):
 
     final_summary = response.choices[0].message.content
     return final_summary
-
 
 def create_chat_message(role, content):
     """
@@ -192,8 +189,8 @@ def google_search(query, num_results = 3):
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 def check_news(source):
-    _text = "Checking news from " + source
-    print(_text)
+    print("Checking news from BBC world instead of " + source)
+    _text= transcribe_summarise("https://www.bbc.com/news/world")
     return _text
 
 def check_notifications(website):
@@ -251,8 +248,6 @@ def transcribe_summarise(url):
     text = scrape_main_content(url)
     summary = summarize_text(text)
     return """ "Result" : """ + summary
-
-
 
 # Initialize variables
 full_message_history = []
