@@ -1,5 +1,6 @@
 import openai
 import json
+from googlesearch import search
 def create_chat_message(role, content):
     """
     Create a chat message with the given role and content.
@@ -88,10 +89,12 @@ def execute_command(response):
     # except Exception as e:
     #     return "Error: " + str(e)
 
-def google_search(search):
-    _text = "Executing Google Search with term " + search
-    print(_text)
-    return _text
+def google_search(query, num_results = 3):
+    search_results = []
+    for j in search(query, num_results=num_results):
+        search_results.append(j)
+    
+    return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 def check_news(source):
     _text = "Checking news from " + source
