@@ -160,11 +160,11 @@ def execute_command(response):
             return check_news(arguments["source"])
         elif command_name == "check_notifications":
             return check_notifications(arguments["website"])
-        elif command_name == "commit_memory":
+        elif command_name == "memory_add":
             return commit_memory(arguments["string"])
-        elif command_name == "delete_memory":
+        elif command_name == "memory_del":
             return delete_memory(arguments["key"])
-        elif command_name == "overwrite_memory":
+        elif command_name == "memory_ovr":
             return overwrite_memory(arguments["key"], arguments["string"])
         elif command_name == "start_instance":
             return start_instance(arguments["name"], arguments["prompt"])
@@ -203,19 +203,30 @@ def check_notifications(website):
 
 def commit_memory(string):
     _text = "Committing memory with string " + string
+    permanent_memory.append(string)
     print(_text)
     return _text
 
 def delete_memory(key):
-    _text = "Deleting memory with key " + key
-    print(_text)
-    return _text
+    if key >= 0 and key < len(permanent_memory):
+        _text = "Deleting memory with key " + str(key)
+        del permanent_memory[key]
+        print(_text)
+        return _text
+    else:
+        print("Invalid key, cannot delete memory.")
+        return None
 
 def overwrite_memory(key, string):
-    _text = "Overwriting memory with key " + key + " and string " + string
-    print(_text)
-    return _text
-
+    if key >= 0 and key < len(permanent_memory):
+        _text = "Overwriting memory with key " + str(key) + " and string " + string
+        permanent_memory[key] = string
+        print(_text)
+        return _text
+    else:
+        print("Invalid key, cannot overwrite memory.")
+        return None
+    
 def start_instance(name, prompt):
     _text = "Starting instance with name " + name + " and prompt " + prompt
     print(_text)
@@ -239,7 +250,7 @@ def register_account(username, website):
 def transcribe_summarise(url):
     text = scrape_main_content(url)
     summary = summarize_text(text)
-    return """ "Result" ":" """ + summary
+    return """ "Result" : """ + summary
 
 
 
