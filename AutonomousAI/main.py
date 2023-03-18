@@ -81,6 +81,7 @@ def summarize_text(text):
 
         summary = response.choices[0].message.content
         summaries.append(summary)
+    print("Summarized " + str(len(chunks)) + " chunks.")
 
     combined_summary = "\n".join(summaries)
 
