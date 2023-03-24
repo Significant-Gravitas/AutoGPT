@@ -16,6 +16,7 @@ Entrepreneur-GPT is an experimental open-source application showcasing the capab
 - [Disclaimer](#🛡-Disclaimer)
 - [Connect with Us on Twitter ](#🐦-connect-with-us-on-twitter)
 
+
 ## 🚀 Features
 
 - 🌐 Internet access for searches and information gathering
