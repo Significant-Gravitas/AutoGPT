@@ -1,15 +1,17 @@
-import os
+import datetime
 import openai
 import json
 from googlesearch import search
 import requests
 from bs4 import BeautifulSoup
-import re
 import keys
 from readability import Document
 
 # Initialize the OpenAI API client
 openai.api_key = keys.OPENAI_API_KEY
+
+def get_datetime():
+    return "Current date and time: " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def scrape_text(url):
     response = requests.get(url)
