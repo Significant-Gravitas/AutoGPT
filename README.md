@@ -37,7 +37,7 @@ To install Entrepreneur-GPT, follow these steps:
 1. Clone the repository:
 
 ```
-git clone https://github.com/Torantulino/auto-gpt.git
+git clone https://github.com/Torantulino/Auto-GPT.git
 ```
 
 2. Navigate to the project directory:
