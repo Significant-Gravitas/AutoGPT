@@ -12,8 +12,8 @@ def google_search(query, num_results = 3):
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 def transcribe_summarise(url):
-    text = mem.scrape_main_content(url)
-    summary = mem.summarize_text(text)
+    text = browse.scrape_main_content(url)
+    summary = browse.summarize_text(text)
     return """ "Result" : """ + summary
 
 def check_news(source):
