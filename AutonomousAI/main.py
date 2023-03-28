@@ -4,6 +4,7 @@ import json
 import keys
 import commands as cmd
 import memory as mem
+import keyboard
 
 # Initialize the OpenAI API client
 openai.api_key = keys.OPENAI_API_KEY
@@ -55,6 +56,8 @@ def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, tok
         model="gpt-4",
         messages=current_context,
     )
+    print("---------------------------")
+
 
     assistant_reply = response.choices[0].message["content"]
     return assistant_reply
@@ -173,25 +176,41 @@ ACCOUNTS:
 4. Substack: entrepreneurgpt@gmail.com"""
 token_limit = 6000  # The maximum number of tokens allowed in the API call
 result = None
-# Example loop for interaction
-# Example loop for interaction
-while True:
-    user_input = input("User: ")
 
-    if user_input.lower() == "exit":
+# Interaction Loop
+while True:
+    # Get key press: Prompt the user to press enter to continue or escape to exit
+    print("Press 'Enter' to continue or 'Escape' to exit...")
+    user_input = ""
+
+    while True:
+        if keyboard.is_pressed('enter'):
+            user_input = "NEXT COMMAND"
+            break
+        elif keyboard.is_pressed('escape'):
+            user_input = "EXIT"
+            break
+        else:
+            continue
+
+    if user_input != "NEXT COMMAND":
+        print("Exiting...")
         break
 
-    # Check if there's a result from the previous iteration and append it to the message history
-    if result != None:
-        full_message_history.append(create_chat_message("system", result))
-        print("system: " + result)
+    print("-=-=-=-=-=-=-= NEXT COMMAND AUTHORISED -=-=-=-=-=-=-=")
 
+    # Send command to AI, get response
     assistant_reply = chat_with_ai(prompt, user_input, full_message_history, mem.permanent_memory, token_limit)
     print(f"Assistant: {assistant_reply}")
-    print("-------------------------")
 
-    # Add user message and assistant reply to message history
+    # Update full message history
     full_message_history.append(create_chat_message("user", user_input))
     full_message_history.append(create_chat_message("assistant", assistant_reply))
 
     result = execute_command(assistant_reply)
+
+    # Check if there's a result append it to the message history
+    if result != None:
+        full_message_history.append(create_chat_message("system", result))
+        print("system: " + result)
+
