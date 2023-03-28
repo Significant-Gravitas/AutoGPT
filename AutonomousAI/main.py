@@ -57,20 +57,31 @@ def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, tok
         model="gpt-4",
         messages=current_context,
     )
-    print("---------------------------")
-
 
     assistant_reply = response.choices[0].message["content"]
+
+    # Update full message history
+    full_message_history.append(create_chat_message("user", user_input))
+    full_message_history.append(create_chat_message("assistant", assistant_reply))
+
     return assistant_reply
 
-def execute_command(response):
-    # If not valid json, return "Error: Invalid JSON"
+def get_command(response):
     try:
         response_json = json.loads(response)
         command = response_json["command"]
         command_name = command["name"]
         arguments = command["args"]
 
+        return command_name, arguments
+    except json.decoder.JSONDecodeError:
+        return "Error: Invalid JSON"
+    # All other errors, return "Error: + error message"
+    except Exception as e:
+        return "Error: " + str(e)
+
+def execute_command(command_name, arguments):
+    try:
         if command_name == "google":
             return cmd.google_search(arguments["input"])
         elif command_name == "check_news":
@@ -95,8 +106,6 @@ def execute_command(response):
             return cmd.transcribe_summarise(arguments["url"])
         else:
             return f"unknown command {command_name}"
-    except json.decoder.JSONDecodeError:
-        return "Error: Invalid JSON"
     # All other errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)
@@ -177,13 +186,23 @@ ACCOUNTS:
 4. Substack: entrepreneurgpt@gmail.com"""
 token_limit = 6000  # The maximum number of tokens allowed in the API call
 result = None
+user_input = "NEXT COMMAND"
 
 # Interaction Loop
 while True:
-    # Get key press: Prompt the user to press enter to continue or escape to exit
-    print("Press 'Enter' to continue or 'Escape' to exit...")
-    user_input = ""
+    # Send message to AI, get response
+    assistant_reply = chat_with_ai(prompt, user_input, full_message_history, mem.permanent_memory, token_limit)
+    print(f"Assistant: {assistant_reply}")
 
+    # Get command name and arguments
+    command_name, arguments = get_command(assistant_reply)
+    
+    ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+    # Get key press: Prompt the user to press enter to continue or escape to exit
+    user_input = ""
+    print("COMMAND: " + command_name)
+    print("ARGUMENTS: " + str(arguments))
+    print("Press 'Enter' to authorise command or 'Escape' to exit program...")
     while True:
         if keyboard.is_pressed('enter'):
             user_input = "NEXT COMMAND"
@@ -198,17 +217,11 @@ while True:
         print("Exiting...")
         break
 
-    print("-=-=-=-=-=-=-= NEXT COMMAND AUTHORISED -=-=-=-=-=-=-=")
+    print("-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=")
 
-    # Send command to AI, get response
-    assistant_reply = chat_with_ai(prompt, user_input, full_message_history, mem.permanent_memory, token_limit)
-    print(f"Assistant: {assistant_reply}")
-
-    # Update full message history
-    full_message_history.append(create_chat_message("user", user_input))
-    full_message_history.append(create_chat_message("assistant", assistant_reply))
-
-    result = execute_command(assistant_reply)
+    # Exectute command
+    result = execute_command(command_name, arguments)
+    
 
     # Check if there's a result append it to the message history
     if result != None:
