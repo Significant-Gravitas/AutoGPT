@@ -1,1 +1,6 @@
 AutonomousAI/keys.py
+AutonomousAI/*json
+AutonomousAI/node_modules/
+Output Renderer/data.json
+AutonomousAI/__pycache__/keys.cpython-310.pyc
+package-lock.json
