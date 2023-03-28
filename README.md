@@ -43,7 +43,7 @@ git clone https://github.com/Torantulino/auto-gpt.git
 2. Navigate to the project directory:
 
 ```
-cd entrepreneur-gpt
+$ cd 'auto-gpt/AutonomousAI'
 ```
 
 3. Install the required dependencies:
@@ -52,7 +52,7 @@ cd entrepreneur-gpt
 pip install -r requirements.txt
 ```
 
-4. Create a file named keys.py in the project directory and add your OpenAI API key:
+4. Create a file named keys.py in the AutonomousAI directory and add your OpenAI API key:
 ```
 OPENAI_API_KEY = "your_openai_api_key_here"
 ```
