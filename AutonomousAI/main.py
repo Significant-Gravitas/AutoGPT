@@ -25,7 +25,7 @@ def create_chat_message(role, content):
     """
     return {"role": role, "content": content}
 
-def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, token_limit):
+def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, token_limit, debug = False):
     """
     Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory.
 
@@ -44,13 +44,14 @@ def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, tok
     current_context.extend([create_chat_message("user", user_input)])
 
     # Debug print the current context
-    print("---------------------------")
-    print("Current Context:")
-    for message in current_context:
-        # Skip printing the prompt
-        if message["role"] == "system" and message["content"] == prompt:
-            continue
-        print(f"{message['role'].capitalize()}: {message['content']}")
+    if debug:
+        print("------------ CONTEXT SENT TO AI ---------------")
+        for message in current_context:
+            # Skip printing the prompt
+            if message["role"] == "system" and message["content"] == prompt:
+                continue
+            print(f"{message['role'].capitalize()}: {message['content']}")
+        print("----------- END OF CONTEXT ----------------")
 
     response = openai.ChatCompletion.create(
         model="gpt-4",
