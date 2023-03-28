@@ -63,7 +63,7 @@ OPENAI_API_KEY = "your_openai_api_key_here"
 ```
 python main.py
 ```
-2. Follow the on-screen instructions to interact with the program.
+2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
 ## ⚠️ Limitations
