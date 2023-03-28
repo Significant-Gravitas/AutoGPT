@@ -1,8 +1,8 @@
-# Entrepreneur-GPT: An Autonomous GPT-4 Experiment
+# Auto-GPT: An Autonomous GPT-4 Experiment
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/entrepreneur-gpt?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
 
-Entrepreneur-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Entrepreneur-GPT pushes the boundaries of AI-assisted entrepreneurship.
+Auto-GPT (formerly Entrepreneur-GPT) is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Entrepreneur-GPT pushes the boundaries of AI-assisted entrepreneurship.
 
 
 
@@ -37,13 +37,13 @@ To install Entrepreneur-GPT, follow these steps:
 1. Clone the repository:
 
 ```
-git clone https://github.com/siggravitas/entrepreneur-gpt.git
+git clone https://github.com/Torantulino/Auto-GPT.git
 ```
 
 2. Navigate to the project directory:
 
 ```
-cd entrepreneur-gpt
+$ cd 'Auto-GPT/AutonomousAI'
 ```
 
 3. Install the required dependencies:
@@ -52,7 +52,7 @@ cd entrepreneur-gpt
 pip install -r requirements.txt
 ```
 
-4. Create a file named keys.py in the project directory and add your OpenAI API key:
+4. Create a file named keys.py in the AutonomousAI directory and add your OpenAI API key:
 ```
 OPENAI_API_KEY = "your_openai_api_key_here"
 ```
@@ -63,7 +63,7 @@ OPENAI_API_KEY = "your_openai_api_key_here"
 ```
 python main.py
 ```
-2. Follow the on-screen instructions to interact with the program.
+2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
 ## ⚠️ Limitations
