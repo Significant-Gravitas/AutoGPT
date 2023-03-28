@@ -1,8 +1,8 @@
-# Entrepreneur-GPT: An Autonomous GPT-4 Experiment
+# Auto-GPT: An Autonomous GPT-4 Experiment
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/entrepreneur-gpt?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
 
-Entrepreneur-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Entrepreneur-GPT pushes the boundaries of AI-assisted entrepreneurship.
+Auto-GPT (formerly Entrepreneur-GPT) is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Entrepreneur-GPT pushes the boundaries of AI-assisted entrepreneurship.
 
 
 
@@ -37,7 +37,7 @@ To install Entrepreneur-GPT, follow these steps:
 1. Clone the repository:
 
 ```
-git clone https://github.com/siggravitas/entrepreneur-gpt.git
+git clone https://github.com/Torantulino/auto-gpt.git
 ```
 
 2. Navigate to the project directory:
