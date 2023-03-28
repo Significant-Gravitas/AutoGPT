@@ -223,8 +223,10 @@ while True:
     result = execute_command(command_name, arguments)
     
 
-    # Check if there's a result append it to the message history
+    # Check if there's a result from the command append it to the message history
     if result != None:
         full_message_history.append(create_chat_message("system", result))
         print("system: " + result)
-
+    else:
+        full_message_history.append(create_chat_message("system", "Unable to execute command"))
+        print("system: Unable to execute command")
