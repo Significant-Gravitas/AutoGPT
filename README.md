@@ -43,7 +43,7 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 2. Navigate to the project directory:
 
 ```
-$ cd 'auto-gpt/AutonomousAI'
+$ cd 'Auto-GPT/AutonomousAI'
 ```
 
 3. Install the required dependencies:
