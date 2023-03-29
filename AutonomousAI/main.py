@@ -8,13 +8,18 @@ from colorama import Fore, Style
 from spinner import Spinner
 import time
 
-def print_to_console(title, title_color, content, typing_speed=0.01):
-    # Give typing speed a natural feel by adding a random amount of time between each character
-    typing_speed += typing_speed * (0.1 * (2 * random.random() - 1))
-    print(title_color + title + Style.RESET_ALL, end="")
-    for char in content:
-        print(char, end="", flush=True)
+def print_to_console(title, title_color, content, min_typing_speed=0.1, max_typing_speed=0.3):
+    print(title_color + title + " " + Style.RESET_ALL, end="")
+    words = content.split()
+    for i, word in enumerate(words):
+        print(word, end="", flush=True)
+        if i < len(words) - 1:
+            print(" ", end="", flush=True)
+        typing_speed = random.uniform(min_typing_speed, max_typing_speed)
         time.sleep(typing_speed)
+        # type faster after each word
+        min_typing_speed = min_typing_speed * 0.9
+        max_typing_speed = max_typing_speed * 0.9
     print()
 
 def print_assistant_thoughts(assistant_reply):
@@ -39,8 +44,9 @@ def print_assistant_thoughts(assistant_reply):
         if assistant_thoughts_plan:
             print_to_console("Plan:", Fore.YELLOW, "")
             if assistant_thoughts_plan:
+
                 # Split the input_string using the newline character and dash
-                lines = assistant_thoughts_plan.split('\n- ')
+                lines = assistant_thoughts_plan.split('\n')
 
                 # Iterate through the lines and print each one with a bullet point
                 for line in lines:
