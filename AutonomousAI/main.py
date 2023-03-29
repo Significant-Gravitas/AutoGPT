@@ -1,4 +1,3 @@
-import datetime
 import openai
 import json
 import keys
@@ -7,9 +6,6 @@ import memory as mem
 
 # Initialize the OpenAI API client
 openai.api_key = keys.OPENAI_API_KEY
-
-def get_datetime():
-    return "Current date and time: " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def create_chat_message(role, content):
     """
@@ -64,50 +60,6 @@ def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, tok
     full_message_history.append(create_chat_message("assistant", assistant_reply))
 
     return assistant_reply
-
-def get_command(response):
-    try:
-        response_json = json.loads(response)
-        command = response_json["command"]
-        command_name = command["name"]
-        arguments = command["args"]
-
-        return command_name, arguments
-    except json.decoder.JSONDecodeError:
-        return "Error: Invalid JSON"
-    # All other errors, return "Error: + error message"
-    except Exception as e:
-        return "Error: " + str(e)
-
-def execute_command(command_name, arguments):
-    try:
-        if command_name == "google":
-            return cmd.google_search(arguments["input"])
-        elif command_name == "check_news":
-            return cmd.check_news(arguments["source"])
-        elif command_name == "check_notifications":
-            return cmd.check_notifications(arguments["website"])
-        elif command_name == "memory_add":
-            return cmd.commit_memory(arguments["string"])
-        elif command_name == "memory_del":
-            return cmd.delete_memory(arguments["key"])
-        elif command_name == "memory_ovr":
-            return cmd.overwrite_memory(arguments["key"], arguments["string"])
-        elif command_name == "start_instance":
-            return cmd.start_instance(arguments["name"], arguments["prompt"])
-        elif command_name == "manage_instances":
-            return cmd.manage_instances(arguments["action"])
-        elif command_name == "navigate_website":
-            return cmd.navigate_website(arguments["action"], arguments["username"])
-        elif command_name == "register_account":
-            return cmd.register_account(arguments["username"], arguments["website"])
-        elif command_name == "transcribe_summarise":
-            return cmd.transcribe_summarise(arguments["url"])
-        else:
-            return f"unknown command {command_name}"
-    # All other errors, return "Error: + error message"
-    except Exception as e:
-        return "Error: " + str(e)
 
 def load_prompt():
     try:
@@ -174,7 +126,7 @@ while True:
     print_assistant_thoughts(assistant_reply)
 
     # Get command name and arguments
-    command_name, arguments = get_command(assistant_reply)
+    command_name, arguments = cmd.get_command(assistant_reply)
     
     ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
     # Get key press: Prompt the user to press enter to continue or escape to exit
@@ -199,7 +151,7 @@ while True:
     print("-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=", flush=True)
 
     # Exectute command
-    result = execute_command(command_name, arguments)
+    result = cmd.execute_command(command_name, arguments)
     
 
     # Check if there's a result from the command append it to the message history
