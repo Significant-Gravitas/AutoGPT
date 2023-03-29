@@ -1,4 +1,5 @@
 beautifulsoup4==4.12.0
+colorama==0.4.6
 googlesearch_python==1.1.0
 openai==0.27.0
 readability_lxml==0.8.1

@@ -3,6 +3,7 @@ import commands as cmd
 import memory as mem
 import data
 import chat
+from colorama import Fore, Style
 
 def print_assistant_thoughts(assistant_reply):
     try:
@@ -21,25 +22,25 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_plan = None
             assistant_thoughts_criticism = None
         
-        print(f"ASSISTANT THOUGHTS: {assistant_thoughts_text}", flush=True)
-        print(f"REASONING: {assistant_thoughts_reasoning}", flush=True)
+        print(Fore.YELLOW + "ASSISTANT THOUGHTS:" + Style.RESET_ALL, assistant_thoughts_text)
+        print(Fore.YELLOW + "REASONING:" + Style.RESET_ALL, assistant_thoughts_reasoning)
         if assistant_thoughts_plan:
-            print("PLAN: ", flush=True)
+            print(Fore.YELLOW + "PLAN:" + Style.RESET_ALL)
             if assistant_thoughts_plan:
                 # Split the input_string using the newline character and dash
                 lines = assistant_thoughts_plan.split('\n- ')
 
                 # Iterate through the lines and print each one with a bullet point
                 for line in lines:
-                    print(f"- {line.strip()}", flush=True)
-        print(f"CRITICISM: " + assistant_thoughts_criticism, flush=True)
+                    print(Fore.GREEN + "- " + Style.RESET_ALL + line.strip())
+        print(Fore.YELLOW + "CRITICISM:" + Style.RESET_ALL, assistant_thoughts_criticism)
 
     except json.decoder.JSONDecodeError:
-        print("Error: Invalid JSON", flush=True)
+        print(Fore.RED + "Error: Invalid JSON" + Style.RESET_ALL)
         print(assistant_reply, flush=True)
     # All other errors, return "Error: + error message"
     except Exception as e:
-        print("Error: " + str(e), flush=True)
+        print(Fore.RED + "Error: " + str(e) + Style.RESET_ALL)
         print(assistant_reply, flush=True)
 
 # Initialize variables
@@ -63,14 +64,14 @@ while True:
     ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
     # Get key press: Prompt the user to press enter to continue or escape to exit
     user_input = ""
-    print(f"""NEXT ACTION: COMMAND = {command_name}  ARGUMENTS = {arguments}""", flush=True)
+    print(Fore.CYAN + f"NEXT ACTION: COMMAND = {command_name}  ARGUMENTS = {arguments}" + Style.RESET_ALL)
     print("Enter 'y' to authorise command or 'n' to exit program...", flush=True)
     while True:
-        console_input = input()
-        if console_input == "y":
+        console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+        if console_input.lower() == "y":
             user_input = "NEXT COMMAND"
             break
-        elif console_input == "n":
+        elif console_input.lower() == "n":
             user_input = "EXIT"
             break
         else:
@@ -80,7 +81,7 @@ while True:
         print("Exiting...", flush=True)
         break
 
-    print("-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=", flush=True)
+    print(Fore.MAGENTA + "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=" + Style.RESET_ALL)
 
     # Exectute command
     result = cmd.execute_command(command_name, arguments)
@@ -89,7 +90,7 @@ while True:
     # Check if there's a result from the command append it to the message history
     if result != None:
         full_message_history.append(chat.create_chat_message("system", result))
-        print("system: " + result, flush=True)
+        print(Fore.YELLOW + "SYSTEM: " + Style.RESET_ALL + result, flush=True)
     else:
         full_message_history.append(chat.create_chat_message("system", "Unable to execute command"))
-        print("system: Unable to execute command", flush=True)
+        print(Fore.YELLOW + "SYSTEM: " + Style.RESET_ALL + "Unable to execute command", flush=True)
