@@ -125,23 +125,32 @@ def print_assistant_thoughts(assistant_reply):
     try:
         # Parse and print Assistant response
         assistant_reply_json = json.loads(assistant_reply)
-        assistant_thoughts = assistant_reply_json["thoughts"]
-        assistant_thoughts_text = assistant_thoughts["text"]
-        assistant_thoughts_reasoning = assistant_thoughts["reasoning"]
-        assistant_thoughts_plan = assistant_thoughts["plan"]
-        assistant_thoughts_criticism = assistant_thoughts["criticism"]
 
-        print("ASSISTANT THOUGHTS: " + assistant_thoughts_text, flush=True)
-        print("REASONING: " + assistant_thoughts_reasoning, flush=True)
-        print("PLAN: ", flush=True)
+        assistant_thoughts = assistant_reply_json.get("thoughts")
+        if assistant_thoughts:
+            assistant_thoughts_text = assistant_thoughts.get("text")
+            assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
+            assistant_thoughts_plan = assistant_thoughts.get("plan")
+            assistant_thoughts_criticism = assistant_thoughts.get("criticism")
+        else:
+            assistant_thoughts_text = None
+            assistant_thoughts_reasoning = None
+            assistant_thoughts_plan = None
+            assistant_thoughts_criticism = None
+        
+        print(f"ASSISTANT THOUGHTS: {assistant_thoughts_text}", flush=True)
+        print(f"REASONING: {assistant_thoughts_reasoning}", flush=True)
         if assistant_thoughts_plan:
-            # Split the input_string using the newline character and dash
-            lines = assistant_thoughts_plan.split('\n- ')
+            print("PLAN: ", flush=True)
+            if assistant_thoughts_plan:
+                # Split the input_string using the newline character and dash
+                lines = assistant_thoughts_plan.split('\n- ')
 
-            # Iterate through the lines and print each one with a bullet point
-            for line in lines:
-                print(f"- {line.strip()}", flush=True)
-        print("CRITICISM: " + assistant_thoughts_criticism, flush=True)
+                # Iterate through the lines and print each one with a bullet point
+                for line in lines:
+                    print(f"- {line.strip()}", flush=True)
+        print(f"CRITICISM: " + assistant_thoughts_criticism, flush=True)
+        
     except json.decoder.JSONDecodeError:
         print("Error: Invalid JSON", flush=True)
         print(assistant_reply, flush=True)
