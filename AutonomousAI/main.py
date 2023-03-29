@@ -61,6 +61,45 @@ def print_assistant_thoughts(assistant_reply):
     except Exception as e:
         print_to_console("Error: \n", Fore.RED, str(e))
 
+# Construct the prompt
+print_to_console("Welcome to Auto-GPT! ", Fore.GREEN, "Enter the name of your AI and its role below. Entering nothing will load defaults.")
+
+# Get AI Name from User
+print_to_console("Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'")
+ai_name = input("AI Name: ")
+if ai_name == "":
+    ai_name = "Entrepreneur-GPT"
+
+# Get AI Role from User
+print_to_console("Describe your AI's role: ", Fore.GREEN, "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'")
+ai_role = input(f"{ai_name} is: ")
+if ai_role == "":
+    ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
+
+# Enter up to 5 goals for the AI
+print_to_console("Enter up to 5 goals for your AI: ", Fore.GREEN, "For example: \nIncrease net worth \nGrow Twitter Account \nDevelop and manage multiple businesses autonomously'")
+print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
+ai_goals = []
+for i in range(5):
+    ai_goal = input(f"Goal {i+1}: ")
+    if ai_goal == "":
+        break
+    ai_goals.append(ai_goal)
+if len(ai_goals) == 0:
+    ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
+
+prompt = data.load_prompt()
+prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+
+# Construct full prompt
+full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+for i, goal in enumerate(ai_goals):
+    full_prompt += f"{i+1}. {goal}\n"
+    
+full_prompt += f"\n\n{prompt}"
+prompt = full_prompt
+print(f"Prompt: {prompt}")
+
 # Initialize variables
 full_message_history = []
 prompt = data.load_prompt()
