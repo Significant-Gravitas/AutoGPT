@@ -4,7 +4,7 @@
 
 Auto-GPT (formerly Entrepreneur-GPT) is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Entrepreneur-GPT pushes the boundaries of AI-assisted entrepreneurship.
 
-
+https://user-images.githubusercontent.com/22963551/228434813-ef72d5b6-158f-49f5-b2cc-c89895ab8458.mp4
 
 ## Table of Contents
 
