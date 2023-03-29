@@ -1,9 +1,57 @@
 import browse
 import json
 import memory as mem
+import datetime
+
+def get_command(response):
+    try:
+        response_json = json.loads(response)
+        command = response_json["command"]
+        command_name = command["name"]
+        arguments = command["args"]
+
+        return command_name, arguments
+    except json.decoder.JSONDecodeError:
+        return "Error: Invalid JSON"
+    # All other errors, return "Error: + error message"
+    except Exception as e:
+        return "Error: " + str(e)
+
+def execute_command(command_name, arguments):
+    try:
+        if command_name == "google":
+            return google_search(arguments["input"])
+        elif command_name == "check_news":
+            return check_news(arguments["source"])
+        elif command_name == "check_notifications":
+            return check_notifications(arguments["website"])
+        elif command_name == "memory_add":
+            return commit_memory(arguments["string"])
+        elif command_name == "memory_del":
+            return delete_memory(arguments["key"])
+        elif command_name == "memory_ovr":
+            return overwrite_memory(arguments["key"], arguments["string"])
+        elif command_name == "start_instance":
+            return start_instance(arguments["name"], arguments["prompt"])
+        elif command_name == "manage_instances":
+            return manage_instances(arguments["action"])
+        elif command_name == "navigate_website":
+            return navigate_website(arguments["action"], arguments["username"])
+        elif command_name == "register_account":
+            return register_account(arguments["username"], arguments["website"])
+        elif command_name == "transcribe_summarise":
+            return transcribe_summarise(arguments["url"])
+        else:
+            return f"unknown command {command_name}"
+    # All other errors, return "Error: + error message"
+    except Exception as e:
+        return "Error: " + str(e)
+
+def get_datetime():
+    return "Current date and time: " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 
 ### Implemented Commands: ###
-
 def google_search(query, num_results = 3):
     search_results = []
     for j in browse.search(query, num_results=num_results):
