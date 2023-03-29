@@ -1,13 +1,21 @@
 import json
+import random
 import commands as cmd
 import memory as mem
 import data
 import chat
 from colorama import Fore, Style
 from spinner import Spinner
+import time
 
-def print_to_console(title, title_color, content):
-    print(title_color + title + Style.RESET_ALL, content, flush=True)
+def print_to_console(title, title_color, content, typing_speed=0.01):
+    # Give typing speed a natural feel by adding a random amount of time between each character
+    typing_speed += typing_speed * (0.1 * (2 * random.random() - 1))
+    print(title_color + title + Style.RESET_ALL, end="")
+    for char in content:
+        print(char, end="", flush=True)
+        time.sleep(typing_speed)
+    print()
 
 def print_assistant_thoughts(assistant_reply):
     try:
