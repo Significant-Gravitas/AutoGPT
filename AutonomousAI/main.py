@@ -8,7 +8,7 @@ from colorama import Fore, Style
 from spinner import Spinner
 import time
 
-def print_to_console(title, title_color, content, min_typing_speed=0.1, max_typing_speed=0.3):
+def print_to_console(title, title_color, content, min_typing_speed=0.05, max_typing_speed=0.01):
     print(title_color + title + " " + Style.RESET_ALL, end="")
     words = content.split()
     for i, word in enumerate(words):
@@ -18,8 +18,8 @@ def print_to_console(title, title_color, content, min_typing_speed=0.1, max_typi
         typing_speed = random.uniform(min_typing_speed, max_typing_speed)
         time.sleep(typing_speed)
         # type faster after each word
-        min_typing_speed = min_typing_speed * 0.9
-        max_typing_speed = max_typing_speed * 0.9
+        min_typing_speed = min_typing_speed * 0.95
+        max_typing_speed = max_typing_speed * 0.95
     print()
 
 def print_assistant_thoughts(assistant_reply):
