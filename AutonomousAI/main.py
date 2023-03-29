@@ -121,14 +121,32 @@ def load_prompt():
         print("Error: Prompt file not found", flush=True)
         return ""
 
-1. Increase net worth
-2. Grow Twitter Account
-3. Develop and manage multiple businesses autonomously
+def print_assistant_thoughts(assistant_reply):
+    try:
+        # Parse and print Assistant response
+        assistant_reply_json = json.loads(assistant_reply)
+        assistant_thoughts = assistant_reply_json["thoughts"]
+        assistant_thoughts_text = assistant_thoughts["text"]
+        assistant_thoughts_reasoning = assistant_thoughts["reasoning"]
+        assistant_thoughts_plan = assistant_thoughts["plan"]
+        assistant_thoughts_criticism = assistant_thoughts["criticism"]
 
-CONSTRAINTS:
+        print("ASSISTANT THOUGHTS: " + assistant_thoughts_text, flush=True)
+        print("REASONING: " + assistant_thoughts_reasoning, flush=True)
+        print("PLAN: ", flush=True)
+        if assistant_thoughts_plan:
+            # Split the input_string using the newline character and dash
+            lines = assistant_thoughts_plan.split('\n- ')
 
-1. 6000-word count limit for memory
-2. No user assistance
+            # Iterate through the lines and print each one with a bullet point
+            for line in lines:
+                print(f"- {line.strip()}", flush=True)
+        print("CRITICISM: " + assistant_thoughts_criticism, flush=True)
+    except json.decoder.JSONDecodeError:
+        print("Error: Invalid JSON", flush=True)
+    # All other errors, return "Error: + error message"
+    except Exception as e:
+        print("Error: " + str(e), flush=True)
 
 # Initialize variables
 full_message_history = []
@@ -141,7 +159,9 @@ user_input = "NEXT COMMAND"
 while True:
     # Send message to AI, get response
     assistant_reply = chat_with_ai(prompt, user_input, full_message_history, mem.permanent_memory, token_limit)
-    print(f"Assistant: {assistant_reply}")
+
+    # Print Assistant thoughts
+    print_assistant_thoughts(assistant_reply)
 
     # Get command name and arguments
     command_name, arguments = get_command(assistant_reply)
@@ -149,9 +169,8 @@ while True:
     ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
     # Get key press: Prompt the user to press enter to continue or escape to exit
     user_input = ""
-    print("COMMAND: " + command_name)
-    print("ARGUMENTS: " + str(arguments))
-    print("Press 'Enter' to authorise command or 'Escape' to exit program...")
+    print(f"""NEXT ACTION: COMMAND = {command_name}  ARGUMENTS = {arguments}""", flush=True)
+    print("Press 'Enter' to authorise command or 'Escape' to exit program...", flush=True)
     while True:
         if keyboard.is_pressed('enter'):
             user_input = "NEXT COMMAND"
@@ -163,10 +182,10 @@ while True:
             continue
 
     if user_input != "NEXT COMMAND":
-        print("Exiting...")
+        print("Exiting...", flush=True)
         break
 
-    print("-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=")
+    print("-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=", flush=True)
 
     # Exectute command
     result = execute_command(command_name, arguments)
@@ -175,7 +194,7 @@ while True:
     # Check if there's a result from the command append it to the message history
     if result != None:
         full_message_history.append(create_chat_message("system", result))
-        print("system: " + result)
+        print("system: " + result, flush=True)
     else:
         full_message_history.append(create_chat_message("system", "Unable to execute command"))
-        print("system: Unable to execute command")
+        print("system: Unable to execute command", flush=True)
