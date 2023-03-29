@@ -1,76 +1,8 @@
-import openai
 import json
-import keys
 import commands as cmd
 import memory as mem
-
-# Initialize the OpenAI API client
-openai.api_key = keys.OPENAI_API_KEY
-
-def create_chat_message(role, content):
-    """
-    Create a chat message with the given role and content.
-
-    Args:
-    role (str): The role of the message sender, e.g., "system", "user", or "assistant".
-    content (str): The content of the message.
-
-    Returns:
-    dict: A dictionary containing the role and content of the message.
-    """
-    return {"role": role, "content": content}
-
-def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, token_limit, debug = False):
-    """
-    Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory.
-
-    Args:
-    prompt (str): The prompt explaining the rules to the AI.
-    user_input (str): The input from the user.
-    full_message_history (list): The list of all messages sent between the user and the AI.
-    permanent_memory (list): The list of items in the AI's permanent memory.
-    token_limit (int): The maximum number of tokens allowed in the API call.
-
-    Returns:
-    str: The AI's response.
-    """
-    current_context = [create_chat_message("system", prompt), create_chat_message("system", f"Permanent memory: {permanent_memory}")]
-    current_context.extend(full_message_history[-(token_limit - len(prompt) - len(permanent_memory) - 10):])
-    current_context.extend([create_chat_message("user", user_input)])
-
-    # Debug print the current context
-    if debug:
-        print("------------ CONTEXT SENT TO AI ---------------")
-        for message in current_context:
-            # Skip printing the prompt
-            if message["role"] == "system" and message["content"] == prompt:
-                continue
-            print(f"{message['role'].capitalize()}: {message['content']}")
-        print("----------- END OF CONTEXT ----------------")
-
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=current_context,
-    )
-
-    assistant_reply = response.choices[0].message["content"]
-
-    # Update full message history
-    full_message_history.append(create_chat_message("user", user_input))
-    full_message_history.append(create_chat_message("assistant", assistant_reply))
-
-    return assistant_reply
-
-def load_prompt():
-    try:
-        # Load the promt from data/prompt.txt
-        with open("data/prompt.txt", "r") as prompt_file:
-            prompt = prompt_file.read()
-
-        return prompt
-    except FileNotFoundError:
-        print("Error: Prompt file not found", flush=True)
-        return ""
+import data
+import chat
 
 def print_assistant_thoughts(assistant_reply):
     try:
@@ -112,7 +44,7 @@ def print_assistant_thoughts(assistant_reply):
 
 # Initialize variables
 full_message_history = []
-prompt = load_prompt()
+prompt = data.load_prompt()
 token_limit = 6000  # The maximum number of tokens allowed in the API call
 result = None
 user_input = "NEXT COMMAND"
@@ -120,7 +52,7 @@ user_input = "NEXT COMMAND"
 # Interaction Loop
 while True:
     # Send message to AI, get response
-    assistant_reply = chat_with_ai(prompt, user_input, full_message_history, mem.permanent_memory, token_limit)
+    assistant_reply = chat.chat_with_ai(prompt, user_input, full_message_history, mem.permanent_memory, token_limit)
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
@@ -156,8 +88,8 @@ while True:
 
     # Check if there's a result from the command append it to the message history
     if result != None:
-        full_message_history.append(create_chat_message("system", result))
+        full_message_history.append(chat.create_chat_message("system", result))
         print("system: " + result, flush=True)
     else:
-        full_message_history.append(create_chat_message("system", "Unable to execute command"))
+        full_message_history.append(chat.create_chat_message("system", "Unable to execute command"))
         print("system: Unable to execute command", flush=True)
