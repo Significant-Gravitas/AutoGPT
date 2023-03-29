@@ -24,6 +24,7 @@ def print_to_console(title, title_color, content, min_typing_speed=0.05, max_typ
     print()
 
 def print_assistant_thoughts(assistant_reply):
+    global ai_name
     try:
         # Parse and print Assistant response
         assistant_reply_json = json.loads(assistant_reply)
@@ -63,6 +64,7 @@ def print_assistant_thoughts(assistant_reply):
         print_to_console("Error: \n", Fore.RED, str(e))
 
 def construct_prompt():
+    global ai_name
     # Construct the prompt
     print_to_console("Welcome to Auto-GPT! ", Fore.GREEN, "Enter the name of your AI and its role below. Entering nothing will load defaults.")
 
@@ -101,8 +103,8 @@ def construct_prompt():
     full_prompt += f"\n\n{prompt}"
     return full_prompt
 
+ai_name = ""
 prompt = construct_prompt()
-
 # Initialize variables
 full_message_history = []
 token_limit = 6000  # The maximum number of tokens allowed in the API call
