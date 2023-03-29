@@ -6,6 +6,9 @@ import chat
 from colorama import Fore, Style
 from spinner import Spinner
 
+def print_to_console(title, title_color, content):
+    print(title_color + title + Style.RESET_ALL, content, flush=True)
+
 def print_assistant_thoughts(assistant_reply):
     try:
         # Parse and print Assistant response
@@ -23,26 +26,26 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_plan = None
             assistant_thoughts_criticism = None
         
-        print(Fore.YELLOW + "ASSISTANT THOUGHTS:" + Style.RESET_ALL, assistant_thoughts_text)
-        print(Fore.YELLOW + "REASONING:" + Style.RESET_ALL, assistant_thoughts_reasoning)
+        print_to_console("ASSISTANT THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
+        print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
         if assistant_thoughts_plan:
-            print(Fore.YELLOW + "PLAN:" + Style.RESET_ALL)
+            print_to_console("Plan:", Fore.YELLOW, "")
             if assistant_thoughts_plan:
                 # Split the input_string using the newline character and dash
                 lines = assistant_thoughts_plan.split('\n- ')
 
                 # Iterate through the lines and print each one with a bullet point
                 for line in lines:
-                    print(Fore.GREEN + "- " + Style.RESET_ALL + line.strip())
-        print(Fore.YELLOW + "CRITICISM:" + Style.RESET_ALL, assistant_thoughts_criticism)
+                    # Remove any "-" characters from the start of the line
+                    line = line.lstrip("- ")
+                    print_to_console("- ", Fore.GREEN, line.strip())
+        print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
 
     except json.decoder.JSONDecodeError:
-        print(Fore.RED + "Error: Invalid JSON" + Style.RESET_ALL)
-        print(assistant_reply, flush=True)
+        print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
     # All other errors, return "Error: + error message"
     except Exception as e:
-        print(Fore.RED + "Error: " + str(e) + Style.RESET_ALL)
-        print(assistant_reply, flush=True)
+        print_to_console("Error: \n", Fore.RED, str(e))
 
 # Initialize variables
 full_message_history = []
@@ -66,7 +69,7 @@ while True:
     ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
     # Get key press: Prompt the user to press enter to continue or escape to exit
     user_input = ""
-    print(Fore.CYAN + f"NEXT ACTION: COMMAND = {command_name}  ARGUMENTS = {arguments}" + Style.RESET_ALL)
+    print_to_console("NEXT ACTION: ", Fore.CYAN, f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
     print("Enter 'y' to authorise command or 'n' to exit program...", flush=True)
     while True:
         console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
@@ -83,7 +86,7 @@ while True:
         print("Exiting...", flush=True)
         break
 
-    print(Fore.MAGENTA + "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=" + Style.RESET_ALL)
+    print_to_console("-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=", Fore.MAGENTA, "")
 
     # Exectute command
     result = cmd.execute_command(command_name, arguments)
@@ -92,7 +95,7 @@ while True:
     # Check if there's a result from the command append it to the message history
     if result != None:
         full_message_history.append(chat.create_chat_message("system", result))
-        print(Fore.YELLOW + "SYSTEM: " + Style.RESET_ALL + result, flush=True)
+        print_to_console("SYSTEM: ", Fore.YELLOW, result)
     else:
         full_message_history.append(chat.create_chat_message("system", "Unable to execute command"))
-        print(Fore.YELLOW + "SYSTEM: " + Style.RESET_ALL + "Unable to execute command", flush=True)
+        print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
