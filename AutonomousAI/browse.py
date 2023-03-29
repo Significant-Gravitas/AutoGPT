@@ -4,8 +4,14 @@ from bs4 import BeautifulSoup
 from readability import Document#
 import openai
 
+
 def scrape_text(url):
     response = requests.get(url)
+
+    # Check if the response contains an HTTP error
+    if response.status_code >= 400:
+        return "Error: HTTP " + str(response.status_code) + " error"
+
     soup = BeautifulSoup(response.text, "html.parser")
 
     for script in soup(["script", "style"]):
