@@ -4,7 +4,6 @@ import json
 import keys
 import commands as cmd
 import memory as mem
-import keyboard
 
 # Initialize the OpenAI API client
 openai.api_key = keys.OPENAI_API_KEY
@@ -150,7 +149,7 @@ def print_assistant_thoughts(assistant_reply):
                 for line in lines:
                     print(f"- {line.strip()}", flush=True)
         print(f"CRITICISM: " + assistant_thoughts_criticism, flush=True)
-        
+
     except json.decoder.JSONDecodeError:
         print("Error: Invalid JSON", flush=True)
         print(assistant_reply, flush=True)
@@ -181,12 +180,13 @@ while True:
     # Get key press: Prompt the user to press enter to continue or escape to exit
     user_input = ""
     print(f"""NEXT ACTION: COMMAND = {command_name}  ARGUMENTS = {arguments}""", flush=True)
-    print("Press 'Enter' to authorise command or 'Escape' to exit program...", flush=True)
+    print("Enter 'y' to authorise command or 'n' to exit program...", flush=True)
     while True:
-        if keyboard.is_pressed('enter'):
+        console_input = input()
+        if console_input == "y":
             user_input = "NEXT COMMAND"
             break
-        elif keyboard.is_pressed('escape'):
+        elif console_input == "n":
             user_input = "EXIT"
             break
         else:
