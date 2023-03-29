@@ -39,10 +39,10 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_plan = None
             assistant_thoughts_criticism = None
         
-        print_to_console("ASSISTANT THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
+        print_to_console(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
         print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
         if assistant_thoughts_plan:
-            print_to_console("Plan:", Fore.YELLOW, "")
+            print_to_console("PLAN:", Fore.YELLOW, "")
             if assistant_thoughts_plan:
 
                 # Split the input_string using the newline character and dash
@@ -102,7 +102,6 @@ print(f"Prompt: {prompt}")
 
 # Initialize variables
 full_message_history = []
-prompt = data.load_prompt()
 token_limit = 6000  # The maximum number of tokens allowed in the API call
 result = None
 user_input = "NEXT COMMAND"
