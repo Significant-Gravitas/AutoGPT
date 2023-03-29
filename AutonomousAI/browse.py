@@ -24,23 +24,6 @@ def scrape_text(url):
 
     return text
 
-def scrape_main_content(url):
-    response = requests.get(url)
-
-    # Try using Readability
-    doc = Document(response.text)
-    content = doc.summary()
-    soup = BeautifulSoup(content, "html.parser")
-    text = soup.get_text('\n', strip=True)
-
-    # Check if Readability provided a satisfactory result (e.g., a minimum length)
-    # min_length = 50
-    # if len(text) < min_length:
-    #     # Fallback to the custom function
-    #     text = scrape_main_content_custom(response.text)
-
-    return text
-
 def split_text(text, max_length=8192):
     paragraphs = text.split("\n")
     current_length = 0
