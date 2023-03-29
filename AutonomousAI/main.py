@@ -144,9 +144,11 @@ def print_assistant_thoughts(assistant_reply):
         print("CRITICISM: " + assistant_thoughts_criticism, flush=True)
     except json.decoder.JSONDecodeError:
         print("Error: Invalid JSON", flush=True)
+        print(assistant_reply, flush=True)
     # All other errors, return "Error: + error message"
     except Exception as e:
         print("Error: " + str(e), flush=True)
+        print(assistant_reply, flush=True)
 
 # Initialize variables
 full_message_history = []
