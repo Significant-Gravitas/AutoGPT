@@ -60,7 +60,7 @@ def google_search(query, num_results = 3):
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 def transcribe_summarise(url):
-    text = browse.scrape_main_content(url)
+    text = browse.scrape_text(url)
     summary = browse.summarize_text(text)
     return """ "Result" : """ + summary
 
