@@ -4,6 +4,7 @@ import memory as mem
 import data
 import chat
 from colorama import Fore, Style
+from spinner import Spinner
 
 def print_assistant_thoughts(assistant_reply):
     try:
@@ -53,7 +54,8 @@ user_input = "NEXT COMMAND"
 # Interaction Loop
 while True:
     # Send message to AI, get response
-    assistant_reply = chat.chat_with_ai(prompt, user_input, full_message_history, mem.permanent_memory, token_limit)
+    with Spinner("Thinking... "):
+        assistant_reply = chat.chat_with_ai(prompt, user_input, full_message_history, mem.permanent_memory, token_limit)
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
