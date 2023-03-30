@@ -2,6 +2,8 @@ import browse
 import json
 import memory as mem
 import datetime
+import agent_manager as agents
+
 
 def get_command(response):
     try:
@@ -31,10 +33,14 @@ def execute_command(command_name, arguments):
             return delete_memory(arguments["key"])
         elif command_name == "memory_ovr":
             return overwrite_memory(arguments["key"], arguments["string"])
-        elif command_name == "start_instance":
-            return start_instance(arguments["name"], arguments["prompt"])
-        elif command_name == "manage_instances":
-            return manage_instances(arguments["action"])
+        elif command_name == "start_agent":
+            return start_agent(arguments["task"], arguments["prompt"])
+        elif command_name == "message_agent":
+            return message_agent(arguments["key"], arguments["message"])
+        elif command_name == "list_agents":
+            return list_agents()
+        elif command_name == "delete_agent":
+            return delete_agent(arguments["key"])
         elif command_name == "navigate_website":
             return navigate_website(arguments["action"], arguments["username"])
         elif command_name == "register_account":
@@ -98,15 +104,23 @@ def overwrite_memory(key, string):
 
 ### TODO: Not Yet Implemented: ###
 
-def start_instance(name, prompt):
-    _text = "Starting instance with name " + name + " and prompt " + prompt
-    print(_text)
-    return "Command not implemented yet."
+def start_agent(task, prompt, model = "gpt-3.5-turbo"):
+    key, agent_response = agents.create_agent(task, prompt, model)
+    return f"Agent created with key {key}. First response: {agent_response}"
 
-def manage_instances(action):
-    _text = "Managing instances with action " + action
-    print(_text)
-    return _text
+def message_agent(key, message):
+    agent_response = agents.message_agent(key, message)
+    return f"Agent {key} responded: {agent_response}"
+
+def list_agents():
+    return agents.list_agents()
+
+def delete_agent(key):
+    result = agents.delete_agent(key)
+    if result == False:
+        return f"Agent {key} does not exist."
+    return f"Agent {key} deleted."
+
 
 def navigate_website(action, username):
     _text = "Navigating website with action " + action + " and username " + username
