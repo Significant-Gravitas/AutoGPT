@@ -61,7 +61,7 @@ def get_datetime():
 
 
 ### Implemented Commands: ###
-def google_search(query, num_results = 3):
+def google_search(query, num_results = 8):
     search_results = []
     for j in browse.search(query, num_results=num_results):
         search_results.append(j)
