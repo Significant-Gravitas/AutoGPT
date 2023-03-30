@@ -84,7 +84,7 @@ python main.py continuous-mode
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
 
 1. Not a polished application or product, just an experiment
-2. May not perform well in complex, real-world business scenarios. Infact, if it actually does, please share your results!
+2. May not perform well in complex, real-world business scenarios. In fact, if it actually does, please share your results!
 3. Quite expensive to run, so set and monitor your API key limits with OpenAI!
 
 ## 🛡 Disclaimer
