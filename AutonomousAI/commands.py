@@ -53,8 +53,8 @@ def execute_command(command_name, arguments):
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
         elif command_name == "write_to_file":
-            return write_to_file(arguments["file"], arguments["content"])
-        elif browse_website == "browse_website":
+            return write_to_file(arguments["file"], arguments["text"])
+        elif command_name == "browse_website":
             return browse_website(arguments["url"])
         elif command_name == "task_complete":
             shutdown()
