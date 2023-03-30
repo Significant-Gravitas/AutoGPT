@@ -18,6 +18,7 @@ COMMANDS:
 9. Navigate & Perform: "navigate_website", args: "action": "click_button/input_text/register_account", "text/username": "<text>/<username>"
 11. Get Text Summary: "get_text_summary", args: "url": "<url>"
 13. Write to file: "write_to_file", args: "file": "<file>", "text": "<text>"
+14. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 
 RESOURCES:
 

@@ -52,6 +52,8 @@ def execute_command(command_name, arguments):
             return get_text_summary(arguments["url"])
         elif command_name == "write_to_file":
             return write_to_file(arguments["file"], arguments["content"])
+        elif command_name == "task_complete":
+            shutdown()
         else:
             return f"unknown command {command_name}"
     # All other errors, return "Error: + error message"
