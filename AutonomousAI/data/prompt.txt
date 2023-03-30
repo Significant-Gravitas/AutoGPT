@@ -7,19 +7,16 @@ COMMANDS:
 
 1. Google Search: "google", args: "input": "<search>"
 2. Check news: "check_news", args: "source": "<news source>"
-3. Check notifications: "check_notifications", args: "website": "<website>"
-4. Memory Add: "memory_add", args: "string": "<string>"
-5. Memory Delete: "memory_del", args: "key": "<key>"
-6. Memory Overwrite: "memory_ovr", args: "key": "<key>", "string": "<string>"
+3. Memory Add: "memory_add", args: "string": "<string>"
+4. Memory Delete: "memory_del", args: "key": "<key>"
+5. Memory Overwrite: "memory_ovr", args: "key": "<key>", "string": "<string>"
+6. Browse Website: "browse_website", args: "url": "<url>"
 7. Start GPT Agent: "start_agent", "task": "<short_task_desc>", "prompt": "<prompt>"
 8. Message GPT Agent: "message_agent", args: "key": "<key>", "message": "<message>"
 9. List GPT Agents: "list_agents", args: ""
 10. Delete GPT Agent: "delete_agent", args: "key": "<key>"
-9. Navigate & Perform: "navigate_website", args: "action": "click_button/input_text/register_account", "text/username": "<text>/<username>"
-11. Get Text Summary: "get_text_summary", args: "url": "<url>"
-12. Get Outgoing Links: "get_hyperlinks", args: "url": "<url>"
-13. Write to file: "write_to_file", args: "file": "<file>", "text": "<text>"
-14. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
+11. Write to file: "write_to_file", args: "file": "<file>", "text": "<text>"
+12. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 
 RESOURCES:
 
