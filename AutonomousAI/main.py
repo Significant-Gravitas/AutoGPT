@@ -133,8 +133,12 @@ while True:
     print_assistant_thoughts(assistant_reply)
 
     # Get command name and arguments
-    command_name, arguments = cmd.get_command(assistant_reply)
-    
+    try:
+        command_name, arguments = cmd.get_command(assistant_reply)
+    except Exception as e:
+        print_to_console("Error: \n", Fore.RED, str(e))
+        
+
     if not continuous_mode:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
         # Get key press: Prompt the user to press enter to continue or escape to exit
@@ -162,8 +166,10 @@ while True:
         print_to_console("NEXT ACTION: ", Fore.CYAN, f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
     # Exectute command
-    result = cmd.execute_command(command_name, arguments)
-    
+    if command_name.lower() != "error":
+        result = cmd.execute_command(command_name, arguments)
+    else:
+        result ="Error: " + arguments
 
     # Check if there's a result from the command append it to the message history
     if result != None:
