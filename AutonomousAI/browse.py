@@ -69,7 +69,7 @@ def split_text(text, max_length=8192):
     if current_chunk:
         yield "\n".join(current_chunk)
 
-def summarize_text(text):
+def summarize_text(text, is_website = True):
     if text == "":
         return "Error: No text to summarize"
     
@@ -79,7 +79,10 @@ def summarize_text(text):
 
     for i, chunk in enumerate(chunks):
         print("Summarizing chunk " + str(i+1) + " / " + str(len(chunks)))
-        messages = [{"role": "user", "content": "Please summarize the following text, focusing on extracting concise knowledge: " + chunk},]
+        if is_website:
+            messages = [{"role": "user", "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specifc information this subpage contains.: " + chunk},]
+        else:
+            messages = [{"role": "user", "content": "Please summarize the following text, focusing on extracting concise and specific information: " + chunk},]
 
         response= openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -94,7 +97,10 @@ def summarize_text(text):
     combined_summary = "\n".join(summaries)
 
     # Summarize the combined summary
-    messages = [{"role": "user", "content": "Please summarize the following text, focusing on extracting concise knowledge: " + combined_summary},]
+    if is_website:
+        messages = [{"role": "user", "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specifc information this subpage contains.: " + combined_summary},]
+    else:
+        messages = [{"role": "user", "content": "Please summarize the following text, focusing on extracting concise and specific infomation: " + combined_summary},]
 
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
