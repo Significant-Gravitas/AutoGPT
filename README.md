@@ -68,6 +68,18 @@ python main.py
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
+## 💀 Continuous Mode ⚠️
+Run the AI **without** user authorisation, 100% automated.
+Continuous mode is not recommended. 
+It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
+Use at your own risk.
+
+1. Run the Python script in your terminal:
+```
+python main.py continuous-mode
+```
+2. To exit the program, press Ctrl + C
+
 ## ⚠️ Limitations
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
 
