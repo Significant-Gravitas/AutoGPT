@@ -50,6 +50,8 @@ def execute_command(command_name, arguments):
             return register_account(arguments["username"], arguments["website"])
         elif command_name == "get_text_summary":
             return get_text_summary(arguments["url"])
+        elif command_name == "get_hyperlinks":
+            return get_hyperlinks(arguments["url"])
         elif command_name == "write_to_file":
             return write_to_file(arguments["file"], arguments["content"])
         elif command_name == "task_complete":
@@ -76,6 +78,10 @@ def get_text_summary(url):
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text)
     return """ "Result" : """ + summary
+
+def get_hyperlinks(url):
+    text = browse.scrape_links(url)
+    return text
 
 def check_news(source):
     print("Checking news from BBC world instead of " + source)
