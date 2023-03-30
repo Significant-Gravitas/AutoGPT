@@ -127,10 +127,10 @@ def overwrite_memory(key, string):
         print("Invalid key, cannot overwrite memory.")
         return None
 
-def write_to_file(filename, content):
+def write_to_file(filename, text):
     try:
         f = open(filename, "w")
-        f.write(content)
+        f.write(text)
         f.close()
     except Exception as e:
         return "Error: " + str(e)
