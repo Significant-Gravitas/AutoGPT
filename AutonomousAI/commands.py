@@ -68,14 +68,14 @@ def google_search(query, num_results = 8):
     
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
-def transcribe_summarise(url):
+def get_text_summary(url):
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text)
     return """ "Result" : """ + summary
 
 def check_news(source):
     print("Checking news from BBC world instead of " + source)
-    _text= transcribe_summarise("https://www.bbc.com/news/world")
+    _text= get_text_summary("https://www.bbc.com/news/world")
     return _text
 
 def commit_memory(string):
