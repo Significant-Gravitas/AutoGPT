@@ -89,9 +89,8 @@ def check_news(source):
     return _text
 
 def commit_memory(string):
-    _text = "Committing memory with string " + string
+    _text = f"""Committing memory with string "{string}" """
     mem.permanent_memory.append(string)
-    print(_text)
     return _text
 
 def delete_memory(key):
