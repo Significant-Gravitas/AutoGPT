@@ -12,7 +12,7 @@ def create_agent(task, prompt, model):
 
     # Start GTP3 instance
     response = openai.ChatCompletion.create(
-        model="model",
+        model=model,
         messages=messages,
     )
 
