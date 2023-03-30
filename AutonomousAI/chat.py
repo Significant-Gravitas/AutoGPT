@@ -36,7 +36,7 @@ def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, tok
     current_context.extend(full_message_history[-(token_limit - len(prompt) - len(permanent_memory) - 10):])
     # print(current_context)
     current_context.extend([create_chat_message("user", user_input)])
-    # print(current_context)
+    print(current_context)
     # Debug print the current context
     if debug:
         print("------------ CONTEXT SENT TO AI ---------------")

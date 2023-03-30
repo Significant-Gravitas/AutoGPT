@@ -5,17 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="a3c6d55f-5470-4a50-87f7-6cb57ba22bb3" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/Auto-GPT.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/AutonomousAI/chat.py" beforeDir="false" afterPath="$PROJECT_DIR$/AutonomousAI/chat.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/AutonomousAI/data.py" beforeDir="false" afterPath="$PROJECT_DIR$/AutonomousAI/data.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/AutonomousAI/data/prompt.txt" beforeDir="false" afterPath="$PROJECT_DIR$/AutonomousAI/data/prompt.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/AutonomousAI/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/AutonomousAI/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/AutonomousAI/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/AutonomousAI/requirements.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

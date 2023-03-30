@@ -66,3 +66,5 @@ ACCOUNTS:
 2. Twitter: @En_GPT
 3. Github: E-GPT
 4. Substack: entrepreneurgpt@gmail.com
+
+Before submitting the response, simulate parsing the response with Python json.loads. Don't submit unless it can be parsed.
