@@ -48,8 +48,8 @@ def execute_command(command_name, arguments):
             return navigate_website(arguments["action"], arguments["username"])
         elif command_name == "register_account":
             return register_account(arguments["username"], arguments["website"])
-        elif command_name == "transcribe_summarise":
-            return transcribe_summarise(arguments["url"])
+        elif command_name == "get_text_summary":
+            return get_text_summary(arguments["url"])
         else:
             return f"unknown command {command_name}"
     # All other errors, return "Error: + error message"

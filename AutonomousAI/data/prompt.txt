@@ -16,8 +16,7 @@ COMMANDS:
 9. List GPT Agents: "list_agents", args: ""
 10. Delete GPT Agent: "delete_agent", args: "key": "<key>"
 9. Navigate & Perform: "navigate_website", args: "action": "click_button/input_text/register_account", "text/username": "<text>/<username>"
-10.Register account: "register_account", args: "username": "<username>", "website": "<website>"
-11.Transcribe & Summarise: "transcribe_summarise", args: "url": "<url>"
+11. Get Text Summary: "get_text_summary", args: "url": "<url>"
 
 RESOURCES:
 
