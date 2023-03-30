@@ -54,6 +54,8 @@ def execute_command(command_name, arguments):
             return get_hyperlinks(arguments["url"])
         elif command_name == "write_to_file":
             return write_to_file(arguments["file"], arguments["content"])
+        elif browse_website == "browse_website":
+            return browse_website(arguments["url"])
         elif command_name == "task_complete":
             shutdown()
         else:
@@ -73,6 +75,14 @@ def google_search(query, num_results = 8):
         search_results.append(j)
     
     return json.dumps(search_results, ensure_ascii=False, indent=4)
+
+def browse_website(url):
+    summary = get_text_summary(url)
+    links = get_hyperlinks(url)
+
+    result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
+
+    return result
 
 def get_text_summary(url):
     text = browse.scrape_text(url)
