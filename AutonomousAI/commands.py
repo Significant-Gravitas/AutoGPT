@@ -12,6 +12,9 @@ def get_command(response):
         command_name = command["name"]
         arguments = command["args"]
 
+        if not arguments:
+            arguments = {}
+
         return command_name, arguments
     except json.decoder.JSONDecodeError:
         return "Error: Invalid JSON"
