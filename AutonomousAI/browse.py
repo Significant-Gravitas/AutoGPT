@@ -34,7 +34,7 @@ def format_hyperlinks(hyperlinks):
     formatted_links = []
     for link_text, link_url in hyperlinks:
         formatted_links.append(f"{link_text} ({link_url})")
-    return '\n'.join(formatted_links)
+    return formatted_links
 
 def scrape_links(url):
     response = requests.get(url)
@@ -49,14 +49,8 @@ def scrape_links(url):
         script.extract()
 
     hyperlinks = extract_hyperlinks(soup)
-
-    text = soup.get_text()
-    lines = (line.strip() for line in text.splitlines())
-    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-    text = '\n'.join(chunk for chunk in chunks if chunk)
-    text = format_hyperlinks(hyperlinks)
-
-    return text
+    
+    return format_hyperlinks(hyperlinks)
 
 def split_text(text, max_length=8192):
     paragraphs = text.split("\n")

@@ -80,6 +80,10 @@ def browse_website(url):
     summary = get_text_summary(url)
     links = get_hyperlinks(url)
 
+    # Limit links to 5
+    if len(links) > 5:
+        links = links[:5]
+
     result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
 
     return result
@@ -90,8 +94,8 @@ def get_text_summary(url):
     return """ "Result" : """ + summary
 
 def get_hyperlinks(url):
-    text = browse.scrape_links(url)
-    return text
+    link_list = browse.scrape_links(url)
+    return link_list
 
 def check_news(source):
     print("Checking news from BBC world instead of " + source)
