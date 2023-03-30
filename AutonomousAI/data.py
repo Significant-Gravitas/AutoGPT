@@ -1,6 +1,6 @@
 def load_prompt():
     try:
-        # Load the promt from data/prompt.txt
+        # Load the prompt from data/prompt.txt
         with open("data/prompt.txt", "r") as prompt_file:
             prompt = prompt_file.read()
 

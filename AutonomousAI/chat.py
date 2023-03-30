@@ -32,9 +32,11 @@ def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, tok
     str: The AI's response.
     """
     current_context = [create_chat_message("system", prompt), create_chat_message("system", f"Permanent memory: {permanent_memory}")]
+    # print(current_context)
     current_context.extend(full_message_history[-(token_limit - len(prompt) - len(permanent_memory) - 10):])
+    # print(current_context)
     current_context.extend([create_chat_message("user", user_input)])
-
+    # print(current_context)
     # Debug print the current context
     if debug:
         print("------------ CONTEXT SENT TO AI ---------------")
@@ -46,9 +48,16 @@ def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, tok
         print("----------- END OF CONTEXT ----------------")
 
     response = openai.ChatCompletion.create(
-        model="gpt-4",
+        model="gpt-3.5-turbo",
         messages=current_context,
+        temperature=0.7,
+        top_p=1
+
     )
+    if debug:
+        print("------------ RESPONSE FROM AI ---------------")
+        print(response)
+        print("----------- END OF RESPONSE ----------------")
 
     assistant_reply = response.choices[0].message["content"]
 

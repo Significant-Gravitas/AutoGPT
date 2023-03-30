@@ -11,6 +11,8 @@ import time
 def print_to_console(title, title_color, content, min_typing_speed=0.05, max_typing_speed=0.01):
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
+        if isinstance(content, list):
+            content = " ".join(content)
         words = content.split()
         for i, word in enumerate(words):
             print(word, end="", flush=True)
@@ -22,6 +24,7 @@ def print_to_console(title, title_color, content, min_typing_speed=0.05, max_typ
             min_typing_speed = min_typing_speed * 0.95
             max_typing_speed = max_typing_speed * 0.95
     print()
+
 
 def print_assistant_thoughts(assistant_reply):
     global ai_name
@@ -40,7 +43,7 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_reasoning = None
             assistant_thoughts_plan = None
             assistant_thoughts_criticism = None
-        
+
         print_to_console(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
         print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
         if assistant_thoughts_plan:
@@ -117,11 +120,12 @@ if len(sys.argv) > 1:
 
 ai_name = ""
 prompt = construct_prompt()
+print(prompt)
 # Initialize variables
 full_message_history = []
-token_limit = 6000  # The maximum number of tokens allowed in the API call
+token_limit = 4000  # The maximum number of tokens allowed in the API call
 result = None
-user_input = "NEXT COMMAND"
+user_input = "GENERATE NEXT COMMAND JSON"
 
 # Interaction Loop
 while True:
@@ -148,7 +152,7 @@ while True:
         while True:
             console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
             if console_input.lower() == "y":
-                user_input = "NEXT COMMAND"
+                user_input = "GENERATE NEXT COMMAND JSON"
                 break
             elif console_input.lower() == "n":
                 user_input = "EXIT"
@@ -156,7 +160,7 @@ while True:
             else:
                 continue
 
-        if user_input != "NEXT COMMAND":
+        if user_input != "GENERATE NEXT COMMAND JSON":
             print("Exiting...", flush=True)
             break
     
@@ -165,7 +169,7 @@ while True:
         # Print command
         print_to_console("NEXT ACTION: ", Fore.CYAN, f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
-    # Exectute command
+    # Execute command
     if command_name.lower() != "error":
         result = cmd.execute_command(command_name, arguments)
     else:
