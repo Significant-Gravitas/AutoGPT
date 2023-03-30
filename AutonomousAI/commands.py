@@ -50,6 +50,8 @@ def execute_command(command_name, arguments):
             return register_account(arguments["username"], arguments["website"])
         elif command_name == "get_text_summary":
             return get_text_summary(arguments["url"])
+        elif command_name == "write_to_file":
+            return write_to_file(arguments["file"], arguments["content"])
         else:
             return f"unknown command {command_name}"
     # All other errors, return "Error: + error message"
@@ -103,6 +105,21 @@ def overwrite_memory(key, string):
     else:
         print("Invalid key, cannot overwrite memory.")
         return None
+
+def write_to_file(filename, content):
+    try:
+        f = open(filename, "w")
+        f.write(content)
+        f.close()
+    except Exception as e:
+        return "Error: " + str(e)
+    return "File written to successfully."
+
+def shutdown():
+    print("Shutting down...")
+    quit()
+
+
     
 
 ### TODO: Not Yet Implemented: ###
