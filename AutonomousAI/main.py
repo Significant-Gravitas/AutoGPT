@@ -103,6 +103,18 @@ def construct_prompt():
     full_prompt += f"\n\n{prompt}"
     return full_prompt
 
+# Check if the python script was executed with arguments, get those arguments
+continuous_mode = False
+import sys
+if len(sys.argv) > 1:
+    # Check if the first argument is "continuous-mode"
+    if sys.argv[1] == "continuous-mode":
+        # Set continuous mode to true
+        print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
+        # print warning
+        print_to_console("WARNING: ", Fore.RED, "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
+        continuous_mode = True
+
 ai_name = ""
 prompt = construct_prompt()
 # Initialize variables
@@ -123,27 +135,31 @@ while True:
     # Get command name and arguments
     command_name, arguments = cmd.get_command(assistant_reply)
     
-    ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
-    # Get key press: Prompt the user to press enter to continue or escape to exit
-    user_input = ""
-    print_to_console("NEXT ACTION: ", Fore.CYAN, f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
-    print("Enter 'y' to authorise command or 'n' to exit program...", flush=True)
-    while True:
-        console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-        if console_input.lower() == "y":
-            user_input = "NEXT COMMAND"
-            break
-        elif console_input.lower() == "n":
-            user_input = "EXIT"
-            break
-        else:
-            continue
+    if not continuous_mode:
+        ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+        # Get key press: Prompt the user to press enter to continue or escape to exit
+        user_input = ""
+        print_to_console("NEXT ACTION: ", Fore.CYAN, f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
+        print("Enter 'y' to authorise command or 'n' to exit program...", flush=True)
+        while True:
+            console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+            if console_input.lower() == "y":
+                user_input = "NEXT COMMAND"
+                break
+            elif console_input.lower() == "n":
+                user_input = "EXIT"
+                break
+            else:
+                continue
 
-    if user_input != "NEXT COMMAND":
-        print("Exiting...", flush=True)
-        break
-
-    print_to_console("-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=", Fore.MAGENTA, "")
+        if user_input != "NEXT COMMAND":
+            print("Exiting...", flush=True)
+            break
+    
+        print_to_console("-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=", Fore.MAGENTA, "")
+    else:
+        # Print command
+        print_to_console("NEXT ACTION: ", Fore.CYAN, f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
     # Exectute command
     result = cmd.execute_command(command_name, arguments)
