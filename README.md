@@ -4,7 +4,9 @@
 
 Auto-GPT (formerly Entrepreneur-GPT) is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Entrepreneur-GPT pushes the boundaries of AI-assisted entrepreneurship.
 
-https://user-images.githubusercontent.com/22963551/228434813-ef72d5b6-158f-49f5-b2cc-c89895ab8458.mp4
+### Demo (30/03/2023):
+https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
+
 
 ## Table of Contents
 
@@ -66,11 +68,23 @@ python main.py
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
+## 💀 Continuous Mode ⚠️
+Run the AI **without** user authorisation, 100% automated.
+Continuous mode is not recommended. 
+It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
+Use at your own risk.
+
+1. Run the Python script in your terminal:
+```
+python main.py continuous-mode
+```
+2. To exit the program, press Ctrl + C
+
 ## ⚠️ Limitations
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
 
 1. Not a polished application or product, just an experiment
-2. May not perform well in complex, real-world business scenarios. Infact, if it actually does, please share your results!
+2. May not perform well in complex, real-world business scenarios. In fact, if it actually does, please share your results!
 3. Quite expensive to run, so set and monitor your API key limits with OpenAI!
 
 ## 🛡 Disclaimer
