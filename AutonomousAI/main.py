@@ -85,7 +85,7 @@ def construct_prompt():
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
-        ai_goal = input(f"Goal {i+1}: ")
+        ai_goal = input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)
