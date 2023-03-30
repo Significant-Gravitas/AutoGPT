@@ -84,7 +84,7 @@ def summarize_text(text):
     chunks = list(split_text(text))
 
     for i, chunk in enumerate(chunks):
-        print("Summarizing chunk " + str(i) + " / " + str(len(chunks)))
+        print("Summarizing chunk " + str(i+1) + " / " + str(len(chunks)))
         messages = [{"role": "user", "content": "Please summarize the following text, focusing on extracting concise knowledge: " + chunk},]
 
         response= openai.ChatCompletion.create(
