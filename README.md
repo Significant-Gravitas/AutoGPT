@@ -45,7 +45,7 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 2. Navigate to the project directory:
 
 ```
-$ cd 'Auto-GPT/AutonomousAI'
+$ cd 'Auto-GPT/scripts'
 ```
 
 3. Install the required dependencies:
@@ -54,10 +54,8 @@ $ cd 'Auto-GPT/AutonomousAI'
 pip install -r requirements.txt
 ```
 
-4. Create a file named keys.py in the AutonomousAI directory and add your OpenAI API key:
-```
-OPENAI_API_KEY = "your_openai_api_key_here"
-```
+4. Edit the file named "keys.py" in the "scripts" directory to add your OpenAI API key (and eleven labs key if you want speech):
+
 
 ## 🔧 Usage
 
