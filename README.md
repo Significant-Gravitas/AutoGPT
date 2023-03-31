@@ -7,8 +7,6 @@ Auto-GPT is an experimental open-source application showcasing the capabilities 
 ### Demo (30/03/2023):
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
-<iframe src="https://github.com/sponsors/Torantulino/card" title="Sponsor Torantulino" height="225" width="600" style="border: 0;"></iframe>
-
 ## Table of Contents
 
 - [Features](#-Features)
