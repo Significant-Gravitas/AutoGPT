@@ -89,6 +89,8 @@ def construct_prompt():
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
+    print_to_console(f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True)
+
     # Get AI Role from User
     print_to_console("Describe your AI's role: ", Fore.GREEN, "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'")
     ai_role = input(f"{ai_name} is: ")
