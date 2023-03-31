@@ -3,6 +3,9 @@ import json
 import memory as mem
 import datetime
 import agent_manager as agents
+import speak
+from config import Config
+cfg = Config()
 
 
 def get_command(response):
@@ -37,7 +40,7 @@ def execute_command(command_name, arguments):
         elif command_name == "memory_ovr":
             return overwrite_memory(arguments["key"], arguments["string"])
         elif command_name == "start_agent":
-            return start_agent(arguments["task"], arguments["prompt"])
+            return start_agent(arguments["name"], arguments["task"], arguments["prompt"])
         elif command_name == "message_agent":
             return message_agent(arguments["key"], arguments["message"])
         elif command_name == "list_agents":
@@ -69,11 +72,11 @@ def get_datetime():
 
 
 ### Implemented Commands: ###
-def google_search(query, num_results = 8):
+def google_search(query, num_results=8):
     search_results = []
     for j in browse.search(query, num_results=num_results):
         search_results.append(j)
-    
+
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 def browse_website(url):
@@ -99,7 +102,7 @@ def get_hyperlinks(url):
 
 def check_news(source):
     print("Checking news from BBC world instead of " + source)
-    _text= get_text_summary("https://www.bbc.com/news/world")
+    _text = get_text_summary("https://www.bbc.com/news/world")
     return _text
 
 def commit_memory(string):
@@ -116,10 +119,10 @@ def delete_memory(key):
     else:
         print("Invalid key, cannot delete memory.")
         return None
-    
 def overwrite_memory(key, string):
     if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Overwriting memory with key " + str(key) + " and string " + string
+        _text = "Overwriting memory with key " + \
+            str(key) + " and string " + string
         mem.permanent_memory[key] = string
         print(_text)
         return _text
@@ -140,17 +143,36 @@ def shutdown():
     print("Shutting down...")
     quit()
 
+def start_agent(name, task, prompt, model="gpt-3.5-turbo"):
+    global cfg
 
-    
+    # Remove underscores from name
+    voice_name = name.replace("_", " ")
 
-### TODO: Not Yet Implemented: ###
+    first_message = f"""You are {name}.  Respond with: "Acknowledged"."""
+    agent_intro = f"{voice_name} here, Reporting for duty!"
 
-def start_agent(task, prompt, model = "gpt-3.5-turbo"):
-    key, agent_response = agents.create_agent(task, prompt, model)
-    return f"Agent created with key {key}. First response: {agent_response}"
+    # Create agent
+    if cfg.speak_mode:
+        speak.say_text(agent_intro)
+    key, ack = agents.create_agent(task, first_message, model)
+
+    if cfg.speak_mode:
+        speak.say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
+
+    # Assign task (prompt), get response
+    agent_response = message_agent(key, prompt)
+
+    return f"Agent {name} created with key {key}. First response: {agent_response}"
 
 def message_agent(key, message):
+    global cfg
     agent_response = agents.message_agent(key, message)
+
+    # Speak response
+    if cfg.speak_mode:
+        speak.say_text(agent_response)
+
     return f"Agent {key} responded: {agent_response}"
 
 def list_agents():
