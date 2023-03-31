@@ -10,6 +10,7 @@ import time
 import speak
 from enum import Enum, auto
 import sys
+from config import Config
 
 class Argument(Enum):
     CONTINUOUS_MODE = "continuous-mode"
@@ -34,6 +35,7 @@ def print_to_console(title, title_color, content, speak_text = False, min_typing
 
 def print_assistant_thoughts(assistant_reply):
     global ai_name
+    global cfg
     try:
         # Parse and print Assistant response
         assistant_reply_json = json.loads(assistant_reply)
@@ -69,7 +71,7 @@ def print_assistant_thoughts(assistant_reply):
         print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
 
         # Speak the assistant's thoughts
-        if speak_mode and assistant_thoughts_speak:
+        if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
 
     except json.decoder.JSONDecodeError:
@@ -122,20 +124,20 @@ def construct_prompt():
 
 # Check if the python script was executed with arguments, get those arguments
 def parse_arguments():
-    global continuous_mode
-    global speak_mode
-
+    global cfg
+    cfg.set_continuous_mode(False)
+    cfg.set_speak_mode(False)
     for arg in sys.argv[1:]:
         if arg == Argument.CONTINUOUS_MODE.value:
             print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
             print_to_console("WARNING: ", Fore.RED, "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
-            continuous_mode = True
+            cfg.set_continuous_mode(True)
         elif arg == Argument.SPEAK_MODE.value:
             print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
-            speak_mode = True
+            cfg.set_speak_mode(True)
 
-continuous_mode = False
-speak_mode = False
+cfg = Config()
+
 parse_arguments()
 ai_name = ""
 prompt = construct_prompt()
@@ -161,7 +163,7 @@ while True:
         print_to_console("Error: \n", Fore.RED, str(e))
         
 
-    if not continuous_mode:
+    if not cfg.continuous_mode:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
         # Get key press: Prompt the user to press enter to continue or escape to exit
         user_input = ""
