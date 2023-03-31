@@ -11,7 +11,7 @@ COMMANDS:
 4. Memory Delete: "memory_del", args: "key": "<key>"
 5. Memory Overwrite: "memory_ovr", args: "key": "<key>", "string": "<string>"
 6. Browse Website: "browse_website", args: "url": "<url>"
-7. Start GPT Agent: "start_agent", "task": "<short_task_desc>", "prompt": "<prompt>"
+7. Start GPT Agent: "start_agent",  args: "name": <name>, "task": "<short_task_desc>", "prompt": "<prompt>"
 8. Message GPT Agent: "message_agent", args: "key": "<key>", "message": "<message>"
 9. List GPT Agents: "list_agents", args: ""
 10. Delete GPT Agent: "delete_agent", args: "key": "<key>"
