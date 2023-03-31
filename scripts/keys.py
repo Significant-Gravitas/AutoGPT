@@ -1,2 +1,2 @@
-OPENAI_API_KEY="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"
-ELEVENLABS_API_KEY="f213258a522dc2f33c4f0e4f798a08a1"
+OPENAI_API_KEY="YOUR-OPENAI-KEY" # Get yours from:  https://beta.openai.com/account/api-keys
+ELEVENLABS_API_KEY="YOUR-ELEVENLABS-KEY" # To access your ElevenLabs API key, head to https://elevenlabs.io, you can view your xi-api-key using the 'Profile' tab on the website.
