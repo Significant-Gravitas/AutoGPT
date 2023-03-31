@@ -31,7 +31,7 @@ def create_agent(task, prompt, model):
 def message_agent(key, message):
     global agents
 
-    task, messages, model = agents[key]
+    task, messages, model = agents[int(key)]
 
     # Add user message to message history before sending to agent
     messages.append({"role": "user", "content": message})
