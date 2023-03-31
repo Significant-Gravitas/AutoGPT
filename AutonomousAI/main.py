@@ -7,6 +7,7 @@ import chat
 from colorama import Fore, Style
 from spinner import Spinner
 import time
+import speak
 
 def print_to_console(title, title_color, content, min_typing_speed=0.05, max_typing_speed=0.01):
     print(title_color + title + " " + Style.RESET_ALL, end="")
@@ -35,11 +36,13 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
             assistant_thoughts_plan = assistant_thoughts.get("plan")
             assistant_thoughts_criticism = assistant_thoughts.get("criticism")
+            assistant_thoughts_speak = assistant_thoughts.get("speak")
         else:
             assistant_thoughts_text = None
             assistant_thoughts_reasoning = None
             assistant_thoughts_plan = None
             assistant_thoughts_criticism = None
+            assistant_thoughts_speak = None
         
         print_to_console(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
         print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
@@ -56,6 +59,10 @@ def print_assistant_thoughts(assistant_reply):
                     line = line.lstrip("- ")
                     print_to_console("- ", Fore.GREEN, line.strip())
         print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
+
+        # Speak the assistant's thoughts
+        if assistant_thoughts_speak:
+            speak.say_text(assistant_thoughts_speak)
 
     except json.decoder.JSONDecodeError:
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
