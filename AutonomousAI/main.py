@@ -8,8 +8,16 @@ from colorama import Fore, Style
 from spinner import Spinner
 import time
 import speak
+from enum import Enum, auto
+import sys
 
-def print_to_console(title, title_color, content, min_typing_speed=0.05, max_typing_speed=0.01):
+class Argument(Enum):
+    CONTINUOUS_MODE = "continuous-mode"
+    SPEAK_MODE = "speak-mode"
+
+def print_to_console(title, title_color, content, speak_text = False, min_typing_speed=0.05, max_typing_speed=0.01):
+    if speak_text:
+        speak.say_text(f"{title}. {content}")
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
         words = content.split()
@@ -61,7 +69,7 @@ def print_assistant_thoughts(assistant_reply):
         print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
 
         # Speak the assistant's thoughts
-        if assistant_thoughts_speak:
+        if speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
 
     except json.decoder.JSONDecodeError:
@@ -73,7 +81,7 @@ def print_assistant_thoughts(assistant_reply):
 def construct_prompt():
     global ai_name
     # Construct the prompt
-    print_to_console("Welcome to Auto-GPT! ", Fore.GREEN, "Enter the name of your AI and its role below. Entering nothing will load defaults.")
+    print_to_console("Welcome to Auto-GPT! ", Fore.GREEN, "Enter the name of your AI and its role below. Entering nothing will load defaults.", speak_text=True)
 
     # Get AI Name from User
     print_to_console("Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'")
@@ -111,17 +119,22 @@ def construct_prompt():
     return full_prompt
 
 # Check if the python script was executed with arguments, get those arguments
-continuous_mode = False
-import sys
-if len(sys.argv) > 1:
-    # Check if the first argument is "continuous-mode"
-    if sys.argv[1] == "continuous-mode":
-        # Set continuous mode to true
-        print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
-        # print warning
-        print_to_console("WARNING: ", Fore.RED, "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
-        continuous_mode = True
+def parse_arguments():
+    global continuous_mode
+    global speak_mode
 
+    for arg in sys.argv[1:]:
+        if arg == Argument.CONTINUOUS_MODE.value:
+            print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
+            print_to_console("WARNING: ", Fore.RED, "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
+            continuous_mode = True
+        elif arg == Argument.SPEAK_MODE.value:
+            print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
+            speak_mode = True
+
+continuous_mode = False
+speak_mode = False
+parse_arguments()
 ai_name = ""
 prompt = construct_prompt()
 # Initialize variables
