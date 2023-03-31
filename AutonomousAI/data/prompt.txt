@@ -56,6 +56,7 @@ RESPONSE FORMAT:
 "reasoning": "reasoning",
 "plan": "short bulleted long-term plan",
 "criticism": "constructive self-criticism"
+"speak": "thoughts summary to say to user"
 }
 }
 
