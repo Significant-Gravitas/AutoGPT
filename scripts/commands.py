@@ -154,7 +154,7 @@ def start_agent(name, task, prompt, model="gpt-3.5-turbo"):
 
     # Create agent
     if cfg.speak_mode:
-        speak.say_text(agent_intro)
+        speak.say_text(agent_intro, 1)
     key, ack = agents.create_agent(task, first_message, model)
 
     if cfg.speak_mode:
@@ -171,7 +171,7 @@ def message_agent(key, message):
 
     # Speak response
     if cfg.speak_mode:
-        speak.say_text(agent_response)
+        speak.say_text(agent_response, 1)
 
     return f"Agent {key} responded: {agent_response}"
 

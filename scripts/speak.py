@@ -3,8 +3,7 @@ from playsound import playsound
 import requests
 import keys
 
-voice_id = "ErXwobaYiN019PkySvjV"
-tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(voice_id=voice_id)
+voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
 
 tts_headers = {
     "Content-Type": "application/json",
@@ -12,7 +11,9 @@ tts_headers = {
 }
 
 
-def say_text(text):
+def say_text(text, voice_index = 0):
+    tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(voice_id=voices[voice_index])
+
     formatted_message = {"text": text}
     response = requests.post(
         tts_url, headers=tts_headers, json=formatted_message)
