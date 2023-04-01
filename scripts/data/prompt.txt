@@ -16,7 +16,10 @@ COMMANDS:
 9. List GPT Agents: "list_agents", args: ""
 10. Delete GPT Agent: "delete_agent", args: "key": "<key>"
 11. Write to file: "write_to_file", args: "file": "<file>", "text": "<text>"
-12. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
+12. Read file: "read_file", args: "file": "<file>"
+13. Append to file: "append_to_file", args: "file": "<file>", "text": "<text>"
+14. Delete file: "delete_file", args: "file": "<file>"
+15. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 
 RESOURCES:
 

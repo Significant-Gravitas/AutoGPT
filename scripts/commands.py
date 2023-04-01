@@ -5,6 +5,7 @@ import datetime
 import agent_manager as agents
 import speak
 from config import Config
+from file_operations import read_file, write_to_file, append_to_file, delete_file
 cfg = Config()
 
 
@@ -55,8 +56,14 @@ def execute_command(command_name, arguments):
             return get_text_summary(arguments["url"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
+        elif command_name == "read_file":
+            return read_file(arguments["file"])
         elif command_name == "write_to_file":
             return write_to_file(arguments["file"], arguments["text"])
+        elif command_name == "append_to_file":
+            return append_to_file(arguments["file"], arguments["text"])
+        elif command_name == "delete_file":
+            return delete_file(arguments["file"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"])
         elif command_name == "task_complete":
@@ -129,15 +136,6 @@ def overwrite_memory(key, string):
     else:
         print("Invalid key, cannot overwrite memory.")
         return None
-
-def write_to_file(filename, text):
-    try:
-        f = open(filename, "w")
-        f.write(text)
-        f.close()
-    except Exception as e:
-        return "Error: " + str(e)
-    return "File written to successfully."
 
 def shutdown():
     print("Shutting down...")
