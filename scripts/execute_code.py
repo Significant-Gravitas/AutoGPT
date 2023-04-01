@@ -1,47 +1,37 @@
-from io import StringIO
+import docker
 import os
-import sys
-import traceback
-from RestrictedPython import compile_restricted, safe_globals
-
 
 def execute_python_file(file):
     workspace_folder = "auto_gpt_workspace"
 
     if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
-    
+
+    file_path = os.path.join(workspace_folder, file)
+
+    if not os.path.isfile(file_path):
+        return f"Error: File '{file}' does not exist."
+
     try:
-        # Prepend the workspace folder to the provided file name
-        file_path = os.path.join(workspace_folder, file)
+        client = docker.from_env()
 
-        # Check if the file exists
-        if not os.path.isfile(file_path):
-            return f"Error: File '{file}' does not exist."
+        # You can replace 'python:3.8' with the desired Python image/version
+        # You can find available Python images on Docker Hub: https://hub.docker.com/_/python
+        container = client.containers.run(
+            'python:3.8',
+            f'python {file}',
+            volumes={os.path.abspath(workspace_folder): {'bind': '/workspace', 'mode': 'ro'}},
+            working_dir='/workspace',
+            stderr=True,
+            stdout=True,
+            detach=True,
+        )
 
-        # Read the content of the file
-        with open(file_path, 'r') as f:
-            code = f.read()
+        output = container.wait()
+        logs = container.logs().decode('utf-8')
+        container.remove()
 
-        # Capture stdout and stderr
-        original_stdout = sys.stdout
-        original_stderr = sys.stderr
-        sys.stdout = StringIO()
-        sys.stderr = StringIO()
+        return logs
 
-        # Compile and execute the code in a restricted environment
-        try:
-            restricted_code = compile_restricted(code, '<inline>', 'exec')
-            exec(restricted_code, safe_globals)
-        except Exception as e:
-            result = f"Error while executing code:\n{traceback.format_exc()}"
-        else:
-            result = sys.stdout.getvalue()
-            
-        # Restore original stdout and stderr
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
-
-        return result
     except Exception as e:
         return f"Error: {str(e)}"

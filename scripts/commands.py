@@ -7,6 +7,7 @@ import speak
 from config import Config
 import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file
+from execute_code import execute_python_file
 cfg = Config()
 
 
@@ -73,11 +74,13 @@ def execute_command(command_name, arguments):
             return ai.improve_code(arguments["suggestions"], arguments["code"])
         elif command_name == "write_tests":
             return ai.write_tests(arguments["code"], arguments.get("focus"))
+        elif command_name == "execute_python_file":  # Add this command
+            return execute_python_file(arguments["file"])
         elif command_name == "task_complete":
             shutdown()
         else:
-            return f"unknown command {command_name}"
-    # All other errors, return "Error: + error message"
+            return f"Unknown command {command_name}"
+    # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)
 
