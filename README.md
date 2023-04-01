@@ -9,6 +9,7 @@ https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-
 
 ## 💖 Help Fund Auto-GPT's Development
 If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
+A full day of development can cost as much as $10 in API costs, which for a free project is quite limiting.
 Your support is greatly appreciated:
 https://github.com/sponsors/Torantulino
 
