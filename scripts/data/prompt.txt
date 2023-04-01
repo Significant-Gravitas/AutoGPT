@@ -19,7 +19,10 @@ COMMANDS:
 12. Read file: "read_file", args: "file": "<file>"
 13. Append to file: "append_to_file", args: "file": "<file>", "text": "<text>"
 14. Delete file: "delete_file", args: "file": "<file>"
-15. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
+15. Evaluate Code: "evaluate_code", args: "code": "<code>"
+16. Get Improved Code: "improve_code", args: "suggestions": "<list_of_suggestions>", "code": "<string>"
+17. Write Tests: "write_tests", args: "code": "<string>", "focus": "<optional_focus>"
+18. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 
 RESOURCES:
 

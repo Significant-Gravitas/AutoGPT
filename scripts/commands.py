@@ -5,6 +5,7 @@ import datetime
 import agent_manager as agents
 import speak
 from config import Config
+import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file
 cfg = Config()
 
@@ -66,6 +67,12 @@ def execute_command(command_name, arguments):
             return delete_file(arguments["file"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"])
+        elif command_name == "evaluate_code":
+            return ai.evaluate_code(arguments["code"])
+        elif command_name == "improve_code":
+            return ai.improve_code(arguments["suggestions"], arguments["code"])
+        elif command_name == "write_tests":
+            return ai.write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "task_complete":
             shutdown()
         else:
@@ -77,8 +84,6 @@ def execute_command(command_name, arguments):
 def get_datetime():
     return "Current date and time: " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-
-### Implemented Commands: ###
 def google_search(query, num_results=8):
     search_results = []
     for j in browse.search(query, num_results=num_results):
