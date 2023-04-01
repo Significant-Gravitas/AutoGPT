@@ -43,35 +43,45 @@ Optional:
 
 To install Auto-GPT, follow these steps:
 
-1. Clone the repository:
+0. Make sure you have all the **requirements** above, if not, install/get them.
 
+*The following commands should be executed in a CMD, Bash or Powershell window. To do this, go to a folder on your computer, click in the folder path at the top and type CMD, then press enter.*
+
+1. Clone the repository:
+For this step you need Git installed, but you can just download the zip file instead by clicking the button at the top of this page ☝️
 ```
 git clone https://github.com/Torantulino/Auto-GPT.git
 ```
 
 2. Navigate to the project directory:
-
+*(Type this into your CMD window, you're aiming to navigate the CMD window to the "scripts" folder you just downloaded)*
 ```
 $ cd 'Auto-GPT/scripts'
 ```
 
 3. Install the required dependencies:
-
+*(Again, type this into your CMD window)*
 ```
 pip install -r requirements.txt
 ```
 
 4. Edit the file named "keys.py" in the "scripts" directory to add your OpenAI API key (and eleven labs key if you want speech):
-
+*(Open the keys.py file in a text editor and follow the instructions inside, save it after)*
 
 ## 🔧 Usage
 
 1. Run the Python script in your terminal:
+*(Type this into your CMD window)*
 ```
 python main.py
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
+
+## 🗣️ Speech Mode 
+```
+python main.py speach-mode
+```
 
 ## 💀 Continuous Mode ⚠️
 Run the AI **without** user authorisation, 100% automated.
