@@ -5,6 +5,7 @@ import keys
 # Initialize the OpenAI API client
 openai.api_key = keys.OPENAI_API_KEY
 
+
 def create_chat_message(role, content):
     """
     Create a chat message with the given role and content.
@@ -18,7 +19,10 @@ def create_chat_message(role, content):
     """
     return {"role": role, "content": content}
 
-def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, token_limit, debug = False):
+
+def chat_with_ai(
+    prompt, user_input, full_message_history, permanent_memory, token_limit, debug=False
+):
     while True:
         try:
             """
@@ -34,8 +38,15 @@ def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, tok
             Returns:
             str: The AI's response.
             """
-            current_context = [create_chat_message("system", prompt), create_chat_message("system", f"Permanent memory: {permanent_memory}")]
-            current_context.extend(full_message_history[-(token_limit - len(prompt) - len(permanent_memory) - 10):])
+            current_context = [
+                create_chat_message("system", prompt),
+                create_chat_message("system", f"Permanent memory: {permanent_memory}"),
+            ]
+            current_context.extend(
+                full_message_history[
+                    -(token_limit - len(prompt) - len(permanent_memory) - 10) :
+                ]
+            )
             current_context.extend([create_chat_message("user", user_input)])
 
             # Debug print the current context
@@ -57,9 +68,13 @@ def chat_with_ai(prompt, user_input, full_message_history, permanent_memory, tok
 
             # Update full message history
             full_message_history.append(create_chat_message("user", user_input))
-            full_message_history.append(create_chat_message("assistant", assistant_reply))
+            full_message_history.append(
+                create_chat_message("assistant", assistant_reply)
+            )
 
             return assistant_reply
-        except openai.RateLimitError:
+        except openai.error.RateLimitError:
             print("Error: ", "API Rate Limit Reached. Waiting 60 seconds...")
             time.sleep(60)
+        except Exception as e:
+            print(e, "An Exception occured.")

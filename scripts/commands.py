@@ -8,6 +8,7 @@ from config import Config
 import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file
 from execute_code import execute_python_file
+
 cfg = Config()
 
 
@@ -28,6 +29,7 @@ def get_command(response):
     except Exception as e:
         return "Error:", str(e)
 
+
 def execute_command(command_name, arguments):
     try:
         if command_name == "google":
@@ -43,7 +45,9 @@ def execute_command(command_name, arguments):
         elif command_name == "memory_ovr":
             return overwrite_memory(arguments["key"], arguments["string"])
         elif command_name == "start_agent":
-            return start_agent(arguments["name"], arguments["task"], arguments["prompt"])
+            return start_agent(
+                arguments["name"], arguments["task"], arguments["prompt"]
+            )
         elif command_name == "message_agent":
             return message_agent(arguments["key"], arguments["message"])
         elif command_name == "list_agents":
@@ -84,8 +88,12 @@ def execute_command(command_name, arguments):
     except Exception as e:
         return "Error: " + str(e)
 
+
 def get_datetime():
-    return "Current date and time: " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return "Current date and time: " + datetime.datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
 
 def google_search(query, num_results=8):
     search_results = []
@@ -93,6 +101,7 @@ def google_search(query, num_results=8):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
+
 
 def browse_website(url):
     summary = get_text_summary(url)
@@ -106,24 +115,29 @@ def browse_website(url):
 
     return result
 
+
 def get_text_summary(url):
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text)
     return """ "Result" : """ + summary
 
+
 def get_hyperlinks(url):
     link_list = browse.scrape_links(url)
     return link_list
+
 
 def check_news(source):
     print("Checking news from BBC world instead of " + source)
     _text = get_text_summary("https://www.bbc.com/news/world")
     return _text
 
+
 def commit_memory(string):
     _text = f"""Committing memory with string "{string}" """
     mem.permanent_memory.append(string)
     return _text
+
 
 def delete_memory(key):
     if key >= 0 and key < len(mem.permanent_memory):
@@ -134,10 +148,11 @@ def delete_memory(key):
     else:
         print("Invalid key, cannot delete memory.")
         return None
+
+
 def overwrite_memory(key, string):
     if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Overwriting memory with key " + \
-            str(key) + " and string " + string
+        _text = "Overwriting memory with key " + str(key) + " and string " + string
         mem.permanent_memory[key] = string
         print(_text)
         return _text
@@ -145,9 +160,11 @@ def overwrite_memory(key, string):
         print("Invalid key, cannot overwrite memory.")
         return None
 
+
 def shutdown():
     print("Shutting down...")
     quit()
+
 
 def start_agent(name, task, prompt, model="gpt-3.5-turbo"):
     global cfg
@@ -171,6 +188,7 @@ def start_agent(name, task, prompt, model="gpt-3.5-turbo"):
 
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
+
 def message_agent(key, message):
     global cfg
     agent_response = agents.message_agent(key, message)
@@ -181,8 +199,10 @@ def message_agent(key, message):
 
     return f"Agent {key} responded: {agent_response}"
 
+
 def list_agents():
     return agents.list_agents()
+
 
 def delete_agent(key):
     result = agents.delete_agent(key)
@@ -196,10 +216,12 @@ def navigate_website(action, username):
     print(_text)
     return "Command not implemented yet."
 
+
 def register_account(username, website):
     _text = "Registering account with username " + username + " and website " + website
     print(_text)
     return "Command not implemented yet."
+
 
 def check_notifications(website):
     _text = "Checking notifications from " + website
