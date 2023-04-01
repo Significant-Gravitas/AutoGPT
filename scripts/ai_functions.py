@@ -39,9 +39,9 @@ def improve_code(suggestions: List[str], code: str) -> str:
 
 ### Writing tests
 
-def write_tests(code: str, focus: Optional[str] = None) -> str:
+def write_tests(code: str, focus: List[str]) -> str:
     function_string = "def create_test_cases(code: str, focus: Optional[str] = None) -> str:"
-    args = [focus] if focus else []
+    args = [code, json.dumps(focus)]
     description_string = """Generates test cases for the existing code, focusing on specific areas if required."""
 
     result_string = call_ai_function(function_string, args, description_string)

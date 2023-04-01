@@ -191,9 +191,9 @@ while True:
 
     # Exectute command
     if command_name.lower() != "error":
-        result = cmd.execute_command(command_name, arguments)
+        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
     else:
-        result ="Error: " + arguments
+        result =f"Command {command_name} threw the following error: " + arguments
 
     # Check if there's a result from the command append it to the message history
     if result != None:
