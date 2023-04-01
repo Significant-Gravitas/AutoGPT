@@ -60,7 +60,7 @@ def delete_agent(key):
     global agents
 
     try:
-        del agents[key]
+        del agents[int(key)]
         return True
     except KeyError:
         return False
