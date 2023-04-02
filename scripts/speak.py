@@ -1,7 +1,11 @@
 import os
 from playsound import playsound
 import requests
+from dotenv import load_dotenv
 
+
+# Load environment variables from .env file
+load_dotenv()
 
 voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
 
