@@ -75,12 +75,16 @@ def print_assistant_thoughts(assistant_reply):
                 # Split the input_string using the newline character and dash
                 lines = assistant_thoughts_plan.split("\n")
 
-                # Iterate through the lines and print each one with a bullet point
+                # Iterate through the lines and print each one with a bullet
+                # point
                 for line in lines:
                     # Remove any "-" characters from the start of the line
                     line = line.lstrip("- ")
                     print_to_console("- ", Fore.GREEN, line.strip())
-        print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
+        print_to_console(
+            "CRITICISM:",
+            Fore.YELLOW,
+            assistant_thoughts_criticism)
 
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
@@ -104,7 +108,10 @@ def construct_prompt():
     )
 
     # Get AI Name from User
-    print_to_console("Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'")
+    print_to_console(
+        "Name your AI: ",
+        Fore.GREEN,
+        "For example, 'Entrepreneur-GPT'")
     ai_name = input("AI Name: ")
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
@@ -187,6 +194,7 @@ def parse_arguments():
         cfg.set_openai_model(args.openai_model)
 
 
+
 cfg = Config()
 
 parse_arguments()
@@ -217,7 +225,8 @@ while True:
 
     if not cfg.continuous_mode:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
-        # Get key press: Prompt the user to press enter to continue or escape to exit
+        # Get key press: Prompt the user to press enter to continue or escape
+        # to exit
         user_input = ""
         print_to_console(
             "NEXT ACTION: ",
@@ -257,8 +266,9 @@ while True:
     else:
         result = f"Command {command_name} threw the following error: " + arguments
 
-    # Check if there's a result from the command append it to the message history
-    if result != None:
+    # Check if there's a result from the command append it to the message
+    # history
+    if result is not None:
         full_message_history.append(chat.create_chat_message("system", result))
         print_to_console("SYSTEM: ", Fore.YELLOW, result)
     else:

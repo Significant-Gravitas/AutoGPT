@@ -25,7 +25,8 @@ def call_ai_function(function, args, description, model=cfg.openai_model):
     return response.choices[0].message["content"]
 
 
-### Evaluating code
+# Evaluating code
+
 
 
 def evaluate_code(code: str) -> List[str]:
@@ -37,7 +38,8 @@ def evaluate_code(code: str) -> List[str]:
     return json.loads(result_string)
 
 
-### Improving code
+# Improving code
+
 
 
 def improve_code(suggestions: List[str], code: str) -> str:
@@ -51,7 +53,8 @@ def improve_code(suggestions: List[str], code: str) -> str:
     return result_string
 
 
-### Writing tests
+# Writing tests
+
 
 
 def write_tests(code: str, focus: List[str]) -> str:
