@@ -32,8 +32,6 @@ def execute_command(command_name, arguments):
     try:
         if command_name == "google":
             return google_search(arguments["input"])
-        elif command_name == "check_news":
-            return check_news(arguments["source"])
         elif command_name == "check_notifications":
             return check_notifications(arguments["website"])
         elif command_name == "memory_add":
@@ -114,11 +112,6 @@ def get_text_summary(url):
 def get_hyperlinks(url):
     link_list = browse.scrape_links(url)
     return link_list
-
-def check_news(source):
-    print("Checking news from BBC world instead of " + source)
-    _text = get_text_summary("https://www.bbc.com/news/world")
-    return _text
 
 def commit_memory(string):
     _text = f"""Committing memory with string "{string}" """
