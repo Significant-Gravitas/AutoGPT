@@ -6,7 +6,7 @@ jobs:
     steps:
       - uses: actions/checkout@v1
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.ref }}
       - name: autopep8
         uses: peter-evans/autopep8@v1
         with:
