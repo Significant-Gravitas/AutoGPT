@@ -6,14 +6,8 @@ from llm_utils import create_chat_completion
 cfg = Config()
 
 def scrape_text(url):
-    # Most basic check if the URL is valid:
-    if not url.startswith('http'):
-        return "Error: Invalid URL"
-    
-    try:
-        response = requests.get(url, headers=cfg.user_agent_header)
-    except requests.exceptions.RequestException as e:
-        return "Error: " + str(e)
+    """Scrape text from a webpage"""
+    response = requests.get(url)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
@@ -33,6 +27,7 @@ def scrape_text(url):
 
 
 def extract_hyperlinks(soup):
+    """Extract hyperlinks from a BeautifulSoup object"""
     hyperlinks = []
     for link in soup.find_all('a', href=True):
         hyperlinks.append((link.text, link['href']))
@@ -40,6 +35,7 @@ def extract_hyperlinks(soup):
 
 
 def format_hyperlinks(hyperlinks):
+    """Format hyperlinks into a list of strings"""
     formatted_links = []
     for link_text, link_url in hyperlinks:
         formatted_links.append(f"{link_text} ({link_url})")
@@ -47,7 +43,8 @@ def format_hyperlinks(hyperlinks):
 
 
 def scrape_links(url):
-    response = requests.get(url, headers=cfg.user_agent_header)
+    """Scrape hyperlinks from a webpage"""
+    response = requests.get(url)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
@@ -64,6 +61,7 @@ def scrape_links(url):
 
 
 def split_text(text, max_length=8192):
+    """Split text into chunks of a maximum length"""
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
@@ -81,14 +79,9 @@ def split_text(text, max_length=8192):
         yield "\n".join(current_chunk)
 
 
-def create_message(chunk, question):
-    return {
-        "role": "user",
-        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
-    }
-
-def summarize_text(text, question):
-    if not text:
+def summarize_text(text, is_website=True):
+    """Summarize text using GPT-3"""
+    if text == "":
         return "Error: No text to summarize"
 
     text_length = len(text)

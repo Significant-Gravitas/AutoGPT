@@ -25,6 +25,7 @@ def is_valid_int(value):
         return False
 
 def get_command(response):
+    """Parse the response and return the command name and arguments"""
     try:
         response_json = fix_and_parse_json(response)
         
@@ -118,11 +119,13 @@ def execute_command(command_name, arguments):
 
 
 def get_datetime():
+    """Return the current date and time"""
     return "Current date and time: " + \
         datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def google_search(query, num_results=8):
+    """Return the results of a google search"""
     search_results = []
     for j in ddg(query, max_results=num_results):
         search_results.append(j)
@@ -134,38 +137,9 @@ def google_official_search(query, num_results=8):
     from googleapiclient.errors import HttpError
     import json
 
-    try:
-        # Get the Google API key and Custom Search Engine ID from the config file
-        api_key = cfg.google_api_key
-        custom_search_engine_id = cfg.custom_search_engine_id
-
-        # Initialize the Custom Search API service
-        service = build("customsearch", "v1", developerKey=api_key)
-        
-        # Send the search query and retrieve the results
-        result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
-
-        # Extract the search result items from the response
-        search_results = result.get("items", [])
-        
-        # Create a list of only the URLs from the search results
-        search_results_links = [item["link"] for item in search_results]
-
-    except HttpError as e:
-        # Handle errors in the API call
-        error_details = json.loads(e.content.decode())
-        
-        # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
-            return "Error: The provided Google API key is invalid or missing."
-        else:
-            return f"Error: {e}"
-
-    # Return the list of search result URLs
-    return search_results_links
-
-def browse_website(url, question):
-    summary = get_text_summary(url, question)
+def browse_website(url):
+    """Return the results of a google search"""
+    summary = get_text_summary(url)
     links = get_hyperlinks(url)
 
     # Limit links to 5
@@ -177,24 +151,28 @@ def browse_website(url, question):
     return result
 
 
-def get_text_summary(url, question):
+def get_text_summary(url):
+    """Return the results of a google search"""
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text, question)
     return """ "Result" : """ + summary
 
 
 def get_hyperlinks(url):
+    """Return the results of a google search"""
     link_list = browse.scrape_links(url)
     return link_list
 
 
 def commit_memory(string):
+    """Commit a string to memory"""
     _text = f"""Committing memory with string "{string}" """
     mem.permanent_memory.append(string)
     return _text
 
 
 def delete_memory(key):
+    """Delete a memory with a given key"""
     if key >= 0 and key < len(mem.permanent_memory):
         _text = "Deleting memory with key " + str(key)
         del mem.permanent_memory[key]
@@ -206,23 +184,10 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
-    # Check if the key is a valid integer
-    if is_valid_int(key):
-        key_int = int(key)
-        # Check if the integer key is within the range of the permanent_memory list
-        if 0 <= key_int < len(mem.permanent_memory):
-            _text = "Overwriting memory with key " + str(key) + " and string " + string
-            # Overwrite the memory slot with the given integer key and string
-            mem.permanent_memory[key_int] = string
-            print(_text)
-            return _text
-        else:
-            print(f"Invalid key '{key}', out of range.")
-            return None
-    # Check if the key is a valid string
-    elif isinstance(key, str):
-        _text = "Overwriting memory with key " + key + " and string " + string
-        # Overwrite the memory slot with the given string key and string
+    """Overwrite a memory with a given key"""
+    if key >= 0 and key < len(mem.permanent_memory):
+        _text = "Overwriting memory with key " + \
+            str(key) + " and string " + string
         mem.permanent_memory[key] = string
         print(_text)
         return _text
@@ -232,11 +197,13 @@ def overwrite_memory(key, string):
 
 
 def shutdown():
+    """Shut down the program"""
     print("Shutting down...")
     quit()
 
 
-def start_agent(name, task, prompt, model=cfg.fast_llm_model):
+def start_agent(name, task, prompt, model="gpt-3.5-turbo"):
+    """Start an agent with a given name, task, and prompt"""
     global cfg
 
     # Remove underscores from name
@@ -260,6 +227,7 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
 
 
 def message_agent(key, message):
+    """Message an agent with a given key and message"""
     global cfg
 
     # Check if the key is a valid integer
@@ -278,10 +246,12 @@ def message_agent(key, message):
 
 
 def list_agents():
+    """List all agents"""
     return agents.list_agents()
 
 
 def delete_agent(key):
+    """Delete an agent with a given key"""
     result = agents.delete_agent(key)
     if not result:
         return f"Agent {key} does not exist."

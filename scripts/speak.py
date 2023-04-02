@@ -14,7 +14,9 @@ tts_headers = {
     "xi-api-key": cfg.elevenlabs_api_key
 }
 
-def eleven_labs_speech(text, voice_index=0):
+
+def say_text(text, voice_index=0):
+    """Say text using ElevenLabs API"""
     tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(
         voice_id=voices[voice_index])
     formatted_message = {"text": text}

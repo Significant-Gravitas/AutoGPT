@@ -14,6 +14,7 @@ class Singleton(abc.ABCMeta, type):
     _instances = {}
 
     def __call__(cls, *args, **kwargs):
+        """Call method for the singleton metaclass."""
         if cls not in cls._instances:
             cls._instances[cls] = super(
                 Singleton, cls).__call__(
@@ -31,7 +32,7 @@ class Config(metaclass=Singleton):
     """
 
     def __init__(self):
-        self.debug = False
+        """Initialize the configuration class."""
         self.continuous_mode = False
         self.speak_mode = False
         # TODO - make these models be self-contained, using langchain, so we can configure them once and call it good 
@@ -78,9 +79,11 @@ class Config(metaclass=Singleton):
         openai.api_key = self.openai_api_key
 
     def set_continuous_mode(self, value: bool):
+        """Set the continuous mode value."""
         self.continuous_mode = value
 
     def set_speak_mode(self, value: bool):
+        """Set the speak mode value."""
         self.speak_mode = value
 
     def set_fast_llm_model(self, value: str):

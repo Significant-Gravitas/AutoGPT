@@ -11,11 +11,12 @@ import speak
 from enum import Enum, auto
 import sys
 from config import Config
-from json_parser import fix_and_parse_json
-from ai_config import AIConfig
-import traceback
-import yaml
-import argparse
+
+
+class Argument(Enum):
+    """This class is used to define the different arguments that can be passed"""
+    CONTINUOUS_MODE = "continuous-mode"
+    SPEAK_MODE = "speak-mode"
 
 
 def print_to_console(
@@ -25,6 +26,7 @@ def print_to_console(
         speak_text=False,
         min_typing_speed=0.05,
         max_typing_speed=0.01):
+    """Prints text to the console with a typing effect"""
     global cfg
     if speak_text and cfg.speak_mode:
         speak.say_text(f"{title}. {content}")
@@ -46,6 +48,7 @@ def print_to_console(
 
 
 def print_assistant_thoughts(assistant_reply):
+    """Prints the assistant's thoughts to the console"""
     global ai_name
     global cfg
     try:
@@ -159,26 +162,7 @@ def load_variables(config_file="config.yaml"):
 
 
 def construct_prompt():
-    config = AIConfig.load()
-    if config.ai_name:
-        print_to_console(
-            f"Welcome back! ",
-            Fore.GREEN,
-            f"Would you like me to return to being {config.ai_name}?",
-            speak_text=True)
-        should_continue = input(f"""Continue with the last settings? 
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}  
-Continue (y/n): """)
-        if should_continue.lower() == "n":
-            config = AIConfig()
-
-    if not config.ai_name:         
-        config = prompt_user()
-        config.save()
-
-    # Get rid of this global:
+    """Constructs the prompt for the AI"""
     global ai_name
     ai_name = config.ai_name
     
@@ -239,6 +223,7 @@ def prompt_user():
     return config
 
 def parse_arguments():
+    """Parses the arguments passed to the script"""
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
