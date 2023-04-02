@@ -88,7 +88,7 @@ def summarize_text(text, is_website=True):
             messages = [
                 {
                     "role": "user",
-                    "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specifc information this subpage contains.: " +
+                    "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
                     chunk},
             ]
         else:
@@ -116,7 +116,7 @@ def summarize_text(text, is_website=True):
         messages = [
             {
                 "role": "user",
-                "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specifc information this subpage contains.: " +
+                "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
                 combined_summary},
         ]
     else:
