@@ -1,9 +1,13 @@
+import os
 import time
 import openai
-import keys
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Initialize the OpenAI API client
-openai.api_key = keys.OPENAI_API_KEY
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 def create_chat_message(role, content):
