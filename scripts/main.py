@@ -17,6 +17,9 @@ class Argument(Enum):
     CONTINUOUS_MODE = "continuous-mode"
     SPEAK_MODE = "speak-mode"
 
+# normally 6000 for gpt-4
+TOKEN_LIMIT=4000
+
 
 def print_to_console(
         title,
@@ -30,6 +33,8 @@ def print_to_console(
         speak.say_text(f"{title}. {content}")
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
+        if isinstance(content, list):
+            content = " ".join(content)
         words = content.split()
         for i, word in enumerate(words):
             print(word, end="", flush=True)
@@ -138,7 +143,7 @@ def construct_prompt():
     print_to_console(
         "Enter up to 5 goals for your AI: ",
         Fore.GREEN,
-        "For example: \nIncrease net worth \nGrow Twitter Account \nDevelop and manage multiple businesses autonomously'")
+        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
@@ -186,11 +191,12 @@ cfg = Config()
 parse_arguments()
 ai_name = ""
 prompt = construct_prompt()
+print(prompt)
 # Initialize variables
 full_message_history = []
-token_limit = 6000  # The maximum number of tokens allowed in the API call
+token_limit = TOKEN_LIMIT  # The maximum number of tokens allowed in the API call
 result = None
-user_input = "NEXT COMMAND"
+user_input = "GENERATE NEXT COMMAND JSON"
 
 # Interaction Loop
 while True:
@@ -203,6 +209,7 @@ while True:
             mem.permanent_memory,
             token_limit)
 
+    print("assistant reply: "+assistant_reply)
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
 
@@ -227,7 +234,7 @@ while True:
         while True:
             console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
             if console_input.lower() == "y":
-                user_input = "NEXT COMMAND"
+                user_input = "GENERATE NEXT COMMAND JSON"
                 break
             elif console_input.lower() == "n":
                 user_input = "EXIT"
@@ -235,7 +242,7 @@ while True:
             else:
                 continue
 
-        if user_input != "NEXT COMMAND":
+        if user_input != "GENERATE NEXT COMMAND JSON":
             print("Exiting...", flush=True)
             break
 
@@ -250,7 +257,7 @@ while True:
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
-    # Exectute command
+    # Execute command
     if command_name.lower() != "error":
         result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
     else:
