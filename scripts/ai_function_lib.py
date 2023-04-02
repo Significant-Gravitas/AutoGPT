@@ -1,3 +1,5 @@
+import json
+import openai
 import configparser
 
 def call_ai_function(function, args, description, config_path="config.ini"):
@@ -20,6 +22,20 @@ def call_ai_function(function, args, description, config_path="config.ini"):
 
   # Use different AI APIs based on the chosen model
     if model == "gpt-4":
+        response = openai.ChatCompletion.create(
+            model=model, messages=messages, temperature=0
+        )
+       
+    
+    
+    
+    # GPT-3.5 with a json verification loop.
+    elif model == "gpt-3.5":
+         try:
+            json.dumps(messages)
+        except (TypeError, ValueError):
+            return "I did not return a valid json format. I should repeat the last instructions and try again."
+
         response = openai.ChatCompletion.create(
             model=model, messages=messages, temperature=0
         )
