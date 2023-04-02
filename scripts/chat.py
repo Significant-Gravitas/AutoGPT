@@ -27,12 +27,6 @@ def create_chat_message(role, content):
 def chat_with_ai(
     prompt, user_input, full_message_history, permanent_memory, token_limit, debug=False
 ):
-        prompt,
-        user_input,
-        full_message_history,
-        permanent_memory,
-        token_limit,
-        debug=False):
     while True:
         try:
             """
@@ -67,8 +61,7 @@ def chat_with_ai(
                     # Skip printing the prompt
                     if message["role"] == "system" and message["content"] == prompt:
                         continue
-                    print(
-                        f"{message['role'].capitalize()}: {message['content']}")
+                    print(f"{message['role'].capitalize()}: {message['content']}")
                 print("----------- END OF CONTEXT ----------------")
 
             response = openai.ChatCompletion.create(
@@ -90,4 +83,3 @@ def chat_with_ai(
             time.sleep(10)
         except Exception as e:
             print(e, "An Exception occured.")
-

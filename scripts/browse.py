@@ -92,11 +92,9 @@ def summarize_text(text, is_website=True):
             messages = [
                 {
                     "role": "user",
-
                     "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specifc information this subpage contains.: "
                     + chunk,
                 },
-
             ]
         else:
             messages = [
@@ -109,7 +107,6 @@ def summarize_text(text, is_website=True):
 
         response = openai.ChatCompletion.create(
             model=cfg.openai_model,
-
             messages=messages,
             max_tokens=300,
         )
@@ -128,7 +125,6 @@ def summarize_text(text, is_website=True):
                 "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specifc information this subpage contains.: "
                 + combined_summary,
             },
-
         ]
     else:
         messages = [
@@ -137,7 +133,6 @@ def summarize_text(text, is_website=True):
                 "content": "Please summarize the following text, focusing on extracting concise and specific infomation: "
                 + combined_summary,
             },
-
         ]
 
     response = openai.ChatCompletion.create(

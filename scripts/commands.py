@@ -56,9 +56,7 @@ def execute_command(command_name, arguments):
         elif command_name == "navigate_website":
             return navigate_website(arguments["action"], arguments["username"])
         elif command_name == "register_account":
-            return register_account(
-                arguments["username"],
-                arguments["website"])
+            return register_account(arguments["username"], arguments["website"])
         elif command_name == "get_text_summary":
             return get_text_summary(arguments["url"])
         elif command_name == "get_hyperlinks":
@@ -99,7 +97,6 @@ def get_datetime():
     )
 
 
-
 def google_search(query, num_results=8):
     search_results = []
     for j in browse.search(query, num_results=num_results):
@@ -132,12 +129,10 @@ def get_hyperlinks(url):
     return link_list
 
 
-
 def check_news(source):
     print("Checking news from BBC world instead of " + source)
     _text = get_text_summary("https://www.bbc.com/news/world")
     return _text
-
 
 
 def commit_memory(string):
@@ -171,7 +166,6 @@ def overwrite_memory(key, string):
 def shutdown():
     print("Shutting down...")
     quit()
-
 
 
 def start_agent(name, task, prompt, model=cfg.openai_model):
@@ -227,8 +221,7 @@ def navigate_website(action, username):
 
 
 def register_account(username, website):
-    _text = "Registering account with username " + \
-        username + " and website " + website
+    _text = "Registering account with username " + username + " and website " + website
     print(_text)
     return "Command not implemented yet."
 

@@ -14,8 +14,6 @@ from config import Config
 import argparse
 
 
-
-
 def print_to_console(
     title,
     title_color,
