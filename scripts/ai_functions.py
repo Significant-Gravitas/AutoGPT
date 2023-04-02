@@ -2,10 +2,14 @@ from typing import List, Optional
 import json
 import openai
 
-def call_ai_function(function, args, description, model = "gpt-4"):
+
+def call_ai_function(function, args, description, model="gpt-4"):
     # parse args to comma seperated string
     args = ", ".join(args)
-    messages = [{"role": "system", "content": f"You are now the following python function: ```# {description}\n{function}```\n\nOnly respond with your `return` value."},{"role": "user", "content": args}]
+    messages = [{"role": "system",
+                 "content": f"You are now the following python function: ```# {description}\n{function}```\n\nOnly respond with your `return` value."},
+                {"role": "user",
+                 "content": args}]
 
     response = openai.ChatCompletion.create(
         model=model,
@@ -15,7 +19,8 @@ def call_ai_function(function, args, description, model = "gpt-4"):
 
     return response.choices[0].message["content"]
 
-### Evaluating code
+# Evaluating code
+
 
 def evaluate_code(code: str) -> List[str]:
     function_string = "def analyze_code(code: str) -> List[str]:"
@@ -26,7 +31,7 @@ def evaluate_code(code: str) -> List[str]:
     return json.loads(result_string)
 
 
-### Improving code
+# Improving code
 
 def improve_code(suggestions: List[str], code: str) -> str:
     function_string = "def generate_improved_code(suggestions: List[str], code: str) -> str:"
@@ -37,7 +42,7 @@ def improve_code(suggestions: List[str], code: str) -> str:
     return result_string
 
 
-### Writing tests
+# Writing tests
 
 def write_tests(code: str, focus: List[str]) -> str:
     function_string = "def create_test_cases(code: str, focus: Optional[str] = None) -> str:"

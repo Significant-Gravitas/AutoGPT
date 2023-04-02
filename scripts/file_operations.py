@@ -6,7 +6,8 @@ working_directory = "auto_gpt_workspace"
 
 if not os.path.exists(working_directory):
     os.makedirs(working_directory)
-    
+
+
 def safe_join(base, *paths):
     new_path = os.path.join(base, *paths)
     norm_new_path = os.path.normpath(new_path)
@@ -15,6 +16,7 @@ def safe_join(base, *paths):
         raise ValueError("Attempted to access outside of working directory.")
 
     return norm_new_path
+
 
 def read_file(filename):
     try:
@@ -25,6 +27,7 @@ def read_file(filename):
     except Exception as e:
         return "Error: " + str(e)
 
+
 def write_to_file(filename, text):
     try:
         filepath = safe_join(working_directory, filename)
@@ -34,6 +37,7 @@ def write_to_file(filename, text):
     except Exception as e:
         return "Error: " + str(e)
 
+
 def append_to_file(filename, text):
     try:
         filepath = safe_join(working_directory, filename)
@@ -42,6 +46,7 @@ def append_to_file(filename, text):
         return "Text appended successfully."
     except Exception as e:
         return "Error: " + str(e)
+
 
 def delete_file(filename):
     try:
