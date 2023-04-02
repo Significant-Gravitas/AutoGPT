@@ -30,15 +30,17 @@ def call_ai_function(function, args, description, config_path="config.ini"):
     
     
     # GPT-3.5 with a json verification loop.
-    elif model == "gpt-3.5":
-         try:
+    if model == "gpt-3.5":
+        try:
             json.dumps(messages)
         except (TypeError, ValueError):
-            return "I did not return a valid json format. I should repeat the last instructions and try again."
-
-        response = openai.ChatCompletion.create(
-            model=model, messages=messages, temperature=0
-        )
+            response = "I did not return a valid json format. I should repeat the last instructions and try again."
+        else:
+            response = openai.ChatCompletion.create(
+                model=model, messages=messages, temperature=0
+            )
+            
+#future model template            
     elif model == "some_other_api":
         # Add code to call another AI API with the appropriate parameters
         response = some_other_api_call(parameters)
