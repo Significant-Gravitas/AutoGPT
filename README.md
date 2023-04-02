@@ -30,13 +30,20 @@ Your support is greatly appreciated
 ## Table of Contents
 
 
-- [Features](#-features)
-- [Requirements](#-requirements)
-- [Installation](#-installation)
-- [Usage](#-usage)
-- [Limitations](#-limitations)
-- [Disclaimer](#-disclaimer)
-- [Connect with Us on Twitter ](#-connect-with-us-on-twitter)
+- [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
+    - [Demo (30/03/2023):](#demo-30032023)
+  - [💖 Help Fund Auto-GPT's Development](#-help-fund-auto-gpts-development)
+  - [Table of Contents](#table-of-contents)
+  - [🚀 Features](#-features)
+  - [📋 Requirements](#-requirements)
+  - [💾 Installation](#-installation)
+  - [🔧 Usage](#-usage)
+  - [🤖 OpenAI Model](#-openai-model)
+  - [🗣️ Speech Mode](#️-speech-mode)
+  - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
+  - [⚠️ Limitations](#️-limitations)
+  - [🛡 Disclaimer](#-disclaimer)
+  - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
 
 ## 🚀 Features
 
@@ -110,7 +117,7 @@ python main.py --openai_model MODEL_NAME
 ## 🗣️ Speech Mode
 
 ```
-python main.py speech-mode
+python main.py --speak_mode
 ```
 
 ## 💀 Continuous Mode ⚠️
@@ -123,7 +130,7 @@ Use at your own risk.
 1. Run the Python script in your terminal:
 
 ```
-python main.py continuous-mode
+python main.py --continuous_mode
 ```
 
 2. To exit the program, press Ctrl + C
