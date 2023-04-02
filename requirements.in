@@ -1,0 +1,10 @@
+python-dotenv
+
+colorama
+
+requests
+beautifulsoup4
+readability-lxml
+
+openai
+googlesearch-python
