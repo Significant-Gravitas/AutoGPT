@@ -9,6 +9,7 @@ if not os.path.exists(working_directory):
 
 
 def safe_join(base, *paths):
+    """Join one or more path components intelligently."""
     new_path = os.path.join(base, *paths)
     norm_new_path = os.path.normpath(new_path)
 
@@ -19,6 +20,7 @@ def safe_join(base, *paths):
 
 
 def read_file(filename):
+    """Read a file and return the contents"""
     try:
         filepath = safe_join(working_directory, filename)
         with open(filepath, "r") as f:
@@ -29,6 +31,7 @@ def read_file(filename):
 
 
 def write_to_file(filename, text):
+    """Write text to a file"""
     try:
         filepath = safe_join(working_directory, filename)
         with open(filepath, "w") as f:
@@ -39,6 +42,7 @@ def write_to_file(filename, text):
 
 
 def append_to_file(filename, text):
+    """Append text to a file"""
     try:
         filepath = safe_join(working_directory, filename)
         with open(filepath, "a") as f:
@@ -49,6 +53,7 @@ def append_to_file(filename, text):
 
 
 def delete_file(filename):
+    """Delete a file"""
     try:
         filepath = safe_join(working_directory, filename)
         os.remove(filepath)

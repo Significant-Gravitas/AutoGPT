@@ -6,7 +6,7 @@ import openai
 # This is a magic function that can do anything with no-code. See
 # https://github.com/Torantulino/AI-Functions for more info.
 def call_ai_function(function, args, description, model="gpt-4"):
-    # parse args to comma seperated string
+    """Calls an AI function and returns the result."""
     args = ", ".join(args)
     messages = [
         {
@@ -27,6 +27,7 @@ def call_ai_function(function, args, description, model="gpt-4"):
 
 
 def evaluate_code(code: str) -> List[str]:
+    """Evaluates the given code and returns a list of suggestions for improvements."""
     function_string = "def analyze_code(code: str) -> List[str]:"
     args = [code]
     description_string = """Analyzes the given code and returns a list of suggestions for improvements."""
@@ -39,6 +40,7 @@ def evaluate_code(code: str) -> List[str]:
 
 
 def improve_code(suggestions: List[str], code: str) -> str:
+    """Improves the provided code based on the suggestions provided, making no other changes."""
     function_string = (
         "def generate_improved_code(suggestions: List[str], code: str) -> str:"
     )
@@ -53,6 +55,7 @@ def improve_code(suggestions: List[str], code: str) -> str:
 
 
 def write_tests(code: str, focus: List[str]) -> str:
+    """Generates test cases for the existing code, focusing on specific areas if required."""
     function_string = (
         "def create_test_cases(code: str, focus: Optional[str] = None) -> str:"
     )

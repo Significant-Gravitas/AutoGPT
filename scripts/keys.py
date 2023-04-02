@@ -1,3 +1,4 @@
+# This file contains the API keys for the various APIs used in the project.
 # Get yours from:  https://beta.openai.com/account/api-keys
 OPENAI_API_KEY = "YOUR-OPENAI-KEY"
 # To access your ElevenLabs API key, head to https://elevenlabs.io, you
