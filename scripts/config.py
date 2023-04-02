@@ -19,7 +19,7 @@ class Config(metaclass=Singleton):
     def __init__(self):
         self.continuous_mode = False
         self.speak_mode = False
-        self.openai_model = "4"
+        self.openai_model = "gpt-4"
 
     def set_continuous_mode(self, value: bool):
         self.continuous_mode = value
