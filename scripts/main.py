@@ -17,7 +17,8 @@ class Argument(Enum):
     SPEAK_MODE = "speak-mode"
 
 def print_to_console(title, title_color, content, speak_text = False, min_typing_speed=0.05, max_typing_speed=0.01):
-    if speak_text:
+    global cfg
+    if speak_text and cfg.speak_mode:
         speak.say_text(f"{title}. {content}")
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
