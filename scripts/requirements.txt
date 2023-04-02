@@ -1,8 +1,0 @@
-requests
-beautifulsoup4
-colorama
-googlesearch_python
-openai
-playsound
-readability_lxml
-docker

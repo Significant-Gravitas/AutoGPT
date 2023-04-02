@@ -65,9 +65,9 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 ```
 
 2. Navigate to the project directory:
-*(Type this into your CMD window, you're aiming to navigate the CMD window to the "scripts" folder you just downloaded)*
+*(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)*
 ```
-$ cd 'Auto-GPT/scripts'
+$ cd 'Auto-GPT'
 ```
 
 3. Install the required dependencies:
@@ -76,15 +76,16 @@ $ cd 'Auto-GPT/scripts'
 pip install -r requirements.txt
 ```
 
-4. Edit the file named "keys.py" in the "scripts" directory to add your OpenAI API key (and eleven labs key if you want speech):
-*(Open the keys.py file in a text editor and follow the instructions inside, save it after)*
+4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+  - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
 
 ## 🔧 Usage
 
-1. Run the Python script in your terminal:
+1. Run the `main.py` Python script in your terminal:
 *(Type this into your CMD window)*
 ```
-python main.py
+python scripts/main.py
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
@@ -92,7 +93,7 @@ python main.py
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
-python main.py speak-mode
+python scripts/main.py speak-mode
 ```
 
 ## 💀 Continuous Mode ⚠️
@@ -101,9 +102,9 @@ Continuous mode is not recommended.
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
 Use at your own risk.
 
-1. Run the Python script in your terminal:
+1. Run the `main.py` Python script in your terminal:
 ```
-python main.py continuous-mode
+python scripts/main.py continuous-mode
 ```
 2. To exit the program, press Ctrl + C
 
