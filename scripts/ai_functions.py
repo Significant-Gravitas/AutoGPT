@@ -3,6 +3,7 @@ import json
 import openai
 
 
+# This is a magic function that can do anything with no-code. See https://github.com/Torantulino/AI-Functions for more info. 
 def call_ai_function(function, args, description, model="gpt-4"):
     # parse args to comma seperated string
     args = ", ".join(args)
