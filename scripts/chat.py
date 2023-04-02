@@ -26,7 +26,7 @@ def chat_with_ai(
         full_message_history,
         permanent_memory,
         token_limit,
-        debug=False):
+        debug=True):
     while True:
         try:
             """
@@ -62,7 +62,7 @@ def chat_with_ai(
                 print("----------- END OF CONTEXT ----------------")
 
             response = openai.ChatCompletion.create(
-                model="gpt-4",
+                model="gpt-3.5-turbo",#model="gpt-4",
                 messages=current_context,
             )
 
