@@ -8,12 +8,13 @@ from config import Config
 import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file
 from execute_code import execute_python_file
+from json_parser import fix_and_parse_json
 cfg = Config()
 
 
 def get_command(response):
     try:
-        response_json = json.loads(response)
+        response_json = fix_and_parse_json(response)
         command = response_json["command"]
         command_name = command["name"]
         arguments = command["args"]
