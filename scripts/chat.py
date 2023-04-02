@@ -27,6 +27,7 @@ def chat_with_ai(
         permanent_memory,
         token_limit,
         debug=False):
+    """Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory."""
     while True:
         try:
             """

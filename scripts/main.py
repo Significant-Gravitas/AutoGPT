@@ -14,6 +14,7 @@ from config import Config
 
 
 class Argument(Enum):
+    """This class is used to define the different arguments that can be passed"""
     CONTINUOUS_MODE = "continuous-mode"
     SPEAK_MODE = "speak-mode"
 
@@ -25,6 +26,7 @@ def print_to_console(
         speak_text=False,
         min_typing_speed=0.05,
         max_typing_speed=0.01):
+    """Prints text to the console with a typing effect"""
     global cfg
     if speak_text and cfg.speak_mode:
         speak.say_text(f"{title}. {content}")
@@ -44,6 +46,7 @@ def print_to_console(
 
 
 def print_assistant_thoughts(assistant_reply):
+    """Prints the assistant's thoughts to the console"""
     global ai_name
     global cfg
     try:
@@ -102,6 +105,7 @@ def print_assistant_thoughts(assistant_reply):
 
 
 def construct_prompt():
+    """Constructs the prompt for the AI"""
     global ai_name
     # Construct the prompt
     print_to_console(
@@ -165,6 +169,7 @@ def construct_prompt():
 
 
 def parse_arguments():
+    """Parses the arguments passed to the script"""
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)

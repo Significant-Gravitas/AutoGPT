@@ -12,6 +12,7 @@ cfg = Config()
 
 
 def get_command(response):
+    """Parse the response and return the command name and arguments"""
     try:
         response_json = json.loads(response)
         command = response_json["command"]
@@ -30,6 +31,7 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
+    """Execute the command and return the response"""
     try:
         if command_name == "google":
             return google_search(arguments["input"])
@@ -93,11 +95,13 @@ def execute_command(command_name, arguments):
 
 
 def get_datetime():
+    """Return the current date and time"""
     return "Current date and time: " + \
         datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def google_search(query, num_results=8):
+    """Return the results of a google search"""
     search_results = []
     for j in browse.search(query, num_results=num_results):
         search_results.append(j)
@@ -106,6 +110,7 @@ def google_search(query, num_results=8):
 
 
 def browse_website(url):
+    """Return the results of a google search"""
     summary = get_text_summary(url)
     links = get_hyperlinks(url)
 
@@ -119,23 +124,27 @@ def browse_website(url):
 
 
 def get_text_summary(url):
+    """Return the results of a google search"""
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text)
     return """ "Result" : """ + summary
 
 
 def get_hyperlinks(url):
+    """Return the results of a google search"""
     link_list = browse.scrape_links(url)
     return link_list
 
 
 def commit_memory(string):
+    """Commit a string to memory"""
     _text = f"""Committing memory with string "{string}" """
     mem.permanent_memory.append(string)
     return _text
 
 
 def delete_memory(key):
+    """Delete a memory with a given key"""
     if key >= 0 and key < len(mem.permanent_memory):
         _text = "Deleting memory with key " + str(key)
         del mem.permanent_memory[key]
@@ -147,6 +156,7 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
+    """Overwrite a memory with a given key"""
     if key >= 0 and key < len(mem.permanent_memory):
         _text = "Overwriting memory with key " + \
             str(key) + " and string " + string
@@ -159,11 +169,13 @@ def overwrite_memory(key, string):
 
 
 def shutdown():
+    """Shut down the program"""
     print("Shutting down...")
     quit()
 
 
 def start_agent(name, task, prompt, model="gpt-3.5-turbo"):
+    """Start an agent with a given name, task, and prompt"""
     global cfg
 
     # Remove underscores from name
@@ -187,6 +199,7 @@ def start_agent(name, task, prompt, model="gpt-3.5-turbo"):
 
 
 def message_agent(key, message):
+    """Message an agent with a given key and message"""
     global cfg
     agent_response = agents.message_agent(key, message)
 
@@ -198,10 +211,12 @@ def message_agent(key, message):
 
 
 def list_agents():
+    """List all agents"""
     return agents.list_agents()
 
 
 def delete_agent(key):
+    """Delete an agent with a given key"""
     result = agents.delete_agent(key)
     if not result:
         return f"Agent {key} does not exist."

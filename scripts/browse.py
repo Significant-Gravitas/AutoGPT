@@ -6,6 +6,7 @@ import openai
 
 
 def scrape_text(url):
+    """Scrape text from a webpage"""
     response = requests.get(url)
 
     # Check if the response contains an HTTP error
@@ -26,6 +27,7 @@ def scrape_text(url):
 
 
 def extract_hyperlinks(soup):
+    """Extract hyperlinks from a BeautifulSoup object"""
     hyperlinks = []
     for link in soup.find_all('a', href=True):
         hyperlinks.append((link.text, link['href']))
@@ -33,6 +35,7 @@ def extract_hyperlinks(soup):
 
 
 def format_hyperlinks(hyperlinks):
+    """Format hyperlinks into a list of strings"""
     formatted_links = []
     for link_text, link_url in hyperlinks:
         formatted_links.append(f"{link_text} ({link_url})")
@@ -40,6 +43,7 @@ def format_hyperlinks(hyperlinks):
 
 
 def scrape_links(url):
+    """Scrape hyperlinks from a webpage"""
     response = requests.get(url)
 
     # Check if the response contains an HTTP error
@@ -57,6 +61,7 @@ def scrape_links(url):
 
 
 def split_text(text, max_length=8192):
+    """Split text into chunks of a maximum length"""
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
@@ -75,6 +80,7 @@ def split_text(text, max_length=8192):
 
 
 def summarize_text(text, is_website=True):
+    """Summarize text using GPT-3"""
     if text == "":
         return "Error: No text to summarize"
 
