@@ -7,20 +7,31 @@ Auto-GPT is an experimental open-source application showcasing the capabilities 
 ### Demo (30/03/2023):
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
+
 ## 💖 Help Fund Auto-GPT's Development
+<p align="center">
 If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
-A full day of development can cost as much as $10 in API costs, which for a free project is quite limiting.
-Your support is greatly appreciated:
-https://github.com/sponsors/Torantulino
+A full day of development can easily cost as much as $20 in API costs, which for a free project is quite limiting.
+Your support is greatly appreciated
+</p>
+
+<p align="center">
+ Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>. 💖
+</p>
+<p align="center">
+<a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="robjtede" /></a>&nbsp;&nbsp;
+</p>
+</p>
+
 
 ## Table of Contents
 
-- [Features](#-Features)
-- [Requirements](#-Requirements)
-- [Installation](#-Installation)
-- [Usage](#-Usage)
-- [Limitations](#-Limitations)
-- [Disclaimer](#-Disclaimer)
+- [Features](#-features)
+- [Requirements](#-requirements)
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [Limitations](#-limitations)
+- [Disclaimer](#-disclaimer)
 - [Connect with Us on Twitter ](#-connect-with-us-on-twitter)
 
 
