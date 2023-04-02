@@ -21,9 +21,21 @@ class Config(metaclass=Singleton):
     def __init__(self):
         self.continuous_mode = False
         self.speak_mode = False
+        self.fast_llm_model = "gpt-3.5-turbo"
+        self.smart_llm_model = "gpt-3.5-turbo"
+        self.thinking_token_limit = 4000
 
     def set_continuous_mode(self, value: bool):
         self.continuous_mode = value
 
     def set_speak_mode(self, value: bool):
         self.speak_mode = value
+
+    def set_fast_llm_model(self, value: str):
+        self.fast_llm_model = value
+
+    def set_smart_llm_model(self, value: str):
+        self.smart_llm_model = value
+
+    def set_thinking_token_limit(self, value: int):
+        self.thinking_token_limit = value
