@@ -1,7 +1,12 @@
+from pathlib import Path
+
+FOLDER = Path(__file__).parent
+
+
 def load_prompt():
     try:
         # Load the promt from data/prompt.txt
-        with open("data/prompt.txt", "r") as prompt_file:
+        with open(FOLDER / "data/prompt.txt", "r") as prompt_file:
             prompt = prompt_file.read()
 
         return prompt
