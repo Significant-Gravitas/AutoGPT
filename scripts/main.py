@@ -16,6 +16,7 @@ import argparse
 
 
 
+
 def print_to_console(
     title,
     title_color,
@@ -25,6 +26,7 @@ def print_to_console(
     max_typing_speed=0.01,
 ):
     if speak_text:
+
         speak.say_text(f"{title}. {content}")
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
