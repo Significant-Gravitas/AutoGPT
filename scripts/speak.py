@@ -16,6 +16,7 @@ def say_text(text, voice_index=0):
         voice_id=voices[voice_index]
     )
 
+
     formatted_message = {"text": text}
     response = requests.post(tts_url, headers=tts_headers, json=formatted_message)
 

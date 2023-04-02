@@ -34,8 +34,6 @@ def execute_command(command_name, arguments):
     try:
         if command_name == "google":
             return google_search(arguments["input"])
-        elif command_name == "check_news":
-            return check_news(arguments["source"])
         elif command_name == "check_notifications":
             return check_notifications(arguments["website"])
         elif command_name == "memory_add":
@@ -48,6 +46,7 @@ def execute_command(command_name, arguments):
             return start_agent(
                 arguments["name"], arguments["task"], arguments["prompt"]
             )
+
         elif command_name == "message_agent":
             return message_agent(arguments["key"], arguments["message"])
         elif command_name == "list_agents":
@@ -57,7 +56,9 @@ def execute_command(command_name, arguments):
         elif command_name == "navigate_website":
             return navigate_website(arguments["action"], arguments["username"])
         elif command_name == "register_account":
-            return register_account(arguments["username"], arguments["website"])
+            return register_account(
+                arguments["username"],
+                arguments["website"])
         elif command_name == "get_text_summary":
             return get_text_summary(arguments["url"])
         elif command_name == "get_hyperlinks":
@@ -72,6 +73,9 @@ def execute_command(command_name, arguments):
             return delete_file(arguments["file"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"])
+        # TODO: Change these to take in a file rather than pasted code, if
+        # non-file is given, return instructions "Input should be a python
+        # filepath, write your code to file and try again"
         elif command_name == "evaluate_code":
             return ai.evaluate_code(arguments["code"])
         elif command_name == "improve_code":
@@ -93,6 +97,7 @@ def get_datetime():
     return "Current date and time: " + datetime.datetime.now().strftime(
         "%Y-%m-%d %H:%M:%S"
     )
+
 
 
 def google_search(query, num_results=8):
@@ -127,10 +132,12 @@ def get_hyperlinks(url):
     return link_list
 
 
+
 def check_news(source):
     print("Checking news from BBC world instead of " + source)
     _text = get_text_summary("https://www.bbc.com/news/world")
     return _text
+
 
 
 def commit_memory(string):
@@ -166,7 +173,9 @@ def shutdown():
     quit()
 
 
+
 def start_agent(name, task, prompt, model=cfg.openai_model):
+
     global cfg
 
     # Remove underscores from name
@@ -206,7 +215,7 @@ def list_agents():
 
 def delete_agent(key):
     result = agents.delete_agent(key)
-    if result == False:
+    if not result:
         return f"Agent {key} does not exist."
     return f"Agent {key} deleted."
 
@@ -218,7 +227,8 @@ def navigate_website(action, username):
 
 
 def register_account(username, website):
-    _text = "Registering account with username " + username + " and website " + website
+    _text = "Registering account with username " + \
+        username + " and website " + website
     print(_text)
     return "Command not implemented yet."
 

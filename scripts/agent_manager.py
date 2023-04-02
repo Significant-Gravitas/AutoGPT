@@ -4,13 +4,17 @@ next_key = 0
 agents = {}  # key, (task, full_message_history, model)
 
 # Create new GPT agent
+
+
 def create_agent(task, prompt, model):
     global next_key
     global agents
 
+
     messages = [
         {"role": "user", "content": prompt},
     ]
+
 
     # Start GTP3 instance
     response = openai.ChatCompletion.create(
@@ -24,7 +28,9 @@ def create_agent(task, prompt, model):
     messages.append({"role": "assistant", "content": agent_reply})
 
     key = next_key
+
     next_key += 1  # This is done instead of len(agents) to make keys unique even if agents are deleted
+
 
     agents[key] = (task, messages, model)
 

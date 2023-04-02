@@ -27,6 +27,12 @@ def create_chat_message(role, content):
 def chat_with_ai(
     prompt, user_input, full_message_history, permanent_memory, token_limit, debug=False
 ):
+        prompt,
+        user_input,
+        full_message_history,
+        permanent_memory,
+        token_limit,
+        debug=False):
     while True:
         try:
             """
@@ -51,6 +57,7 @@ def chat_with_ai(
                     -(token_limit - len(prompt) - len(permanent_memory) - 10) :
                 ]
             )
+
             current_context.extend([create_chat_message("user", user_input)])
 
             # Debug print the current context
@@ -60,7 +67,8 @@ def chat_with_ai(
                     # Skip printing the prompt
                     if message["role"] == "system" and message["content"] == prompt:
                         continue
-                    print(f"{message['role'].capitalize()}: {message['content']}")
+                    print(
+                        f"{message['role'].capitalize()}: {message['content']}")
                 print("----------- END OF CONTEXT ----------------")
 
             response = openai.ChatCompletion.create(
@@ -78,7 +86,8 @@ def chat_with_ai(
 
             return assistant_reply
         except openai.error.RateLimitError:
-            print("Error: ", "API Rate Limit Reached. Waiting 60 seconds...")
-            time.sleep(60)
+            print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
+            time.sleep(10)
         except Exception as e:
             print(e, "An Exception occured.")
+

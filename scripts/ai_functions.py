@@ -2,12 +2,16 @@ from typing import List, Optional
 import json
 import openai
 
+
 from config import Config
 
 cfg = Config()
 
 
+# This is a magic function that can do anything with no-code. See
+# https://github.com/Torantulino/AI-Functions for more info.
 def call_ai_function(function, args, description, model=cfg.openai_model):
+
     # parse args to comma seperated string
     args = ", ".join(args)
     messages = [
@@ -28,6 +32,7 @@ def call_ai_function(function, args, description, model=cfg.openai_model):
 ### Evaluating code
 
 
+
 def evaluate_code(code: str) -> List[str]:
     function_string = "def analyze_code(code: str) -> List[str]:"
     args = [code]
@@ -37,7 +42,8 @@ def evaluate_code(code: str) -> List[str]:
     return json.loads(result_string)
 
 
-### Improving code
+# Improving code
+
 
 
 def improve_code(suggestions: List[str], code: str) -> str:
@@ -51,7 +57,8 @@ def improve_code(suggestions: List[str], code: str) -> str:
     return result_string
 
 
-### Writing tests
+# Writing tests
+
 
 
 def write_tests(code: str, focus: List[str]) -> str:
