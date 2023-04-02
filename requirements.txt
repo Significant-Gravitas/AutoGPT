@@ -48,6 +48,8 @@ multidict==6.0.4
     #   yarl
 openai==0.27.2
     # via -r requirements.in
+playsound==1.3.0
+    # via -r requirements.in
 python-dotenv==1.0.0
     # via -r requirements.in
 readability-lxml==0.8.1

@@ -1,6 +1,7 @@
 python-dotenv
 
 colorama
+playsound
 
 requests
 beautifulsoup4
