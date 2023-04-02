@@ -4,16 +4,17 @@ jobs:
   format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Checkout PR branch
+        run: |
+          git fetch origin pull/${{ github.event.pull_request.number }}/head:${{ github.event.pull_request.head.ref }}
+          git checkout ${{ github.event.pull_request.head.ref }}
       - name: autopep8
         uses: peter-evans/autopep8@v1
         with:
           args: --exit-code --recursive --in-place --aggressive --aggressive .
       - name: Check for modified files
         id: git-check
-        run: echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_OUTPUT
+        run: echo "modified=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)" >> $GITHUB_ENV
       - name: Push changes
         if: steps.git-check.outputs.modified == 'true'
         run: |
