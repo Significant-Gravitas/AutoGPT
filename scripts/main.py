@@ -11,11 +11,9 @@ import speak
 from enum import Enum, auto
 import sys
 from config import Config
+import argparse
 
 
-class Argument(Enum):
-    CONTINUOUS_MODE = "continuous-mode"
-    SPEAK_MODE = "speak-mode"
 
 
 def print_to_console(
@@ -156,22 +154,35 @@ def construct_prompt():
 
 
 # Check if the python script was executed with arguments, get those arguments
+
+
 def parse_arguments():
-    global cfg
-    cfg.set_continuous_mode(False)
-    cfg.set_speak_mode(False)
-    for arg in sys.argv[1:]:
-        if arg == Argument.CONTINUOUS_MODE.value:
-            print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
-            print_to_console(
-                "WARNING: ",
-                Fore.RED,
-                "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.",
-            )
-            cfg.set_continuous_mode(True)
-        elif arg == Argument.SPEAK_MODE.value:
-            print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
-            cfg.set_speak_mode(True)
+    parser = argparse.ArgumentParser(description="Configure AI settings.")
+    parser.add_argument(
+        "-c", "--continuous_mode", action="store_true", help="Enable continuous mode."
+    )
+    parser.add_argument(
+        "-s", "--speak_mode", action="store_true", help="Enable speak mode."
+    )
+    parser.add_argument(
+        "-m", "--openai_model", type=str, help="The OpenAI model to use."
+    )
+    args = parser.parse_args()
+
+    if args.continuous_mode:
+        print("Continuous Mode: ENABLED")
+        print(
+            "WARNING: Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk."
+        )
+        cfg.set_continuous_mode(True)
+
+    if args.speak_mode:
+        print("Speak Mode: ENABLED")
+        cfg.set_speak_mode(True)
+
+    if args.openai_model:
+        print("OpenAI Model:", args.openai_model)
+        cfg.set_openai_model(args.openai_model)
 
 
 cfg = Config()

@@ -166,7 +166,7 @@ def shutdown():
     quit()
 
 
-def start_agent(name, task, prompt, model="gpt-3.5-turbo"):
+def start_agent(name, task, prompt, model=cfg.openai_model):
     global cfg
 
     # Remove underscores from name

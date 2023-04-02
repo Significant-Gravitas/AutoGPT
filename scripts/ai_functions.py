@@ -2,8 +2,12 @@ from typing import List, Optional
 import json
 import openai
 
+from config import Config
 
-def call_ai_function(function, args, description, model="gpt-4"):
+cfg = Config()
+
+
+def call_ai_function(function, args, description, model=cfg.openai_model):
     # parse args to comma seperated string
     args = ", ".join(args)
     messages = [

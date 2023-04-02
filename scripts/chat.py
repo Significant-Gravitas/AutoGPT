@@ -2,6 +2,10 @@ import time
 import openai
 import keys
 
+from config import Config
+
+cfg = Config()
+
 # Initialize the OpenAI API client
 openai.api_key = keys.OPENAI_API_KEY
 
@@ -60,7 +64,7 @@ def chat_with_ai(
                 print("----------- END OF CONTEXT ----------------")
 
             response = openai.ChatCompletion.create(
-                model="gpt-4",
+                model=cfg.openai_model,
                 messages=current_context,
             )
 

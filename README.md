@@ -1,13 +1,16 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
+
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
 ### Demo (30/03/2023):
+
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
 ## 💖 Help Fund Auto-GPT's Development
+
 If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 A full day of development can cost as much as $10 in API costs, which for a free project is quite limiting.
 Your support is greatly appreciated:
@@ -15,14 +18,20 @@ https://github.com/sponsors/Torantulino
 
 ## Table of Contents
 
-- [Features](#-Features)
-- [Requirements](#-Requirements)
-- [Installation](#-Installation)
-- [Usage](#-Usage)
-- [Limitations](#-Limitations)
-- [Disclaimer](#-Disclaimer)
-- [Connect with Us on Twitter ](#-connect-with-us-on-twitter)
-
+- [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
+  - [Demo (30/03/2023):](#demo-30032023)
+  - [💖 Help Fund Auto-GPT's Development](#-help-fund-auto-gpts-development)
+  - [Table of Contents](#table-of-contents)
+  - [🚀 Features](#-features)
+  - [📋 Requirements](#-requirements)
+  - [💾 Installation](#-installation)
+  - [🔧 Usage](#-usage)
+  - [🤖 OpenAI Model](#-openai-model)
+  - [🗣️ Speech Mode](#️-speech-mode)
+  - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
+  - [⚠️ Limitations](#️-limitations)
+  - [🛡 Disclaimer](#-disclaimer)
+  - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
 
 ## 🚀 Features
 
@@ -33,10 +42,12 @@ https://github.com/sponsors/Torantulino
 - 🗃️ File storage and summarization with GPT-3.5
 
 ## 📋 Requirements
+
 - [Python 3.7 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - OpenAI API key
 
 Optional:
+
 - ElevenLabs Key (If you want the AI to speak)
 
 ## 💾 Installation
@@ -45,57 +56,75 @@ To install Auto-GPT, follow these steps:
 
 0. Make sure you have all the **requirements** above, if not, install/get them.
 
-*The following commands should be executed in a CMD, Bash or Powershell window. To do this, go to a folder on your computer, click in the folder path at the top and type CMD, then press enter.*
+_The following commands should be executed in a CMD, Bash or Powershell window. To do this, go to a folder on your computer, click in the folder path at the top and type CMD, then press enter._
 
 1. Clone the repository:
-For this step you need Git installed, but you can just download the zip file instead by clicking the button at the top of this page ☝️
+   For this step you need Git installed, but you can just download the zip file instead by clicking the button at the top of this page ☝️
+
 ```
 git clone https://github.com/Torantulino/Auto-GPT.git
 ```
 
 2. Navigate to the project directory:
-*(Type this into your CMD window, you're aiming to navigate the CMD window to the "scripts" folder you just downloaded)*
+   _(Type this into your CMD window, you're aiming to navigate the CMD window to the "scripts" folder you just downloaded)_
+
 ```
 $ cd 'Auto-GPT/scripts'
 ```
 
 3. Install the required dependencies:
-*(Again, type this into your CMD window)*
+   _(Again, type this into your CMD window)_
+
 ```
 pip install -r requirements.txt
 ```
 
 4. Edit the file named "keys.py" in the "scripts" directory to add your OpenAI API key (and eleven labs key if you want speech):
-*(Open the keys.py file in a text editor and follow the instructions inside, save it after)*
+   _(Open the keys.py file in a text editor and follow the instructions inside, save it after)_
 
 ## 🔧 Usage
 
 1. Run the Python script in your terminal:
-*(Type this into your CMD window)*
+   _(Type this into your CMD window)_
+
 ```
 python main.py
 ```
+
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
-## 🗣️ Speech Mode 
+## 🤖 OpenAI Model
+
+Specify the OpenAI model to use:
+
 ```
-python main.py speach-mode
+python main.py --openai_model MODEL_NAME
+```
+
+## 🗣️ Speech Mode
+
+```
+python main.py speech-mode
 ```
 
 ## 💀 Continuous Mode ⚠️
+
 Run the AI **without** user authorisation, 100% automated.
-Continuous mode is not recommended. 
-It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
+Continuous mode is not recommended.
+It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
 
 1. Run the Python script in your terminal:
+
 ```
 python main.py continuous-mode
 ```
+
 2. To exit the program, press Ctrl + C
 
 ## ⚠️ Limitations
+
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
 
 1. Not a polished application or product, just an experiment
@@ -115,7 +144,7 @@ As an autonomous experiment, Auto-GPT may generate content or take actions that 
 
 By using Auto-GPT, you agree to indemnify, defend, and hold harmless the developers, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software or your violation of these terms.
 
-## 🐦 Connect with Us on Twitter 
+## 🐦 Connect with Us on Twitter
 
 Stay up-to-date with the latest news, updates, and insights about Auto-GPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
 
@@ -123,4 +152,3 @@ Stay up-to-date with the latest news, updates, and insights about Auto-GPT by fo
 - **Entrepreneur-GPT**: Join the conversation with the AI itself by following [@En_GPT](https://twitter.com/En_GPT). Share your experiences, discuss the AI's outputs, and engage with the growing community of users.
 
 We look forward to connecting with you and hearing your thoughts, ideas, and experiences with Auto-GPT. Join us on Twitter and let's explore the future of AI together!
-
