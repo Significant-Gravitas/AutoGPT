@@ -9,7 +9,7 @@ from ai_function_lib import call_ai_function
 
 
 
-# Hell, I didn't need any of that. -Data
+# The magic function was moved to ai_function_lib.py. It is the call_ai_function library that is now loaded in import.
 
 # Evaluating code
 
