@@ -8,7 +8,7 @@ from ai_function_lib import call_ai_function
 # https://github.com/Torantulino/AI-Functions for more info.
 
 
-# Define the function, arguments, and description
+# Define the function, arguments, and description --  these values are arbitrary because they should be replaced by later functions. Not sure if they even need to be defined here.
 function = "def add(a, b):\n    return a + b"
 args = ["3", "5"]
 description = "Adds two numbers together"
