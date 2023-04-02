@@ -9,12 +9,7 @@ from ai_function_lib import call_ai_function
 
 
 
-
-# Call the AI function with the parameters
-result = call_ai_function(function, args, description)
-
-print("AI's function output:", result)
-
+# Hell, I didn't need any of that. -Data
 
 # Evaluating code
 
