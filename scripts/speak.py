@@ -11,8 +11,9 @@ tts_headers = {
 }
 
 
-def say_text(text, voice_index = 0):
-    tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(voice_id=voices[voice_index])
+def say_text(text, voice_index=0):
+    tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(
+        voice_id=voices[voice_index])
 
     formatted_message = {"text": text}
     response = requests.post(
@@ -27,4 +28,3 @@ def say_text(text, voice_index = 0):
     else:
         print("Request failed with status code:", response.status_code)
         print("Response content:", response.content)
-

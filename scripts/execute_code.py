@@ -1,6 +1,7 @@
 import docker
 import os
 
+
 def execute_python_file(file):
     workspace_folder = "auto_gpt_workspace"
 
@@ -16,11 +17,15 @@ def execute_python_file(file):
         client = docker.from_env()
 
         # You can replace 'python:3.8' with the desired Python image/version
-        # You can find available Python images on Docker Hub: https://hub.docker.com/_/python
+        # You can find available Python images on Docker Hub:
+        # https://hub.docker.com/_/python
         container = client.containers.run(
             'python:3.8',
             f'python {file}',
-            volumes={os.path.abspath(workspace_folder): {'bind': '/workspace', 'mode': 'ro'}},
+            volumes={
+                os.path.abspath(workspace_folder): {
+                    'bind': '/workspace',
+                    'mode': 'ro'}},
             working_dir='/workspace',
             stderr=True,
             stdout=True,

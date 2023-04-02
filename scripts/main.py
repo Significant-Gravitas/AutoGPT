@@ -12,11 +12,19 @@ from enum import Enum, auto
 import sys
 from config import Config
 
+
 class Argument(Enum):
     CONTINUOUS_MODE = "continuous-mode"
     SPEAK_MODE = "speak-mode"
 
-def print_to_console(title, title_color, content, speak_text = False, min_typing_speed=0.05, max_typing_speed=0.01):
+
+def print_to_console(
+        title,
+        title_color,
+        content,
+        speak_text=False,
+        min_typing_speed=0.05,
+        max_typing_speed=0.01):
     global cfg
     if speak_text and cfg.speak_mode:
         speak.say_text(f"{title}. {content}")
@@ -33,6 +41,7 @@ def print_to_console(title, title_color, content, speak_text = False, min_typing
             min_typing_speed = min_typing_speed * 0.95
             max_typing_speed = max_typing_speed * 0.95
     print()
+
 
 def print_assistant_thoughts(assistant_reply):
     global ai_name
@@ -54,9 +63,15 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_plan = None
             assistant_thoughts_criticism = None
             assistant_thoughts_speak = None
-        
-        print_to_console(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
-        print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
+
+        print_to_console(
+            f"{ai_name.upper()} THOUGHTS:",
+            Fore.YELLOW,
+            assistant_thoughts_text)
+        print_to_console(
+            "REASONING:",
+            Fore.YELLOW,
+            assistant_thoughts_reasoning)
         if assistant_thoughts_plan:
             print_to_console("PLAN:", Fore.YELLOW, "")
             if assistant_thoughts_plan:
@@ -64,12 +79,16 @@ def print_assistant_thoughts(assistant_reply):
                 # Split the input_string using the newline character and dash
                 lines = assistant_thoughts_plan.split('\n')
 
-                # Iterate through the lines and print each one with a bullet point
+                # Iterate through the lines and print each one with a bullet
+                # point
                 for line in lines:
                     # Remove any "-" characters from the start of the line
                     line = line.lstrip("- ")
                     print_to_console("- ", Fore.GREEN, line.strip())
-        print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
+        print_to_console(
+            "CRITICISM:",
+            Fore.YELLOW,
+            assistant_thoughts_criticism)
 
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
@@ -81,27 +100,45 @@ def print_assistant_thoughts(assistant_reply):
     except Exception as e:
         print_to_console("Error: \n", Fore.RED, str(e))
 
+
 def construct_prompt():
     global ai_name
     # Construct the prompt
-    print_to_console("Welcome to Auto-GPT! ", Fore.GREEN, "Enter the name of your AI and its role below. Entering nothing will load defaults.", speak_text=True)
+    print_to_console(
+        "Welcome to Auto-GPT! ",
+        Fore.GREEN,
+        "Enter the name of your AI and its role below. Entering nothing will load defaults.",
+        speak_text=True)
 
     # Get AI Name from User
-    print_to_console("Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'")
+    print_to_console(
+        "Name your AI: ",
+        Fore.GREEN,
+        "For example, 'Entrepreneur-GPT'")
     ai_name = input("AI Name: ")
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
-    print_to_console(f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True)
+    print_to_console(
+        f"{ai_name} here!",
+        Fore.LIGHTBLUE_EX,
+        "I am at your service.",
+        speak_text=True)
 
     # Get AI Role from User
-    print_to_console("Describe your AI's role: ", Fore.GREEN, "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'")
+    print_to_console(
+        "Describe your AI's role: ",
+        Fore.GREEN,
+        "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'")
     ai_role = input(f"{ai_name} is: ")
     if ai_role == "":
         ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
     # Enter up to 5 goals for the AI
-    print_to_console("Enter up to 5 goals for your AI: ", Fore.GREEN, "For example: \nIncrease net worth \nGrow Twitter Account \nDevelop and manage multiple businesses autonomously'")
+    print_to_console(
+        "Enter up to 5 goals for your AI: ",
+        Fore.GREEN,
+        "For example: \nIncrease net worth \nGrow Twitter Account \nDevelop and manage multiple businesses autonomously'")
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
@@ -110,7 +147,8 @@ def construct_prompt():
             break
         ai_goals.append(ai_goal)
     if len(ai_goals) == 0:
-        ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
+        ai_goals = ["Increase net worth", "Grow Twitter Account",
+                    "Develop and manage multiple businesses autonomously"]
 
     prompt = data.load_prompt()
     prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
@@ -124,6 +162,8 @@ def construct_prompt():
     return full_prompt
 
 # Check if the python script was executed with arguments, get those arguments
+
+
 def parse_arguments():
     global cfg
     cfg.set_continuous_mode(False)
@@ -131,11 +171,15 @@ def parse_arguments():
     for arg in sys.argv[1:]:
         if arg == Argument.CONTINUOUS_MODE.value:
             print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
-            print_to_console("WARNING: ", Fore.RED, "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
+            print_to_console(
+                "WARNING: ",
+                Fore.RED,
+                "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
             cfg.set_continuous_mode(True)
         elif arg == Argument.SPEAK_MODE.value:
             print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
             cfg.set_speak_mode(True)
+
 
 cfg = Config()
 
@@ -152,7 +196,12 @@ user_input = "NEXT COMMAND"
 while True:
     # Send message to AI, get response
     with Spinner("Thinking... "):
-        assistant_reply = chat.chat_with_ai(prompt, user_input, full_message_history, mem.permanent_memory, token_limit)
+        assistant_reply = chat.chat_with_ai(
+            prompt,
+            user_input,
+            full_message_history,
+            mem.permanent_memory,
+            token_limit)
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
@@ -162,14 +211,19 @@ while True:
         command_name, arguments = cmd.get_command(assistant_reply)
     except Exception as e:
         print_to_console("Error: \n", Fore.RED, str(e))
-        
 
     if not cfg.continuous_mode:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
-        # Get key press: Prompt the user to press enter to continue or escape to exit
+        # Get key press: Prompt the user to press enter to continue or escape
+        # to exit
         user_input = ""
-        print_to_console("NEXT ACTION: ", Fore.CYAN, f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
-        print("Enter 'y' to authorise command or 'n' to exit program...", flush=True)
+        print_to_console(
+            "NEXT ACTION: ",
+            Fore.CYAN,
+            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
+        print(
+            "Enter 'y' to authorise command or 'n' to exit program...",
+            flush=True)
         while True:
             console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
             if console_input.lower() == "y":
@@ -184,22 +238,31 @@ while True:
         if user_input != "NEXT COMMAND":
             print("Exiting...", flush=True)
             break
-    
-        print_to_console("-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=", Fore.MAGENTA, "")
+
+        print_to_console(
+            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+            Fore.MAGENTA,
+            "")
     else:
         # Print command
-        print_to_console("NEXT ACTION: ", Fore.CYAN, f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
+        print_to_console(
+            "NEXT ACTION: ",
+            Fore.CYAN,
+            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
     # Exectute command
     if command_name.lower() != "error":
         result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
     else:
-        result =f"Command {command_name} threw the following error: " + arguments
+        result = f"Command {command_name} threw the following error: " + arguments
 
-    # Check if there's a result from the command append it to the message history
-    if result != None:
+    # Check if there's a result from the command append it to the message
+    # history
+    if result is not None:
         full_message_history.append(chat.create_chat_message("system", result))
         print_to_console("SYSTEM: ", Fore.YELLOW, result)
     else:
-        full_message_history.append(chat.create_chat_message("system", "Unable to execute command"))
+        full_message_history.append(
+            chat.create_chat_message(
+                "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
