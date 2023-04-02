@@ -49,10 +49,17 @@ def call_ai_function(function, args, description):
                 model=model, messages=messages, temperature=0
             )
             response = response.choices[0].message["content"]
+            
+            
+    #If the chosen model is gpt4all, call the GPT4all Python Client
+    
+    elif model == "gpt4all":
+        response = call_gpt4all(parameters)
 
+    
     # If the chosen model is some other API, call that API with the appropriate parameters
     elif model == "some_other_api":
-        response = some_other_api_call(parameters)
+        response = some_other_api_call(description=messages)
 
     # If the chosen model is unsupported, raise an error
     else:
@@ -62,7 +69,9 @@ def call_ai_function(function, args, description):
 
 
 # Call the GPT4All model to process the function, arguments, and description
-def call_gpt4all(function, args, description):
-    prompt = f"{description}. The function should have the following signature:\n{function}\n\nExample input: {', '.join(args)}"
+def call_gpt4all(description):
+    #def call_gpt4all(function, args, description):
+    #prompt = f"{description}. The function should have the following signature:\n{function}\n\nExample input: {', '.join(args)}"
+    prompt = description
     result = gpt4all_model.prompt(prompt)
     return result.strip()
