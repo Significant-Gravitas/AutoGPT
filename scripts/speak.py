@@ -1,13 +1,17 @@
 import os
 from playsound import playsound
 import requests
-import keys
+from dotenv import load_dotenv
+
+
+# Load environment variables from .env file
+load_dotenv()
 
 voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
 
 tts_headers = {
     "Content-Type": "application/json",
-    "xi-api-key": keys.ELEVENLABS_API_KEY
+    "xi-api-key": os.getenv("ELEVENLABS_API_KEY")
 }
 
 

@@ -11,10 +11,16 @@ import speak
 from enum import Enum, auto
 import sys
 from config import Config
+from dotenv import load_dotenv
 from json_parser import fix_and_parse_json
 from ai_config import AIConfig
 import traceback
 import yaml
+
+
+# Load environment variables from .env file
+load_dotenv()
+
 
 class Argument(Enum):
     CONTINUOUS_MODE = "continuous-mode"
