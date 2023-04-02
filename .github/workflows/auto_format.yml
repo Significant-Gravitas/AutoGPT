@@ -5,9 +5,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
-        run: |
-          git fetch origin pull/${{ github.event.pull_request.number }}/head:${{ github.event.pull_request.head.ref }}
-          git checkout ${{ github.event.pull_request.head.ref }}
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - name: autopep8
         uses: peter-evans/autopep8@v1
         with:
@@ -20,6 +20,4 @@ jobs:
         run: |
           git config --global user.name 'Torantulino'
           git config --global user.email 'toran.richards@gmail.com'
-          git remote set-url origin https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}
-          git commit -am "Automated changes"
-          git push
+          git remote set
