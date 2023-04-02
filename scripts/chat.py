@@ -1,9 +1,9 @@
+import os
 import time
 import openai
-import keys
 
 # Initialize the OpenAI API client
-openai.api_key = keys.OPENAI_API_KEY
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 def create_chat_message(role, content):

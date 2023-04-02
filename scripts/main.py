@@ -11,6 +11,11 @@ import speak
 from enum import Enum, auto
 import sys
 from config import Config
+from dotenv import load_dotenv
+
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Argument(Enum):

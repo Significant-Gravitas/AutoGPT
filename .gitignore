@@ -6,3 +6,4 @@ package-lock.json
 *.pyc
 scripts/auto_gpt_workspace/*
 *.mpeg
+.env
