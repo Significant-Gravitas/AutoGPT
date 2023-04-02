@@ -1,8 +1,9 @@
 beautifulsoup4==4.9.3
 colorama==0.4.6
+dirtyjson==1.0.8
+docker==6.0.1
 googlesearch_python==1.1.0
 openai==0.27.0
 playsound==1.2.2
 readability_lxml==0.8.1
 requests==2.25.1
-docker==6.0.1
