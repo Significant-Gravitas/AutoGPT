@@ -77,6 +77,6 @@ def chat_with_ai(
                     "assistant", assistant_reply))
 
             return assistant_reply
-        except openai.RateLimitError:
-            print("Error: ", "API Rate Limit Reached. Waiting 60 seconds...")
-            time.sleep(60)
+        except openai.error.RateLimitError:
+            print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
+            time.sleep(10)
