@@ -2,8 +2,6 @@ name: auto-format
 on: pull_request
 jobs:
   format:
-    # Check if the PR is not from a fork
-    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
@@ -21,6 +19,6 @@ jobs:
         run: |
           git config --global user.name 'Torantulino'
           git config --global user.email 'toran.richards@gmail.com'
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git remote set-url origin https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}
           git commit -am "Automated changes"
           git push
