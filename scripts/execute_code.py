@@ -20,7 +20,7 @@ def execute_python_file(file):
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
         container = client.containers.run(
-            'python:3.8',
+            'python:3.11',
             f'python {file}',
             volumes={
                 os.path.abspath(workspace_folder): {
