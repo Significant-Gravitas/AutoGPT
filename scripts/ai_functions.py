@@ -1,11 +1,16 @@
 from typing import List, Optional
 import json
 import openai
+import dirtyjson
+from config import Config
 
+cfg = Config()
 
 # This is a magic function that can do anything with no-code. See
 # https://github.com/Torantulino/AI-Functions for more info.
-def call_ai_function(function, args, description, model="gpt-4"):
+def call_ai_function(function, args, description, model=cfg.smart_llm_model):
+    # For each arg, if any are None, convert to "None":
+    args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma seperated string
     args = ", ".join(args)
     messages = [
@@ -61,3 +66,30 @@ def write_tests(code: str, focus: List[str]) -> str:
 
     result_string = call_ai_function(function_string, args, description_string)
     return result_string
+
+
+# TODO: Make debug a global config var
+def fix_json(json_str: str, schema:str = None, debug=True) -> str:
+    # Try to fix the JSON using gpt:
+    function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
+    args = [json_str, schema]
+    description_string = """Fixes the provided JSON string to make it parseable. If the schema is provided, the JSON will be made to look like the schema, otherwise it will be made to look like a valid JSON object."""
+
+    result_string = call_ai_function(
+        function_string, args, description_string, model=cfg.fast_llm_model
+    )
+    if debug:
+        print("------------ JSON FIX ATTEMPT ---------------")
+        print(f"Original JSON: {json_str}")
+        print(f"Fixed JSON: {result_string}")
+        print("----------- END OF FIX ATTEMPT ----------------")
+    try:
+        return dirtyjson.loads(result_string)
+    except:
+        # Log the exception:
+        print("Failed to fix JSON")
+        # Get the call stack:
+        import traceback
+        call_stack = traceback.format_exc()
+        print(call_stack)
+        return {}
