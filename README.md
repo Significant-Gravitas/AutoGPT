@@ -21,6 +21,8 @@ Your support is greatly appreciated
 <p align="center">
 <a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="tjarmain" /></a>&nbsp;&nbsp;<a href="https://github.com/tekelsey"><img src="https://github.com/tekelsey.png" width="50px" alt="tekelsey" /></a>&nbsp;&nbsp;<a href="https://github.com/robinicus"><img src="https://github.com/robinicus.png" width="50px" alt="robinicus" /></a>&nbsp;&nbsp;<a href="https://github.com/digisomni"><img src="https://github.com/digisomni.png" width="50px" alt="digisomni" /></a>&nbsp;&nbsp;
 </p>
+<p align="center">
+<a href="https://github.com/alexisneuhaus"><img src="https://github.com/alexisneuhaus.png" width="30px" alt="alexisneuhaus" /></a>&nbsp;&nbsp;<a href="https://github.com/iokode"><img src="https://github.com/iokode.png" width="30px" alt="iokode" /></a>&nbsp;&nbsp;<a href="https://github.com/jaumebalust"><img src="https://github.com/jaumebalust.png" width="30px" alt="jaumebalust" /></a>&nbsp;&nbsp;
 </p>
 
 
