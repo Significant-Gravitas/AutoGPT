@@ -16,11 +16,11 @@ def execute_python_file(file):
     try:
         client = docker.from_env()
 
-        # You can replace 'python:3.8' with the desired Python image/version
+        # You can replace 'python:3.11' with the desired Python image/version
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
         container = client.containers.run(
-            'python:3.11',
+            'python:3.10',
             f'python {file}',
             volumes={
                 os.path.abspath(workspace_folder): {
