@@ -1,8 +1,8 @@
 import os
-from playsound import playsound
+
 import requests
 from dotenv import load_dotenv
-
+from playsound import playsound
 
 # Load environment variables from .env file
 load_dotenv()

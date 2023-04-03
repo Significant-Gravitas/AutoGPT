@@ -1,14 +1,17 @@
-import browse
-import googlesearch
-import json
-import memory as mem
 import datetime
+import json
+
+import googlesearch
+
 import agent_manager as agents
+import ai_functions as ai
+import browse
+import memory as mem
 import speak
 from config import Config
-import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file
 from execute_code import execute_python_file
+from file_operations import read_file, write_to_file, append_to_file, delete_file
+
 cfg = Config()
 
 

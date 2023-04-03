@@ -1,5 +1,6 @@
-from typing import List, Optional
 import json
+from typing import List
+
 import openai
 
 

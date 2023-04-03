@@ -1,6 +1,6 @@
+import openai
 import requests
 from bs4 import BeautifulSoup
-import openai
 
 
 def scrape_text(url):

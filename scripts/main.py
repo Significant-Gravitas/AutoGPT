@@ -1,18 +1,19 @@
 import json
 import random
-import commands as cmd
-import memory as mem
-import data
-import chat
-from colorama import Fore, Style
-from spinner import Spinner
-import time
-import speak
-from enum import Enum, auto
 import sys
-from config import Config
+import time
+from enum import Enum
+
+from colorama import Fore, Style
 from dotenv import load_dotenv
 
+import chat
+import commands as cmd
+import data
+import memory as mem
+import speak
+from config import Config
+from spinner import Spinner
 
 # Load environment variables from .env file
 load_dotenv()

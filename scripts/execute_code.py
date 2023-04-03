@@ -1,5 +1,6 @@
-import docker
 import os
+
+import docker
 
 
 def execute_python_file(file):
