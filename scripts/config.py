@@ -51,21 +51,27 @@ class Config(metaclass=Singleton):
         self.speak_mode = value
 
     def set_fast_llm_model(self, value: str):
+        """Set the fast LLM model value."""
         self.fast_llm_model = value
 
     def set_smart_llm_model(self, value: str):
+        """Set the smart LLM model value."""
         self.smart_llm_model = value
 
     def set_fast_token_limit(self, value: int):
+        """Set the fast token limit value."""
         self.fast_token_limit = value
 
     def set_smart_token_limit(self, value: int):
+        """Set the smart token limit value."""
         self.smart_token_limit = value
 
     def set_openai_api_key(self, value: str):
+        """Set the OpenAI API key value."""
         self.apiopenai_api_key_key = value
     
     def set_elevenlabs_api_key(self, value: str):
+        """Set the ElevenLabs API key value."""
         self.elevenlabs_api_key = value
 
 
