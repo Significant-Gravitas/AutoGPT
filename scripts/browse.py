@@ -1,9 +1,9 @@
-from googlesearch import search
 import requests
 from bs4 import BeautifulSoup
-from readability import Document
-import openai
+from config import Config
+from llm_utils import create_chat_completion
 
+cfg = Config()
 
 def scrape_text(url):
     response = requests.get(url)
@@ -99,13 +99,11 @@ def summarize_text(text, is_website=True):
                     chunk},
             ]
 
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+        summary = create_chat_completion(
+            model=cfg.fast_llm_model,
             messages=messages,
             max_tokens=300,
         )
-
-        summary = response.choices[0].message.content
         summaries.append(summary)
     print("Summarized " + str(len(chunks)) + " chunks.")
 
@@ -127,11 +125,10 @@ def summarize_text(text, is_website=True):
                 combined_summary},
         ]
 
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
+    final_summary = create_chat_completion(
+        model=cfg.fast_llm_model,
         messages=messages,
         max_tokens=300,
     )
 
-    final_summary = response.choices[0].message.content
     return final_summary
