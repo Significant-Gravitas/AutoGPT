@@ -105,13 +105,18 @@ Run the AI **without** user authorisation, 100% automated.
 Continuous mode is not recommended. 
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
 Use at your own risk.
-
 1. Run the `main.py` Python script in your terminal:
 ```
 python scripts/main.py --continuous
 
 ```
 2. To exit the program, press Ctrl + C
+
+## GPT3.5 ONLY Mode
+If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
+```
+python scripts/main.py --gpt3only
+```
 
 ## ⚠️ Limitations
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
