@@ -1,11 +1,13 @@
-beautifulsoup4==4.9.3
+beautifulsoup4
 colorama==0.4.6
-dirtyjson==1.0.8
-docker==5.0.3
-googlesearch-python==1.1.0
+dirtyjson==1.0.
 openai==0.27.2
 playsound==1.3.0
 python-dotenv==1.0.0
 pyyaml==6.0
 readability-lxml==0.8.1
-requests==2.25.1
+requests
+tiktoken==0.3.3
+docker
+# googlesearch-python
+# Googlesearch python seems to be a bit cursed, anyone good at fixing thigns like this?
