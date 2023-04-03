@@ -18,20 +18,12 @@ def get_openai_deployment_id(model: str):
 
 # Overly simple abstraction until we create something better
 def create_chat_completion(messages, model=None, temperature=None, max_tokens=None)->str:
-    if cfg.use_azure:
-        response = openai.ChatCompletion.create(
-            deployment_id=get_openai_deployment_id(model),
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-    else:
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
+    """Create a chat completion using the OpenAI API."""
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens
+    )
 
     return response.choices[0].message["content"]

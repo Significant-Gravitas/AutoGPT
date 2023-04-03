@@ -108,7 +108,7 @@ def print_assistant_thoughts(assistant_reply):
 
 
 def load_variables(config_file="config.yaml"):
-    # Load variables from yaml file if it exists
+    """Load variables from yaml file if it exists, otherwise prompt the user for input"""
     try:
         with open(config_file) as file:
             config = yaml.load(file, Loader=yaml.FullLoader)
@@ -171,6 +171,7 @@ def construct_prompt():
 
 
 def prompt_user():
+    """Prompt the user for input"""
     ai_name = ""
     # Construct the prompt
     print_to_console(

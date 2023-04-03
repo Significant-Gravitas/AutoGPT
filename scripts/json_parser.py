@@ -6,8 +6,10 @@ from json_utils import correct_json
 
 cfg = Config()
 
-JSON_SCHEMA = """
-{
+def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
+    """Fix and parse the given JSON string."""
+    json_schema = """
+    {
     "command": {
         "name": "command name",
         "args":{
@@ -72,6 +74,7 @@ def fix_and_parse_json(
 
 
 def fix_json(json_str: str, schema: str, debug=False) -> str:
+    """Fix the given JSON string to make it parseable and fully complient with the provided schema."""
     # Try to fix the JSON using gpt:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
