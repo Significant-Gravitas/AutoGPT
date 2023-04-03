@@ -4,6 +4,7 @@ from config import Config
 cfg = Config()
 
 def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
+    """Fix and parse the given JSON string."""
     json_schema = """
     {
     "command": {
@@ -50,6 +51,7 @@ def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
         
 # TODO: Make debug a global config var
 def fix_json(json_str: str, schema: str, debug=False) -> str:
+    """Fix the given JSON string to make it parseable and fully complient with the provided schema."""
     # Try to fix the JSON using gpt:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [json_str, schema]
