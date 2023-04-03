@@ -24,7 +24,7 @@ def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
             raise e
         
 # TODO: Make debug a global config var
-def fix_json(json_str: str, schema:str = None, debug=True) -> str:
+def fix_json(json_str: str, schema:str = None, debug=False) -> str:
     # Try to fix the JSON using gpt:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [json_str, schema]
@@ -44,10 +44,9 @@ def fix_json(json_str: str, schema:str = None, debug=True) -> str:
     try:
         return dirtyjson.loads(result_string)
     except:
-        # Log the exception:
-        print("Failed to fix JSON")
         # Get the call stack:
         import traceback
         call_stack = traceback.format_exc()
-        print(call_stack)
+        # TODO: Handle this sort of thing better
+        print(f"Failed to fix JSON: '{json_str}' "+call_stack)
         return {}
