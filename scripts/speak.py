@@ -1,15 +1,16 @@
 import os
 from playsound import playsound
 import requests
-import keys
+from config import Config
+cfg = Config()
 
+# TODO: Nicer names for these ids
 voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
 
 tts_headers = {
     "Content-Type": "application/json",
-    "xi-api-key": keys.ELEVENLABS_API_KEY
+    "xi-api-key": cfg.elevenlabs_api_key
 }
-
 
 def say_text(text, voice_index=0):
     """Say text using ElevenLabs API"""

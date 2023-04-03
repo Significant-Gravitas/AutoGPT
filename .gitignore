@@ -6,4 +6,5 @@ package-lock.json
 *.pyc
 scripts/auto_gpt_workspace/*
 *.mpeg
-venv/*
+.env
+last_run_ai_settings.yaml
