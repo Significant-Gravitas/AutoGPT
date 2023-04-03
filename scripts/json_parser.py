@@ -52,7 +52,7 @@ def fix_json(json_str: str, schema: str, debug=False) -> str:
     # Try to fix the JSON using gpt:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [json_str, schema]
-    description_string = """This function takes a JSON string and ensures that it is parseable and fully compliant with the provided schema. If an object or field specified in the schema isn't contained within the correct JSON, it is omitted. The function also escapes any double quotes in the JSON string to ensure that it is valid."""
+    description_string = """This function takes a JSON string and ensures that it is parseable and fully compliant with the provided schema. If an object or field specified in the schema isn't contained within the correct JSON, it is omitted. The function also escapes any double quotes in the JSON string to ensure that it is valid. If the JSON string contains any None or NaN values, they are replaced with null before being parsed."""
 
     # If it doesn't already start with a "`", add one:
     if not json_str.startswith("`"):
