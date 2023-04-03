@@ -44,8 +44,6 @@ def execute_command(command_name, arguments):
     try:
         if command_name == "google":
             return google_search(arguments["input"])
-        elif command_name == "check_notifications":
-            return check_notifications(arguments["website"])
         elif command_name == "memory_add":
             return commit_memory(arguments["string"])
         elif command_name == "memory_del":
@@ -63,12 +61,6 @@ def execute_command(command_name, arguments):
             return list_agents()
         elif command_name == "delete_agent":
             return delete_agent(arguments["key"])
-        elif command_name == "navigate_website":
-            return navigate_website(arguments["action"], arguments["username"])
-        elif command_name == "register_account":
-            return register_account(
-                arguments["username"],
-                arguments["website"])
         elif command_name == "get_text_summary":
             return get_text_summary(arguments["url"])
         elif command_name == "get_hyperlinks":
@@ -217,22 +209,3 @@ def delete_agent(key):
     if not result:
         return f"Agent {key} does not exist."
     return f"Agent {key} deleted."
-
-
-def navigate_website(action, username):
-    _text = "Navigating website with action " + action + " and username " + username
-    print(_text)
-    return "Command not implemented yet."
-
-
-def register_account(username, website):
-    _text = "Registering account with username " + \
-        username + " and website " + website
-    print(_text)
-    return "Command not implemented yet."
-
-
-def check_notifications(website):
-    _text = "Checking notifications from " + website
-    print(_text)
-    return "Command not implemented yet."
