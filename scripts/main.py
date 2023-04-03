@@ -15,10 +15,8 @@ from json_parser import fix_and_parse_json
 from ai_config import AIConfig
 import traceback
 import yaml
+import argparse
 
-class Argument(Enum):
-    CONTINUOUS_MODE = "continuous-mode"
-    SPEAK_MODE = "speak-mode"
 
 def print_to_console(
         title,
@@ -251,21 +249,27 @@ def parse_arguments():
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
-    for arg in sys.argv[1:]:
-        if arg == Argument.CONTINUOUS_MODE.value:
-            print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
-            print_to_console(
-                "WARNING: ",
-                Fore.RED,
-                "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
-            cfg.set_continuous_mode(True)
-        elif arg == Argument.SPEAK_MODE.value:
-            print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
-            cfg.set_speak_mode(True)
+    
+    parser = argparse.ArgumentParser(description='Process arguments.')
+    parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
+    parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
+    args = parser.parse_args()
+
+    if args.continuous:
+        print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
+        print_to_console(
+            "WARNING: ",
+            Fore.RED,
+            "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
+        cfg.set_continuous_mode(True)
+
+    if args.speak:
+        print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_speak_mode(True)
 
 
 
-# TODO: Better argument parsing:
+
 # TODO: fill in llm values here
 
 cfg = Config()
