@@ -17,6 +17,10 @@ import traceback
 import yaml
 import argparse
 
+def get_user_instruction():
+    print("Enter an advice for the agent (or leave empty for no new instructions): ", flush=True)
+    new_instruction = input(Fore.MAGENTA + "Advice:" + Style.RESET_ALL)
+    return new_instruction
 
 def print_to_console(
         title,
@@ -354,11 +358,21 @@ while True:
 
     # Check if there's a result from the command append it to the message
     # history
+
+    # Get user instruction and update memory, if provided
+    new_instruction = get_user_instruction()
+        
     if result is not None:
-        full_message_history.append(chat.create_chat_message("system", result))
-        print_to_console("SYSTEM: ", Fore.YELLOW, result)
+        if new_instruction:
+            newResult = result + ' New User Advice: ' + new_instruction
+            full_message_history.append(chat.create_chat_message("system", newResult))
+            print_to_console("SYSTEM: ", Fore.YELLOW, newResult)
+        else:
+            full_message_history.append(chat.create_chat_message("system", result))
+            print_to_console("SYSTEM: ", Fore.YELLOW, result)
     else:
         full_message_history.append(
             chat.create_chat_message(
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+    
