@@ -1,6 +1,5 @@
 beautifulsoup4
 colorama==0.4.6
-dirtyjson==1.0.
 openai==0.27.2
 playsound==1.3.0
 python-dotenv==1.0.0
