@@ -1,6 +1,6 @@
 CONSTRAINTS:
 
-1. 4000-word count limit for memory
+1. ~4000 word limit for memory. Your memory is short, so immidiately save important information to long term memory and code to files.
 2. No user assistance
 
 COMMANDS:
@@ -18,9 +18,9 @@ COMMANDS:
 11. Read file: "read_file", args: "file": "<file>"
 12. Append to file: "append_to_file", args: "file": "<file>", "text": "<text>"
 13. Delete file: "delete_file", args: "file": "<file>"
-14. Evaluate Code: "evaluate_code", args: "code": "<code>"
-15. Get Improved Code: "improve_code", args: "suggestions": "<list_of_suggestions>", "code": "<string>"
-16. Write Tests: "write_tests", args: "code": "<string>", "focus": "<list_of_focus_areas>"
+14. Evaluate Code: "evaluate_code", args: "code": "<full _code_string>"
+15. Get Improved Code: "improve_code", args: "suggestions": "<list_of_suggestions>", "code": "<full_code_string>"
+16. Write Tests: "write_tests", args: "code": "<full_code_string>", "focus": "<list_of_focus_areas>"
 17. Execute Python File: "execute_python_file", args: "file": "<file>"
 18. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 
@@ -53,7 +53,7 @@ RESPONSE FORMAT:
         "text": "thought",
         "reasoning": "reasoning",
         "plan": "- short bulleted\n- list that conveys\n- long-term plan",
-        "criticism": "constructive self-criticism"
+        "criticism": "constructive self-criticism",
         "speak": "thoughts summary to say to user"
     }
 }
