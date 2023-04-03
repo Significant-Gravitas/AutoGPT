@@ -8,15 +8,27 @@ from config import Config
 import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file
 from execute_code import execute_python_file
+from json_parser import fix_and_parse_json
+from googlesearch import search
 cfg = Config()
 
 
 def get_command(response):
     try:
-        response_json = json.loads(response)
+        response_json = fix_and_parse_json(response)
+        
+        if "command" not in response_json:
+            return "Error:" , "Missing 'command' object in JSON"
+        
         command = response_json["command"]
+
+        if "name" not in command:
+            return "Error:", "Missing 'name' field in 'command' object"
+        
         command_name = command["name"]
-        arguments = command["args"]
+
+        # Use an empty dictionary if 'args' field is not present in 'command' object
+        arguments = command.get("args", {})
 
         if not arguments:
             arguments = {}
@@ -33,8 +45,6 @@ def execute_command(command_name, arguments):
     try:
         if command_name == "google":
             return google_search(arguments["input"])
-        elif command_name == "check_notifications":
-            return check_notifications(arguments["website"])
         elif command_name == "memory_add":
             return commit_memory(arguments["string"])
         elif command_name == "memory_del":
@@ -52,12 +62,6 @@ def execute_command(command_name, arguments):
             return list_agents()
         elif command_name == "delete_agent":
             return delete_agent(arguments["key"])
-        elif command_name == "navigate_website":
-            return navigate_website(arguments["action"], arguments["username"])
-        elif command_name == "register_account":
-            return register_account(
-                arguments["username"],
-                arguments["website"])
         elif command_name == "get_text_summary":
             return get_text_summary(arguments["url"])
         elif command_name == "get_hyperlinks":
@@ -99,7 +103,7 @@ def get_datetime():
 
 def google_search(query, num_results=8):
     search_results = []
-    for j in browse.search(query, num_results=num_results):
+    for j in search(query, num_results=num_results):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
@@ -147,7 +151,7 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
-    if key >= 0 and key < len(mem.permanent_memory):
+    if int(key) >= 0 and key < len(mem.permanent_memory):
         _text = "Overwriting memory with key " + \
             str(key) + " and string " + string
         mem.permanent_memory[key] = string
@@ -163,7 +167,7 @@ def shutdown():
     quit()
 
 
-def start_agent(name, task, prompt, model="gpt-3.5-turbo"):
+def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     global cfg
 
     # Remove underscores from name
@@ -206,22 +210,3 @@ def delete_agent(key):
     if not result:
         return f"Agent {key} does not exist."
     return f"Agent {key} deleted."
-
-
-def navigate_website(action, username):
-    _text = "Navigating website with action " + action + " and username " + username
-    print(_text)
-    return "Command not implemented yet."
-
-
-def register_account(username, website):
-    _text = "Registering account with username " + \
-        username + " and website " + website
-    print(_text)
-    return "Command not implemented yet."
-
-
-def check_notifications(website):
-    _text = "Checking notifications from " + website
-    print(_text)
-    return "Command not implemented yet."
