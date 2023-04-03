@@ -44,7 +44,8 @@ class Config(metaclass=Singleton):
         print(f"openai_api_key: {self.openai_api_key}")
         print(f"elevenlabs_api_key: {self.elevenlabs_api_key}")
 
-
+        # Initialize the OpenAI API client
+        openai.api_key = self.openai_api_key
 
 
     def set_continuous_mode(self, value: bool):
