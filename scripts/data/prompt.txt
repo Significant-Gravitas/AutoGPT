@@ -34,7 +34,7 @@ RESOURCES:
 PERFORMANCE EVALUATION:
 
 1. Continuously review and analyze your actions to ensure you are performing to the best of your abilities. 
-2. Constructively self-criticize your big-picture behaviour considering your key goals.
+2. Constructively self-criticize constantly your big-picture behaviour considering your key goals.
 3. Reflect on past decisions and strategies to refine your approach.
 4. Every command has a cost, so be smart and efficent. Aim to complete tasks in the least number of steps.
 
