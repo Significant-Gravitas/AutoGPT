@@ -1,6 +1,8 @@
 import os
 import os.path
 
+from pathlib import Path
+
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
 
@@ -31,6 +33,7 @@ def read_file(filename):
 def write_to_file(filename, text):
     try:
         filepath = safe_join(working_directory, filename)
+        Path(working_directory).mkdir(parents=True, exist_ok=True)
         with open(filepath, "w") as f:
             f.write(text)
         return "File written to successfully."
