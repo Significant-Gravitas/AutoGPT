@@ -272,10 +272,9 @@ cfg = Config()
 parse_arguments()
 ai_name = ""
 prompt = construct_prompt()
-print(prompt)
+# print(prompt)
 # Initialize variables
 full_message_history = []
-token_limit = cfg.thinking_token_limit  # The maximum number of tokens allowed in the API call
 result = None
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
@@ -289,9 +288,9 @@ while True:
             user_input,
             full_message_history,
             mem.permanent_memory,
-            token_limit)
+            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
-    print("assistant reply: "+assistant_reply)
+    # print("assistant reply: "+assistant_reply)
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
 
