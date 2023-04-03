@@ -4,6 +4,25 @@ from config import Config
 cfg = Config()
 
 def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
+    json_schema = """
+    {
+    "command": {
+        "name": "command name",
+        "args":{
+            "arg name": "value"
+        }
+    },
+    "thoughts":
+    {
+        "text": "thought",
+        "reasoning": "reasoning",
+        "plan": "- short bulleted\n- list that conveys\n- long-term plan",
+        "criticism": "constructive self-criticism",
+        "speak": "thoughts summary to say to user"
+    }
+    }
+    """
+
     try:
         return dirtyjson.loads(json_str)
     except Exception as e:
@@ -18,17 +37,23 @@ def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
           return dirtyjson.loads(json_str)
         except Exception as e:
           if try_to_fix_with_gpt:
+            print(f"Warning: Failed to parse AI output, attempting to fix.\n If you see this warning frequently, it's likely that your prompt is confusing the AI. Try changing it up slightly.")
             # Now try to fix this up using the ai_functions
-            return fix_json(json_str, None, True)
+            ai_fixed_json = fix_json(json_str, json_schema, False)
+            if ai_fixed_json != "failed":
+              return dirtyjson.loads(ai_fixed_json)
+            else:
+              print(f"Failed to fix ai output, telling the AI.") # This allows the AI to react to the error message, which usually results in it correcting its ways.
+              return json_str
           else:
             raise e
         
 # TODO: Make debug a global config var
-def fix_json(json_str: str, schema:str = None, debug=False) -> str:
+def fix_json(json_str: str, schema: str, debug=False) -> str:
     # Try to fix the JSON using gpt:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [json_str, schema]
-    description_string = """Fixes the provided JSON string to make it parseable. If the schema is provided, the JSON will be made to look like the schema, otherwise it will be made to look like a valid JSON object."""
+    description_string = """Fixes the provided JSON string to make it parseable and fully complient with the provided schema.\n If an object or field specifed in the schema isn't contained within the correct JSON, it is ommited.\n This function is brilliant at guessing when the format is incorrect."""
 
     # If it doesn't already start with a "`", add one:
     if not json_str.startswith("`"):
@@ -39,14 +64,14 @@ def fix_json(json_str: str, schema:str = None, debug=False) -> str:
     if debug:
         print("------------ JSON FIX ATTEMPT ---------------")
         print(f"Original JSON: {json_str}")
+        print("-----------")
         print(f"Fixed JSON: {result_string}")
         print("----------- END OF FIX ATTEMPT ----------------")
     try:
         return dirtyjson.loads(result_string)
     except:
         # Get the call stack:
-        import traceback
-        call_stack = traceback.format_exc()
-        # TODO: Handle this sort of thing better
-        print(f"Failed to fix JSON: '{json_str}' "+call_stack)
-        return {}
+        # import traceback
+        # call_stack = traceback.format_exc()
+        # print(f"Failed to fix JSON: '{json_str}' "+call_stack)
+        return "failed"
