@@ -11,16 +11,11 @@ import speak
 from enum import Enum, auto
 import sys
 from config import Config
-from dotenv import load_dotenv
-
-
-# Load environment variables from .env file
-load_dotenv()
-
-
-class Argument(Enum):
-    CONTINUOUS_MODE = "continuous-mode"
-    SPEAK_MODE = "speak-mode"
+from json_parser import fix_and_parse_json
+from ai_config import AIConfig
+import traceback
+import yaml
+import argparse
 
 
 def print_to_console(
@@ -35,6 +30,8 @@ def print_to_console(
         speak.say_text(f"{title}. {content}")
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
+        if isinstance(content, list):
+            content = " ".join(content)
         words = content.split()
         for i, word in enumerate(words):
             print(word, end="", flush=True)
@@ -53,21 +50,24 @@ def print_assistant_thoughts(assistant_reply):
     global cfg
     try:
         # Parse and print Assistant response
-        assistant_reply_json = json.loads(assistant_reply)
+        assistant_reply_json = fix_and_parse_json(assistant_reply)
 
-        assistant_thoughts = assistant_reply_json.get("thoughts")
-        if assistant_thoughts:
-            assistant_thoughts_text = assistant_thoughts.get("text")
-            assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
-            assistant_thoughts_plan = assistant_thoughts.get("plan")
-            assistant_thoughts_criticism = assistant_thoughts.get("criticism")
-            assistant_thoughts_speak = assistant_thoughts.get("speak")
-        else:
-            assistant_thoughts_text = None
-            assistant_thoughts_reasoning = None
-            assistant_thoughts_plan = None
-            assistant_thoughts_criticism = None
-            assistant_thoughts_speak = None
+        try:
+            assistant_thoughts = assistant_reply_json.get("thoughts")
+            if assistant_thoughts:
+                assistant_thoughts_text = assistant_thoughts.get("text")
+                assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
+                assistant_thoughts_plan = assistant_thoughts.get("plan")
+                assistant_thoughts_criticism = assistant_thoughts.get("criticism")
+                assistant_thoughts_speak = assistant_thoughts.get("speak")
+            else:
+                assistant_thoughts_text = None
+                assistant_thoughts_reasoning = None
+                assistant_thoughts_plan = None
+                assistant_thoughts_criticism = None
+                assistant_thoughts_speak = None
+        except Exception as e:
+            assistant_thoughts_text = "The AI's response was unreadable."
 
         print_to_console(
             f"{ai_name.upper()} THOUGHTS:",
@@ -80,8 +80,13 @@ def print_assistant_thoughts(assistant_reply):
         if assistant_thoughts_plan:
             print_to_console("PLAN:", Fore.YELLOW, "")
             if assistant_thoughts_plan:
-
-                # Split the input_string using the newline character and dash
+                # If it's a list, join it into a string
+                if isinstance(assistant_thoughts_plan, list):
+                    assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
+                elif isinstance(assistant_thoughts_plan, dict):
+                    assistant_thoughts_plan = str(assistant_thoughts_plan)
+                    # Split the input_string using the newline character and dash
+                
                 lines = assistant_thoughts_plan.split('\n')
 
                 # Iterate through the lines and print each one with a bullet
@@ -103,11 +108,93 @@ def print_assistant_thoughts(assistant_reply):
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
     # All other errors, return "Error: + error message"
     except Exception as e:
-        print_to_console("Error: \n", Fore.RED, str(e))
+        call_stack = traceback.format_exc()
+        print_to_console("Error: \n", Fore.RED, call_stack)
+
+def load_variables(config_file="config.yaml"):
+    # Load variables from yaml file if it exists
+    try:
+        with open(config_file) as file:
+            config = yaml.load(file, Loader=yaml.FullLoader)
+        ai_name = config.get("ai_name")
+        ai_role = config.get("ai_role")
+        ai_goals = config.get("ai_goals")
+    except FileNotFoundError:
+        ai_name = ""
+        ai_role = ""
+        ai_goals = []
+
+    # Prompt the user for input if config file is missing or empty values
+    if not ai_name:
+        ai_name = input("Name your AI: ")
+        if ai_name == "":
+            ai_name = "Entrepreneur-GPT"
+
+    if not ai_role:        
+        ai_role = input(f"{ai_name} is: ")
+        if ai_role == "":
+            ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
+
+    if not ai_goals:
+        print("Enter up to 5 goals for your AI: ")
+        print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+        print("Enter nothing to load defaults, enter nothing when finished.")
+        ai_goals = []
+        for i in range(5):
+            ai_goal = input(f"Goal {i+1}: ")
+            if ai_goal == "":
+                break
+            ai_goals.append(ai_goal)
+        if len(ai_goals) == 0:
+            ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
+         
+    # Save variables to yaml file
+    config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
+    with open(config_file, "w") as file:
+        documents = yaml.dump(config, file)
+
+    prompt = data.load_prompt()
+    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+
+    # Construct full prompt
+    full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+    for i, goal in enumerate(ai_goals):
+        full_prompt += f"{i+1}. {goal}\n"
+
+    full_prompt += f"\n\n{prompt}"
+    return full_prompt
 
 
 def construct_prompt():
+    config = AIConfig.load()
+    if config.ai_name:
+        print_to_console(
+            f"Welcome back! ",
+            Fore.GREEN,
+            f"Would you like me to return to being {config.ai_name}?",
+            speak_text=True)
+        should_continue = input(f"""Continue with the last settings? 
+Name:  {config.ai_name}
+Role:  {config.ai_role}
+Goals: {config.ai_goals}  
+Continue (y/n): """)
+        if should_continue.lower() == "n":
+            config = AIConfig()
+
+    if not config.ai_name:         
+        config = prompt_user()
+        config.save()
+
+    # Get rid of this global:
     global ai_name
+    ai_name = config.ai_name
+    
+    full_prompt = config.construct_full_prompt()
+    return full_prompt
+
+
+def prompt_user():
+    ai_name = ""
     # Construct the prompt
     print_to_console(
         "Welcome to Auto-GPT! ",
@@ -143,7 +230,7 @@ def construct_prompt():
     print_to_console(
         "Enter up to 5 goals for your AI: ",
         Fore.GREEN,
-        "For example: \nIncrease net worth \nGrow Twitter Account \nDevelop and manage multiple businesses autonomously'")
+        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
@@ -155,47 +242,50 @@ def construct_prompt():
         ai_goals = ["Increase net worth", "Grow Twitter Account",
                     "Develop and manage multiple businesses autonomously"]
 
-    prompt = data.load_prompt()
-    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
-
-    # Construct full prompt
-    full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
-    for i, goal in enumerate(ai_goals):
-        full_prompt += f"{i+1}. {goal}\n"
-
-    full_prompt += f"\n\n{prompt}"
-    return full_prompt
-
-# Check if the python script was executed with arguments, get those arguments
-
+    config = AIConfig(ai_name, ai_role, ai_goals)
+    return config
 
 def parse_arguments():
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
-    for arg in sys.argv[1:]:
-        if arg == Argument.CONTINUOUS_MODE.value:
-            print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
-            print_to_console(
-                "WARNING: ",
-                Fore.RED,
-                "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
-            cfg.set_continuous_mode(True)
-        elif arg == Argument.SPEAK_MODE.value:
-            print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
-            cfg.set_speak_mode(True)
+    
+    parser = argparse.ArgumentParser(description='Process arguments.')
+    parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
+    parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
+    parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
+    parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    args = parser.parse_args()
 
+    if args.continuous:
+        print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
+        print_to_console(
+            "WARNING: ",
+            Fore.RED,
+            "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
+        cfg.set_continuous_mode(True)
+
+    if args.speak:
+        print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_speak_mode(True)
+
+    if args.gpt3only:
+        print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_smart_llm_model(cfg.fast_llm_model)
+
+
+# TODO: fill in llm values here
 
 cfg = Config()
-
 parse_arguments()
 ai_name = ""
 prompt = construct_prompt()
+# print(prompt)
 # Initialize variables
 full_message_history = []
-token_limit = 6000  # The maximum number of tokens allowed in the API call
 result = None
-user_input = "NEXT COMMAND"
+# Make a constant:
+user_input = "Determine which next command to use, and respond using the format specified above:"
 
 # Interaction Loop
 while True:
@@ -206,8 +296,9 @@ while True:
             user_input,
             full_message_history,
             mem.permanent_memory,
-            token_limit)
+            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
+    # print("assistant reply: "+assistant_reply)
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
 
@@ -232,7 +323,7 @@ while True:
         while True:
             console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
             if console_input.lower() == "y":
-                user_input = "NEXT COMMAND"
+                user_input = "GENERATE NEXT COMMAND JSON"
                 break
             elif console_input.lower() == "n":
                 user_input = "EXIT"
@@ -240,7 +331,7 @@ while True:
             else:
                 continue
 
-        if user_input != "NEXT COMMAND":
+        if user_input != "GENERATE NEXT COMMAND JSON":
             print("Exiting...", flush=True)
             break
 
@@ -255,7 +346,7 @@ while True:
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
-    # Exectute command
+    # Execute command
     if command_name.lower() != "error":
         result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
     else:

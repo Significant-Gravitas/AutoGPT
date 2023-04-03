@@ -1,9 +1,6 @@
 # Created by https://www.toptal.com/developers/gitignore/api/windows,python,venv,dotenv,virtualenv,macos,visualstudiocode,intellij,pycharm+all
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,python,venv,dotenv,virtualenv,macos,visualstudiocode,intellij,pycharm+all
 
-### dotenv ###
-.env
-
 ### Intellij ###
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio, WebStorm and Rider
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
@@ -441,3 +438,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,python,venv,dotenv,virtualenv,macos,visualstudiocode,intellij,pycharm+all
+=======
+last_run_ai_settings.yaml
+outputs/*

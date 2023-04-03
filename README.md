@@ -1,6 +1,7 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
+[![](https://dcbadge.vercel.app/api/server/PQ7VX6TY4t?style=flat)](https://discord.gg/PQ7VX6TY4t)
 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
@@ -17,10 +18,12 @@ Your support is greatly appreciated
 
 <p align="center">
  Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>. 💖
+<p align="center">
+<p align="center">
+<a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="tjarmain" /></a>&nbsp;&nbsp;<a href="https://github.com/tekelsey"><img src="https://github.com/tekelsey.png" width="50px" alt="tekelsey" /></a>&nbsp;&nbsp;<a href="https://github.com/robinicus"><img src="https://github.com/robinicus.png" width="50px" alt="robinicus" /></a>&nbsp;&nbsp;<a href="https://github.com/digisomni"><img src="https://github.com/digisomni.png" width="50px" alt="digisomni" /></a>&nbsp;&nbsp;
 </p>
 <p align="center">
-<a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="robjtede" /></a>&nbsp;&nbsp;
-</p>
+<a href="https://github.com/alexisneuhaus"><img src="https://github.com/alexisneuhaus.png" width="30px" alt="alexisneuhaus" /></a>&nbsp;&nbsp;<a href="https://github.com/iokode"><img src="https://github.com/iokode.png" width="30px" alt="iokode" /></a>&nbsp;&nbsp;<a href="https://github.com/jaumebalust"><img src="https://github.com/jaumebalust.png" width="30px" alt="jaumebalust" /></a>&nbsp;&nbsp;
 </p>
 
 
@@ -93,7 +96,8 @@ python scripts/main.py
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
-python scripts/main.py speak-mode
+python scripts/main.py --speak
+
 ```
 
 ## 💀 Continuous Mode ⚠️
@@ -101,12 +105,18 @@ Run the AI **without** user authorisation, 100% automated.
 Continuous mode is not recommended. 
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
 Use at your own risk.
-
 1. Run the `main.py` Python script in your terminal:
 ```
-python scripts/main.py continuous-mode
+python scripts/main.py --continuous
+
 ```
 2. To exit the program, press Ctrl + C
+
+## GPT3.5 ONLY Mode
+If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
+```
+python scripts/main.py --gpt3only
+```
 
 ## ⚠️ Limitations
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
