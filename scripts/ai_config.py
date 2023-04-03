@@ -7,23 +7,6 @@ class AIConfig:
         self.ai_role = ai_role
         self.ai_goals = ai_goals
 
-    # @classmethod
-    # def create_from_user_prompts(cls):
-    #     ai_name = input("Name your AI: ") or "Entrepreneur-GPT"
-    #     ai_role = input(f"{ai_name} is: ") or "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
-    #     print("Enter up to 5 goals for your AI: ")
-    #     print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
-    #     print("Enter nothing to load defaults, enter nothing when finished.")
-    #     ai_goals = []
-    #     for i in range(5):
-    #         ai_goal = input(f"Goal {i+1}: ")
-    #         if ai_goal == "":
-    #             break
-    #         ai_goals.append(ai_goal)
-    #     if len(ai_goals) == 0:
-    #         ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
-    #     return cls(ai_name, ai_role, ai_goals)
-
     @classmethod
     def load(cls, config_file="config.yaml"):
         # Load variables from yaml file if it exists
