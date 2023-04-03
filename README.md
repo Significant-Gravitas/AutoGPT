@@ -96,7 +96,8 @@ python scripts/main.py
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
-python scripts/main.py speak-mode
+python scripts/main.py --speak
+
 ```
 
 ## 💀 Continuous Mode ⚠️
@@ -107,7 +108,8 @@ Use at your own risk.
 
 1. Run the `main.py` Python script in your terminal:
 ```
-python scripts/main.py continuous-mode
+python scripts/main.py --continuous
+
 ```
 2. To exit the program, press Ctrl + C
 
