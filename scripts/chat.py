@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from config import Config
 cfg = Config()
 
+from llm_utils import create_chat_completion
 
 def create_chat_message(role, content):
     """
@@ -62,12 +63,10 @@ def chat_with_ai(
                 print("----------- END OF CONTEXT ----------------")
 
             # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
-            response = openai.ChatCompletion.create(
+            assistant_reply = create_chat_completion(
                 model=cfg.smart_llm_model,
                 messages=current_context,
             )
-
-            assistant_reply = response.choices[0].message["content"]
 
             # Update full message history
             full_message_history.append(
@@ -79,5 +78,6 @@ def chat_with_ai(
 
             return assistant_reply
         except openai.error.RateLimitError:
+            # TODO: WHen we switch to langchain, this is built in
             print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)
