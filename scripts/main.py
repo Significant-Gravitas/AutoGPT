@@ -316,6 +316,18 @@ def parse_arguments():
             cfg.memory_backend = chosen
 
 
+    # Print Assistant thoughts
+    print_assistant_thoughts(assistant_reply)
+
+    # Get command name and arguments
+    try:
+        command_name, arguments = cmd.get_command(assistant_reply)
+    except Exception as e:
+        print_to_console("Error: \n", Fore.RED, str(e))
+
+    return command_name, arguments
+
+# TODO: Better argument parsing:
 # TODO: fill in llm values here
 check_openai_api_key()
 cfg = Config()
@@ -405,7 +417,8 @@ while True:
             "NEXT ACTION: ",
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
-
+    if user_input == "RETRY":
+            continue
     # Execute command
     if command_name is not None and command_name.lower().startswith( "error" ):
         result = f"Command {command_name} threw the following error: " + arguments
