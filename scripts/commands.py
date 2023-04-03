@@ -1,4 +1,4 @@
-import browse
+import browse_playwright as browse
 import json
 import memory as mem
 import datetime
