@@ -11,16 +11,10 @@ import speak
 from enum import Enum, auto
 import sys
 from config import Config
-from dotenv import load_dotenv
 from json_parser import fix_and_parse_json
 from ai_config import AIConfig
 import traceback
 import yaml
-
-
-# Load environment variables from .env file
-load_dotenv()
-
 
 class Argument(Enum):
     CONTINUOUS_MODE = "continuous-mode"
@@ -262,11 +256,12 @@ def parse_arguments():
             print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
             cfg.set_speak_mode(True)
 
-    # TODO: Better argument parsing:
-    # TODO: fill in llm values here
+
+
+# TODO: Better argument parsing:
+# TODO: fill in llm values here
 
 cfg = Config()
-
 parse_arguments()
 ai_name = ""
 prompt = construct_prompt()

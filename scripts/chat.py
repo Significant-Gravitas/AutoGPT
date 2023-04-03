@@ -2,12 +2,8 @@ import os
 import time
 import openai
 from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Initialize the OpenAI API client
-openai.api_key = os.getenv("OPENAI_API_KEY")
+from config import Config
+cfg = Config()
 
 
 def create_chat_message(role, content):
@@ -65,8 +61,9 @@ def chat_with_ai(
                         f"{message['role'].capitalize()}: {message['content']}")
                 print("----------- END OF CONTEXT ----------------")
 
+            # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
             response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",#model="gpt-4",
+                model=cfg.smart_llm_model,
                 messages=current_context,
             )
 
