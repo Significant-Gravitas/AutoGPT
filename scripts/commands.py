@@ -9,6 +9,7 @@ import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
+from googlesearch import search
 cfg = Config()
 
 
