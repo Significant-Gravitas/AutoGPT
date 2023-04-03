@@ -9,5 +9,5 @@ requests
 tiktoken==0.3.3
 docker
 googlesearch-python
-google-api-python-client # If using Google's Custom Search JSON API (https://developers.google.com/custom-search/v1/overview) Won't result in a 403 error
+google-api-python-client #(https://developers.google.com/custom-search/v1/overview) 
 # Googlesearch python seems to be a bit cursed, anyone good at fixing thigns like this?
