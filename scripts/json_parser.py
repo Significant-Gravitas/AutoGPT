@@ -1,4 +1,4 @@
-import dirtyjson
+import custom_dirtyjson
 from call_ai_function import call_ai_function
 from config import Config
 cfg = Config()
