@@ -3,7 +3,9 @@ import requests
 from bs4 import BeautifulSoup
 from readability import Document
 import openai
+from config import Config
 
+cfg = Config()
 
 def scrape_text(url):
     response = requests.get(url)
@@ -100,7 +102,7 @@ def summarize_text(text, is_website=True):
             ]
 
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model=cfg.fast_llm_model,
             messages=messages,
             max_tokens=300,
         )
@@ -128,7 +130,7 @@ def summarize_text(text, is_website=True):
         ]
 
     response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
+        model=cfg.fast_llm_model,
         messages=messages,
         max_tokens=300,
     )
