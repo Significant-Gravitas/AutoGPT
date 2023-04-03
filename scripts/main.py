@@ -253,6 +253,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
+    parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
+    parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
     args = parser.parse_args()
 
     if args.continuous:
@@ -267,7 +269,9 @@ def parse_arguments():
         print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_speak_mode(True)
 
-
+    if args.gpt3only:
+        print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_smart_llm_model(cfg.fast_llm_model)
 
 
 # TODO: fill in llm values here
