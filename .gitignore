@@ -8,3 +8,4 @@ scripts/auto_gpt_workspace/*
 *.mpeg
 .env
 last_run_ai_settings.yaml
+outputs/*
