@@ -59,7 +59,7 @@ class Config(metaclass=Singleton):
         self.smart_token_limit = value
 
     def set_openai_api_key(self, value: str):
-        self.apiopenai_api_key_key = value
+        self.openai_api_key = value
     
     def set_elevenlabs_api_key(self, value: str):
         self.elevenlabs_api_key = value
