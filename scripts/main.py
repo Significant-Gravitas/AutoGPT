@@ -54,19 +54,22 @@ def print_assistant_thoughts(assistant_reply):
         # Parse and print Assistant response
         assistant_reply_json = fix_and_parse_json(assistant_reply)
 
-        assistant_thoughts = assistant_reply_json.get("thoughts")
-        if assistant_thoughts:
-            assistant_thoughts_text = assistant_thoughts.get("text")
-            assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
-            assistant_thoughts_plan = assistant_thoughts.get("plan")
-            assistant_thoughts_criticism = assistant_thoughts.get("criticism")
-            assistant_thoughts_speak = assistant_thoughts.get("speak")
-        else:
-            assistant_thoughts_text = None
-            assistant_thoughts_reasoning = None
-            assistant_thoughts_plan = None
-            assistant_thoughts_criticism = None
-            assistant_thoughts_speak = None
+        try:
+            assistant_thoughts = assistant_reply_json.get("thoughts")
+            if assistant_thoughts:
+                assistant_thoughts_text = assistant_thoughts.get("text")
+                assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
+                assistant_thoughts_plan = assistant_thoughts.get("plan")
+                assistant_thoughts_criticism = assistant_thoughts.get("criticism")
+                assistant_thoughts_speak = assistant_thoughts.get("speak")
+            else:
+                assistant_thoughts_text = None
+                assistant_thoughts_reasoning = None
+                assistant_thoughts_plan = None
+                assistant_thoughts_criticism = None
+                assistant_thoughts_speak = None
+        except Exception as e:
+            assistant_thoughts_text = "The AI's response was unreadable."
 
         print_to_console(
             f"{ai_name.upper()} THOUGHTS:",
