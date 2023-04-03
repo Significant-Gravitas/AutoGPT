@@ -1,6 +1,7 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
+[![](https://dcbadge.vercel.app/api/server/PQ7VX6TY4t?style=flat)](https://discord.gg/PQ7VX6TY4t)
 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
