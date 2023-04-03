@@ -1,4 +1,4 @@
-FROM python:3.10
+FROM python:3.10-slim
 
 WORKDIR /app
 
@@ -9,4 +9,4 @@ RUN pip install --upgrade --no-cache-dir pip \
 
 COPY . /app
 
-CMD ["python", "main.py"]
+CMD ["python", "scripts/main.py"]
