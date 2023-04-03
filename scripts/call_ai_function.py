@@ -1,5 +1,3 @@
-from typing import List, Optional
-import openai
 from config import Config
 cfg = Config()
 

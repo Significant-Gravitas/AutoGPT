@@ -1,8 +1,5 @@
-from googlesearch import search
 import requests
 from bs4 import BeautifulSoup
-from readability import Document
-import openai
 from config import Config
 from llm_utils import create_chat_completion
 

@@ -1,4 +1,3 @@
-import openai
 from llm_utils import create_chat_completion
 
 next_key = 0
