@@ -172,7 +172,11 @@ def construct_prompt():
             Fore.GREEN,
             "Let's continue our journey.",
             speak_text=True)
-        should_continue = input(f"Continue with the last settings? (Settings: {config.ai_name}, {config.ai_role}, {config.ai_goals}) (Y/n): ")
+        should_continue = input(f"""Continue with the last settings? 
+Name:  {config.ai_name}
+Role:  {config.ai_role}
+Goals: {config.ai_goals} 
+Continue (Y/n): """)
         if should_continue.lower() == "n":
             config = AIConfig()
 
