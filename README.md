@@ -33,7 +33,7 @@ Your support is greatly appreciated
 - [Requirements](#-requirements)
 - [Installation](#-installation)
 - [Usage](#-usage)
-- [Limitations](#⚠️-limitations)
+- [Limitations](#%EF%B8%8F-limitations)
 - [Disclaimer](#-disclaimer)
 - [Connect with Us on Twitter ](#-connect-with-us-on-twitter)
 
