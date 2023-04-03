@@ -22,7 +22,8 @@ COMMANDS:
 15. Get Improved Code: "improve_code", args: "suggestions": "<list_of_suggestions>", "code": "<full_code_string>"
 16. Write Tests: "write_tests", args: "code": "<full_code_string>", "focus": "<list_of_focus_areas>"
 17. Execute Python File: "execute_python_file", args: "file": "<file>"
-18. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
+18. Scientific Research: "arxiv_search", args: "input": "<search>"
+19. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 
 RESOURCES:
 

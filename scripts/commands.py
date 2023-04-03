@@ -1,4 +1,5 @@
 import browse
+import arxiv_search as arxiv
 import json
 import memory as mem
 import datetime
@@ -45,6 +46,8 @@ def execute_command(command_name, arguments):
     try:
         if command_name == "google":
             return google_search(arguments["input"])
+        elif command_name == "arxiv_search":
+            return arxiv_search(arguments["input"])
         elif command_name == "memory_add":
             return commit_memory(arguments["string"])
         elif command_name == "memory_del":
@@ -107,6 +110,12 @@ def google_search(query, num_results=8):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
+
+
+def arxiv_search(query):
+    articles = arxiv.fetch_articles_and_generate_response(query, "gpt-3.5-turbo")
+    print(f"Arxiv articles: {articles}")
+    return articles
 
 
 def browse_website(url):
