@@ -15,9 +15,19 @@ cfg = Config()
 def get_command(response):
     try:
         response_json = fix_and_parse_json(response)
+        
+        if "command" not in response_json:
+            return "Error:" , "Missing 'command' object in JSON"
+        
         command = response_json["command"]
+
+        if "name" not in command:
+            return "Error:", "Missing 'name' field in 'command' object"
+        
         command_name = command["name"]
-        arguments = command["args"]
+
+        # Use an empty dictionary if 'args' field is not present in 'command' object
+        arguments = command.get("args", {})
 
         if not arguments:
             arguments = {}
