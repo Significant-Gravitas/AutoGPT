@@ -17,10 +17,12 @@ Your support is greatly appreciated
 
 <p align="center">
  Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>. 💖
+<p align="center">
+<p align="center">
+<a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="tjarmain" /></a>&nbsp;&nbsp;<a href="https://github.com/tekelsey"><img src="https://github.com/tekelsey.png" width="50px" alt="tekelsey" /></a>&nbsp;&nbsp;<a href="https://github.com/robinicus"><img src="https://github.com/robinicus.png" width="50px" alt="robinicus" /></a>&nbsp;&nbsp;<a href="https://github.com/digisomni"><img src="https://github.com/digisomni.png" width="50px" alt="digisomni" /></a>&nbsp;&nbsp;
 </p>
 <p align="center">
-<a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="robjtede" /></a>&nbsp;&nbsp;
-</p>
+<a href="https://github.com/alexisneuhaus"><img src="https://github.com/alexisneuhaus.png" width="30px" alt="alexisneuhaus" /></a>&nbsp;&nbsp;<a href="https://github.com/iokode"><img src="https://github.com/iokode.png" width="30px" alt="iokode" /></a>&nbsp;&nbsp;<a href="https://github.com/jaumebalust"><img src="https://github.com/jaumebalust.png" width="30px" alt="jaumebalust" /></a>&nbsp;&nbsp;
 </p>
 
 
@@ -65,9 +67,9 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 ```
 
 2. Navigate to the project directory:
-*(Type this into your CMD window, you're aiming to navigate the CMD window to the "scripts" folder you just downloaded)*
+*(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)*
 ```
-$ cd 'Auto-GPT/scripts'
+$ cd 'Auto-GPT'
 ```
 
 3. Install the required dependencies:
@@ -76,22 +78,24 @@ $ cd 'Auto-GPT/scripts'
 pip install -r requirements.txt
 ```
 
-4. Edit the file named "keys.py" in the "scripts" directory to add your OpenAI API key (and eleven labs key if you want speech):
-*(Open the keys.py file in a text editor and follow the instructions inside, save it after)*
+4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+  - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
 
 ## 🔧 Usage
 
-1. Run the Python script in your terminal:
+1. Run the `main.py` Python script in your terminal:
 *(Type this into your CMD window)*
 ```
-python main.py
+python scripts/main.py
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
-## 🗣️ Speech Mode 
+## 🗣️ Speech Mode
+Use this to use TTS for Auto-GPT
 ```
-python main.py speach-mode
+python scripts/main.py speak-mode
 ```
 
 ## 💀 Continuous Mode ⚠️
@@ -100,9 +104,9 @@ Continuous mode is not recommended.
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
 Use at your own risk.
 
-1. Run the Python script in your terminal:
+1. Run the `main.py` Python script in your terminal:
 ```
-python main.py continuous-mode
+python scripts/main.py continuous-mode
 ```
 2. To exit the program, press Ctrl + C
 
