@@ -1,6 +1,6 @@
 from decimal import Decimal
 from unittest import TestCase
-from dirtyjson.compat import StringIO
+from dirtyjson_patched.compat import StringIO
 
 import dirtyjson
 

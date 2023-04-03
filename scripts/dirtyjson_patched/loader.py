@@ -5,7 +5,7 @@ import re
 import sys
 import struct
 from .compat import fromhex, u, text_type, binary_type, PY2, unichr
-from dirtyjson.attributed_containers import AttributedDict, AttributedList
+from dirtyjson_patched.attributed_containers import AttributedDict, AttributedList
 from .error import Error
 
 
