@@ -13,7 +13,8 @@ def evaluate_code(code: str) -> List[str]:
     description_string = """Analyzes the given code and returns a list of suggestions for improvements."""
 
     result_string = call_ai_function(function_string, args, description_string)
-    return fix_and_parse_json.loads(result_string)
+    
+    return result_string
 
 
 # Improving code
