@@ -1,8 +1,9 @@
 from pathlib import Path
-
+from constants import WORKSPACE_DIR
 # Set a dedicated folder for file I/O
-working_directory = Path("auto_gpt_workspace")
+working_directory = Path(WORKSPACE_DIR)
 working_directory.mkdir(exist_ok=True)
+
 
 def safe_join(base, *paths):
     new_path = base.joinpath(*paths)
@@ -13,6 +14,7 @@ def safe_join(base, *paths):
 
     return norm_new_path
 
+
 def read_file(filename):
     try:
         filepath = safe_join(working_directory, filename)
@@ -20,6 +22,7 @@ def read_file(filename):
         return content
     except Exception as e:
         return "Error: " + str(e)
+
 
 def write_to_file(filename, text):
     try:
@@ -30,6 +33,7 @@ def write_to_file(filename, text):
     except Exception as e:
         return "Error: " + str(e)
 
+
 def append_to_file(filename, text):
     try:
         filepath = safe_join(working_directory, filename)
@@ -38,6 +42,7 @@ def append_to_file(filename, text):
         return "Text appended successfully."
     except Exception as e:
         return "Error: " + str(e)
+
 
 def delete_file(filename):
     try:
