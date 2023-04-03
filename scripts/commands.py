@@ -140,7 +140,7 @@ def commit_memory(string):
 
 
 def delete_memory(key):
-    if int(key) >= 0 and key < len(mem.permanent_memory):
+    if key in mem.permanent_memory:
         _text = "Deleting memory with key " + str(key)
         del mem.permanent_memory[key]
         print(_text)
@@ -151,7 +151,7 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
-    if int(key) >= 0 and key < len(mem.permanent_memory):
+    if key in mem.permanent_memory:
         _text = "Overwriting memory with key " + \
             str(key) + " and string " + string
         mem.permanent_memory[key] = string
