@@ -1,6 +1,7 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
+[![](https://dcbadge.vercel.app/api/server/PQ7VX6TY4t?style=flat)](https://discord.gg/PQ7VX6TY4t)
 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
@@ -95,7 +96,8 @@ python scripts/main.py
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
-python scripts/main.py speak-mode
+python scripts/main.py --speak
+
 ```
 
 ## 💀 Continuous Mode ⚠️
@@ -103,12 +105,18 @@ Run the AI **without** user authorisation, 100% automated.
 Continuous mode is not recommended. 
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
 Use at your own risk.
-
 1. Run the `main.py` Python script in your terminal:
 ```
-python scripts/main.py continuous-mode
+python scripts/main.py --continuous
+
 ```
 2. To exit the program, press Ctrl + C
+
+## GPT3.5 ONLY Mode
+If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
+```
+python scripts/main.py --gpt3only
+```
 
 ## ⚠️ Limitations
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:

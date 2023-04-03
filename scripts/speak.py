@@ -1,18 +1,17 @@
 import os
+from pathlib import Path
 from playsound import playsound
 import requests
-from dotenv import load_dotenv
-from pathlib import Path
+from config import Config
+cfg = Config()
 
-# Load environment variables from .env file
-load_dotenv()
 
+# TODO: Nicer names for these ids
 voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
 tts_headers = {
     "Content-Type": "application/json",
-    "xi-api-key": os.getenv("ELEVENLABS_API_KEY")
+    "xi-api-key": cfg.elevenlabs_api_key
 }
-
 
 def say_text(text, voice_index=0):
     tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{voices[voice_index]}"
