@@ -49,6 +49,7 @@ def print_assistant_thoughts(assistant_reply):
     global ai_name
     global cfg
     try:
+        # Parse and print Assistant response
         assistant_reply_json = fix_and_parse_json(assistant_reply)
 
         assistant_thoughts_reasoning = None
@@ -69,24 +70,27 @@ def print_assistant_thoughts(assistant_reply):
 
         if assistant_thoughts_plan:
             print_to_console("PLAN:", Fore.YELLOW, "")
+            # If it's a list, join it into a string
             if isinstance(assistant_thoughts_plan, list):
                 assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
             elif isinstance(assistant_thoughts_plan, dict):
                 assistant_thoughts_plan = str(assistant_thoughts_plan)
 
+            # Split the input_string using the newline character and dashes
             lines = assistant_thoughts_plan.split('\n')
             for line in lines:
                 line = line.lstrip("- ")
                 print_to_console("- ", Fore.GREEN, line.strip())
 
         print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
-
+        # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
 
     except json.decoder.JSONDecodeError:
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
 
+    # All other errors, return "Error: + error message"
     except Exception as e:
         call_stack = traceback.format_exc()
         print_to_console("Error: \n", Fore.RED, call_stack)
