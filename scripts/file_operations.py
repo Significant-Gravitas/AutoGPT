@@ -29,14 +29,16 @@ def read_file(filename):
 
 
 def write_to_file(filename, text):
-    filepath = safe_join(working_directory, filename)
-    directory = os.path.dirname(filepath)
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    with open(filepath, "w") as f:
-        f.write(text)
-    return "File written to successfully."
-
+    try:
+        filepath = safe_join(working_directory, filename)
+        directory = os.path.dirname(filepath)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        with open(filepath, "w") as f:
+            f.write(text)
+        return "File written to successfully."
+    except Exception as e:
+        return "Error: " + str(e)
 
 
 def append_to_file(filename, text):
