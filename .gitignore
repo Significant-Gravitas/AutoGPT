@@ -10,5 +10,6 @@ scripts/auto_gpt_workspace/*
 last_run_ai_settings.yaml
 outputs/*
 *.ai.txt
-auto_gpt_workspace
-suggestions
+auto_gpt_workspace/*
+suggestions/*
+autopilot/*
