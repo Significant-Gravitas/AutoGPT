@@ -52,6 +52,10 @@ def print_assistant_thoughts(assistant_reply):
         # Parse and print Assistant response
         assistant_reply_json = fix_and_parse_json(assistant_reply)
 
+        assistant_thoughts_reasoning = None
+        assistant_thoughts_plan = None
+        assistant_thoughts_speak = None
+        assistant_thoughts_criticism = None
         try:
             assistant_thoughts = assistant_reply_json.get("thoughts")
             if assistant_thoughts:
@@ -66,7 +70,7 @@ def print_assistant_thoughts(assistant_reply):
                 assistant_thoughts_plan = None
                 assistant_thoughts_criticism = None
                 assistant_thoughts_speak = None
-        except Exception as e:
+        except Exception:
             assistant_thoughts_text = "The AI's response was unreadable."
 
         print_to_console(
@@ -86,7 +90,7 @@ def print_assistant_thoughts(assistant_reply):
                 elif isinstance(assistant_thoughts_plan, dict):
                     assistant_thoughts_plan = str(assistant_thoughts_plan)
                     # Split the input_string using the newline character and dash
-                
+
                 lines = assistant_thoughts_plan.split('\n')
 
                 # Iterate through the lines and print each one with a bullet
@@ -110,6 +114,7 @@ def print_assistant_thoughts(assistant_reply):
     except Exception as e:
         call_stack = traceback.format_exc()
         print_to_console("Error: \n", Fore.RED, call_stack)
+
 
 def load_variables(config_file="config.yaml"):
     # Load variables from yaml file if it exists
