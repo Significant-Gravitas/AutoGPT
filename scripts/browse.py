@@ -1,134 +1,78 @@
-import requests
-from bs4 import BeautifulSoup
-from config import Config
-from llm_utils import create_chat_completion
 
-cfg = Config()
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webelement import WebElement
+from time import sleep
 
-def scrape_text(url):
-    response = requests.get(url)
+options = Options()
+options.add_argument('--headless')
 
-    # Check if the response contains an HTTP error
-    if response.status_code >= 400:
-        return "Error: HTTP " + str(response.status_code) + " error"
+lastFetched = None
 
-    soup = BeautifulSoup(response.text, "html.parser")
+def fetch_url(url):
+    browser = webdriver.Chrome(options=options)
+    browser.get(url)
 
-    for script in soup(["script", "style"]):
-        script.extract()
+    # Wait for page to load
+    # browser.implicitly_wait(10)
+    sleep(5)
 
-    text = soup.get_text()
-    lines = (line.strip() for line in text.splitlines())
-    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-    text = '\n'.join(chunk for chunk in chunks if chunk)
+    # Use a more targeted XPath expression to select only elements that are likely to have meaningful text content
+    xpath = "//*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6 or self::p or self::a or self::li or self::span or self::a or self::button]"
 
-    return text
+    # Find all elements on the page
+    elements = browser.find_elements(By.XPATH, xpath)
 
-
-def extract_hyperlinks(soup):
-    hyperlinks = []
-    for link in soup.find_all('a', href=True):
-        hyperlinks.append((link.text, link['href']))
-    return hyperlinks
-
-
-def format_hyperlinks(hyperlinks):
-    formatted_links = []
-    for link_text, link_url in hyperlinks:
-        formatted_links.append(f"{link_text} ({link_url})")
-    return formatted_links
-
-
-def scrape_links(url):
-    response = requests.get(url)
-
-    # Check if the response contains an HTTP error
-    if response.status_code >= 400:
-        return "error"
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    for script in soup(["script", "style"]):
-        script.extract()
-
-    hyperlinks = extract_hyperlinks(soup)
-
-    return format_hyperlinks(hyperlinks)
-
-
-def split_text(text, max_length=8192):
-    paragraphs = text.split("\n")
-    current_length = 0
-    current_chunk = []
-
-    for paragraph in paragraphs:
-        if current_length + len(paragraph) + 1 <= max_length:
-            current_chunk.append(paragraph)
-            current_length += len(paragraph) + 1
+    # Extract the text content from the elements
+    text_content = []
+    for element in elements:
+        # if element is button or link, we must include the URL
+        if element.tag_name == "a" or element.tag_name == "button":
+            text = element.text
+            url = element.get_attribute("href")
+            if text and text != "" and url and url.startswith("http"):
+                text_content.append("(" + text + ")[" + url + "]")
         else:
-            yield "\n".join(current_chunk)
-            current_chunk = [paragraph]
-            current_length = len(paragraph) + 1
+          # Otherwise, just include the text
+          text = element.text
+          if text and (len(text_content) == 0 or text_content[len(text_content) - 1] != text):
+              text_content.append(text)
 
-    if current_chunk:
-        yield "\n".join(current_chunk)
+    # Close browser
+    browser.quit()
 
+    # Build content
+    content = ' '.join(text_content)
 
-def summarize_text(text, is_website=True):
-    if text == "":
-        return "Error: No text to summarize"
+    # Store content
+    global lastFetched
+    lastFetched = content
 
-    print("Text length: " + str(len(text)) + " characters")
-    summaries = []
-    chunks = list(split_text(text))
+def split_text(text, max_length=2048):
+    # Split text into chunks of max_length
+    chunks = []
+    while len(text) > max_length:
+        # Find the last space before the max length
+        last_space = text.rfind(" ", 0, max_length)
+        if last_space == -1:
+            # If there is no space, just split at the max length
+            last_space = max_length
+        chunks.append(text[0:last_space])
+        text = text[last_space + 1:]
+    chunks.append(text)
+    return chunks
 
-    for i, chunk in enumerate(chunks):
-        print("Summarizing chunk " + str(i + 1) + " / " + str(len(chunks)))
-        if is_website:
-            messages = [
-                {
-                    "role": "user",
-                    "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
-                    chunk},
-            ]
-        else:
-            messages = [
-                {
-                    "role": "user",
-                    "content": "Please summarize the following text, focusing on extracting concise and specific information: " +
-                    chunk},
-            ]
+def has_fetched():
+  return lastFetched != None
 
-        summary = create_chat_completion(
-            model=cfg.fast_llm_model,
-            messages=messages,
-            max_tokens=300,
-        )
-        summaries.append(summary)
-    print("Summarized " + str(len(chunks)) + " chunks.")
+def view_page(pageNumber):
+  if lastFetched:
+    chunks = split_text(lastFetched)
+    if int(pageNumber) > len(list(chunks)):
+      return "Page number out of range."
 
-    combined_summary = "\n".join(summaries)
-
-    # Summarize the combined summary
-    if is_website:
-        messages = [
-            {
-                "role": "user",
-                "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
-                combined_summary},
-        ]
-    else:
-        messages = [
-            {
-                "role": "user",
-                "content": "Please summarize the following text, focusing on extracting concise and specific infomation: " +
-                combined_summary},
-        ]
-
-    final_summary = create_chat_completion(
-        model=cfg.fast_llm_model,
-        messages=messages,
-        max_tokens=300,
-    )
-
-    return final_summary
+    header = "Page " + str(int(pageNumber) + 1) + " of " + str(len(list(chunks))) + ":\n"
+    return header + list(chunks)[int(pageNumber)]
+  else:
+    return "No page fetched yet."

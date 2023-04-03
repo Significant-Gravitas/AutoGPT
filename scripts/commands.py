@@ -76,6 +76,8 @@ def execute_command(command_name, arguments):
             return delete_file(arguments["file"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"])
+        elif command_name == "view_website_page":
+            return view_website_page(arguments["page_number"])
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
@@ -110,17 +112,15 @@ def google_search(query, num_results=8):
 
 
 def browse_website(url):
-    summary = get_text_summary(url)
-    links = get_hyperlinks(url)
+    browse.fetch_url(url)
+    return browse.view_page(0)
 
-    # Limit links to 5
-    if len(links) > 5:
-        links = links[:5]
-
-    result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
-
-    return result
-
+def view_website_page(page):
+    if browse.has_fetched():
+        res = browse.view_page(page)
+        return res + "\n To view the next page, use the command 'view_website_page " + str(int(page) + 1)
+    else:
+        return "No website has been fetched yet. Use the browse_website command to fetch a website."
 
 def get_text_summary(url):
     text = browse.scrape_text(url)
