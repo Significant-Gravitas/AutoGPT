@@ -30,13 +30,8 @@ class Config(metaclass=Singleton):
         # TODO - make these models be self-contained, using langchain, so we can configure them once and call it good 
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo") 
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
-        
-        # TODO: Make this not so hard-coded
-        # This is the token limit that the main prompt needs to know. GPT-4 has a much bigger limit than GPT-3
-        if (self.smart_llm_model.startswith("gpt-3")):
-            self.thinking_token_limit = 4000
-        else:
-            self.thinking_token_limit = 6000
+        self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
+        self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
@@ -57,8 +52,11 @@ class Config(metaclass=Singleton):
     def set_smart_llm_model(self, value: str):
         self.smart_llm_model = value
 
-    def set_thinking_token_limit(self, value: int):
-        self.thinking_token_limit = value
+    def set_fast_token_limit(self, value: int):
+        self.fast_token_limit = value
+
+    def set_smart_token_limit(self, value: int):
+        self.smart_token_limit = value
 
     def set_openai_api_key(self, value: str):
         self.apiopenai_api_key_key = value
