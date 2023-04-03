@@ -4,7 +4,7 @@ next_key = 0
 agents = {}  # key, (task, full_message_history, model)
 
 # Create new GPT agent
-
+# TODO: Centralise use of create_chat_completion() to globally enforce token limit
 
 def create_agent(task, prompt, model):
     global next_key
