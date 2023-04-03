@@ -8,5 +8,7 @@ readability-lxml==0.8.1
 requests
 tiktoken==0.3.3
 docker
-googlesearch-python
-# Googlesearch python seems to be a bit cursed, anyone good at fixing thigns like this?
+git+https://github.com/Nv7-GitHub/googlesearch.git@eed12620ff93f8fb74db7068b9106e88acd4656b#egg=googlesearch-python
+# Workaround is needed because requests is pinned to a fixed version in googlesearch-python.
+# Replace with googlesearch-python after https://github.com/Nv7-GitHub/googlesearch/pull/45 is merged and released on PyPi
+
