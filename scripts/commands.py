@@ -102,7 +102,7 @@ def get_datetime():
 
 def google_search(query, num_results=8):
     search_results = []
-    for j in browse.search(query, num_results=num_results):
+    for j in search(query, num_results=num_results):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
