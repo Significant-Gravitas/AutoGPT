@@ -1,7 +1,5 @@
-from googlesearch import search
 import requests
 from bs4 import BeautifulSoup
-from readability import Document
 import openai
 
 
