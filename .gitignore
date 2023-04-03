@@ -4,10 +4,6 @@ scripts/node_modules/
 scripts/__pycache__/keys.cpython-310.pyc
 package-lock.json
 *.pyc
-auto_gpt_workspace/*
+scripts/auto_gpt_workspace/*
 *.mpeg
-.env
 venv/*
-outputs/*
-ai_settings.yaml
-auto-gpt.json
