@@ -25,11 +25,11 @@ def scrape_text(url):
     return text
 
 
-def extract_hyperlinks(soup):
-    hyperlinks = []
-    for link in soup.find_all('a', href=True):
-        hyperlinks.append((link.text, link['href']))
-    return hyperlinks
+def extract_hyperlinks(soup, base_url):
+    return [
+        (link.text, requests.compat.urljoin(base_url, link["href"]))
+        for link in soup.find_all("a", href=True)
+    ]
 
 
 def format_hyperlinks(hyperlinks):
@@ -51,7 +51,7 @@ def scrape_links(url):
     for script in soup(["script", "style"]):
         script.extract()
 
-    hyperlinks = extract_hyperlinks(soup)
+    hyperlinks = extract_hyperlinks(soup, url)
 
     return format_hyperlinks(hyperlinks)
 
