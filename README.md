@@ -80,7 +80,7 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 2. Navigate to the project directory:
 *(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)*
 ```
-$ cd 'Auto-GPT'
+cd 'Auto-GPT'
 ```
 
 3. Install the required dependencies:
