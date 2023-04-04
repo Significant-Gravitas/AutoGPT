@@ -31,7 +31,7 @@ RESOURCES:
 2. Long Term memory management.
 3. GPT-3.5 powered Agents for delegation of simple tasks.
 4. File output.
-5. Access to a shell and file system through that shell.
+5. Access to a {shell_type} shell and file system through that shell.
 
 PERFORMANCE EVALUATION:
 
