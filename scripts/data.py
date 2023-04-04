@@ -11,7 +11,6 @@ def load_prompt():
         # Load the promt from data/prompt.txt
         
         with open(SRC_DIR/ "data/prompt.txt", "r") as prompt_file:
-
             prompt = prompt_file.read()
 
         return prompt
