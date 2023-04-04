@@ -1,7 +1,10 @@
 import os
-from playsound import playsound
+
 import requests
-from config import Config
+from playsound import playsound
+
+from autogpt.config import Config
+
 cfg = Config()
 
 # TODO: Nicer names for these ids
