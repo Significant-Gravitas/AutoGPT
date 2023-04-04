@@ -73,6 +73,7 @@ def chat_with_ai(
                 message_to_add = full_message_history[next_message_to_add_index]
 
                 tokens_to_add = token_counter.count_message_tokens([message_to_add], model)
+
                 if current_tokens_used + tokens_to_add > send_token_limit:
                     break
 
@@ -98,13 +99,16 @@ def chat_with_ai(
                 print(f"Send Token Count: {current_tokens_used}")
                 print(f"Tokens remaining for response: {tokens_remaining}")
                 print("------------ CONTEXT SENT TO AI ---------------")
+
                 for message in current_context:
                     # Skip printing the prompt
+
                     if message["role"] == "system" and message["content"] == prompt:
                         continue
                     print(
                         f"{message['role'].capitalize()}: {message['content']}")
                     print()
+
                 print("----------- END OF CONTEXT ----------------")
 
             # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
