@@ -1,15 +1,29 @@
 import time
+
 import openai
-from dotenv import load_dotenv
-from config import Config
+from enum import StrEnum
+from typing import TypedDict
 import token_counter
+from config import Config
+from llm_utils import create_chat_completion
 
 cfg = Config()
 
-from llm_utils import create_chat_completion
+
+class RolesEnum(StrEnum):
+    """The role of the message sender."""
+    user: str = "user"
+    assistant: str = "assistant"
+    system: str = "system"
 
 
-def create_chat_message(role, content):
+class ChatMessage(TypedDict):
+    """A message added to the history of a chat session."""
+    role: RolesEnum
+    content: str
+
+
+def create_chat_message(role: str | RolesEnum, content: str) -> ChatMessage:
     """
     Create a chat message with the given role and content.
 
@@ -20,6 +34,7 @@ def create_chat_message(role, content):
     Returns:
     dict: A dictionary containing the role and content of the message.
     """
+    role = RolesEnum(role)
     return {"role": role, "content": content}
 
 
@@ -56,7 +71,7 @@ def chat_with_ai(
             current_context = [
                 create_chat_message(
                     "system", prompt), create_chat_message(
-                    "system", f"Permanent memory: {permanent_memory}")]                
+                    "system", f"Permanent memory: {permanent_memory}")]
 
             # Add messages from the full message history until we reach the token limit
             next_message_to_add_index = len(full_message_history) - 1
@@ -80,7 +95,7 @@ def chat_with_ai(
 
                 # Count the currently used tokens
                 current_tokens_used += tokens_to_add
-                
+
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
 

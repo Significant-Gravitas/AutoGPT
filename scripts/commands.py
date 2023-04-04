@@ -45,7 +45,7 @@ def get_command(response):
         return "Error:", str(e)
 
 
-def execute_command(command_name, arguments, qamodel: qa.QAModel):
+def execute_command(command_name, arguments, qamodel: qa.QAModel | None = None):
     try:
         if command_name == "google":
 
@@ -97,7 +97,7 @@ def execute_command(command_name, arguments, qamodel: qa.QAModel):
             return ai.write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
-        elif cfg.qa_mode:
+        elif cfg.qa_mode and qamodel is not None:
             if command_name == "ask_user":
                 return qamodel.ask_user(arguments["question"])
             elif command_name == "notify_user":

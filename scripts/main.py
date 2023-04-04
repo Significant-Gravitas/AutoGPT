@@ -1,6 +1,7 @@
 import json
 import random
-from typing import Optional
+from typing import List, Optional
+from chat import ChatMessage
 import commands as cmd
 import memory as mem
 import data
@@ -277,7 +278,7 @@ ai_name = ""
 prompt = construct_prompt()
 # print(prompt)
 # Initialize variables
-full_message_history = []
+full_message_history: List[ChatMessage] = []
 result = None
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
@@ -360,8 +361,15 @@ while True:
 
     # Check if there is a new response from the user
     if qamodel is not None:
-        user_response = qamodel.receive_user_response()
-        if user_response is not None:
-            full_message_history.append(
-                chat.create_chat_message("user", user_response))
-            print_to_console("USER: ", Fore.GREEN, user_response)
+        user_responses = qamodel.receive_user_response()
+        for response in user_responses:
+            role, content = response['role'], response['content']
+            full_message_history.append(response)
+            if role == chat.RolesEnum.user:
+                print_to_console(role.upper() + ": ", Fore.BLUE, content)
+            elif role == chat.RolesEnum.assistant:
+                print_to_console(role.upper() + ": ", Fore.GREEN, content)
+            elif role == chat.RolesEnum.system:
+                print_to_console(role.upper() + ": ", Fore.YELLOW, content)
+            else:
+                raise ValueError("Invalid role")

@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Union
 import pika
 import json
 from dataclasses import dataclass
@@ -6,6 +6,8 @@ from colorama import Fore, init
 import time
 import os
 import keyboard
+
+from autogpt import chat
 
 
 def connect_rabbitmq():
@@ -17,6 +19,29 @@ def connect_rabbitmq():
     channel.queue_declare(queue='togpt')
     return channel
 
+@dataclass
+class UserMessage:
+    message: str
+
+@dataclass
+class UserAnswer:
+    question: str
+    answer: str
+
+
+def parse_message(message: str) -> Union[UserAnswer, UserMessage]:
+    """Parse a message from the user into a UserAnswer, UserMessage object."""
+    message_json = json.loads(message)
+    if "question" in message_json:
+        if "answer" in message_json:
+            return UserAnswer(message_json["question"], message_json["answer"])
+        else:
+            raise ValueError("Invalid message format: " + message)
+    elif "message" in message_json:
+        return UserMessage(message_json["message"])
+    else:
+        raise ValueError("Invalid message format: " + message)
+
 
 class QAModel:
     """The model used by the Auto GPT Instance to ask questions and receive answers from the user."""
@@ -24,21 +49,21 @@ class QAModel:
     def __init__(self):
         self.channel = connect_rabbitmq()
 
-    def ask_user(self, question: str) -> None:
+    def ask_user(self, question: str) -> str:
         """Ask the user a question and return a message to the gpt agent to check back later for a response."""
         # Send the question to the user
         question_json = json.dumps({"question": question})
         self.channel.basic_publish(exchange='', routing_key='touser', body=question_json)
-        return None
+        return "You have asked the user a question. Please wait for a response. Do not ask the question again. You may ask other questions without waiting for a response. You may also send messages to the user without waiting for a response."
 
-    def notify_user(self, message: str) -> None:
+    def notify_user(self, message: str) -> str:
         """Notify the user of a message and return a message to the gpt agent to check back later for a response."""
         # Send the message to the user
         message_json = json.dumps({"message": message})
         self.channel.basic_publish(exchange='', routing_key='touser', body=message_json)
-        return None
+        return "You have sent the message to the user. You may or may not receive a response. You may ask other questions without waiting for a response. You may also send other messages to the user without waiting for a response."
 
-    def receive_user_response(self) -> List[str]:
+    def receive_user_response(self) -> List[chat.ChatMessage]:
         """Checks to see if there has yet been a single response from the user and if so returns it as a JSON string."""
         out = []
 
@@ -52,25 +77,21 @@ class QAModel:
             # Return the response as a JSON string
             body_json = json.loads(body.decode())
 
-            if 'question' in body_json:
-                out.append("QUESTION: "+body_json['question'])
-            if 'answer' in body_json:
-                out.append("ANSWER: "+body_json['answer'])
-            if 'message' in body_json:
-                out.append("MESSAGE: "+body_json['message'])
+            parsed_message = parse_message(body_json)
+            if isinstance(parsed_message, UserAnswer):
+                out = [
+                    chat.create_chat_message("system", f"Previously you asked the user the following question: '{parsed_message.question}'. The user responded with the following answer. Please give a very high priority to this answer as it comes directly from the user."),
+                    chat.create_chat_message("user", parsed_message.answer),
+                ]
+            elif isinstance(parsed_message, UserMessage):
+                out = [
+                    chat.create_chat_message("system", f"The user has sent you the following message. If it is in the form of a question, please respond with an answer in the form of a notify_user command. Please give a very high priority to this message's content as it comes directly from the user."),
+                    chat.create_chat_message("user", parsed_message.message)
+                ]
+            else:
+                raise ValueError("Invalid message type: " + str(parsed_message))
 
-            # Check that the message is valid
-            # Check that if there is an answer, there is also a question
-            assert all(key in body_json for key in ["question", "answer"]) or not any(key in body_json for key in ["question", "answer"]), "Dictionary must contain both 'question' and 'answer' keys, or neither."
-
-            # Check that if there is a message, there is no question or answer
-            if "message" in body_json:
-                assert not any(key in body_json for key in ["question", "answer"]), "Dictionary must not contain 'message' key if it also contains 'question' or 'answer' keys."
-            if "question" in body_json:
-                assert "message" not in body_json, "Dictionary must not contain 'message' key if it also contains 'question' key."
-
-            # If something else is in the message, raise an assertion
-            assert all(key in ["question", "answer", "message"] for key in body_json), "Dictionary must only contain 'question', 'answer', or 'message' keys."
+        return out
 
 class QAClient:
     """The model used by the user to get questions from the Auto GPT Instance and answer them."""
