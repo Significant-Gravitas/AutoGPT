@@ -52,64 +52,57 @@ def print_assistant_thoughts(assistant_reply):
         # Parse and print Assistant response
         assistant_reply_json = fix_and_parse_json(assistant_reply)
 
-        try:
-            assistant_thoughts = assistant_reply_json.get("thoughts")
-            if assistant_thoughts:
-                assistant_thoughts_text = assistant_thoughts.get("text")
-                assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
-                assistant_thoughts_plan = assistant_thoughts.get("plan")
-                assistant_thoughts_criticism = assistant_thoughts.get("criticism")
-                assistant_thoughts_speak = assistant_thoughts.get("speak")
-            else:
-                assistant_thoughts_text = None
-                assistant_thoughts_reasoning = None
-                assistant_thoughts_plan = None
-                assistant_thoughts_criticism = None
-                assistant_thoughts_speak = None
-        except Exception as e:
-            assistant_thoughts_text = "The AI's response was unreadable."
+        # Check if assistant_reply_json is a string and attempt to parse it into a JSON object
+        if isinstance(assistant_reply_json, str):
+            try:
+                assistant_reply_json = json.loads(assistant_reply_json)
+            except json.JSONDecodeError as e:
+                print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
+                assistant_reply_json = {}
 
-        print_to_console(
-            f"{ai_name.upper()} THOUGHTS:",
-            Fore.YELLOW,
-            assistant_thoughts_text)
-        print_to_console(
-            "REASONING:",
-            Fore.YELLOW,
-            assistant_thoughts_reasoning)
+        assistant_thoughts_reasoning = None
+        assistant_thoughts_plan = None
+        assistant_thoughts_speak = None
+        assistant_thoughts_criticism = None
+        assistant_thoughts = assistant_reply_json.get("thoughts", {})
+        assistant_thoughts_text = assistant_thoughts.get("text")
+
+        if assistant_thoughts:
+            assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
+            assistant_thoughts_plan = assistant_thoughts.get("plan")
+            assistant_thoughts_criticism = assistant_thoughts.get("criticism")
+            assistant_thoughts_speak = assistant_thoughts.get("speak")
+
+        print_to_console(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
+        print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
+
         if assistant_thoughts_plan:
             print_to_console("PLAN:", Fore.YELLOW, "")
-            if assistant_thoughts_plan:
-                # If it's a list, join it into a string
-                if isinstance(assistant_thoughts_plan, list):
-                    assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
-                elif isinstance(assistant_thoughts_plan, dict):
-                    assistant_thoughts_plan = str(assistant_thoughts_plan)
-                    # Split the input_string using the newline character and dash
-                
-                lines = assistant_thoughts_plan.split('\n')
+            # If it's a list, join it into a string
+            if isinstance(assistant_thoughts_plan, list):
+                assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
+            elif isinstance(assistant_thoughts_plan, dict):
+                assistant_thoughts_plan = str(assistant_thoughts_plan)
 
-                # Iterate through the lines and print each one with a bullet
-                # point
-                for line in lines:
-                    # Remove any "-" characters from the start of the line
-                    line = line.lstrip("- ")
-                    print_to_console("- ", Fore.GREEN, line.strip())
-        print_to_console(
-            "CRITICISM:",
-            Fore.YELLOW,
-            assistant_thoughts_criticism)
+            # Split the input_string using the newline character and dashes
+            lines = assistant_thoughts_plan.split('\n')
+            for line in lines:
+                line = line.lstrip("- ")
+                print_to_console("- ", Fore.GREEN, line.strip())
 
+        print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
 
     except json.decoder.JSONDecodeError:
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
+
     # All other errors, return "Error: + error message"
     except Exception as e:
         call_stack = traceback.format_exc()
         print_to_console("Error: \n", Fore.RED, call_stack)
+
 
 def load_variables(config_file="config.yaml"):
     # Load variables from yaml file if it exists
@@ -318,7 +311,7 @@ while True:
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
         print(
-            "Enter 'y' to authorise command or 'n' to exit program...",
+            f"Enter 'y' to authorise command or 'n' to exit program, or enter feedback for {ai_name}...",
             flush=True)
         while True:
             console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
@@ -329,16 +322,18 @@ while True:
                 user_input = "EXIT"
                 break
             else:
-                continue
+                user_input = console_input
+                command_name = "human_feedback"
+                break
 
-        if user_input != "GENERATE NEXT COMMAND JSON":
-            print("Exiting...", flush=True)
-            break
-
-        print_to_console(
+        if user_input == "GENERATE NEXT COMMAND JSON":
+            print_to_console(
             "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
             Fore.MAGENTA,
             "")
+        elif user_input == "EXIT":
+            print("Exiting...", flush=True)
+            break
     else:
         # Print command
         print_to_console(
@@ -347,10 +342,12 @@ while True:
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
     # Execute command
-    if command_name.lower() != "error":
-        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
-    else:
+    if command_name.lower() == "error":
         result = f"Command {command_name} threw the following error: " + arguments
+    elif command_name == "human_feedback":
+        result = f"Human feedback: {user_input}"
+    else:
+        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
 
     # Check if there's a result from the command append it to the message
     # history
@@ -362,3 +359,4 @@ while True:
             chat.create_chat_message(
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+
