@@ -1,4 +1,4 @@
-import time
+from time import sleep
 import openai
 from dotenv import load_dotenv
 from config import Config
@@ -130,4 +130,4 @@ def chat_with_ai(
         except openai.error.RateLimitError:
             # TODO: WHen we switch to langchain, this is built in
             print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
-            time.sleep(10)
+            sleep(10)
