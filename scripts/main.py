@@ -219,14 +219,29 @@ def prompt_user():
     if ai_role == "":
         ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
-    # Enter up to 5 goals for the AI
+    # Enter goals for the AI
     print_to_console(
-        "Enter up to 5 goals for your AI: ",
+        "How many goals do you want the AI to have? (Please enter a number between 1 and 10): ",     
         Fore.GREEN,
-        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+        "For example, 'An Number between 1 to 10")
+    
+    while True:
+        num_goals = input("")
+        if num_goals.isdigit() and 1 <= int(num_goals) <= 10:
+            num_goals = int(num_goals)
+            break
+        else:
+            print_to_console(
+                "Please enter a valid number between 1 and 10: ",     
+                Fore.RED)
+
+    print_to_console(
+        f"Enter up to {num_goals} goals for your AI: ",
+        Fore.GREEN,
+        "For example: \nIncrease net worth \nGrow Twitter Account \nDevelop and manage multiple businesses autonomously'")
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
-    for i in range(5):
+    for i in range(num_goals):
         ai_goal = input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
         if ai_goal == "":
             break

@@ -1,0 +1,253 @@
+Metadata-Version: 2.1
+Name: aiohttp
+Version: 3.8.4
+Summary: Async http client/server framework (asyncio)
+Home-page: https://github.com/aio-libs/aiohttp
+Maintainer: aiohttp team <team@aiohttp.org>
+Maintainer-email: team@aiohttp.org
+License: Apache 2
+Project-URL: Chat: Gitter, https://gitter.im/aio-libs/Lobby
+Project-URL: CI: GitHub Actions, https://github.com/aio-libs/aiohttp/actions?query=workflow%3ACI
+Project-URL: Coverage: codecov, https://codecov.io/github/aio-libs/aiohttp
+Project-URL: Docs: Changelog, https://docs.aiohttp.org/en/stable/changes.html
+Project-URL: Docs: RTD, https://docs.aiohttp.org
+Project-URL: GitHub: issues, https://github.com/aio-libs/aiohttp/issues
+Project-URL: GitHub: repo, https://github.com/aio-libs/aiohttp
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Framework :: AsyncIO
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: POSIX
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Topic :: Internet :: WWW/HTTP
+Requires-Python: >=3.6
+Description-Content-Type: text/x-rst
+License-File: LICENSE.txt
+Requires-Dist: attrs (>=17.3.0)
+Requires-Dist: charset-normalizer (<4.0,>=2.0)
+Requires-Dist: multidict (<7.0,>=4.5)
+Requires-Dist: async-timeout (<5.0,>=4.0.0a3)
+Requires-Dist: yarl (<2.0,>=1.0)
+Requires-Dist: frozenlist (>=1.1.1)
+Requires-Dist: aiosignal (>=1.1.2)
+Requires-Dist: idna-ssl (>=1.0) ; python_version < "3.7"
+Requires-Dist: asynctest (==0.13.0) ; python_version < "3.8"
+Requires-Dist: typing-extensions (>=3.7.4) ; python_version < "3.8"
+Provides-Extra: speedups
+Requires-Dist: aiodns ; extra == 'speedups'
+Requires-Dist: Brotli ; extra == 'speedups'
+Requires-Dist: cchardet ; (python_version < "3.10") and extra == 'speedups'
+
+==================================
+Async http client/server framework
+==================================
+
+.. image:: https://raw.githubusercontent.com/aio-libs/aiohttp/master/docs/aiohttp-plain.svg
+   :height: 64px
+   :width: 64px
+   :alt: aiohttp logo
+
+|
+
+.. image:: https://github.com/aio-libs/aiohttp/workflows/CI/badge.svg
+   :target: https://github.com/aio-libs/aiohttp/actions?query=workflow%3ACI
+   :alt: GitHub Actions status for master branch
+
+.. image:: https://codecov.io/gh/aio-libs/aiohttp/branch/master/graph/badge.svg
+   :target: https://codecov.io/gh/aio-libs/aiohttp
+   :alt: codecov.io status for master branch
+
+.. image:: https://badge.fury.io/py/aiohttp.svg
+   :target: https://pypi.org/project/aiohttp
+   :alt: Latest PyPI package version
+
+.. image:: https://readthedocs.org/projects/aiohttp/badge/?version=latest
+   :target: https://docs.aiohttp.org/
+   :alt: Latest Read The Docs
+
+.. image:: https://img.shields.io/discourse/status?server=https%3A%2F%2Faio-libs.discourse.group
+   :target: https://aio-libs.discourse.group
+   :alt: Discourse status
+
+.. image:: https://badges.gitter.im/Join%20Chat.svg
+   :target: https://gitter.im/aio-libs/Lobby
+   :alt: Chat on Gitter
+
+
+Key Features
+============
+
+- Supports both client and server side of HTTP protocol.
+- Supports both client and server Web-Sockets out-of-the-box and avoids
+  Callback Hell.
+- Provides Web-server with middlewares and plugable routing.
+
+
+Getting started
+===============
+
+Client
+------
+
+To get something from the web:
+
+.. code-block:: python
+
+  import aiohttp
+  import asyncio
+
+  async def main():
+
+      async with aiohttp.ClientSession() as session:
+          async with session.get('http://python.org') as response:
+
+              print("Status:", response.status)
+              print("Content-type:", response.headers['content-type'])
+
+              html = await response.text()
+              print("Body:", html[:15], "...")
+
+    asyncio.run(main())
+
+This prints:
+
+.. code-block::
+
+    Status: 200
+    Content-type: text/html; charset=utf-8
+    Body: <!doctype html> ...
+
+Coming from `requests <https://requests.readthedocs.io/>`_ ? Read `why we need so many lines <https://aiohttp.readthedocs.io/en/latest/http_request_lifecycle.html>`_.
+
+Server
+------
+
+An example using a simple server:
+
+.. code-block:: python
+
+    # examples/server_simple.py
+    from aiohttp import web
+
+    async def handle(request):
+        name = request.match_info.get('name', "Anonymous")
+        text = "Hello, " + name
+        return web.Response(text=text)
+
+    async def wshandle(request):
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+
+        async for msg in ws:
+            if msg.type == web.WSMsgType.text:
+                await ws.send_str("Hello, {}".format(msg.data))
+            elif msg.type == web.WSMsgType.binary:
+                await ws.send_bytes(msg.data)
+            elif msg.type == web.WSMsgType.close:
+                break
+
+        return ws
+
+
+    app = web.Application()
+    app.add_routes([web.get('/', handle),
+                    web.get('/echo', wshandle),
+                    web.get('/{name}', handle)])
+
+    if __name__ == '__main__':
+        web.run_app(app)
+
+
+Documentation
+=============
+
+https://aiohttp.readthedocs.io/
+
+
+Demos
+=====
+
+https://github.com/aio-libs/aiohttp-demos
+
+
+External links
+==============
+
+* `Third party libraries
+  <http://aiohttp.readthedocs.io/en/latest/third_party.html>`_
+* `Built with aiohttp
+  <http://aiohttp.readthedocs.io/en/latest/built_with.html>`_
+* `Powered by aiohttp
+  <http://aiohttp.readthedocs.io/en/latest/powered_by.html>`_
+
+Feel free to make a Pull Request for adding your link to these pages!
+
+
+Communication channels
+======================
+
+*aio-libs discourse group*: https://aio-libs.discourse.group
+
+*gitter chat* https://gitter.im/aio-libs/Lobby
+
+We support `Stack Overflow
+<https://stackoverflow.com/questions/tagged/aiohttp>`_.
+Please add *aiohttp* tag to your question there.
+
+Requirements
+============
+
+- Python >= 3.6
+- async-timeout_
+- attrs_
+- charset-normalizer_
+- multidict_
+- yarl_
+- frozenlist_
+
+Optionally you may install the cChardet_ and aiodns_ libraries (highly
+recommended for sake of speed).
+
+.. _charset-normalizer: https://pypi.org/project/charset-normalizer
+.. _aiodns: https://pypi.python.org/pypi/aiodns
+.. _attrs: https://github.com/python-attrs/attrs
+.. _multidict: https://pypi.python.org/pypi/multidict
+.. _frozenlist: https://pypi.org/project/frozenlist/
+.. _yarl: https://pypi.python.org/pypi/yarl
+.. _async-timeout: https://pypi.python.org/pypi/async_timeout
+.. _cChardet: https://pypi.python.org/pypi/cchardet
+
+License
+=======
+
+``aiohttp`` is offered under the Apache 2 license.
+
+
+Keepsafe
+========
+
+The aiohttp community would like to thank Keepsafe
+(https://www.getkeepsafe.com) for its support in the early days of
+the project.
+
+
+Source code
+===========
+
+The latest developer version is available in a GitHub repository:
+https://github.com/aio-libs/aiohttp
+
+Benchmarks
+==========
+
+If you are interested in efficiency, the AsyncIO community maintains a
+list of benchmarks on the official wiki:
+https://github.com/python/asyncio/wiki/Benchmarks

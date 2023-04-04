@@ -1,0 +1,64 @@
+Metadata-Version: 2.1
+Name: google-auth-httplib2
+Version: 0.1.0
+Summary: Google Authentication Library: httplib2 transport
+Home-page: https://github.com/GoogleCloudPlatform/google-auth-library-python-httplib2
+Author: Google Cloud Platform
+Author-email: googleapis-packages@google.com
+License: Apache 2.0
+Keywords: google auth oauth client
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: POSIX
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Internet :: WWW/HTTP
+Requires-Dist: google-auth
+Requires-Dist: httplib2 (>=0.15.0)
+Requires-Dist: six
+
+``httplib2`` Transport for Google Auth
+======================================
+
+|pypi|
+
+This library provides an `httplib2`_ transport for `google-auth`_.
+
+.. note:: ``httplib`` has lots of problems such as lack of threadsafety
+    and insecure usage of TLS. Using it is highly discouraged. This
+    library is intended to help existing users of ``oauth2client`` migrate to
+    ``google-auth``.
+
+.. |pypi| image:: https://img.shields.io/pypi/v/google-auth-httplib2.svg
+   :target: https://pypi.python.org/pypi/google-auth-httplib2
+
+.. _httplib2: https://github.com/httplib2/httplib2
+.. _google-auth: https://github.com/GoogleCloudPlatform/google-auth-library-python/
+
+Installing
+----------
+
+You can install using `pip`_::
+
+    $ pip install google-auth-httplib2
+
+.. _pip: https://pip.pypa.io/en/stable/
+
+License
+-------
+
+Apache 2.0 - See `the LICENSE`_ for more information.
+
+.. _the LICENSE: https://github.com/GoogleCloudPlatform/google-auth-library-python/blob/master/LICENSE
+
+

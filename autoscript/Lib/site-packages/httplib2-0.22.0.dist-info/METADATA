@@ -1,0 +1,75 @@
+Metadata-Version: 2.1
+Name: httplib2
+Version: 0.22.0
+Summary: A comprehensive HTTP client library.
+Home-page: https://github.com/httplib2/httplib2
+Author: Joe Gregorio
+Author-email: joe@bitworking.org
+License: MIT
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Web Environment
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Software Development :: Libraries
+Requires-Python: >=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*
+License-File: LICENSE
+Requires-Dist: pyparsing (<3,>=2.4.2) ; python_version < "3.0"
+Requires-Dist: pyparsing (!=3.0.0,!=3.0.1,!=3.0.2,!=3.0.3,<4,>=2.4.2) ; python_version > "3.0"
+
+
+
+A comprehensive HTTP client library, ``httplib2`` supports many features left out of other HTTP libraries.
+
+**HTTP and HTTPS**
+  HTTPS support is only available if the socket module was compiled with SSL support.
+
+
+**Keep-Alive**
+  Supports HTTP 1.1 Keep-Alive, keeping the socket open and performing multiple requests over the same connection if possible.
+
+
+**Authentication**
+  The following three types of HTTP Authentication are supported. These can be used over both HTTP and HTTPS.
+
+  * Digest
+  * Basic
+  * WSSE
+
+**Caching**
+  The module can optionally operate with a private cache that understands the Cache-Control:
+  header and uses both the ETag and Last-Modified cache validators. Both file system
+  and memcached based caches are supported.
+
+
+**All Methods**
+  The module can handle any HTTP request method, not just GET and POST.
+
+
+**Redirects**
+  Automatically follows 3XX redirects on GETs.
+
+
+**Compression**
+  Handles both 'deflate' and 'gzip' types of compression.
+
+
+**Lost update support**
+  Automatically adds back ETags into PUT requests to resources we have already cached. This implements Section 3.2 of Detecting the Lost Update Problem Using Unreserved Checkout
+
+
+**Unit Tested**
+  A large and growing set of unit tests.

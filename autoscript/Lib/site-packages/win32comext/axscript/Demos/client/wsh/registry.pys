@@ -1,0 +1,45 @@
+""" Windows Script Host Sample Script
+' Ported to Python
+'
+' ------------------------------------------------------------------------
+'               Copyright (C) 1996 Microsoft Corporation
+'
+' You have a royalty-free right to use, modify, reproduce and distribute
+' the Sample Application Files (and/or any modified version) in any way
+' you find useful, provided that you agree that Microsoft has no warranty,
+' obligations or liability for any Sample Application Files.
+' ------------------------------------------------------------------------
+'
+' This sample demonstrates how to write/delete from the registry. 
+"""
+
+WshShell = WScript.CreateObject("WScript.Shell")
+
+WshShell.Popup("This script shows how to use registry related methods.", 2)
+
+WshShell.Popup("Create key HKCU\\Foo with value 'Top level key'")
+WshShell.RegWrite("HKCU\\Foo\\", "Top level key")
+
+WshShell.Popup("Create key HKCU\\Foo\\Bar with value 'Second level key'")
+WshShell.RegWrite( "HKCU\\Foo\\Bar\\", "Second level key")
+
+WshShell.Popup ("Set value HKCU\\Foo\\Value to REG_SZ 1")
+WshShell.RegWrite( "HKCU\\Foo\\Value", 1)
+
+WshShell.Popup ("Set value HKCU\\Foo\\Bar to REG_DWORD 2")
+WshShell.RegWrite ("HKCU\\Foo\\Bar", 2, "REG_DWORD")
+
+WshShell.Popup ("Set value HKCU\\Foo\\Bar to REG_EXPAND_SZ '3'")
+WshShell.RegWrite ("HKCU\\Foo\\Bar\\Baz", "%SystemRoot%\\Foo")
+
+WshShell.Popup ("Delete value HKCU\\Foo\\Bar\\Baz")
+WshShell.RegDelete ("HKCU\\Foo\\Bar\\Baz")
+
+WshShell.Popup ("Delete key HKCU\\Foo\\Bar")
+WshShell.RegDelete ("HKCU\\Foo\\Bar\\")
+
+WshShell.Popup ("Delete key HKCU\\Foo")
+WshShell.RegDelete ("HKCU\\Foo\\")
+
+WScript.Echo ("Done")
+

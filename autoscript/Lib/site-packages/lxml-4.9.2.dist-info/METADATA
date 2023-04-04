@@ -1,0 +1,92 @@
+Metadata-Version: 2.1
+Name: lxml
+Version: 4.9.2
+Summary: Powerful and Pythonic XML processing library combining libxml2/libxslt with the ElementTree API.
+Home-page: https://lxml.de/
+Author: lxml dev team
+Author-email: lxml-dev@lxml.de
+Maintainer: lxml dev team
+Maintainer-email: lxml-dev@lxml.de
+License: BSD-3-Clause
+Project-URL: Source, https://github.com/lxml/lxml
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Information Technology
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Programming Language :: Cython
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: C
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Text Processing :: Markup :: HTML
+Classifier: Topic :: Text Processing :: Markup :: XML
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, != 3.4.*
+License-File: LICENSE.txt
+License-File: LICENSES.txt
+Provides-Extra: cssselect
+Requires-Dist: cssselect (>=0.7) ; extra == 'cssselect'
+Provides-Extra: html5
+Requires-Dist: html5lib ; extra == 'html5'
+Provides-Extra: htmlsoup
+Requires-Dist: BeautifulSoup4 ; extra == 'htmlsoup'
+Provides-Extra: source
+Requires-Dist: Cython (>=0.29.7) ; extra == 'source'
+
+lxml is a Pythonic, mature binding for the libxml2 and libxslt libraries.  It
+provides safe and convenient access to these libraries using the ElementTree
+API.
+
+It extends the ElementTree API significantly to offer support for XPath,
+RelaxNG, XML Schema, XSLT, C14N and much more.
+
+To contact the project, go to the `project home page
+<https://lxml.de/>`_ or see our bug tracker at
+https://launchpad.net/lxml
+
+In case you want to use the current in-development version of lxml,
+you can get it from the github repository at
+https://github.com/lxml/lxml .  Note that this requires Cython to
+build the sources, see the build instructions on the project home
+page.  To the same end, running ``easy_install lxml==dev`` will
+install lxml from
+https://github.com/lxml/lxml/tarball/master#egg=lxml-dev if you have
+an appropriate version of Cython installed.
+
+
+After an official release of a new stable series, bug fixes may become
+available at
+https://github.com/lxml/lxml/tree/lxml-4.9 .
+Running ``easy_install lxml==4.9bugfix`` will install
+the unreleased branch state from
+https://github.com/lxml/lxml/tarball/lxml-4.9#egg=lxml-4.9bugfix
+as soon as a maintenance branch has been established.  Note that this
+requires Cython to be installed at an appropriate version for the build.
+
+4.9.2 (2022-12-13)
+==================
+
+Bugs fixed
+----------
+
+* CVE-2022-2309: A Bug in libxml2 2.9.1[0-4] could let namespace declarations
+  from a failed parser run leak into later parser runs.  This bug was worked around
+  in lxml and resolved in libxml2 2.10.0.
+  https://gitlab.gnome.org/GNOME/libxml2/-/issues/378
+
+Other changes
+-------------
+
+* LP#1981760: ``Element.attrib`` now registers as ``collections.abc.MutableMapping``.
+
+* lxml now has a static build setup for macOS on ARM64 machines (not used for building wheels).
+  Patch by Quentin Leffray.
+
+

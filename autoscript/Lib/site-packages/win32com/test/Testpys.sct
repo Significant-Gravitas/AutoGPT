@@ -1,0 +1,64 @@
+<scriptlet>
+
+<Registration
+  Description="TestPys"
+  ProgID="TestPys.Scriptlet"
+  Version="1"
+  ClassID="{2eeb6080-cd58-11d1-b81e-00a0240b2fef}">
+
+  <SCRIPT LANGUAGE="VBScript">      
+	Function Register()
+		Msgbox "Scriptlet 'Test' registered."      
+	End Function
+    
+	Function Unregister()
+		Msgbox "Scriptlet 'Test' unregistered."      
+	End Function
+   </SCRIPT>
+</Registration>
+
+<implements id=Automation type=Automation>
+  <property name=PyProp1>
+    <get/>
+    <put/>
+  </property>
+  <property name=PyProp2>
+    <get/>
+    <put/>
+  </property>
+  <method name=PyMethod1>
+  </method>
+
+  <method name=PyMethod2>
+  </method>
+</implements>
+
+<script language=python>
+
+PyProp1 = "PyScript Property1";
+PyProp2 = "PyScript Property2";
+
+def get_PyProp1():
+  return PyProp1
+
+def put_PyProp1(newValue):
+  global PyProp1
+  PyProp1 = newValue
+
+def get_PyProp2():
+  return PyProp2
+
+def put_PyProp2(newValue):
+  global PyProp2
+  PyProp2 = newValue
+
+def PyMethod1():
+  return "PyMethod1 called"
+
+def PyMethod2():
+  return "PyMethod2 called"
+
+</script>
+
+</scriptlet>
+

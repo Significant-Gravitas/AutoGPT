@@ -1,0 +1,25 @@
+<HTML>
+<BODY>
+
+<FORM NAME="TestForm" METHOD="POST" >
+   <INPUT TYPE="TEXT" SIZE=25 NAME="Name">Name<br>
+   <INPUT TYPE="TEXT" SIZE=25 NAME="Address">Address<br>
+   <INPUT TYPE=SUBMIT
+</FORM>
+
+<SCRIPT LANGUAGE="Python" for="TestForm" Event="onSubmit">
+return Validate()
+</SCRIPT>
+
+<SCRIPT LANGUAGE="Python">
+
+def Validate():
+	if not TestForm.Name.Value or not TestForm.Address.Value:
+		ax.alert("You must enter a name and address.")
+		return 1
+	return 0
+
+</SCRIPT>
+
+</BODY>
+</HTML>

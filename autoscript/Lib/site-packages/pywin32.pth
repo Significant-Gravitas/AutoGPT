@@ -1,0 +1,7 @@
+# .pth file for the PyWin32 extensions
+win32
+win32\lib
+Pythonwin
+# And some hackery to deal with environments where the post_install script
+# isn't run.
+import pywin32_bootstrap

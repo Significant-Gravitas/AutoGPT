@@ -1,0 +1,419 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/apps.groups.settings": {
+          "description": "View and manage the settings of a G Suite group"
+        }
+      }
+    }
+  },
+  "basePath": "/groups/v1/groups/",
+  "baseUrl": "https://www.googleapis.com/groups/v1/groups/",
+  "batchPath": "batch/groupssettings/v1",
+  "description": "Manages permission levels and related settings of a group.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://developers.google.com/google-apps/groups-settings/get_started",
+  "icons": {
+    "x16": "https://www.gstatic.com/images/branding/product/1x/googleg_16dp.png",
+    "x32": "https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+  },
+  "id": "groupssettings:v1",
+  "kind": "discovery#restDescription",
+  "name": "groupssettings",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "alt": {
+      "default": "atom",
+      "description": "Data format for the response.",
+      "enum": [
+        "atom",
+        "json"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/atom+xml",
+        "Responses with Content-Type of application/json"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "An opaque string that represents a user for quota purposes. Must not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "userIp": {
+      "description": "Deprecated. Please use quotaUser instead.",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "groups": {
+      "methods": {
+        "get": {
+          "description": "Gets one resource by id.",
+          "httpMethod": "GET",
+          "id": "groupsSettings.groups.get",
+          "parameterOrder": [
+            "groupUniqueId"
+          ],
+          "parameters": {
+            "groupUniqueId": {
+              "description": "The group's email address.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "{groupUniqueId}",
+          "response": {
+            "$ref": "Groups"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/apps.groups.settings"
+          ]
+        },
+        "patch": {
+          "description": "Updates an existing resource. This method supports patch semantics.",
+          "httpMethod": "PATCH",
+          "id": "groupsSettings.groups.patch",
+          "parameterOrder": [
+            "groupUniqueId"
+          ],
+          "parameters": {
+            "groupUniqueId": {
+              "description": "The group's email address.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "{groupUniqueId}",
+          "request": {
+            "$ref": "Groups"
+          },
+          "response": {
+            "$ref": "Groups"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/apps.groups.settings"
+          ]
+        },
+        "update": {
+          "description": "Updates an existing resource.",
+          "httpMethod": "PUT",
+          "id": "groupsSettings.groups.update",
+          "parameterOrder": [
+            "groupUniqueId"
+          ],
+          "parameters": {
+            "groupUniqueId": {
+              "description": "The group's email address.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "{groupUniqueId}",
+          "request": {
+            "$ref": "Groups"
+          },
+          "response": {
+            "$ref": "Groups"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/apps.groups.settings"
+          ]
+        }
+      }
+    }
+  },
+  "revision": "20220614",
+  "rootUrl": "https://www.googleapis.com/",
+  "schemas": {
+    "Groups": {
+      "description": "JSON template for Group resource",
+      "id": "Groups",
+      "properties": {
+        "allowExternalMembers": {
+          "description": "Identifies whether members external to your organization can join the group. Possible values are:  \n- true: G Suite users external to your organization can become members of this group. \n- false: Users not belonging to the organization are not allowed to become members of this group.",
+          "type": "string"
+        },
+        "allowGoogleCommunication": {
+          "description": "Deprecated. Allows Google to contact administrator of the group.  \n- true: Allow Google to contact managers of this group. Occasionally Google may send updates on the latest features, ask for input on new features, or ask for permission to highlight your group. \n- false: Google can not contact managers of this group.",
+          "type": "string"
+        },
+        "allowWebPosting": {
+          "description": "Allows posting from web. Possible values are:  \n- true: Allows any member to post to the group forum. \n- false: Members only use Gmail to communicate with the group.",
+          "type": "string"
+        },
+        "archiveOnly": {
+          "description": "Allows the group to be archived only. Possible values are:  \n- true: Group is archived and the group is inactive. New messages to this group are rejected. The older archived messages are browseable and searchable.  \n- If true, the whoCanPostMessage property is set to NONE_CAN_POST.  \n- If reverted from true to false, whoCanPostMessages is set to ALL_MANAGERS_CAN_POST.  \n- false: The group is active and can receive messages.  \n- When false, updating whoCanPostMessage to NONE_CAN_POST, results in an error.",
+          "type": "string"
+        },
+        "customFooterText": {
+          "description": "Set the content of custom footer text. The maximum number of characters is 1,000.",
+          "type": "string"
+        },
+        "customReplyTo": {
+          "description": "An email address used when replying to a message if the replyTo property is set to REPLY_TO_CUSTOM. This address is defined by an account administrator.  \n- When the group's ReplyTo property is set to REPLY_TO_CUSTOM, the customReplyTo property holds a custom email address used when replying to a message. \n- If the group's ReplyTo property is set to REPLY_TO_CUSTOM, the customReplyTo property must have a text value or an error is returned.",
+          "type": "string"
+        },
+        "customRolesEnabledForSettingsToBeMerged": {
+          "description": "Specifies whether the group has a custom role that's included in one of the settings being merged. This field is read-only and update/patch requests to it are ignored. Possible values are:  \n- true \n- false",
+          "type": "string"
+        },
+        "defaultMessageDenyNotificationText": {
+          "description": "When a message is rejected, this is text for the rejection notification sent to the message's author. By default, this property is empty and has no value in the API's response body. The maximum notification text size is 10,000 characters. Note: Requires sendMessageDenyNotification property to be true.",
+          "type": "string"
+        },
+        "default_sender": {
+          "description": "Default sender for members who can post messages as the group. Possible values are: - `DEFAULT_SELF`: By default messages will be sent from the user - `GROUP`: By default messages will be sent from the group",
+          "type": "string"
+        },
+        "description": {
+          "description": "Description of the group. This property value may be an empty string if no group description has been entered. If entered, the maximum group description is no more than 300 characters.",
+          "type": "string"
+        },
+        "email": {
+          "description": "The group's email address. This property can be updated using the Directory API. Note: Only a group owner can change a group's email address. A group manager can't do this.\nWhen you change your group's address using the Directory API or the control panel, you are changing the address your subscribers use to send email and the web address people use to access your group. People can't reach your group by visiting the old address.",
+          "type": "string"
+        },
+        "enableCollaborativeInbox": {
+          "description": "Specifies whether a collaborative inbox will remain turned on for the group. Possible values are:  \n- true \n- false",
+          "type": "string"
+        },
+        "favoriteRepliesOnTop": {
+          "description": "Indicates if favorite replies should be displayed above other replies.  \n- true: Favorite replies will be displayed above other replies. \n- false: Favorite replies will not be displayed above other replies.",
+          "type": "string"
+        },
+        "includeCustomFooter": {
+          "description": "Whether to include custom footer. Possible values are:  \n- true \n- false",
+          "type": "string"
+        },
+        "includeInGlobalAddressList": {
+          "description": "Enables the group to be included in the Global Address List. For more information, see the help center. Possible values are:  \n- true: Group is included in the Global Address List. \n- false: Group is not included in the Global Address List.",
+          "type": "string"
+        },
+        "isArchived": {
+          "description": "Allows the Group contents to be archived. Possible values are:  \n- true: Archive messages sent to the group. \n- false: Do not keep an archive of messages sent to this group. If false, previously archived messages remain in the archive.",
+          "type": "string"
+        },
+        "kind": {
+          "default": "groupsSettings#groups",
+          "description": "The type of the resource. It is always groupsSettings#groups.",
+          "type": "string"
+        },
+        "maxMessageBytes": {
+          "description": "Deprecated. The maximum size of a message is 25Mb.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "membersCanPostAsTheGroup": {
+          "description": "Enables members to post messages as the group. Possible values are:  \n- true: Group member can post messages using the group's email address instead of their own email address. Message appear to originate from the group itself. Note: When true, any message moderation settings on individual users or new members do not apply to posts made on behalf of the group. \n- false: Members can not post in behalf of the group's email address.",
+          "type": "string"
+        },
+        "messageDisplayFont": {
+          "description": "Deprecated. The default message display font always has a value of \"DEFAULT_FONT\".",
+          "type": "string"
+        },
+        "messageModerationLevel": {
+          "description": "Moderation level of incoming messages. Possible values are:  \n- MODERATE_ALL_MESSAGES: All messages are sent to the group owner's email address for approval. If approved, the message is sent to the group. \n- MODERATE_NON_MEMBERS: All messages from non group members are sent to the group owner's email address for approval. If approved, the message is sent to the group. \n- MODERATE_NEW_MEMBERS: All messages from new members are sent to the group owner's email address for approval. If approved, the message is sent to the group. \n- MODERATE_NONE: No moderator approval is required. Messages are delivered directly to the group. Note: When the whoCanPostMessage is set to ANYONE_CAN_POST, we recommend the messageModerationLevel be set to MODERATE_NON_MEMBERS to protect the group from possible spam.\nWhen memberCanPostAsTheGroup is true, any message moderation settings on individual users or new members will not apply to posts made on behalf of the group.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the group, which has a maximum size of 75 characters.",
+          "type": "string"
+        },
+        "primaryLanguage": {
+          "description": "The primary language for group. For a group's primary language use the language tags from the G Suite languages found at G Suite Email Settings API Email Language Tags.",
+          "type": "string"
+        },
+        "replyTo": {
+          "description": "Specifies who receives the default reply. Possible values are:  \n- REPLY_TO_CUSTOM: For replies to messages, use the group's custom email address.\nWhen the group's ReplyTo property is set to REPLY_TO_CUSTOM, the customReplyTo property holds the custom email address used when replying to a message. If the group's ReplyTo property is set to REPLY_TO_CUSTOM, the customReplyTo property must have a value. Otherwise an error is returned.\n \n- REPLY_TO_SENDER: The reply sent to author of message. \n- REPLY_TO_LIST: This reply message is sent to the group. \n- REPLY_TO_OWNER: The reply is sent to the owner(s) of the group. This does not include the group's managers. \n- REPLY_TO_IGNORE: Group users individually decide where the message reply is sent. \n- REPLY_TO_MANAGERS: This reply message is sent to the group's managers, which includes all managers and the group owner.",
+          "type": "string"
+        },
+        "sendMessageDenyNotification": {
+          "description": "Allows a member to be notified if the member's message to the group is denied by the group owner. Possible values are:  \n- true: When a message is rejected, send the deny message notification to the message author.\nThe defaultMessageDenyNotificationText property is dependent on the sendMessageDenyNotification property being true.\n \n- false: When a message is rejected, no notification is sent.",
+          "type": "string"
+        },
+        "showInGroupDirectory": {
+          "description": "Deprecated. This is merged into the new whoCanDiscoverGroup setting. Allows the group to be visible in the Groups Directory. Possible values are:  \n- true: All groups in the account are listed in the Groups directory. \n- false: All groups in the account are not listed in the directory.",
+          "type": "string"
+        },
+        "spamModerationLevel": {
+          "description": "Specifies moderation levels for messages detected as spam. Possible values are:  \n- ALLOW: Post the message to the group. \n- MODERATE: Send the message to the moderation queue. This is the default. \n- SILENTLY_MODERATE: Send the message to the moderation queue, but do not send notification to moderators. \n- REJECT: Immediately reject the message.",
+          "type": "string"
+        },
+        "whoCanAdd": {
+          "description": "Deprecated. This is merged into the new whoCanModerateMembers setting. Permissions to add members. Possible values are:  \n- ALL_MEMBERS_CAN_ADD: Managers and members can directly add new members. \n- ALL_MANAGERS_CAN_ADD: Only managers can directly add new members. this includes the group's owner. \n- ALL_OWNERS_CAN_ADD: Only owners can directly add new members. \n- NONE_CAN_ADD: No one can directly add new members.",
+          "type": "string"
+        },
+        "whoCanAddReferences": {
+          "description": "Deprecated. This functionality is no longer supported in the Google Groups UI. The value is always \"NONE\".",
+          "type": "string"
+        },
+        "whoCanApproveMembers": {
+          "description": "Specifies who can approve members who ask to join groups. This permission will be deprecated once it is merged into the new whoCanModerateMembers setting. Possible values are:  \n- ALL_MEMBERS_CAN_APPROVE \n- ALL_MANAGERS_CAN_APPROVE \n- ALL_OWNERS_CAN_APPROVE \n- NONE_CAN_APPROVE",
+          "type": "string"
+        },
+        "whoCanApproveMessages": {
+          "description": "Deprecated. This is merged into the new whoCanModerateContent setting. Specifies who can approve pending messages in the moderation queue. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanAssignTopics": {
+          "description": "Deprecated. This is merged into the new whoCanAssistContent setting. Permission to assign topics in a forum to another user. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanAssistContent": {
+          "description": "Specifies who can moderate metadata. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanBanUsers": {
+          "description": "Specifies who can deny membership to users. This permission will be deprecated once it is merged into the new whoCanModerateMembers setting. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanContactOwner": {
+          "description": "Permission to contact owner of the group via web UI. Possible values are:  \n- ALL_IN_DOMAIN_CAN_CONTACT \n- ALL_MANAGERS_CAN_CONTACT \n- ALL_MEMBERS_CAN_CONTACT \n- ANYONE_CAN_CONTACT \n- ALL_OWNERS_CAN_CONTACT",
+          "type": "string"
+        },
+        "whoCanDeleteAnyPost": {
+          "description": "Deprecated. This is merged into the new whoCanModerateContent setting. Specifies who can delete replies to topics. (Authors can always delete their own posts). Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanDeleteTopics": {
+          "description": "Deprecated. This is merged into the new whoCanModerateContent setting. Specifies who can delete topics. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanDiscoverGroup": {
+          "description": "Specifies the set of users for whom this group is discoverable. Possible values are:  \n- ANYONE_CAN_DISCOVER \n- ALL_IN_DOMAIN_CAN_DISCOVER \n- ALL_MEMBERS_CAN_DISCOVER",
+          "type": "string"
+        },
+        "whoCanEnterFreeFormTags": {
+          "description": "Deprecated. This is merged into the new whoCanAssistContent setting. Permission to enter free form tags for topics in a forum. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanHideAbuse": {
+          "description": "Deprecated. This is merged into the new whoCanModerateContent setting. Specifies who can hide posts by reporting them as abuse. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanInvite": {
+          "description": "Deprecated. This is merged into the new whoCanModerateMembers setting. Permissions to invite new members. Possible values are:  \n- ALL_MEMBERS_CAN_INVITE: Managers and members can invite a new member candidate. \n- ALL_MANAGERS_CAN_INVITE: Only managers can invite a new member. This includes the group's owner. \n- ALL_OWNERS_CAN_INVITE: Only owners can invite a new member. \n- NONE_CAN_INVITE: No one can invite a new member candidate.",
+          "type": "string"
+        },
+        "whoCanJoin": {
+          "description": "Permission to join group. Possible values are:  \n- ANYONE_CAN_JOIN: Anyone in the account domain can join. This includes accounts with multiple domains. \n- ALL_IN_DOMAIN_CAN_JOIN: Any Internet user who is outside your domain can access your Google Groups service and view the list of groups in your Groups directory. Warning: Group owners can add external addresses, outside of the domain to their groups. They can also allow people outside your domain to join their groups. If you later disable this option, any external addresses already added to users' groups remain in those groups. \n- INVITED_CAN_JOIN: Candidates for membership can be invited to join.  \n- CAN_REQUEST_TO_JOIN: Non members can request an invitation to join.",
+          "type": "string"
+        },
+        "whoCanLeaveGroup": {
+          "description": "Permission to leave the group. Possible values are:  \n- ALL_MANAGERS_CAN_LEAVE \n- ALL_MEMBERS_CAN_LEAVE \n- NONE_CAN_LEAVE",
+          "type": "string"
+        },
+        "whoCanLockTopics": {
+          "description": "Deprecated. This is merged into the new whoCanModerateContent setting. Specifies who can prevent users from posting replies to topics. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanMakeTopicsSticky": {
+          "description": "Deprecated. This is merged into the new whoCanModerateContent setting. Specifies who can make topics appear at the top of the topic list. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanMarkDuplicate": {
+          "description": "Deprecated. This is merged into the new whoCanAssistContent setting. Permission to mark a topic as a duplicate of another topic. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanMarkFavoriteReplyOnAnyTopic": {
+          "description": "Deprecated. This is merged into the new whoCanAssistContent setting. Permission to mark any other user's post as a favorite reply. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanMarkFavoriteReplyOnOwnTopic": {
+          "description": "Deprecated. This is merged into the new whoCanAssistContent setting. Permission to mark a post for a topic they started as a favorite reply. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanMarkNoResponseNeeded": {
+          "description": "Deprecated. This is merged into the new whoCanAssistContent setting. Permission to mark a topic as not needing a response. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanModerateContent": {
+          "description": "Specifies who can moderate content. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanModerateMembers": {
+          "description": "Specifies who can manage members. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanModifyMembers": {
+          "description": "Deprecated. This is merged into the new whoCanModerateMembers setting. Specifies who can change group members' roles. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanModifyTagsAndCategories": {
+          "description": "Deprecated. This is merged into the new whoCanAssistContent setting. Permission to change tags and categories. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanMoveTopicsIn": {
+          "description": "Deprecated. This is merged into the new whoCanModerateContent setting. Specifies who can move topics into the group or forum. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanMoveTopicsOut": {
+          "description": "Deprecated. This is merged into the new whoCanModerateContent setting. Specifies who can move topics out of the group or forum. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanPostAnnouncements": {
+          "description": "Deprecated. This is merged into the new whoCanModerateContent setting. Specifies who can post announcements, a special topic type. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanPostMessage": {
+          "description": "Permissions to post messages. Possible values are:  \n- NONE_CAN_POST: The group is disabled and archived. No one can post a message to this group.  \n- When archiveOnly is false, updating whoCanPostMessage to NONE_CAN_POST, results in an error. \n- If archiveOnly is reverted from true to false, whoCanPostMessages is set to ALL_MANAGERS_CAN_POST.  \n- ALL_MANAGERS_CAN_POST: Managers, including group owners, can post messages. \n- ALL_MEMBERS_CAN_POST: Any group member can post a message. \n- ALL_OWNERS_CAN_POST: Only group owners can post a message. \n- ALL_IN_DOMAIN_CAN_POST: Anyone in the account can post a message.  \n- ANYONE_CAN_POST: Any Internet user who outside your account can access your Google Groups service and post a message. Note: When whoCanPostMessage is set to ANYONE_CAN_POST, we recommend the messageModerationLevel be set to MODERATE_NON_MEMBERS to protect the group from possible spam.",
+          "type": "string"
+        },
+        "whoCanTakeTopics": {
+          "description": "Deprecated. This is merged into the new whoCanAssistContent setting. Permission to take topics in a forum. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanUnassignTopic": {
+          "description": "Deprecated. This is merged into the new whoCanAssistContent setting. Permission to unassign any topic in a forum. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanUnmarkFavoriteReplyOnAnyTopic": {
+          "description": "Deprecated. This is merged into the new whoCanAssistContent setting. Permission to unmark any post from a favorite reply. Possible values are:  \n- ALL_MEMBERS \n- OWNERS_AND_MANAGERS \n- MANAGERS_ONLY \n- OWNERS_ONLY \n- NONE",
+          "type": "string"
+        },
+        "whoCanViewGroup": {
+          "description": "Permissions to view group messages. Possible values are:  \n- ANYONE_CAN_VIEW: Any Internet user can view the group's messages.  \n- ALL_IN_DOMAIN_CAN_VIEW: Anyone in your account can view this group's messages. \n- ALL_MEMBERS_CAN_VIEW: All group members can view the group's messages. \n- ALL_MANAGERS_CAN_VIEW: Any group manager can view this group's messages.",
+          "type": "string"
+        },
+        "whoCanViewMembership": {
+          "description": "Permissions to view membership. Possible values are:  \n- ALL_IN_DOMAIN_CAN_VIEW: Anyone in the account can view the group members list.\nIf a group already has external members, those members can still send email to this group.\n \n- ALL_MEMBERS_CAN_VIEW: The group members can view the group members list. \n- ALL_MANAGERS_CAN_VIEW: The group managers can view group members list.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "groups/v1/groups/",
+  "title": "Groups Settings API",
+  "version": "v1"
+}

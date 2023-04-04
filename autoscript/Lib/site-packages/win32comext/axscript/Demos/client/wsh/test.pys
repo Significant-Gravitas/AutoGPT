@@ -1,0 +1,15 @@
+# Testall - test core AX support.
+
+# Test "Restricted Execution" (ie, IObjectSafety).
+# This will fail if in a "restricted execution" environment, but
+# will silenty do nothing of not restricted.  This same line in an MSIE
+# script would cause an exception.
+print("Importing win32api...")
+import win32api
+if 1==1:
+	print("Hi")
+
+WScript.Echo("Hello from WScript")
+
+#fail
+

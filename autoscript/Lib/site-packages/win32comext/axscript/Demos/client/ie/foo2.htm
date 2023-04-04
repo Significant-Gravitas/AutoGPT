@@ -1,0 +1,105 @@
+<HTML>
+<BODY>
+
+<SCRIPT>
+b="Hello"
+</SCRIPT>
+
+<SCRIPT LANGUAGE="Python">
+import win32traceutil
+import sys
+print "Hello"
+a="Hi there"
+print "Location is", document.location
+document.write("Hello", " from version ", 2, " of the Python AXScript Engine","<P>")
+document.writeln("This is Python", sys.version)
+
+</SCRIPT>
+
+<P>The caption on the first button is set by the Window Load code.  Clicking
+that button changes the text in the first edit box.
+
+<P>The second button changes its own text when clicked.
+
+<P>The fourth button calls a global function, defined in the global 'script' scope,
+rather than the 'MyForm' scope.
+
+<FORM NAME="MyForm" METHOD="GET">
+   <SCRIPT LANGUAGE="Python">
+print "Hello from in the form"
+   </SCRIPT>
+   <INPUT NAME="Button1" TYPE="Button" OnClick="MyForm.Text1.value='Hi'" LANGUAGE="Python">
+   <INPUT TYPE="TEXT" SIZE=25 NAME="Text1">
+   <INPUT NAME="Button2" TYPE="Button" VALUE="Click for 'Hi'" OnClick="a='Howdy'; MyForm.Button2.value='Hi'" LANGUAGE="Python">
+   <INPUT NAME="Button3" TYPE="Button" VALUE="Click for URL" OnClick="MyForm.Text2.value=document.location" LANGUAGE="Python">
+   <INPUT TYPE="TEXT" SIZE=25 NAME="Text2">
+   <INPUT NAME="Button4" TYPE="Button" VALUE="Call global fn" OnClick="foo1()" LANGUAGE="Python">
+   <INPUT NAME="Button5" TYPE="Button" VALUE="Script for... Test">
+<script for="Button5" event="onClick" language="Python">
+print "HelloThere";
+window.alert("Hello")
+def ATest():
+	print "Hello from ATEst"
+
+ATest()
+</script>
+   <INPUT NAME="Button6" TYPE="Button" VALUE="Set Other" OnClick="Form2.Text1.Value='Hi from other'" LANGUAGE="Python">
+
+</FORM><BR>
+<P>
+And here is a second form
+<P>
+<FORM NAME="Form2" METHOD="GET">
+   <INPUT NAME="Button1" TYPE="Button" OnClick="Form2.Text1.Value='Hi'" LANGUAGE="Python">
+   <INPUT NAME="Button2" TYPE="Button" VALUE="Set Other" OnClick="MyForm.Text1.Value='Hi from other'" LANGUAGE="Python">
+   <INPUT TYPE="TEXT" SIZE=25 NAME="Text1">
+   <INPUT NAME="ButRExec" TYPE="Button" VALUE="RExec fail" OnClick="import win32api;win32api.MessageBox(0,'Oops')" LANGUAGE="Python">
+   <INPUT NAME="ButRExec2" TYPE="Button" VALUE="RExec fail 2" OnClick="import sys,win32traceutil;print sys.modules;from win32com.client import dynamic;import win32com.client.dynamic, pythoncom, win32com.client;o=win32com.client.Dispatch('Word.Application')" LANGUAGE="Python">
+   <INPUT NAME="ButVB" TYPE="Button" VALUE="VBScript Button" OnClick='alert("Hi from VBScript")'>
+   <INPUT NAME="ButCallChain" TYPE="Button" VALUE="Multi-Language call" OnClick='CallPython()'>
+</FORM><BR>
+
+<SCRIPT LANGUAGE="VBScript">
+function CallPython()
+	alert("Hello from VB - Im about to call Python!")
+	PythonGlobalFunction()
+end function
+</SCRIPT>
+
+<SCRIPT LANGUAGE="JScript">
+function JScriptFunction()
+{
+  alert("Hello from JScript");
+}
+</SCRIPT>
+
+<SCRIPT LANGUAGE="Python">
+x=13
+
+def foo1():
+   y = 14
+   for name, item in globals().items():
+        print name, `item`
+   alert ("Hello from AXCode")
+   print "Y is ",y
+
+def PythonGlobalFunction():
+	window.alert("Hello from Python - Im about to call JScript!")
+	window.JScriptFunction()
+
+def Window_OnLoad():
+	print "X is", x
+	print "a is", a
+#	print "------ GLOBALS ----------"
+#	for n,v in globals().items():
+#		print n,'=',v
+	print "MyForm is", MyForm
+	print "MyForm is repr", `MyForm`
+	print "MyForm.Button1 is", `MyForm.Button1`
+	MyForm.Button1.Value = "Python Rules!"
+	Form2.Button1.value = "Form2!"
+	MyForm.Text1.value = document.location
+</SCRIPT>
+
+</BODY>
+</HTML>
