@@ -1,16 +1,20 @@
 """ElevenLabs speech module"""
 import os
+import typing
 from playsound import playsound
 
 import requests
 
 from autogpt.config import Config
 from autogpt.speech.base import VoiceBase
+from vocode.turn_based.synthesizer.eleven_labs_synthesizer import ElevenLabsSynthesizer
+
+from autogpt.speech.vocode_base import VocodeVoiceBase
 
 PLACEHOLDERS = {"your-voice-id"}
 
 
-class ElevenLabsSpeech(VoiceBase):
+class ElevenLabsSpeech(VocodeVoiceBase):
     """ElevenLabs speech class"""
 
     def _setup(self) -> None:
@@ -33,10 +37,6 @@ class ElevenLabsSpeech(VoiceBase):
             "Adam": "pNInz6obpgDQGcFmaJgB",
             "Sam": "yoZ06aMxZJJ28mfd3POQ",
         }
-        self._headers = {
-            "Content-Type": "application/json",
-            "xi-api-key": cfg.elevenlabs_api_key,
-        }
         self._voices = default_voices.copy()
         if cfg.elevenlabs_voice_1_id in voice_options:
             cfg.elevenlabs_voice_1_id = voice_options[cfg.elevenlabs_voice_1_id]
@@ -44,6 +44,13 @@ class ElevenLabsSpeech(VoiceBase):
             cfg.elevenlabs_voice_2_id = voice_options[cfg.elevenlabs_voice_2_id]
         self._use_custom_voice(cfg.elevenlabs_voice_1_id, 0)
         self._use_custom_voice(cfg.elevenlabs_voice_2_id, 1)
+        super()._setup()
+
+    def _create_synthesizer(self) -> ElevenLabsSynthesizer:
+        cfg = Config()
+        return ElevenLabsSynthesizer(
+            api_key=cfg.elevenlabs_api_key, voice_id=self._voices[0]
+        )
 
     def _use_custom_voice(self, voice, voice_index) -> None:
         """Use a custom voice if provided and not a placeholder
@@ -69,18 +76,7 @@ class ElevenLabsSpeech(VoiceBase):
         Returns:
             bool: True if the request was successful, False otherwise
         """
-        tts_url = (
-            f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_index]}"
-        )
-        response = requests.post(tts_url, headers=self._headers, json={"text": text})
-
-        if response.status_code == 200:
-            with open("speech.mpeg", "wb") as f:
-                f.write(response.content)
-            playsound("speech.mpeg", True)
-            os.remove("speech.mpeg")
-            return True
-        else:
-            print("Request failed with status code:", response.status_code)
-            print("Response content:", response.content)
-            return False
+        typing.cast(ElevenLabsSynthesizer, self.synthesizer).voice_id = self._voices[
+            voice_index
+        ]
+        return super()._speech(text)

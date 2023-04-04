@@ -3,6 +3,7 @@ from autogpt.config import Config
 
 import threading
 from threading import Semaphore
+from autogpt.speech.azure import AzureSpeech
 from autogpt.speech.brian import BrianSpeech
 from autogpt.speech.macos_tts import MacOSTTS
 from autogpt.speech.gtts import GTTSVoice
@@ -18,6 +19,8 @@ elif CFG.use_mac_os_tts == "True":
     VOICE_ENGINE = MacOSTTS()
 elif CFG.use_brian_tts == "True":
     VOICE_ENGINE = BrianSpeech()
+elif CFG.azure_speech_key and CFG.azure_speech_region:
+    VOICE_ENGINE = AzureSpeech()
 else:
     VOICE_ENGINE = GTTSVoice()
 
