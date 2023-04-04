@@ -3,6 +3,7 @@ import openai
 from dotenv import load_dotenv
 from config import Config
 import token_counter
+import message_history
 
 cfg = Config()
 
@@ -40,7 +41,6 @@ def chat_with_ai(
             Args:
             prompt (str): The prompt explaining the rules to the AI.
             user_input (str): The input from the user.
-            full_message_history (list): The list of all messages sent between the user and the AI.
             permanent_memory (list): The list of items in the AI's permanent memory.
             token_limit (int): The maximum number of tokens allowed in the API call.
 
@@ -114,10 +114,10 @@ def chat_with_ai(
             )
 
             # Update full message history
-            full_message_history.append(
+            message_history.append(
                 create_chat_message(
                     "user", user_input))
-            full_message_history.append(
+            message_history.append(
                 create_chat_message(
                     "assistant", assistant_reply))
 

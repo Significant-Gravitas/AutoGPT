@@ -1,6 +1,6 @@
 import browse
 import json
-import memory as mem
+import memory
 import datetime
 import agent_manager as agents
 import speak
@@ -14,7 +14,6 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 cfg = Config()
-
 
 def get_command(response):
     try:
@@ -178,14 +177,14 @@ def get_hyperlinks(url):
 
 def commit_memory(string):
     _text = f"""Committing memory with string "{string}" """
-    mem.permanent_memory.append(string)
+    memory.append(string)
     return _text
 
 
 def delete_memory(key):
     if key >= 0 and key < len(mem.permanent_memory):
         _text = "Deleting memory with key " + str(key)
-        del mem.permanent_memory[key]
+        memory.delete_memory(key)
         print(_text)
         return _text
     else:
@@ -197,7 +196,7 @@ def overwrite_memory(key, string):
     if int(key) >= 0 and key < len(mem.permanent_memory):
         _text = "Overwriting memory with key " + \
             str(key) + " and string " + string
-        mem.permanent_memory[key] = string
+        memory.overwrite_memory(key, string)
         print(_text)
         return _text
     else:

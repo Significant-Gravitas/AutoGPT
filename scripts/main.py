@@ -16,7 +16,9 @@ from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
-
+import message_history
+import snapshots
+import data_store as ds
 
 def print_to_console(
         title,
@@ -172,6 +174,8 @@ Role:  {config.ai_role}
 Goals: {config.ai_goals}  
 Continue (y/n): """)
         if should_continue.lower() == "n":
+            mem.clear_memory()
+            message_history.clear_history()
             config = AIConfig()
 
     if not config.ai_name:         
@@ -248,6 +252,9 @@ def parse_arguments():
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--enable-snapshots', action='store_true', help='Enable Snapshots')
+    parser.add_argument('--snapshot-path', type=str, default=None, required=False, help='Path for the snapshot directory')
+    parser.add_argument('--snapshot-id', type=str, default=None, required=False, help='ID of the snapshot to load')
     args = parser.parse_args()
 
     if args.continuous:
@@ -266,6 +273,25 @@ def parse_arguments():
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
+    if args.enable_snapshots:
+        print_to_console("Snapshots: ", Fore.GREEN, "ENABLED")
+        cfg.set_snapshots_enabled(True)
+        ds.instance = ds.ShelfDataStore("outputs/snapshots/")
+
+    if args.snapshot_path:
+        print_to_console("Snapshot Path: ", Fore.GREEN, args.snapshot_path)
+        ds.instance = ds.ShelfDataStore(args.snapshot_path)
+
+    if args.snapshot_id:
+        result = snapshots.load_snapshot(args.snapshot_id)
+        message_history = result["message_history"]
+        memory = result["memory"]
+        if message_history is not True:
+            print_to_console("Load Snapshot: ", Fore.RED, f"FAILED - {message_history}")
+        if memory is not True:
+            print_to_console("Load Snapshot: ", Fore.RED, f"FAILED - {memory}")
+        if message_history is True and memory is True:
+            print_to_console("Load Snapshot: ", Fore.GREEN, f"SUCCESSFULLY loaded {args.snapshot_id}")
 
 # TODO: fill in llm values here
 
@@ -287,7 +313,7 @@ while True:
         assistant_reply = chat.chat_with_ai(
             prompt,
             user_input,
-            full_message_history,
+            message_history.message_history,
             mem.permanent_memory,
             cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
@@ -352,10 +378,10 @@ while True:
     # Check if there's a result from the command append it to the message
     # history
     if result is not None:
-        full_message_history.append(chat.create_chat_message("system", result))
+        message_history.append(chat.create_chat_message("system", result))
         print_to_console("SYSTEM: ", Fore.YELLOW, result)
     else:
-        full_message_history.append(
+        message_history.append(
             chat.create_chat_message(
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")

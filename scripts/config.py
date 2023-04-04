@@ -27,6 +27,7 @@ class Config(metaclass=Singleton):
     def __init__(self):
         self.continuous_mode = False
         self.speak_mode = False
+        self.snapshots_enabled = False
         # TODO - make these models be self-contained, using langchain, so we can configure them once and call it good 
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo") 
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -71,3 +72,6 @@ class Config(metaclass=Singleton):
     
     def set_custom_search_engine_id(self, value: str):
         self.custom_search_engine_id = value
+
+    def set_snapshots_enabled(self, value: bool):
+        self.snapshots_enabled = value
