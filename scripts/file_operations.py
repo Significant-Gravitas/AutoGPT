@@ -3,6 +3,7 @@ import os.path
 
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
+
 # Create the directory if it doesn't exist
 if not os.path.exists(working_directory):
     os.makedirs(working_directory)
@@ -35,8 +36,10 @@ def write_to_file(filename, text):
     try:
         filepath = safe_join(working_directory, filename)
         directory = os.path.dirname(filepath)
+
         if not os.path.exists(directory):
             os.makedirs(directory)
+
         with open(filepath, "w") as f:
             f.write(text)
         return "File written to successfully."
