@@ -305,7 +305,6 @@ while True:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
         # Get key press: Prompt the user to press enter to continue or escape
         # to exit
-        previous_user_input = user_input
         user_input = ""
         print_to_console(
             "NEXT ACTION: ",
