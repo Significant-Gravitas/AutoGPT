@@ -2,6 +2,7 @@ import os
 from playsound import playsound
 import requests
 from config import Config
+
 cfg = Config()
 
 # TODO: Nicer names for these ids
@@ -18,8 +19,7 @@ def say_text(text, voice_index=0):
         voice_id=voices[voice_index])
 
     formatted_message = {"text": text}
-    response = requests.post(
-        tts_url, headers=tts_headers, json=formatted_message)
+    response = requests.post(tts_url, headers=tts_headers, json=formatted_message)
 
     if response.status_code == 200:
         with open("speech.mpeg", "wb") as f:
