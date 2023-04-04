@@ -1,4 +1,4 @@
-# Auto-GPT: An Autonomous GPT-4 Experiment
+# Auto-GPT-QA: A Semi-Autonomous GPT-4 Experiment
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
 [![](https://dcbadge.vercel.app/api/server/PQ7VX6TY4t?style=flat)](https://discord.gg/PQ7VX6TY4t)
@@ -8,6 +8,9 @@ Auto-GPT is an experimental open-source application showcasing the capabilities 
 ### Demo (30/03/2023):
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
+# Modifications for QA
+
+This is a fork of the original Auto-GPT project, which allows for the question and answer of questions coming from the AI for the user of the AI. It operates asyncronously so the user may step away at any time, and the system can still independently think. The user can also interupt the AI and ask questions about what it has done so far.
 
 ## 💖 Help Fund Auto-GPT's Development
 <p align="center">
@@ -92,6 +95,23 @@ pip install -r requirements.txt
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
 
+## Installation of the QA version
+
+The only additional dependency is that you need to run rabbitmq-server on your machine. This is the default way to run it from `https://www.rabbitmq.com/download.html`
+
+```bash
+docker run -it --rm --name rabbitmq -p 5672:5672 -p 15672:15672 -v $(pwd)/rabbitmq-config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf -v $(pwd)/rabbitmq-config/definitions.json:/etc/rabbitmq/definitions.json rabbitmq:3.11-management
+```
+
+Now, add to your `.env` file the following (modified as necessary)
+
+```bash
+RABBITMQ_HOST=localhost
+RABBITMQ_PORT=5672
+RABBITMQ_USER=guest
+RABBITMQ_PASSWORD=guest
+```
+
 ## 🔧 Usage
 
 1. Run the `main.py` Python script in your terminal:
@@ -101,6 +121,23 @@ python scripts/main.py
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
+
+## Enable QA Mode
+
+1. Run the `main.py` Python script in terminal window A:
+*(Type this into your CMD window)*
+```
+python scripts/main.py --qa
+```
+2. Run the `qa.py` Python script in terminal window B:
+*(Type this into your CMD window)*
+```
+python scripts/qa.py
+```
+3. After each of AUTO-GPT's actions in terminal window A, type "NEXT COMMAND" to authorise them to continue.
+4. Periodically, AUTO-GPT's action will be to ask the user a question. In this case, the question will be displayed in terminal window B. Type your answer and press Enter.
+5. To exit the program, type `^C` in terminal window B, and type "exit" and press Enter in terminal window A, in that order.
+6. To use continuous mode, type `--continuous` after `--qa` in terminal window A.
 
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
@@ -140,8 +177,8 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ## 💀 Continuous Mode ⚠️
 Run the AI **without** user authorisation, 100% automated.
-Continuous mode is not recommended. 
-It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
+Continuous mode is not recommended.
+It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
 1. Run the `main.py` Python script in your terminal:
 ```
@@ -176,7 +213,7 @@ As an autonomous experiment, Auto-GPT may generate content or take actions that 
 
 By using Auto-GPT, you agree to indemnify, defend, and hold harmless the developers, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software or your violation of these terms.
 
-## 🐦 Connect with Us on Twitter 
+## 🐦 Connect with Us on Twitter
 
 Stay up-to-date with the latest news, updates, and insights about Auto-GPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
 
