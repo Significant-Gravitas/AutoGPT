@@ -4,10 +4,19 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a3c6d55f-5470-4a50-87f7-6cb57ba22bb3" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/AutonomousAI/chat.py" beforeDir="false" afterPath="$PROJECT_DIR$/AutonomousAI/chat.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/AutonomousAI/data/prompt.txt" beforeDir="false" afterPath="$PROJECT_DIR$/AutonomousAI/data/prompt.txt" afterDir="false" />
+    <list default="true" id="2e940b6e-9632-43c1-97e9-f895a730773d" name="Changes" comment="Integrates Arxiv search and summarisation as available action.&#10;&#10;Based on https://github.com/DaltonPayne/arxiv-chatbot, updated to GPT 3.5">
+      <change afterPath="$PROJECT_DIR$/.idea/Auto-GPT.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/AutonomousAI/chat.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/AutonomousAI/data.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/AutonomousAI/data/prompt.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/AutonomousAI/main.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/AutonomousAI/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -16,6 +25,7 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="UPDATE_TYPE" value="REBASE" />
   </component>
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
@@ -25,12 +35,12 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "RunOnceActivity.OpenProjectViewOnStart": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager">
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Auto-GPT" />
@@ -62,7 +72,7 @@
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
-      <changelist id="a3c6d55f-5470-4a50-87f7-6cb57ba22bb3" name="Changes" comment="" />
+      <changelist id="2e940b6e-9632-43c1-97e9-f895a730773d" name="Changes" comment="Integrates Arxiv search and summarisation as available action.&#10;&#10;Based on https://github.com/DaltonPayne/arxiv-chatbot, updated to GPT 3.5" />
       <created>1680181068727</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
