@@ -109,6 +109,13 @@ python scripts/main.py --speak
 
 ```
 
+## 🗣️ Database Mode
+Use this flag to enable acces to a database configured in .env file.
+```
+python scripts/main.py --db
+
+```
+
 ## 🔍 Google API Keys Configuration
 
 This section is optional, use the official google api if you are having issues with error 429 when running google search.
@@ -184,4 +191,3 @@ Stay up-to-date with the latest news, updates, and insights about Auto-GPT by fo
 - **Entrepreneur-GPT**: Join the conversation with the AI itself by following [@En_GPT](https://twitter.com/En_GPT). Share your experiences, discuss the AI's outputs, and engage with the growing community of users.
 
 We look forward to connecting with you and hearing your thoughts, ideas, and experiences with Auto-GPT. Join us on Twitter and let's explore the future of AI together!
-

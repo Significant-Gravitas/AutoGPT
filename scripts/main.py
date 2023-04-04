@@ -16,6 +16,7 @@ from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
+from db_operations import init_db
 
 
 def print_to_console(
@@ -242,12 +243,13 @@ def parse_arguments():
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
-    
+
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--db', action='store_true', help='Enable DB access')
     args = parser.parse_args()
 
     if args.continuous:
@@ -265,6 +267,11 @@ def parse_arguments():
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
+
+    if args.db:
+        cfg.set_db_access(True)
+        init_db()
+        print_to_console("DB Mode: ", Fore.GREEN, "ENABLED")
 
 
 # TODO: fill in llm values here

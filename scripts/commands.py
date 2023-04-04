@@ -7,6 +7,7 @@ import speak
 from config import Config
 import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file
+from db_operations import read_table, execute_sql
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
@@ -19,15 +20,15 @@ cfg = Config()
 def get_command(response):
     try:
         response_json = fix_and_parse_json(response)
-        
+
         if "command" not in response_json:
             return "Error:" , "Missing 'command' object in JSON"
-        
+
         command = response_json["command"]
 
         if "name" not in command:
             return "Error:", "Missing 'name' field in 'command' object"
-        
+
         command_name = command["name"]
 
         # Use an empty dictionary if 'args' field is not present in 'command' object
@@ -47,7 +48,6 @@ def get_command(response):
 def execute_command(command_name, arguments):
     try:
         if command_name == "google":
-            
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
             if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
@@ -96,6 +96,10 @@ def execute_command(command_name, arguments):
             return ai.write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
+        elif command_name == "read_table":
+            return read_table(arguments["table"])
+        elif command_name == "execute_sql":
+            return execute_sql(arguments["sql"])
         elif command_name == "task_complete":
             shutdown()
         else:
