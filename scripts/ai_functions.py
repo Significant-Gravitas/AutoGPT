@@ -24,8 +24,6 @@ def call_ai_function(function, args, description, model="gpt-4"):
 
 
 # Evaluating code
-
-
 def evaluate_code(code: str) -> List[str]:
     """Evaluates the given code and returns a list of suggestions for improvements."""
     function_string = "def analyze_code(code: str) -> List[str]:"
@@ -37,6 +35,7 @@ def evaluate_code(code: str) -> List[str]:
     return result_string
 
 
+# Improving code
 def improve_code(suggestions: List[str], code: str) -> str:
     """Improves the provided code based on the suggestions provided, making no other changes."""
     function_string = (
@@ -49,6 +48,7 @@ def improve_code(suggestions: List[str], code: str) -> str:
     return result_string
 
 
+# Writing tests
 def write_tests(code: str, focus: List[str]) -> str:
     """Generates test cases for the existing code, focusing on specific areas if required."""
     function_string = (
