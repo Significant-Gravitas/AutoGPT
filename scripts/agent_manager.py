@@ -1,10 +1,10 @@
-import openai
+from llm_utils import create_chat_completion
 
 next_key = 0
 agents = {}  # key, (task, full_message_history, model)
 
 # Create new GPT agent
-
+# TODO: Centralise use of create_chat_completion() to globally enforce token limit
 
 def create_agent(task, prompt, model):
     global next_key
@@ -13,12 +13,10 @@ def create_agent(task, prompt, model):
     messages = [{"role": "user", "content": prompt}, ]
 
     # Start GTP3 instance
-    response = openai.ChatCompletion.create(
+    agent_reply = create_chat_completion(
         model=model,
         messages=messages,
     )
-
-    agent_reply = response.choices[0].message["content"]
 
     # Update full message history
     messages.append({"role": "assistant", "content": agent_reply})
@@ -42,13 +40,10 @@ def message_agent(key, message):
     messages.append({"role": "user", "content": message})
 
     # Start GTP3 instance
-    response = openai.ChatCompletion.create(
+    agent_reply = create_chat_completion(
         model=model,
         messages=messages,
     )
-
-    # Get agent response
-    agent_reply = response.choices[0].message["content"]
 
     # Update full message history
     messages.append({"role": "assistant", "content": agent_reply})
