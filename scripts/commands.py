@@ -166,8 +166,13 @@ def browse_website(url, question):
 
 
 def get_text_summary(url, question):
+    # if url is in cache return cached result
+    if url in mem.cache:
+        print("Returning cached result")
+        return """ "Result" : """ + mem.cache[url]
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text, question)
+    mem.cache[url] = summary
     return """ "Result" : """ + summary
 
 

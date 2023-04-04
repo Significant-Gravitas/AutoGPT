@@ -1,1 +1,3 @@
 permanent_memory = []
+
+cache = {}
