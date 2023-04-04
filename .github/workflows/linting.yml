@@ -1,0 +1,21 @@
+name: auto-format
+on: pull_request
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.11
+
+      - name: Install flake8
+        run: pip install -r requirements-dev.txt
+
+      - name: Run flake8
+        run: flake8-diff --git-range ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
