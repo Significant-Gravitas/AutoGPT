@@ -1,7 +1,6 @@
 from config import Config
-cfg = Config()
-
 from llm_utils import create_chat_completion
+cfg = Config()
 
 # This is a magic function that can do anything with no-code. See
 # https://github.com/Torantulino/AI-Functions for more info.
