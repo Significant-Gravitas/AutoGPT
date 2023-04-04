@@ -11,21 +11,24 @@ from file_operations import read_file, write_to_file, append_to_file, delete_fil
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
 from googlesearch import search
+
+import llm_utils
+
 cfg = Config()
 
 
 def get_command(response):
     try:
         response_json = fix_and_parse_json(response)
-        
+
         if "command" not in response_json:
-            return "Error:" , "Missing 'command' object in JSON"
-        
+            return "Error:", "Missing 'command' object in JSON"
+
         command = response_json["command"]
 
         if "name" not in command:
             return "Error:", "Missing 'name' field in 'command' object"
-        
+
         command_name = command["name"]
 
         # Use an empty dictionary if 'args' field is not present in 'command' object
@@ -162,7 +165,7 @@ def delete_memory(key):
 def overwrite_memory(key, string):
     if int(key) >= 0 and key < len(mem.permanent_memory):
         _text = "Overwriting memory with key " + \
-            str(key) + " and string " + string
+                str(key) + " and string " + string
         mem.permanent_memory[key] = string
         print(_text)
         return _text

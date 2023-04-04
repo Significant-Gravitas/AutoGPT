@@ -35,7 +35,7 @@ def query_arxiv_api(search_query, max_results=5):
 def fetch_articles_and_generate_response(search_query,model):
     articles = query_arxiv_api(search_query)
     if articles:
-        prompt = f"Please provide an answer to the question '{search_query}' using the following {len(articles)} articles as references, and include a citation for each relevant article, and explain the reasoing behind your response:\n\n"
+        prompt = f"Provide an answer to the question '{search_query}' using the following {len(articles)} articles as references, and include a citation for each relevant article, and explain the reasoing behind your response:\n\n"
         for article in articles:
             prompt += f"Title: {article['title']}\nURL: {article['url']}\nPublished: {article['published']}\n\n"
 

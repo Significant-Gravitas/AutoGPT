@@ -31,7 +31,7 @@ def chat_with_ai(
         full_message_history,
         permanent_memory,
         token_limit,
-        debug=False):
+        debug=True):
     while True:
         try:
             """
