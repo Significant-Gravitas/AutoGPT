@@ -102,8 +102,8 @@ def execute_command(command_name, arguments):
             return qamodel.ask_user(arguments["question"])
         elif command_name == "receive_all_responses":
             return qamodel.receive_all_responses()
-        elif command_name == "receive_user_response":
-            return qamodel.receive_user_response()
+        # elif command_name == "receive_user_response":
+        #     return qamodel.receive_user_response()
         elif command_name == "notify_user":
             return qamodel.notify_user(arguments["message"])
         elif command_name == "task_complete":
