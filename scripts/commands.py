@@ -3,6 +3,7 @@ import json
 import memory as mem
 import datetime
 import agent_manager as agents
+from scripts.docker import interact_with_container, setup_and_run_docker, stop_and_cleanup_docker
 import speak
 from config import Config
 import ai_functions as ai
@@ -98,6 +99,12 @@ def execute_command(command_name, arguments):
             return execute_python_file(arguments["file"])
         elif command_name == "task_complete":
             shutdown()
+        elif command_name == "start_docker_container":
+            return setup_and_run_docker(arguments["image"], arguments["command"], arguments["volume"])
+        elif command_name == "run_docker_container":
+            return interact_with_container(arguments['container'], arguments['command'])
+        elif command_name == 'stop_docker_container':
+            return stop_and_cleanup_docker(arguments['container'], arguments['volume'])
         else:
             return f"Unknown command {command_name}"
     # All errors, return "Error: + error message"
