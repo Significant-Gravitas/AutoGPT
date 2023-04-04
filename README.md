@@ -1,4 +1,4 @@
-# Auto-GPT-QA: A Semi-Autonomous GPT-4 Experiment
+# Auto-GPT: An Autonomous GPT-4 Experiment
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
 [![](https://dcbadge.vercel.app/api/server/PQ7VX6TY4t?style=flat)](https://discord.gg/PQ7VX6TY4t)
@@ -8,9 +8,6 @@ Auto-GPT is an experimental open-source application showcasing the capabilities 
 ### Demo (30/03/2023):
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
-# Modifications for QA
-
-This is a fork of the original Auto-GPT project, which allows for the question and answer of questions coming from the AI for the user of the AI. It operates asyncronously so the user may step away at any time, and the system can still independently think. The user can also interupt the AI and ask questions about what it has done so far.
 
 ## 💖 Help Fund Auto-GPT's Development
 <p align="center">
