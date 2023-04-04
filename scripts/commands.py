@@ -1,6 +1,6 @@
 import browse
 import json
-import memory as mem
+from memory import PineconeMemory
 import datetime
 import agent_manager as agents
 import speak
@@ -45,6 +45,7 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
+    memory = PineconeMemory()
     try:
         if command_name == "google":
             
@@ -55,11 +56,7 @@ def execute_command(command_name, arguments):
             else:
                 return google_search(arguments["input"])
         elif command_name == "memory_add":
-            return commit_memory(arguments["string"])
-        elif command_name == "memory_del":
-            return delete_memory(arguments["key"])
-        elif command_name == "memory_ovr":
-            return overwrite_memory(arguments["key"], arguments["string"])
+            return memory.add(arguments["string"])
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"],
@@ -174,35 +171,6 @@ def get_text_summary(url, question):
 def get_hyperlinks(url):
     link_list = browse.scrape_links(url)
     return link_list
-
-
-def commit_memory(string):
-    _text = f"""Committing memory with string "{string}" """
-    mem.permanent_memory.append(string)
-    return _text
-
-
-def delete_memory(key):
-    if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Deleting memory with key " + str(key)
-        del mem.permanent_memory[key]
-        print(_text)
-        return _text
-    else:
-        print("Invalid key, cannot delete memory.")
-        return None
-
-
-def overwrite_memory(key, string):
-    if int(key) >= 0 and key < len(mem.permanent_memory):
-        _text = "Overwriting memory with key " + \
-            str(key) + " and string " + string
-        mem.permanent_memory[key] = string
-        print(_text)
-        return _text
-    else:
-        print("Invalid key, cannot overwrite memory.")
-        return None
 
 
 def shutdown():
