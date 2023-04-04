@@ -1,0 +1,13 @@
+{
+    "yaml.customTags": [
+        "!upload scalar",
+        "!remove scalar",
+        "!keep scalar",
+        "!erase scalar",
+        "!jwt scalar"
+    ],
+    "yaml.schemas": {
+        "https://raw.githubusercontent.com/doanthuanthanh88/testapi6/main/schema.json": "*.yaml"
+    },
+    "genieai.enableConversationHistory": true
+}
