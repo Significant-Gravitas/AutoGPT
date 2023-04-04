@@ -1,6 +1,6 @@
 from pathlib import Path
 
-FOLDER = Path(__file__).parent
+SRC_DIR = Path(__file__).parent
 
 
 def load_prompt():
