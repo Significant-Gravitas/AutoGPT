@@ -35,10 +35,12 @@ class Config(metaclass=Singleton):
         
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+        
+        self.google_api_key = os.getenv("GOOGLE_API_KEY")
+        self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
-
 
     def set_continuous_mode(self, value: bool):
         self.continuous_mode = value
@@ -59,10 +61,13 @@ class Config(metaclass=Singleton):
         self.smart_token_limit = value
 
     def set_openai_api_key(self, value: str):
-        self.apiopenai_api_key_key = value
+        self.openai_api_key = value
     
     def set_elevenlabs_api_key(self, value: str):
         self.elevenlabs_api_key = value
-
-
         
+    def set_google_api_key(self, value: str):
+        self.google_api_key = value
+    
+    def set_custom_search_engine_id(self, value: str):
+        self.custom_search_engine_id = value

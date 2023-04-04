@@ -7,6 +7,7 @@ pyyaml==6.0
 readability-lxml==0.8.1
 requests
 tiktoken==0.3.3
+gTTS==2.3.1
 docker
 duckduckgo-search
-# Googlesearch python seems to be a bit cursed, anyone good at fixing thigns like this?
+google-api-python-client #(https://developers.google.com/custom-search/v1/overview) 
