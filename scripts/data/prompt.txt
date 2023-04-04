@@ -10,7 +10,7 @@ YOUR AVAILABLE COMMANDS:
 2. Memory Add - For when you need to write information to long term memory. Command: "memory_add", args: "string": "<string>"
 3. Memory Delete - For when you need to remove long term memories. Command: "memory_del", args: "key": "<key>"
 4. Memory Overwrite - For when you need to replace a long term memory. Command: "memory_ovr", args: "key": "<key>", "string": "<string>"
-5. Browse Website - For when you need to visit a web page and get a summary from it. Optionally include a specific question you'd like to find the answer to on the page. Command: "browse_website", args: "url": "<url>", "question": "<what_you_want_to_find_on_website>"
+5. Browse Website - For when you need to visit a web page and get a summary from it. Optionally include a specific question you'd like to find the answer to. Command: "browse_website", args: "url": "<url>", "question": "<what_you_want_to_find_on_website>"
 6. Start GPT Agent - For when you need to start a new ChatGPT3.5 powered agent. Not to be used for web browsing. Command: "start_agent",  args: "name": <name>, "task": "<short_task_desc>", "prompt": "<prompt>"
 7. Message GPT Agent - For when you need to message an agent. An agent must be started before it can be messaged. If unsure if an agent exists use list agents first. Command: "message_agent", args: "key": "<key>", "message": "<message>"
 8. List GPT Agents - Used to list current GPT agents. Command: "list_agents", args: ""
