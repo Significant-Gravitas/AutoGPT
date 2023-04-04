@@ -178,35 +178,28 @@ def get_hyperlinks(url):
 
 def commit_memory(string):
     _text = f"""Committing memory with string "{string}" """
-    mem.permanent_memory.append(string)
+    mem.permanent_memory.insert(string)
     return _text
 
 
 def delete_memory(key):
-    if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Deleting memory with key " + str(key)
-        del mem.permanent_memory[key]
-        print(_text)
-        return _text
-    else:
-        print("Invalid key, cannot delete memory.")
-        return None
+    _text = "Deleting memory with key " + str(key)
+    mem.permanent_memory.delete_memory(key)
+    print(_text)
+    return _text
 
 
 def overwrite_memory(key, string):
-    if int(key) >= 0 and key < len(mem.permanent_memory):
-        _text = "Overwriting memory with key " + \
+    _text = "Overwriting memory with key " + \
             str(key) + " and string " + string
-        mem.permanent_memory[key] = string
-        print(_text)
-        return _text
-    else:
-        print("Invalid key, cannot overwrite memory.")
-        return None
+    mem.permanent_memory.overwrite(key, string)
+    print(_text)
+    return _text
 
 
 def shutdown():
     print("Shutting down...")
+    mem.permanent_memory.quit()
     quit()
 
 
