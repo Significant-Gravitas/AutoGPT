@@ -1,6 +1,6 @@
 from os import path
 from pathlib import Path
-
+SRC_DIR = Path(__file__).parent
 
 def load_prompt():
     """Load the prompt from data/prompt.txt"""
@@ -10,7 +10,7 @@ def load_prompt():
         data_dir = file_dir / "data"
         prompt_file = data_dir / "prompt.txt"
         # Load the promt from data/prompt.txt
-        with open(prompt_file, "r") as prompt_file:
+        with open(SRC_DIR/ "data/prompt.txt", "r") as prompt_file:
             prompt = prompt_file.read()
 
         return prompt
