@@ -9,7 +9,7 @@ import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
-from googlesearch import search
+from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -112,7 +112,7 @@ def get_datetime():
 
 def google_search(query, num_results=8):
     search_results = []
-    for j in search(query, num_results=num_results):
+    for j in ddg(query, max_results=num_results):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
