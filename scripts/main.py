@@ -1,5 +1,6 @@
 import json
 import random
+from typing import Optional
 import commands as cmd
 import memory as mem
 import data
@@ -260,11 +261,18 @@ def parse_arguments():
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
+    if args.qa:
+        print_to_console("QA Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_qa_mode(True)
+
 
 # TODO: fill in llm values here
-qamodel = qa.QAModel()
 cfg = Config()
 parse_arguments()
+if cfg.qa_mode:
+    qamodel: Optional[qa.QAModel] = qa.QAModel()
+else:
+    qamodel = None
 ai_name = ""
 prompt = construct_prompt()
 # print(prompt)
@@ -351,8 +359,9 @@ while True:
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
 
     # Check if there is a new response from the user
-    user_response = qamodel.receive_user_response()
-    if user_response is not None:
-        full_message_history.append(
-            chat.create_chat_message("user", user_response))
-        print_to_console("USER: ", Fore.GREEN, user_response)
+    if qamodel is not None:
+        user_response = qamodel.receive_user_response()
+        if user_response is not None:
+            full_message_history.append(
+                chat.create_chat_message("user", user_response))
+            print_to_console("USER: ", Fore.GREEN, user_response)

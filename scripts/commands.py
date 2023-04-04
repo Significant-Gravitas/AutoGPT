@@ -97,10 +97,11 @@ def execute_command(command_name, arguments, qamodel: qa.QAModel):
             return ai.write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
-        elif command_name == "ask_user":
-            return qamodel.ask_user(arguments["question"])
-        elif command_name == "notify_user":
-            return qamodel.notify_user(arguments["message"])
+        elif cfg.qa_mode:
+            if command_name == "ask_user":
+                return qamodel.ask_user(arguments["question"])
+            elif command_name == "notify_user":
+                return qamodel.notify_user(arguments["message"])
         elif command_name == "task_complete":
             shutdown()
         else:
