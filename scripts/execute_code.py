@@ -47,8 +47,32 @@ def execute_python_file(file):
         return f"Error: {str(e)}"
 
 def execute_shell_command(command):
+    workspace_folder = "auto_gpt_workspace"
     try:
-        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        client = docker.from_env()
+        container = client.containers.run(
+            'ubuntu:20.04',
+            f'bash -c {command}',
+            volumes={
+                os.path.abspath(workspace_folder): {
+                    'bind': '/workspace',
+                    'mode': 'ro'}},
+            working_dir='/workspace',
+            stderr=True,
+            stdout=True,
+            detach=True,
+        ) 
+
+        # Wait for the container to finish running the command
+        container.wait()
+
+        # Retrieve the logs
+        logs = container.logs().decode('utf-8')
+
+        # Remove the container
+        container.remove()
+        return logs 
     except Exception as e:
         return f"Error: {str(e)}"
+
+execute_shell_command("ls")
