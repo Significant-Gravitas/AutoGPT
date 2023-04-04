@@ -97,7 +97,7 @@ pip install -r requirements.txt
 1. Run the `main.py` Python script in your terminal:
 *(Type this into your CMD window)*
 ```
-python scripts/main.py
+PYTHONPATH=. python autogpt/main.py
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
@@ -105,8 +105,7 @@ python scripts/main.py
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
-python scripts/main.py --speak
-
+PYTHONPATH=. python autogpt/main.py --speak
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -140,20 +139,19 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ## 💀 Continuous Mode ⚠️
 Run the AI **without** user authorisation, 100% automated.
-Continuous mode is not recommended. 
-It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
+Continuous mode is not recommended.
+It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
 1. Run the `main.py` Python script in your terminal:
 ```
-python scripts/main.py --continuous
-
+PYTHONPATH=. python autogpt/main.py --continuous
 ```
 2. To exit the program, press Ctrl + C
 
 ## GPT3.5 ONLY Mode
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 ```
-python scripts/main.py --gpt3only
+PYTHONPATH=. python autogpt/main.py --gpt3only
 ```
 
 ## ⚠️ Limitations
@@ -176,7 +174,7 @@ As an autonomous experiment, Auto-GPT may generate content or take actions that 
 
 By using Auto-GPT, you agree to indemnify, defend, and hold harmless the developers, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software or your violation of these terms.
 
-## 🐦 Connect with Us on Twitter 
+## 🐦 Connect with Us on Twitter
 
 Stay up-to-date with the latest news, updates, and insights about Auto-GPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
 
