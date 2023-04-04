@@ -312,13 +312,14 @@ while True:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
         # Get key press: Prompt the user to press enter to continue or escape
         # to exit
+        previous_user_input = user_input
         user_input = ""
         print_to_console(
             "NEXT ACTION: ",
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
         print(
-            "Enter 'y' to authorise command or 'n' to exit program...",
+            "Enter 'y' to authorize command, 'n' to exit program, or 'r' to rethink command...",
             flush=True)
         while True:
             console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
@@ -328,12 +329,19 @@ while True:
             elif console_input.lower() == "n":
                 user_input = "EXIT"
                 break
+            elif console_input.lower() == "r":
+                user_input = "RETHINK COMMAND"
+                break
             else:
                 continue
 
-        if user_input != "GENERATE NEXT COMMAND JSON":
+        if user_input == "EXIT":
             print("Exiting...", flush=True)
             break
+
+        if user_input == "RETHINK COMMAND":
+            user_input = previous_user_input
+            continue
 
         print_to_console(
             "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",

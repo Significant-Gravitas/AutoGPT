@@ -1,6 +1,6 @@
 import docker
 import os
-
+import subprocess
 
 def execute_python_file(file):
     workspace_folder = "auto_gpt_workspace"
@@ -43,5 +43,12 @@ def execute_python_file(file):
 
         return logs
 
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+def execute_shell_command(command):
+    try:
+        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     except Exception as e:
         return f"Error: {str(e)}"
