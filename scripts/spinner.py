@@ -14,6 +14,7 @@ class Spinner:
         self.running = False
         self.spinner_thread = None
 
+
     def spin(self):
         """Spin the spinner"""
         while self.running:
@@ -22,11 +23,13 @@ class Spinner:
             time.sleep(self.delay)
             sys.stdout.write('\b' * (len(self.message) + 2))
 
+
     def __enter__(self):
         """Start the spinner"""
         self.running = True
         self.spinner_thread = threading.Thread(target=self.spin)
         self.spinner_thread.start()
+
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         """Stop the spinner"""
