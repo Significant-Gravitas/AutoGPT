@@ -72,7 +72,7 @@ def execute_command(command_name, arguments):
         elif command_name == "delete_agent":
             return delete_agent(arguments["key"])
         elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"])
+            return get_text_summary(arguments["url"], arguments["question"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
         elif command_name == "read_file":
@@ -84,7 +84,7 @@ def execute_command(command_name, arguments):
         elif command_name == "delete_file":
             return delete_file(arguments["file"])
         elif command_name == "browse_website":
-            return browse_website(arguments["url"])
+            return browse_website(arguments["url"], arguments["question"])
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
@@ -152,8 +152,8 @@ def google_official_search(query, num_results=8):
     # Return the list of search result URLs
     return search_results_links
 
-def browse_website(url):
-    summary = get_text_summary(url)
+def browse_website(url, question):
+    summary = get_text_summary(url, question)
     links = get_hyperlinks(url)
 
     # Limit links to 5
@@ -165,9 +165,9 @@ def browse_website(url):
     return result
 
 
-def get_text_summary(url):
+def get_text_summary(url, question):
     text = browse.scrape_text(url)
-    summary = browse.summarize_text(text)
+    summary = browse.summarize_text(text, question)
     return """ "Result" : """ + summary
 
 
