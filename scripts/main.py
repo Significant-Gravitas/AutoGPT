@@ -1,7 +1,7 @@
 import json
 import random
 import commands as cmd
-import memory as mem
+from memory import PineconeMemory
 import data
 import chat
 from colorama import Fore, Style
@@ -280,6 +280,13 @@ result = None
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
 
+# Initialize memory and make sure it is empty.
+# this is particularly important for indexing and referencing pinecone memory
+memory = PineconeMemory()
+memory.clear()
+
+print('Using memory of type: ' + memory.__class__.__name__)
+
 # Interaction Loop
 while True:
     # Send message to AI, get response
@@ -288,7 +295,7 @@ while True:
             prompt,
             user_input,
             full_message_history,
-            mem.permanent_memory,
+            memory,
             cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # print("assistant reply: "+assistant_reply)
@@ -348,6 +355,12 @@ while True:
         result = f"Human feedback: {user_input}"
     else:
         result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
+
+    memory_to_add = f"Assistant Reply: {assistant_reply} " \
+                    f"\nResult: {result} " \
+                    f"\nHuman Feedback: {user_input} "
+
+    memory.add(memory_to_add)
 
     # Check if there's a result from the command append it to the message
     # history
