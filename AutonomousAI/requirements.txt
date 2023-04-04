@@ -1,6 +1,0 @@
-beautifulsoup4
-colorama
-googlesearch_python
-openai
-readability_lxml
-requests
