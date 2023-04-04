@@ -3,10 +3,8 @@ import openai
 from dotenv import load_dotenv
 from config import Config
 import token_counter
-
-cfg = Config()
-
 from llm_utils import create_chat_completion
+cfg = Config()
 
 
 def create_chat_message(role, content):
@@ -50,8 +48,10 @@ def chat_with_ai(
             """
             model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
+
             if debug:
                 print(f"Token limit: {token_limit}")
+            
             send_token_limit = token_limit - 1000
 
             current_context = [
