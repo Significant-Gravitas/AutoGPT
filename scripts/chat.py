@@ -1,26 +1,12 @@
 import time
 
 import openai
-from enum import StrEnum
-from typing import TypedDict
 import token_counter
 from config import Config
 from llm_utils import create_chat_completion
+from custom_types import RolesEnum, ChatMessage
 
 cfg = Config()
-
-
-class RolesEnum(StrEnum):
-    """The role of the message sender."""
-    user: str = "user"
-    assistant: str = "assistant"
-    system: str = "system"
-
-
-class ChatMessage(TypedDict):
-    """A message added to the history of a chat session."""
-    role: RolesEnum
-    content: str
 
 
 def create_chat_message(role: str | RolesEnum, content: str) -> ChatMessage:

@@ -1,7 +1,7 @@
 import json
 import random
 from typing import List, Optional
-from chat import ChatMessage
+from custom_types import ChatMessage
 import commands as cmd
 import memory as mem
 import data
@@ -19,7 +19,9 @@ import traceback
 import yaml
 import qa
 import argparse
+import faulthandler
 
+faulthandler.enable()
 
 def print_to_console(
         title,
