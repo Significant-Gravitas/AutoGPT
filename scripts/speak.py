@@ -1,4 +1,5 @@
 import os
+import subprocess
 from playsound import playsound
 import requests
 from config import Config
@@ -13,6 +14,10 @@ tts_headers = {
 }
 
 def say_text(text, voice_index=0):
+    if tts_headers["xi-api-key"] is None or tts_headers["xi-api-key"] == "":
+         subprocess.run(['say', text], shell=False)
+         return
+
     tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(
         voice_id=voices[voice_index])
 
