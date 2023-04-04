@@ -19,9 +19,9 @@ cfg = Config()
 def get_command(response):
     try:
         response_json = fix_and_parse_json(response)
-        
+
         if "command" not in response_json:
-            return "Error:" , "Missing 'command' object in JSON"
+            return "Error:", "Missing 'command' object in JSON"
         
         command = response_json["command"]
 
@@ -55,7 +55,7 @@ def execute_command(command_name, arguments):
             else:
                 return google_search(arguments["input"])
         elif command_name == "memory_add":
-            return commit_memory(arguments["string"])
+            return commit_memory(arguments["key"], arguments["string"])
         elif command_name == "memory_del":
             return delete_memory(arguments["key"])
         elif command_name == "memory_ovr":
@@ -117,6 +117,7 @@ def google_search(query, num_results=8):
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
+
 def google_official_search(query, num_results=8):
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
@@ -129,28 +130,31 @@ def google_official_search(query, num_results=8):
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)
-        
+
         # Send the search query and retrieve the results
         result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
 
         # Extract the search result items from the response
         search_results = result.get("items", [])
-        
+
         # Create a list of only the URLs from the search results
         search_results_links = [item["link"] for item in search_results]
 
     except HttpError as e:
         # Handle errors in the API call
         error_details = json.loads(e.content.decode())
-        
+
         # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
+        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error",
+                                                                                                        {}).get(
+                "message", ""):
             return "Error: The provided Google API key is invalid or missing."
         else:
             return f"Error: {e}"
 
     # Return the list of search result URLs
     return search_results_links
+
 
 def browse_website(url, question):
     summary = get_text_summary(url, question)
@@ -176,32 +180,34 @@ def get_hyperlinks(url):
     return link_list
 
 
-def commit_memory(string):
-    _text = f"""Committing memory with string "{string}" """
-    mem.permanent_memory.append(string)
+def commit_memory(key, string):
+    _text = f"""Committing memory with key: {key}, string "{string}" """
+    mem.permanent_memory[str(key)] = string
     return _text
 
 
 def delete_memory(key):
-    if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Deleting memory with key " + str(key)
+    key = str(key)
+    if key in mem.permanent_memory:
+        _text = f"Deleting memory with key={key}"
         del mem.permanent_memory[key]
         print(_text)
         return _text
     else:
-        print("Invalid key, cannot delete memory.")
+        print(f"Invalid key={key}, cannot delete memory.")
         return None
 
 
 def overwrite_memory(key, string):
-    if int(key) >= 0 and key < len(mem.permanent_memory):
+    key = str(key)
+    if key in mem.permanent_memory:
         _text = "Overwriting memory with key " + \
-            str(key) + " and string " + string
+                key + " and string " + string
         mem.permanent_memory[key] = string
         print(_text)
         return _text
     else:
-        print("Invalid key, cannot overwrite memory.")
+        print(f"Invalid key={key}, cannot overwrite memory.")
         return None
 
 

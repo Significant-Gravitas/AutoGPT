@@ -1,1 +1,1 @@
-permanent_memory = []
+permanent_memory = {}  # key: string
