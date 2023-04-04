@@ -74,5 +74,3 @@ def execute_shell_command(command):
         return logs 
     except Exception as e:
         return f"Error: {str(e)}"
-
-execute_shell_command("ls")
