@@ -27,6 +27,7 @@ class Config(metaclass=Singleton):
     def __init__(self):
         self.continuous_mode = False
         self.speak_mode = False
+        self.debug = False
         # TODO - make these models be self-contained, using langchain, so we can configure them once and call it good 
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo") 
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -47,6 +48,9 @@ class Config(metaclass=Singleton):
 
     def set_speak_mode(self, value: bool):
         self.speak_mode = value
+
+    def set_debug_mode(self, value: bool):
+        self.debug = value
 
     def set_fast_llm_model(self, value: str):
         self.fast_llm_model = value
