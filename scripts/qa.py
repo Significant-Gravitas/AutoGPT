@@ -2,7 +2,6 @@ from typing import Dict
 import pika
 import json
 from dataclasses import dataclass
-from playsound import playsound
 from colorama import Fore, init
 import time
 import os
@@ -33,9 +32,16 @@ class QAModel:
     def ask_user(self, question: str) -> str:
         """Ask the user a question and return a message to the gpt agent to check back later for a response."""
         # Send the question to the user
-        self.channel.basic_publish(exchange='', routing_key='touser', body=question)
+        question_json = json.dumps({"question": question})
+        self.channel.basic_publish(exchange='', routing_key='touser', body=question_json)
         return "You have asked the user a question. Please check back later for a response."
 
+    def notify_user(self, message: str) -> str:
+        """Notify the user of a message and return a message to the gpt agent to check back later for a response."""
+        # Send the message to the user
+        message_json = json.dumps({"message": message})
+        self.channel.basic_publish(exchange='', routing_key='touser', body=message_json)
+        return "You have notified the user."
 
     def receive_user_response(self) -> str:
         """Checks to see if there has yet been a single response from the user and if so returns it as a JSON string."""
@@ -94,23 +100,23 @@ class QAClient:
 
     def __init__(self):
         self.channel = connect_rabbitmq()
-        self._previous_question = None
+        self._previous = None
 
-    def receive_question(self) -> str:
-        # Block and wait until a question is received
+    def receive(self) -> str:
+        # Block and wait until a message/question is received
         method_frame, _, body = self.channel.basic_get(queue='touser', auto_ack=True)
 
         while not method_frame:
             time.sleep(1)  # You can adjust the sleep duration as needed
             method_frame, _, body = self.channel.basic_get(queue='touser', auto_ack=True)
 
-        self._previous_question = body.decode()
-        return self._previous_question
+        self._previous = body.decode()
+        return self._previous
 
     def send_response(self, answer: str) -> None:
         # Send the response to the Auto GPT Instance
         response = {
-            "question": self._previous_question,
+            "question": self._previous,
             "answer": answer
         }
         self.channel.basic_publish(exchange='', routing_key='togpt', body=json.dumps(response))
@@ -126,7 +132,12 @@ if __name__ == "__main__":
     qa_client = QAClient()
     while True:
         print(Fore.GREEN + "Waiting for question...")
-        question = qa_client.receive_question()
-        print(Fore.YELLOW + "QUESTION: " + question)
-        answer = input(Fore.GREEN + "ANSWER: ")
-        qa_client.send_response(answer)
+        json_received = qa_client.receive()
+        if 'question' in json_received:
+            question = json.loads(json_received)['question']
+            print(Fore.YELLOW + "QUESTION: " + question)
+            answer = input(Fore.GREEN + "ANSWER: ")
+            qa_client.send_response(answer)
+        elif 'message' in json_received:
+            message = json.loads(json_received)['message']
+            print(Fore.YELLOW + "MESSAGE: " + message)
