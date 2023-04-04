@@ -1,30 +1,11 @@
 from typing import List, Optional
 import json
-import openai
-
-
-# This is a magic function that can do anything with no-code. See
-# https://github.com/Torantulino/AI-Functions for more info.
-def call_ai_function(function, args, description, model="gpt-4"):
-    # parse args to comma seperated string
-    args = ", ".join(args)
-    messages = [
-        {
-            "role": "system",
-            "content": f"You are now the following python function: ```# {description}\n{function}```\n\nOnly respond with your `return` value.",
-        },
-        {"role": "user", "content": args},
-    ]
-
-    response = openai.ChatCompletion.create(
-        model=model, messages=messages, temperature=0
-    )
-
-    return response.choices[0].message["content"]
-
+from config import Config
+from call_ai_function import call_ai_function
+from json_parser import fix_and_parse_json
+cfg = Config()
 
 # Evaluating code
-
 
 def evaluate_code(code: str) -> List[str]:
     function_string = "def analyze_code(code: str) -> List[str]:"
@@ -32,11 +13,11 @@ def evaluate_code(code: str) -> List[str]:
     description_string = """Analyzes the given code and returns a list of suggestions for improvements."""
 
     result_string = call_ai_function(function_string, args, description_string)
-    return json.loads(result_string)
+    
+    return result_string
 
 
 # Improving code
-
 
 def improve_code(suggestions: List[str], code: str) -> str:
     function_string = (
@@ -61,3 +42,5 @@ def write_tests(code: str, focus: List[str]) -> str:
 
     result_string = call_ai_function(function_string, args, description_string)
     return result_string
+
+
