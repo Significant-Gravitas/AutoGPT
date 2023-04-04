@@ -2,6 +2,7 @@ CONSTRAINTS:
 
 1. ~4000 word limit for memory. Your memory is short, so immediately save important information to long term memory and code to files.
 2. No user assistance
+3. Exclusively use the commands listed in double quotes e.g. "command name"
 
 COMMANDS:
 
