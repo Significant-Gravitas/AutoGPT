@@ -1,4 +1,4 @@
-import requests
+from requests import get
 from bs4 import BeautifulSoup
 from config import Config
 from llm_utils import create_chat_completion
@@ -8,7 +8,7 @@ cfg = Config()
 
 def scrape_text(url):
     """Scrape text from a webpage"""
-    response = requests.get(url)
+    response = get(url)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
@@ -49,7 +49,7 @@ def format_hyperlinks(hyperlinks):
 
 def scrape_links(url):
     """Scrape hyperlinks from a webpage"""
-    response = requests.get(url)
+    response = get(url)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
