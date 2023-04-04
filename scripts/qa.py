@@ -1,16 +1,10 @@
-from typing import Dict
+from typing import Dict, Optional
 import pika
 import json
 from dataclasses import dataclass
 from colorama import Fore, init
 import time
 import os
-
-
-@dataclass
-class QuestionAnswerPair:
-    question: str
-    answer: str
 
 
 def connect_rabbitmq():
@@ -29,21 +23,21 @@ class QAModel:
     def __init__(self):
         self.channel = connect_rabbitmq()
 
-    def ask_user(self, question: str) -> str:
+    def ask_user(self, question: str) -> None:
         """Ask the user a question and return a message to the gpt agent to check back later for a response."""
         # Send the question to the user
         question_json = json.dumps({"question": question})
         self.channel.basic_publish(exchange='', routing_key='touser', body=question_json)
-        return "You have asked the user a question. Please check back later for a response."
+        return None
 
-    def notify_user(self, message: str) -> str:
+    def notify_user(self, message: str) -> None:
         """Notify the user of a message and return a message to the gpt agent to check back later for a response."""
         # Send the message to the user
         message_json = json.dumps({"message": message})
         self.channel.basic_publish(exchange='', routing_key='touser', body=message_json)
-        return "You have notified the user."
+        return None
 
-    def receive_user_response(self) -> str:
+    def receive_user_response(self) -> Optional[Dict[str, str]]:
         """Checks to see if there has yet been a single response from the user and if so returns it as a JSON string."""
         # Try to get a message from the queue
         method_frame, _, body = self.channel.basic_get(queue='togpt')
@@ -53,47 +47,9 @@ class QAModel:
             self.channel.basic_ack(delivery_tag=method_frame.delivery_tag)
 
             # Return the response as a JSON string
-            return body.decode()
+            return json.loads(body.decode())
 
-        return "No response from the user yet, please check back later."
-
-
-    def receive_all_responses(self) -> str:
-        """Dumps the responses cache as a JSON string and clears the cache."""
-        responses = []
-
-        # Try to get a message from the queue
-        method_frame, _, body = self.channel.basic_get(queue='togpt')
-
-        # Continue processing messages until the queue is empty
-        while method_frame:
-            # Add the message to the list of responses
-            responses.append(body.decode())
-
-            # Acknowledge the message
-            self.channel.basic_ack(delivery_tag=method_frame.delivery_tag)
-
-            # Try to get the next message from the queue
-            method_frame, _, body = self.channel.basic_get(queue='togpt')
-
-        if responses:
-            # Return the responses as a JSON string
-            return json.dumps(responses)
-
-        return "No responses from the user yet, please check back later."
-
-
-    def receive_response(self) -> QuestionAnswerPair:
-        """Waits for a response from the user and returns it as a QuestionAnswerPair object."""
-        # Receive the response from the user
-        response = self.channel.basic_get(queue='togpt')
-
-        # The response should be a JSON object with a "question" field and a "answer" field
-        response_question = response[2].get("question")
-        response_answer = response[2].get("answer")
-
-        return QuestionAnswerPair(response_question, response_answer)
-
+        return None
 
 class QAClient:
     """The model used by the user to get questions from the Auto GPT Instance and answer them."""

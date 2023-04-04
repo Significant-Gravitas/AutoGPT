@@ -15,6 +15,7 @@ from json_parser import fix_and_parse_json
 from ai_config import AIConfig
 import traceback
 import yaml
+import qa
 import argparse
 
 
@@ -261,7 +262,7 @@ def parse_arguments():
 
 
 # TODO: fill in llm values here
-
+qamodel = qa.QAModel()
 cfg = Config()
 parse_arguments()
 ai_name = ""
@@ -334,7 +335,7 @@ while True:
 
     # Execute command
     if command_name.lower() != "error":
-        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
+        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments, qamodel)}"
     else:
         result = f"Command {command_name} threw the following error: " + arguments
 
@@ -348,3 +349,10 @@ while True:
             chat.create_chat_message(
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+
+    # Check if there is a new response from the user
+    user_response = qamodel.receive_user_response()
+    if user_response is not None:
+        full_message_history.append(
+            chat.create_chat_message("user", user_response))
+        print_to_console("USER: ", Fore.GREEN, user_response)

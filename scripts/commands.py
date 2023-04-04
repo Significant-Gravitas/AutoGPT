@@ -15,7 +15,6 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 cfg = Config()
-qamodel = qa.QAModel()
 
 
 def get_command(response):
@@ -46,7 +45,7 @@ def get_command(response):
         return "Error:", str(e)
 
 
-def execute_command(command_name, arguments):
+def execute_command(command_name, arguments, qamodel: qa.QAModel):
     try:
         if command_name == "google":
 
@@ -100,10 +99,6 @@ def execute_command(command_name, arguments):
             return execute_python_file(arguments["file"])
         elif command_name == "ask_user":
             return qamodel.ask_user(arguments["question"])
-        elif command_name == "receive_all_responses":
-            return qamodel.receive_all_responses()
-        # elif command_name == "receive_user_response":
-        #     return qamodel.receive_user_response()
         elif command_name == "notify_user":
             return qamodel.notify_user(arguments["message"])
         elif command_name == "task_complete":
