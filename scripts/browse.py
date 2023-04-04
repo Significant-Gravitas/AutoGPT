@@ -5,6 +5,7 @@ from llm_utils import create_chat_completion
 
 cfg = Config()
 
+
 def scrape_text(url):
     """Scrape text from a webpage"""
     response = requests.get(url)
@@ -29,16 +30,20 @@ def scrape_text(url):
 def extract_hyperlinks(soup):
     """Extract hyperlinks from a BeautifulSoup object"""
     hyperlinks = []
+
     for link in soup.find_all('a', href=True):
         hyperlinks.append((link.text, link['href']))
+
     return hyperlinks
 
 
 def format_hyperlinks(hyperlinks):
     """Format hyperlinks into a list of strings"""
     formatted_links = []
+
     for link_text, link_url in hyperlinks:
         formatted_links.append(f"{link_text} ({link_url})")
+
     return formatted_links
 
 
@@ -67,6 +72,7 @@ def split_text(text, max_length=8192):
     current_chunk = []
 
     for paragraph in paragraphs:
+
         if current_length + len(paragraph) + 1 <= max_length:
             current_chunk.append(paragraph)
             current_length += len(paragraph) + 1
@@ -90,19 +96,22 @@ def summarize_text(text, is_website=True):
 
     for i, chunk in enumerate(chunks):
         print("Summarizing chunk " + str(i + 1) + " / " + str(len(chunks)))
+
         if is_website:
             messages = [
                 {
                     "role": "user",
                     "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
-                    chunk},
+                    chunk
+                }
             ]
         else:
             messages = [
                 {
                     "role": "user",
                     "content": "Please summarize the following text, focusing on extracting concise and specific information: " +
-                    chunk},
+                    chunk
+                }
             ]
 
         summary = create_chat_completion(
@@ -121,14 +130,16 @@ def summarize_text(text, is_website=True):
             {
                 "role": "user",
                 "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
-                combined_summary},
+                combined_summary
+            }
         ]
     else:
         messages = [
             {
                 "role": "user",
                 "content": "Please summarize the following text, focusing on extracting concise and specific infomation: " +
-                combined_summary},
+                combined_summary
+            }
         ]
 
     final_summary = create_chat_completion(
