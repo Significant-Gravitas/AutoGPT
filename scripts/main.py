@@ -52,6 +52,14 @@ def print_assistant_thoughts(assistant_reply):
         # Parse and print Assistant response
         assistant_reply_json = fix_and_parse_json(assistant_reply)
 
+        # Check if assistant_reply_json is a string and attempt to parse it into a JSON object
+        if isinstance(assistant_reply_json, str):
+            try:
+                assistant_reply_json = json.loads(assistant_reply_json)
+            except json.JSONDecodeError as e:
+                print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
+                assistant_reply_json = {}
+
         assistant_thoughts_reasoning = None
         assistant_thoughts_plan = None
         assistant_thoughts_speak = None
@@ -90,10 +98,6 @@ def print_assistant_thoughts(assistant_reply):
     except json.decoder.JSONDecodeError:
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
 
-    # All other errors, return "Error: + error message"
-    except Exception as e:
-        call_stack = traceback.format_exc()
-        print_to_console("Error: \n", Fore.RED, call_stack)
 
 
 def load_variables(config_file="config.yaml"):
