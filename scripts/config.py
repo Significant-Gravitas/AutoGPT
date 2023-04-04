@@ -78,49 +78,51 @@ class Config(metaclass=Singleton):
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
+
     def set_continuous_mode(self, value: bool):
         """Set the continuous mode value."""
         self.continuous_mode = value
+
 
     def set_speak_mode(self, value: bool):
         """Set the speak mode value."""
         self.speak_mode = value
 
+
     def set_fast_llm_model(self, value: str):
         """Set the fast LLM model value."""
         self.fast_llm_model = value
+
 
     def set_smart_llm_model(self, value: str):
         """Set the smart LLM model value."""
         self.smart_llm_model = value
 
+
     def set_fast_token_limit(self, value: int):
         """Set the fast token limit value."""
         self.fast_token_limit = value
+
 
     def set_smart_token_limit(self, value: int):
         """Set the smart token limit value."""
         self.smart_token_limit = value
 
+
     def set_openai_api_key(self, value: str):
         """Set the OpenAI API key value."""
-        self.apiopenai_api_key_key = value
-    
+        self.openai_api_key = value
+
+
     def set_elevenlabs_api_key(self, value: str):
         """Set the ElevenLabs API key value."""
         self.elevenlabs_api_key = value
-        
+
+
     def set_google_api_key(self, value: str):
         self.google_api_key = value
-    
+
+
     def set_custom_search_engine_id(self, value: str):
+        """Set the custom search engine ID value."""
         self.custom_search_engine_id = value
-
-    def set_pinecone_api_key(self, value: str):
-        self.pinecone_api_key = value
-
-    def set_pinecone_region(self, value: str):
-        self.pinecone_region = value
-
-    def set_debug_mode(self, value: bool):
-        self.debug = value
