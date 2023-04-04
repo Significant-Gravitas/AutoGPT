@@ -98,6 +98,10 @@ def print_assistant_thoughts(assistant_reply):
     except json.decoder.JSONDecodeError:
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
 
+    # All other errors, return "Error: + error message"
+    except Exception as e:
+        call_stack = traceback.format_exc()
+        print_to_console("Error: \n", Fore.RED, call_stack)
 
 
 def load_variables(config_file="config.yaml"):
