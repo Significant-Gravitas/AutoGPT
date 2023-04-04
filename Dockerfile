@@ -1,8 +1,12 @@
-FROM python:3.11
+FROM python:3.10-slim
 
 WORKDIR /app
-COPY scripts/ /app
 
-RUN pip install -r requirements.txt
+COPY requirements.txt /app/requirements.txt
 
-CMD ["python", "main.py"]
+RUN pip install --upgrade --no-cache-dir pip \
+&&  pip install --no-cache-dir -r requirements.txt
+
+COPY . /app
+
+CMD ["python", "scripts/main.py"]

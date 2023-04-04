@@ -1,0 +1,12 @@
+python-dotenv
+docker==5.0.1
+
+colorama==0.4.6
+playsound==1.2.2
+
+requests
+beautifulsoup4
+readability_lxml==0.8.1
+
+googlesearch-python
+openai==0.27.1
