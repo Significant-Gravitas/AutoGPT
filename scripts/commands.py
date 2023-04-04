@@ -10,6 +10,7 @@ from file_operations import read_file, write_to_file, append_to_file, delete_fil
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
+import qa
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
