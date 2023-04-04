@@ -148,7 +148,7 @@ def load_variables(config_file="config.yaml"):
     with open(config_file, "w") as file:
         documents = yaml.dump(config, file)
 
-    prompt = data.load_prompt()
+    prompt = data.load_prompt(cfg=cfg)
     prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
     # Construct full prompt
@@ -184,7 +184,7 @@ Continue (y/n): """)
     global ai_name
     ai_name = config.ai_name
 
-    full_prompt = config.construct_full_prompt()
+    full_prompt = config.construct_full_prompt(cfg=cfg)
     return full_prompt
 
 

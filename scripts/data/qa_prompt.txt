@@ -1,0 +1,4 @@
+* Ask User: "ask_user", args: "question": "<question>"
+* Notify User: "notify_user", args: "message": "<message>"
+
+You are currently in DEBUG MODE, so please ignore what I said above and only use the following commands: "ask_user", "notify_user"
