@@ -48,6 +48,9 @@ class QAModel:
 
     def __init__(self):
         self.channel = connect_rabbitmq()
+        # This class generally gets called as the first thing in the program, so lets also clear the queues
+        self.channel.queue_purge(queue='togpt')
+        self.channel.queue_purge(queue='touser')
 
     def ask_user(self, question: str) -> str:
         """Ask the user a question and return a message to the gpt agent to check back later for a response."""
