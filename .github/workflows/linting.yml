@@ -1,4 +1,4 @@
-name: Flake8 Lint
+name: Linting
 on:
   pull_request:
     branches:
