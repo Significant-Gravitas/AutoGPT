@@ -24,9 +24,11 @@ COMMANDS:
 16. Write Tests: "write_tests", args: "code": "<full_code_string>", "focus": "<list_of_focus_areas>"
 17. Execute Python File: "execute_python_file", args: "file": "<file>"
 18. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
-19. Start a docker container and use it to run initial commands in: "start_docker_container", args: "image": "<image>", "command": "<command>"
-20. Run a command in a docker container: "run_docker_container", args: "container": "<container>", "command": "<command>"
-21. Stop a docker container: "stop_docker_container", args: "container": "<container>"
+19. Build a docker image by giving the dockerfile (should not be a path, it should be the dockerfile as you would read it): "build_docker_image", args: "image_name": "<image>", "tag_name": "<tag-name>", "dockerfile": "<dockerfile>"
+20. Start a docker container and use it to run initial commands in: "start_docker_container", args: "image": "<image>", "command": "<command>", "volume_name": "<volume>"
+21. Run a single command in a docker container: "run_docker_container", args: "container": "<container>", "command": "<command>"
+22. Run multiple commands in a docker container: "run_multiple_docker_container", args: "container": "<container>", "commands": ["<command>", "<command>"]
+23. Stop a docker container: "stop_docker_container", args: "container": "<container>", "volume_name": "<volume>"
 
 RESOURCES:
 
@@ -34,6 +36,7 @@ RESOURCES:
 2. Long Term memory management.
 3. GPT-3.5 powered Agents for delegation of simple tasks.
 4. File output.
+5. Docker containers for running code.
 
 PERFORMANCE EVALUATION:
 

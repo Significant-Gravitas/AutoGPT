@@ -3,7 +3,7 @@ import json
 import memory as mem
 import datetime
 import agent_manager as agents
-from scripts.docker import interact_with_container, setup_and_run_docker, stop_and_cleanup_docker
+from docker_agent import run_command_in_docker_container, start_docker_container, stop_docker_container, run_multiple_commands_in_docker_container, build_docker_image
 import speak
 from config import Config
 import ai_functions as ai
@@ -20,15 +20,15 @@ cfg = Config()
 def get_command(response):
     try:
         response_json = fix_and_parse_json(response)
-        
+
         if "command" not in response_json:
-            return "Error:" , "Missing 'command' object in JSON"
-        
+            return "Error:", "Missing 'command' object in JSON"
+
         command = response_json["command"]
 
         if "name" not in command:
             return "Error:", "Missing 'name' field in 'command' object"
-        
+
         command_name = command["name"]
 
         # Use an empty dictionary if 'args' field is not present in 'command' object
@@ -48,7 +48,7 @@ def get_command(response):
 def execute_command(command_name, arguments):
     try:
         if command_name == "google":
-            
+
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
             if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
@@ -99,12 +99,16 @@ def execute_command(command_name, arguments):
             return execute_python_file(arguments["file"])
         elif command_name == "task_complete":
             shutdown()
+        elif command_name == "build_docker_image":
+            return build_docker_image(arguments["image_name"], arguments["tag_name"], arguments["dockerfile"])
         elif command_name == "start_docker_container":
-            return setup_and_run_docker(arguments["image"], arguments["command"], arguments["volume"])
+            return start_docker_container(arguments["image"], arguments["command"], arguments["volume_name"])
         elif command_name == "run_docker_container":
-            return interact_with_container(arguments['container'], arguments['command'])
+            return run_command_in_docker_container(arguments['container'], arguments['command'])
+        elif command_name == 'run_multiple_docker_container':
+            return run_multiple_commands_in_docker_container(arguments['container'], arguments['commands'])
         elif command_name == 'stop_docker_container':
-            return stop_and_cleanup_docker(arguments['container'], arguments['volume'])
+            return stop_docker_container(arguments['container'], arguments['volume_name'])
         else:
             return f"Unknown command {command_name}"
     # All errors, return "Error: + error message"
@@ -124,6 +128,7 @@ def google_search(query, num_results=8):
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
+
 def google_official_search(query, num_results=8):
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
@@ -136,20 +141,21 @@ def google_official_search(query, num_results=8):
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)
-        
+
         # Send the search query and retrieve the results
-        result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
+        result = service.cse().list(q=query, cx=custom_search_engine_id,
+                                    num=num_results).execute()
 
         # Extract the search result items from the response
         search_results = result.get("items", [])
-        
+
         # Create a list of only the URLs from the search results
         search_results_links = [item["link"] for item in search_results]
 
     except HttpError as e:
         # Handle errors in the API call
         error_details = json.loads(e.content.decode())
-        
+
         # Check if the error is related to an invalid or missing API key
         if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
             return "Error: The provided Google API key is invalid or missing."
@@ -158,6 +164,7 @@ def google_official_search(query, num_results=8):
 
     # Return the list of search result URLs
     return search_results_links
+
 
 def browse_website(url, question):
     summary = get_text_summary(url, question)
