@@ -9,3 +9,4 @@ scripts/auto_gpt_workspace/*
 .env
 last_run_ai_settings.yaml
 outputs/*
+.vscode
