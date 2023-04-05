@@ -24,6 +24,7 @@ def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
     """
 
     try:
+        json_str = json_str.replace('\t', '')
         return json.loads(json_str)
     except Exception as e:
         # Let's do something manually - sometimes GPT responds with something BEFORE the braces:
