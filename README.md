@@ -1,15 +1,17 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
+
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
 ![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
-[![](https://dcbadge.vercel.app/api/server/PQ7VX6TY4t?style=flat)](https://discord.gg/PQ7VX6TY4t)
+[![Discord Invite](https://dcbadge.vercel.app/api/server/PQ7VX6TY4t?style=flat)](https://discord.gg/PQ7VX6TY4t)
 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
-### Demo (30/03/2023):
+## Demo (30/03/2023)
+
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
-
 ## 💖 Help Fund Auto-GPT's Development
+
 <p align="center">
 If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 A full day of development can easily cost as much as $20 in API costs, which for a free project is quite limiting.
@@ -27,16 +29,16 @@ Your support is greatly appreciated
 <a href="https://github.com/alexisneuhaus"><img src="https://github.com/alexisneuhaus.png" width="30px" alt="alexisneuhaus" /></a>&nbsp;&nbsp;<a href="https://github.com/iokode"><img src="https://github.com/iokode.png" width="30px" alt="iokode" /></a>&nbsp;&nbsp;<a href="https://github.com/jaumebalust"><img src="https://github.com/jaumebalust.png" width="30px" alt="jaumebalust" /></a>&nbsp;&nbsp;<a href="https://github.com/nova-land"><img src="https://github.com/nova-land.png" width="30px" alt="nova-land" /></a>&nbsp;&nbsp;<a href="https://github.com/robinicus"><img src="https://github.com/robinicus.png" width="30px" alt="robinicus" /></a>&nbsp;&nbsp;<a href="https://github.com/Void-n-Null"><img src="https://github.com/Void-n-Null.png" width="30px" alt="Void-n-Null" /></a>&nbsp;&nbsp;<a href="https://github.com/ritesh24"><img src="https://github.com/ritesh24.png" width="30px" alt="ritesh24" /></a>&nbsp;&nbsp;<a href="https://github.com/merwanehamadi"><img src="https://github.com/merwanehamadi.png" width="30px" alt="merwanehamadi" /></a>&nbsp;&nbsp;<a href="https://github.com/raulmarindev"><img src="https://github.com/raulmarindev.png" width="30px" alt="raulmarindev" /></a>&nbsp;&nbsp;<a href="https://github.com/siduppal"><img src="https://github.com/siduppal.png" width="30px" alt="siduppal" /></a>&nbsp;&nbsp;<a href="https://github.com/goosecubedaddy"><img src="https://github.com/goosecubedaddy.png" width="30px" alt="goosecubedaddy" /></a>&nbsp;&nbsp;<a href="https://github.com/pleabargain"><img src="https://github.com/pleabargain.png" width="30px" alt="pleabargain" /></a>&nbsp;&nbsp;
 </p>
 
-
 ## Table of Contents
 
 - [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
-    - [Demo (30/03/2023):](#demo-30032023)
+  - [Demo (30/03/2023)](#demo-30032023)
   - [💖 Help Fund Auto-GPT's Development](#-help-fund-auto-gpts-development)
   - [Table of Contents](#table-of-contents)
   - [🚀 Features](#-features)
   - [📋 Requirements](#-requirements)
   - [💾 Installation](#-installation)
+    - [Running in Docker](#running-in-docker)
   - [🔧 Usage](#-usage)
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
@@ -48,7 +50,6 @@ Your support is greatly appreciated
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
 
-
 ## 🚀 Features
 
 - 🌐 Internet access for searches and information gathering
@@ -58,6 +59,7 @@ Your support is greatly appreciated
 - 🗃️ File storage and summarization with GPT-3.5
 
 ## 📋 Requirements
+
 - [Python 3.7 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - OpenAI API key
 
@@ -68,46 +70,70 @@ Optional:
 
 To install Auto-GPT, follow these steps:
 
-0. Make sure you have all the **requirements** above, if not, install/get them.
+1. Make sure you have all the **requirements** above, if not, install/get them.
 
-*The following commands should be executed in a CMD, Bash or Powershell window. To do this, go to a folder on your computer, click in the folder path at the top and type CMD, then press enter.*
+   *The following commands should be executed in a CMD, Bash or Powershell window. To do this, go to a folder on your computer, click in the folder path at the top and type CMD, then press enter.*
 
-1. Clone the repository:
+2. Clone the repository:
 For this step you need Git installed, but you can just download the zip file instead by clicking the button at the top of this page ☝️
-```
-git clone https://github.com/Torantulino/Auto-GPT.git
+
+    ```bash
+    git clone https://github.com/Torantulino/Auto-GPT.git
+    ```
+
+3. Navigate to the project directory:
+
+    ```bash
+    cd 'Auto-GPT'
+    ```
+
+4. Install the required dependencies:
+
+    (**NOTE: You can skip this step if you'd rather run Auto-GPT in a Docker container (see below) instead
+    of installing its python requirements and running it locally.**)
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+5. Copy `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+
+    - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+    - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+
+### Running in Docker
+
+You can build and run an image in Docker like this:
+
+```bash
+docker build -t auto-gpt .
+docker run --rm -it -v ${PWD}:/app auto-gpt
 ```
 
-2. Navigate to the project directory:
-*(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)*
-```
-$ cd 'Auto-GPT'
-```
+Alternatively, you can mount the `auto_gpt_workspace` directory from a different location,
+keeping your source directory clean:
 
-3. Install the required dependencies:
-*(Again, type this into your CMD window)*
+```bash
+mkdir ~/AGPT
+docker run --rm -it -v ${PWD}:/app -v $HOME/AGPT:/app/auto_gpt_workspace auto-gpt
 ```
-pip install -r requirements.txt
-```
-
-4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
-  - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
-  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
-  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
 
 ## 🔧 Usage
 
 1. Run the `main.py` Python script in your terminal:
-*(Type this into your CMD window)*
-```
-python scripts/main.py
-```
+
+    ```bash
+    python scripts/main.py
+    ```
+
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
 ## 🗣️ Speech Mode
+
 Use this to use TTS for Auto-GPT
-```
+
+```bash
 python scripts/main.py --speak
 
 ```
@@ -125,37 +151,45 @@ To use the `google_official_search` command, you need to set up your Google API 
 6. Copy the API key and set it as an environment variable named `GOOGLE_API_KEY` on your machine. See setting up environment variables below.
 7. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page and click "Add".
 8. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
-9.  Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
+9. Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
 
 ### Setting up environment variables
+
    For Windows Users:
-```
+
+```powershell
 setx GOOGLE_API_KEY "YOUR_GOOGLE_API_KEY"
 setx CUSTOM_SEARCH_ENGINE_ID "YOUR_CUSTOM_SEARCH_ENGINE_ID"
+```
 
-```
 For macOS and Linux users:
-```
+
+```bash
 export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
 export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
 ## 💀 Continuous Mode ⚠️
+
 Run the AI **without** user authorisation, 100% automated.
 Continuous mode is not recommended. 
-It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
+It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
-1. Run the `main.py` Python script in your terminal:
-```
-python scripts/main.py --continuous
 
-```
+1. Run the `main.py` Python script in your terminal:
+
+    ```bash
+    python scripts/main.py --continuous
+    ```
+
 2. To exit the program, press Ctrl + C
 
 ## GPT3.5 ONLY Mode
+
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
-```
+
+```bash
 python scripts/main.py --gpt3only
 ```
 
@@ -166,6 +200,7 @@ python scripts/main.py --config_file=./scripts/example_config.yaml
 ```
 
 ## ⚠️ Limitations
+
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
 
 1. Not a polished application or product, just an experiment
@@ -193,4 +228,3 @@ Stay up-to-date with the latest news, updates, and insights about Auto-GPT by fo
 - **Entrepreneur-GPT**: Join the conversation with the AI itself by following [@En_GPT](https://twitter.com/En_GPT). Share your experiences, discuss the AI's outputs, and engage with the growing community of users.
 
 We look forward to connecting with you and hearing your thoughts, ideas, and experiences with Auto-GPT. Join us on Twitter and let's explore the future of AI together!
-

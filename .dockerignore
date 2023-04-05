@@ -1,4 +1,6 @@
+.dockerignore
 .env
+.git*
 *.mpeg
 *.pyc
 auto_gpt_workspace/
@@ -9,5 +11,3 @@ scripts/__pycache__/
 scripts/*json
 scripts/auto_gpt_workspace/*
 scripts/node_modules/
-
-.vscode
