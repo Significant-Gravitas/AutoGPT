@@ -16,7 +16,7 @@ from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
-from console_log import print_to_console, print_error, print_green, print_yellow
+from console_log import print_to_console, print_error
 
 
 
