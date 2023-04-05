@@ -1,4 +1,5 @@
-* Ask User: "ask_user", args: "question": "<question>"
-* Notify User: "notify_user", args: "message": "<message>"
+* Message User: "message_user", args: "message": "<message>"
 
-You are currently in DEBUG MODE, so please ignore what I said above and only use the following commands: "ask_user", "notify_user"
+REASONS FOR MESSAGING THE USER:
+* Notifying them of an event, discovery, goal acheivement, failure, or to deliver a progress report.
+* Asking the user a question to aide in your goal acheivement.
