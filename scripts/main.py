@@ -1,7 +1,7 @@
 import json
 import random
 import commands as cmd
-import memory as mem
+from memory import Memory
 import data
 import chat
 from colorama import Fore, Style
@@ -288,7 +288,7 @@ while True:
             prompt,
             user_input,
             full_message_history,
-            mem.permanent_memory,
+            Memory().get_all_memory(),
             cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # print("assistant reply: "+assistant_reply)

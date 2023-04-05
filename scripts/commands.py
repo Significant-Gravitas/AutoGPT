@@ -12,6 +12,7 @@ from json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from memory import Memory
 
 cfg = Config()
 
@@ -55,11 +56,11 @@ def execute_command(command_name, arguments):
             else:
                 return google_search(arguments["input"])
         elif command_name == "memory_add":
-            return commit_memory(arguments["string"])
+            return Memory().commit_memory(arguments["string"])
         elif command_name == "memory_del":
-            return delete_memory(arguments["key"])
+            return Memory().delete_memory(arguments["index"])
         elif command_name == "memory_ovr":
-            return overwrite_memory(arguments["key"], arguments["string"])
+            return Memory().overwrite_memory(arguments["index"], arguments["string"])
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"],
@@ -174,35 +175,6 @@ def get_text_summary(url, question):
 def get_hyperlinks(url):
     link_list = browse.scrape_links(url)
     return link_list
-
-
-def commit_memory(string):
-    _text = f"""Committing memory with string "{string}" """
-    mem.permanent_memory.append(string)
-    return _text
-
-
-def delete_memory(key):
-    if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Deleting memory with key " + str(key)
-        del mem.permanent_memory[key]
-        print(_text)
-        return _text
-    else:
-        print("Invalid key, cannot delete memory.")
-        return None
-
-
-def overwrite_memory(key, string):
-    if int(key) >= 0 and key < len(mem.permanent_memory):
-        _text = "Overwriting memory with key " + \
-            str(key) + " and string " + string
-        mem.permanent_memory[key] = string
-        print(_text)
-        return _text
-    else:
-        print("Invalid key, cannot overwrite memory.")
-        return None
 
 
 def shutdown():
