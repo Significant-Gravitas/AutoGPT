@@ -6,7 +6,7 @@ import token_counter
 
 cfg = Config()
 
-from llm_utils import create_chat_completion
+from ai_functions import create_chat_completion
 
 
 def create_chat_message(role, content):
