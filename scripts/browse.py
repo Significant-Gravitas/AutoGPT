@@ -53,28 +53,3 @@ def scrape_links(url):
     hyperlinks = extract_hyperlinks(soup)
 
     return format_hyperlinks(hyperlinks)
-
-
-def split_text(text, max_length=8192):
-    paragraphs = text.split("\n")
-    current_length = 0
-    current_chunk = []
-
-    for paragraph in paragraphs:
-        if current_length + len(paragraph) + 1 <= max_length:
-            current_chunk.append(paragraph)
-            current_length += len(paragraph) + 1
-        else:
-            yield "\n".join(current_chunk)
-            current_chunk = [paragraph]
-            current_length = len(paragraph) + 1
-
-    if current_chunk:
-        yield "\n".join(current_chunk)
-
-
-def create_message(chunk, question):
-    return {
-        "role": "user",
-        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
-    }

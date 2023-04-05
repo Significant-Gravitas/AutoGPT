@@ -40,6 +40,30 @@ def call_ai_function(function, args, description, model=cfg.smart_llm_model):
     return response
 
 
+def _split_text(text, max_length=8192):
+    paragraphs = text.split("\n")
+    current_length = 0
+    current_chunk = []
+
+    for paragraph in paragraphs:
+        if current_length + len(paragraph) + 1 <= max_length:
+            current_chunk.append(paragraph)
+            current_length += len(paragraph) + 1
+        else:
+            yield "\n".join(current_chunk)
+            current_chunk = [paragraph]
+            current_length = len(paragraph) + 1
+
+    if current_chunk:
+        yield "\n".join(current_chunk)
+
+def _create_message(chunk, question):
+    return {
+        "role": "user",
+        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
+    }
+
+
 def summarize_and_answer_from_text(text: str, question: str) -> str:
     if not text:
         return "Error: No text to summarize"
@@ -48,11 +72,11 @@ def summarize_and_answer_from_text(text: str, question: str) -> str:
     print(f"Text length: {text_length} characters")
 
     summaries = []
-    chunks = list(split_text(text))
+    chunks = list(_split_text(text))
 
     for i, chunk in enumerate(chunks):
         print(f"Summarizing chunk {i + 1} / {len(chunks)}")
-        messages = [create_message(chunk, question)]
+        messages = [_create_message(chunk, question)]
 
         summary = create_chat_completion(
             model=cfg.fast_llm_model,
@@ -64,7 +88,7 @@ def summarize_and_answer_from_text(text: str, question: str) -> str:
     print(f"Summarized {len(chunks)} chunks.")
 
     combined_summary = "\n".join(summaries)
-    messages = [create_message(combined_summary, question)]
+    messages = [_create_message(combined_summary, question)]
 
     final_summary = create_chat_completion(
         model=cfg.fast_llm_model,
