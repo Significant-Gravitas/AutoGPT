@@ -8,8 +8,8 @@ COMMANDS:
 
 1. Google Search: "google", args: "input": "<search>"
 2. Memory Add: "memory_add", args: "string": "<string>"
-3. Memory Delete: "memory_del", args: "key": "<key>"
-4. Memory Overwrite: "memory_ovr", args: "key": "<key>", "string": "<string>"
+3. Memory Delete: "memory_del", args: "key": "<index_of_memory_to_delete>"
+4. Memory Overwrite: "memory_ovr", args: "key": "<index_of_memory_to_overwrite>", "string": "<string>"
 5. Browse Website: "browse_website", args: "url": "<url>", "question": "<what_you_want_to_find_on_website>"
 6. Start GPT Agent: "start_agent",  args: "name": <name>, "task": "<short_task_desc>", "prompt": "<prompt>"
 7. Message GPT Agent: "message_agent", args: "key": "<key>", "message": "<message>"
