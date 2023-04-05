@@ -301,45 +301,44 @@ while True:
     except Exception as e:
         print_to_console("Error: \n", Fore.RED, str(e))
 
-    if not cfg.continuous_mode and next_action_count === 0:
+    if not cfg.continuous_mode and next_action_count == 0:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
         # Get key press: Prompt the user to press enter to continue or escape
         # to exit
-        if next_action_count == 0:
-            user_input = ""
-            print_to_console(
-                "NEXT ACTION: ",
-                Fore.CYAN,
-                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
-            print(
-                f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
-                flush=True)
-            while True:
-                console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-                if console_input.lower() == "y":
+        user_input = ""
+        print_to_console(
+            "NEXT ACTION: ",
+            Fore.CYAN,
+            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
+        print(
+            f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+            flush=True)
+        while True:
+            console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+            if console_input.lower() == "y":
+                user_input = "GENERATE NEXT COMMAND JSON"
+                break
+            elif console_input.lower().startswith("y -"):
+                try:
+                    next_action_count = abs(int(console_input.split(" ")[1]))
                     user_input = "GENERATE NEXT COMMAND JSON"
-                    break
-                elif console_input.lower().startswith("y -"):
-                    try:
-                        next_action_count = abs(int(console_input.split(" ")[1]))
-                        user_input = "GENERATE NEXT COMMAND JSON"
-                    except ValueError:
-                        print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
-                        continue
-                    break
-                elif console_input.lower() == "n":
-                    user_input = "EXIT"
-                    break
-                else:
-                    user_input = console_input
-                    command_name = "human_feedback"
-                    break
+                except ValueError:
+                    print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
+                    continue
+                break
+            elif console_input.lower() == "n":
+                user_input = "EXIT"
+                break
+            else:
+                user_input = console_input
+                command_name = "human_feedback"
+                break
 
         if user_input == "GENERATE NEXT COMMAND JSON":
             print_to_console(
-                "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-                Fore.MAGENTA,
-                "")
+            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+            Fore.MAGENTA,
+            "")
         elif user_input == "EXIT":
             print("Exiting...", flush=True)
             break
