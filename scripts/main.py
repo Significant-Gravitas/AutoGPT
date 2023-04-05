@@ -4,9 +4,9 @@ import commands as cmd
 import memory as mem
 import data
 import chat
-from colorama import Fore, Style
 from spinner import Spinner
 import time
+from colorama import Fore, Style
 import speak
 from enum import Enum, auto
 import sys
@@ -16,33 +16,9 @@ from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
+from console_log import print_to_console, print_error, print_green, print_yellow
 
 
-def print_to_console(
-        title,
-        title_color,
-        content,
-        speak_text=False,
-        min_typing_speed=0.05,
-        max_typing_speed=0.01):
-    global cfg
-    if speak_text and cfg.speak_mode:
-        speak.say_text(f"{title}. {content}")
-    print(title_color + title + " " + Style.RESET_ALL, end="")
-    if content:
-        if isinstance(content, list):
-            content = " ".join(content)
-        words = content.split()
-        for i, word in enumerate(words):
-            print(word, end="", flush=True)
-            if i < len(words) - 1:
-                print(" ", end="", flush=True)
-            typing_speed = random.uniform(min_typing_speed, max_typing_speed)
-            time.sleep(typing_speed)
-            # type faster after each word
-            min_typing_speed = min_typing_speed * 0.95
-            max_typing_speed = max_typing_speed * 0.95
-    print()
 
 
 def print_assistant_thoughts(assistant_reply):
@@ -57,7 +33,7 @@ def print_assistant_thoughts(assistant_reply):
             try:
                 assistant_reply_json = json.loads(assistant_reply_json)
             except json.JSONDecodeError as e:
-                print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
+                print_error(assistant_reply)
                 assistant_reply_json = {}
 
         assistant_thoughts_reasoning = None
@@ -96,12 +72,12 @@ def print_assistant_thoughts(assistant_reply):
             speak.say_text(assistant_thoughts_speak)
 
     except json.decoder.JSONDecodeError:
-        print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
+        print_error(title="Error: Invalid JSON\n",content=assistant_reply)
 
     # All other errors, return "Error: + error message"
     except Exception as e:
         call_stack = traceback.format_exc()
-        print_to_console("Error: \n", Fore.RED, call_stack)
+        print_error(call_stack)
 
 
 def load_variables(config_file="config.yaml"):
@@ -299,7 +275,7 @@ while True:
     try:
         command_name, arguments = cmd.get_command(assistant_reply)
     except Exception as e:
-        print_to_console("Error: \n", Fore.RED, str(e))
+        print_error(str(e))
 
     if not cfg.continuous_mode:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
