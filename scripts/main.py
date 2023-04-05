@@ -277,6 +277,7 @@ prompt = construct_prompt()
 # Initialize variables
 full_message_history = []
 result = None
+next_action_count = 0
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
 
@@ -291,7 +292,6 @@ while True:
             mem.permanent_memory,
             cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
-    # print("assistant reply: "+assistant_reply)
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
 
@@ -301,36 +301,45 @@ while True:
     except Exception as e:
         print_to_console("Error: \n", Fore.RED, str(e))
 
-    if not cfg.continuous_mode:
+    if not cfg.continuous_mode or next_action_count > 0:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
         # Get key press: Prompt the user to press enter to continue or escape
         # to exit
-        user_input = ""
-        print_to_console(
-            "NEXT ACTION: ",
-            Fore.CYAN,
-            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
-        print(
-            f"Enter 'y' to authorise command or 'n' to exit program, or enter feedback for {ai_name}...",
-            flush=True)
-        while True:
-            console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-            if console_input.lower() == "y":
-                user_input = "GENERATE NEXT COMMAND JSON"
-                break
-            elif console_input.lower() == "n":
-                user_input = "EXIT"
-                break
-            else:
-                user_input = console_input
-                command_name = "human_feedback"
-                break
+        if next_action_count == 0:
+            user_input = ""
+            print_to_console(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
+            print(
+                f"Enter 'y' to authorise command, 'y -n' to run n continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+                flush=True)
+            while True:
+                console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+                if console_input.lower() == "y":
+                    user_input = "GENERATE NEXT COMMAND JSON"
+                    break
+                elif console_input.lower().startswith("y -"):
+                    try:
+                        next_action_count = abs(int(console_input.split(" ")[1]))
+                        user_input = "GENERATE NEXT COMMAND JSON"
+                    except ValueError:
+                        print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
+                        continue
+                    break
+                elif console_input.lower() == "n":
+                    user_input = "EXIT"
+                    break
+                else:
+                    user_input = console_input
+                    command_name = "human_feedback"
+                    break
 
         if user_input == "GENERATE NEXT COMMAND JSON":
             print_to_console(
-            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-            Fore.MAGENTA,
-            "")
+                "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                Fore.MAGENTA,
+                "")
         elif user_input == "EXIT":
             print("Exiting...", flush=True)
             break
@@ -348,6 +357,8 @@ while True:
         result = f"Human feedback: {user_input}"
     else:
         result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
+        if next_action_count > 0:
+            next_action_count -= 1
 
     # Check if there's a result from the command append it to the message
     # history
