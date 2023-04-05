@@ -1,0 +1,596 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/adexchange.buyer": {
+          "description": "Manage your Ad Exchange buyer account configuration"
+        }
+      }
+    }
+  },
+  "basePath": "/adexchangebuyer/v1.2/",
+  "baseUrl": "https://www.googleapis.com/adexchangebuyer/v1.2/",
+  "batchPath": "batch/adexchangebuyer/v1.2",
+  "canonicalName": "Ad Exchange Buyer",
+  "description": "Accesses your bidding-account information, submits creatives for validation, finds available direct deals, and retrieves performance reports.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://developers.google.com/ad-exchange/buyer-rest",
+  "etag": "\"uWj2hSb4GVjzdDlAnRd2gbM1ZQ8/5zRjPUGv2mBJ1B5Pi974NW_Asxk\"",
+  "icons": {
+    "x16": "https://www.google.com/images/icons/product/doubleclick-16.gif",
+    "x32": "https://www.google.com/images/icons/product/doubleclick-32.gif"
+  },
+  "id": "adexchangebuyer:v1.2",
+  "kind": "discovery#restDescription",
+  "name": "adexchangebuyer",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "alt": {
+      "default": "json",
+      "description": "Data format for the response.",
+      "enum": [
+        "json"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "An opaque string that represents a user for quota purposes. Must not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "userIp": {
+      "description": "Deprecated. Please use quotaUser instead.",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "accounts": {
+      "methods": {
+        "get": {
+          "description": "Gets one account by ID.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.accounts.get",
+          "parameterOrder": [
+            "id"
+          ],
+          "parameters": {
+            "id": {
+              "description": "The account id",
+              "format": "int32",
+              "location": "path",
+              "required": true,
+              "type": "integer"
+            }
+          },
+          "path": "accounts/{id}",
+          "response": {
+            "$ref": "Account"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "list": {
+          "description": "Retrieves the authenticated user's list of accounts.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.accounts.list",
+          "path": "accounts",
+          "response": {
+            "$ref": "AccountsList"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "patch": {
+          "description": "Updates an existing account. This method supports patch semantics.",
+          "httpMethod": "PATCH",
+          "id": "adexchangebuyer.accounts.patch",
+          "parameterOrder": [
+            "id"
+          ],
+          "parameters": {
+            "id": {
+              "description": "The account id",
+              "format": "int32",
+              "location": "path",
+              "required": true,
+              "type": "integer"
+            }
+          },
+          "path": "accounts/{id}",
+          "request": {
+            "$ref": "Account"
+          },
+          "response": {
+            "$ref": "Account"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "update": {
+          "description": "Updates an existing account.",
+          "httpMethod": "PUT",
+          "id": "adexchangebuyer.accounts.update",
+          "parameterOrder": [
+            "id"
+          ],
+          "parameters": {
+            "id": {
+              "description": "The account id",
+              "format": "int32",
+              "location": "path",
+              "required": true,
+              "type": "integer"
+            }
+          },
+          "path": "accounts/{id}",
+          "request": {
+            "$ref": "Account"
+          },
+          "response": {
+            "$ref": "Account"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        }
+      }
+    },
+    "creatives": {
+      "methods": {
+        "get": {
+          "description": "Gets the status for a single creative. A creative will be available 30-40 minutes after submission.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.creatives.get",
+          "parameterOrder": [
+            "accountId",
+            "buyerCreativeId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The id for the account that will serve this creative.",
+              "format": "int32",
+              "location": "path",
+              "required": true,
+              "type": "integer"
+            },
+            "buyerCreativeId": {
+              "description": "The buyer-specific id for this creative.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "creatives/{accountId}/{buyerCreativeId}",
+          "response": {
+            "$ref": "Creative"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "insert": {
+          "description": "Submit a new creative.",
+          "httpMethod": "POST",
+          "id": "adexchangebuyer.creatives.insert",
+          "path": "creatives",
+          "request": {
+            "$ref": "Creative"
+          },
+          "response": {
+            "$ref": "Creative"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "list": {
+          "description": "Retrieves a list of the authenticated user's active creatives. A creative will be available 30-40 minutes after submission.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.creatives.list",
+          "parameters": {
+            "maxResults": {
+              "description": "Maximum number of entries returned on one result page. If not set, the default is 100. Optional.",
+              "format": "uint32",
+              "location": "query",
+              "maximum": "1000",
+              "minimum": "1",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "A continuation token, used to page through ad clients. To retrieve the next page, set this parameter to the value of \"nextPageToken\" from the previous response. Optional.",
+              "location": "query",
+              "type": "string"
+            },
+            "statusFilter": {
+              "description": "When specified, only creatives having the given status are returned.",
+              "enum": [
+                "approved",
+                "disapproved",
+                "not_checked"
+              ],
+              "enumDescriptions": [
+                "Creatives which have been approved.",
+                "Creatives which have been disapproved.",
+                "Creatives whose status is not yet checked."
+              ],
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "creatives",
+          "response": {
+            "$ref": "CreativesList"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        }
+      }
+    }
+  },
+  "revision": "20210815",
+  "rootUrl": "https://www.googleapis.com/",
+  "schemas": {
+    "Account": {
+      "description": "Configuration data for an Ad Exchange buyer account.",
+      "id": "Account",
+      "properties": {
+        "bidderLocation": {
+          "description": "Your bidder locations that have distinct URLs.",
+          "items": {
+            "properties": {
+              "maximumQps": {
+                "description": "The maximum queries per second the Ad Exchange will send.",
+                "format": "int32",
+                "type": "integer"
+              },
+              "region": {
+                "description": "The geographical region the Ad Exchange should send requests from. Only used by some quota systems, but always setting the value is recommended. Allowed values:  \n- ASIA \n- EUROPE \n- US_EAST \n- US_WEST",
+                "type": "string"
+              },
+              "url": {
+                "description": "The URL to which the Ad Exchange will send bid requests.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "cookieMatchingNid": {
+          "description": "The nid parameter value used in cookie match requests. Please contact your technical account manager if you need to change this.",
+          "type": "string"
+        },
+        "cookieMatchingUrl": {
+          "description": "The base URL used in cookie match requests.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Account id.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "kind": {
+          "default": "adexchangebuyer#account",
+          "description": "Resource type.",
+          "type": "string"
+        },
+        "maximumActiveCreatives": {
+          "description": "The maximum number of active creatives that an account can have, where a creative is active if it was inserted or bid with in the last 30 days. Please contact your technical account manager if you need to change this.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "maximumTotalQps": {
+          "description": "The sum of all bidderLocation.maximumQps values cannot exceed this. Please contact your technical account manager if you need to change this.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "numberActiveCreatives": {
+          "description": "The number of creatives that this account inserted or bid with in the last 30 days.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "AccountsList": {
+      "description": "An account feed lists Ad Exchange buyer accounts that the user has access to. Each entry in the feed corresponds to a single buyer account.",
+      "id": "AccountsList",
+      "properties": {
+        "items": {
+          "description": "A list of accounts.",
+          "items": {
+            "$ref": "Account"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "adexchangebuyer#accountsList",
+          "description": "Resource type.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Creative": {
+      "description": "A creative and its classification data.",
+      "id": "Creative",
+      "properties": {
+        "HTMLSnippet": {
+          "description": "The HTML snippet that displays the ad when inserted in the web page. If set, videoURL should not be set.",
+          "type": "string"
+        },
+        "accountId": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "Account id.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "advertiserId": {
+          "description": "Detected advertiser id, if any. Read-only. This field should not be set in requests.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "advertiserName": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "The name of the company being advertised in the creative.",
+          "type": "string"
+        },
+        "agencyId": {
+          "description": "The agency id for this creative.",
+          "format": "int64",
+          "type": "string"
+        },
+        "apiUploadTimestamp": {
+          "description": "The last upload timestamp of this creative if it was uploaded via API. Read-only. The value of this field is generated, and will be ignored for uploads. (formatted RFC 3339 timestamp).",
+          "format": "date-time",
+          "type": "string"
+        },
+        "attribute": {
+          "description": "All attributes for the ads that may be shown from this snippet.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "buyerCreativeId": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "A buyer-specific id identifying the creative in this ad.",
+          "type": "string"
+        },
+        "clickThroughUrl": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "The set of destination urls for the snippet.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "corrections": {
+          "description": "Shows any corrections that were applied to this creative. Read-only. This field should not be set in requests.",
+          "items": {
+            "properties": {
+              "details": {
+                "description": "Additional details about the correction.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "reason": {
+                "description": "The type of correction that was applied to the creative.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "disapprovalReasons": {
+          "description": "The reasons for disapproval, if any. Note that not all disapproval reasons may be categorized, so it is possible for the creative to have a status of DISAPPROVED with an empty list for disapproval_reasons. In this case, please reach out to your TAM to help debug the issue. Read-only. This field should not be set in requests.",
+          "items": {
+            "properties": {
+              "details": {
+                "description": "Additional details about the reason for disapproval.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "reason": {
+                "description": "The categorized reason for disapproval.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "filteringReasons": {
+          "description": "The filtering reasons for the creative. Read-only. This field should not be set in requests.",
+          "properties": {
+            "date": {
+              "description": "The date in ISO 8601 format for the data. The data is collected from 00:00:00 to 23:59:59 in PST.",
+              "type": "string"
+            },
+            "reasons": {
+              "description": "The filtering reasons.",
+              "items": {
+                "properties": {
+                  "filteringCount": {
+                    "description": "The number of times the creative was filtered for the status. The count is aggregated across all publishers on the exchange.",
+                    "format": "int64",
+                    "type": "string"
+                  },
+                  "filteringStatus": {
+                    "description": "The filtering status code. Please refer to the creative-status-codes.txt file for different statuses.",
+                    "format": "int32",
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "height": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "Ad height.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "impressionTrackingUrl": {
+          "description": "The set of urls to be called to record an impression.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "adexchangebuyer#creative",
+          "description": "Resource type.",
+          "type": "string"
+        },
+        "productCategories": {
+          "description": "Detected product categories, if any. Read-only. This field should not be set in requests.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "restrictedCategories": {
+          "description": "All restricted categories for the ads that may be shown from this snippet.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "sensitiveCategories": {
+          "description": "Detected sensitive categories, if any. Read-only. This field should not be set in requests.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "status": {
+          "description": "Creative serving status. Read-only. This field should not be set in requests.",
+          "type": "string"
+        },
+        "vendorType": {
+          "description": "All vendor types for the ads that may be shown from this snippet.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "version": {
+          "description": "The version for this creative. Read-only. This field should not be set in requests.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "videoURL": {
+          "description": "The url to fetch a video ad. If set, HTMLSnippet should not be set.",
+          "type": "string"
+        },
+        "width": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "Ad width.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "CreativesList": {
+      "description": "The creatives feed lists the active creatives for the Ad Exchange buyer accounts that the user has access to. Each entry in the feed corresponds to a single creative.",
+      "id": "CreativesList",
+      "properties": {
+        "items": {
+          "description": "A list of creatives.",
+          "items": {
+            "$ref": "Creative"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "adexchangebuyer#creativesList",
+          "description": "Resource type.",
+          "type": "string"
+        },
+        "nextPageToken": {
+          "description": "Continuation token used to page through creatives. To retrieve the next page of results, set the next request's \"pageToken\" value to this.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "adexchangebuyer/v1.2/",
+  "title": "Ad Exchange Buyer API",
+  "version": "v1.2"
+}

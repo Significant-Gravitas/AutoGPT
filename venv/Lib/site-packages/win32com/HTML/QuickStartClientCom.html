@@ -1,0 +1,82 @@
+<HTML>
+<HEAD>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=windows-1252">
+<META NAME="Generator" CONTENT="Microsoft Word 97">
+<TITLE>Quick Start to Client side COM and Python</TITLE>
+<META NAME="Template" CONTENT="D:\Program Files\Microsoft Office\Office\html.dot">
+</HEAD>
+<BODY LINK="#0000ff" VLINK="#800080">
+
+<H1>Quick Start to Client side COM and Python</H1>
+<H2>Introduction</H2>
+<P>This documents how to quickly start using COM from Python. It is not a thorough discussion of the COM system, or of the concepts introduced by COM.</P>
+<P>Other good information on COM can be found in various conference tutorials - please see <A HREF="http://starship.python.net/crew/mhammond/conferences">the collection of Mark's conference tutorials</A></P>
+<P>For information on implementing COM objects using Python, please see <A HREF="http://www.python.org/windows/win32com/QuickStartServerCom.html">a Quick Start to Server side COM and Python</A></P>
+<P>In this document we discuss the following topics:</P>
+
+<UL>
+<LI><A HREF="#Using">Using a COM object from Python</A> </LI>
+<LI><A HREF="#WhatObjects">How do I know which objects are available?</A> </LI>
+<LI><A HREF="#StaticDispatch">Static Dispatch/Type Safe objects (using the new improved makepy.py)</A></LI>
+<LI><A HREF="#UsingComConstants">Using COM Constants with makepy.</A></LI></UL>
+
+<H2>Quick Start</H2>
+<H3><A NAME="Using">To use a COM object from Python</A></H3>
+<CODE><P>import win32com.client<BR>
+o = win32com.client.Dispatch("Object.Name")<BR>
+o.Method()<BR>
+o.property = "New Value"<BR>
+print o.property</P>
+</CODE><P>Example</P>
+<CODE><P>o = win32com.client.Dispatch("Excel.Application")<BR>
+o.Visible = 1<BR>
+o.Workbooks.Add() # for office 97 – 95 a bit different!<BR>
+o.Cells(1,1).Value = "Hello"</CODE> </P>
+<P>And we will see the word "Hello" appear in the top cell. </P>
+<H3><A NAME="WhatObjects">How do I know which methods and properties are available?</A></H3>
+<P>Good question. This is hard! You need to use the documentation with the products, or possibly a COM browser. Note however that COM browsers typically rely on these objects registering themselves in certain ways, and many objects to not do this. You are just expected to know.</P>
+<H4>The Python COM browser</H4>
+<P>PythonCOM comes with a basic COM browser that may show you the information you need. Note that this package requires Pythonwin (ie, the MFC GUI environment) to be installed for this to work.</P>
+<P>There are far better COM browsers available - I tend to use the one that comes with MSVC, or this one!</P>
+<P>To run the browser, simply select it from the Pythonwin <I>Tools</I> menu, or double-click on the file <I>win32com\client\combrowse.py</I></P>
+<H2><A NAME="StaticDispatch">Static Dispatch (or Type Safe) objects</A></H2>
+<P>In the above examples, if we printed the '<CODE>repr(o)</CODE>' object above, it would have resulted in</P>
+<CODE><P>&lt;COMObject Excel.Application&gt;</P>
+</CODE><P>This reflects that the object is a generic COM object that Python has no special knowledge of (other than the name you used to create it!). This is known as a "dynamic dispatch" object, as all knowledge is built dynamically. The win32com package also has the concept of <I>static dispatch</I> objects, which gives Python up-front knowledge about the objects that it is working with (including arguments, argument types, etc)</P>
+<P>In a nutshell, Static Dispatch involves the generation of a .py file that contains support for the specific object. For more overview information, please see the documentation references above.</P>
+<P>The generation and management of the .py files is somewhat automatic, and involves one of 2 steps:</P>
+
+<UL>
+<LI>Using <I>makepy.py</I> to select a COM library. This process is very similar to Visual Basic, where you select from a list of all objects installed on your system, and once selected the objects are magically useable. </LI></UL>
+
+<P>or</P>
+
+<UL>
+<LI>Use explicit code to check for, and possibly generate, support at run-time. This is very powerful, as it allows the developer to avoid ensuring the user has selected the appropriate type library. This option is extremely powerful for OCX users, as it allows Python code to sub-class an OCX control, but the actual sub-class can be generated at run-time.  Use <I>makepy.py</I> with a </I>-i</I> option to see how to include this support in your Python code.</LI></UL>
+
+<P>The <I>win32com.client.gencache</I> module manages these generated files. This module has <A HREF="GeneratedSupport.html">some documentation of its own</A>, but you probably don't need to know the gory details!</P>
+<H3>How do I get at the generated module?</H3>
+<P>You will notice that the generated file name is long and cryptic - obviously not designed for humans to work with! So how do you get at the module object for the generated code?</P>
+<P>Hopefully, the answer is <I>you shouldn't need to</I>.  All generated file support is generally available directly via <I>win32com.client.Dispatch</I> and <I>win32com.client.constants</I>.  But should you ever really need the Python module object, the win32com.client.gencache module has functions specifically for this. The functions GetModuleForCLSID and GetModuleForProgID both return Python module objects that you can use in your code. See the docstrings in the gencache code for more details.</P>
+<H3>To generate Python Sources supporting a COM object</H3>
+<H4>Example using Microsoft Office 97.</H4>
+<P>Either:</P>
+
+<UL>
+<LI>Run '<CODE>win32com\client\makepy.py</CODE>' (eg, run it from the command window, or double-click on it) and a list will be presented. Select the Type Library '<CODE>Microsoft Word 8.0 Object Library</CODE>' </LI>
+<LI>From a command prompt, run the command '<CODE>makepy.py "Microsoft Word 8.0 Object Library"</CODE>' (include the double quotes). This simply avoids the selection process. </LI>
+<LI>If you desire, you can also use explicit code to generate it just before you need to use it at runtime.  Run <CODE>'makepy.py -i "Microsoft Word 8.0 Object Library"</CODE>' (include the double quotes) to see how to do this.</LI></UL>
+
+<P>And that is it! Nothing more needed. No special import statements needed! Now, you simply need say</P>
+<CODE><P>&gt;&gt;&gt; import win32com.client</P>
+<P>&gt;&gt;&gt; w=win32com.client.Dispatch("Word.Application")</P>
+<P>&gt;&gt;&gt; w.Visible=1</P>
+<P>&gt;&gt;&gt; w</P>
+<P>&lt;win32com.gen_py.Microsoft Word 8.0 Object Library._Application&gt;</P>
+</CODE><P>Note that now Python knows the explicit type of the object.</P>
+<H3><A NAME="UsingComConstants">Using COM Constants</A></H3>
+<P>Makepy automatically installs all generated constants from a type library in an object called <I>win32com.clients.constants</I>.  You do not need to do anything special to make these constants work, other than create the object itself (ie, in the example above, the constants relating to <I>Word</I> would automatically be available after the <CODE>w=win32com.client.Dispatch("Word.Application</CODE>") statement<CODE>.</P>
+</CODE><P>For example, immediately after executing the code above, you could execute the following:</P>
+<CODE><P>&gt;&gt;&gt; w.WindowState = win32com.client.constants.wdWindowStateMinimize</P>
+</CODE><P>and Word will Minimize.</P></BODY>
+</HTML>

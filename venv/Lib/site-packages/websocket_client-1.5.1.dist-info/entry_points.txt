@@ -1,0 +1,2 @@
+[console_scripts]
+wsdump = websocket._wsdump:main

@@ -1,0 +1,328 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "See, edit, configure, and delete your Google Cloud data and see the email address for your Google Account."
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://fcmdata.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Fcmdata",
+  "description": "Provides additional information about Firebase Cloud Messaging (FCM) message sends and deliveries.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://firebase.google.com/docs/cloud-messaging",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "fcmdata:v1beta1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://fcmdata.mtls.googleapis.com/",
+  "name": "fcmdata",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "projects": {
+      "resources": {
+        "androidApps": {
+          "resources": {
+            "deliveryData": {
+              "methods": {
+                "list": {
+                  "description": "List aggregate delivery data for the given Android application.",
+                  "flatPath": "v1beta1/projects/{projectsId}/androidApps/{androidAppsId}/deliveryData",
+                  "httpMethod": "GET",
+                  "id": "fcmdata.projects.androidApps.deliveryData.list",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "pageSize": {
+                      "description": "The maximum number of entries to return. The service may return fewer than this value. If unspecified, at most 1,000 entries will be returned. The maximum value is 10,000; values above 10,000 will be capped to 10,000. This default may change over time.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "A page token, received from a previous `ListAndroidDeliveryDataRequest` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListAndroidDeliveryDataRequest` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The application for which to list delivery data. Format: `projects/{project_id}/androidApps/{app_id}`",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/androidApps/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+parent}/deliveryData",
+                  "response": {
+                    "$ref": "GoogleFirebaseFcmDataV1beta1ListAndroidDeliveryDataResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230402",
+  "rootUrl": "https://fcmdata.googleapis.com/",
+  "schemas": {
+    "GoogleFirebaseFcmDataV1beta1AndroidDeliveryData": {
+      "description": "Message delivery data for a given date, app, and analytics label combination.",
+      "id": "GoogleFirebaseFcmDataV1beta1AndroidDeliveryData",
+      "properties": {
+        "analyticsLabel": {
+          "description": "The analytics label associated with the messages sent. All messages sent without an analytics label will be grouped together in a single entry.",
+          "type": "string"
+        },
+        "appId": {
+          "description": "The app ID to which the messages were sent.",
+          "type": "string"
+        },
+        "data": {
+          "$ref": "GoogleFirebaseFcmDataV1beta1Data",
+          "description": "The data for the specified appId, date, and analyticsLabel."
+        },
+        "date": {
+          "$ref": "GoogleTypeDate",
+          "description": "The date represented by this entry."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseFcmDataV1beta1Data": {
+      "description": "Data detailing messaging delivery",
+      "id": "GoogleFirebaseFcmDataV1beta1Data",
+      "properties": {
+        "countMessagesAccepted": {
+          "description": "Count of messages accepted by FCM intended to Android devices. The targeted device must have opted in to the collection of usage and diagnostic information.",
+          "format": "int64",
+          "type": "string"
+        },
+        "deliveryPerformancePercents": {
+          "$ref": "GoogleFirebaseFcmDataV1beta1DeliveryPerformancePercents",
+          "description": "Additional information about delivery performance for messages that were successfully delivered."
+        },
+        "messageInsightPercents": {
+          "$ref": "GoogleFirebaseFcmDataV1beta1MessageInsightPercents",
+          "description": "Additional general insights about message delivery."
+        },
+        "messageOutcomePercents": {
+          "$ref": "GoogleFirebaseFcmDataV1beta1MessageOutcomePercents",
+          "description": "Mutually exclusive breakdown of message delivery outcomes."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseFcmDataV1beta1DeliveryPerformancePercents": {
+      "description": "Overview of delivery performance for messages that were successfully delivered. All percentages are calculated with countMessagesAccepted as the denominator. These categories are not mutually exclusive; a message can be delayed for multiple reasons.",
+      "id": "GoogleFirebaseFcmDataV1beta1DeliveryPerformancePercents",
+      "properties": {
+        "delayedDeviceDoze": {
+          "description": "The percentage of accepted messages that were delayed because the device was in doze mode. Only [normal priority messages](https://firebase.google.com/docs/cloud-messaging/concept-options#setting-the-priority-of-a-message) should be delayed due to doze mode.",
+          "format": "float",
+          "type": "number"
+        },
+        "delayedDeviceOffline": {
+          "description": "The percentage of accepted messages that were delayed because the target device was not connected at the time of sending. These messages were eventually delivered when the device reconnected.",
+          "format": "float",
+          "type": "number"
+        },
+        "delayedMessageThrottled": {
+          "description": "The percentage of accepted messages that were delayed due to message throttling, such as [collapsible message throttling](https://firebase.google.com/docs/cloud-messaging/concept-options#collapsible_throttling) or [maximum message rate throttling](https://firebase.google.com/docs/cloud-messaging/concept-options#device_throttling).",
+          "format": "float",
+          "type": "number"
+        },
+        "delayedUserStopped": {
+          "description": "The percentage of accepted messages that were delayed because the intended device user-profile was [stopped](https://firebase.google.com/docs/cloud-messaging/android/receive#handling_messages) on the target device at the time of the send. The messages were eventually delivered when the user-profile was started again.",
+          "format": "float",
+          "type": "number"
+        },
+        "deliveredNoDelay": {
+          "description": "The percentage of accepted messages that were delivered to the device without delay from the FCM system.",
+          "format": "float",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseFcmDataV1beta1ListAndroidDeliveryDataResponse": {
+      "description": "Response message for ListAndroidDeliveryData.",
+      "id": "GoogleFirebaseFcmDataV1beta1ListAndroidDeliveryDataResponse",
+      "properties": {
+        "androidDeliveryData": {
+          "description": "The delivery data for the provided app. There will be one entry per combination of app, date, and analytics label.",
+          "items": {
+            "$ref": "GoogleFirebaseFcmDataV1beta1AndroidDeliveryData"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseFcmDataV1beta1MessageInsightPercents": {
+      "description": "Additional information about message delivery. All percentages are calculated with countMessagesAccepted as the denominator.",
+      "id": "GoogleFirebaseFcmDataV1beta1MessageInsightPercents",
+      "properties": {
+        "priorityLowered": {
+          "description": "The percentage of accepted messages that had their priority lowered from high to normal. See [documentation for setting message priority](https://firebase.google.com/docs/cloud-messaging/android/message-priority).",
+          "format": "float",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseFcmDataV1beta1MessageOutcomePercents": {
+      "description": "Percentage breakdown of message delivery outcomes. These categories are mutually exclusive. All percentages are calculated with countMessagesAccepted as the denominator. These categories may not account for all message outcomes.",
+      "id": "GoogleFirebaseFcmDataV1beta1MessageOutcomePercents",
+      "properties": {
+        "delivered": {
+          "description": "The percentage of all accepted messages that were successfully delivered to the device.",
+          "format": "float",
+          "type": "number"
+        },
+        "droppedAppForceStopped": {
+          "description": "The percentage of accepted messages that were dropped because the application was force stopped on the device at the time of delivery and retries were unsuccessful.",
+          "format": "float",
+          "type": "number"
+        },
+        "droppedDeviceInactive": {
+          "description": "The percentage of accepted messages that were dropped because the target device is inactive. FCM will drop messages if the target device is deemed inactive by our servers. If a device does reconnect, we call [OnDeletedMessages()](https://firebase.google.com/docs/cloud-messaging/android/receive#override-ondeletedmessages) in our SDK instead of delivering the messages.",
+          "format": "float",
+          "type": "number"
+        },
+        "droppedTooManyPendingMessages": {
+          "description": "The percentage of accepted messages that were dropped due to [too many undelivered non-collapsible messages](https://firebase.google.com/docs/cloud-messaging/concept-options#collapsible_and_non-collapsible_messages). Specifically, each app instance can only have 100 pending messages stored on our servers for a device which is disconnected. When that device reconnects, those messages are delivered. When there are more than the maximum pending messages, we call [OnDeletedMessages()](https://firebase.google.com/docs/cloud-messaging/android/receive#override-ondeletedmessages) in our SDK instead of delivering the messages.",
+          "format": "float",
+          "type": "number"
+        },
+        "pending": {
+          "description": "The percentage of messages accepted on this day that were not dropped and not delivered, due to the device being disconnected (as of the end of the America/Los_Angeles day when the message was sent to FCM). A portion of these messages will be delivered the next day when the device connects but others may be destined to devices that ultimately never reconnect.",
+          "format": "float",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleTypeDate": {
+      "description": "Represents a whole or partial calendar date, such as a birthday. The time of day and time zone are either specified elsewhere or are insignificant. The date is relative to the Gregorian Calendar. This can represent one of the following: * A full date, with non-zero year, month, and day values. * A month and day, with a zero year (for example, an anniversary). * A year on its own, with a zero month and a zero day. * A year and month, with a zero day (for example, a credit card expiration date). Related types: * google.type.TimeOfDay * google.type.DateTime * google.protobuf.Timestamp",
+      "id": "GoogleTypeDate",
+      "properties": {
+        "day": {
+          "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "month": {
+          "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "year": {
+          "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Firebase Cloud Messaging Data API",
+  "version": "v1beta1",
+  "version_module": true
+}

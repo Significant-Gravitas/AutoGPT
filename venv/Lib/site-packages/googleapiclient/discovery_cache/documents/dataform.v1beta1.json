@@ -1,0 +1,3729 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "See, edit, configure, and delete your Google Cloud data and see the email address for your Google Account."
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://dataform.googleapis.com/",
+  "batchPath": "batch",
+  "description": "",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://cloud.google.com/dataform/docs",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "dataform:v1beta1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://dataform.mtls.googleapis.com/",
+  "name": "dataform",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "projects": {
+      "resources": {
+        "locations": {
+          "methods": {
+            "get": {
+              "description": "Gets information about a location.",
+              "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}",
+              "httpMethod": "GET",
+              "id": "dataform.projects.locations.get",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "Resource name for the location.",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/locations/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1beta1/{+name}",
+              "response": {
+                "$ref": "Location"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "list": {
+              "description": "Lists information about the supported locations for this service.",
+              "flatPath": "v1beta1/projects/{projectsId}/locations",
+              "httpMethod": "GET",
+              "id": "dataform.projects.locations.list",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "filter": {
+                  "description": "A filter to narrow down results to a preferred subset. The filtering language accepts strings like `\"displayName=tokyo\"`, and is documented in more detail in [AIP-160](https://google.aip.dev/160).",
+                  "location": "query",
+                  "type": "string"
+                },
+                "includeUnrevealedLocations": {
+                  "description": "If true, the returned list will include locations which are not yet revealed.",
+                  "location": "query",
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "The resource that owns the locations collection, if applicable.",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                },
+                "pageSize": {
+                  "description": "The maximum number of results to return. If not set, the service selects a default.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "pageToken": {
+                  "description": "A page token received from the `next_page_token` field in the response. Send that page token to receive the subsequent page.",
+                  "location": "query",
+                  "type": "string"
+                }
+              },
+              "path": "v1beta1/{+name}/locations",
+              "response": {
+                "$ref": "ListLocationsResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            }
+          },
+          "resources": {
+            "repositories": {
+              "methods": {
+                "commit": {
+                  "description": "Applies a Git commit to a Repository. The Repository must not have a value for `git_remote_settings.url`.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:commit",
+                  "httpMethod": "POST",
+                  "id": "dataform.projects.locations.repositories.commit",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. The repository's name.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+name}:commit",
+                  "request": {
+                    "$ref": "CommitRepositoryChangesRequest"
+                  },
+                  "response": {
+                    "$ref": "Empty"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "computeAccessTokenStatus": {
+                  "description": "Computes a Repository's Git access token status.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:computeAccessTokenStatus",
+                  "httpMethod": "GET",
+                  "id": "dataform.projects.locations.repositories.computeAccessTokenStatus",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. The repository's name.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+name}:computeAccessTokenStatus",
+                  "response": {
+                    "$ref": "ComputeRepositoryAccessTokenStatusResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "create": {
+                  "description": "Creates a new Repository in a given project and location.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories",
+                  "httpMethod": "POST",
+                  "id": "dataform.projects.locations.repositories.create",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "parent": {
+                      "description": "Required. The location in which to create the repository. Must be in the format `projects/*/locations/*`.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "repositoryId": {
+                      "description": "Required. The ID to use for the repository, which will become the final component of the repository's resource name.",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+parent}/repositories",
+                  "request": {
+                    "$ref": "Repository"
+                  },
+                  "response": {
+                    "$ref": "Repository"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "delete": {
+                  "description": "Deletes a single Repository.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}",
+                  "httpMethod": "DELETE",
+                  "id": "dataform.projects.locations.repositories.delete",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "force": {
+                      "description": "If set to true, any child resources of this repository will also be deleted. (Otherwise, the request will only succeed if the repository has no child resources.)",
+                      "location": "query",
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "description": "Required. The repository's name.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+name}",
+                  "response": {
+                    "$ref": "Empty"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "fetchHistory": {
+                  "description": "Fetches a Repository's history of commits. The Repository must not have a value for `git_remote_settings.url`.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:fetchHistory",
+                  "httpMethod": "GET",
+                  "id": "dataform.projects.locations.repositories.fetchHistory",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. The repository's name.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "pageSize": {
+                      "description": "Optional. Maximum number of commits to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "Optional. Page token received from a previous `FetchRepositoryHistory` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `FetchRepositoryHistory` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+name}:fetchHistory",
+                  "response": {
+                    "$ref": "FetchRepositoryHistoryResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "fetchRemoteBranches": {
+                  "description": "Fetches a Repository's remote branches.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:fetchRemoteBranches",
+                  "httpMethod": "GET",
+                  "id": "dataform.projects.locations.repositories.fetchRemoteBranches",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. The repository's name.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+name}:fetchRemoteBranches",
+                  "response": {
+                    "$ref": "FetchRemoteBranchesResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "get": {
+                  "description": "Fetches a single Repository.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}",
+                  "httpMethod": "GET",
+                  "id": "dataform.projects.locations.repositories.get",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. The repository's name.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+name}",
+                  "response": {
+                    "$ref": "Repository"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "getIamPolicy": {
+                  "description": "Gets the access control policy for a resource. Returns an empty policy if the resource exists and does not have a policy set.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:getIamPolicy",
+                  "httpMethod": "GET",
+                  "id": "dataform.projects.locations.repositories.getIamPolicy",
+                  "parameterOrder": [
+                    "resource"
+                  ],
+                  "parameters": {
+                    "options.requestedPolicyVersion": {
+                      "description": "Optional. The maximum policy version that will be used to format the policy. Valid values are 0, 1, and 3. Requests specifying an invalid value will be rejected. Requests for policies with any conditional role bindings must specify version 3. Policies with no conditional role bindings may specify any valid value or leave the field unset. The policy in the response might use the policy version that you specified, or it might use a lower policy version. For example, if you specify version 3, but the policy has no conditional role bindings, the response uses version 1. To learn which resources support conditions in their IAM policies, see the [IAM documentation](https://cloud.google.com/iam/help/conditions/resource-policies).",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "resource": {
+                      "description": "REQUIRED: The resource for which the policy is being requested. See [Resource names](https://cloud.google.com/apis/design/resource_names) for the appropriate value for this field.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+resource}:getIamPolicy",
+                  "response": {
+                    "$ref": "Policy"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "list": {
+                  "description": "Lists Repositories in a given project and location.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories",
+                  "httpMethod": "GET",
+                  "id": "dataform.projects.locations.repositories.list",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "filter": {
+                      "description": "Optional. Filter for the returned list.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "orderBy": {
+                      "description": "Optional. This field only supports ordering by `name`. If unspecified, the server will choose the ordering. If specified, the default order is ascending for the `name` field.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "pageSize": {
+                      "description": "Optional. Maximum number of repositories to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "Optional. Page token received from a previous `ListRepositories` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListRepositories` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The location in which to list repositories. Must be in the format `projects/*/locations/*`.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+parent}/repositories",
+                  "response": {
+                    "$ref": "ListRepositoriesResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "patch": {
+                  "description": "Updates a single Repository.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}",
+                  "httpMethod": "PATCH",
+                  "id": "dataform.projects.locations.repositories.patch",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Output only. The repository's name.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "updateMask": {
+                      "description": "Optional. Specifies the fields to be updated in the repository. If left unset, all fields will be updated.",
+                      "format": "google-fieldmask",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+name}",
+                  "request": {
+                    "$ref": "Repository"
+                  },
+                  "response": {
+                    "$ref": "Repository"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "queryDirectoryContents": {
+                  "description": "Returns the contents of a given Repository directory. The Repository must not have a value for `git_remote_settings.url`.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:queryDirectoryContents",
+                  "httpMethod": "GET",
+                  "id": "dataform.projects.locations.repositories.queryDirectoryContents",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "commitSha": {
+                      "description": "Optional. The Commit SHA for the commit to query from. If unset, the directory will be queried from HEAD.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "Required. The repository's name.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "pageSize": {
+                      "description": "Optional. Maximum number of paths to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "Optional. Page token received from a previous `QueryRepositoryDirectoryContents` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `QueryRepositoryDirectoryContents` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "path": {
+                      "description": "Optional. The directory's full path including directory name, relative to root. If left unset, the root is used.",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+name}:queryDirectoryContents",
+                  "response": {
+                    "$ref": "QueryRepositoryDirectoryContentsResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "readFile": {
+                  "description": "Returns the contents of a file (inside a Repository). The Repository must not have a value for `git_remote_settings.url`.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:readFile",
+                  "httpMethod": "GET",
+                  "id": "dataform.projects.locations.repositories.readFile",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "commitSha": {
+                      "description": "Optional. The commit SHA for the commit to read from. If unset, the file will be read from HEAD.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "Required. The repository's name.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "path": {
+                      "description": "Required. Full file path to read including filename, from repository root.",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+name}:readFile",
+                  "response": {
+                    "$ref": "ReadRepositoryFileResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "setIamPolicy": {
+                  "description": "Sets the access control policy on the specified resource. Replaces any existing policy. Can return `NOT_FOUND`, `INVALID_ARGUMENT`, and `PERMISSION_DENIED` errors.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:setIamPolicy",
+                  "httpMethod": "POST",
+                  "id": "dataform.projects.locations.repositories.setIamPolicy",
+                  "parameterOrder": [
+                    "resource"
+                  ],
+                  "parameters": {
+                    "resource": {
+                      "description": "REQUIRED: The resource for which the policy is being specified. See [Resource names](https://cloud.google.com/apis/design/resource_names) for the appropriate value for this field.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+resource}:setIamPolicy",
+                  "request": {
+                    "$ref": "SetIamPolicyRequest"
+                  },
+                  "response": {
+                    "$ref": "Policy"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "testIamPermissions": {
+                  "description": "Returns permissions that a caller has on the specified resource. If the resource does not exist, this will return an empty set of permissions, not a `NOT_FOUND` error. Note: This operation is designed to be used for building permission-aware UIs and command-line tools, not for authorization checking. This operation may \"fail open\" without warning.",
+                  "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}:testIamPermissions",
+                  "httpMethod": "POST",
+                  "id": "dataform.projects.locations.repositories.testIamPermissions",
+                  "parameterOrder": [
+                    "resource"
+                  ],
+                  "parameters": {
+                    "resource": {
+                      "description": "REQUIRED: The resource for which the policy detail is being requested. See [Resource names](https://cloud.google.com/apis/design/resource_names) for the appropriate value for this field.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta1/{+resource}:testIamPermissions",
+                  "request": {
+                    "$ref": "TestIamPermissionsRequest"
+                  },
+                  "response": {
+                    "$ref": "TestIamPermissionsResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                }
+              },
+              "resources": {
+                "compilationResults": {
+                  "methods": {
+                    "create": {
+                      "description": "Creates a new CompilationResult in a given project and location.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/compilationResults",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.compilationResults.create",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "parent": {
+                          "description": "Required. The repository in which to create the compilation result. Must be in the format `projects/*/locations/*/repositories/*`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+parent}/compilationResults",
+                      "request": {
+                        "$ref": "CompilationResult"
+                      },
+                      "response": {
+                        "$ref": "CompilationResult"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "get": {
+                      "description": "Fetches a single CompilationResult.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/compilationResults/{compilationResultsId}",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.compilationResults.get",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The compilation result's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/compilationResults/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "response": {
+                        "$ref": "CompilationResult"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists CompilationResults in a given Repository.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/compilationResults",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.compilationResults.list",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "pageSize": {
+                          "description": "Optional. Maximum number of compilation results to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Optional. Page token received from a previous `ListCompilationResults` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListCompilationResults` must match the call that provided the page token.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "parent": {
+                          "description": "Required. The repository in which to list compilation results. Must be in the format `projects/*/locations/*/repositories/*`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+parent}/compilationResults",
+                      "response": {
+                        "$ref": "ListCompilationResultsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "query": {
+                      "description": "Returns CompilationResultActions in a given CompilationResult.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/compilationResults/{compilationResultsId}:query",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.compilationResults.query",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "filter": {
+                          "description": "Optional. Optional filter for the returned list. Filtering is only currently supported on the `file_path` field.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "Required. The compilation result's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/compilationResults/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "Optional. Maximum number of compilation results to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Optional. Page token received from a previous `QueryCompilationResultActions` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `QueryCompilationResultActions` must match the call that provided the page token.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}:query",
+                      "response": {
+                        "$ref": "QueryCompilationResultActionsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                },
+                "releaseConfigs": {
+                  "methods": {
+                    "create": {
+                      "description": "Creates a new ReleaseConfig in a given Repository.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/releaseConfigs",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.releaseConfigs.create",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "parent": {
+                          "description": "Required. The repository in which to create the release config. Must be in the format `projects/*/locations/*/repositories/*`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "releaseConfigId": {
+                          "description": "Required. The ID to use for the release config, which will become the final component of the release config's resource name.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+parent}/releaseConfigs",
+                      "request": {
+                        "$ref": "ReleaseConfig"
+                      },
+                      "response": {
+                        "$ref": "ReleaseConfig"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "delete": {
+                      "description": "Deletes a single ReleaseConfig.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/releaseConfigs/{releaseConfigsId}",
+                      "httpMethod": "DELETE",
+                      "id": "dataform.projects.locations.repositories.releaseConfigs.delete",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The release config's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/releaseConfigs/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "get": {
+                      "description": "Fetches a single ReleaseConfig.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/releaseConfigs/{releaseConfigsId}",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.releaseConfigs.get",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The release config's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/releaseConfigs/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "response": {
+                        "$ref": "ReleaseConfig"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists ReleaseConfigs in a given Repository.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/releaseConfigs",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.releaseConfigs.list",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "pageSize": {
+                          "description": "Optional. Maximum number of release configs to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Optional. Page token received from a previous `ListReleaseConfigs` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListReleaseConfigs` must match the call that provided the page token.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "parent": {
+                          "description": "Required. The repository in which to list release configs. Must be in the format `projects/*/locations/*/repositories/*`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+parent}/releaseConfigs",
+                      "response": {
+                        "$ref": "ListReleaseConfigsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "patch": {
+                      "description": "Updates a single ReleaseConfig.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/releaseConfigs/{releaseConfigsId}",
+                      "httpMethod": "PATCH",
+                      "id": "dataform.projects.locations.repositories.releaseConfigs.patch",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Output only. The release config's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/releaseConfigs/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "updateMask": {
+                          "description": "Optional. Specifies the fields to be updated in the release config. If left unset, all fields will be updated.",
+                          "format": "google-fieldmask",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "request": {
+                        "$ref": "ReleaseConfig"
+                      },
+                      "response": {
+                        "$ref": "ReleaseConfig"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                },
+                "workflowConfigs": {
+                  "methods": {
+                    "create": {
+                      "description": "Creates a new WorkflowConfig in a given Repository.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowConfigs",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workflowConfigs.create",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "parent": {
+                          "description": "Required. The repository in which to create the workflow config. Must be in the format `projects/*/locations/*/repositories/*`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "workflowConfigId": {
+                          "description": "Required. The ID to use for the workflow config, which will become the final component of the workflow config's resource name.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+parent}/workflowConfigs",
+                      "request": {
+                        "$ref": "WorkflowConfig"
+                      },
+                      "response": {
+                        "$ref": "WorkflowConfig"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "delete": {
+                      "description": "Deletes a single WorkflowConfig.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowConfigs/{workflowConfigsId}",
+                      "httpMethod": "DELETE",
+                      "id": "dataform.projects.locations.repositories.workflowConfigs.delete",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workflow config's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workflowConfigs/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "get": {
+                      "description": "Fetches a single WorkflowConfig.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowConfigs/{workflowConfigsId}",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workflowConfigs.get",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workflow config's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workflowConfigs/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "response": {
+                        "$ref": "WorkflowConfig"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists WorkflowConfigs in a given Repository.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowConfigs",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workflowConfigs.list",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "pageSize": {
+                          "description": "Optional. Maximum number of workflow configs to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Optional. Page token received from a previous `ListWorkflowConfigs` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListWorkflowConfigs` must match the call that provided the page token.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "parent": {
+                          "description": "Required. The repository in which to list workflow configs. Must be in the format `projects/*/locations/*/repositories/*`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+parent}/workflowConfigs",
+                      "response": {
+                        "$ref": "ListWorkflowConfigsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "patch": {
+                      "description": "Updates a single WorkflowConfig.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowConfigs/{workflowConfigsId}",
+                      "httpMethod": "PATCH",
+                      "id": "dataform.projects.locations.repositories.workflowConfigs.patch",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Output only. The workflow config's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workflowConfigs/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "updateMask": {
+                          "description": "Optional. Specifies the fields to be updated in the workflow config. If left unset, all fields will be updated.",
+                          "format": "google-fieldmask",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "request": {
+                        "$ref": "WorkflowConfig"
+                      },
+                      "response": {
+                        "$ref": "WorkflowConfig"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                },
+                "workflowInvocations": {
+                  "methods": {
+                    "cancel": {
+                      "description": "Requests cancellation of a running WorkflowInvocation.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowInvocations/{workflowInvocationsId}:cancel",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workflowInvocations.cancel",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workflow invocation resource's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workflowInvocations/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}:cancel",
+                      "request": {
+                        "$ref": "CancelWorkflowInvocationRequest"
+                      },
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "create": {
+                      "description": "Creates a new WorkflowInvocation in a given Repository.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowInvocations",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workflowInvocations.create",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "parent": {
+                          "description": "Required. The repository in which to create the workflow invocation. Must be in the format `projects/*/locations/*/repositories/*`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+parent}/workflowInvocations",
+                      "request": {
+                        "$ref": "WorkflowInvocation"
+                      },
+                      "response": {
+                        "$ref": "WorkflowInvocation"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "delete": {
+                      "description": "Deletes a single WorkflowInvocation.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowInvocations/{workflowInvocationsId}",
+                      "httpMethod": "DELETE",
+                      "id": "dataform.projects.locations.repositories.workflowInvocations.delete",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workflow invocation resource's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workflowInvocations/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "get": {
+                      "description": "Fetches a single WorkflowInvocation.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowInvocations/{workflowInvocationsId}",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workflowInvocations.get",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workflow invocation resource's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workflowInvocations/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "response": {
+                        "$ref": "WorkflowInvocation"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists WorkflowInvocations in a given Repository.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowInvocations",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workflowInvocations.list",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "filter": {
+                          "description": "Optional. Filter for the returned list.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "orderBy": {
+                          "description": "Optional. This field only supports ordering by `name`. If unspecified, the server will choose the ordering. If specified, the default order is ascending for the `name` field.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "Optional. Maximum number of workflow invocations to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Optional. Page token received from a previous `ListWorkflowInvocations` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListWorkflowInvocations` must match the call that provided the page token.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "parent": {
+                          "description": "Required. The parent resource of the WorkflowInvocation type. Must be in the format `projects/*/locations/*/repositories/*`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+parent}/workflowInvocations",
+                      "response": {
+                        "$ref": "ListWorkflowInvocationsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "query": {
+                      "description": "Returns WorkflowInvocationActions in a given WorkflowInvocation.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workflowInvocations/{workflowInvocationsId}:query",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workflowInvocations.query",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workflow invocation's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workflowInvocations/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "Optional. Maximum number of workflow invocations to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Optional. Page token received from a previous `QueryWorkflowInvocationActions` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `QueryWorkflowInvocationActions` must match the call that provided the page token.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}:query",
+                      "response": {
+                        "$ref": "QueryWorkflowInvocationActionsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                },
+                "workspaces": {
+                  "methods": {
+                    "commit": {
+                      "description": "Applies a Git commit for uncommitted files in a Workspace.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:commit",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.commit",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}:commit",
+                      "request": {
+                        "$ref": "CommitWorkspaceChangesRequest"
+                      },
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "create": {
+                      "description": "Creates a new Workspace in a given Repository.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.create",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "parent": {
+                          "description": "Required. The repository in which to create the workspace. Must be in the format `projects/*/locations/*/repositories/*`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "workspaceId": {
+                          "description": "Required. The ID to use for the workspace, which will become the final component of the workspace's resource name.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+parent}/workspaces",
+                      "request": {
+                        "$ref": "Workspace"
+                      },
+                      "response": {
+                        "$ref": "Workspace"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "delete": {
+                      "description": "Deletes a single Workspace.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}",
+                      "httpMethod": "DELETE",
+                      "id": "dataform.projects.locations.repositories.workspaces.delete",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workspace resource's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "fetchFileDiff": {
+                      "description": "Fetches Git diff for an uncommitted file in a Workspace.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:fetchFileDiff",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workspaces.fetchFileDiff",
+                      "parameterOrder": [
+                        "workspace"
+                      ],
+                      "parameters": {
+                        "path": {
+                          "description": "Required. The file's full path including filename, relative to the workspace root.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "workspace": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+workspace}:fetchFileDiff",
+                      "response": {
+                        "$ref": "FetchFileDiffResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "fetchFileGitStatuses": {
+                      "description": "Fetches Git statuses for the files in a Workspace.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:fetchFileGitStatuses",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workspaces.fetchFileGitStatuses",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}:fetchFileGitStatuses",
+                      "response": {
+                        "$ref": "FetchFileGitStatusesResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "fetchGitAheadBehind": {
+                      "description": "Fetches Git ahead/behind against a remote branch.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:fetchGitAheadBehind",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workspaces.fetchGitAheadBehind",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "remoteBranch": {
+                          "description": "Optional. The name of the branch in the Git remote against which this workspace should be compared. If left unset, the repository's default branch name will be used.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}:fetchGitAheadBehind",
+                      "response": {
+                        "$ref": "FetchGitAheadBehindResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "get": {
+                      "description": "Fetches a single Workspace.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workspaces.get",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}",
+                      "response": {
+                        "$ref": "Workspace"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "getIamPolicy": {
+                      "description": "Gets the access control policy for a resource. Returns an empty policy if the resource exists and does not have a policy set.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:getIamPolicy",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workspaces.getIamPolicy",
+                      "parameterOrder": [
+                        "resource"
+                      ],
+                      "parameters": {
+                        "options.requestedPolicyVersion": {
+                          "description": "Optional. The maximum policy version that will be used to format the policy. Valid values are 0, 1, and 3. Requests specifying an invalid value will be rejected. Requests for policies with any conditional role bindings must specify version 3. Policies with no conditional role bindings may specify any valid value or leave the field unset. The policy in the response might use the policy version that you specified, or it might use a lower policy version. For example, if you specify version 3, but the policy has no conditional role bindings, the response uses version 1. To learn which resources support conditions in their IAM policies, see the [IAM documentation](https://cloud.google.com/iam/help/conditions/resource-policies).",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "resource": {
+                          "description": "REQUIRED: The resource for which the policy is being requested. See [Resource names](https://cloud.google.com/apis/design/resource_names) for the appropriate value for this field.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+resource}:getIamPolicy",
+                      "response": {
+                        "$ref": "Policy"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "installNpmPackages": {
+                      "description": "Installs dependency NPM packages (inside a Workspace).",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:installNpmPackages",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.installNpmPackages",
+                      "parameterOrder": [
+                        "workspace"
+                      ],
+                      "parameters": {
+                        "workspace": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+workspace}:installNpmPackages",
+                      "request": {
+                        "$ref": "InstallNpmPackagesRequest"
+                      },
+                      "response": {
+                        "$ref": "InstallNpmPackagesResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists Workspaces in a given Repository.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workspaces.list",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "filter": {
+                          "description": "Optional. Filter for the returned list.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "orderBy": {
+                          "description": "Optional. This field only supports ordering by `name`. If unspecified, the server will choose the ordering. If specified, the default order is ascending for the `name` field.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "Optional. Maximum number of workspaces to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Optional. Page token received from a previous `ListWorkspaces` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListWorkspaces` must match the call that provided the page token.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "parent": {
+                          "description": "Required. The repository in which to list workspaces. Must be in the format `projects/*/locations/*/repositories/*`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+parent}/workspaces",
+                      "response": {
+                        "$ref": "ListWorkspacesResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "makeDirectory": {
+                      "description": "Creates a directory inside a Workspace.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:makeDirectory",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.makeDirectory",
+                      "parameterOrder": [
+                        "workspace"
+                      ],
+                      "parameters": {
+                        "workspace": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+workspace}:makeDirectory",
+                      "request": {
+                        "$ref": "MakeDirectoryRequest"
+                      },
+                      "response": {
+                        "$ref": "MakeDirectoryResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "moveDirectory": {
+                      "description": "Moves a directory (inside a Workspace), and all of its contents, to a new location.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:moveDirectory",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.moveDirectory",
+                      "parameterOrder": [
+                        "workspace"
+                      ],
+                      "parameters": {
+                        "workspace": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+workspace}:moveDirectory",
+                      "request": {
+                        "$ref": "MoveDirectoryRequest"
+                      },
+                      "response": {
+                        "$ref": "MoveDirectoryResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "moveFile": {
+                      "description": "Moves a file (inside a Workspace) to a new location.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:moveFile",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.moveFile",
+                      "parameterOrder": [
+                        "workspace"
+                      ],
+                      "parameters": {
+                        "workspace": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+workspace}:moveFile",
+                      "request": {
+                        "$ref": "MoveFileRequest"
+                      },
+                      "response": {
+                        "$ref": "MoveFileResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "pull": {
+                      "description": "Pulls Git commits from the Repository's remote into a Workspace.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:pull",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.pull",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}:pull",
+                      "request": {
+                        "$ref": "PullGitCommitsRequest"
+                      },
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "push": {
+                      "description": "Pushes Git commits from a Workspace to the Repository's remote.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:push",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.push",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}:push",
+                      "request": {
+                        "$ref": "PushGitCommitsRequest"
+                      },
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "queryDirectoryContents": {
+                      "description": "Returns the contents of a given Workspace directory.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:queryDirectoryContents",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workspaces.queryDirectoryContents",
+                      "parameterOrder": [
+                        "workspace"
+                      ],
+                      "parameters": {
+                        "pageSize": {
+                          "description": "Optional. Maximum number of paths to return. The server may return fewer items than requested. If unspecified, the server will pick an appropriate default.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Optional. Page token received from a previous `QueryDirectoryContents` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `QueryDirectoryContents` must match the call that provided the page token.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "path": {
+                          "description": "Optional. The directory's full path including directory name, relative to the workspace root. If left unset, the workspace root is used.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "workspace": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+workspace}:queryDirectoryContents",
+                      "response": {
+                        "$ref": "QueryDirectoryContentsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "readFile": {
+                      "description": "Returns the contents of a file (inside a Workspace).",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:readFile",
+                      "httpMethod": "GET",
+                      "id": "dataform.projects.locations.repositories.workspaces.readFile",
+                      "parameterOrder": [
+                        "workspace"
+                      ],
+                      "parameters": {
+                        "path": {
+                          "description": "Required. The file's full path including filename, relative to the workspace root.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "workspace": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+workspace}:readFile",
+                      "response": {
+                        "$ref": "ReadFileResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "removeDirectory": {
+                      "description": "Deletes a directory (inside a Workspace) and all of its contents.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:removeDirectory",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.removeDirectory",
+                      "parameterOrder": [
+                        "workspace"
+                      ],
+                      "parameters": {
+                        "workspace": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+workspace}:removeDirectory",
+                      "request": {
+                        "$ref": "RemoveDirectoryRequest"
+                      },
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "removeFile": {
+                      "description": "Deletes a file (inside a Workspace).",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:removeFile",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.removeFile",
+                      "parameterOrder": [
+                        "workspace"
+                      ],
+                      "parameters": {
+                        "workspace": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+workspace}:removeFile",
+                      "request": {
+                        "$ref": "RemoveFileRequest"
+                      },
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "reset": {
+                      "description": "Performs a Git reset for uncommitted files in a Workspace.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:reset",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.reset",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+name}:reset",
+                      "request": {
+                        "$ref": "ResetWorkspaceChangesRequest"
+                      },
+                      "response": {
+                        "$ref": "Empty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "setIamPolicy": {
+                      "description": "Sets the access control policy on the specified resource. Replaces any existing policy. Can return `NOT_FOUND`, `INVALID_ARGUMENT`, and `PERMISSION_DENIED` errors.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:setIamPolicy",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.setIamPolicy",
+                      "parameterOrder": [
+                        "resource"
+                      ],
+                      "parameters": {
+                        "resource": {
+                          "description": "REQUIRED: The resource for which the policy is being specified. See [Resource names](https://cloud.google.com/apis/design/resource_names) for the appropriate value for this field.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+resource}:setIamPolicy",
+                      "request": {
+                        "$ref": "SetIamPolicyRequest"
+                      },
+                      "response": {
+                        "$ref": "Policy"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "testIamPermissions": {
+                      "description": "Returns permissions that a caller has on the specified resource. If the resource does not exist, this will return an empty set of permissions, not a `NOT_FOUND` error. Note: This operation is designed to be used for building permission-aware UIs and command-line tools, not for authorization checking. This operation may \"fail open\" without warning.",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:testIamPermissions",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.testIamPermissions",
+                      "parameterOrder": [
+                        "resource"
+                      ],
+                      "parameters": {
+                        "resource": {
+                          "description": "REQUIRED: The resource for which the policy detail is being requested. See [Resource names](https://cloud.google.com/apis/design/resource_names) for the appropriate value for this field.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+resource}:testIamPermissions",
+                      "request": {
+                        "$ref": "TestIamPermissionsRequest"
+                      },
+                      "response": {
+                        "$ref": "TestIamPermissionsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "writeFile": {
+                      "description": "Writes to a file (inside a Workspace).",
+                      "flatPath": "v1beta1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/workspaces/{workspacesId}:writeFile",
+                      "httpMethod": "POST",
+                      "id": "dataform.projects.locations.repositories.workspaces.writeFile",
+                      "parameterOrder": [
+                        "workspace"
+                      ],
+                      "parameters": {
+                        "workspace": {
+                          "description": "Required. The workspace's name.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/repositories/[^/]+/workspaces/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta1/{+workspace}:writeFile",
+                      "request": {
+                        "$ref": "WriteFileRequest"
+                      },
+                      "response": {
+                        "$ref": "WriteFileResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230324",
+  "rootUrl": "https://dataform.googleapis.com/",
+  "schemas": {
+    "Assertion": {
+      "description": "Represents an assertion upon a SQL query which is required return zero rows.",
+      "id": "Assertion",
+      "properties": {
+        "dependencyTargets": {
+          "description": "A list of actions that this action depends on.",
+          "items": {
+            "$ref": "Target"
+          },
+          "type": "array"
+        },
+        "disabled": {
+          "description": "Whether this action is disabled (i.e. should not be run).",
+          "type": "boolean"
+        },
+        "parentAction": {
+          "$ref": "Target",
+          "description": "The parent action of this assertion. Only set if this assertion was automatically generated."
+        },
+        "relationDescriptor": {
+          "$ref": "RelationDescriptor",
+          "description": "Descriptor for the assertion's automatically-generated view and its columns."
+        },
+        "selectQuery": {
+          "description": "The SELECT query which must return zero rows in order for this assertion to succeed.",
+          "type": "string"
+        },
+        "tags": {
+          "description": "Arbitrary, user-defined tags on this action.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "BigQueryAction": {
+      "description": "Represents a workflow action that will run against BigQuery.",
+      "id": "BigQueryAction",
+      "properties": {
+        "sqlScript": {
+          "description": "Output only. The generated BigQuery SQL script that will be executed.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Binding": {
+      "description": "Associates `members`, or principals, with a `role`.",
+      "id": "Binding",
+      "properties": {
+        "condition": {
+          "$ref": "Expr",
+          "description": "The condition that is associated with this binding. If the condition evaluates to `true`, then this binding applies to the current request. If the condition evaluates to `false`, then this binding does not apply to the current request. However, a different role binding might grant the same role to one or more of the principals in this binding. To learn which resources support conditions in their IAM policies, see the [IAM documentation](https://cloud.google.com/iam/help/conditions/resource-policies)."
+        },
+        "members": {
+          "description": "Specifies the principals requesting access for a Google Cloud resource. `members` can have the following values: * `allUsers`: A special identifier that represents anyone who is on the internet; with or without a Google account. * `allAuthenticatedUsers`: A special identifier that represents anyone who is authenticated with a Google account or a service account. Does not include identities that come from external identity providers (IdPs) through identity federation. * `user:{emailid}`: An email address that represents a specific Google account. For example, `alice@example.com` . * `serviceAccount:{emailid}`: An email address that represents a Google service account. For example, `my-other-app@appspot.gserviceaccount.com`. * `serviceAccount:{projectid}.svc.id.goog[{namespace}/{kubernetes-sa}]`: An identifier for a [Kubernetes service account](https://cloud.google.com/kubernetes-engine/docs/how-to/kubernetes-service-accounts). For example, `my-project.svc.id.goog[my-namespace/my-kubernetes-sa]`. * `group:{emailid}`: An email address that represents a Google group. For example, `admins@example.com`. * `domain:{domain}`: The G Suite domain (primary) that represents all the users of that domain. For example, `google.com` or `example.com`. * `deleted:user:{emailid}?uid={uniqueid}`: An email address (plus unique identifier) representing a user that has been recently deleted. For example, `alice@example.com?uid=123456789012345678901`. If the user is recovered, this value reverts to `user:{emailid}` and the recovered user retains the role in the binding. * `deleted:serviceAccount:{emailid}?uid={uniqueid}`: An email address (plus unique identifier) representing a service account that has been recently deleted. For example, `my-other-app@appspot.gserviceaccount.com?uid=123456789012345678901`. If the service account is undeleted, this value reverts to `serviceAccount:{emailid}` and the undeleted service account retains the role in the binding. * `deleted:group:{emailid}?uid={uniqueid}`: An email address (plus unique identifier) representing a Google group that has been recently deleted. For example, `admins@example.com?uid=123456789012345678901`. If the group is recovered, this value reverts to `group:{emailid}` and the recovered group retains the role in the binding.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "role": {
+          "description": "Role that is assigned to the list of `members`, or principals. For example, `roles/viewer`, `roles/editor`, or `roles/owner`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CancelWorkflowInvocationRequest": {
+      "description": "`CancelWorkflowInvocation` request message.",
+      "id": "CancelWorkflowInvocationRequest",
+      "properties": {},
+      "type": "object"
+    },
+    "CodeCompilationConfig": {
+      "description": "Configures various aspects of Dataform code compilation.",
+      "id": "CodeCompilationConfig",
+      "properties": {
+        "assertionSchema": {
+          "description": "Optional. The default schema (BigQuery dataset ID) for assertions.",
+          "type": "string"
+        },
+        "databaseSuffix": {
+          "description": "Optional. The suffix that should be appended to all database (Google Cloud project ID) names.",
+          "type": "string"
+        },
+        "defaultDatabase": {
+          "description": "Optional. The default database (Google Cloud project ID).",
+          "type": "string"
+        },
+        "defaultLocation": {
+          "description": "Optional. The default BigQuery location to use. Defaults to \"US\". See the BigQuery docs for a full list of locations: https://cloud.google.com/bigquery/docs/locations.",
+          "type": "string"
+        },
+        "defaultSchema": {
+          "description": "Optional. The default schema (BigQuery dataset ID).",
+          "type": "string"
+        },
+        "schemaSuffix": {
+          "description": "Optional. The suffix that should be appended to all schema (BigQuery dataset ID) names.",
+          "type": "string"
+        },
+        "tablePrefix": {
+          "description": "Optional. The prefix that should be prepended to all table names.",
+          "type": "string"
+        },
+        "vars": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional. User-defined variables that are made available to project code during compilation.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ColumnDescriptor": {
+      "description": "Describes a column.",
+      "id": "ColumnDescriptor",
+      "properties": {
+        "bigqueryPolicyTags": {
+          "description": "A list of BigQuery policy tags that will be applied to the column.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "description": "A textual description of the column.",
+          "type": "string"
+        },
+        "path": {
+          "description": "The identifier for the column. Each entry in `path` represents one level of nesting.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "CommitAuthor": {
+      "description": "Represents the author of a Git commit.",
+      "id": "CommitAuthor",
+      "properties": {
+        "emailAddress": {
+          "description": "Required. The commit author's email address.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Required. The commit author's name.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CommitLogEntry": {
+      "description": "Represents a single commit log.",
+      "id": "CommitLogEntry",
+      "properties": {
+        "author": {
+          "$ref": "CommitAuthor",
+          "description": "The commit author for this commit log entry."
+        },
+        "commitMessage": {
+          "description": "The commit message for this commit log entry.",
+          "type": "string"
+        },
+        "commitSha": {
+          "description": "The commit SHA for this commit log entry.",
+          "type": "string"
+        },
+        "commitTime": {
+          "description": "Commit timestamp.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CommitMetadata": {
+      "description": "Represents a Dataform Git commit.",
+      "id": "CommitMetadata",
+      "properties": {
+        "author": {
+          "$ref": "CommitAuthor",
+          "description": "Required. The commit's author."
+        },
+        "commitMessage": {
+          "description": "Optional. The commit's message.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CommitRepositoryChangesRequest": {
+      "description": "`CommitRepositoryChanges` request message.",
+      "id": "CommitRepositoryChangesRequest",
+      "properties": {
+        "commitMetadata": {
+          "$ref": "CommitMetadata",
+          "description": "Required. The changes to commit to the repository."
+        },
+        "fileOperations": {
+          "additionalProperties": {
+            "$ref": "FileOperation"
+          },
+          "description": "A map to the path of the file to the operation. The path is the ull file path including filename, from repository root.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "CommitWorkspaceChangesRequest": {
+      "description": "`CommitWorkspaceChanges` request message.",
+      "id": "CommitWorkspaceChangesRequest",
+      "properties": {
+        "author": {
+          "$ref": "CommitAuthor",
+          "description": "Required. The commit's author."
+        },
+        "commitMessage": {
+          "description": "Optional. The commit's message.",
+          "type": "string"
+        },
+        "paths": {
+          "description": "Optional. Full file paths to commit including filename, rooted at workspace root. If left empty, all files will be committed.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "CompilationError": {
+      "description": "An error encountered when attempting to compile a Dataform project.",
+      "id": "CompilationError",
+      "properties": {
+        "actionTarget": {
+          "$ref": "Target",
+          "description": "Output only. The identifier of the action where this error occurred, if available.",
+          "readOnly": true
+        },
+        "message": {
+          "description": "Output only. The error's top level message.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "path": {
+          "description": "Output only. The path of the file where this error occurred, if available, relative to the project root.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "stack": {
+          "description": "Output only. The error's full stack trace.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CompilationResult": {
+      "description": "Represents the result of compiling a Dataform project.",
+      "id": "CompilationResult",
+      "properties": {
+        "codeCompilationConfig": {
+          "$ref": "CodeCompilationConfig",
+          "description": "Immutable. If set, fields of `code_compilation_config` override the default compilation settings that are specified in dataform.json."
+        },
+        "compilationErrors": {
+          "description": "Output only. Errors encountered during project compilation.",
+          "items": {
+            "$ref": "CompilationError"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "dataformCoreVersion": {
+          "description": "Output only. The version of `@dataform/core` that was used for compilation.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "gitCommitish": {
+          "description": "Immutable. Git commit/tag/branch name at which the repository should be compiled. Must exist in the remote repository. Examples: - a commit SHA: `12ade345` - a tag: `tag1` - a branch name: `branch1`",
+          "type": "string"
+        },
+        "name": {
+          "description": "Output only. The compilation result's name.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "releaseConfig": {
+          "description": "Immutable. The name of the release config to compile. The release config's 'current_compilation_result' field will be updated to this compilation result. Must be in the format `projects/*/locations/*/repositories/*/releaseConfigs/*`.",
+          "type": "string"
+        },
+        "resolvedGitCommitSha": {
+          "description": "Output only. The fully resolved Git commit SHA of the code that was compiled. Not set for compilation results whose source is a workspace.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "workspace": {
+          "description": "Immutable. The name of the workspace to compile. Must be in the format `projects/*/locations/*/repositories/*/workspaces/*`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CompilationResultAction": {
+      "description": "Represents a single Dataform action in a compilation result.",
+      "id": "CompilationResultAction",
+      "properties": {
+        "assertion": {
+          "$ref": "Assertion",
+          "description": "The assertion executed by this action."
+        },
+        "canonicalTarget": {
+          "$ref": "Target",
+          "description": "The action's identifier if the project had been compiled without any overrides configured. Unique within the compilation result."
+        },
+        "declaration": {
+          "$ref": "Declaration",
+          "description": "The declaration declared by this action."
+        },
+        "filePath": {
+          "description": "The full path including filename in which this action is located, relative to the workspace root.",
+          "type": "string"
+        },
+        "operations": {
+          "$ref": "Operations",
+          "description": "The database operations executed by this action."
+        },
+        "relation": {
+          "$ref": "Relation",
+          "description": "The database relation created/updated by this action."
+        },
+        "target": {
+          "$ref": "Target",
+          "description": "This action's identifier. Unique within the compilation result."
+        }
+      },
+      "type": "object"
+    },
+    "ComputeRepositoryAccessTokenStatusResponse": {
+      "description": "`ComputeRepositoryAccessTokenStatus` response message.",
+      "id": "ComputeRepositoryAccessTokenStatusResponse",
+      "properties": {
+        "tokenStatus": {
+          "description": "Indicates the status of the Git access token.",
+          "enum": [
+            "TOKEN_STATUS_UNSPECIFIED",
+            "NOT_FOUND",
+            "INVALID",
+            "VALID"
+          ],
+          "enumDescriptions": [
+            "Default value. This value is unused.",
+            "The token could not be found in Secret Manager (or the Dataform Service Account did not have permission to access it).",
+            "The token could not be used to authenticate against the Git remote.",
+            "The token was used successfully to authenticate against the Git remote."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Declaration": {
+      "description": "Represents a relation which is not managed by Dataform but which may be referenced by Dataform actions.",
+      "id": "Declaration",
+      "properties": {
+        "relationDescriptor": {
+          "$ref": "RelationDescriptor",
+          "description": "Descriptor for the relation and its columns. Used as documentation only, i.e. values here will result in no changes to the relation's metadata."
+        }
+      },
+      "type": "object"
+    },
+    "DeleteFile": {
+      "description": "Represents the delete file operation.",
+      "id": "DeleteFile",
+      "properties": {},
+      "type": "object"
+    },
+    "DirectoryEntry": {
+      "description": "Represents a single entry in a directory.",
+      "id": "DirectoryEntry",
+      "properties": {
+        "directory": {
+          "description": "A child directory in the directory.",
+          "type": "string"
+        },
+        "file": {
+          "description": "A file in the directory.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Empty": {
+      "description": "A generic empty message that you can re-use to avoid defining duplicated empty messages in your APIs. A typical example is to use it as the request or the response type of an API method. For instance: service Foo { rpc Bar(google.protobuf.Empty) returns (google.protobuf.Empty); }",
+      "id": "Empty",
+      "properties": {},
+      "type": "object"
+    },
+    "Expr": {
+      "description": "Represents a textual expression in the Common Expression Language (CEL) syntax. CEL is a C-like expression language. The syntax and semantics of CEL are documented at https://github.com/google/cel-spec. Example (Comparison): title: \"Summary size limit\" description: \"Determines if a summary is less than 100 chars\" expression: \"document.summary.size() < 100\" Example (Equality): title: \"Requestor is owner\" description: \"Determines if requestor is the document owner\" expression: \"document.owner == request.auth.claims.email\" Example (Logic): title: \"Public documents\" description: \"Determine whether the document should be publicly visible\" expression: \"document.type != 'private' && document.type != 'internal'\" Example (Data Manipulation): title: \"Notification string\" description: \"Create a notification string with a timestamp.\" expression: \"'New message received at ' + string(document.create_time)\" The exact variables and functions that may be referenced within an expression are determined by the service that evaluates it. See the service documentation for additional information.",
+      "id": "Expr",
+      "properties": {
+        "description": {
+          "description": "Optional. Description of the expression. This is a longer text which describes the expression, e.g. when hovered over it in a UI.",
+          "type": "string"
+        },
+        "expression": {
+          "description": "Textual representation of an expression in Common Expression Language syntax.",
+          "type": "string"
+        },
+        "location": {
+          "description": "Optional. String indicating the location of the expression for error reporting, e.g. a file name and a position in the file.",
+          "type": "string"
+        },
+        "title": {
+          "description": "Optional. Title for the expression, i.e. a short string describing its purpose. This can be used e.g. in UIs which allow to enter the expression.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FetchFileDiffResponse": {
+      "description": "`FetchFileDiff` response message.",
+      "id": "FetchFileDiffResponse",
+      "properties": {
+        "formattedDiff": {
+          "description": "The raw formatted Git diff for the file.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FetchFileGitStatusesResponse": {
+      "description": "`FetchFileGitStatuses` response message.",
+      "id": "FetchFileGitStatusesResponse",
+      "properties": {
+        "uncommittedFileChanges": {
+          "description": "A list of all files which have uncommitted Git changes. There will only be a single entry for any given file.",
+          "items": {
+            "$ref": "UncommittedFileChange"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "FetchGitAheadBehindResponse": {
+      "description": "`FetchGitAheadBehind` response message.",
+      "id": "FetchGitAheadBehindResponse",
+      "properties": {
+        "commitsAhead": {
+          "description": "The number of commits in the remote branch that are not in the workspace.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "commitsBehind": {
+          "description": "The number of commits in the workspace that are not in the remote branch.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "FetchRemoteBranchesResponse": {
+      "description": "`FetchRemoteBranches` response message.",
+      "id": "FetchRemoteBranchesResponse",
+      "properties": {
+        "branches": {
+          "description": "The remote repository's branch names.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "FetchRepositoryHistoryResponse": {
+      "description": "`FetchRepositoryHistory` response message.",
+      "id": "FetchRepositoryHistoryResponse",
+      "properties": {
+        "commits": {
+          "description": "A list of commit logs, ordered by 'git log' default order.",
+          "items": {
+            "$ref": "CommitLogEntry"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FileOperation": {
+      "description": "Represents a single file operation to the repository.",
+      "id": "FileOperation",
+      "properties": {
+        "deleteFile": {
+          "$ref": "DeleteFile",
+          "description": "Represents the delete operation."
+        },
+        "writeFile": {
+          "$ref": "WriteFile",
+          "description": "Represents the write operation."
+        }
+      },
+      "type": "object"
+    },
+    "GitRemoteSettings": {
+      "description": "Controls Git remote configuration for a repository.",
+      "id": "GitRemoteSettings",
+      "properties": {
+        "authenticationTokenSecretVersion": {
+          "description": "Required. The name of the Secret Manager secret version to use as an authentication token for Git operations. Must be in the format `projects/*/secrets/*/versions/*`.",
+          "type": "string"
+        },
+        "defaultBranch": {
+          "description": "Required. The Git remote's default branch name.",
+          "type": "string"
+        },
+        "tokenStatus": {
+          "description": "Output only. Indicates the status of the Git access token.",
+          "enum": [
+            "TOKEN_STATUS_UNSPECIFIED",
+            "NOT_FOUND",
+            "INVALID",
+            "VALID"
+          ],
+          "enumDescriptions": [
+            "Default value. This value is unused.",
+            "The token could not be found in Secret Manager (or the Dataform Service Account did not have permission to access it).",
+            "The token could not be used to authenticate against the Git remote.",
+            "The token was used successfully to authenticate against the Git remote."
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "url": {
+          "description": "Required. The Git remote's URL.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "IncrementalTableConfig": {
+      "description": "Contains settings for relations of type `INCREMENTAL_TABLE`.",
+      "id": "IncrementalTableConfig",
+      "properties": {
+        "incrementalPostOperations": {
+          "description": "SQL statements to be executed after inserting new rows into the relation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "incrementalPreOperations": {
+          "description": "SQL statements to be executed before inserting new rows into the relation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "incrementalSelectQuery": {
+          "description": "The SELECT query which returns rows which should be inserted into the relation if it already exists and is not being refreshed.",
+          "type": "string"
+        },
+        "refreshDisabled": {
+          "description": "Whether this table should be protected from being refreshed.",
+          "type": "boolean"
+        },
+        "uniqueKeyParts": {
+          "description": "A set of columns or SQL expressions used to define row uniqueness. If any duplicates are discovered (as defined by `unique_key_parts`), only the newly selected rows (as defined by `incremental_select_query`) will be included in the relation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "updatePartitionFilter": {
+          "description": "A SQL expression conditional used to limit the set of existing rows considered for a merge operation (see `unique_key_parts` for more information).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "InstallNpmPackagesRequest": {
+      "description": "`InstallNpmPackages` request message.",
+      "id": "InstallNpmPackagesRequest",
+      "properties": {},
+      "type": "object"
+    },
+    "InstallNpmPackagesResponse": {
+      "description": "`InstallNpmPackages` response message.",
+      "id": "InstallNpmPackagesResponse",
+      "properties": {},
+      "type": "object"
+    },
+    "Interval": {
+      "description": "Represents a time interval, encoded as a Timestamp start (inclusive) and a Timestamp end (exclusive). The start must be less than or equal to the end. When the start equals the end, the interval is empty (matches no time). When both start and end are unspecified, the interval matches any time.",
+      "id": "Interval",
+      "properties": {
+        "endTime": {
+          "description": "Optional. Exclusive end of the interval. If specified, a Timestamp matching this interval will have to be before the end.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "startTime": {
+          "description": "Optional. Inclusive start of the interval. If specified, a Timestamp matching this interval will have to be the same or after the start.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "InvocationConfig": {
+      "description": "Includes various configuration options for a workflow invocation. If both `included_targets` and `included_tags` are unset, all actions will be included.",
+      "id": "InvocationConfig",
+      "properties": {
+        "fullyRefreshIncrementalTablesEnabled": {
+          "description": "Optional. When set to true, any incremental tables will be fully refreshed.",
+          "type": "boolean"
+        },
+        "includedTags": {
+          "description": "Optional. The set of tags to include.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "includedTargets": {
+          "description": "Optional. The set of action identifiers to include.",
+          "items": {
+            "$ref": "Target"
+          },
+          "type": "array"
+        },
+        "transitiveDependenciesIncluded": {
+          "description": "Optional. When set to true, transitive dependencies of included actions will be executed.",
+          "type": "boolean"
+        },
+        "transitiveDependentsIncluded": {
+          "description": "Optional. When set to true, transitive dependents of included actions will be executed.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ListCompilationResultsResponse": {
+      "description": "`ListCompilationResults` response message.",
+      "id": "ListCompilationResultsResponse",
+      "properties": {
+        "compilationResults": {
+          "description": "List of compilation results.",
+          "items": {
+            "$ref": "CompilationResult"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "unreachable": {
+          "description": "Locations which could not be reached.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListLocationsResponse": {
+      "description": "The response message for Locations.ListLocations.",
+      "id": "ListLocationsResponse",
+      "properties": {
+        "locations": {
+          "description": "A list of locations that matches the specified filter in the request.",
+          "items": {
+            "$ref": "Location"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "The standard List next-page token.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListReleaseConfigsResponse": {
+      "description": "`ListReleaseConfigs` response message.",
+      "id": "ListReleaseConfigsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "releaseConfigs": {
+          "description": "List of release configs.",
+          "items": {
+            "$ref": "ReleaseConfig"
+          },
+          "type": "array"
+        },
+        "unreachable": {
+          "description": "Locations which could not be reached.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListRepositoriesResponse": {
+      "description": "`ListRepositories` response message.",
+      "id": "ListRepositoriesResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A token which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "repositories": {
+          "description": "List of repositories.",
+          "items": {
+            "$ref": "Repository"
+          },
+          "type": "array"
+        },
+        "unreachable": {
+          "description": "Locations which could not be reached.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListWorkflowConfigsResponse": {
+      "description": "`ListWorkflowConfigs` response message.",
+      "id": "ListWorkflowConfigsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "unreachable": {
+          "description": "Locations which could not be reached.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workflowConfigs": {
+          "description": "List of workflow configs.",
+          "items": {
+            "$ref": "WorkflowConfig"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListWorkflowInvocationsResponse": {
+      "description": "`ListWorkflowInvocations` response message.",
+      "id": "ListWorkflowInvocationsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "unreachable": {
+          "description": "Locations which could not be reached.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workflowInvocations": {
+          "description": "List of workflow invocations.",
+          "items": {
+            "$ref": "WorkflowInvocation"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListWorkspacesResponse": {
+      "description": "`ListWorkspaces` response message.",
+      "id": "ListWorkspacesResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "unreachable": {
+          "description": "Locations which could not be reached.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workspaces": {
+          "description": "List of workspaces.",
+          "items": {
+            "$ref": "Workspace"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Location": {
+      "description": "A resource that represents Google Cloud Platform location.",
+      "id": "Location",
+      "properties": {
+        "displayName": {
+          "description": "The friendly name for this location, typically a nearby city name. For example, \"Tokyo\".",
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Cross-service attributes for the location. For example {\"cloud.googleapis.com/region\": \"us-east1\"}",
+          "type": "object"
+        },
+        "locationId": {
+          "description": "The canonical id for this location. For example: `\"us-east1\"`.",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "Service-specific metadata. For example the available capacity at the given location.",
+          "type": "object"
+        },
+        "name": {
+          "description": "Resource name for the location, which may vary between implementations. For example: `\"projects/example-project/locations/us-east1\"`",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "MakeDirectoryRequest": {
+      "description": "`MakeDirectory` request message.",
+      "id": "MakeDirectoryRequest",
+      "properties": {
+        "path": {
+          "description": "Required. The directory's full path including directory name, relative to the workspace root.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "MakeDirectoryResponse": {
+      "description": "`MakeDirectory` response message.",
+      "id": "MakeDirectoryResponse",
+      "properties": {},
+      "type": "object"
+    },
+    "MoveDirectoryRequest": {
+      "description": "`MoveDirectory` request message.",
+      "id": "MoveDirectoryRequest",
+      "properties": {
+        "newPath": {
+          "description": "Required. The new path for the directory including directory name, rooted at workspace root.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Required. The directory's full path including directory name, relative to the workspace root.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "MoveDirectoryResponse": {
+      "description": "`MoveDirectory` response message.",
+      "id": "MoveDirectoryResponse",
+      "properties": {},
+      "type": "object"
+    },
+    "MoveFileRequest": {
+      "description": "`MoveFile` request message.",
+      "id": "MoveFileRequest",
+      "properties": {
+        "newPath": {
+          "description": "Required. The file's new path including filename, relative to the workspace root.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Required. The file's full path including filename, relative to the workspace root.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "MoveFileResponse": {
+      "description": "`MoveFile` response message.",
+      "id": "MoveFileResponse",
+      "properties": {},
+      "type": "object"
+    },
+    "OperationMetadata": {
+      "description": "Represents the metadata of the long-running operation.",
+      "id": "OperationMetadata",
+      "properties": {
+        "apiVersion": {
+          "description": "Output only. API version used to start the operation.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "cancelRequested": {
+          "description": "Output only. Identifies whether the user has requested cancellation of the operation. Operations that have been cancelled successfully have Operation.error value with a google.rpc.Status.code of 1, corresponding to `Code.CANCELLED`.",
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "createTime": {
+          "description": "Output only. The time the operation was created.",
+          "format": "google-datetime",
+          "readOnly": true,
+          "type": "string"
+        },
+        "endTime": {
+          "description": "Output only. The time the operation finished running.",
+          "format": "google-datetime",
+          "readOnly": true,
+          "type": "string"
+        },
+        "statusDetail": {
+          "description": "Output only. Human-readable status of the operation, if any.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "target": {
+          "description": "Output only. Server-defined resource path for the target of the operation.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "verb": {
+          "description": "Output only. Name of the verb executed by the operation.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Operations": {
+      "description": "Represents a list of arbitrary database operations.",
+      "id": "Operations",
+      "properties": {
+        "dependencyTargets": {
+          "description": "A list of actions that this action depends on.",
+          "items": {
+            "$ref": "Target"
+          },
+          "type": "array"
+        },
+        "disabled": {
+          "description": "Whether this action is disabled (i.e. should not be run).",
+          "type": "boolean"
+        },
+        "hasOutput": {
+          "description": "Whether these operations produce an output relation.",
+          "type": "boolean"
+        },
+        "queries": {
+          "description": "A list of arbitrary SQL statements that will be executed without alteration.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "relationDescriptor": {
+          "$ref": "RelationDescriptor",
+          "description": "Descriptor for any output relation and its columns. Only set if `has_output` is true."
+        },
+        "tags": {
+          "description": "Arbitrary, user-defined tags on this action.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Policy": {
+      "description": "An Identity and Access Management (IAM) policy, which specifies access controls for Google Cloud resources. A `Policy` is a collection of `bindings`. A `binding` binds one or more `members`, or principals, to a single `role`. Principals can be user accounts, service accounts, Google groups, and domains (such as G Suite). A `role` is a named list of permissions; each `role` can be an IAM predefined role or a user-created custom role. For some types of Google Cloud resources, a `binding` can also specify a `condition`, which is a logical expression that allows access to a resource only if the expression evaluates to `true`. A condition can add constraints based on attributes of the request, the resource, or both. To learn which resources support conditions in their IAM policies, see the [IAM documentation](https://cloud.google.com/iam/help/conditions/resource-policies). **JSON example:** { \"bindings\": [ { \"role\": \"roles/resourcemanager.organizationAdmin\", \"members\": [ \"user:mike@example.com\", \"group:admins@example.com\", \"domain:google.com\", \"serviceAccount:my-project-id@appspot.gserviceaccount.com\" ] }, { \"role\": \"roles/resourcemanager.organizationViewer\", \"members\": [ \"user:eve@example.com\" ], \"condition\": { \"title\": \"expirable access\", \"description\": \"Does not grant access after Sep 2020\", \"expression\": \"request.time < timestamp('2020-10-01T00:00:00.000Z')\", } } ], \"etag\": \"BwWWja0YfJA=\", \"version\": 3 } **YAML example:** bindings: - members: - user:mike@example.com - group:admins@example.com - domain:google.com - serviceAccount:my-project-id@appspot.gserviceaccount.com role: roles/resourcemanager.organizationAdmin - members: - user:eve@example.com role: roles/resourcemanager.organizationViewer condition: title: expirable access description: Does not grant access after Sep 2020 expression: request.time < timestamp('2020-10-01T00:00:00.000Z') etag: BwWWja0YfJA= version: 3 For a description of IAM and its features, see the [IAM documentation](https://cloud.google.com/iam/docs/).",
+      "id": "Policy",
+      "properties": {
+        "bindings": {
+          "description": "Associates a list of `members`, or principals, with a `role`. Optionally, may specify a `condition` that determines how and when the `bindings` are applied. Each of the `bindings` must contain at least one principal. The `bindings` in a `Policy` can refer to up to 1,500 principals; up to 250 of these principals can be Google groups. Each occurrence of a principal counts towards these limits. For example, if the `bindings` grant 50 different roles to `user:alice@example.com`, and not to any other principal, then you can add another 1,450 principals to the `bindings` in the `Policy`.",
+          "items": {
+            "$ref": "Binding"
+          },
+          "type": "array"
+        },
+        "etag": {
+          "description": "`etag` is used for optimistic concurrency control as a way to help prevent simultaneous updates of a policy from overwriting each other. It is strongly suggested that systems make use of the `etag` in the read-modify-write cycle to perform policy updates in order to avoid race conditions: An `etag` is returned in the response to `getIamPolicy`, and systems are expected to put that etag in the request to `setIamPolicy` to ensure that their change will be applied to the same version of the policy. **Important:** If you use IAM Conditions, you must include the `etag` field whenever you call `setIamPolicy`. If you omit this field, then IAM allows you to overwrite a version `3` policy with a version `1` policy, and all of the conditions in the version `3` policy are lost.",
+          "format": "byte",
+          "type": "string"
+        },
+        "version": {
+          "description": "Specifies the format of the policy. Valid values are `0`, `1`, and `3`. Requests that specify an invalid value are rejected. Any operation that affects conditional role bindings must specify version `3`. This requirement applies to the following operations: * Getting a policy that includes a conditional role binding * Adding a conditional role binding to a policy * Changing a conditional role binding in a policy * Removing any role binding, with or without a condition, from a policy that includes conditions **Important:** If you use IAM Conditions, you must include the `etag` field whenever you call `setIamPolicy`. If you omit this field, then IAM allows you to overwrite a version `3` policy with a version `1` policy, and all of the conditions in the version `3` policy are lost. If a policy does not include any conditions, operations on that policy may specify any valid version or leave the field unset. To learn which resources support conditions in their IAM policies, see the [IAM documentation](https://cloud.google.com/iam/help/conditions/resource-policies).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "PullGitCommitsRequest": {
+      "description": "`PullGitCommits` request message.",
+      "id": "PullGitCommitsRequest",
+      "properties": {
+        "author": {
+          "$ref": "CommitAuthor",
+          "description": "Required. The author of any merge commit which may be created as a result of merging fetched Git commits into this workspace."
+        },
+        "remoteBranch": {
+          "description": "Optional. The name of the branch in the Git remote from which to pull commits. If left unset, the repository's default branch name will be used.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PushGitCommitsRequest": {
+      "description": "`PushGitCommits` request message.",
+      "id": "PushGitCommitsRequest",
+      "properties": {
+        "remoteBranch": {
+          "description": "Optional. The name of the branch in the Git remote to which commits should be pushed. If left unset, the repository's default branch name will be used.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "QueryCompilationResultActionsResponse": {
+      "description": "`QueryCompilationResultActions` response message.",
+      "id": "QueryCompilationResultActionsResponse",
+      "properties": {
+        "compilationResultActions": {
+          "description": "List of compilation result actions.",
+          "items": {
+            "$ref": "CompilationResultAction"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "QueryDirectoryContentsResponse": {
+      "description": "`QueryDirectoryContents` response message.",
+      "id": "QueryDirectoryContentsResponse",
+      "properties": {
+        "directoryEntries": {
+          "description": "List of entries in the directory.",
+          "items": {
+            "$ref": "DirectoryEntry"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "QueryRepositoryDirectoryContentsResponse": {
+      "description": "`QueryRepositoryDirectoryContents` response message.",
+      "id": "QueryRepositoryDirectoryContentsResponse",
+      "properties": {
+        "directoryEntries": {
+          "description": "List of entries in the directory.",
+          "items": {
+            "$ref": "DirectoryEntry"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "QueryWorkflowInvocationActionsResponse": {
+      "description": "`QueryWorkflowInvocationActions` response message.",
+      "id": "QueryWorkflowInvocationActionsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "workflowInvocationActions": {
+          "description": "List of workflow invocation actions.",
+          "items": {
+            "$ref": "WorkflowInvocationAction"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ReadFileResponse": {
+      "description": "`ReadFile` response message.",
+      "id": "ReadFileResponse",
+      "properties": {
+        "fileContents": {
+          "description": "The file's contents.",
+          "format": "byte",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ReadRepositoryFileResponse": {
+      "description": "`ReadRepositoryFile` response message.",
+      "id": "ReadRepositoryFileResponse",
+      "properties": {
+        "contents": {
+          "description": "The file's contents.",
+          "format": "byte",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Relation": {
+      "description": "Represents a database relation.",
+      "id": "Relation",
+      "properties": {
+        "additionalOptions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Additional options that will be provided as key/value pairs into the options clause of a create table/view statement. See https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language for more information on which options are supported.",
+          "type": "object"
+        },
+        "clusterExpressions": {
+          "description": "A list of columns or SQL expressions used to cluster the table.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dependencyTargets": {
+          "description": "A list of actions that this action depends on.",
+          "items": {
+            "$ref": "Target"
+          },
+          "type": "array"
+        },
+        "disabled": {
+          "description": "Whether this action is disabled (i.e. should not be run).",
+          "type": "boolean"
+        },
+        "incrementalTableConfig": {
+          "$ref": "IncrementalTableConfig",
+          "description": "Configures `INCREMENTAL_TABLE` settings for this relation. Only set if `relation_type` is `INCREMENTAL_TABLE`."
+        },
+        "partitionExpirationDays": {
+          "description": "Sets the partition expiration in days.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "partitionExpression": {
+          "description": "The SQL expression used to partition the relation.",
+          "type": "string"
+        },
+        "postOperations": {
+          "description": "SQL statements to be executed after creating the relation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "preOperations": {
+          "description": "SQL statements to be executed before creating the relation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "relationDescriptor": {
+          "$ref": "RelationDescriptor",
+          "description": "Descriptor for the relation and its columns."
+        },
+        "relationType": {
+          "description": "The type of this relation.",
+          "enum": [
+            "RELATION_TYPE_UNSPECIFIED",
+            "TABLE",
+            "VIEW",
+            "INCREMENTAL_TABLE",
+            "MATERIALIZED_VIEW"
+          ],
+          "enumDescriptions": [
+            "Default value. This value is unused.",
+            "The relation is a table.",
+            "The relation is a view.",
+            "The relation is an incrementalized table.",
+            "The relation is a materialized view."
+          ],
+          "type": "string"
+        },
+        "requirePartitionFilter": {
+          "description": "Specifies whether queries on this table must include a predicate filter that filters on the partitioning column.",
+          "type": "boolean"
+        },
+        "selectQuery": {
+          "description": "The SELECT query which returns rows which this relation should contain.",
+          "type": "string"
+        },
+        "tags": {
+          "description": "Arbitrary, user-defined tags on this action.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "RelationDescriptor": {
+      "description": "Describes a relation and its columns.",
+      "id": "RelationDescriptor",
+      "properties": {
+        "bigqueryLabels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "A set of BigQuery labels that should be applied to the relation.",
+          "type": "object"
+        },
+        "columns": {
+          "description": "A list of descriptions of columns within the relation.",
+          "items": {
+            "$ref": "ColumnDescriptor"
+          },
+          "type": "array"
+        },
+        "description": {
+          "description": "A text description of the relation.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ReleaseConfig": {
+      "description": "Represents a Dataform release configuration.",
+      "id": "ReleaseConfig",
+      "properties": {
+        "codeCompilationConfig": {
+          "$ref": "CodeCompilationConfig",
+          "description": "Optional. If set, fields of `code_compilation_config` override the default compilation settings that are specified in dataform.json."
+        },
+        "cronSchedule": {
+          "description": "Optional. Optional schedule (in cron format) for automatic creation of compilation results.",
+          "type": "string"
+        },
+        "gitCommitish": {
+          "description": "Required. Git commit/tag/branch name at which the repository should be compiled. Must exist in the remote repository. Examples: - a commit SHA: `12ade345` - a tag: `tag1` - a branch name: `branch1`",
+          "type": "string"
+        },
+        "name": {
+          "description": "Output only. The release config's name.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "recentScheduledReleaseRecords": {
+          "description": "Output only. Records of the 10 most recent scheduled release attempts. Updated whenever automatic creation of a compilation result is triggered by cron_schedule.",
+          "items": {
+            "$ref": "ScheduledReleaseRecord"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "releaseCompilationResult": {
+          "description": "Optional. The name of the currently released compilation result for this release config. This value is updated when a compilation result is created from this release config, or when this resource is updated by API call (perhaps to roll back to an earlier release). The compilation result must have been created using this release config. Must be in the format `projects/*/locations/*/repositories/*/compilationResults/*`.",
+          "type": "string"
+        },
+        "timeZone": {
+          "description": "Optional. Specifies the time zone to be used when interpreting cron_schedule. Must be a time zone name from the time zone database (https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). If left unspecified, the default is UTC.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RemoveDirectoryRequest": {
+      "description": "`RemoveDirectory` request message.",
+      "id": "RemoveDirectoryRequest",
+      "properties": {
+        "path": {
+          "description": "Required. The directory's full path including directory name, relative to the workspace root.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RemoveFileRequest": {
+      "description": "`RemoveFile` request message.",
+      "id": "RemoveFileRequest",
+      "properties": {
+        "path": {
+          "description": "Required. The file's full path including filename, relative to the workspace root.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Repository": {
+      "description": "Represents a Dataform Git repository.",
+      "id": "Repository",
+      "properties": {
+        "gitRemoteSettings": {
+          "$ref": "GitRemoteSettings",
+          "description": "Optional. If set, configures this repository to be linked to a Git remote."
+        },
+        "initialCommitFileContents": {
+          "additionalProperties": {
+            "format": "byte",
+            "type": "string"
+          },
+          "description": "Optional. Input only. The initial commit file contents. Represented as map from file path to contents. The path is the full file path to commit including filename, from repository root.",
+          "type": "object"
+        },
+        "initialCommitMetadata": {
+          "$ref": "CommitMetadata",
+          "description": "Optional. Input only. An optional initial commit metadata for the Repository. The Repository must not have a value for `git_remote_settings.url`."
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional. Repository user labels.",
+          "type": "object"
+        },
+        "name": {
+          "description": "Output only. The repository's name.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "npmrcEnvironmentVariablesSecretVersion": {
+          "description": "Optional. The name of the Secret Manager secret version to be used to interpolate variables into the .npmrc file for package installation operations. Must be in the format `projects/*/secrets/*/versions/*`. The file itself must be in a JSON format.",
+          "type": "string"
+        },
+        "workspaceCompilationOverrides": {
+          "$ref": "WorkspaceCompilationOverrides",
+          "description": "Optional. If set, fields of `workspace_compilation_overrides` override the default compilation settings that are specified in dataform.json when creating workspace-scoped compilation results. See documentation for `WorkspaceCompilationOverrides` for more information."
+        }
+      },
+      "type": "object"
+    },
+    "ResetWorkspaceChangesRequest": {
+      "description": "`ResetWorkspaceChanges` request message.",
+      "id": "ResetWorkspaceChangesRequest",
+      "properties": {
+        "clean": {
+          "description": "Optional. If set to true, untracked files will be deleted.",
+          "type": "boolean"
+        },
+        "paths": {
+          "description": "Optional. Full file paths to reset back to their committed state including filename, rooted at workspace root. If left empty, all files will be reset.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ScheduledExecutionRecord": {
+      "description": "A record of an attempt to create a workflow invocation for this workflow config.",
+      "id": "ScheduledExecutionRecord",
+      "properties": {
+        "errorStatus": {
+          "$ref": "Status",
+          "description": "The error status encountered upon this attempt to create the workflow invocation, if the attempt was unsuccessful."
+        },
+        "executionTime": {
+          "description": "The timestamp of this execution attempt.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "workflowInvocation": {
+          "description": "The name of the created workflow invocation, if one was successfully created. Must be in the format `projects/*/locations/*/repositories/*/workflowInvocations/*`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ScheduledReleaseRecord": {
+      "description": "A record of an attempt to create a compilation result for this release config.",
+      "id": "ScheduledReleaseRecord",
+      "properties": {
+        "compilationResult": {
+          "description": "The name of the created compilation result, if one was successfully created. Must be in the format `projects/*/locations/*/repositories/*/compilationResults/*`.",
+          "type": "string"
+        },
+        "errorStatus": {
+          "$ref": "Status",
+          "description": "The error status encountered upon this attempt to create the compilation result, if the attempt was unsuccessful."
+        },
+        "releaseTime": {
+          "description": "The timestamp of this release attempt.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SetIamPolicyRequest": {
+      "description": "Request message for `SetIamPolicy` method.",
+      "id": "SetIamPolicyRequest",
+      "properties": {
+        "policy": {
+          "$ref": "Policy",
+          "description": "REQUIRED: The complete policy to be applied to the `resource`. The size of the policy is limited to a few 10s of KB. An empty policy is a valid policy but certain Google Cloud services (such as Projects) might reject them."
+        }
+      },
+      "type": "object"
+    },
+    "Status": {
+      "description": "The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).",
+      "id": "Status",
+      "properties": {
+        "code": {
+          "description": "The status code, which should be an enum value of google.rpc.Code.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "details": {
+          "description": "A list of messages that carry the error details. There is a common set of message types for APIs to use.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "message": {
+          "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the google.rpc.Status.details field, or localized by the client.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Target": {
+      "description": "Represents an action identifier. If the action writes output, the output will be written to the referenced database object.",
+      "id": "Target",
+      "properties": {
+        "database": {
+          "description": "The action's database (Google Cloud project ID) .",
+          "type": "string"
+        },
+        "name": {
+          "description": "The action's name, within `database` and `schema`.",
+          "type": "string"
+        },
+        "schema": {
+          "description": "The action's schema (BigQuery dataset ID), within `database`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "TestIamPermissionsRequest": {
+      "description": "Request message for `TestIamPermissions` method.",
+      "id": "TestIamPermissionsRequest",
+      "properties": {
+        "permissions": {
+          "description": "The set of permissions to check for the `resource`. Permissions with wildcards (such as `*` or `storage.*`) are not allowed. For more information see [IAM Overview](https://cloud.google.com/iam/docs/overview#permissions).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "TestIamPermissionsResponse": {
+      "description": "Response message for `TestIamPermissions` method.",
+      "id": "TestIamPermissionsResponse",
+      "properties": {
+        "permissions": {
+          "description": "A subset of `TestPermissionsRequest.permissions` that the caller is allowed.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "UncommittedFileChange": {
+      "description": "Represents the Git state of a file with uncommitted changes.",
+      "id": "UncommittedFileChange",
+      "properties": {
+        "path": {
+          "description": "The file's full path including filename, relative to the workspace root.",
+          "type": "string"
+        },
+        "state": {
+          "description": "Indicates the status of the file.",
+          "enum": [
+            "STATE_UNSPECIFIED",
+            "ADDED",
+            "DELETED",
+            "MODIFIED",
+            "HAS_CONFLICTS"
+          ],
+          "enumDescriptions": [
+            "Default value. This value is unused.",
+            "The file has been newly added.",
+            "The file has been deleted.",
+            "The file has been modified.",
+            "The file contains merge conflicts."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WorkflowConfig": {
+      "description": "Represents a Dataform workflow configuration.",
+      "id": "WorkflowConfig",
+      "properties": {
+        "cronSchedule": {
+          "description": "Optional. Optional schedule (in cron format) for automatic execution of this workflow config.",
+          "type": "string"
+        },
+        "invocationConfig": {
+          "$ref": "InvocationConfig",
+          "description": "Optional. If left unset, a default InvocationConfig will be used."
+        },
+        "name": {
+          "description": "Output only. The workflow config's name.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "recentScheduledExecutionRecords": {
+          "description": "Output only. Records of the 10 most recent scheduled execution attempts. Updated whenever automatic creation of a compilation result is triggered by cron_schedule.",
+          "items": {
+            "$ref": "ScheduledExecutionRecord"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "releaseConfig": {
+          "description": "Required. The name of the release config whose release_compilation_result should be executed. Must be in the format `projects/*/locations/*/repositories/*/releaseConfigs/*`.",
+          "type": "string"
+        },
+        "timeZone": {
+          "description": "Optional. Specifies the time zone to be used when interpreting cron_schedule. Must be a time zone name from the time zone database (https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). If left unspecified, the default is UTC.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WorkflowInvocation": {
+      "description": "Represents a single invocation of a compilation result.",
+      "id": "WorkflowInvocation",
+      "properties": {
+        "compilationResult": {
+          "description": "Immutable. The name of the compilation result to compile. Must be in the format `projects/*/locations/*/repositories/*/compilationResults/*`.",
+          "type": "string"
+        },
+        "invocationConfig": {
+          "$ref": "InvocationConfig",
+          "description": "Immutable. If left unset, a default InvocationConfig will be used."
+        },
+        "invocationTiming": {
+          "$ref": "Interval",
+          "description": "Output only. This workflow invocation's timing details.",
+          "readOnly": true
+        },
+        "name": {
+          "description": "Output only. The workflow invocation's name.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "state": {
+          "description": "Output only. This workflow invocation's current state.",
+          "enum": [
+            "STATE_UNSPECIFIED",
+            "RUNNING",
+            "SUCCEEDED",
+            "CANCELLED",
+            "FAILED",
+            "CANCELING"
+          ],
+          "enumDescriptions": [
+            "Default value. This value is unused.",
+            "The workflow invocation is currently running.",
+            "The workflow invocation succeeded. A terminal state.",
+            "The workflow invocation was cancelled. A terminal state.",
+            "The workflow invocation failed. A terminal state.",
+            "The workflow invocation is being cancelled, but some actions are still running."
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "workflowConfig": {
+          "description": "Immutable. The name of the workflow config to invoke. Must be in the format `projects/*/locations/*/repositories/*/workflowConfigs/*`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WorkflowInvocationAction": {
+      "description": "Represents a single action in a workflow invocation.",
+      "id": "WorkflowInvocationAction",
+      "properties": {
+        "bigqueryAction": {
+          "$ref": "BigQueryAction",
+          "description": "Output only. The workflow action's bigquery action details.",
+          "readOnly": true
+        },
+        "canonicalTarget": {
+          "$ref": "Target",
+          "description": "Output only. The action's identifier if the project had been compiled without any overrides configured. Unique within the compilation result.",
+          "readOnly": true
+        },
+        "failureReason": {
+          "description": "Output only. If and only if action's state is FAILED a failure reason is set.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "invocationTiming": {
+          "$ref": "Interval",
+          "description": "Output only. This action's timing details. `start_time` will be set if the action is in [RUNNING, SUCCEEDED, CANCELLED, FAILED] state. `end_time` will be set if the action is in [SUCCEEDED, CANCELLED, FAILED] state.",
+          "readOnly": true
+        },
+        "state": {
+          "description": "Output only. This action's current state.",
+          "enum": [
+            "PENDING",
+            "RUNNING",
+            "SKIPPED",
+            "DISABLED",
+            "SUCCEEDED",
+            "CANCELLED",
+            "FAILED"
+          ],
+          "enumDescriptions": [
+            "The action has not yet been considered for invocation.",
+            "The action is currently running.",
+            "Execution of the action was skipped because upstream dependencies did not all complete successfully. A terminal state.",
+            "Execution of the action was disabled as per the configuration of the corresponding compilation result action. A terminal state.",
+            "The action succeeded. A terminal state.",
+            "The action was cancelled. A terminal state.",
+            "The action failed. A terminal state."
+          ],
+          "readOnly": true,
+          "type": "string"
+        },
+        "target": {
+          "$ref": "Target",
+          "description": "Output only. This action's identifier. Unique within the workflow invocation.",
+          "readOnly": true
+        }
+      },
+      "type": "object"
+    },
+    "Workspace": {
+      "description": "Represents a Dataform Git workspace.",
+      "id": "Workspace",
+      "properties": {
+        "name": {
+          "description": "Output only. The workspace's name.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WorkspaceCompilationOverrides": {
+      "description": "Configures workspace compilation overrides for a repository. Primarily used by the UI (`console.cloud.google.com`). `schema_suffix` and `table_prefix` can have a special expression - `${workspaceName}`, which refers to the workspace name from which the compilation results will be created. API callers are expected to resolve the expression in these overrides and provide them explicitly in `code_compilation_config` (https://cloud.google.com/dataform/reference/rest/v1beta1/projects.locations.repositories.compilationResults#codecompilationconfig) when creating workspace-scoped compilation results.",
+      "id": "WorkspaceCompilationOverrides",
+      "properties": {
+        "defaultDatabase": {
+          "description": "Optional. The default database (Google Cloud project ID).",
+          "type": "string"
+        },
+        "schemaSuffix": {
+          "description": "Optional. The suffix that should be appended to all schema (BigQuery dataset ID) names.",
+          "type": "string"
+        },
+        "tablePrefix": {
+          "description": "Optional. The prefix that should be prepended to all table names.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WriteFile": {
+      "description": "Represents the write file operation (for files added or modified).",
+      "id": "WriteFile",
+      "properties": {
+        "contents": {
+          "description": "The file's contents.",
+          "format": "byte",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WriteFileRequest": {
+      "description": "`WriteFile` request message.",
+      "id": "WriteFileRequest",
+      "properties": {
+        "contents": {
+          "description": "Required. The file's contents.",
+          "format": "byte",
+          "type": "string"
+        },
+        "path": {
+          "description": "Required. The file.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WriteFileResponse": {
+      "description": "`WriteFile` response message.",
+      "id": "WriteFileResponse",
+      "properties": {},
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Dataform API",
+  "version": "v1beta1",
+  "version_module": true
+}

@@ -1,0 +1,475 @@
+{
+  "basePath": "",
+  "baseUrl": "https://ideahub.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Ideahub",
+  "description": "This is an invitation-only API.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://console.cloud.google.com/apis/library/ideahub.googleapis.com",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "ideahub:v1beta",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://ideahub.mtls.googleapis.com/",
+  "name": "ideahub",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "platforms": {
+      "resources": {
+        "properties": {
+          "resources": {
+            "ideaActivities": {
+              "methods": {
+                "create": {
+                  "description": "Creates an idea activity entry.",
+                  "flatPath": "v1beta/platforms/{platformsId}/properties/{propertiesId}/ideaActivities",
+                  "httpMethod": "POST",
+                  "id": "ideahub.platforms.properties.ideaActivities.create",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "parent": {
+                      "description": "Required. The parent resource where this idea activity will be created. Format: platforms/{platform}/property/{property}",
+                      "location": "path",
+                      "pattern": "^platforms/[^/]+/properties/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta/{+parent}/ideaActivities",
+                  "request": {
+                    "$ref": "GoogleSearchIdeahubV1betaIdeaActivity"
+                  },
+                  "response": {
+                    "$ref": "GoogleSearchIdeahubV1betaIdeaActivity"
+                  }
+                }
+              }
+            },
+            "ideaStates": {
+              "methods": {
+                "patch": {
+                  "description": "Update an idea state resource.",
+                  "flatPath": "v1beta/platforms/{platformsId}/properties/{propertiesId}/ideaStates/{ideaStatesId}",
+                  "httpMethod": "PATCH",
+                  "id": "ideahub.platforms.properties.ideaStates.patch",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Unique identifier for the idea state. Format: platforms/{platform}/properties/{property}/ideaStates/{idea_state}",
+                      "location": "path",
+                      "pattern": "^platforms/[^/]+/properties/[^/]+/ideaStates/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "updateMask": {
+                      "description": "The list of fields to be updated.",
+                      "format": "google-fieldmask",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta/{+name}",
+                  "request": {
+                    "$ref": "GoogleSearchIdeahubV1betaIdeaState"
+                  },
+                  "response": {
+                    "$ref": "GoogleSearchIdeahubV1betaIdeaState"
+                  }
+                }
+              }
+            },
+            "ideas": {
+              "methods": {
+                "list": {
+                  "description": "List ideas for a given Creator and filter and sort options.",
+                  "flatPath": "v1beta/platforms/{platformsId}/properties/{propertiesId}/ideas",
+                  "httpMethod": "GET",
+                  "id": "ideahub.platforms.properties.ideas.list",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "filter": {
+                      "description": "Allows filtering. Supported syntax: * Filter expressions are made up of one or more restrictions. * Restrictions are implicitly combined, as if the `AND` operator was always used. The `OR` operator is currently unsupported. * Supported functions: - `saved(bool)`: If set to true, fetches only saved ideas. If set to false, fetches all except saved ideas. Can't be simultaneously used with `dismissed(bool)`. - `dismissed(bool)`: If set to true, fetches only dismissed ideas. Can't be simultaneously used with `saved(bool)`. The `false` value is currently unsupported. Examples: * `saved(true)` * `saved(false)` * `dismissed(true)` The length of this field should be no more than 500 characters.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "orderBy": {
+                      "description": "Order semantics described below.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "pageSize": {
+                      "description": "The maximum number of ideas per page. If unspecified, at most 10 ideas will be returned. The maximum value is 2000; values above 2000 will be coerced to 2000.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "Used to fetch next page.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. If defined, specifies the creator for which to filter by. Format: publishers/{publisher}/properties/{property}",
+                      "location": "path",
+                      "pattern": "^platforms/[^/]+/properties/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta/{+parent}/ideas",
+                  "response": {
+                    "$ref": "GoogleSearchIdeahubV1betaListIdeasResponse"
+                  }
+                }
+              }
+            },
+            "locales": {
+              "methods": {
+                "list": {
+                  "description": "Returns which locales ideas are available in for a given Creator.",
+                  "flatPath": "v1beta/platforms/{platformsId}/properties/{propertiesId}/locales",
+                  "httpMethod": "GET",
+                  "id": "ideahub.platforms.properties.locales.list",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "pageSize": {
+                      "description": "The maximum number of locales to return. The service may return fewer than this value. If unspecified, at most 100 locales will be returned. The maximum value is 100; values above 100 will be coerced to 100.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "A page token, received from a previous `ListAvailableLocales` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListAvailableLocales` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The web property to check idea availability for Format: platforms/{platform}/property/{property}",
+                      "location": "path",
+                      "pattern": "^platforms/[^/]+/properties/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta/{+parent}/locales",
+                  "response": {
+                    "$ref": "GoogleSearchIdeahubV1betaListAvailableLocalesResponse"
+                  }
+                }
+              }
+            },
+            "topicStates": {
+              "methods": {
+                "patch": {
+                  "description": "Update a topic state resource.",
+                  "flatPath": "v1beta/platforms/{platformsId}/properties/{propertiesId}/topicStates/{topicStatesId}",
+                  "httpMethod": "PATCH",
+                  "id": "ideahub.platforms.properties.topicStates.patch",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Unique identifier for the topic state. Format: platforms/{platform}/properties/{property}/topicStates/{topic_state}",
+                      "location": "path",
+                      "pattern": "^platforms/[^/]+/properties/[^/]+/topicStates/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "updateMask": {
+                      "description": "The list of fields to be updated.",
+                      "format": "google-fieldmask",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta/{+name}",
+                  "request": {
+                    "$ref": "GoogleSearchIdeahubV1betaTopicState"
+                  },
+                  "response": {
+                    "$ref": "GoogleSearchIdeahubV1betaTopicState"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230107",
+  "rootUrl": "https://ideahub.googleapis.com/",
+  "schemas": {
+    "GoogleSearchIdeahubV1betaAvailableLocale": {
+      "description": "Represents locales that are available for a web property.",
+      "id": "GoogleSearchIdeahubV1betaAvailableLocale",
+      "properties": {
+        "locale": {
+          "description": "A string in BCP 47 format, without a resource prefix.",
+          "type": "string"
+        },
+        "name": {
+          "description": "A string in BCP 47 format, prefixed with the platform and property name, and \"locales/\". Format: platforms/{platform}/properties/{property}/locales/{locale}",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleSearchIdeahubV1betaIdea": {
+      "description": "A single Idea that we want to show the end user.",
+      "id": "GoogleSearchIdeahubV1betaIdea",
+      "properties": {
+        "name": {
+          "description": "Unique identifier for the idea. Format: ideas/{ideaId}",
+          "type": "string"
+        },
+        "text": {
+          "description": "The idea\u2019s text.",
+          "type": "string"
+        },
+        "topics": {
+          "description": "The Topics that match the idea.",
+          "items": {
+            "$ref": "GoogleSearchIdeahubV1betaTopic"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleSearchIdeahubV1betaIdeaActivity": {
+      "description": "An idea activity entry.",
+      "id": "GoogleSearchIdeahubV1betaIdeaActivity",
+      "properties": {
+        "ideas": {
+          "description": "The Idea IDs for this entry. If empty, topics should be set.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Unique identifier for the idea activity. The name is ignored when creating an idea activity. Format: platforms/{platform}/properties/{property}/ideaActivities/{idea_activity}",
+          "type": "string"
+        },
+        "topics": {
+          "description": "The Topic IDs for this entry. If empty, ideas should be set.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": {
+          "description": "The type of activity performed.",
+          "enum": [
+            "TYPE_UNSPECIFIED",
+            "POST_DRAFTED",
+            "POST_PUBLISHED",
+            "POST_DELETED",
+            "POST_UNPUBLISHED"
+          ],
+          "enumDescriptions": [
+            "An unspecified, unknown type of idea activity.",
+            "An idea activity type indicating a post has been drafted.",
+            "An idea activity type indicating a post has been published.",
+            "An idea activity type indicating a post has been deleted.",
+            "An idea activity type indicating a post has been unpublished."
+          ],
+          "type": "string"
+        },
+        "uri": {
+          "description": "The uri the activity relates to.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleSearchIdeahubV1betaIdeaState": {
+      "description": "Represents idea state specific to a web property.",
+      "id": "GoogleSearchIdeahubV1betaIdeaState",
+      "properties": {
+        "dismissed": {
+          "description": "Whether the idea is dismissed.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Unique identifier for the idea state. Format: platforms/{platform}/properties/{property}/ideaStates/{idea_state}",
+          "type": "string"
+        },
+        "saved": {
+          "description": "Whether the idea is saved.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleSearchIdeahubV1betaListAvailableLocalesResponse": {
+      "description": "Response for whether ideas are available for a given web property on a platform, for the currently logged-in user.",
+      "id": "GoogleSearchIdeahubV1betaListAvailableLocalesResponse",
+      "properties": {
+        "availableLocales": {
+          "description": "Locales for which ideas are available for the given Creator.",
+          "items": {
+            "$ref": "GoogleSearchIdeahubV1betaAvailableLocale"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A token that can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleSearchIdeahubV1betaListIdeasResponse": {
+      "id": "GoogleSearchIdeahubV1betaListIdeasResponse",
+      "properties": {
+        "ideas": {
+          "description": "Results for the ListIdeasRequest.",
+          "items": {
+            "$ref": "GoogleSearchIdeahubV1betaIdea"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Used to fetch the next page in a subsequent request.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleSearchIdeahubV1betaTopic": {
+      "description": "Represents a Topic umbrella for a list of questions that a Creator may want to respond to.",
+      "id": "GoogleSearchIdeahubV1betaTopic",
+      "properties": {
+        "displayName": {
+          "description": "String displayed to the creator indicating the name of the Topic.",
+          "type": "string"
+        },
+        "mid": {
+          "description": "The mID of the topic.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Unique identifier for the topic. Format: topics/{topic}",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleSearchIdeahubV1betaTopicState": {
+      "description": "Represents topic state specific to a web property.",
+      "id": "GoogleSearchIdeahubV1betaTopicState",
+      "properties": {
+        "dismissed": {
+          "description": "Whether the topic is dismissed.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Unique identifier for the topic state. Format: platforms/{platform}/properties/{property}/topicStates/{topic_state}",
+          "type": "string"
+        },
+        "saved": {
+          "description": "Whether the topic is saved.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Idea Hub API",
+  "version": "v1beta",
+  "version_module": true
+}

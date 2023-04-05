@@ -1,0 +1,18 @@
+<HTML>
+<HEAD>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=windows-1252">
+<META NAME="Generator" CONTENT="Microsoft Word 97">
+<TITLE>Misc win32com Stuff</TITLE>
+<META NAME="Version" CONTENT="8.0.3410">
+<META NAME="Date" CONTENT="10/11/96">
+<META NAME="Template" CONTENT="D:\Program Files\Microsoft Office\Office\HTML.DOT">
+</HEAD>
+<BODY TEXT="#000000" BGCOLOR="#ffffff">
+
+<H1>Misc stuff I don’t know where to put anywhere else</H1>
+<H4>Client Side Dispatch</H4>
+<P>Using win32com.client.Dispatch automatically invokes all the win32com client side "smarts", including automatic usage of generated .py files etc.</P>
+<P>If you wish to avoid that, and use truly "dynamic" objects (ie, there is generated .py support available, but you wish to avoid it), you can use win32com.client.dynamic.Dispatch</P>
+<B><P>_print_details_() method</B><BR>
+If win32com.client.dynamic.Dispatch is used, the objects have a _print_details_() method available, which prints all relevant knowledge about an object (for example, all methods and properties). For objects that do not expose runtime type information, _print_details_ may not list anything.</P></BODY>
+</HTML>

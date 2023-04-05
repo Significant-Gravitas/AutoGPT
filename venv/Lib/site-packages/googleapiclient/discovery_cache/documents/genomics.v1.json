@@ -1,0 +1,796 @@
+{
+  "basePath": "",
+  "baseUrl": "https://genomics.googleapis.com/",
+  "batchPath": "batch",
+  "description": "Uploads, processes, queries, and searches Genomics data in the cloud.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://cloud.google.com/genomics",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "genomics:v1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://genomics.mtls.googleapis.com/",
+  "name": "genomics",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {},
+  "revision": "20210512",
+  "rootUrl": "https://genomics.googleapis.com/",
+  "schemas": {
+    "Accelerator": {
+      "description": "Carries information about an accelerator that can be attached to a VM.",
+      "id": "Accelerator",
+      "properties": {
+        "count": {
+          "description": "How many accelerators of this type to attach.",
+          "format": "int64",
+          "type": "string"
+        },
+        "type": {
+          "description": "The accelerator type string (for example, \"nvidia-tesla-k80\"). Only NVIDIA GPU accelerators are currently supported. If an NVIDIA GPU is attached, the required runtime libraries will be made available to all containers under `/usr/local/nvidia`. The driver version to install must be specified using the NVIDIA driver version parameter on the virtual machine specification. Note that attaching a GPU increases the worker VM startup time by a few minutes.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Action": {
+      "description": "Specifies a single action that runs a Docker container.",
+      "id": "Action",
+      "properties": {
+        "commands": {
+          "description": "If specified, overrides the `CMD` specified in the container. If the container also has an `ENTRYPOINT` the values are used as entrypoint arguments. Otherwise, they are used as a command and arguments to run inside the container.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "credentials": {
+          "$ref": "Secret",
+          "description": "If the specified image is hosted on a private registry other than Google Container Registry, the credentials required to pull the image must be specified here as an encrypted secret. The secret must decrypt to a JSON-encoded dictionary containing both `username` and `password` keys."
+        },
+        "encryptedEnvironment": {
+          "$ref": "Secret",
+          "description": "The encrypted environment to pass into the container. This environment is merged with values specified in the google.genomics.v2alpha1.Pipeline message, overwriting any duplicate values. The secret must decrypt to a JSON-encoded dictionary where key-value pairs serve as environment variable names and their values. The decoded environment variables can overwrite the values specified by the `environment` field."
+        },
+        "entrypoint": {
+          "description": "If specified, overrides the `ENTRYPOINT` specified in the container.",
+          "type": "string"
+        },
+        "environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The environment to pass into the container. This environment is merged with values specified in the google.genomics.v2alpha1.Pipeline message, overwriting any duplicate values. In addition to the values passed here, a few other values are automatically injected into the environment. These cannot be hidden or overwritten. `GOOGLE_PIPELINE_FAILED` will be set to \"1\" if the pipeline failed because an action has exited with a non-zero status (and did not have the `IGNORE_EXIT_STATUS` flag set). This can be used to determine if additional debug or logging actions should execute. `GOOGLE_LAST_EXIT_STATUS` will be set to the exit status of the last non-background action that executed. This can be used by workflow engine authors to determine whether an individual action has succeeded or failed.",
+          "type": "object"
+        },
+        "flags": {
+          "description": "The set of flags to apply to this action.",
+          "items": {
+            "enum": [
+              "FLAG_UNSPECIFIED",
+              "IGNORE_EXIT_STATUS",
+              "RUN_IN_BACKGROUND",
+              "ALWAYS_RUN",
+              "ENABLE_FUSE",
+              "PUBLISH_EXPOSED_PORTS",
+              "DISABLE_IMAGE_PREFETCH",
+              "DISABLE_STANDARD_ERROR_CAPTURE",
+              "BLOCK_EXTERNAL_NETWORK"
+            ],
+            "enumDescriptions": [
+              "Unspecified flag.",
+              "Normally, a non-zero exit status causes the pipeline to fail. This flag allows execution of other actions to continue instead.",
+              "This flag allows an action to continue running in the background while executing subsequent actions. This is useful to provide services to other actions (or to provide debugging support tools like SSH servers).",
+              "By default, after an action fails, no further actions are run. This flag indicates that this action must be run even if the pipeline has already failed. This is useful for actions that copy output files off of the VM or for debugging. Note that no actions will be run if image prefetching fails.",
+              "Enable access to the FUSE device for this action. Filesystems can then be mounted into disks shared with other actions. The other actions do not need the `ENABLE_FUSE` flag to access the mounted filesystem. This has the effect of causing the container to be executed with `CAP_SYS_ADMIN` and exposes `/dev/fuse` to the container, so use it only for containers you trust.",
+              "Exposes all ports specified by `EXPOSE` statements in the container. To discover the host side port numbers, consult the `ACTION_STARTED` event in the operation metadata.",
+              "All container images are typically downloaded before any actions are executed. This helps prevent typos in URIs or issues like lack of disk space from wasting large amounts of compute resources. If set, this flag prevents the worker from downloading the image until just before the action is executed.",
+              "A small portion of the container's standard error stream is typically captured and returned inside the `ContainerStoppedEvent`. Setting this flag disables this functionality.",
+              "Prevents the container from accessing the external network."
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "imageUri": {
+          "description": "Required. The URI to pull the container image from. Note that all images referenced by actions in the pipeline are pulled before the first action runs. If multiple actions reference the same image, it is only pulled once, ensuring that the same image is used for all actions in a single pipeline. The image URI can be either a complete host and image specification (e.g., quay.io/biocontainers/samtools), a library and image name (e.g., google/cloud-sdk) or a bare image name ('bash') to pull from the default library. No schema is required in any of these cases. If the specified image is not public, the service account specified for the Virtual Machine must have access to pull the images from GCR, or appropriate credentials must be specified in the google.genomics.v2alpha1.Action.credentials field.",
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Labels to associate with the action. This field is provided to assist workflow engine authors in identifying actions (for example, to indicate what sort of action they perform, such as localization or debugging). They are returned in the operation metadata, but are otherwise ignored.",
+          "type": "object"
+        },
+        "mounts": {
+          "description": "A list of mounts to make available to the action. In addition to the values specified here, every action has a special virtual disk mounted under `/google` that contains log files and other operational components. - /google/logs All logs written during the pipeline execution. - /google/logs/output The combined standard output and standard error of all actions run as part of the pipeline execution. - /google/logs/action/*/stdout The complete contents of each individual action's standard output. - /google/logs/action/*/stderr The complete contents of each individual action's standard error output. ",
+          "items": {
+            "$ref": "Mount"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "An optional name for the container. The container hostname will be set to this name, making it useful for inter-container communication. The name must contain only upper and lowercase alphanumeric characters and hyphens and cannot start with a hyphen.",
+          "type": "string"
+        },
+        "pidNamespace": {
+          "description": "An optional identifier for a PID namespace to run the action inside. Multiple actions should use the same string to share a namespace. If unspecified, a separate isolated namespace is used.",
+          "type": "string"
+        },
+        "portMappings": {
+          "additionalProperties": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "description": "A map of containers to host port mappings for this container. If the container already specifies exposed ports, use the `PUBLISH_EXPOSED_PORTS` flag instead. The host port number must be less than 65536. If it is zero, an unused random port is assigned. To determine the resulting port number, consult the `ContainerStartedEvent` in the operation metadata.",
+          "type": "object"
+        },
+        "timeout": {
+          "description": "The maximum amount of time to give the action to complete. If the action fails to complete before the timeout, it will be terminated and the exit status will be non-zero. The pipeline will continue or terminate based on the rules defined by the `ALWAYS_RUN` and `IGNORE_EXIT_STATUS` flags.",
+          "format": "google-duration",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ContainerKilledEvent": {
+      "description": "An event generated when a container is forcibly terminated by the worker. Currently, this only occurs when the container outlives the timeout specified by the user.",
+      "id": "ContainerKilledEvent",
+      "properties": {
+        "actionId": {
+          "description": "The numeric ID of the action that started the container.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ContainerStartedEvent": {
+      "description": "An event generated when a container starts.",
+      "id": "ContainerStartedEvent",
+      "properties": {
+        "actionId": {
+          "description": "The numeric ID of the action that started this container.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "ipAddress": {
+          "description": "The public IP address that can be used to connect to the container. This field is only populated when at least one port mapping is present. If the instance was created with a private address, this field will be empty even if port mappings exist.",
+          "type": "string"
+        },
+        "portMappings": {
+          "additionalProperties": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "description": "The container-to-host port mappings installed for this container. This set will contain any ports exposed using the `PUBLISH_EXPOSED_PORTS` flag as well as any specified in the `Action` definition.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ContainerStoppedEvent": {
+      "description": "An event generated when a container exits.",
+      "id": "ContainerStoppedEvent",
+      "properties": {
+        "actionId": {
+          "description": "The numeric ID of the action that started this container.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "exitStatus": {
+          "description": "The exit status of the container.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "stderr": {
+          "description": "The tail end of any content written to standard error by the container. If the content emits large amounts of debugging noise or contains sensitive information, you can prevent the content from being printed by setting the `DISABLE_STANDARD_ERROR_CAPTURE` flag. Note that only a small amount of the end of the stream is captured here. The entire stream is stored in the `/google/logs` directory mounted into each action, and can be copied off the machine as described elsewhere.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DelayedEvent": {
+      "description": "An event generated whenever a resource limitation or transient error delays execution of a pipeline that was otherwise ready to run.",
+      "id": "DelayedEvent",
+      "properties": {
+        "cause": {
+          "description": "A textual description of the cause of the delay. The string can change without notice because it is often generated by another service (such as Compute Engine).",
+          "type": "string"
+        },
+        "metrics": {
+          "description": "If the delay was caused by a resource shortage, this field lists the Compute Engine metrics that are preventing this operation from running (for example, `CPUS` or `INSTANCES`). If the particular metric is not known, a single `UNKNOWN` metric will be present.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Disk": {
+      "description": "Carries information about a disk that can be attached to a VM. See https://cloud.google.com/compute/docs/disks/performance for more information about disk type, size, and performance considerations. Specify either `Volume` or `Disk`, but not both.",
+      "id": "Disk",
+      "properties": {
+        "name": {
+          "description": "A user-supplied name for the disk. Used when mounting the disk into actions. The name must contain only upper and lowercase alphanumeric characters and hyphens and cannot start with a hyphen.",
+          "type": "string"
+        },
+        "sizeGb": {
+          "description": "The size, in GB, of the disk to attach. If the size is not specified, a default is chosen to ensure reasonable I/O performance. If the disk type is specified as `local-ssd`, multiple local drives are automatically combined to provide the requested size. Note, however, that each physical SSD is 375GB in size, and no more than 8 drives can be attached to a single instance.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "sourceImage": {
+          "description": "An optional image to put on the disk before attaching it to the VM.",
+          "type": "string"
+        },
+        "type": {
+          "description": "The Compute Engine disk type. If unspecified, `pd-standard` is used.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Event": {
+      "description": "Carries information about events that occur during pipeline execution.",
+      "id": "Event",
+      "properties": {
+        "description": {
+          "description": "A human-readable description of the event. Note that these strings can change at any time without notice. Any application logic must use the information in the `details` field.",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "Machine-readable details about the event.",
+          "type": "object"
+        },
+        "timestamp": {
+          "description": "The time at which the event occurred.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ExistingDisk": {
+      "description": "Configuration for an existing disk to be attached to the VM.",
+      "id": "ExistingDisk",
+      "properties": {
+        "disk": {
+          "description": "If `disk` contains slashes, the Cloud Life Sciences API assumes that it is a complete URL for the disk. If `disk` does not contain slashes, the Cloud Life Sciences API assumes that the disk is a zonal disk and a URL will be generated of the form `zones//disks/`, where `` is the zone in which the instance is allocated. The disk must be ext4 formatted. If all `Mount` references to this disk have the `read_only` flag set to true, the disk will be attached in `read-only` mode and can be shared with other instances. Otherwise, the disk will be available for writing but cannot be shared.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FailedEvent": {
+      "description": "An event generated when the execution of a pipeline has failed. Note that other events can continue to occur after this event.",
+      "id": "FailedEvent",
+      "properties": {
+        "cause": {
+          "description": "The human-readable description of the cause of the failure.",
+          "type": "string"
+        },
+        "code": {
+          "description": "The Google standard error code that best describes this failure.",
+          "enum": [
+            "OK",
+            "CANCELLED",
+            "UNKNOWN",
+            "INVALID_ARGUMENT",
+            "DEADLINE_EXCEEDED",
+            "NOT_FOUND",
+            "ALREADY_EXISTS",
+            "PERMISSION_DENIED",
+            "UNAUTHENTICATED",
+            "RESOURCE_EXHAUSTED",
+            "FAILED_PRECONDITION",
+            "ABORTED",
+            "OUT_OF_RANGE",
+            "UNIMPLEMENTED",
+            "INTERNAL",
+            "UNAVAILABLE",
+            "DATA_LOSS"
+          ],
+          "enumDescriptions": [
+            "Not an error; returned on success HTTP Mapping: 200 OK",
+            "The operation was cancelled, typically by the caller. HTTP Mapping: 499 Client Closed Request",
+            "Unknown error. For example, this error may be returned when a `Status` value received from another address space belongs to an error space that is not known in this address space. Also errors raised by APIs that do not return enough error information may be converted to this error. HTTP Mapping: 500 Internal Server Error",
+            "The client specified an invalid argument. Note that this differs from `FAILED_PRECONDITION`. `INVALID_ARGUMENT` indicates arguments that are problematic regardless of the state of the system (e.g., a malformed file name). HTTP Mapping: 400 Bad Request",
+            "The deadline expired before the operation could complete. For operations that change the state of the system, this error may be returned even if the operation has completed successfully. For example, a successful response from a server could have been delayed long enough for the deadline to expire. HTTP Mapping: 504 Gateway Timeout",
+            "Some requested entity (e.g., file or directory) was not found. Note to server developers: if a request is denied for an entire class of users, such as gradual feature rollout or undocumented allowlist, `NOT_FOUND` may be used. If a request is denied for some users within a class of users, such as user-based access control, `PERMISSION_DENIED` must be used. HTTP Mapping: 404 Not Found",
+            "The entity that a client attempted to create (e.g., file or directory) already exists. HTTP Mapping: 409 Conflict",
+            "The caller does not have permission to execute the specified operation. `PERMISSION_DENIED` must not be used for rejections caused by exhausting some resource (use `RESOURCE_EXHAUSTED` instead for those errors). `PERMISSION_DENIED` must not be used if the caller can not be identified (use `UNAUTHENTICATED` instead for those errors). This error code does not imply the request is valid or the requested entity exists or satisfies other pre-conditions. HTTP Mapping: 403 Forbidden",
+            "The request does not have valid authentication credentials for the operation. HTTP Mapping: 401 Unauthorized",
+            "Some resource has been exhausted, perhaps a per-user quota, or perhaps the entire file system is out of space. HTTP Mapping: 429 Too Many Requests",
+            "The operation was rejected because the system is not in a state required for the operation's execution. For example, the directory to be deleted is non-empty, an rmdir operation is applied to a non-directory, etc. Service implementors can use the following guidelines to decide between `FAILED_PRECONDITION`, `ABORTED`, and `UNAVAILABLE`: (a) Use `UNAVAILABLE` if the client can retry just the failing call. (b) Use `ABORTED` if the client should retry at a higher level. For example, when a client-specified test-and-set fails, indicating the client should restart a read-modify-write sequence. (c) Use `FAILED_PRECONDITION` if the client should not retry until the system state has been explicitly fixed. For example, if an \"rmdir\" fails because the directory is non-empty, `FAILED_PRECONDITION` should be returned since the client should not retry unless the files are deleted from the directory. HTTP Mapping: 400 Bad Request",
+            "The operation was aborted, typically due to a concurrency issue such as a sequencer check failure or transaction abort. See the guidelines above for deciding between `FAILED_PRECONDITION`, `ABORTED`, and `UNAVAILABLE`. HTTP Mapping: 409 Conflict",
+            "The operation was attempted past the valid range. E.g., seeking or reading past end-of-file. Unlike `INVALID_ARGUMENT`, this error indicates a problem that may be fixed if the system state changes. For example, a 32-bit file system will generate `INVALID_ARGUMENT` if asked to read at an offset that is not in the range [0,2^32-1], but it will generate `OUT_OF_RANGE` if asked to read from an offset past the current file size. There is a fair bit of overlap between `FAILED_PRECONDITION` and `OUT_OF_RANGE`. We recommend using `OUT_OF_RANGE` (the more specific error) when it applies so that callers who are iterating through a space can easily look for an `OUT_OF_RANGE` error to detect when they are done. HTTP Mapping: 400 Bad Request",
+            "The operation is not implemented or is not supported/enabled in this service. HTTP Mapping: 501 Not Implemented",
+            "Internal errors. This means that some invariants expected by the underlying system have been broken. This error code is reserved for serious errors. HTTP Mapping: 500 Internal Server Error",
+            "The service is currently unavailable. This is most likely a transient condition, which can be corrected by retrying with a backoff. Note that it is not always safe to retry non-idempotent operations. See the guidelines above for deciding between `FAILED_PRECONDITION`, `ABORTED`, and `UNAVAILABLE`. HTTP Mapping: 503 Service Unavailable",
+            "Unrecoverable data loss or corruption. HTTP Mapping: 500 Internal Server Error"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Metadata": {
+      "description": "Carries information about the pipeline execution that is returned in the long running operation's metadata field.",
+      "id": "Metadata",
+      "properties": {
+        "createTime": {
+          "description": "The time at which the operation was created by the API.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "endTime": {
+          "description": "The time at which execution was completed and resources were cleaned up.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "events": {
+          "description": "The list of events that have happened so far during the execution of this operation.",
+          "items": {
+            "$ref": "Event"
+          },
+          "type": "array"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The user-defined labels associated with this operation.",
+          "type": "object"
+        },
+        "pipeline": {
+          "$ref": "Pipeline",
+          "description": "The pipeline this operation represents."
+        },
+        "startTime": {
+          "description": "The first time at which resources were allocated to execute the pipeline.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Mount": {
+      "description": "Carries information about a particular disk mount inside a container.",
+      "id": "Mount",
+      "properties": {
+        "disk": {
+          "description": "The name of the disk to mount, as specified in the resources section.",
+          "type": "string"
+        },
+        "path": {
+          "description": "The path to mount the disk inside the container.",
+          "type": "string"
+        },
+        "readOnly": {
+          "description": "If true, the disk is mounted read-only inside the container.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "NFSMount": {
+      "description": "Configuration for an `NFSMount` to be attached to the VM.",
+      "id": "NFSMount",
+      "properties": {
+        "target": {
+          "description": "A target NFS mount. The target must be specified as `address:/mount\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Network": {
+      "description": "VM networking options.",
+      "id": "Network",
+      "properties": {
+        "name": {
+          "description": "The network name to attach the VM's network interface to. The value will be prefixed with `global/networks/` unless it contains a `/`, in which case it is assumed to be a fully specified network resource URL. If unspecified, the global default network is used.",
+          "type": "string"
+        },
+        "subnetwork": {
+          "description": "If the specified network is configured for custom subnet creation, the name of the subnetwork to attach the instance to must be specified here. The value is prefixed with `regions/*/subnetworks/` unless it contains a `/`, in which case it is assumed to be a fully specified subnetwork resource URL. If the `*` character appears in the value, it is replaced with the region that the virtual machine has been allocated in.",
+          "type": "string"
+        },
+        "usePrivateAddress": {
+          "description": "If set to true, do not attach a public IP address to the VM. Note that without a public IP address, additional configuration is required to allow the VM to access Google services. See https://cloud.google.com/vpc/docs/configure-private-google-access for more information.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "PersistentDisk": {
+      "description": "Configuration for a persistent disk to be attached to the VM. See https://cloud.google.com/compute/docs/disks/performance for more information about disk type, size, and performance considerations.",
+      "id": "PersistentDisk",
+      "properties": {
+        "sizeGb": {
+          "description": "The size, in GB, of the disk to attach. If the size is not specified, a default is chosen to ensure reasonable I/O performance. If the disk type is specified as `local-ssd`, multiple local drives are automatically combined to provide the requested size. Note, however, that each physical SSD is 375GB in size, and no more than 8 drives can be attached to a single instance.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "sourceImage": {
+          "description": "An image to put on the disk before attaching it to the VM.",
+          "type": "string"
+        },
+        "type": {
+          "description": "The Compute Engine disk type. If unspecified, `pd-standard` is used.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Pipeline": {
+      "description": "Specifies a series of actions to execute, expressed as Docker containers.",
+      "id": "Pipeline",
+      "properties": {
+        "actions": {
+          "description": "The list of actions to execute, in the order they are specified.",
+          "items": {
+            "$ref": "Action"
+          },
+          "type": "array"
+        },
+        "encryptedEnvironment": {
+          "$ref": "Secret",
+          "description": "The encrypted environment to pass into every action. Each action can also specify its own encrypted environment. The secret must decrypt to a JSON-encoded dictionary where key-value pairs serve as environment variable names and their values. The decoded environment variables can overwrite the values specified by the `environment` field."
+        },
+        "environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The environment to pass into every action. Each action can also specify additional environment variables but cannot delete an entry from this map (though they can overwrite it with a different value).",
+          "type": "object"
+        },
+        "resources": {
+          "$ref": "Resources",
+          "description": "The resources required for execution."
+        },
+        "timeout": {
+          "description": "The maximum amount of time to give the pipeline to complete. This includes the time spent waiting for a worker to be allocated. If the pipeline fails to complete before the timeout, it will be cancelled and the error code will be set to DEADLINE_EXCEEDED. If unspecified, it will default to 7 days.",
+          "format": "google-duration",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PullStartedEvent": {
+      "description": "An event generated when the worker starts pulling an image.",
+      "id": "PullStartedEvent",
+      "properties": {
+        "imageUri": {
+          "description": "The URI of the image that was pulled.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PullStoppedEvent": {
+      "description": "An event generated when the worker stops pulling an image.",
+      "id": "PullStoppedEvent",
+      "properties": {
+        "imageUri": {
+          "description": "The URI of the image that was pulled.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Resources": {
+      "description": "The system resources for the pipeline run. At least one zone or region must be specified or the pipeline run will fail.",
+      "id": "Resources",
+      "properties": {
+        "projectId": {
+          "description": "The project ID to allocate resources in.",
+          "type": "string"
+        },
+        "regions": {
+          "description": "The list of regions allowed for VM allocation. If set, the `zones` field must not be set.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "virtualMachine": {
+          "$ref": "VirtualMachine",
+          "description": "The virtual machine specification."
+        },
+        "zones": {
+          "description": "The list of zones allowed for VM allocation. If set, the `regions` field must not be set.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "RunPipelineResponse": {
+      "description": "The response to the RunPipeline method, returned in the operation's result field on success.",
+      "id": "RunPipelineResponse",
+      "properties": {},
+      "type": "object"
+    },
+    "Secret": {
+      "description": "Holds encrypted information that is only decrypted and stored in RAM by the worker VM when running the pipeline.",
+      "id": "Secret",
+      "properties": {
+        "cipherText": {
+          "description": "The value of the cipherText response from the `encrypt` method. This field is intentionally unaudited.",
+          "type": "string"
+        },
+        "keyName": {
+          "description": "The name of the Cloud KMS key that will be used to decrypt the secret value. The VM service account must have the required permissions and authentication scopes to invoke the `decrypt` method on the specified key.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ServiceAccount": {
+      "description": "Carries information about a Google Cloud service account.",
+      "id": "ServiceAccount",
+      "properties": {
+        "email": {
+          "description": "Email address of the service account. If not specified, the default Compute Engine service account for the project will be used.",
+          "type": "string"
+        },
+        "scopes": {
+          "description": "List of scopes to be enabled for this service account on the VM, in addition to the cloud-platform API scope that will be added by default.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "UnexpectedExitStatusEvent": {
+      "description": "An event generated when the execution of a container results in a non-zero exit status that was not otherwise ignored. Execution will continue, but only actions that are flagged as `ALWAYS_RUN` will be executed. Other actions will be skipped.",
+      "id": "UnexpectedExitStatusEvent",
+      "properties": {
+        "actionId": {
+          "description": "The numeric ID of the action that started the container.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "exitStatus": {
+          "description": "The exit status of the container.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "VirtualMachine": {
+      "description": "Carries information about a Compute Engine VM resource.",
+      "id": "VirtualMachine",
+      "properties": {
+        "accelerators": {
+          "description": "The list of accelerators to attach to the VM.",
+          "items": {
+            "$ref": "Accelerator"
+          },
+          "type": "array"
+        },
+        "bootDiskSizeGb": {
+          "description": "The size of the boot disk, in GB. The boot disk must be large enough to accommodate all of the Docker images from each action in the pipeline at the same time. If not specified, a small but reasonable default value is used.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "bootImage": {
+          "description": "The host operating system image to use. Currently, only Container-Optimized OS images can be used. The default value is `projects/cos-cloud/global/images/family/cos-stable`, which selects the latest stable release of Container-Optimized OS. This option is provided to allow testing against the beta release of the operating system to ensure that the new version does not interact negatively with production pipelines. To test a pipeline against the beta release of Container-Optimized OS, use the value `projects/cos-cloud/global/images/family/cos-beta`.",
+          "type": "string"
+        },
+        "cpuPlatform": {
+          "description": "The CPU platform to request. An instance based on a newer platform can be allocated, but never one with fewer capabilities. The value of this parameter must be a valid Compute Engine CPU platform name (such as \"Intel Skylake\"). This parameter is only useful for carefully optimized work loads where the CPU platform has a significant impact. For more information about the effect of this parameter, see https://cloud.google.com/compute/docs/instances/specify-min-cpu-platform.",
+          "type": "string"
+        },
+        "disks": {
+          "description": "The list of disks to create and attach to the VM. Specify either the `volumes[]` field or the `disks[]` field, but not both.",
+          "items": {
+            "$ref": "Disk"
+          },
+          "type": "array"
+        },
+        "dockerCacheImages": {
+          "description": "The Compute Engine Disk Images to use as a Docker cache. The disks will be mounted into the Docker folder in a way that the images present in the cache will not need to be pulled. The digests of the cached images must match those of the tags used or the latest version will still be pulled. The root directory of the ext4 image must contain `image` and `overlay2` directories copied from the Docker directory of a VM where the desired Docker images have already been pulled. Any images pulled that are not cached will be stored on the first cache disk instead of the boot disk. Only a single image is supported.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enableStackdriverMonitoring": {
+          "description": "Whether Stackdriver monitoring should be enabled on the VM.",
+          "type": "boolean"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional set of labels to apply to the VM and any attached disk resources. These labels must adhere to the [name and value restrictions](https://cloud.google.com/compute/docs/labeling-resources) on VM labels imposed by Compute Engine. Labels keys with the prefix 'google-' are reserved for use by Google. Labels applied at creation time to the VM. Applied on a best-effort basis to attached disk resources shortly after VM creation.",
+          "type": "object"
+        },
+        "machineType": {
+          "description": "Required. The machine type of the virtual machine to create. Must be the short name of a standard machine type (such as \"n1-standard-1\") or a custom machine type (such as \"custom-1-4096\", where \"1\" indicates the number of vCPUs and \"4096\" indicates the memory in MB). See [Creating an instance with a custom machine type](https://cloud.google.com/compute/docs/instances/creating-instance-with-custom-machine-type#create) for more specifications on creating a custom machine type.",
+          "type": "string"
+        },
+        "network": {
+          "$ref": "Network",
+          "description": "The VM network configuration."
+        },
+        "nvidiaDriverVersion": {
+          "description": "The NVIDIA driver version to use when attaching an NVIDIA GPU accelerator. The version specified here must be compatible with the GPU libraries contained in the container being executed, and must be one of the drivers hosted in the `nvidia-drivers-us-public` bucket on Google Cloud Storage.",
+          "type": "string"
+        },
+        "preemptible": {
+          "description": "If true, allocate a preemptible VM.",
+          "type": "boolean"
+        },
+        "serviceAccount": {
+          "$ref": "ServiceAccount",
+          "description": "The service account to install on the VM. This account does not need any permissions other than those required by the pipeline."
+        },
+        "volumes": {
+          "description": "The list of disks and other storage to create or attach to the VM. Specify either the `volumes[]` field or the `disks[]` field, but not both.",
+          "items": {
+            "$ref": "Volume"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Volume": {
+      "description": "Carries information about storage that can be attached to a VM. Specify either `Volume` or `Disk`, but not both.",
+      "id": "Volume",
+      "properties": {
+        "existingDisk": {
+          "$ref": "ExistingDisk",
+          "description": "Configuration for a existing disk."
+        },
+        "nfsMount": {
+          "$ref": "NFSMount",
+          "description": "Configuration for an NFS mount."
+        },
+        "persistentDisk": {
+          "$ref": "PersistentDisk",
+          "description": "Configuration for a persistent disk."
+        },
+        "volume": {
+          "description": "A user-supplied name for the volume. Used when mounting the volume into `Actions`. The name must contain only upper and lowercase alphanumeric characters and hyphens and cannot start with a hyphen.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WorkerAssignedEvent": {
+      "description": "An event generated after a worker VM has been assigned to run the pipeline.",
+      "id": "WorkerAssignedEvent",
+      "properties": {
+        "instance": {
+          "description": "The worker's instance name.",
+          "type": "string"
+        },
+        "machineType": {
+          "description": "The machine type that was assigned for the worker.",
+          "type": "string"
+        },
+        "zone": {
+          "description": "The zone the worker is running in.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WorkerReleasedEvent": {
+      "description": "An event generated when the worker VM that was assigned to the pipeline has been released (deleted).",
+      "id": "WorkerReleasedEvent",
+      "properties": {
+        "instance": {
+          "description": "The worker's instance name.",
+          "type": "string"
+        },
+        "zone": {
+          "description": "The zone the worker was running in.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Genomics API",
+  "version": "v1",
+  "version_module": true
+}

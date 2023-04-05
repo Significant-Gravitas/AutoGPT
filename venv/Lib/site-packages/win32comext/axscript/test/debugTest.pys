@@ -1,0 +1,17 @@
+def Function(i):
+	Test.Echo(i)
+
+print(dir())
+
+a=1
+b=a
+c=b # And here is a comment
+d="A string"
+print(a)
+Test.echo("Hello from Python")
+for i in range(2):
+	Function(i)
+a = """\
+A multi-line string!
+"""
+

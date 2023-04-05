@@ -1,0 +1,907 @@
+{
+  "basePath": "",
+  "baseUrl": "https://vectortile.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Semantic Tile",
+  "description": "Serves vector tiles containing geospatial data. ",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://developers.google.com/maps/contact-sales/",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "vectortile:v1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://vectortile.mtls.googleapis.com/",
+  "name": "vectortile",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "featuretiles": {
+      "methods": {
+        "get": {
+          "description": "Gets a feature tile by its tile resource name.",
+          "flatPath": "v1/featuretiles/{featuretilesId}",
+          "httpMethod": "GET",
+          "id": "vectortile.featuretiles.get",
+          "parameterOrder": [
+            "name"
+          ],
+          "parameters": {
+            "alwaysIncludeBuildingFootprints": {
+              "description": "Flag indicating whether the returned tile will always contain 2.5D footprints for structures. If enabled_modeled_volumes is set, this will mean that structures will have both their 3D models and 2.5D footprints returned.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "clientInfo.apiClient": {
+              "description": "API client name and version. For example, the SDK calling the API. The exact format is up to the client.",
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.applicationId": {
+              "description": "Application ID, such as the package name on Android and the bundle identifier on iOS platforms.",
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.applicationVersion": {
+              "description": "Application version number, such as \"1.2.3\". The exact format is application-dependent.",
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.deviceModel": {
+              "description": "Device model as reported by the device. The exact format is platform-dependent.",
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.operatingSystem": {
+              "description": "Operating system name and version as reported by the OS. For example, \"Mac OS X 10.10.4\". The exact format is platform-dependent.",
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.platform": {
+              "description": "Platform where the application is running.",
+              "enum": [
+                "PLATFORM_UNSPECIFIED",
+                "EDITOR",
+                "MAC_OS",
+                "WINDOWS",
+                "LINUX",
+                "ANDROID",
+                "IOS",
+                "WEB_GL"
+              ],
+              "enumDescriptions": [
+                "Unspecified or unknown OS.",
+                "Development environment.",
+                "macOS.",
+                "Windows.",
+                "Linux",
+                "Android",
+                "iOS",
+                "WebGL."
+              ],
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.userId": {
+              "description": "Required. A client-generated user ID. The ID should be generated and persisted during the first user session or whenever a pre-existing ID is not found. The exact format is up to the client. This must be non-empty in a GetFeatureTileRequest (whether via the header or GetFeatureTileRequest.client_info).",
+              "location": "query",
+              "type": "string"
+            },
+            "clientTileVersionId": {
+              "description": "Optional version id identifying the tile that is already in the client's cache. This field should be populated with the most recent version_id value returned by the API for the requested tile. If the version id is empty the server always returns a newly rendered tile. If it is provided the server checks if the tile contents would be identical to one that's already on the client, and if so, returns a stripped-down response tile with STATUS_OK_DATA_UNCHANGED instead.",
+              "location": "query",
+              "type": "string"
+            },
+            "enableDetailedHighwayTypes": {
+              "description": "Flag indicating whether detailed highway types should be returned. If this is set, the CONTROLLED_ACCESS_HIGHWAY type may be returned. If not, then these highways will have the generic HIGHWAY type. This exists for backwards compatibility reasons.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "enableFeatureNames": {
+              "description": "Flag indicating whether human-readable names should be returned for features. If this is set, the display_name field on the feature will be filled out.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "enableModeledVolumes": {
+              "description": "Flag indicating whether 3D building models should be enabled. If this is set structures will be returned as 3D modeled volumes rather than 2.5D extruded areas where possible.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "enablePoliticalFeatures": {
+              "description": "Flag indicating whether political features should be returned.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "enablePrivateRoads": {
+              "description": "Flag indicating whether the returned tile will contain road features that are marked private. Private roads are indicated by the Feature.segment_info.road_info.is_private field.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "enableUnclippedBuildings": {
+              "description": "Flag indicating whether unclipped buildings should be returned. If this is set, building render ops will extend beyond the tile boundary. Buildings will only be returned on the tile that contains their centroid.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "languageCode": {
+              "description": "Required. The BCP-47 language code corresponding to the language in which the name was requested, such as \"en-US\" or \"sr-Latn\". For more information, see http://www.unicode.org/reports/tr35/#Unicode_locale_identifier.",
+              "location": "query",
+              "type": "string"
+            },
+            "name": {
+              "description": "Required. Resource name of the tile. The tile resource name is prefixed by its collection ID `tiles/` followed by the resource ID, which encodes the tile's global x and y coordinates and zoom level as `@,,z`. For example, `tiles/@1,2,3z`.",
+              "location": "path",
+              "pattern": "^featuretiles/[^/]+$",
+              "required": true,
+              "type": "string"
+            },
+            "regionCode": {
+              "description": "Required. The Unicode country/region code (CLDR) of the location from which the request is coming from, such as \"US\" and \"419\". For more information, see http://www.unicode.org/reports/tr35/#unicode_region_subtag.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v1/{+name}",
+          "response": {
+            "$ref": "FeatureTile"
+          }
+        }
+      }
+    },
+    "terraintiles": {
+      "methods": {
+        "get": {
+          "description": "Gets a terrain tile by its tile resource name.",
+          "flatPath": "v1/terraintiles/{terraintilesId}",
+          "httpMethod": "GET",
+          "id": "vectortile.terraintiles.get",
+          "parameterOrder": [
+            "name"
+          ],
+          "parameters": {
+            "altitudePrecisionCentimeters": {
+              "description": "The precision of terrain altitudes in centimeters. Possible values: between 1 (cm level precision) and 1,000,000 (10-kilometer level precision).",
+              "format": "int32",
+              "location": "query",
+              "type": "integer"
+            },
+            "clientInfo.apiClient": {
+              "description": "API client name and version. For example, the SDK calling the API. The exact format is up to the client.",
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.applicationId": {
+              "description": "Application ID, such as the package name on Android and the bundle identifier on iOS platforms.",
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.applicationVersion": {
+              "description": "Application version number, such as \"1.2.3\". The exact format is application-dependent.",
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.deviceModel": {
+              "description": "Device model as reported by the device. The exact format is platform-dependent.",
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.operatingSystem": {
+              "description": "Operating system name and version as reported by the OS. For example, \"Mac OS X 10.10.4\". The exact format is platform-dependent.",
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.platform": {
+              "description": "Platform where the application is running.",
+              "enum": [
+                "PLATFORM_UNSPECIFIED",
+                "EDITOR",
+                "MAC_OS",
+                "WINDOWS",
+                "LINUX",
+                "ANDROID",
+                "IOS",
+                "WEB_GL"
+              ],
+              "enumDescriptions": [
+                "Unspecified or unknown OS.",
+                "Development environment.",
+                "macOS.",
+                "Windows.",
+                "Linux",
+                "Android",
+                "iOS",
+                "WebGL."
+              ],
+              "location": "query",
+              "type": "string"
+            },
+            "clientInfo.userId": {
+              "description": "Required. A client-generated user ID. The ID should be generated and persisted during the first user session or whenever a pre-existing ID is not found. The exact format is up to the client. This must be non-empty in a GetFeatureTileRequest (whether via the header or GetFeatureTileRequest.client_info).",
+              "location": "query",
+              "type": "string"
+            },
+            "maxElevationResolutionCells": {
+              "description": "The maximum allowed resolution for the returned elevation heightmap. Possible values: between 1 and 1024 (and not less than min_elevation_resolution_cells). Over-sized heightmaps will be non-uniformly down-sampled such that each edge is no longer than this value. Non-uniformity is chosen to maximise the amount of preserved data. For example: Original resolution: 100px (width) * 30px (height) max_elevation_resolution: 30 New resolution: 30px (width) * 30px (height)",
+              "format": "int32",
+              "location": "query",
+              "type": "integer"
+            },
+            "minElevationResolutionCells": {
+              "description": " api-linter: core::0131::request-unknown-fields=disabled aip.dev/not-precedent: Maintaining existing request parameter pattern. The minimum allowed resolution for the returned elevation heightmap. Possible values: between 0 and 1024 (and not more than max_elevation_resolution_cells). Zero is supported for backward compatibility. Under-sized heightmaps will be non-uniformly up-sampled such that each edge is no shorter than this value. Non-uniformity is chosen to maximise the amount of preserved data. For example: Original resolution: 30px (width) * 10px (height) min_elevation_resolution: 30 New resolution: 30px (width) * 30px (height)",
+              "format": "int32",
+              "location": "query",
+              "type": "integer"
+            },
+            "name": {
+              "description": "Required. Resource name of the tile. The tile resource name is prefixed by its collection ID `terraintiles/` followed by the resource ID, which encodes the tile's global x and y coordinates and zoom level as `@,,z`. For example, `terraintiles/@1,2,3z`.",
+              "location": "path",
+              "pattern": "^terraintiles/[^/]+$",
+              "required": true,
+              "type": "string"
+            },
+            "terrainFormats": {
+              "description": "Terrain formats that the client understands.",
+              "enum": [
+                "TERRAIN_FORMAT_UNKNOWN",
+                "FIRST_DERIVATIVE",
+                "SECOND_DERIVATIVE"
+              ],
+              "enumDescriptions": [
+                "An unknown or unspecified terrain format.",
+                "Terrain elevation data encoded as a FirstDerivativeElevationGrid. .",
+                "Terrain elevation data encoded as a SecondDerivativeElevationGrid."
+              ],
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            }
+          },
+          "path": "v1/{+name}",
+          "response": {
+            "$ref": "TerrainTile"
+          }
+        }
+      }
+    }
+  },
+  "revision": "20211008",
+  "rootUrl": "https://vectortile.googleapis.com/",
+  "schemas": {
+    "Area": {
+      "description": "Represents an area. Used to represent regions such as water, parks, etc. Next ID: 10",
+      "id": "Area",
+      "properties": {
+        "basemapZOrder": {
+          "$ref": "BasemapZOrder",
+          "description": "The z-order of this geometry when rendered on a flat basemap. Geometry with a lower z-order should be rendered beneath geometry with a higher z-order. This z-ordering does not imply anything about the altitude of the area relative to the ground, but it can be used to prevent z-fighting. Unlike Area.z_order this can be used to compare with Line.basemap_z_order, and in fact may yield more accurate rendering (where a line may be rendered beneath an area)."
+        },
+        "hasExternalEdges": {
+          "description": "True if the polygon is not entirely internal to the feature that it belongs to: that is, some of the edges are bordering another feature.",
+          "type": "boolean"
+        },
+        "internalEdges": {
+          "description": "When has_external_edges is true, the polygon has some edges that border another feature. This field indicates the internal edges that do not border another feature. Each value is an index into the vertices array, and denotes the start vertex of the internal edge (the next vertex in the boundary loop is the end of the edge). If the selected vertex is the last vertex in the boundary loop, then the edge between that vertex and the starting vertex of the loop is internal. This field may be used for styling. For example, building parapets could be placed only on the external edges of a building polygon, or water could be lighter colored near the external edges of a body of water. If has_external_edges is false, all edges are internal and this field will be empty.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "loopBreaks": {
+          "description": "Identifies the boundary loops of the polygon. Only set for INDEXED_TRIANGLE polygons. Each value is an index into the vertices array indicating the beginning of a loop. For instance, values of [2, 5] would indicate loop_data contained 3 loops with indices 0-1, 2-4, and 5-end. This may be used in conjunction with the internal_edges field for styling polygon boundaries. Note that an edge may be on a polygon boundary but still internal to the feature. For example, a feature split across multiple tiles will have an internal polygon boundary edge along the edge of the tile.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "triangleIndices": {
+          "description": "When the polygon encoding is of type INDEXED_TRIANGLES, this contains the indices of the triangle vertices in the vertex_offsets field. There are 3 vertex indices per triangle.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "type": {
+          "description": "The polygon encoding type used for this area.",
+          "enum": [
+            "TRIANGLE_FAN",
+            "INDEXED_TRIANGLES",
+            "TRIANGLE_STRIP"
+          ],
+          "enumDescriptions": [
+            "The first vertex in vertex_offset is the center of a triangle fan. The other vertices are arranged around this vertex in a fan shape. The following diagram showes a triangle fan polygon with the vertices labelled with their indices in the vertex_offset list. Triangle fan polygons always have a single boundary loop. Vertices may be in either a clockwise or counterclockwise order. (1) / \\ / \\ / \\ (0)-----(2) / \\ / / \\ / / \\ / (4)-----(3)",
+            "The polygon is a set of triangles with three vertex indices per triangle. The vertex indices can be found in the triangle_indices field. Indexed triangle polygons also contain information about boundary loops. These identify the loops at the boundary of the polygon and may be used in conjunction with the internal_edges field for styling. Boundary loops may represent either a hole or a disconnected component of the polygon. The following diagram shows an indexed triangle polygon with two boundary loops. (0) (4) / \\ / \\ / \\ / \\ (1)----(2) (3)----(5)",
+            "A strip of triangles, where each triangle uses the last edge of the previous triangle. Vertices may be in either a clockwise or counterclockwise order. Only polygons without the has_external_edges flag set will use triangle strips. (0) / \\ / \\ / \\ (2)-----(1) / \\ / / \\ / / \\ / (4)-----(3)"
+          ],
+          "type": "string"
+        },
+        "vertexOffsets": {
+          "$ref": "Vertex2DList",
+          "description": "The vertices present in the polygon defining the area."
+        },
+        "zOrder": {
+          "description": "The z-ordering of this area. Areas with a lower z-order should be rendered beneath areas with a higher z-order. This z-ordering does not imply anything about the altitude of the line relative to the ground, but it can be used to prevent z-fighting during rendering on the client. This z-ordering can only be used to compare areas, and cannot be compared with the z_order field in the Line message. The z-order may be negative or zero. Prefer Area.basemap_z_order.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "BasemapZOrder": {
+      "description": "Metadata necessary to determine the ordering of a particular basemap element relative to others. To render the basemap correctly, sort by z-plane, then z-grade, then z-within-grade.",
+      "id": "BasemapZOrder",
+      "properties": {
+        "zGrade": {
+          "description": "The second most significant component of the ordering of a component to be rendered onto the basemap.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "zPlane": {
+          "description": "The most significant component of the ordering of a component to be rendered onto the basemap.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "zWithinGrade": {
+          "description": "The least significant component of the ordering of a component to be rendered onto the basemap.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ExtrudedArea": {
+      "description": "Represents a height-extruded area: a 3D prism with a constant X-Y plane cross section. Used to represent extruded buildings. A single building may consist of several extruded areas. The min_z and max_z fields are scaled to the size of the tile. An extruded area with a max_z value of 4096 has the same height as the width of the tile that it is on.",
+      "id": "ExtrudedArea",
+      "properties": {
+        "area": {
+          "$ref": "Area",
+          "description": "The area representing the footprint of the extruded area."
+        },
+        "maxZ": {
+          "description": "The z-value in local tile coordinates where the extruded area ends.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "minZ": {
+          "description": "The z-value in local tile coordinates where the extruded area begins. This is non-zero for extruded areas that begin off the ground. For example, a building with a skybridge may have an extruded area component with a non-zero min_z.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Feature": {
+      "description": "A feature representing a single geographic entity.",
+      "id": "Feature",
+      "properties": {
+        "displayName": {
+          "description": "The localized name of this feature. Currently only returned for roads.",
+          "type": "string"
+        },
+        "geometry": {
+          "$ref": "Geometry",
+          "description": "The geometry of this feature, representing the space that it occupies in the world."
+        },
+        "placeId": {
+          "description": "Place ID of this feature, suitable for use in Places API details requests.",
+          "type": "string"
+        },
+        "relations": {
+          "description": "Relations to other features.",
+          "items": {
+            "$ref": "Relation"
+          },
+          "type": "array"
+        },
+        "segmentInfo": {
+          "$ref": "SegmentInfo",
+          "description": "Metadata for features with the SEGMENT FeatureType."
+        },
+        "type": {
+          "description": "The type of this feature.",
+          "enum": [
+            "FEATURE_TYPE_UNSPECIFIED",
+            "STRUCTURE",
+            "BAR",
+            "BANK",
+            "LODGING",
+            "CAFE",
+            "RESTAURANT",
+            "EVENT_VENUE",
+            "TOURIST_DESTINATION",
+            "SHOPPING",
+            "SCHOOL",
+            "SEGMENT",
+            "ROAD",
+            "LOCAL_ROAD",
+            "ARTERIAL_ROAD",
+            "HIGHWAY",
+            "CONTROLLED_ACCESS_HIGHWAY",
+            "FOOTPATH",
+            "RAIL",
+            "FERRY",
+            "REGION",
+            "PARK",
+            "BEACH",
+            "FOREST",
+            "POLITICAL",
+            "ADMINISTRATIVE_AREA1",
+            "LOCALITY",
+            "SUBLOCALITY",
+            "WATER"
+          ],
+          "enumDescriptions": [
+            "Unknown feature type.",
+            "Structures such as buildings and bridges.",
+            "A business serving alcoholic drinks to be consumed onsite.",
+            "A financial institution that offers services to the general public.",
+            "A place that provides any type of lodging for travelers.",
+            "A business that sells coffee, tea, and sometimes small meals.",
+            "A business that prepares meals on-site for service to customers.",
+            "A venue for private and public events.",
+            "Place of interest to tourists, typically for natural or cultural value.",
+            "A structure containing a business or businesses that sell goods.",
+            "Institution where young people receive general (not vocation or professional) education.",
+            "Segments such as roads and train lines.",
+            "A way leading from one place to another intended for use by vehicles.",
+            "A small city street, typically for travel in a residential neighborhood.",
+            "Major through road that's expected to carry large volumes of traffic.",
+            "A major road including freeways and state highways.",
+            "A highway with grade-separated crossings that is accessed exclusively by ramps. These are usually called \"freeways\" or \"motorways\". The enable_detailed_highway_types request flag must be set in order for this type to be returned.",
+            "A path that's primarily intended for use by pedestrians and/or cyclists.",
+            "Tracks intended for use by trains.",
+            "Services which are part of the road network but are not roads.",
+            "Non-water areas such as parks and forest.",
+            "Outdoor areas such as parks and botanical gardens.",
+            "A pebbly or sandy shore along the edge of a sea or lake.",
+            "Area of land covered by trees.",
+            "Political entities, such as provinces and districts.",
+            "Top-level divisions within a country, such as prefectures or states.",
+            "Cities, towns, and other municipalities.",
+            "Divisions within a locality like a borough or ward.",
+            "Water features such as rivers and lakes."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FeatureTile": {
+      "description": "A tile containing information about the map features located in the region it covers.",
+      "id": "FeatureTile",
+      "properties": {
+        "coordinates": {
+          "$ref": "TileCoordinates",
+          "description": "The global tile coordinates that uniquely identify this tile."
+        },
+        "features": {
+          "description": "Features present on this map tile.",
+          "items": {
+            "$ref": "Feature"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Resource name of the tile. The tile resource name is prefixed by its collection ID `tiles/` followed by the resource ID, which encodes the tile's global x and y coordinates and zoom level as `@,,z`. For example, `tiles/@1,2,3z`.",
+          "type": "string"
+        },
+        "providers": {
+          "description": "Data providers for the data contained in this tile.",
+          "items": {
+            "$ref": "ProviderInfo"
+          },
+          "type": "array"
+        },
+        "status": {
+          "description": "Tile response status code to support tile caching.",
+          "enum": [
+            "STATUS_OK",
+            "STATUS_OK_DATA_UNCHANGED"
+          ],
+          "enumDescriptions": [
+            "Everything worked out OK. The cache-control header determines how long this Tile response may be cached by the client. See also version_id and STATUS_OK_DATA_UNCHANGED.",
+            "Indicates that the request was processed successfully and that the tile data that would have been returned are identical to the data already in the client's cache, as specified by the value of client_tile_version_id contained in GetFeatureTileRequest. In particular, the tile's features and providers will not be populated when the tile data is identical. However, the cache-control header and version_id can still change even when the tile contents itself does not, so clients should always use the most recent values returned by the API."
+          ],
+          "type": "string"
+        },
+        "versionId": {
+          "description": "An opaque value, usually less than 30 characters, that contains version info about this tile and the data that was used to generate it. The client should store this value in its tile cache and pass it back to the API in the client_tile_version_id field of subsequent tile requests in order to enable the API to detect when the new tile would be the same as the one the client already has in its cache. Also see STATUS_OK_DATA_UNCHANGED.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "FirstDerivativeElevationGrid": {
+      "description": "A packed representation of a 2D grid of uniformly spaced points containing elevation data. Each point within the grid represents the altitude in meters above average sea level at that location within the tile. Elevations provided are (generally) relative to the EGM96 geoid, however some areas will be relative to NAVD88. EGM96 and NAVD88 are off by no more than 2 meters. The grid is oriented north-west to south-east, as illustrated: rows[0].a[0] rows[0].a[m] +-----------------+ | | | N | | ^ | | | | | W <-----> E | | | | | v | | S | | | +-----------------+ rows[n].a[0] rows[n].a[m] Rather than storing the altitudes directly, we store the diffs between them as integers at some requested level of precision to take advantage of integer packing. The actual altitude values a[] can be reconstructed using the scale and each row's first_altitude and altitude_diff fields. More details in go/elevation-encoding-options-for-enduro under \"Recommended implementation\".",
+      "id": "FirstDerivativeElevationGrid",
+      "properties": {
+        "altitudeMultiplier": {
+          "description": "A multiplier applied to the altitude fields below to extract the actual altitudes in meters from the elevation grid.",
+          "format": "float",
+          "type": "number"
+        },
+        "rows": {
+          "description": "Rows of points containing altitude data making up the elevation grid. Each row is the same length. Rows are ordered from north to south. E.g: rows[0] is the north-most row, and rows[n] is the south-most row.",
+          "items": {
+            "$ref": "Row"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Geometry": {
+      "description": "Represents the geometry of a feature, that is, the shape that it has on the map. The local tile coordinate system has the origin at the north-west (upper-left) corner of the tile, and is scaled to 4096 units across each edge. The height (Z) axis has the same scale factor: an extruded area with a max_z value of 4096 has the same height as the width of the tile that it is on. There is no clipping boundary, so it is possible that some coordinates will lie outside the tile boundaries.",
+      "id": "Geometry",
+      "properties": {
+        "areas": {
+          "description": "The areas present in this geometry.",
+          "items": {
+            "$ref": "Area"
+          },
+          "type": "array"
+        },
+        "extrudedAreas": {
+          "description": "The extruded areas present in this geometry. Not populated if modeled_volumes are included in this geometry unless always_include_building_footprints is set in GetFeatureTileRequest, in which case the client should decide which (extruded areas or modeled volumes) should be used (they should not be rendered together).",
+          "items": {
+            "$ref": "ExtrudedArea"
+          },
+          "type": "array"
+        },
+        "lines": {
+          "description": "The lines present in this geometry.",
+          "items": {
+            "$ref": "Line"
+          },
+          "type": "array"
+        },
+        "modeledVolumes": {
+          "description": "The modeled volumes present in this geometry. Not populated unless enable_modeled_volumes has been set in GetFeatureTileRequest.",
+          "items": {
+            "$ref": "ModeledVolume"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Line": {
+      "description": "Represents a 2D polyline. Used to represent segments such as roads, train tracks, etc.",
+      "id": "Line",
+      "properties": {
+        "basemapZOrder": {
+          "$ref": "BasemapZOrder",
+          "description": "The z-order of this geometry when rendered on a flat basemap. Geometry with a lower z-order should be rendered beneath geometry with a higher z-order. This z-ordering does not imply anything about the altitude of the area relative to the ground, but it can be used to prevent z-fighting. Unlike Line.z_order this can be used to compare with Area.basemap_z_order, and in fact may yield more accurate rendering (where a line may be rendered beneath an area)."
+        },
+        "vertexOffsets": {
+          "$ref": "Vertex2DList",
+          "description": "The vertices present in the polyline."
+        },
+        "zOrder": {
+          "description": "The z-order of the line. Lines with a lower z-order should be rendered beneath lines with a higher z-order. This z-ordering does not imply anything about the altitude of the area relative to the ground, but it can be used to prevent z-fighting during rendering on the client. In general, larger and more important road features will have a higher z-order line associated with them. This z-ordering can only be used to compare lines, and cannot be compared with the z_order field in the Area message. The z-order may be negative or zero. Prefer Line.basemap_z_order.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ModeledVolume": {
+      "description": "Represents a modeled volume in 3D space. Used to represent 3D buildings.",
+      "id": "ModeledVolume",
+      "properties": {
+        "strips": {
+          "description": "The triangle strips present in this mesh.",
+          "items": {
+            "$ref": "TriangleStrip"
+          },
+          "type": "array"
+        },
+        "vertexOffsets": {
+          "$ref": "Vertex3DList",
+          "description": "The vertices present in the mesh defining the modeled volume."
+        }
+      },
+      "type": "object"
+    },
+    "ProviderInfo": {
+      "description": "Information about the data providers that should be included in the attribution string shown by the client.",
+      "id": "ProviderInfo",
+      "properties": {
+        "description": {
+          "description": "Attribution string for this provider. This string is not localized.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Relation": {
+      "description": "Represents a relation to another feature in the tile. For example, a building might be occupied by a given POI. The related feature can be retrieved using the related feature index.",
+      "id": "Relation",
+      "properties": {
+        "relatedFeatureIndex": {
+          "description": "Zero-based index to look up the related feature from the list of features in the tile.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "relationType": {
+          "description": "Relation type between the origin feature to the related feature.",
+          "enum": [
+            "RELATION_TYPE_UNSPECIFIED",
+            "OCCUPIES",
+            "PRIMARILY_OCCUPIED_BY"
+          ],
+          "enumDescriptions": [
+            "Unspecified relation type. Should never happen.",
+            "The origin feature occupies the related feature.",
+            "The origin feature is primarily occupied by the related feature."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RoadInfo": {
+      "description": "Extra metadata relating to roads.",
+      "id": "RoadInfo",
+      "properties": {
+        "isPrivate": {
+          "description": "Road has signage discouraging or prohibiting use by the general public. E.g., roads with signs that say \"Private\", or \"No trespassing.\"",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "Row": {
+      "description": "A row of altitude points in the elevation grid, ordered from west to east.",
+      "id": "Row",
+      "properties": {
+        "altitudeDiffs": {
+          "description": "The difference between each successive pair of altitudes, from west to east. The first, westmost point, is just the altitude rather than a diff. The units are specified by the altitude_multiplier parameter above; the value in meters is given by altitude_multiplier * altitude_diffs[n]. The altitude row (in metres above sea level) can be reconstructed with: a[0] = altitude_diffs[0] * altitude_multiplier when n > 0, a[n] = a[n-1] + altitude_diffs[n-1] * altitude_multiplier.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "SecondDerivativeElevationGrid": {
+      "description": "A packed representation of a 2D grid of uniformly spaced points containing elevation data. Each point within the grid represents the altitude in meters above average sea level at that location within the tile. Elevations provided are (generally) relative to the EGM96 geoid, however some areas will be relative to NAVD88. EGM96 and NAVD88 are off by no more than 2 meters. The grid is oriented north-west to south-east, as illustrated: rows[0].a[0] rows[0].a[m] +-----------------+ | | | N | | ^ | | | | | W <-----> E | | | | | v | | S | | | +-----------------+ rows[n].a[0] rows[n].a[m] Rather than storing the altitudes directly, we store the diffs of the diffs between them as integers at some requested level of precision to take advantage of integer packing. Note that the data is packed in such a way that is fast to decode in Unity and that further optimizes wire size.",
+      "id": "SecondDerivativeElevationGrid",
+      "properties": {
+        "altitudeMultiplier": {
+          "description": "A multiplier applied to the elements in the encoded data to extract the actual altitudes in meters.",
+          "format": "float",
+          "type": "number"
+        },
+        "columnCount": {
+          "description": "The number of columns included in the encoded elevation data (i.e. the horizontal resolution of the grid).",
+          "format": "int32",
+          "type": "integer"
+        },
+        "encodedData": {
+          "description": "A stream of elements each representing a point on the tile running across each row from left to right, top to bottom. There will be precisely horizontal_resolution * vertical_resolution elements in the stream. The elements are not the heights, rather the second order derivative of the values one would expect in a stream of height data. Each element is a varint with the following encoding: ------------------------------------------------------------------------| | Head Nibble | ------------------------------------------------------------------------| | Bit 0 | Bit 1 | Bits 2-3 | | Terminator| Sign (1=neg) | Least significant 2 bits of absolute error | ------------------------------------------------------------------------| | Tail Nibble #1 | ------------------------------------------------------------------------| | Bit 0 | Bit 1-3 | | Terminator| Least significant 3 bits of absolute error | ------------------------------------------------------------------------| | ... | Tail Nibble #n | ------------------------------------------------------------------------| | Bit 0 | Bit 1-3 | | Terminator| Least significant 3 bits of absolute error | ------------------------------------------------------------------------|",
+          "format": "byte",
+          "type": "string"
+        },
+        "rowCount": {
+          "description": "The number of rows included in the encoded elevation data (i.e. the vertical resolution of the grid).",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "SegmentInfo": {
+      "description": "Extra metadata relating to segments.",
+      "id": "SegmentInfo",
+      "properties": {
+        "roadInfo": {
+          "$ref": "RoadInfo",
+          "description": "Metadata for features with the ROAD FeatureType."
+        }
+      },
+      "type": "object"
+    },
+    "TerrainTile": {
+      "description": "A tile containing information about the terrain located in the region it covers.",
+      "id": "TerrainTile",
+      "properties": {
+        "coordinates": {
+          "$ref": "TileCoordinates",
+          "description": "The global tile coordinates that uniquely identify this tile."
+        },
+        "firstDerivative": {
+          "$ref": "FirstDerivativeElevationGrid",
+          "description": "Terrain elevation data encoded as a FirstDerivativeElevationGrid. cs/symbol:FirstDerivativeElevationGrid."
+        },
+        "name": {
+          "description": "Resource name of the tile. The tile resource name is prefixed by its collection ID `terrain/` followed by the resource ID, which encodes the tile's global x and y coordinates and zoom level as `@,,z`. For example, `terrain/@1,2,3z`.",
+          "type": "string"
+        },
+        "secondDerivative": {
+          "$ref": "SecondDerivativeElevationGrid",
+          "description": "Terrain elevation data encoded as a SecondDerivativeElevationGrid. cs/symbol:SecondDerivativeElevationGrid. See go/byte-encoded-terrain for more details."
+        }
+      },
+      "type": "object"
+    },
+    "TileCoordinates": {
+      "description": "Global tile coordinates. Global tile coordinates reference a specific tile on the map at a specific zoom level. The origin of this coordinate system is always at the northwest corner of the map, with x values increasing from west to east and y values increasing from north to south. Tiles are indexed using x, y coordinates from that origin. The zoom level containing the entire world in a tile is 0, and it increases as you zoom in. Zoom level n + 1 will contain 4 times as many tiles as zoom level n. The zoom level controls the level of detail of the data that is returned. In particular, this affects the set of feature types returned, their density, and geometry simplification. The exact tile contents may change over time, but care will be taken to keep supporting the most important use cases. For example, zoom level 15 shows roads for orientation and planning in the local neighborhood and zoom level 17 shows buildings to give users on foot a sense of situational awareness.",
+      "id": "TileCoordinates",
+      "properties": {
+        "x": {
+          "description": "Required. The x coordinate.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "y": {
+          "description": "Required. The y coordinate.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "zoom": {
+          "description": "Required. The Google Maps API zoom level.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "TriangleStrip": {
+      "description": "Represents a strip of triangles. Each triangle uses the last edge of the previous one. The following diagram shows an example of a triangle strip, with each vertex labeled with its index in the vertex_index array. (1)-----(3) / \\ / \\ / \\ / \\ / \\ / \\ (0)-----(2)-----(4) Vertices may be in either clockwise or counter-clockwise order.",
+      "id": "TriangleStrip",
+      "properties": {
+        "vertexIndices": {
+          "description": "Index into the vertex_offset array representing the next vertex in the triangle strip.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Vertex2DList": {
+      "description": "2D vertex list used for lines and areas. Each entry represents an offset from the previous one in local tile coordinates. The first entry is offset from (0, 0). For example, the list of vertices [(1,1), (2, 2), (1, 2)] would be encoded in vertex offsets as [(1, 1), (1, 1), (-1, 0)].",
+      "id": "Vertex2DList",
+      "properties": {
+        "xOffsets": {
+          "description": "List of x-offsets in local tile coordinates.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "yOffsets": {
+          "description": "List of y-offsets in local tile coordinates.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Vertex3DList": {
+      "description": "3D vertex list used for modeled volumes. Each entry represents an offset from the previous one in local tile coordinates. The first coordinate is offset from (0, 0, 0).",
+      "id": "Vertex3DList",
+      "properties": {
+        "xOffsets": {
+          "description": "List of x-offsets in local tile coordinates.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "yOffsets": {
+          "description": "List of y-offsets in local tile coordinates.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "zOffsets": {
+          "description": "List of z-offsets in local tile coordinates.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Semantic Tile API",
+  "version": "v1",
+  "version_module": true
+}

@@ -1,0 +1,2 @@
+[console_scripts]
+ddgs = duckduckgo_search.cli.ddgs:cli

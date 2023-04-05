@@ -1,0 +1,2494 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "See, edit, configure, and delete your Google Cloud data and see the email address for your Google Account."
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://discoveryengine.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Discovery Engine",
+  "description": "Discovery Engine API.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://cloud.google.com/discovery-engine/docs",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "discoveryengine:v1beta",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://discoveryengine.mtls.googleapis.com/",
+  "name": "discoveryengine",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "projects": {
+      "resources": {
+        "locations": {
+          "resources": {
+            "collections": {
+              "resources": {
+                "dataStores": {
+                  "resources": {
+                    "branches": {
+                      "resources": {
+                        "documents": {
+                          "methods": {
+                            "create": {
+                              "description": "Creates a Document.",
+                              "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents",
+                              "httpMethod": "POST",
+                              "id": "discoveryengine.projects.locations.collections.dataStores.branches.documents.create",
+                              "parameterOrder": [
+                                "parent"
+                              ],
+                              "parameters": {
+                                "documentId": {
+                                  "description": "Required. The ID to use for the Document, which will become the final component of the Document.name. If the caller does not have permission to create the Document, regardless of whether or not it exists, a PERMISSION_DENIED error is returned. This field must be unique among all Documents with the same parent. Otherwise, an ALREADY_EXISTS error is returned. This field must conform to [RFC-1034](https://tools.ietf.org/html/rfc1034) standard with a length limit of 63 characters. Otherwise, an INVALID_ARGUMENT error is returned.",
+                                  "location": "query",
+                                  "type": "string"
+                                },
+                                "parent": {
+                                  "description": "Required. The parent resource name, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}`.",
+                                  "location": "path",
+                                  "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/branches/[^/]+$",
+                                  "required": true,
+                                  "type": "string"
+                                }
+                              },
+                              "path": "v1beta/{+parent}/documents",
+                              "request": {
+                                "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+                              },
+                              "response": {
+                                "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            },
+                            "delete": {
+                              "description": "Deletes a Document.",
+                              "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents/{documentsId}",
+                              "httpMethod": "DELETE",
+                              "id": "discoveryengine.projects.locations.collections.dataStores.branches.documents.delete",
+                              "parameterOrder": [
+                                "name"
+                              ],
+                              "parameters": {
+                                "name": {
+                                  "description": "Required. Full resource name of Document, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}/documents/{document}`. If the caller does not have permission to delete the Document, regardless of whether or not it exists, a PERMISSION_DENIED error is returned. If the Document to delete does not exist, a NOT_FOUND error is returned.",
+                                  "location": "path",
+                                  "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/branches/[^/]+/documents/[^/]+$",
+                                  "required": true,
+                                  "type": "string"
+                                }
+                              },
+                              "path": "v1beta/{+name}",
+                              "response": {
+                                "$ref": "GoogleProtobufEmpty"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            },
+                            "get": {
+                              "description": "Gets a Document.",
+                              "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents/{documentsId}",
+                              "httpMethod": "GET",
+                              "id": "discoveryengine.projects.locations.collections.dataStores.branches.documents.get",
+                              "parameterOrder": [
+                                "name"
+                              ],
+                              "parameters": {
+                                "name": {
+                                  "description": "Required. Full resource name of Document, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}/documents/{document}`. If the caller does not have permission to access the Document, regardless of whether or not it exists, a PERMISSION_DENIED error is returned. If the requested Document does not exist, a NOT_FOUND error is returned.",
+                                  "location": "path",
+                                  "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/branches/[^/]+/documents/[^/]+$",
+                                  "required": true,
+                                  "type": "string"
+                                }
+                              },
+                              "path": "v1beta/{+name}",
+                              "response": {
+                                "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            },
+                            "import": {
+                              "description": "Bulk import of multiple Documents. Request processing may be synchronous. Non-existing items will be created. Note: It is possible for a subset of the Documents to be successfully updated.",
+                              "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents:import",
+                              "httpMethod": "POST",
+                              "id": "discoveryengine.projects.locations.collections.dataStores.branches.documents.import",
+                              "parameterOrder": [
+                                "parent"
+                              ],
+                              "parameters": {
+                                "parent": {
+                                  "description": "Required. The parent branch resource name, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}`. Requires create/update permission.",
+                                  "location": "path",
+                                  "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/branches/[^/]+$",
+                                  "required": true,
+                                  "type": "string"
+                                }
+                              },
+                              "path": "v1beta/{+parent}/documents:import",
+                              "request": {
+                                "$ref": "GoogleCloudDiscoveryengineV1betaImportDocumentsRequest"
+                              },
+                              "response": {
+                                "$ref": "GoogleLongrunningOperation"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            },
+                            "list": {
+                              "description": "Gets a list of Documents.",
+                              "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents",
+                              "httpMethod": "GET",
+                              "id": "discoveryengine.projects.locations.collections.dataStores.branches.documents.list",
+                              "parameterOrder": [
+                                "parent"
+                              ],
+                              "parameters": {
+                                "pageSize": {
+                                  "description": "Maximum number of Documents to return. If unspecified, defaults to 100. The maximum allowed value is 1000. Values above 1000 will be coerced to 1000. If this field is negative, an INVALID_ARGUMENT error is returned.",
+                                  "format": "int32",
+                                  "location": "query",
+                                  "type": "integer"
+                                },
+                                "pageToken": {
+                                  "description": "A page token ListDocumentsResponse.next_page_token, received from a previous DocumentService.ListDocuments call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to DocumentService.ListDocuments must match the call that provided the page token. Otherwise, an INVALID_ARGUMENT error is returned.",
+                                  "location": "query",
+                                  "type": "string"
+                                },
+                                "parent": {
+                                  "description": "Required. The parent branch resource name, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}`. Use `default_branch` as the branch ID, to list documents under the default branch. If the caller does not have permission to list Documentss under this branch, regardless of whether or not this branch exists, a PERMISSION_DENIED error is returned.",
+                                  "location": "path",
+                                  "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/branches/[^/]+$",
+                                  "required": true,
+                                  "type": "string"
+                                }
+                              },
+                              "path": "v1beta/{+parent}/documents",
+                              "response": {
+                                "$ref": "GoogleCloudDiscoveryengineV1betaListDocumentsResponse"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            },
+                            "patch": {
+                              "description": "Updates a Document.",
+                              "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents/{documentsId}",
+                              "httpMethod": "PATCH",
+                              "id": "discoveryengine.projects.locations.collections.dataStores.branches.documents.patch",
+                              "parameterOrder": [
+                                "name"
+                              ],
+                              "parameters": {
+                                "allowMissing": {
+                                  "description": "If set to true, and the Document is not found, a new Document will be created.",
+                                  "location": "query",
+                                  "type": "boolean"
+                                },
+                                "name": {
+                                  "description": "Immutable. The full resource name of the document. Format: `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}/documents/{document_id}`. This field must be a UTF-8 encoded string with a length limit of 1024 characters.",
+                                  "location": "path",
+                                  "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/branches/[^/]+/documents/[^/]+$",
+                                  "required": true,
+                                  "type": "string"
+                                }
+                              },
+                              "path": "v1beta/{+name}",
+                              "request": {
+                                "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+                              },
+                              "response": {
+                                "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            }
+                          }
+                        },
+                        "operations": {
+                          "methods": {
+                            "get": {
+                              "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+                              "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/branches/{branchesId}/operations/{operationsId}",
+                              "httpMethod": "GET",
+                              "id": "discoveryengine.projects.locations.collections.dataStores.branches.operations.get",
+                              "parameterOrder": [
+                                "name"
+                              ],
+                              "parameters": {
+                                "name": {
+                                  "description": "The name of the operation resource.",
+                                  "location": "path",
+                                  "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/branches/[^/]+/operations/[^/]+$",
+                                  "required": true,
+                                  "type": "string"
+                                }
+                              },
+                              "path": "v1beta/{+name}",
+                              "response": {
+                                "$ref": "GoogleLongrunningOperation"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            },
+                            "list": {
+                              "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`.",
+                              "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/branches/{branchesId}/operations",
+                              "httpMethod": "GET",
+                              "id": "discoveryengine.projects.locations.collections.dataStores.branches.operations.list",
+                              "parameterOrder": [
+                                "name"
+                              ],
+                              "parameters": {
+                                "filter": {
+                                  "description": "The standard list filter.",
+                                  "location": "query",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "description": "The name of the operation's parent resource.",
+                                  "location": "path",
+                                  "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/branches/[^/]+$",
+                                  "required": true,
+                                  "type": "string"
+                                },
+                                "pageSize": {
+                                  "description": "The standard list page size.",
+                                  "format": "int32",
+                                  "location": "query",
+                                  "type": "integer"
+                                },
+                                "pageToken": {
+                                  "description": "The standard list page token.",
+                                  "location": "query",
+                                  "type": "string"
+                                }
+                              },
+                              "path": "v1beta/{+name}/operations",
+                              "response": {
+                                "$ref": "GoogleLongrunningListOperationsResponse"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "models": {
+                      "resources": {
+                        "operations": {
+                          "methods": {
+                            "get": {
+                              "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+                              "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/models/{modelsId}/operations/{operationsId}",
+                              "httpMethod": "GET",
+                              "id": "discoveryengine.projects.locations.collections.dataStores.models.operations.get",
+                              "parameterOrder": [
+                                "name"
+                              ],
+                              "parameters": {
+                                "name": {
+                                  "description": "The name of the operation resource.",
+                                  "location": "path",
+                                  "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/models/[^/]+/operations/[^/]+$",
+                                  "required": true,
+                                  "type": "string"
+                                }
+                              },
+                              "path": "v1beta/{+name}",
+                              "response": {
+                                "$ref": "GoogleLongrunningOperation"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            },
+                            "list": {
+                              "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`.",
+                              "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/models/{modelsId}/operations",
+                              "httpMethod": "GET",
+                              "id": "discoveryengine.projects.locations.collections.dataStores.models.operations.list",
+                              "parameterOrder": [
+                                "name"
+                              ],
+                              "parameters": {
+                                "filter": {
+                                  "description": "The standard list filter.",
+                                  "location": "query",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "description": "The name of the operation's parent resource.",
+                                  "location": "path",
+                                  "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/models/[^/]+$",
+                                  "required": true,
+                                  "type": "string"
+                                },
+                                "pageSize": {
+                                  "description": "The standard list page size.",
+                                  "format": "int32",
+                                  "location": "query",
+                                  "type": "integer"
+                                },
+                                "pageToken": {
+                                  "description": "The standard list page token.",
+                                  "location": "query",
+                                  "type": "string"
+                                }
+                              },
+                              "path": "v1beta/{+name}/operations",
+                              "response": {
+                                "$ref": "GoogleLongrunningListOperationsResponse"
+                              },
+                              "scopes": [
+                                "https://www.googleapis.com/auth/cloud-platform"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "operations": {
+                      "methods": {
+                        "get": {
+                          "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/operations/{operationsId}",
+                          "httpMethod": "GET",
+                          "id": "discoveryengine.projects.locations.collections.dataStores.operations.get",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "name": {
+                              "description": "The name of the operation resource.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/operations/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+name}",
+                          "response": {
+                            "$ref": "GoogleLongrunningOperation"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "list": {
+                          "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/operations",
+                          "httpMethod": "GET",
+                          "id": "discoveryengine.projects.locations.collections.dataStores.operations.list",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "filter": {
+                              "description": "The standard list filter.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "name": {
+                              "description": "The name of the operation's parent resource.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "pageSize": {
+                              "description": "The standard list page size.",
+                              "format": "int32",
+                              "location": "query",
+                              "type": "integer"
+                            },
+                            "pageToken": {
+                              "description": "The standard list page token.",
+                              "location": "query",
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+name}/operations",
+                          "response": {
+                            "$ref": "GoogleLongrunningListOperationsResponse"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      }
+                    },
+                    "servingConfigs": {
+                      "methods": {
+                        "recommend": {
+                          "description": "Makes a recommendation, which requires a contextual user event.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/servingConfigs/{servingConfigsId}:recommend",
+                          "httpMethod": "POST",
+                          "id": "discoveryengine.projects.locations.collections.dataStores.servingConfigs.recommend",
+                          "parameterOrder": [
+                            "servingConfig"
+                          ],
+                          "parameters": {
+                            "servingConfig": {
+                              "description": "Required. Full resource name of the format: projects/*/locations/global/collections/*/dataStores/*/servingConfigs/* Before you can request recommendations from your model, you must create at least one serving config for it.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+/servingConfigs/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+servingConfig}:recommend",
+                          "request": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaRecommendRequest"
+                          },
+                          "response": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaRecommendResponse"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      }
+                    },
+                    "userEvents": {
+                      "methods": {
+                        "collect": {
+                          "description": "Writes a single user event from the browser. This uses a GET request to due to browser restriction of POST-ing to a 3rd party domain. This method is used only by the Discovery Engine API JavaScript pixel and Google Tag Manager. Users should not call this method directly.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/userEvents:collect",
+                          "httpMethod": "GET",
+                          "id": "discoveryengine.projects.locations.collections.dataStores.userEvents.collect",
+                          "parameterOrder": [
+                            "parent"
+                          ],
+                          "parameters": {
+                            "ets": {
+                              "description": "The event timestamp in milliseconds. This prevents browser caching of otherwise identical get requests. The name is abbreviated to reduce the payload bytes.",
+                              "format": "int64",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "parent": {
+                              "description": "Required. The parent DataStore resource name, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}`.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "uri": {
+                              "description": "The URL including cgi-parameters but excluding the hash fragment with a length limit of 5,000 characters. This is often more useful than the referer URL, because many browsers only send the domain for 3rd party requests.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "userEvent": {
+                              "description": "Required. URL encoded UserEvent proto with a length limit of 2,000,000 characters.",
+                              "location": "query",
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+parent}/userEvents:collect",
+                          "response": {
+                            "$ref": "GoogleApiHttpBody"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "import": {
+                          "description": "Bulk import of User events. Request processing might be synchronous. Events that already exist are skipped. Use this method for backfilling historical user events. Operation.response is of type ImportResponse. Note that it is possible for a subset of the items to be successfully inserted. Operation.metadata is of type ImportMetadata.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/userEvents:import",
+                          "httpMethod": "POST",
+                          "id": "discoveryengine.projects.locations.collections.dataStores.userEvents.import",
+                          "parameterOrder": [
+                            "parent"
+                          ],
+                          "parameters": {
+                            "parent": {
+                              "description": "Required. Parent DataStore resource name, of the form `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}`",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+parent}/userEvents:import",
+                          "request": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaImportUserEventsRequest"
+                          },
+                          "response": {
+                            "$ref": "GoogleLongrunningOperation"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "write": {
+                          "description": "Writes a single user event.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/dataStores/{dataStoresId}/userEvents:write",
+                          "httpMethod": "POST",
+                          "id": "discoveryengine.projects.locations.collections.dataStores.userEvents.write",
+                          "parameterOrder": [
+                            "parent"
+                          ],
+                          "parameters": {
+                            "parent": {
+                              "description": "Required. The parent DataStore resource name, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}`.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/dataStores/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+parent}/userEvents:write",
+                          "request": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaUserEvent"
+                          },
+                          "response": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaUserEvent"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "operations": {
+                  "methods": {
+                    "get": {
+                      "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+                      "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/operations/{operationsId}",
+                      "httpMethod": "GET",
+                      "id": "discoveryengine.projects.locations.collections.operations.get",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "The name of the operation resource.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+/operations/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta/{+name}",
+                      "response": {
+                        "$ref": "GoogleLongrunningOperation"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`.",
+                      "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/collections/{collectionsId}/operations",
+                      "httpMethod": "GET",
+                      "id": "discoveryengine.projects.locations.collections.operations.list",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "filter": {
+                          "description": "The standard list filter.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "The name of the operation's parent resource.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/collections/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "The standard list page size.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "The standard list page token.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta/{+name}/operations",
+                      "response": {
+                        "$ref": "GoogleLongrunningListOperationsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "dataStores": {
+              "resources": {
+                "branches": {
+                  "resources": {
+                    "documents": {
+                      "methods": {
+                        "create": {
+                          "description": "Creates a Document.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents",
+                          "httpMethod": "POST",
+                          "id": "discoveryengine.projects.locations.dataStores.branches.documents.create",
+                          "parameterOrder": [
+                            "parent"
+                          ],
+                          "parameters": {
+                            "documentId": {
+                              "description": "Required. The ID to use for the Document, which will become the final component of the Document.name. If the caller does not have permission to create the Document, regardless of whether or not it exists, a PERMISSION_DENIED error is returned. This field must be unique among all Documents with the same parent. Otherwise, an ALREADY_EXISTS error is returned. This field must conform to [RFC-1034](https://tools.ietf.org/html/rfc1034) standard with a length limit of 63 characters. Otherwise, an INVALID_ARGUMENT error is returned.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "parent": {
+                              "description": "Required. The parent resource name, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}`.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/branches/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+parent}/documents",
+                          "request": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+                          },
+                          "response": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "delete": {
+                          "description": "Deletes a Document.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents/{documentsId}",
+                          "httpMethod": "DELETE",
+                          "id": "discoveryengine.projects.locations.dataStores.branches.documents.delete",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "name": {
+                              "description": "Required. Full resource name of Document, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}/documents/{document}`. If the caller does not have permission to delete the Document, regardless of whether or not it exists, a PERMISSION_DENIED error is returned. If the Document to delete does not exist, a NOT_FOUND error is returned.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/branches/[^/]+/documents/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+name}",
+                          "response": {
+                            "$ref": "GoogleProtobufEmpty"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "get": {
+                          "description": "Gets a Document.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents/{documentsId}",
+                          "httpMethod": "GET",
+                          "id": "discoveryengine.projects.locations.dataStores.branches.documents.get",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "name": {
+                              "description": "Required. Full resource name of Document, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}/documents/{document}`. If the caller does not have permission to access the Document, regardless of whether or not it exists, a PERMISSION_DENIED error is returned. If the requested Document does not exist, a NOT_FOUND error is returned.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/branches/[^/]+/documents/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+name}",
+                          "response": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "import": {
+                          "description": "Bulk import of multiple Documents. Request processing may be synchronous. Non-existing items will be created. Note: It is possible for a subset of the Documents to be successfully updated.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents:import",
+                          "httpMethod": "POST",
+                          "id": "discoveryengine.projects.locations.dataStores.branches.documents.import",
+                          "parameterOrder": [
+                            "parent"
+                          ],
+                          "parameters": {
+                            "parent": {
+                              "description": "Required. The parent branch resource name, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}`. Requires create/update permission.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/branches/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+parent}/documents:import",
+                          "request": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaImportDocumentsRequest"
+                          },
+                          "response": {
+                            "$ref": "GoogleLongrunningOperation"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "list": {
+                          "description": "Gets a list of Documents.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents",
+                          "httpMethod": "GET",
+                          "id": "discoveryengine.projects.locations.dataStores.branches.documents.list",
+                          "parameterOrder": [
+                            "parent"
+                          ],
+                          "parameters": {
+                            "pageSize": {
+                              "description": "Maximum number of Documents to return. If unspecified, defaults to 100. The maximum allowed value is 1000. Values above 1000 will be coerced to 1000. If this field is negative, an INVALID_ARGUMENT error is returned.",
+                              "format": "int32",
+                              "location": "query",
+                              "type": "integer"
+                            },
+                            "pageToken": {
+                              "description": "A page token ListDocumentsResponse.next_page_token, received from a previous DocumentService.ListDocuments call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to DocumentService.ListDocuments must match the call that provided the page token. Otherwise, an INVALID_ARGUMENT error is returned.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "parent": {
+                              "description": "Required. The parent branch resource name, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}`. Use `default_branch` as the branch ID, to list documents under the default branch. If the caller does not have permission to list Documentss under this branch, regardless of whether or not this branch exists, a PERMISSION_DENIED error is returned.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/branches/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+parent}/documents",
+                          "response": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaListDocumentsResponse"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "patch": {
+                          "description": "Updates a Document.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/branches/{branchesId}/documents/{documentsId}",
+                          "httpMethod": "PATCH",
+                          "id": "discoveryengine.projects.locations.dataStores.branches.documents.patch",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "allowMissing": {
+                              "description": "If set to true, and the Document is not found, a new Document will be created.",
+                              "location": "query",
+                              "type": "boolean"
+                            },
+                            "name": {
+                              "description": "Immutable. The full resource name of the document. Format: `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}/documents/{document_id}`. This field must be a UTF-8 encoded string with a length limit of 1024 characters.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/branches/[^/]+/documents/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+name}",
+                          "request": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+                          },
+                          "response": {
+                            "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      }
+                    },
+                    "operations": {
+                      "methods": {
+                        "get": {
+                          "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/branches/{branchesId}/operations/{operationsId}",
+                          "httpMethod": "GET",
+                          "id": "discoveryengine.projects.locations.dataStores.branches.operations.get",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "name": {
+                              "description": "The name of the operation resource.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/branches/[^/]+/operations/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+name}",
+                          "response": {
+                            "$ref": "GoogleLongrunningOperation"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "list": {
+                          "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/branches/{branchesId}/operations",
+                          "httpMethod": "GET",
+                          "id": "discoveryengine.projects.locations.dataStores.branches.operations.list",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "filter": {
+                              "description": "The standard list filter.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "name": {
+                              "description": "The name of the operation's parent resource.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/branches/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "pageSize": {
+                              "description": "The standard list page size.",
+                              "format": "int32",
+                              "location": "query",
+                              "type": "integer"
+                            },
+                            "pageToken": {
+                              "description": "The standard list page token.",
+                              "location": "query",
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+name}/operations",
+                          "response": {
+                            "$ref": "GoogleLongrunningListOperationsResponse"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "models": {
+                  "resources": {
+                    "operations": {
+                      "methods": {
+                        "get": {
+                          "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/models/{modelsId}/operations/{operationsId}",
+                          "httpMethod": "GET",
+                          "id": "discoveryengine.projects.locations.dataStores.models.operations.get",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "name": {
+                              "description": "The name of the operation resource.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/models/[^/]+/operations/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+name}",
+                          "response": {
+                            "$ref": "GoogleLongrunningOperation"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "list": {
+                          "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`.",
+                          "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/models/{modelsId}/operations",
+                          "httpMethod": "GET",
+                          "id": "discoveryengine.projects.locations.dataStores.models.operations.list",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "filter": {
+                              "description": "The standard list filter.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "name": {
+                              "description": "The name of the operation's parent resource.",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/models/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "pageSize": {
+                              "description": "The standard list page size.",
+                              "format": "int32",
+                              "location": "query",
+                              "type": "integer"
+                            },
+                            "pageToken": {
+                              "description": "The standard list page token.",
+                              "location": "query",
+                              "type": "string"
+                            }
+                          },
+                          "path": "v1beta/{+name}/operations",
+                          "response": {
+                            "$ref": "GoogleLongrunningListOperationsResponse"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                },
+                "operations": {
+                  "methods": {
+                    "get": {
+                      "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+                      "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/operations/{operationsId}",
+                      "httpMethod": "GET",
+                      "id": "discoveryengine.projects.locations.dataStores.operations.get",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "The name of the operation resource.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/operations/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta/{+name}",
+                      "response": {
+                        "$ref": "GoogleLongrunningOperation"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`.",
+                      "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/operations",
+                      "httpMethod": "GET",
+                      "id": "discoveryengine.projects.locations.dataStores.operations.list",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "filter": {
+                          "description": "The standard list filter.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "The name of the operation's parent resource.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "The standard list page size.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "The standard list page token.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta/{+name}/operations",
+                      "response": {
+                        "$ref": "GoogleLongrunningListOperationsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                },
+                "servingConfigs": {
+                  "methods": {
+                    "recommend": {
+                      "description": "Makes a recommendation, which requires a contextual user event.",
+                      "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/servingConfigs/{servingConfigsId}:recommend",
+                      "httpMethod": "POST",
+                      "id": "discoveryengine.projects.locations.dataStores.servingConfigs.recommend",
+                      "parameterOrder": [
+                        "servingConfig"
+                      ],
+                      "parameters": {
+                        "servingConfig": {
+                          "description": "Required. Full resource name of the format: projects/*/locations/global/collections/*/dataStores/*/servingConfigs/* Before you can request recommendations from your model, you must create at least one serving config for it.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+/servingConfigs/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta/{+servingConfig}:recommend",
+                      "request": {
+                        "$ref": "GoogleCloudDiscoveryengineV1betaRecommendRequest"
+                      },
+                      "response": {
+                        "$ref": "GoogleCloudDiscoveryengineV1betaRecommendResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                },
+                "userEvents": {
+                  "methods": {
+                    "collect": {
+                      "description": "Writes a single user event from the browser. This uses a GET request to due to browser restriction of POST-ing to a 3rd party domain. This method is used only by the Discovery Engine API JavaScript pixel and Google Tag Manager. Users should not call this method directly.",
+                      "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/userEvents:collect",
+                      "httpMethod": "GET",
+                      "id": "discoveryengine.projects.locations.dataStores.userEvents.collect",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "ets": {
+                          "description": "The event timestamp in milliseconds. This prevents browser caching of otherwise identical get requests. The name is abbreviated to reduce the payload bytes.",
+                          "format": "int64",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "parent": {
+                          "description": "Required. The parent DataStore resource name, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "uri": {
+                          "description": "The URL including cgi-parameters but excluding the hash fragment with a length limit of 5,000 characters. This is often more useful than the referer URL, because many browsers only send the domain for 3rd party requests.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "userEvent": {
+                          "description": "Required. URL encoded UserEvent proto with a length limit of 2,000,000 characters.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta/{+parent}/userEvents:collect",
+                      "response": {
+                        "$ref": "GoogleApiHttpBody"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "import": {
+                      "description": "Bulk import of User events. Request processing might be synchronous. Events that already exist are skipped. Use this method for backfilling historical user events. Operation.response is of type ImportResponse. Note that it is possible for a subset of the items to be successfully inserted. Operation.metadata is of type ImportMetadata.",
+                      "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/userEvents:import",
+                      "httpMethod": "POST",
+                      "id": "discoveryengine.projects.locations.dataStores.userEvents.import",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "parent": {
+                          "description": "Required. Parent DataStore resource name, of the form `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}`",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta/{+parent}/userEvents:import",
+                      "request": {
+                        "$ref": "GoogleCloudDiscoveryengineV1betaImportUserEventsRequest"
+                      },
+                      "response": {
+                        "$ref": "GoogleLongrunningOperation"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "write": {
+                      "description": "Writes a single user event.",
+                      "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/dataStores/{dataStoresId}/userEvents:write",
+                      "httpMethod": "POST",
+                      "id": "discoveryengine.projects.locations.dataStores.userEvents.write",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "parent": {
+                          "description": "Required. The parent DataStore resource name, such as `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}`.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/dataStores/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1beta/{+parent}/userEvents:write",
+                      "request": {
+                        "$ref": "GoogleCloudDiscoveryengineV1betaUserEvent"
+                      },
+                      "response": {
+                        "$ref": "GoogleCloudDiscoveryengineV1betaUserEvent"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "operations": {
+              "methods": {
+                "get": {
+                  "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+                  "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/operations/{operationsId}",
+                  "httpMethod": "GET",
+                  "id": "discoveryengine.projects.locations.operations.get",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "The name of the operation resource.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/operations/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta/{+name}",
+                  "response": {
+                    "$ref": "GoogleLongrunningOperation"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "list": {
+                  "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`.",
+                  "flatPath": "v1beta/projects/{projectsId}/locations/{locationsId}/operations",
+                  "httpMethod": "GET",
+                  "id": "discoveryengine.projects.locations.operations.list",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "filter": {
+                      "description": "The standard list filter.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "The name of the operation's parent resource.",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "pageSize": {
+                      "description": "The standard list page size.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "The standard list page token.",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1beta/{+name}/operations",
+                  "response": {
+                    "$ref": "GoogleLongrunningListOperationsResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operations": {
+          "methods": {
+            "get": {
+              "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+              "flatPath": "v1beta/projects/{projectsId}/operations/{operationsId}",
+              "httpMethod": "GET",
+              "id": "discoveryengine.projects.operations.get",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "The name of the operation resource.",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/operations/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1beta/{+name}",
+              "response": {
+                "$ref": "GoogleLongrunningOperation"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "list": {
+              "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`.",
+              "flatPath": "v1beta/projects/{projectsId}/operations",
+              "httpMethod": "GET",
+              "id": "discoveryengine.projects.operations.list",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "filter": {
+                  "description": "The standard list filter.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "The name of the operation's parent resource.",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                },
+                "pageSize": {
+                  "description": "The standard list page size.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "pageToken": {
+                  "description": "The standard list page token.",
+                  "location": "query",
+                  "type": "string"
+                }
+              },
+              "path": "v1beta/{+name}/operations",
+              "response": {
+                "$ref": "GoogleLongrunningListOperationsResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230331",
+  "rootUrl": "https://discoveryengine.googleapis.com/",
+  "schemas": {
+    "GoogleApiHttpBody": {
+      "description": "Message that represents an arbitrary HTTP body. It should only be used for payload formats that can't be represented as JSON, such as raw binary or an HTML page. This message can be used both in streaming and non-streaming API methods in the request as well as the response. It can be used as a top-level request field, which is convenient if one wants to extract parameters from either the URL or HTTP template into the request fields and also want access to the raw HTTP body. Example: message GetResourceRequest { // A unique request id. string request_id = 1; // The raw HTTP body is bound to this field. google.api.HttpBody http_body = 2; } service ResourceService { rpc GetResource(GetResourceRequest) returns (google.api.HttpBody); rpc UpdateResource(google.api.HttpBody) returns (google.protobuf.Empty); } Example with streaming methods: service CaldavService { rpc GetCalendar(stream google.api.HttpBody) returns (stream google.api.HttpBody); rpc UpdateCalendar(stream google.api.HttpBody) returns (stream google.api.HttpBody); } Use of this type only changes how the request and response bodies are handled, all other features will continue to work unchanged.",
+      "id": "GoogleApiHttpBody",
+      "properties": {
+        "contentType": {
+          "description": "The HTTP Content-Type header value specifying the content type of the body.",
+          "type": "string"
+        },
+        "data": {
+          "description": "The HTTP request/response body as raw binary.",
+          "format": "byte",
+          "type": "string"
+        },
+        "extensions": {
+          "description": "Application specific response metadata. Must be set in the first response for streaming APIs.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineLoggingErrorContext": {
+      "description": "A description of the context in which an error occurred.",
+      "id": "GoogleCloudDiscoveryengineLoggingErrorContext",
+      "properties": {
+        "httpRequest": {
+          "$ref": "GoogleCloudDiscoveryengineLoggingHttpRequestContext",
+          "description": "The HTTP request which was processed when the error was triggered."
+        },
+        "reportLocation": {
+          "$ref": "GoogleCloudDiscoveryengineLoggingSourceLocation",
+          "description": "The location in the source code where the decision was made to report the error, usually the place where it was logged."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineLoggingErrorLog": {
+      "description": "An error log which is reported to the Error Reporting system.",
+      "id": "GoogleCloudDiscoveryengineLoggingErrorLog",
+      "properties": {
+        "context": {
+          "$ref": "GoogleCloudDiscoveryengineLoggingErrorContext",
+          "description": "A description of the context in which the error occurred."
+        },
+        "importPayload": {
+          "$ref": "GoogleCloudDiscoveryengineLoggingImportErrorContext",
+          "description": "The error payload that is populated on LRO import APIs."
+        },
+        "message": {
+          "description": "A message describing the error.",
+          "type": "string"
+        },
+        "serviceContext": {
+          "$ref": "GoogleCloudDiscoveryengineLoggingServiceContext",
+          "description": "The service context in which this error has occurred."
+        },
+        "status": {
+          "$ref": "GoogleRpcStatus",
+          "description": "The RPC status associated with the error log."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineLoggingHttpRequestContext": {
+      "description": "HTTP request data that is related to a reported error.",
+      "id": "GoogleCloudDiscoveryengineLoggingHttpRequestContext",
+      "properties": {
+        "responseStatusCode": {
+          "description": "The HTTP response status code for the request.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineLoggingImportErrorContext": {
+      "description": "The error payload that is populated on LRO import APIs, including the following: * `google.cloud.discoveryengine.v1alpha.DocumentService.ImportDocuments` * `google.cloud.discoveryengine.v1alpha.UserEventService.ImportUserEvents`",
+      "id": "GoogleCloudDiscoveryengineLoggingImportErrorContext",
+      "properties": {
+        "document": {
+          "description": "The detailed content which caused the error on importing a document.",
+          "type": "string"
+        },
+        "gcsPath": {
+          "description": "Google Cloud Storage file path of the import source. Can be set for batch operation error.",
+          "type": "string"
+        },
+        "lineNumber": {
+          "description": "Line number of the content in file. Should be empty for permission or batch operation error.",
+          "type": "string"
+        },
+        "operation": {
+          "description": "The operation resource name of the LRO.",
+          "type": "string"
+        },
+        "userEvent": {
+          "description": "The detailed content which caused the error on importing a user event.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineLoggingServiceContext": {
+      "description": "Describes a running service that sends errors.",
+      "id": "GoogleCloudDiscoveryengineLoggingServiceContext",
+      "properties": {
+        "service": {
+          "description": "An identifier of the service\u2014for example, `discoveryengine.googleapis.com`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineLoggingSourceLocation": {
+      "description": "Indicates a location in the source code of the service for which errors are reported.",
+      "id": "GoogleCloudDiscoveryengineLoggingSourceLocation",
+      "properties": {
+        "functionName": {
+          "description": "Human-readable name of a function or method\u2014for example, `google.cloud.discoveryengine.v1alpha.RecommendationService.Recommend`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1alphaImportDocumentsMetadata": {
+      "description": "Metadata related to the progress of the ImportDocuments operation. This will be returned by the google.longrunning.Operation.metadata field.",
+      "id": "GoogleCloudDiscoveryengineV1alphaImportDocumentsMetadata",
+      "properties": {
+        "createTime": {
+          "description": "Operation create time.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "failureCount": {
+          "description": "Count of entries that encountered errors while processing.",
+          "format": "int64",
+          "type": "string"
+        },
+        "successCount": {
+          "description": "Count of entries that were processed successfully.",
+          "format": "int64",
+          "type": "string"
+        },
+        "updateTime": {
+          "description": "Operation last update time. If the operation is done, this is also the finish time.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1alphaImportDocumentsResponse": {
+      "description": "Response of the ImportDocumentsRequest. If the long running operation is done, then this message is returned by the google.longrunning.Operations.response field if the operation was successful.",
+      "id": "GoogleCloudDiscoveryengineV1alphaImportDocumentsResponse",
+      "properties": {
+        "errorConfig": {
+          "$ref": "GoogleCloudDiscoveryengineV1alphaImportErrorConfig",
+          "description": "Echoes the destination for the complete errors in the request if set."
+        },
+        "errorSamples": {
+          "description": "A sample of errors encountered while processing the request.",
+          "items": {
+            "$ref": "GoogleRpcStatus"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1alphaImportErrorConfig": {
+      "description": "Configuration of destination for Import related errors.",
+      "id": "GoogleCloudDiscoveryengineV1alphaImportErrorConfig",
+      "properties": {
+        "gcsPrefix": {
+          "description": "Cloud Storage prefix for import errors. This must be an empty, existing Cloud Storage directory. Import errors will be written to sharded files in this directory, one per line, as a JSON-encoded `google.rpc.Status` message.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1alphaImportUserEventsMetadata": {
+      "description": "Metadata related to the progress of the Import operation. This will be returned by the google.longrunning.Operation.metadata field.",
+      "id": "GoogleCloudDiscoveryengineV1alphaImportUserEventsMetadata",
+      "properties": {
+        "createTime": {
+          "description": "Operation create time.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "failureCount": {
+          "description": "Count of entries that encountered errors while processing.",
+          "format": "int64",
+          "type": "string"
+        },
+        "successCount": {
+          "description": "Count of entries that were processed successfully.",
+          "format": "int64",
+          "type": "string"
+        },
+        "updateTime": {
+          "description": "Operation last update time. If the operation is done, this is also the finish time.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1alphaImportUserEventsResponse": {
+      "description": "Response of the ImportUserEventsRequest. If the long running operation was successful, then this message is returned by the google.longrunning.Operations.response field if the operation was successful.",
+      "id": "GoogleCloudDiscoveryengineV1alphaImportUserEventsResponse",
+      "properties": {
+        "errorConfig": {
+          "$ref": "GoogleCloudDiscoveryengineV1alphaImportErrorConfig",
+          "description": "Echoes the destination for the complete errors if this field was set in the request."
+        },
+        "errorSamples": {
+          "description": "A sample of errors encountered while processing the request.",
+          "items": {
+            "$ref": "GoogleRpcStatus"
+          },
+          "type": "array"
+        },
+        "joinedEventsCount": {
+          "description": "Count of user events imported with complete existing Documents.",
+          "format": "int64",
+          "type": "string"
+        },
+        "unjoinedEventsCount": {
+          "description": "Count of user events imported, but with Document information not found in the existing Branch.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1alphaSchema": {
+      "description": "Defines the structure and layout of a type of document data.",
+      "id": "GoogleCloudDiscoveryengineV1alphaSchema",
+      "properties": {
+        "jsonSchema": {
+          "description": "The JSON representation of the schema.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Immutable. The full resource name of the schema, in the format of `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/schemas/{schema}`. This field must be a UTF-8 encoded string with a length limit of 1024 characters.",
+          "type": "string"
+        },
+        "structSchema": {
+          "additionalProperties": {
+            "description": "Properties of the object.",
+            "type": "any"
+          },
+          "description": "The structured representation of the schema.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaBigQuerySource": {
+      "description": "BigQuery source import data from.",
+      "id": "GoogleCloudDiscoveryengineV1betaBigQuerySource",
+      "properties": {
+        "dataSchema": {
+          "description": "The schema to use when parsing the data from the source. Supported values for user event imports: * `user_event` (default): One UserEvent per row. Supported values for document imports: * `document` (default): One Document format per row. Each document must have a valid Document.id and one of Document.json_data or Document.struct_data. * `custom`: One custom data per row in arbitrary format that conforms the defined Schema of the data store. This can only be used by the GENERIC Data Store vertical.",
+          "type": "string"
+        },
+        "datasetId": {
+          "description": "Required. The BigQuery data set to copy the data from with a length limit of 1,024 characters.",
+          "type": "string"
+        },
+        "gcsStagingDir": {
+          "description": "Intermediate Cloud Storage directory used for the import with a length limit of 2,000 characters. Can be specified if one wants to have the BigQuery export to a specific Cloud Storage directory.",
+          "type": "string"
+        },
+        "partitionDate": {
+          "$ref": "GoogleTypeDate",
+          "description": "BigQuery time partitioned table's _PARTITIONDATE in YYYY-MM-DD format."
+        },
+        "projectId": {
+          "description": "The project ID (can be project # or ID) that the BigQuery source is in with a length limit of 128 characters. If not specified, inherits the project ID from the parent request.",
+          "type": "string"
+        },
+        "tableId": {
+          "description": "Required. The BigQuery table to copy the data from with a length limit of 1,024 characters.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaCompletionInfo": {
+      "description": "Detailed completion information including completion attribution token and clicked completion info.",
+      "id": "GoogleCloudDiscoveryengineV1betaCompletionInfo",
+      "properties": {
+        "selectedPosition": {
+          "description": "End user selected CompleteQueryResponse.CompletionResult.suggestion position, starting from 0.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "selectedSuggestion": {
+          "description": "End user selected CompleteQueryResponse.CompletionResult.suggestion.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaCustomAttribute": {
+      "description": "A custom attribute that is not explicitly modeled in a resource, e.g. UserEvent.",
+      "id": "GoogleCloudDiscoveryengineV1betaCustomAttribute",
+      "properties": {
+        "numbers": {
+          "description": "The numerical values of this custom attribute. For example, `[2.3, 15.4]` when the key is \"lengths_cm\". Exactly one of text or numbers should be set. Otherwise, an INVALID_ARGUMENT error is returned.",
+          "items": {
+            "format": "double",
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "text": {
+          "description": "The textual values of this custom attribute. For example, `[\"yellow\", \"green\"]` when the key is \"color\". Empty string is not allowed. Otherwise, an INVALID_ARGUMENT error is returned. Exactly one of text or numbers should be set. Otherwise, an INVALID_ARGUMENT error is returned.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaDocument": {
+      "description": "Document captures all raw metadata information of items to be recommended or searched.",
+      "id": "GoogleCloudDiscoveryengineV1betaDocument",
+      "properties": {
+        "id": {
+          "description": "Immutable. The identifier of the document. Id should conform to [RFC-1034](https://tools.ietf.org/html/rfc1034) standard with a length limit of 63 characters.",
+          "type": "string"
+        },
+        "jsonData": {
+          "description": "The JSON string representation of the document. It should conform to the registered schema or an INVALID_ARGUMENT error is thrown.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Immutable. The full resource name of the document. Format: `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/branches/{branch}/documents/{document_id}`. This field must be a UTF-8 encoded string with a length limit of 1024 characters.",
+          "type": "string"
+        },
+        "parentDocumentId": {
+          "description": "The identifier of the parent document. Currently supports at most two level document hierarchy. Id should conform to [RFC-1034](https://tools.ietf.org/html/rfc1034) standard with a length limit of 63 characters.",
+          "type": "string"
+        },
+        "schemaId": {
+          "description": "The identifier of the schema located in the same data store.",
+          "type": "string"
+        },
+        "structData": {
+          "additionalProperties": {
+            "description": "Properties of the object.",
+            "type": "any"
+          },
+          "description": "The structured JSON data for the document. It should conform to the registered schema or an INVALID_ARGUMENT error is thrown.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaDocumentInfo": {
+      "description": "Detailed document information associated with a user event.",
+      "id": "GoogleCloudDiscoveryengineV1betaDocumentInfo",
+      "properties": {
+        "id": {
+          "description": "Required. The Document resource ID.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Required. The Document resource full name, of the form: projects/{project\\_id}/locations/{location}/collections/{collection\\_id}/dataStores/{data\\_store\\_id}/branches/{branch\\_id}/documents/{document\\_id}",
+          "type": "string"
+        },
+        "promotionIds": {
+          "description": "The promotion IDs associated with this Document. Currently, this field is restricted to at most one ID.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "quantity": {
+          "description": "Quantity of the Document associated with the user event. Defaults to 1. For example, this field will be 2 if two quantities of the same Document are involved in a `add-to-cart` event. Required for events of the following event types: * `add-to-cart` * `purchase`",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaGcsSource": {
+      "description": "Cloud Storage location for input content.",
+      "id": "GoogleCloudDiscoveryengineV1betaGcsSource",
+      "properties": {
+        "dataSchema": {
+          "description": "The schema to use when parsing the data from the source. Supported values for document imports: * `document` (default): One JSON Document per line. Each document must have a valid Document.id. * `content`: Unstructured data (e.g. PDF, HTML). Each file matched by `input_uris` will become a document, with the ID set to the first 128 bits of SHA256(URI) encoded as a hex string. * `custom`: One custom data JSON per row in arbitrary format that conforms the defined Schema of the data store. This can only be used by the GENERIC Data Store vertical. Supported values for user even imports: * `user_event` (default): One JSON UserEvent per line.",
+          "type": "string"
+        },
+        "inputUris": {
+          "description": "Required. Cloud Storage URIs to input files. URI can be up to 2000 characters long. URIs can match the full object path (for example, `gs://bucket/directory/object.json`) or a pattern matching one or more files, such as `gs://bucket/directory/*.json`. A request can contain at most 100 files (or 100,000 files if `data_schema` is `content`). Each file can be up to 2 GB (or 100 MB if `data_schema` is `content`).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaImportDocumentsMetadata": {
+      "description": "Metadata related to the progress of the ImportDocuments operation. This will be returned by the google.longrunning.Operation.metadata field.",
+      "id": "GoogleCloudDiscoveryengineV1betaImportDocumentsMetadata",
+      "properties": {
+        "createTime": {
+          "description": "Operation create time.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "failureCount": {
+          "description": "Count of entries that encountered errors while processing.",
+          "format": "int64",
+          "type": "string"
+        },
+        "successCount": {
+          "description": "Count of entries that were processed successfully.",
+          "format": "int64",
+          "type": "string"
+        },
+        "updateTime": {
+          "description": "Operation last update time. If the operation is done, this is also the finish time.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaImportDocumentsRequest": {
+      "description": "Request message for Import methods.",
+      "id": "GoogleCloudDiscoveryengineV1betaImportDocumentsRequest",
+      "properties": {
+        "bigquerySource": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaBigQuerySource",
+          "description": "BigQuery input source."
+        },
+        "errorConfig": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaImportErrorConfig",
+          "description": "The desired location of errors incurred during the Import."
+        },
+        "gcsSource": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaGcsSource",
+          "description": "Cloud Storage location for the input content."
+        },
+        "inlineSource": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaImportDocumentsRequestInlineSource",
+          "description": "The Inline source for the input content for documents."
+        },
+        "reconciliationMode": {
+          "description": "The mode of reconciliation between existing documents and the documents to be imported. Defaults to ReconciliationMode.INCREMENTAL.",
+          "enum": [
+            "RECONCILIATION_MODE_UNSPECIFIED",
+            "INCREMENTAL",
+            "FULL"
+          ],
+          "enumDescriptions": [
+            "Defaults to INCREMENTAL.",
+            "Inserts new documents or updates existing documents.",
+            "Calculates diff and replaces the entire document dataset. Existing documents may be deleted if they are not present in the source location."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaImportDocumentsRequestInlineSource": {
+      "description": "The inline source for the input config for ImportDocuments method.",
+      "id": "GoogleCloudDiscoveryengineV1betaImportDocumentsRequestInlineSource",
+      "properties": {
+        "documents": {
+          "description": "Required. A list of documents to update/create. Each document must have a valid Document.id. Recommended max of 100 items.",
+          "items": {
+            "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaImportDocumentsResponse": {
+      "description": "Response of the ImportDocumentsRequest. If the long running operation is done, then this message is returned by the google.longrunning.Operations.response field if the operation was successful.",
+      "id": "GoogleCloudDiscoveryengineV1betaImportDocumentsResponse",
+      "properties": {
+        "errorConfig": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaImportErrorConfig",
+          "description": "Echoes the destination for the complete errors in the request if set."
+        },
+        "errorSamples": {
+          "description": "A sample of errors encountered while processing the request.",
+          "items": {
+            "$ref": "GoogleRpcStatus"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaImportErrorConfig": {
+      "description": "Configuration of destination for Import related errors.",
+      "id": "GoogleCloudDiscoveryengineV1betaImportErrorConfig",
+      "properties": {
+        "gcsPrefix": {
+          "description": "Cloud Storage prefix for import errors. This must be an empty, existing Cloud Storage directory. Import errors will be written to sharded files in this directory, one per line, as a JSON-encoded `google.rpc.Status` message.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaImportUserEventsMetadata": {
+      "description": "Metadata related to the progress of the Import operation. This will be returned by the google.longrunning.Operation.metadata field.",
+      "id": "GoogleCloudDiscoveryengineV1betaImportUserEventsMetadata",
+      "properties": {
+        "createTime": {
+          "description": "Operation create time.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "failureCount": {
+          "description": "Count of entries that encountered errors while processing.",
+          "format": "int64",
+          "type": "string"
+        },
+        "successCount": {
+          "description": "Count of entries that were processed successfully.",
+          "format": "int64",
+          "type": "string"
+        },
+        "updateTime": {
+          "description": "Operation last update time. If the operation is done, this is also the finish time.",
+          "format": "google-datetime",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaImportUserEventsRequest": {
+      "description": "Request message for the ImportUserEvents request.",
+      "id": "GoogleCloudDiscoveryengineV1betaImportUserEventsRequest",
+      "properties": {
+        "bigquerySource": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaBigQuerySource",
+          "description": "Required. BigQuery input source."
+        },
+        "errorConfig": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaImportErrorConfig",
+          "description": "The desired location of errors incurred during the Import. Cannot be set for inline user event imports."
+        },
+        "gcsSource": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaGcsSource",
+          "description": "Required. Cloud Storage location for the input content."
+        },
+        "inlineSource": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaImportUserEventsRequestInlineSource",
+          "description": "Required. The Inline source for the input content for UserEvents."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaImportUserEventsRequestInlineSource": {
+      "description": "The inline source for the input config for ImportUserEvents method.",
+      "id": "GoogleCloudDiscoveryengineV1betaImportUserEventsRequestInlineSource",
+      "properties": {
+        "userEvents": {
+          "description": "Required. A list of user events to import. Recommended max of 10k items.",
+          "items": {
+            "$ref": "GoogleCloudDiscoveryengineV1betaUserEvent"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaImportUserEventsResponse": {
+      "description": "Response of the ImportUserEventsRequest. If the long running operation was successful, then this message is returned by the google.longrunning.Operations.response field if the operation was successful.",
+      "id": "GoogleCloudDiscoveryengineV1betaImportUserEventsResponse",
+      "properties": {
+        "errorConfig": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaImportErrorConfig",
+          "description": "Echoes the destination for the complete errors if this field was set in the request."
+        },
+        "errorSamples": {
+          "description": "A sample of errors encountered while processing the request.",
+          "items": {
+            "$ref": "GoogleRpcStatus"
+          },
+          "type": "array"
+        },
+        "joinedEventsCount": {
+          "description": "Count of user events imported with complete existing Documents.",
+          "format": "int64",
+          "type": "string"
+        },
+        "unjoinedEventsCount": {
+          "description": "Count of user events imported, but with Document information not found in the existing Branch.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaListDocumentsResponse": {
+      "description": "Response message for DocumentService.ListDocuments method.",
+      "id": "GoogleCloudDiscoveryengineV1betaListDocumentsResponse",
+      "properties": {
+        "documents": {
+          "description": "The Documents.",
+          "items": {
+            "$ref": "GoogleCloudDiscoveryengineV1betaDocument"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A token that can be sent as ListDocumentsRequest.page_token to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaMediaInfo": {
+      "description": "Media-specific user event information.",
+      "id": "GoogleCloudDiscoveryengineV1betaMediaInfo",
+      "properties": {
+        "mediaProgressDuration": {
+          "description": "The media progress time in seconds, if applicable. For example, if the end user has finished 90 seconds of a playback video, then MediaInfo.media_progress_duration.seconds should be set to 90.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "mediaProgressPercentage": {
+          "description": "Media progress should be computed using only the media_progress_duration relative to the media total length. This value must be between [0, 1.0] inclusive. If this is not a playback or the progress cannot be computed (e.g. ongoing livestream), this field should be unset.",
+          "format": "float",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaPageInfo": {
+      "description": "Detailed page information.",
+      "id": "GoogleCloudDiscoveryengineV1betaPageInfo",
+      "properties": {
+        "pageCategory": {
+          "description": "The most specific category associated with a category page. To represent full path of category, use '>' sign to separate different hierarchies. If '>' is part of the category name, please replace it with other character(s). Category pages include special pages such as sales or promotions. For instance, a special sale page may have the category hierarchy: \"pageCategory\" : \"Sales > 2017 Black Friday Deals\". Required for `view-category-page` events. Other event types should not set this field. Otherwise, an INVALID_ARGUMENT error is returned.",
+          "type": "string"
+        },
+        "pageviewId": {
+          "description": "A unique ID of a web page view. This should be kept the same for all user events triggered from the same pageview. For example, an item detail page view could trigger multiple events as the user is browsing the page. The `pageViewId` property should be kept the same for all these events so that they can be grouped together properly. When using the client side event reporting with JavaScript pixel and Google Tag Manager, this value is filled in automatically.",
+          "type": "string"
+        },
+        "referrerUri": {
+          "description": "The referrer URL of the current page. When using the client side event reporting with JavaScript pixel and Google Tag Manager, this value is filled in automatically. However, some browser privacy restrictions may cause this field to be empty.",
+          "type": "string"
+        },
+        "uri": {
+          "description": "Complete URL (window.location.href) of the user's current page. When using the client side event reporting with JavaScript pixel and Google Tag Manager, this value is filled in automatically. Maximum length 5,000 characters.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaPanelInfo": {
+      "description": "Detailed panel information associated with a user event.",
+      "id": "GoogleCloudDiscoveryengineV1betaPanelInfo",
+      "properties": {
+        "displayName": {
+          "description": "The display name of the panel.",
+          "type": "string"
+        },
+        "panelId": {
+          "description": "Required. The panel ID.",
+          "type": "string"
+        },
+        "panelPosition": {
+          "description": "The ordered position of the panel, if shown to the user with other panels. If set, then total_panels must also be set.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "totalPanels": {
+          "description": "The total number of panels, including this one, shown to the user. Must be set if panel_position is set.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaRecommendRequest": {
+      "description": "Request message for Recommend method.",
+      "id": "GoogleCloudDiscoveryengineV1betaRecommendRequest",
+      "properties": {
+        "filter": {
+          "description": "Filter for restricting recommendation results with a length limit of 5,000 characters. Currently, only filter expressions on the `filter_tags` attribute is supported. Examples: * (filter_tags: ANY(\"Red\", \"Blue\") OR filter_tags: ANY(\"Hot\", \"Cold\")) * (filter_tags: ANY(\"Red\", \"Blue\")) AND NOT (filter_tags: ANY(\"Green\")) If your filter blocks all results, the API will return generic (unfiltered) popular Documents. If you only want results strictly matching the filters, set `strictFiltering` to True in RecommendRequest.params to receive empty results instead. Note that the API will never return Documents with storageStatus of \"EXPIRED\" or \"DELETED\" regardless of filter choices.",
+          "type": "string"
+        },
+        "pageSize": {
+          "description": "Maximum number of results to return. Set this property to the number of recommendation results needed. If zero, the service will choose a reasonable default. The maximum allowed value is 100. Values above 100 will be coerced to 100.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "params": {
+          "additionalProperties": {
+            "type": "any"
+          },
+          "description": "Additional domain specific parameters for the recommendations. Allowed values: * `returnDocument`: Boolean. If set to true, the associated Document object will be returned in RecommendResponse.results.document. * `returnScore`: Boolean. If set to true, the recommendation 'score' corresponding to each returned Document will be set in RecommendResponse.results.metadata. The given 'score' indicates the probability of a Document conversion given the user's context and history. * `strictFiltering`: Boolean. True by default. If set to false, the service will return generic (unfiltered) popular Documents instead of empty if your filter blocks all recommendation results. * `diversityLevel`: String. Default empty. If set to be non-empty, then it needs to be one of: * 'no-diversity' * 'low-diversity' * 'medium-diversity' * 'high-diversity' * 'auto-diversity' This gives request-level control and adjusts recommendation results based on Document category.",
+          "type": "object"
+        },
+        "userEvent": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaUserEvent",
+          "description": "Required. Context about the user, what they are looking at and what action they took to trigger the Recommend request. Note that this user event detail won't be ingested to userEvent logs. Thus, a separate userEvent write request is required for event logging. Don't set UserEvent.user_pseudo_id or UserEvent.user_info.user_id to the same fixed ID for different users. If you are trying to receive non-personalized recommendations (not recommended; this can negatively impact model performance), instead set UserEvent.user_pseudo_id to a random unique ID and leave UserEvent.user_info.user_id unset."
+        },
+        "userLabels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The user labels applied to a resource must meet the following requirements: * Each resource can have multiple labels, up to a maximum of 64. * Each label must be a key-value pair. * Keys have a minimum length of 1 character and a maximum length of 63 characters and cannot be empty. Values can be empty and have a maximum length of 63 characters. * Keys and values can contain only lowercase letters, numeric characters, underscores, and dashes. All characters must use UTF-8 encoding, and international characters are allowed. * The key portion of a label must be unique. However, you can use the same key with multiple resources. * Keys must start with a lowercase letter or international character. See [Requirements for labels](https://cloud.google.com/resource-manager/docs/creating-managing-labels#requirements) for more details.",
+          "type": "object"
+        },
+        "validateOnly": {
+          "description": "Use validate only mode for this recommendation query. If set to true, a fake model will be used that returns arbitrary Document IDs. Note that the validate only mode should only be used for testing the API, or if the model is not ready.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaRecommendResponse": {
+      "description": "Response message for Recommend method.",
+      "id": "GoogleCloudDiscoveryengineV1betaRecommendResponse",
+      "properties": {
+        "attributionToken": {
+          "description": "A unique attribution token. This should be included in the UserEvent logs resulting from this recommendation, which enables accurate attribution of recommendation model performance.",
+          "type": "string"
+        },
+        "missingIds": {
+          "description": "IDs of documents in the request that were missing from the default Branch associated with the requested ServingConfig.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "results": {
+          "description": "A list of recommended Documents. The order represents the ranking (from the most relevant Document to the least).",
+          "items": {
+            "$ref": "GoogleCloudDiscoveryengineV1betaRecommendResponseRecommendationResult"
+          },
+          "type": "array"
+        },
+        "validateOnly": {
+          "description": "True if RecommendRequest.validate_only was set.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaRecommendResponseRecommendationResult": {
+      "description": "RecommendationResult represents a generic recommendation result with associated metadata.",
+      "id": "GoogleCloudDiscoveryengineV1betaRecommendResponseRecommendationResult",
+      "properties": {
+        "document": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaDocument",
+          "description": "Set if `returnDocument` is set to true in RecommendRequest.params."
+        },
+        "id": {
+          "description": "Resource ID of the recommended Document.",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "any"
+          },
+          "description": "Additional Document metadata / annotations. Possible values: * `score`: Recommendation score in double value. Is set if `returnScore` is set to true in RecommendRequest.params.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaSchema": {
+      "description": "Defines the structure and layout of a type of document data.",
+      "id": "GoogleCloudDiscoveryengineV1betaSchema",
+      "properties": {
+        "jsonSchema": {
+          "description": "The JSON representation of the schema.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Immutable. The full resource name of the schema, in the format of `projects/{project}/locations/{location}/collections/{collection}/dataStores/{data_store}/schemas/{schema}`. This field must be a UTF-8 encoded string with a length limit of 1024 characters.",
+          "type": "string"
+        },
+        "structSchema": {
+          "additionalProperties": {
+            "description": "Properties of the object.",
+            "type": "any"
+          },
+          "description": "The structured representation of the schema.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaSearchInfo": {
+      "description": "Detailed search information.",
+      "id": "GoogleCloudDiscoveryengineV1betaSearchInfo",
+      "properties": {
+        "offset": {
+          "description": "An integer that specifies the current offset for pagination (the 0-indexed starting location, amongst the products deemed by the API as relevant). See SearchRequest.offset for definition. If this field is negative, an INVALID_ARGUMENT is returned. This can only be set for `search` events. Other event types should not set this field. Otherwise, an INVALID_ARGUMENT error is returned.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "orderBy": {
+          "description": "The order in which products are returned, if applicable. See SearchRequest.order_by for definition and syntax. The value must be a UTF-8 encoded string with a length limit of 1,000 characters. Otherwise, an INVALID_ARGUMENT error is returned. This can only be set for `search` events. Other event types should not set this field. Otherwise, an INVALID_ARGUMENT error is returned.",
+          "type": "string"
+        },
+        "searchQuery": {
+          "description": "The user's search query. See SearchRequest.query for definition. The value must be a UTF-8 encoded string with a length limit of 5,000 characters. Otherwise, an INVALID_ARGUMENT error is returned. At least one of search_query or page_categories is required for `search` events. Other event types should not set this field. Otherwise, an INVALID_ARGUMENT error is returned.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaTransactionInfo": {
+      "description": "A transaction represents the entire purchase transaction.",
+      "id": "GoogleCloudDiscoveryengineV1betaTransactionInfo",
+      "properties": {
+        "cost": {
+          "description": "All the costs associated with the products. These can be manufacturing costs, shipping expenses not borne by the end user, or any other costs, such that: * Profit = value - tax - cost",
+          "format": "float",
+          "type": "number"
+        },
+        "currency": {
+          "description": "Required. Currency code. Use three-character ISO-4217 code.",
+          "type": "string"
+        },
+        "discountValue": {
+          "description": "The total discount(s) value applied to this transaction. This figure should be excluded from TransactionInfo.value For example, if a user paid TransactionInfo.value amount, then nominal (pre-discount) value of the transaction is the sum of TransactionInfo.value and TransactionInfo.discount_value This means that profit is calculated the same way, regardless of the discount value, and that TransactionInfo.discount_value can be larger than TransactionInfo.value: * Profit = value - tax - cost",
+          "format": "float",
+          "type": "number"
+        },
+        "tax": {
+          "description": "All the taxes associated with the transaction.",
+          "format": "float",
+          "type": "number"
+        },
+        "transactionId": {
+          "description": "The transaction ID with a length limit of 128 characters.",
+          "type": "string"
+        },
+        "value": {
+          "description": "Required. Total non-zero value associated with the transaction. This value may include shipping, tax, or other adjustments to the total value that you want to include.",
+          "format": "float",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaUserEvent": {
+      "description": "UserEvent captures all metadata information Discovery Engine API needs to know about how end users interact with customers' website.",
+      "id": "GoogleCloudDiscoveryengineV1betaUserEvent",
+      "properties": {
+        "attributes": {
+          "additionalProperties": {
+            "$ref": "GoogleCloudDiscoveryengineV1betaCustomAttribute"
+          },
+          "description": "Extra user event features to include in the recommendation model. These attributes must NOT contain data that needs to be parsed or processed further, e.g. JSON or other encodings. If you provide custom attributes for ingested user events, also include them in the user events that you associate with prediction requests. Custom attribute formatting must be consistent between imported events and events provided with prediction requests. This lets the Discovery Engine API use those custom attributes when training models and serving predictions, which helps improve recommendation quality. This field needs to pass all below criteria, otherwise an INVALID_ARGUMENT error is returned: * The key must be a UTF-8 encoded string with a length limit of 5,000 characters. * For text attributes, at most 400 values are allowed. Empty values are not allowed. Each value must be a UTF-8 encoded string with a length limit of 256 characters. * For number attributes, at most 400 values are allowed. For product recommendations, an example of extra user information is traffic_channel, which is how a user arrives at the site. Users can arrive at the site by coming to the site directly, coming through Google search, or in other ways.",
+          "type": "object"
+        },
+        "attributionToken": {
+          "description": "Token to attribute an API response to user action(s) to trigger the event. Highly recommended for user events that are the result of PredictionService.Predict. This field enables accurate attribution of recommendation model performance. The value must be one of: * PredictResponse.attribution_token for events that are the result of PredictionService.Predict. * SearchResponse.attribution_token for events that are the result of SearchService.Search. * CompleteQueryResponse.attribution_token for events that are the result of SearchService.CompleteQuery. This token enables us to accurately attribute page view or conversion completion back to the event and the particular predict response containing this clicked/purchased product. If user clicks on product K in the recommendation results, pass PredictResponse.attribution_token as a URL parameter to product K's page. When recording events on product K's page, log the PredictResponse.attribution_token to this field.",
+          "type": "string"
+        },
+        "completionInfo": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaCompletionInfo",
+          "description": "CompleteQuery API details related to the event. This field should be set for `search` event when autocomplete function is enabled and the user clicks a suggestion for search."
+        },
+        "directUserRequest": {
+          "description": "Should set to true if the request is made directly from the end user, in which case the UserEvent.user_info.user_agent can be populated from the HTTP request. This flag should be set only if the API request is made directly from the end user such as a mobile app (and not if a gateway or a server is processing and pushing the user events). This should not be set when using the JavaScript tag in UserEventService.CollectUserEvent.",
+          "type": "boolean"
+        },
+        "documents": {
+          "description": "List of Documents associated with this user event. This field is optional except for the following event types: * `view-item` * `add-to-cart` * `purchase` * `media-play` * `media-complete` In a `search` event, this field represents the documents returned to the end user on the current page (the end user may have not finished browsing the whole page yet). When a new page is returned to the end user, after pagination/filtering/ordering even for the same query, a new `search` event with different UserEvent.documents is desired.",
+          "items": {
+            "$ref": "GoogleCloudDiscoveryengineV1betaDocumentInfo"
+          },
+          "type": "array"
+        },
+        "eventTime": {
+          "description": "Only required for UserEventService.ImportUserEvents method. Timestamp of when the user event happened.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "eventType": {
+          "description": "Required. User event type. Allowed values are: Generic values: * `search`: Search for Documents. * `view-item`: Detailed page view of a Document. * `view-item-list`: View of a panel or ordered list of Documents. * `view-home-page`: View of the home page. * `view-category-page`: View of a category page, e.g. Home > Men > Jeans Retail-related values: * `add-to-cart`: Add an item(s) to cart, e.g. in Retail online shopping * `purchase`: Purchase an item(s) Media-related values: * `media-play`: Start/resume watching a video, playing a song, etc. * `media-complete`: Finished or stopped midway through a video, song, etc.",
+          "type": "string"
+        },
+        "filter": {
+          "description": "The filter syntax consists of an expression language for constructing a predicate from one or more fields of the documents being filtered. One example is for `search` events, the associated SearchService.SearchRequest may contain a filter expression in SearchService.SearchRequest.filter conforming to https://google.aip.dev/160#filtering. Similarly, for `view-item-list` events that are generated from a PredictionService.PredictRequest, this field may be populated directly from PredictionService.PredictRequest.filter conforming to https://google.aip.dev/160#filtering. The value must be a UTF-8 encoded string with a length limit of 1,000 characters. Otherwise, an INVALID_ARGUMENT error is returned.",
+          "type": "string"
+        },
+        "mediaInfo": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaMediaInfo",
+          "description": "Media-specific info."
+        },
+        "pageInfo": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaPageInfo",
+          "description": "Page metadata such as categories and other critical information for certain event types such as `view-category-page`."
+        },
+        "panel": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaPanelInfo",
+          "description": "Panel metadata associated with this user event."
+        },
+        "promotionIds": {
+          "description": "The promotion IDs if this is an event associated with promotions. Currently, this field is restricted to at most one ID.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "searchInfo": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaSearchInfo",
+          "description": "Search API details related to the event. This field should be set for `search` event."
+        },
+        "sessionId": {
+          "description": "A unique identifier for tracking a visitor session with a length limit of 128 bytes. A session is an aggregation of an end user behavior in a time span. A general guideline to populate the session_id: 1. If user has no activity for 30 min, a new session_id should be assigned. 2. The session_id should be unique across users, suggest use uuid or add UserEvent.user_pseudo_id as prefix.",
+          "type": "string"
+        },
+        "tagIds": {
+          "description": "A list of identifiers for the independent experiment groups this user event belongs to. This is used to distinguish between user events associated with different experiment setups on the customer end.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "transactionInfo": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaTransactionInfo",
+          "description": "The transaction metadata (if any) associated with this user event."
+        },
+        "userInfo": {
+          "$ref": "GoogleCloudDiscoveryengineV1betaUserInfo",
+          "description": "Information about the end user."
+        },
+        "userPseudoId": {
+          "description": "Required. A unique identifier for tracking visitors. For example, this could be implemented with an HTTP cookie, which should be able to uniquely identify a visitor on a single device. This unique identifier should not change if the visitor log in/out of the website. Do not set the field to the same fixed ID for different users. This mixes the event history of those users together, which results in degraded model quality. The field must be a UTF-8 encoded string with a length limit of 128 characters. Otherwise, an INVALID_ARGUMENT error is returned. The field should not contain PII or user-data. We recommend to use Google Analytics [Client ID](https://developers.google.com/analytics/devguides/collection/analyticsjs/field-reference#clientId) for this field.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleCloudDiscoveryengineV1betaUserInfo": {
+      "description": "Information of an end user.",
+      "id": "GoogleCloudDiscoveryengineV1betaUserInfo",
+      "properties": {
+        "userAgent": {
+          "description": "User agent as included in the HTTP header. Required for getting SearchResponse.sponsored_results. The field must be a UTF-8 encoded string with a length limit of 1,000 characters. Otherwise, an INVALID_ARGUMENT error is returned. This should not be set when using the client side event reporting with GTM or JavaScript tag in UserEventService.CollectUserEvent or if direct_user_request is set.",
+          "type": "string"
+        },
+        "userId": {
+          "description": "Highly recommended for logged-in users. Unique identifier for logged-in user, such as a user name. Don't set for anonymous users. Always use a hashed value for this ID. Don't set the field to the same fixed ID for different users. This mixes the event history of those users together, which results in degraded model quality. The field must be a UTF-8 encoded string with a length limit of 128 characters. Otherwise, an INVALID_ARGUMENT error is returned.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleLongrunningListOperationsResponse": {
+      "description": "The response message for Operations.ListOperations.",
+      "id": "GoogleLongrunningListOperationsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "The standard List next-page token.",
+          "type": "string"
+        },
+        "operations": {
+          "description": "A list of operations that matches the specified filter in the request.",
+          "items": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleLongrunningOperation": {
+      "description": "This resource represents a long-running operation that is the result of a network API call.",
+      "id": "GoogleLongrunningOperation",
+      "properties": {
+        "done": {
+          "description": "If the value is `false`, it means the operation is still in progress. If `true`, the operation is completed, and either `error` or `response` is available.",
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "GoogleRpcStatus",
+          "description": "The error result of the operation in case of failure or cancellation."
+        },
+        "metadata": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "Service-specific metadata associated with the operation. It typically contains progress information and common metadata such as create time. Some services might not provide such metadata. Any method that returns a long-running operation should document the metadata type, if any.",
+          "type": "object"
+        },
+        "name": {
+          "description": "The server-assigned name, which is only unique within the same service that originally returns it. If you use the default HTTP mapping, the `name` should be a resource name ending with `operations/{unique_id}`.",
+          "type": "string"
+        },
+        "response": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "The normal response of the operation in case of success. If the original method returns no data on success, such as `Delete`, the response is `google.protobuf.Empty`. If the original method is standard `Get`/`Create`/`Update`, the response should be the resource. For other methods, the response should have the type `XxxResponse`, where `Xxx` is the original method name. For example, if the original method name is `TakeSnapshot()`, the inferred response type is `TakeSnapshotResponse`.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleProtobufEmpty": {
+      "description": "A generic empty message that you can re-use to avoid defining duplicated empty messages in your APIs. A typical example is to use it as the request or the response type of an API method. For instance: service Foo { rpc Bar(google.protobuf.Empty) returns (google.protobuf.Empty); }",
+      "id": "GoogleProtobufEmpty",
+      "properties": {},
+      "type": "object"
+    },
+    "GoogleRpcStatus": {
+      "description": "The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).",
+      "id": "GoogleRpcStatus",
+      "properties": {
+        "code": {
+          "description": "The status code, which should be an enum value of google.rpc.Code.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "details": {
+          "description": "A list of messages that carry the error details. There is a common set of message types for APIs to use.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "message": {
+          "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the google.rpc.Status.details field, or localized by the client.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleTypeDate": {
+      "description": "Represents a whole or partial calendar date, such as a birthday. The time of day and time zone are either specified elsewhere or are insignificant. The date is relative to the Gregorian Calendar. This can represent one of the following: * A full date, with non-zero year, month, and day values. * A month and day, with a zero year (for example, an anniversary). * A year on its own, with a zero month and a zero day. * A year and month, with a zero day (for example, a credit card expiration date). Related types: * google.type.TimeOfDay * google.type.DateTime * google.protobuf.Timestamp",
+      "id": "GoogleTypeDate",
+      "properties": {
+        "day": {
+          "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "month": {
+          "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "year": {
+          "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Discovery Engine API",
+  "version": "v1beta",
+  "version_module": true
+}

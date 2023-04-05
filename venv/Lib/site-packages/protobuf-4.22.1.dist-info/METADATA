@@ -1,0 +1,16 @@
+Metadata-Version: 2.1
+Name: protobuf
+Version: 4.22.1
+Author: protobuf@googlegroups.com
+Author-email: protobuf@googlegroups.com
+Home-page: https://developers.google.com/protocol-buffers/
+License: 3-Clause BSD License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Requires-Python: >=3.7
+
+UNKNOWN

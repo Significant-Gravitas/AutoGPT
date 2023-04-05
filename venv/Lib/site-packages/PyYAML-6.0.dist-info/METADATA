@@ -1,0 +1,46 @@
+Metadata-Version: 2.1
+Name: PyYAML
+Version: 6.0
+Summary: YAML parser and emitter for Python
+Home-page: https://pyyaml.org/
+Download-URL: https://pypi.org/project/PyYAML/
+Author: Kirill Simonov
+Author-email: xi@resolvent.net
+License: MIT
+Project-URL: Bug Tracker, https://github.com/yaml/pyyaml/issues
+Project-URL: CI, https://github.com/yaml/pyyaml/actions
+Project-URL: Documentation, https://pyyaml.org/wiki/PyYAMLDocumentation
+Project-URL: Mailing lists, http://lists.sourceforge.net/lists/listinfo/yaml-core
+Project-URL: Source Code, https://github.com/yaml/pyyaml
+Platform: Any
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Cython
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: Implementation :: CPython
+Classifier: Programming Language :: Python :: Implementation :: PyPy
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: Text Processing :: Markup
+Requires-Python: >=3.6
+License-File: LICENSE
+
+YAML is a data serialization format designed for human readability
+and interaction with scripting languages.  PyYAML is a YAML parser
+and emitter for Python.
+
+PyYAML features a complete YAML 1.1 parser, Unicode support, pickle
+support, capable extension API, and sensible error messages.  PyYAML
+supports standard YAML tags and provides Python-specific tags that
+allow to represent an arbitrary Python object.
+
+PyYAML is applicable for a broad range of tasks from complex
+configuration files to object serialization and persistence.

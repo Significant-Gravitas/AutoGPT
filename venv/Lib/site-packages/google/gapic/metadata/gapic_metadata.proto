@@ -1,0 +1,92 @@
+// Copyright 2020 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+syntax = "proto3";
+
+package google.gapic.metadata;
+
+option csharp_namespace = "Google.Gapic.Metadata";
+option go_package = "google.golang.org/genproto/googleapis/gapic/metadata;metadata";
+option java_multiple_files = true;
+option java_outer_classname = "GapicMetadataProto";
+option java_package = "com.google.gapic.metadata";
+option php_namespace = "Google\\Gapic\\Metadata";
+option ruby_package = "Google::Gapic::Metadata";
+
+// Metadata about a GAPIC library for a specific combination of API, version, and
+// computer language.
+message GapicMetadata {
+  // Schema version of this proto. Current value: 1.0
+  string schema = 1;
+
+  // Any human-readable comments to be included in this file.
+  string comment = 2;
+
+  // Computer language of this generated language. This must be
+  // spelled out as it spoken in English, with no capitalization or
+  // separators (e.g. "csharp", "nodejs").
+  string language = 3;
+
+  // The proto package containing the API definition for which this
+  // GAPIC library was generated.
+  string proto_package = 4;
+
+  // The language-specific library package for this GAPIC library.
+  string library_package = 5;
+
+  // A map from each proto-defined service to ServiceForTransports,
+  // which allows listing information about transport-specific
+  // implementations of the service.
+  //
+  // The key is the name of the service as it appears in the .proto
+  // file.
+  map<string, ServiceForTransport> services = 6;
+
+  // A map from a transport name to ServiceAsClient, which allows
+  // listing information about the client objects that implement the
+  // parent RPC service for the specified transport.
+  //
+  // The key name is the transport, lower-cased with no separators
+  // (e.g. "grpc", "rest").
+  message ServiceForTransport {
+    map<string, ServiceAsClient> clients = 1;
+  }
+
+  // Information about a specific client implementing a proto-defined service.
+  message ServiceAsClient {
+    // The name of the library client formatted as it appears in the source code
+    string library_client = 1;
+
+    // A mapping from each proto-defined RPC name to the the list of
+    // methods in library_client that implement it. There can be more
+    // than one library_client method for each RPC. RPCs with no
+    // library_client methods need not be included.
+    //
+    // The key name is the name of the RPC as defined and formated in
+    // the proto file.
+    map<string, MethodList> rpcs = 2;
+  }
+
+  // List of GAPIC client methods implementing the proto-defined RPC
+  // for the transport and service specified in the containing
+  // structures.
+  message MethodList {
+    // List of methods for a specific proto-service client in the
+    // GAPIC. These names should be formatted as they appear in the
+    // source code.
+    repeated string methods = 1;
+  }
+
+}

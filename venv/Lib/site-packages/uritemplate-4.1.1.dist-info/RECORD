@@ -1,0 +1,17 @@
+uritemplate-4.1.1.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+uritemplate-4.1.1.dist-info/LICENSE,sha256=PPyfAc3uySkA8ijPVnf_pX5-0wTEJjUyvK2cvZlp5Gw,196
+uritemplate-4.1.1.dist-info/METADATA,sha256=rotEEWL5rUie3gKyYHhxXqjdpYw16kLCT0Aw0bvta9o,2882
+uritemplate-4.1.1.dist-info/RECORD,,
+uritemplate-4.1.1.dist-info/WHEEL,sha256=WzZ8cwjh8l0jtULNjYq1Hpr-WCqCRgPr--TX4P5I1Wo,110
+uritemplate-4.1.1.dist-info/top_level.txt,sha256=WJzkFEINWbgwuzuUEP8kD8Sk2fFHYQzBgrjO3viyubE,12
+uritemplate/__init__.py,sha256=toWdtJeaNWsftVzhDASD_2wwxkd84HdXg22rFwMkVkc,816
+uritemplate/__pycache__/__init__.cpython-311.pyc,,
+uritemplate/__pycache__/api.cpython-311.pyc,,
+uritemplate/__pycache__/orderedset.cpython-311.pyc,,
+uritemplate/__pycache__/template.cpython-311.pyc,,
+uritemplate/__pycache__/variable.cpython-311.pyc,,
+uritemplate/api.py,sha256=eQ3DdgNNDlnoedSE-rQ5AQv8JvMzdljPX8l-187myfI,2305
+uritemplate/orderedset.py,sha256=4Z8u8uw339D_RWvbUslv5d6EnA2wxQC66317oTLzp0o,3367
+uritemplate/py.typed,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+uritemplate/template.py,sha256=qXcNZxcGPGxgQnaRDIafaKsrTnvBzplOBBPAM8Hbq7g,4774
+uritemplate/variable.py,sha256=HixfLuF7R3f7zwIQohB9cFVRVZsN_8Y2RIZDRHpNg40,12870
