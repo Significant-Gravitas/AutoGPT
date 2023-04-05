@@ -9,5 +9,6 @@ requests
 tiktoken==0.3.3
 gTTS==2.3.1
 docker
+tenacity
 duckduckgo-search
 google-api-python-client #(https://developers.google.com/custom-search/v1/overview) 

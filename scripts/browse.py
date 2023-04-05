@@ -2,6 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 from config import Config
 from llm_utils import create_chat_completion
+from tenacity import retry, wait_exponential, stop_after_attempt
+
 
 cfg = Config()
 
@@ -80,31 +82,67 @@ def create_message(chunk, question):
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
     }
 
-def summarize_text(text, question):
-    if not text:
+
+@retry(wait=wait_exponential(multiplier=1, min=4, max=30), stop=stop_after_attempt(5))
+def call_create_chat_completion(messages):
+    return create_chat_completion(
+        model=cfg.fast_llm_model,
+        messages=messages,
+        max_tokens=300,
+
+
+def summarize_text(text, is_website=True):
+    if text == "":
         return "Error: No text to summarize"
 
-    text_length = len(text)
-    print(f"Text length: {text_length} characters")
-
+    print("Text length: " + str(len(text)) + " characters")
     summaries = []
     chunks = list(split_text(text))
 
     for i, chunk in enumerate(chunks):
-        print(f"Summarizing chunk {i + 1} / {len(chunks)}")
-        messages = [create_message(chunk, question)]
+        print("Summarizing chunk " + str(i + 1) + " / " + str(len(chunks)))
+        if is_website:
+            messages = [
+                {
+                    "role": "user",
+                    "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
+                    chunk},
+            ]
+        else:
+            messages = [
+                {
+                    "role": "user",
+                    "content": "Please summarize the following text, focusing on extracting concise and specific information: " +
+                    chunk},
+            ]
 
-        summary = create_chat_completion(
-            model=cfg.fast_llm_model,
-            messages=messages,
-            max_tokens=300,
-        )
-        summaries.append(summary)
+        
+        try:
+            summary = call_create_chat_completion(messages)
+            summaries.append(summary)
+        except Exception as e:
+            print(f"Error encountered while summarizing chunk {i + 1}: {e}")
 
-    print(f"Summarized {len(chunks)} chunks.")
+    print("Summarized " + str(len(chunks)) + " chunks.")
+    print("Summarized " + str(len(chunks)) + " chunks.")
 
     combined_summary = "\n".join(summaries)
-    messages = [create_message(combined_summary, question)]
+
+    # Summarize the combined summary
+    if is_website:
+        messages = [
+            {
+                "role": "user",
+                "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
+                combined_summary},
+        ]
+    else:
+        messages = [
+            {
+                "role": "user",
+                "content": "Please summarize the following text, focusing on extracting concise and specific infomation: " +
+                combined_summary},
+        ]
 
     final_summary = create_chat_completion(
         model=cfg.fast_llm_model,
