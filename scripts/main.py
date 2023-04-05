@@ -301,7 +301,7 @@ while True:
     except Exception as e:
         print_to_console("Error: \n", Fore.RED, str(e))
 
-    if not cfg.continuous_mode or next_action_count > 0:
+    if not cfg.continuous_mode and next_action_count === 0:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
         # Get key press: Prompt the user to press enter to continue or escape
         # to exit
@@ -312,7 +312,7 @@ while True:
                 Fore.CYAN,
                 f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
             print(
-                f"Enter 'y' to authorise command, 'y -n' to run n continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+                f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
                 flush=True)
             while True:
                 console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
