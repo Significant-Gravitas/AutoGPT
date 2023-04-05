@@ -43,6 +43,7 @@ Your support is greatly appreciated
     - [Setting up environment variables](#setting-up-environment-variables)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
+  - [Config file](#config-file)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
@@ -155,6 +156,12 @@ python scripts/main.py --continuous
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 ```
 python scripts/main.py --gpt3only
+```
+
+## Config file
+You can use a yaml config file rather than Auto-GPT prompting you for its name, role, and goals.
+```
+python scripts/main.py --config_file=./scripts/example_config.yaml
 ```
 
 ## ⚠️ Limitations
