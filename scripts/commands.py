@@ -6,7 +6,7 @@ import agent_manager as agents
 import speak
 from config import Config
 import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file
+from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
@@ -15,6 +15,13 @@ from googleapiclient.errors import HttpError
 
 cfg = Config()
 
+
+def is_valid_int(value):
+    try:
+        int(value)
+        return True
+    except ValueError:
+        return False
 
 def get_command(response):
     try:
@@ -83,6 +90,8 @@ def execute_command(command_name, arguments):
             return append_to_file(arguments["file"], arguments["text"])
         elif command_name == "delete_file":
             return delete_file(arguments["file"])
+        elif command_name == "search_files":
+            return search_files(arguments["directory"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
         # TODO: Change these to take in a file rather than pasted code, if
@@ -194,14 +203,28 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
-    if int(key) >= 0 and key < len(mem.permanent_memory):
-        _text = "Overwriting memory with key " + \
-            str(key) + " and string " + string
-        mem.permanent_memory[key] = string
+    # Check if the key is a valid integer
+    if is_valid_int(key):
+        key_int = int(key)
+        # Check if the integer key is within the range of the permanent_memory list
+        if 0 <= key_int < len(mem.permanent_memory):
+            _text = "Overwriting memory with key " + str(key) + " and string " + string
+            # Overwrite the memory slot with the given integer key and string
+            mem.permanent_memory[key_int] = string
+            print(_text)
+            return _text
+        else:
+            print(f"Invalid key '{key}', out of range.")
+            return None
+    # Check if the key is a valid string
+    elif isinstance(key, str):
+        _text = "Overwriting memory with key " + key + " and string " + string
+        # Overwrite the memory slot with the given string key and string
+        mem.string_key_memory[key] = string
         print(_text)
         return _text
     else:
-        print("Invalid key, cannot overwrite memory.")
+        print(f"Invalid key '{key}', must be an integer or a string.")
         return None
 
 
@@ -235,7 +258,12 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
 
 def message_agent(key, message):
     global cfg
-    agent_response = agents.message_agent(key, message)
+    
+    # Check if the key is a valid integer
+    if not is_valid_int(key):
+        return "Invalid key, cannot message agent."
+    
+    agent_response = agents.message_agent(int(key), message)
 
     # Speak response
     if cfg.speak_mode:
