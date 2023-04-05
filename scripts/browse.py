@@ -8,9 +8,9 @@ cfg = Config()
 def scrape_text(url):
     response = requests.get(url)
 
-    # Check if the response contains an HTTP error
-    if response.status_code >= 400:
-        return "Error: HTTP " + str(response.status_code) + " error"
+    # Check if it is a 403, 404, or text is < 25 chars (probably a javascript page)
+    if response.status_code == 403 or response.status_code == 404 or len(response.text) < 25:
+        return "Error getting page text."
 
     soup = BeautifulSoup(response.text, "html.parser")
 
