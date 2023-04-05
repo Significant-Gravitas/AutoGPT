@@ -183,7 +183,7 @@ def commit_memory(string):
 
 
 def delete_memory(key):
-    if key >= 0 and key < len(mem.permanent_memory):
+    if key >= -len(mem.permanent_memory) and key < len(mem.permanent_memory):
         _text = "Deleting memory with key " + str(key)
         del mem.permanent_memory[key]
         print(_text)
