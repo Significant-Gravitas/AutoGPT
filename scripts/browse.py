@@ -2,15 +2,44 @@ import requests
 from bs4 import BeautifulSoup
 from config import Config
 from llm_utils import create_chat_completion
+from urllib.parse import urlparse, urljoin
 
 cfg = Config()
 
-def scrape_text(url):
-    response = requests.get(url)
+# Function to check if the URL is valid
+def is_valid_url(url):
+    try:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc])
+    except ValueError:
+        return False
 
-    # Check if the response contains an HTTP error
-    if response.status_code >= 400:
-        return "Error: HTTP " + str(response.status_code) + " error"
+# Function to sanitize the URL
+def sanitize_url(url):
+    return urljoin(url, urlparse(url).path)
+
+# Function to make a request with a specified timeout and handle exceptions
+def make_request(url, timeout=10):
+    try:
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        return response
+    except requests.exceptions.RequestException as e:
+        return "Error: " + str(e)
+
+def scrape_text(url):
+    # Validate the input URL
+    if not is_valid_url(url):
+        return "Error: Invalid URL"
+    
+    # Sanitize the input URL
+    sanitized_url = sanitize_url(url)
+    
+    # Make the request with a timeout and handle exceptions
+    response = make_request(sanitized_url)
+
+    if isinstance(response, str):
+        return response
 
     soup = BeautifulSoup(response.text, "html.parser")
 
