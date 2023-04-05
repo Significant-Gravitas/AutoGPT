@@ -256,18 +256,20 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
 
 def message_agent(key, message):
     global cfg
-    
+
     # Check if the key is a valid integer
-    if not is_valid_int(key):
-        return "Invalid key, cannot message agent."
-    
-    agent_response = agents.message_agent(int(key), message)
+    if is_valid_int(key):
+        agent_response = agents.message_agent(int(key), message)
+    # Check if the key is a valid string
+    elif isinstance(key, str):
+        agent_response = agents.message_agent(key, message)
+    else:
+        return "Invalid key, must be an integer or a string."
 
     # Speak response
     if cfg.speak_mode:
-        speak.say_text(agent_response, 1)
-
-    return f"Agent {key} responded: {agent_response}"
+        say.speak(agent_response)
+    return agent_response
 
 
 def list_agents():
