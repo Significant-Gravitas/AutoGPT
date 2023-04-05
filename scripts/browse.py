@@ -1,7 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 from config import Config
-from llm_utils import create_chat_completion
 
 cfg = Config()
 
@@ -79,37 +78,3 @@ def create_message(chunk, question):
         "role": "user",
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
     }
-
-def summarize_text(text, question):
-    if not text:
-        return "Error: No text to summarize"
-
-    text_length = len(text)
-    print(f"Text length: {text_length} characters")
-
-    summaries = []
-    chunks = list(split_text(text))
-
-    for i, chunk in enumerate(chunks):
-        print(f"Summarizing chunk {i + 1} / {len(chunks)}")
-        messages = [create_message(chunk, question)]
-
-        summary = create_chat_completion(
-            model=cfg.fast_llm_model,
-            messages=messages,
-            max_tokens=300,
-        )
-        summaries.append(summary)
-
-    print(f"Summarized {len(chunks)} chunks.")
-
-    combined_summary = "\n".join(summaries)
-    messages = [create_message(combined_summary, question)]
-
-    final_summary = create_chat_completion(
-        model=cfg.fast_llm_model,
-        messages=messages,
-        max_tokens=300,
-    )
-
-    return final_summary

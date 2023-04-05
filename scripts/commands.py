@@ -167,7 +167,7 @@ def browse_website(url, question):
 
 def get_text_summary(url, question):
     text = browse.scrape_text(url)
-    summary = browse.summarize_text(text, question)
+    summary = ai.summarize_and_answer_from_text(text, question)
     return """ "Result" : """ + summary
 
 
