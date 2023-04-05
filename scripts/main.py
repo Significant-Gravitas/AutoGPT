@@ -158,8 +158,8 @@ def load_variables(config_file="config.yaml"):
     return full_prompt
 
 
-def construct_prompt():
-    config = AIConfig.load()
+def construct_prompt(config_file=None):
+    config = AIConfig.load(config_file=config_file)
     if config.ai_name:
         print_to_console(
             f"Welcome back! ",
@@ -248,6 +248,7 @@ def parse_arguments():
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--config_file', action='store', help='Use yaml file instead of prompting user for input')
     args = parser.parse_args()
 
     if args.continuous:
@@ -266,13 +267,17 @@ def parse_arguments():
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
+    if args.config_file:
+        print_to_console("Using config file: ", Fore.GREEN, args.config_file)
+        cfg.set_config_file(args.config_file)
+
 
 # TODO: fill in llm values here
 
 cfg = Config()
 parse_arguments()
 ai_name = ""
-prompt = construct_prompt()
+prompt = construct_prompt(config_file=cfg.config_file)
 # print(prompt)
 # Initialize variables
 full_message_history = []
