@@ -41,6 +41,7 @@ def format_hyperlinks(hyperlinks):
 
 def scrape_links(url):
     response = requests.get(url)
+    print(response)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
