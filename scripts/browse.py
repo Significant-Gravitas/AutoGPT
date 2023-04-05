@@ -10,7 +10,7 @@ def scrape_text(url):
 
     # Check if it is a 403, 404, or text is < 25 chars (probably a javascript page)
     if response.status_code == 403 or response.status_code == 404 or len(response.text) < 25:
-        return "Error getting page text."
+        return "Error getting text."
 
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -42,9 +42,9 @@ def format_hyperlinks(hyperlinks):
 def scrape_links(url):
     response = requests.get(url)
 
-    # Check if the response contains an HTTP error
-    if response.status_code >= 400:
-        return "error"
+    # Check if it is a 403, 404, or text is < 25 chars (probably a javascript page)
+    if response.status_code == 403 or response.status_code == 404 or len(response.text) < 25:
+        return "Error getting text."
 
     soup = BeautifulSoup(response.text, "html.parser")
 
