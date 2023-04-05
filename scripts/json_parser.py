@@ -67,7 +67,9 @@ def fix_json(json_str: str, schema: str, debug=False) -> str:
         print(f"Fixed JSON: {result_string}")
         print("----------- END OF FIX ATTEMPT ----------------")
     try:
-        return json.loads(result_string)
+        json_str = json_str.replace('\t', '')
+        json.loads(result_string)
+        return result_string
     except:
         # Get the call stack:
         # import traceback
