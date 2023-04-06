@@ -12,7 +12,7 @@ from json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-
+from web import browse_website
 cfg = Config()
 
 
@@ -157,18 +157,6 @@ def google_official_search(query, num_results=8):
 
     # Return the list of search result URLs
     return search_results_links
-
-def browse_website(url, question):
-    summary = get_text_summary(url, question)
-    links = get_hyperlinks(url)
-
-    # Limit links to 5
-    if len(links) > 5:
-        links = links[:5]
-
-    result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
-
-    return result
 
 
 def get_text_summary(url, question):
