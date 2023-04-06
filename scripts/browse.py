@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 from config import Config
-from llm_utils import create_chat_completion
+from llm_utils import create_chat_completion, create_chat_completion_with_retry
 from tenacity import retry, wait_exponential, stop_after_attempt
 
 
@@ -83,16 +83,8 @@ def create_message(chunk, question):
     }
 
 
-@retry(wait=wait_exponential(multiplier=1, min=4, max=30), stop=stop_after_attempt(5))
-def call_create_chat_completion(messages):
-    return create_chat_completion(
-        model=cfg.fast_llm_model,
-        messages=messages,
-        max_tokens=300,
-
-
 def summarize_text(text, is_website=True):
-    if text == "":
+    if not text:
         return "Error: No text to summarize"
 
     print("Text length: " + str(len(text)) + " characters")
@@ -104,21 +96,21 @@ def summarize_text(text, is_website=True):
         if is_website:
             messages = [
                 {
-                    "role": "user",
-                    "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
-                    chunk},
+              "role": "user",
+              "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
+              chunk},
             ]
         else:
             messages = [
                 {
-                    "role": "user",
-                    "content": "Please summarize the following text, focusing on extracting concise and specific information: " +
-                    chunk},
+               "role": "user",
+               "content": "Please summarize the following text, focusing on extracting concise and specific information: " +
+               chunk},
             ]
 
         
         try:
-            summary = call_create_chat_completion(messages)
+            summary = create_chat_completion_with_retry(messages)
             summaries.append(summary)
         except Exception as e:
             print(f"Error encountered while summarizing chunk {i + 1}: {e}")
