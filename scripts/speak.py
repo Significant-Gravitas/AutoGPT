@@ -5,7 +5,7 @@ from config import Config
 cfg = Config()
 import gtts
 import threading
-from threading import Lock
+from threading import Lock, Semaphore
 
 # TODO: Nicer names for these ids
 voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
@@ -16,6 +16,7 @@ tts_headers = {
 }
 
 mutex_lock = Lock() # Ensure only one sound is played at a time
+queue_semaphore = Semaphore(1) # The amount of sounds to queue before blocking the main thread
 
 def eleven_labs_speech(text, voice_index=0):
     """Speak text using elevenlabs.io's API"""
@@ -55,6 +56,9 @@ def say_text(text, voice_index=0):
             success = eleven_labs_speech(text, voice_index)
             if not success:
                 gtts_speech(text)
+        
+        queue_semaphore.release()
 
+    queue_semaphore.acquire(True)
     thread = threading.Thread(target=speak)
     thread.start()
