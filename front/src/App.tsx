@@ -3,29 +3,53 @@ import reactLogo from "./assets/react.svg"
 import viteLogo from "/vite.svg"
 import { useEffect } from "react"
 import "./App.css"
-//Add this function
-const getGreeting = async function () {
-  const res = await fetch("/api/python")
-  return await res.json()
-}
 
 function App() {
-  const [greeting, setGreeting] = useState("")
+  const [output, setOutput] = useState([])
 
-  const callScript = () => {
-    getGreeting().then((res) => setGreeting(res.greeting))
+  const startScript = async () => {
+    const res = await fetch("/api/start")
+    return await res.json()
+  }
+  const killScript = async () => {
+    const res = await fetch("/api/stop")
+    return await res.json()
+  }
+  const fetchData = async () => {
+    const res = await fetch("/api/data")
+    let data = await res.json()
+    const lines = data.output.split("\n")
+    setOutput(lines)
   }
 
   return (
     <>
       <button
         onClick={() => {
-          callScript()
+          startScript()
         }}
       >
-        call script
+        start script
       </button>
-      <p>Server respons2azee: {greeting}</p>
+      <button
+        onClick={() => {
+          fetchData()
+        }}
+      >
+        fetch data
+      </button>
+      <button
+        onClick={() => {
+          killScript()
+        }}
+      >
+        kill script
+      </button>
+      <ul>
+        {output.map((line) => (
+          <li>{line}</li>
+        ))}
+      </ul>
     </>
   )
 }

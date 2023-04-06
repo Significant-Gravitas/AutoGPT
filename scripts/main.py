@@ -166,11 +166,7 @@ def construct_prompt():
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
-        should_continue = input(f"""Continue with the last settings? 
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}  
-Continue (y/n): """)
+        should_continue = "y"
         if should_continue.lower() == "n":
             config = AIConfig()
 
@@ -321,7 +317,7 @@ while True:
             f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
             flush=True)
         while True:
-            console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+            console_input = "y"#input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
             if console_input.lower() == "y":
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break
