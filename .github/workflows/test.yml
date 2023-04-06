@@ -17,7 +17,7 @@ jobs:
         id: load_image_url
         run: |
           IMAGE_URL=`make image-url`
-          echo "image-url=$IMAGE_URL" >> $GITHUB_OUTPUT
+          echo "image-url=$IMAGE_URL" >> "$GITHUB_OUTPUT"
 
       - name: Restore Cache
         uses: actions/cache@v2
