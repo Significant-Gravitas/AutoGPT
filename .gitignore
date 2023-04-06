@@ -2,8 +2,7 @@
 *.pyc
 auto_gpt_workspace/*
 last_run_ai_settings.yaml
-outputs/*
-scripts/__pycache__/*
-scripts/*json
+src/__pycache__/*
+src/*json
 .env
 .vscode
