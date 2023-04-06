@@ -43,7 +43,7 @@ jobs:
           path: docker-image.tar
           key: test-image
       - name: Run pytest
-        uses: .github/actions/run-docker
+        uses: ./.github/actions/run-docker
         with:
           image-tag: ${{ needs.build.outputs.image-tag }}
           command: make pytest
@@ -58,7 +58,7 @@ jobs:
           path: docker-image.tar
           key: test-image
       - name: Run black
-        uses: .github/actions/run-docker
+        uses: ./.github/actions/run-docker
         with:
           image-tag: ${{ needs.build.outputs.image-tag }}
           command: make black-check
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run flake8
-        uses: .github/actions/run-docker
+        uses: ./.github/actions/run-docker
         with:
           image-tag: ${{ needs.build.outputs.image-tag }}
           command: make flake8
