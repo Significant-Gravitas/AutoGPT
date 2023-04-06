@@ -1,4 +1,6 @@
+.dockerignore
 .env
+.git*
 *.mpeg
 *.pyc
 auto_gpt_workspace/
