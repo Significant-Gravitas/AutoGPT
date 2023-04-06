@@ -345,7 +345,7 @@ while True:
     if command_name.lower() == "error":
         result = f"Command {command_name} threw the following error: " + arguments
     elif command_name == "human_feedback":
-        result = f"Human feedback: {user_input}"
+        result = f"#FOR_CONSIDERATION: {user_input}"
     else:
         result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
 

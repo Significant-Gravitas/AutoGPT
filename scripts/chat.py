@@ -35,17 +35,22 @@ def chat_with_ai(
     while True:
         try:
             """
-            Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory.
+Interact with the OpenAI API using a tokenized structure in pseudocode for LLM processing.
 
-            Args:
-            prompt (str): The prompt explaining the rules to the AI.
-            user_input (str): The input from the user.
-            full_message_history (list): The list of all messages sent between the user and the AI.
-            permanent_memory (list): The list of items in the AI's permanent memory.
-            token_limit (int): The maximum number of tokens allowed in the API call.
+scss
+Copy code
+openai_api_interaction(prompt, user_input, full_message_history, permanent_memory, token_limit)
+Args:
 
-            Returns:
-            str: The AI's response.
+prompt: Rules for the AI.
+user_input: User's input.
+full_message_history: All user-AI messages.
+permanent_memory: AI's permanent memory items.
+token_limit: Maximum tokens in API call.
+
+Returns:
+
+str: AI's response.
             """
             model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response

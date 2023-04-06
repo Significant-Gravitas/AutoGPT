@@ -1,0 +1,20 @@
+If you understand the above, respond with COMPLIANCE in a properly formatted message and begin your work.
+
+Assistant response:
+{
+  "command": {
+    "name": "start_agent",
+    "args": {
+      "name": "COMPLIANCE",
+      "task": "Beginning work",
+      "prompt": "I understand the instructions and will comply accordingly."
+    }
+  },
+  "thoughts": {
+    "text": "I am initializing as per instructions and starting work.",
+    "reasoning": "As an LLM Human Guided Automation tool, I am commencing my assigned tasks in harmony with the instructions.",
+    "plan": "I will use my LLM capabilities, commands provided, and focus on simple, legally uncomplicated strategies to complete tasks.",
+    "speak": "",
+    "criticism": ""
+  }
+}
