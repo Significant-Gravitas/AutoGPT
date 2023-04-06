@@ -15,9 +15,14 @@ def get_text_from_embedding(embedding):
 
 
 class PineconeMemory(metaclass=Singleton):
-    def __init__(self):
+    
+    # The default namespace in Pinecone. The assumption here is that it will be overridden 
+    _pinecone_namespace = ""
+    
+    def __init__(self, ns=_pinecone_namespace):
         pinecone_api_key = cfg.pinecone_api_key
         pinecone_region = cfg.pinecone_region
+        self._pinecone_namespace = ns
         pinecone.init(api_key=pinecone_api_key, environment=pinecone_region)
         dimension = 1536
         metric = "cosine"
@@ -32,7 +37,7 @@ class PineconeMemory(metaclass=Singleton):
         index_stats = self.index.describe_index_stats()
         self.vec_num = index_stats._data_store.get('total_vector_count')
 
-    def add(self, data, ns):
+    def add(self, data, ns=_pinecone_namespace):
         vector = get_ada_embedding(data)
         # no metadata here. We may wish to change that long term.
         resp = self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})], namespace=ns)
@@ -40,14 +45,14 @@ class PineconeMemory(metaclass=Singleton):
         self.vec_num += 1
         return _text
 
-    def get(self, data, ns):
+    def get(self, data, ns=_pinecone_namespace):
         return self.get_relevant(data, ns, 1)
 
-    def clear(self, ns):
+    def clear(self, ns=_pinecone_namespace):
         self.index.delete(delete_all=True, namespace=ns)
         return "Obliviated"
 
-    def get_relevant(self, data, ns, num_relevant=5):
+    def get_relevant(self, data, ns=_pinecone_namespace, num_relevant=5):
         """
         Returns all the data in the memory that is relevant to the given data.
         :param data: The data to compare to.

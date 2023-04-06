@@ -52,7 +52,7 @@ class Config(metaclass=Singleton):
 
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
-        self.pinecone_namespace = os.getenv("PINECONE_NAMESPACE")
+        self.pinecone_namespace_override = os.getenv("PINECONE_NAMESPACE_OVERRIDE")
         self.pinecone_clear_long_term_memory_requested = False
 
         # User agent headers to use when browsing web
@@ -98,8 +98,8 @@ class Config(metaclass=Singleton):
     def set_pinecone_region(self, value: str):
         self.pinecone_region = value
 
-    def set_pinecone_namespace(self, value: str):
-        self.pinecone_namespace = value
+    def set_pinecone_namespace_override(self, value: str):
+        self.pinecone_namespace_override = value
 
     def set_pinecone_clear_long_term_memory_requested(self, value: str):
         self.pinecone_clear_long_term_memory_requested = value
