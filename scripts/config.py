@@ -32,7 +32,10 @@ class Config(metaclass=Singleton):
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
-        
+        self.chroma_db_directory = os.getenv("CHROMA-DB-DIRECTORY")
+        self.chroma_server_host = os.getenv("CHROMA-SERVER-HOST")
+        self.chroma_server_port = os.getenv("CHROMA-SERVER-PORT")
+
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         
@@ -71,3 +74,12 @@ class Config(metaclass=Singleton):
     
     def set_custom_search_engine_id(self, value: str):
         self.custom_search_engine_id = value
+
+    def set_chroma_db_directory(self, value: str):
+        self.chroma_db_directory = value
+
+    def set_chroma_server_host(self, value: str):
+        self.chroma_server_host = value
+        
+    def set_chroma_server_port(self, value: str):
+        self.chroma_server_port = value

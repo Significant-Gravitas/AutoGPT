@@ -1,6 +1,6 @@
 import browse
 import json
-import memory as mem
+from memory import ChromaMemory
 import datetime
 import agent_manager as agents
 import speak
@@ -54,12 +54,6 @@ def execute_command(command_name, arguments):
                 return google_official_search(arguments["input"])
             else:
                 return google_search(arguments["input"])
-        elif command_name == "memory_add":
-            return commit_memory(arguments["string"])
-        elif command_name == "memory_del":
-            return delete_memory(arguments["key"])
-        elif command_name == "memory_ovr":
-            return overwrite_memory(arguments["key"], arguments["string"])
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"],
