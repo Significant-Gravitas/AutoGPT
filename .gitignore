@@ -1,4 +1,5 @@
 .env
+.sentinel
 *.mpeg
 *.pyc
 auto_gpt_workspace/

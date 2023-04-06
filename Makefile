@@ -2,26 +2,32 @@ DOCKER_COMPOSE=docker-compose.yml
 DOCKERFILE=Dockerfile
 DOCKER_REGISTRY=ghcr.io
 DOCKER_REPOSITORY=${DOCKER_REGISTRY}/auto-gpt/sandbox
-
-PYTHON_DEPENDENCIES=requirements.txt
-
-
+PYTHON_DEPENDENCIES=requirements*.txt
 IMAGE_TAG=$(shell cat $(DOCKERFILE) $(PYTHON_DEPENDENCIES) | md5sum | cut -d ' ' -f 1)
 IMAGE_URL=$(DOCKER_REPOSITORY):$(IMAGE_TAG)
 
 DOCKER_COMPOSE_RUN=docker-compose -f $(DOCKER_COMPOSE) run --rm sandbox
 
-.PHONY: image
-image: $(DOCKERFILE) $(PYTHON_DEPENDENCIES)
+IMAGE_SENTINEL=.sentinel/image
+
+.sentinel:
+	mkdir -p .sentinel
+
+${IMAGE_SENTINEL}: .sentinel $(DOCKERFILE) $(PYTHON_DEPENDENCIES)
 	echo building ${IMAGE_URL}
 	docker build -t ${IMAGE_URL} -f $(DOCKERFILE) .
 	docker tag ${IMAGE_URL} ${DOCKER_REPOSITORY}:latest
+	touch $@
+
+
+.PHONY: image
+image: ${IMAGE_SENTINEL}
 
 .PHONY: compose
 compose: image
 
 .PHONY: shell
-bash: compose
+shell: compose
 	${DOCKER_COMPOSE_RUN} /bin/bash
 
 .PHONY: test
@@ -60,3 +66,7 @@ pyright: compose
 .PHONY: run
 run: compose
 	${DOCKER_COMPOSE_RUN}
+
+.PHONY: clean
+clean:
+	rm -rf .sentinel
