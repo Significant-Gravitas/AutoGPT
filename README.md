@@ -123,7 +123,7 @@ docker run --rm -it -v ${PWD}:/app -v $HOME/AGPT:/app/auto_gpt_workspace auto-gp
 1. Run the `main.py` Python script in your terminal:
 
     ```bash
-    python scripts/main.py
+    python src/main.py
     ```
 
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
@@ -134,7 +134,7 @@ docker run --rm -it -v ${PWD}:/app -v $HOME/AGPT:/app/auto_gpt_workspace auto-gp
 Use this to use TTS for Auto-GPT
 
 ```bash
-python scripts/main.py --speak
+python src/main.py --speak
 
 ```
 
@@ -209,7 +209,7 @@ Use at your own risk.
 1. Run the `main.py` Python script in your terminal:
 
     ```bash
-    python scripts/main.py --continuous
+    python src/main.py --continuous
     ```
 
 2. To exit the program, press Ctrl + C
@@ -219,13 +219,13 @@ Use at your own risk.
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 
 ```bash
-python scripts/main.py --gpt3only
+python src/main.py --gpt3only
 ```
 
 ## Config file
 You can use a yaml config file rather than Auto-GPT prompting you for its name, role, and goals.
 ```
-python scripts/main.py --config_file=./scripts/example_config.yaml
+python src/main.py --config_file=./src/example_config.yaml
 ```
 
 ## ⚠️ Limitations
