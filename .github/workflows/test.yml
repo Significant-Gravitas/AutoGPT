@@ -12,15 +12,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+
+      - name: Load image url
+        id: load_image_url
+        run: |
+          IMAGE_URL=`make image-url`
+          echo "image-url=$IMAGE_URL" >> $GITHUB_OUTPUT
+
+      - name: Restore Cache
+        uses: actions/cache@v2
+        id: restore_cache
+        with:
+          path: image.tar
+          key: ${{ steps.load_image_url.outputs.image-url }}
+
       - name: Build Docker image
         id: build
+        if: steps.restore_cache.outputs.cache-hit != 'true'
         run: |
-          IMAGE_TAG=`make image-tag`
           IMAGE_URL=`make image-url`
           echo "Building Docker image: $IMAGE_URL"
           make image
           docker save $IMAGE_URL > image.tar
-          echo "image-url=$IMAGE_URL" >> $GITHUB_OUTPUT
 
       - name: Cache docker image
         uses: actions/cache@v2
@@ -28,7 +41,7 @@ jobs:
           cache-name: cache-node-modules
         with:
           path: docker-image.tar
-          key: ${{ steps.build.outputs.image-url }}
+          key: ${{ steps.load_image_url.outputs.image-url }}
 
   pytest:
     needs: build
