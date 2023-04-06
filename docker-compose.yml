@@ -3,4 +3,5 @@ version: "3"
 services:
   sandbox:
     image: ghcr.io/auto-gpt/sandbox:latest
-
+    volumes:
+      - ./:/app/
