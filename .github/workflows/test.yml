@@ -24,6 +24,7 @@ jobs:
           password: ${{ github.token }}
 
       - name: Build Docker image
+        id: build_image
         run: |
           ${{ IMAGE_TAG }}=$(md5sum $DOCKERFILE requirements.txt | awk '{ print $1 }')
           echo "Building Docker image with tag: $${{ IMAGE_TAG }}"
@@ -31,7 +32,7 @@ jobs:
           echo "image-tag=${{ ${{ IMAGE_TAG }} }}" >> $GITHUB_OUTPUT
 
       - name: Log image tag
-        run: echo "Docker image tag: ${{ steps.build.outputs.image-tag }}"
+        run: echo "Docker image tag: ${{ steps.build_image.outputs.image-tag }}"
 
       - name: Push Docker image
         run: |
