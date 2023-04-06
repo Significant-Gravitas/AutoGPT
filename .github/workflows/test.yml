@@ -26,7 +26,7 @@ jobs:
         id: build_image
         run: |
           IMAGE_TAG=$(md5sum dockerfile requirements*.txt | awk '{ print $1 }')
-          echo "Building Docker image with tag: $IMAGE_TAG"
+          echo "Building Docker image with tag: $DOCKER_REPOSITORY:$IMAGE_TAG"
           docker build -t $DOCKER_REPOSITORY:$IMAGE_TAG -f $DOCKERFILE .
           echo "image-tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "image-url=$DOCKER_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
