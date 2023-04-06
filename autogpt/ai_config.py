@@ -1,5 +1,5 @@
 import yaml
-import data
+from autogpt import data
 
 
 class AIConfig:

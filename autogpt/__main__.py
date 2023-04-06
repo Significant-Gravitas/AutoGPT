@@ -1,18 +1,18 @@
 import json
 import random
-import commands as cmd
-from memory import PineconeMemory
-import data
-import chat
+from autogpt import commands as cmd
+from autogpt.memory import PineconeMemory
+from autogpt import data
+from autogpt import chat
 from colorama import Fore, Style
-from spinner import Spinner
+from autogpt.spinner import Spinner
 import time
-import speak
+from autogpt import speak
 from enum import Enum, auto
 import sys
-from config import Config
-from json_parser import fix_and_parse_json
-from ai_config import AIConfig
+from autogpt.config import Config
+from autogpt.json_parser import fix_and_parse_json
+from autogpt.ai_config import AIConfig
 import traceback
 import yaml
 import argparse
@@ -123,7 +123,7 @@ def load_variables(config_file="config.yaml"):
         if ai_name == "":
             ai_name = "Entrepreneur-GPT"
 
-    if not ai_role:        
+    if not ai_role:
         ai_role = input(f"{ai_name} is: ")
         if ai_role == "":
             ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
@@ -140,7 +140,7 @@ def load_variables(config_file="config.yaml"):
             ai_goals.append(ai_goal)
         if len(ai_goals) == 0:
             ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
-         
+
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
     with open(config_file, "w") as file:
@@ -166,22 +166,22 @@ def construct_prompt():
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
-        should_continue = input(f"""Continue with the last settings? 
+        should_continue = input(f"""Continue with the last settings?
 Name:  {config.ai_name}
 Role:  {config.ai_role}
-Goals: {config.ai_goals}  
+Goals: {config.ai_goals}
 Continue (y/n): """)
         if should_continue.lower() == "n":
             config = AIConfig()
 
-    if not config.ai_name:         
+    if not config.ai_name:
         config = prompt_user()
         config.save()
 
     # Get rid of this global:
     global ai_name
     ai_name = config.ai_name
-    
+
     full_prompt = config.construct_full_prompt()
     return full_prompt
 
@@ -242,7 +242,7 @@ def parse_arguments():
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
-    
+
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
@@ -382,4 +382,3 @@ while True:
             chat.create_chat_message(
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
-

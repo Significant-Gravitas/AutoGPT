@@ -1,12 +1,12 @@
 import time
 import openai
 from dotenv import load_dotenv
-from config import Config
-import token_counter
+from autogpt.config import Config
+from autogpt import token_counter
 
 cfg = Config()
 
-from llm_utils import create_chat_completion
+from autogpt.llm_utils import create_chat_completion
 
 
 def create_chat_message(role, content):
@@ -95,7 +95,7 @@ def chat_with_ai(
 
                 # Count the currently used tokens
                 current_tokens_used += tokens_to_add
-                
+
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
 
@@ -137,7 +137,13 @@ def chat_with_ai(
                     "assistant", assistant_reply))
 
             return assistant_reply
-        except openai.error.RateLimitError:
+        except (openai.error.RateLimitError, openai.error.APIError) as exc:
+            if isinstance(exc, openai.error.APIError):
+                if 'Please try again in a few minutes' not in exc:
+                    raise exc
+                print("Error: ", "API Gateway error. Waiting 10 seconds...")
+            else:
+                print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
+
             # TODO: WHen we switch to langchain, this is built in
-            print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)

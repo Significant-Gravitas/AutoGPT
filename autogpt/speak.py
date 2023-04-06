@@ -1,7 +1,7 @@
 import os
 from playsound import playsound
 import requests
-from config import Config
+from autogpt.config import Config
 cfg = Config()
 import gtts
 
@@ -45,4 +45,3 @@ def say_text(text, voice_index=0):
         success = eleven_labs_speech(text, voice_index)
         if not success:
             gtts_speech(text)
-
