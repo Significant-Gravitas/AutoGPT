@@ -34,6 +34,16 @@ class Config(metaclass=Singleton):
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.use_azure = False
+        self.use_azure = os.getenv("USE_AZURE") == 'True'
+        if self.use_azure:
+            self.openai_api_base = os.getenv("OPENAI_API_BASE")
+            self.openai_api_version = os.getenv("OPENAI_API_VERSION")
+            self.openai_deployment_id = os.getenv("OPENAI_DEPLOYMENT_ID")
+            openai.api_type = "azure"
+            openai.api_base = self.openai_api_base
+            openai.api_version = self.openai_api_version
+        
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
