@@ -23,6 +23,19 @@ def create_chat_message(role, content):
     return {"role": role, "content": content}
 
 
+def generate_context(prompt, relevant_memory, full_message_history, model):
+    current_context = [
+        create_chat_message(
+            "system", prompt), create_chat_message(
+            "system", f"Permanent memory: {relevant_memory}")]
+
+    # Add messages from the full message history until we reach the token limit
+    next_message_to_add_index = len(full_message_history) - 1
+    insertion_index = len(current_context)
+    # Count the currently used tokens
+    current_tokens_used = token_counter.count_message_tokens(current_context, model)
+    return next_message_to_add_index, current_tokens_used, insertion_index, current_context
+
 
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
@@ -41,7 +54,7 @@ def chat_with_ai(
             prompt (str): The prompt explaining the rules to the AI.
             user_input (str): The input from the user.
             full_message_history (list): The list of all messages sent between the user and the AI.
-            permanent_memory (list): The list of items in the AI's permanent memory.
+            permanent_memory (Obj): The memory object containing the permanent memory.
             token_limit (int): The maximum number of tokens allowed in the API call.
 
             Returns:
@@ -53,18 +66,20 @@ def chat_with_ai(
                 print(f"Token limit: {token_limit}")
             send_token_limit = token_limit - 1000
 
-            current_context = [
-                create_chat_message(
-                    "system", prompt), create_chat_message(
-                    "system", f"Permanent memory: {permanent_memory}")]                
+            relevant_memory = permanent_memory.get_relevant(str(full_message_history[-5:]), 10)
 
-            # Add messages from the full message history until we reach the token limit
-            next_message_to_add_index = len(full_message_history) - 1
-            current_tokens_used = 0
-            insertion_index = len(current_context)
+            if debug:
+                print('Memory Stats: ', permanent_memory.get_stats())
 
-            # Count the currently used tokens
-            current_tokens_used = token_counter.count_message_tokens(current_context, model)
+            next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
+                prompt, relevant_memory, full_message_history, model)
+
+            while current_tokens_used > 2500:
+                # remove memories until we are under 2500 tokens
+                relevant_memory = relevant_memory[1:]
+                next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
+                    prompt, relevant_memory, full_message_history, model)
+
             current_tokens_used += token_counter.count_message_tokens([create_chat_message("user", user_input)], model) # Account for user input (appended later)
 
             while next_message_to_add_index >= 0:
