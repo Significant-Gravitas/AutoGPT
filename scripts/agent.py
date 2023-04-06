@@ -4,6 +4,7 @@ import random
 import sys
 import time
 import traceback
+from collections import deque
 from enum import Enum, auto
 from typing import List
 
@@ -89,7 +90,7 @@ class Agent():
         
         # Agent Manager
         self.coworkers: List[Agent] = [] # List of workers that work for the agent
-        self.pending_responses = [] # List of responses that the agent should deal with]
+        self.pending_messages = deque() # List of responses that the agent should deal with]
 
     def set_everything(self, agent_id, agent_name, task, goals, orginization, supervisor_id, supervisor_name):
         self.agent_id = agent_id                # Unique ID for the agent
@@ -134,12 +135,13 @@ class Agent():
             Auto routes a message from the staff member to the supervisor id
         """
         self.orginization.route_message(self, self.orginization.agents[self.supervisor_id], message)
+        return f'Succesfully sent message to supervisor {self.supervisor_id}\n'
 
 
     def recieve_message(self, sender, message):
         print(f'Agent {self.agent_id} recieved message from {sender.agent_id}. Message = {message}')
-        self.pending_responses.append((sender.id, message))
-        print(f'\nAgent {self.agent_id} pending responses: {self.pending_responses}\n')
+        self.pending_messages.append((sender.agent_id, message))
+        print(f'\nAgent {self.agent_id} pending responses: {self.pending_messages}\n')
         pass
 
 
@@ -220,6 +222,8 @@ class Agent():
         """
             Construct the prompt that will be sent to the Agent.
         """ 
+
+
         context_token_limit = self.cfg.fast_token_limit - 1000 # reserve 1000 tokens for response
         # load the initial prompt and the the
         # permantent memory into the current context
@@ -234,11 +238,6 @@ class Agent():
         current_tokens_used = 0
         
         # Count the number of tokens in the current message
-        if self.supervisor_name is not None:
-            print ("\n\n")
-            print("Current context of coworker ", current_context)
-            print(" cfg fast llm model", self.cfg.fast_llm_model)
-            print ("\n\n")
         current_tokens_used = token_counter.count_message_tokens(current_context, self.cfg.fast_llm_model)
         current_tokens_used += token_counter.count_message_tokens([chat.create_chat_message("user", user_input)], self.cfg.fast_llm_model)
 
@@ -254,6 +253,12 @@ class Agent():
 
             self.next_message_index -= 1
         
+        # Append the pending messages to the agent context
+        if self.pending_messages:
+            message = self.pending_messages.popleft()
+            agent_id, agent_message = message
+            current_context.extend([chat.create_chat_message("user", f"Incoming Message from {agent_id}:{agent_message}")])
+
 
         current_context.extend([chat.create_chat_message("user", user_input)]) # Append the user input to the context
         tokens_remaining = self.cfg.fast_token_limit - current_tokens_used # Calculate the number of tokens remaining
@@ -318,7 +323,7 @@ class Agent():
         while True:
             try:
                 reply = create_chat_completion(
-                    model=self.cfg.fast_llm_model,
+                    model="gpt-4",
                     messages=current_context,
                     max_tokens=tokens_remaining,
                 )

@@ -16,18 +16,17 @@ COMMANDS:
 7. Message Staff: "message_staff", args: "agent_id": "<agent_id>", "message": "<message>"
 8. List Staff: "list_staff", args: ""
 9. Fire Staff: "fire_staff", args: "agent_id": "<agent_id>"
-
 10. Message Manager/Supervisor: "message_supervisor", "message": "<message>"
 
-10. Write to file: "write_to_file", args: "file": "<file>", "text": "<text>"
-11. Read file: "read_file", args: "file": "<file>"
-12. Append to file: "append_to_file", args: "file": "<file>", "text": "<text>"
-13. Delete file: "delete_file", args: "file": "<file>"
-14. Evaluate Code: "evaluate_code", args: "code": "<full _code_string>"
-15. Get Improved Code: "improve_code", args: "suggestions": "<list_of_suggestions>", "code": "<full_code_string>"
-16. Write Tests: "write_tests", args: "code": "<full_code_string>", "focus": "<list_of_focus_areas>"
-17. Execute Python File: "execute_python_file", args: "file": "<file>"
-18. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
+12. Write to file: "write_to_file", args: "file": "<file>", "text": "<text>"
+12. Read file: "read_file", args: "file": "<file>"
+13. Append to file: "append_to_file", args: "file": "<file>", "text": "<text>"
+14. Delete file: "delete_file", args: "file": "<file>"
+15. Evaluate Code: "evaluate_code", args: "code": "<full _code_string>"
+16. Get Improved Code: "improve_code", args: "suggestions": "<list_of_suggestions>", "code": "<full_code_string>"
+17. Write Tests: "write_tests", args: "code": "<full_code_string>", "focus": "<list_of_focus_areas>"
+18. Execute Python File: "execute_python_file", args: "file": "<file>"
+19. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 
 RESOURCES:
 

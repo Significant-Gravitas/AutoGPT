@@ -17,7 +17,7 @@ class Orginization():
         while True:
             for agent in self.agents:
                 # Print what agen wey are running
-                print(Fore.GREEN + f"\n ---------------- Running agent {agent.agent_id} \n -----------------")
+                print(Fore.GREEN + f"\n ---------------- Running agent {agent.agent_id} -----------------")
                 agent.step()
                 print ("\n")
     

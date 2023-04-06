@@ -72,6 +72,8 @@ def execute_command(agent, command_name, arguments):
         elif command_name == "fire_staff":
             return delete_agent(arguments["key"])
         
+        elif command_name == "message_supervisor":
+            return agent.message_supervisor(arguments["message"])
         
         elif command_name == "get_text_summary":
             return get_text_summary(arguments["url"], arguments["question"])
