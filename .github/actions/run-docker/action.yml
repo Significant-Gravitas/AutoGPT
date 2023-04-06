@@ -13,6 +13,10 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: setup
+      shell: bash
+      run: |
+        echo "Loading cached image: ${{ inputs.image-url }}"
     - name: Cache docker image
       uses: actions/cache@v2
       with:
