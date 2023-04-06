@@ -30,7 +30,7 @@ runs:
         key: ${{ steps.load_image_url.outputs.image-url }}
     - name: load image
       shell: bash
-      run: docker load docker-image.tar
+      run: docker load --input docker-image.tar
     - name: run
       shell: bash
       env:
