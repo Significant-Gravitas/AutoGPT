@@ -1,0 +1,81 @@
+name: Test and Lint
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  push:
+    branches: [main]
+
+env:
+  GITHUB_REPOSITORY=auto-gpt/sandbox
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Log into GitHub Docker registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build Docker image
+        run: |
+          ${{ IMAGE_TAG }}=$(md5sum $DOCKERFILE requirements.txt | awk '{ print $1 }')
+          echo "Building Docker image with tag: $${{ IMAGE_TAG }}"
+          docker build -t ghcr.io/${{ GITHUB_REPOSITORY }}:${{ ${{ IMAGE_TAG }} }} -f $DOCKERFILE .
+          echo "image-tag=${{ ${{ IMAGE_TAG }} }}" >> $GITHUB_OUTPUT
+
+      - name: Log image tag
+        run: echo "Docker image tag: ${{ steps.build.outputs.image-tag }}"
+
+      - name: Push Docker image
+        run: |
+          ${{ IMAGE_TAG }}=${{ steps.build.outputs.image-tag }}
+          echo "Pushing Docker image with tag: $${{ IMAGE_TAG }}"
+          docker tag ghcr.io/$GITHUB_REPOSITORY:$${{ IMAGE_TAG }} ghcr.io/${{ GITHUB_REPOSITORY }}:latest
+          docker push ghcr.io/$GITHUB_REPOSITORY:$${{ IMAGE_TAG }}
+          docker push ghcr.io/$GITHUB_REPOSITORY:latest
+
+  pytest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull Docker image
+        run: docker pull ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image-tag }}
+
+      - name: Run pytest
+        uses: ./actions/docker/run-docker
+        with:
+          image-tag: ${{ needs.build.outputs.image-tag }}
+          command: make pytest
+
+  black:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull Docker image
+        run: docker pull ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image-tag }}
+
+      - name: Run black
+        uses: ./actions/docker/run-docker
+        with:
+          image-tag: ${{ needs.build.outputs.image-tag }}
+          command: make black-check
+
+  flake8:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull Docker image
+        run: docker pull ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image-tag }}
+
+      - name: Run flake8
+        uses: ./actions/docker/run-docker
+        with:
+          image-tag: ${{ needs.build.outputs.image-tag }}
+          command: make flake8

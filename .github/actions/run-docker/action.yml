@@ -1,0 +1,19 @@
+name: 'Run Docker'
+
+description: 'Runs a command inside a Docker container.'
+
+inputs:
+  image-tag:
+    description: 'The tag of the Docker image to run.'
+    required: true
+  command:
+    description: 'The command to run inside the Docker container.'
+    required: true
+
+runs:
+  using: 'docker'
+  image: 'ghcr.io/${{ github.repository }}:${{ inputs.image-tag }}'
+  args:
+    - 'sh'
+    - '-c'
+    - '${{ inputs.command }}'
