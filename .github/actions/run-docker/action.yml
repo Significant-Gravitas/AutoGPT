@@ -23,7 +23,7 @@ runs:
     - name: Cache docker image
       uses: actions/cache@v2
       with:
-        path: docker-image.tar
+        path: image.tar
         key: ${{ steps.load_image_url.outputs.image-url }}
     - name: load image
       shell: bash
