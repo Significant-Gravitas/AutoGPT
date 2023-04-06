@@ -15,6 +15,7 @@ runs:
   steps:
     - name: Load image url
       id: load_image_url
+      shell: bash
       run: |
         IMAGE_URL=`make image-url`
         echo "image-url=$IMAGE_URL" >> "$GITHUB_OUTPUT"
