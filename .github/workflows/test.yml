@@ -15,23 +15,39 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+
+
       - name: Build Docker image
         id: build
         run: |
-          IMAGE_TAG=make get-image-tag
-          IMAGE_URL=make get-image-url
+          IMAGE_TAG=make image-tag
+          IMAGE_URL=make image-url
           echo "Building Docker image with tag: $IMAGE_URL"
           make image
-          docker save -o image.tar test-image
+          docker save -o image.tar $IMAGE_URL
+          docker save $IMAGE_URL > docker-image.tar
+
+      - name: Cache docker image
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: docker-image.tar
+          key: test-image
 
   pytest:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Cache docker image
+        uses: actions/cache@v2
+        with:
+          path: docker-image.tar
+          key: test-image
       - name: Load Image from Build Job
         uses: docker/load-action@v2
         with:
-          input: ${{ needs.build.outputs.test-image }}
+          input: docker-image.tar
       - name: Run pytest
         uses: ./actions/docker/run-docker
         with:
@@ -42,11 +58,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Cache docker image
+        uses: actions/cache@v2
+        with:
+          path: docker-image.tar
+          key: test-image
       - name: Load Image from Build Job
         uses: docker/load-action@v2
         with:
-          input: ${{ needs.build.outputs.test-image }}
-
+          input: docker-image.tar
       - name: Run black
         uses: ./actions/docker/run-docker
         with:
