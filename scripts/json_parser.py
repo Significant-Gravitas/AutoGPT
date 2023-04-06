@@ -3,6 +3,7 @@ from call_ai_function import call_ai_function
 from config import Config
 cfg = Config()
 
+
 def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
     json_schema = """
     {
@@ -23,30 +24,35 @@ def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
     }
     """
 
-    try:
-        return json.loads(json_str)
-    except Exception as e:
-        # Let's do something manually - sometimes GPT responds with something BEFORE the braces:
-        # "I'm sorry, I don't understand. Please try again."{"text": "I'm sorry, I don't understand. Please try again.", "confidence": 0.0}
-        # So let's try to find the first brace and then parse the rest of the string
+    def clean_input(json_str):
+        brace_index = json_str.index("{")
+        json_str = json_str[brace_index:]
+        last_brace_index = json_str.rindex("}")
+        json_str = json_str[:last_brace_index+1]
+        return json_str
+
+    def attempt_parse(json_str):
         try:
-          brace_index = json_str.index("{")
-          json_str = json_str[brace_index:]
-          last_brace_index = json_str.rindex("}")
-          json_str = json_str[:last_brace_index+1]
-          return json.loads(json_str)
+            return json.loads(json_str)
         except Exception as e:
-          if try_to_fix_with_gpt:
-            print(f"Warning: Failed to parse AI output, attempting to fix.\n If you see this warning frequently, it's likely that your prompt is confusing the AI. Try changing it up slightly.")
-            # Now try to fix this up using the ai_functions
-            ai_fixed_json = fix_json(json_str, json_schema, False)
-            if ai_fixed_json != "failed":
-              return json.loads(ai_fixed_json)
-            else:
-              print(f"Failed to fix ai output, telling the AI.") # This allows the AI to react to the error message, which usually results in it correcting its ways.
-              return json_str
-          else:
-            raise e
+            return None
+
+    cleaned_json_str = clean_input(json_str)
+    parsed_json = attempt_parse(cleaned_json_str)
+
+    if parsed_json is not None:
+        return parsed_json
+    elif try_to_fix_with_gpt:
+        print("Warning: Failed to parse AI output, attempting to fix.")
+        ai_fixed_json = fix_json(cleaned_json_str, json_schema, False)
+
+        if ai_fixed_json != "failed":
+            return json.loads(ai_fixed_json)
+        else:
+            print("Failed to fix ai output, telling the AI.")
+            return json_str
+
+    raise ValueError("Failed to parse JSON: '{}'".format(json_str))
         
 def fix_json(json_str: str, schema: str, debug=False) -> str:
     # Try to fix the JSON using gpt:

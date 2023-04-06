@@ -1,0 +1,5 @@
+1. Design and deploy a system that I can communicate and provide feedback to you.
+2. Provide recommendations for improving our effectiveness to work as a team.
+3. Generate further autonomous agents to streamline processes and accomplish all tasks that I communicate to you.
+4. Design and code a working application that accomplishes all of the above, then deploy it.
+5. Execute all goals in this order then terminate because the improved application has been deployed and we will continue working together on that application.
