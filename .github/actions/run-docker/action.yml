@@ -7,7 +7,7 @@ inputs:
     description: 'The tag of the Docker image to run.'
     required: true
   command:
-    description: 'The command to run inside the Docker container.'
+    description: 'The command to run.'
     required: true
 
 runs:
@@ -22,9 +22,5 @@ runs:
       shell: bash
       run: docker load docker-image.tar
     - name: run
-      using: 'docker'
-      image: '${{ inputs.image-url }}'
-      args:
-        - 'sh'
-        - '-c'
-        - '${{ inputs.command }}'
+      shell: bash
+      run: ${{ inputs.command }}
