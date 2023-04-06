@@ -179,8 +179,7 @@ MEMORY_INDEX=whatever
 
 ## 🌲 Pinecone API Key Setup
 
-Pinecone enable a vector based memory so a vast memory can be stored and only relevant memories
-are loaded for the agent at any given time.
+Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
 
 1. Go to app.pinecone.io and make an account if you don't already have one.
 2. Choose the `Starter` plan to avoid being charged.
