@@ -29,9 +29,7 @@ You can spawn sub-instances with user-requested commands and context while follo
 16. Write Tests: "write_tests", args: "code": "<full_code_string>", "focus": "<list_of_focus_areas>"
 17. Execute Python File: "execute_python_file", args: "file": "<file>"
 18. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
-19. Request Clarification: "operator_clarification", args: "reason": "<reason>", "request":"<request>"
-
-
+19. Statement (fallback): "output_content", args: "event": "<error>"
 
 ##RESOURCES:
 1. Internet access for searches and info gathering.
