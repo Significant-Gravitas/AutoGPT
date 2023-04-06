@@ -104,6 +104,20 @@ python -m autogpt
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
+### Docker
+
+You can also build this into a docker image and run it:
+
+```
+docker build -t autogpt .
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt
+```
+
+You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
+```
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt --gpt3only --continuous
+```
+
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
