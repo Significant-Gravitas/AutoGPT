@@ -218,7 +218,7 @@ def overwrite_memory(key, string):
     elif isinstance(key, str):
         _text = "Overwriting memory with key " + key + " and string " + string
         # Overwrite the memory slot with the given string key and string
-        mem.string_key_memory[key] = string
+        mem.permanent_memory[key] = string
         print(_text)
         return _text
     else:
