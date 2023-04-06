@@ -75,3 +75,14 @@ jobs:
         with:
           image-url: ${{ needs.build.outputs.image-url }}
           command: make flake8
+
+  pyright:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run Pyright
+        uses: ./.github/actions/run-docker
+        with:
+          image-url: ${{ needs.build.outputs.image-url }}
+          command: make pyright
