@@ -2,7 +2,7 @@ import { useState } from "react"
 import reactLogo from "./assets/react.svg"
 import viteLogo from "/vite.svg"
 import { useEffect } from "react"
-import "./App.css"
+import Flex from "./style/Flex"
 
 function App() {
   const [output, setOutput] = useState([])
@@ -45,11 +45,11 @@ function App() {
       >
         kill script
       </button>
-      <ul>
+      <Flex direction="column" gap={0.5}>
         {output.map((line) => (
-          <li>{line}</li>
+          <div>{line}</div>
         ))}
-      </ul>
+      </Flex>
     </>
   )
 }
