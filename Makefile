@@ -25,11 +25,12 @@ image-url:
 	mkdir -p .sentinel
 
 ${IMAGE_SENTINEL}: .sentinel $(DOCKERFILE) $(PYTHON_DEPENDENCIES)
+ifneq (${NO_IMAGE_BUILD}, 1)
 	echo building ${IMAGE_URL}
 	docker build -t ${IMAGE_URL} -f $(DOCKERFILE) .
 	docker tag ${IMAGE_URL} ${DOCKER_REPOSITORY}:latest
 	touch $@
-
+endif
 
 .PHONY: image
 image: ${IMAGE_SENTINEL}
