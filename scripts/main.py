@@ -1,21 +1,22 @@
+import argparse
 import json
 import random
-import commands as cmd
-import memory as mem
-import data
-import chat
-from colorama import Fore, Style
-from spinner import Spinner
-import time
-import speak
-from enum import Enum, auto
 import sys
+import time
+import traceback
+from enum import Enum, auto
+
+import chat
+import commands as cmd
+import data
+import memory as mem
+import speak
+import yaml
+from ai_config import AIConfig
+from colorama import Fore, Style
 from config import Config
 from json_parser import fix_and_parse_json
-from ai_config import AIConfig
-import traceback
-import yaml
-import argparse
+from spinner import Spinner
 
 
 def print_to_console(
