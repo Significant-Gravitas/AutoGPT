@@ -60,6 +60,15 @@ class Config(metaclass=Singleton):
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
+        self.use_custom_model = False
+        self.custom_model_name = ""
+
+    def set_use_custom_model(self, use_custom_model):
+        self.use_custom_model = use_custom_model
+
+    def set_custom_model_name(self, custom_model_name):
+        self.custom_model_name = custom_model_name
+
     def set_continuous_mode(self, value: bool):
         self.continuous_mode = value
 

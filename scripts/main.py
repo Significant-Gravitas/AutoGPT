@@ -16,6 +16,7 @@ from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
+from custom import chat_with_custom_model
 
 
 def print_to_console(
@@ -221,12 +222,27 @@ def prompt_user():
 
     # Enter up to 5 goals for the AI
     print_to_console(
-        "Enter up to 5 goals for your AI: ",
+        "Enter how many goals do you want the AI to have: ",
         Fore.GREEN,
-        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+        "Please enter a number between 1 and 10")
+ 
+    while True:
+        num_goals = input("")
+        if num_goals.isdigit() and 1 <= int(num_goals) <= 10:
+            num_goals = int(num_goals)
+            break
+        else:
+            print_to_console(
+                "Please enter a valid number between 1 and 10: ",
+                Fore.RED)
+
+    print_to_console(
+        f"Enter up to {num_goals} goals for your AI: ",
+        Fore.GREEN,
+        "For example: \nIncrease net worth \nGrow Twitter Account \nDevelop and manage multiple businesses autonomously'")
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
-    for i in range(5):
+    for i in range(num_goals):
         ai_goal = input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
         if ai_goal == "":
             break
@@ -247,6 +263,7 @@ def parse_arguments():
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
+    parser.add_argument('--custom_model', type=str, help='Use a custom model instead of the OpenAI API')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
     args = parser.parse_args()
 
@@ -266,6 +283,10 @@ def parse_arguments():
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
+    if args.custom_model:
+        print_to_console("Custom Model: ", Fore.GREEN, args.custom_model)
+        cfg.set_use_custom_model(True)
+        cfg.set_custom_model_name(args.custom_model)
 
 # TODO: fill in llm values here
 
@@ -292,12 +313,15 @@ print('Using memory of type: ' + memory.__class__.__name__)
 while True:
     # Send message to AI, get response
     with Spinner("Thinking... "):
-        assistant_reply = chat.chat_with_ai(
-            prompt,
-            user_input,
-            full_message_history,
-            memory,
-            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+        if cfg.use_custom_model:
+            assistant_reply = chat_with_custom_model(full_message_history, cfg.fast_token_limit)
+        else:
+            assistant_reply = chat.chat_with_ai(
+                prompt,
+                user_input,
+                full_message_history,
+                memory,
+                cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
