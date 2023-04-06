@@ -51,7 +51,6 @@ jobs:
       - name: Run pytest
         uses: ./.github/actions/run-docker
         with:
-          image-url: ${{ needs.build.outputs.image-url }}
           command: make pytest
 
   black:
@@ -62,7 +61,6 @@ jobs:
       - name: Run black
         uses: ./.github/actions/run-docker
         with:
-          image-url: ${{ needs.build.outputs.image-url }}
           command: make black-check
 
   flake8:
@@ -73,7 +71,6 @@ jobs:
       - name: Run flake8
         uses: ./.github/actions/run-docker
         with:
-          image-url: ${{ needs.build.outputs.image-url }}
           command: make flake8
 
   pyright:
@@ -84,5 +81,4 @@ jobs:
       - name: Run Pyright
         uses: ./.github/actions/run-docker
         with:
-          image-url: ${{ needs.build.outputs.image-url }}
           command: make pyright
