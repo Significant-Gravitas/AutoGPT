@@ -41,6 +41,9 @@ class Config(metaclass=Singleton):
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+        self.chroma_db_directory = os.getenv("CHROMA-DB-DIRECTORY")
+        self.chroma_server_host = os.getenv("CHROMA-SERVER-HOST")
+        self.chroma_server_port = os.getenv("CHROMA-SERVER-PORT")
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.use_azure = False
@@ -132,3 +135,13 @@ class Config(metaclass=Singleton):
     def set_debug_mode(self, value: bool):
         """Set the debug mode value."""
         self.debug_mode = value
+
+
+    def set_chroma_db_directory(self, value: str):
+        self.chroma_db_directory = value
+
+    def set_chroma_server_host(self, value: str):
+        self.chroma_server_host = value
+        
+    def set_chroma_server_port(self, value: str):
+        self.chroma_server_port = value

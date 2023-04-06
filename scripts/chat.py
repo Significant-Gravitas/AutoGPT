@@ -2,6 +2,7 @@ import time
 import openai
 from dotenv import load_dotenv
 from config import Config
+from memory import ChromaMemory
 import token_counter
 from llm_utils import create_chat_completion
 
