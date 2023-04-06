@@ -16,6 +16,7 @@ git checkout -b "branch-name"
 4. Make your changes to the code or documentation.
 - Example: Improve User Interface or Add Documentation.
 
+
 5. Add the changes to the staging area using the following command:
 ```
 git add . 
