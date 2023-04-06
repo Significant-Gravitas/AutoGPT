@@ -11,9 +11,15 @@ inputs:
     required: true
 
 runs:
-  using: 'docker'
-  image: 'ghcr.io/${{ github.repository }}:${{ inputs.image-tag }}'
-  args:
-    - 'sh'
-    - '-c'
-    - '${{ inputs.command }}'
+  using: "composite"
+  steps:
+    - name: load image
+      shell: bash
+      run: docker load docker-image.tar
+    - name: run
+      using: 'docker'
+      image: '${{ inputs.image-url }}'
+      args:
+        - 'sh'
+        - '-c'
+        - '${{ inputs.command }}'
