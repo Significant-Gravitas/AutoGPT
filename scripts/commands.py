@@ -63,7 +63,7 @@ def execute_command(command_name, arguments):
             else:
                 return google_search(arguments["input"])
         elif command_name == "memory_add":
-            return memory.add(arguments["string"])
+            return memory.add(arguments["string"], cfg.pinecone_namespace)
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"],

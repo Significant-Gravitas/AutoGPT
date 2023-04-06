@@ -248,6 +248,7 @@ def parse_arguments():
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--clearLongTermMemory', action='store_true', help='Clear long term memory for this agent\'s context on startup')
     args = parser.parse_args()
 
     if args.continuous:
@@ -266,6 +267,8 @@ def parse_arguments():
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
+    if args.clearLongTermMemory:
+        cfg.set_pinecone_clear_long_term_memory_requested(True)
 
 # TODO: fill in llm values here
 
@@ -284,9 +287,11 @@ user_input = "Determine which next command to use, and respond using the format 
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
 memory = PineconeMemory()
-memory.clear()
-
 print('Using memory of type: ' + memory.__class__.__name__)
+
+if cfg.pinecone_clear_long_term_memory_requested:
+  memory.clear(cfg.pinecone_namespace)
+
 
 # Interaction Loop
 while True:
@@ -297,7 +302,8 @@ while True:
             user_input,
             full_message_history,
             memory,
-            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.fast_token_limit, # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.pinecone_namespace) 
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
@@ -370,7 +376,7 @@ while True:
                     f"\nResult: {result} " \
                     f"\nHuman Feedback: {user_input} "
 
-    memory.add(memory_to_add)
+    memory.add(memory_to_add, cfg.pinecone_namespace)
 
     # Check if there's a result from the command append it to the message
     # history
