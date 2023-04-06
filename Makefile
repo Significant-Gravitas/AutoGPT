@@ -5,10 +5,19 @@ DOCKER_REPOSITORY=${DOCKER_REGISTRY}/auto-gpt/sandbox
 PYTHON_DEPENDENCIES=requirements*.txt
 IMAGE_TAG=$(shell cat $(DOCKERFILE) $(PYTHON_DEPENDENCIES) | md5sum | cut -d ' ' -f 1)
 IMAGE_URL=$(DOCKER_REPOSITORY):$(IMAGE_TAG)
+IMAGE_SENTINEL=.sentinel/image
 
 DOCKER_COMPOSE_RUN=docker-compose -f $(DOCKER_COMPOSE) run --rm sandbox
 
-IMAGE_SENTINEL=.sentinel/image
+
+.PHONY: image-tag
+image-tag:
+	@echo ${IMAGE_TAG}
+
+.PHONY: image-url
+image-url:
+	@echo ${IMAGE_URL}
+
 
 .sentinel:
 	mkdir -p .sentinel

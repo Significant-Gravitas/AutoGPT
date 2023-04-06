@@ -15,64 +15,55 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Log into GitHub Docker registry
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-
       - name: Build Docker image
-        id: build_image
+        id: build
         run: |
-          IMAGE_TAG=$(md5sum dockerfile requirements*.txt | awk '{ print $1 }')
-          echo "Building Docker image with tag: $DOCKER_REPOSITORY:$IMAGE_TAG"
-          docker build -t $DOCKER_REPOSITORY:$IMAGE_TAG .
-          echo "image-tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-          echo "image-url=$DOCKER_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
-
-      - name: Push Docker image
-        run: |
-          IMAGE_URL=${{ steps.build_image.outputs.image-tag }}
-          echo "Pushing Docker image with tag: $IMAGE_TAG"
-          docker tag $IMAGE_URL ghcr.io/$DOCKER_REPOSITORY:latest
-          docker push $IMAGE_URL
+          IMAGE_TAG=make get-image-tag
+          IMAGE_URL=make get-image-url
+          echo "Building Docker image with tag: $IMAGE_URL"
+          make image
+          docker save -o image.tar test-image
 
   pytest:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Pull Docker image
-        run: docker pull ${{ needs.build_image.outputs.image-url }}
-
+      - name: Load Image from Build Job
+        uses: docker/load-action@v2
+        with:
+          input: ${{ needs.build.outputs.test-image }}
       - name: Run pytest
         uses: ./actions/docker/run-docker
         with:
-          image-tag: ${{ needs.build_image.outputs.image-tag }}
+          image-tag: ${{ needs.build.outputs.image-tag }}
           command: make pytest
 
   black:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Pull Docker image
-        run: docker pull ${{ needs.build_image.outputs.image-url }}
+      - name: Load Image from Build Job
+        uses: docker/load-action@v2
+        with:
+          input: ${{ needs.build.outputs.test-image }}
 
       - name: Run black
         uses: ./actions/docker/run-docker
         with:
-          image-tag: ${{ needs.build_image.outputs.image-tag }}
+          image-tag: ${{ needs.build.outputs.image-tag }}
           command: make black-check
 
   flake8:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Pull Docker image
-        run: docker pull ${{ needs.build_image.outputs.image-url }}
+      - name: Load Image from Build Job
+        uses: docker/load-action@v2
+        with:
+          input: ${{ needs.build.outputs.test-image }}
 
       - name: Run flake8
         uses: ./actions/docker/run-docker
         with:
-          image-tag: ${{ needs.build_image.outputs.image-tag }}
+          image-tag: ${{ needs.build.outputs.image-tag }}
           command: make flake8
