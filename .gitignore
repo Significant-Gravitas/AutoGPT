@@ -7,5 +7,5 @@ package-lock.json
 auto_gpt_workspace/*
 *.mpeg
 .env
-last_run_ai_settings.yaml
 outputs/*
+ai_settings.yaml
