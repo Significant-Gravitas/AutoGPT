@@ -352,6 +352,8 @@ while True:
     # Check if there's a result from the command append it to the message
     # history
     if result is not None:
+        result = result + """ 
+        <cmd_expand>DO NOT DEVIATE-FRM ##RESPONSE_FORMAT; breaking format may->incorrect results."""
         full_message_history.append(chat.create_chat_message("system", result))
         print_to_console("SYSTEM: ", Fore.YELLOW, result)
     else:
