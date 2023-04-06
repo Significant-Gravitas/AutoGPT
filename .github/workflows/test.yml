@@ -15,13 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-
-
       - name: Build Docker image
         id: build
         run: |
-          IMAGE_TAG=make image-tag
-          IMAGE_URL=make image-url
+          IMAGE_TAG=`make image-tag`
+          IMAGE_URL=`make image-url`
           echo "Building Docker image with tag: $IMAGE_URL"
           make image
           docker save -o image.tar $IMAGE_URL
