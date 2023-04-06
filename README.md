@@ -152,14 +152,14 @@ are loaded for the agent at any given time.
 ### Setting up environment variables
    For Windows Users:
 ```
-setx PINECONE_API_KEY "YOUR_GOOGLE_API_KEY"
-export PINECONE_ENV="Your region" # something like: us-east4-gcp
+setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
+export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
 For macOS and Linux users:
 ```
-export PINECONE_API_KEY="YOUR_GOOGLE_API_KEY"
-export PINECONE_ENV="Your region" # something like: us-east4-gcp
+export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
+export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
 
