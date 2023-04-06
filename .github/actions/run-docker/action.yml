@@ -27,7 +27,9 @@ runs:
         key: ${{ steps.load_image_url.outputs.image-url }}
     - name: load image
       shell: bash
-      run: docker load --input image.tar
+      run: |
+        docker load --input image.tar
+        docker tag ${{ steps.load_image_url.outputs.image-url }} ghcr.io/auto-gpt/sandbox:latest
     - name: run
       shell: bash
       env:
