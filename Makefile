@@ -9,6 +9,8 @@ IMAGE_SENTINEL=.sentinel/image
 
 DOCKER_COMPOSE_RUN=docker-compose -f $(DOCKER_COMPOSE) run --rm sandbox
 
+NO_IMAGE_BUILD?=0
+
 
 .PHONY: image-tag
 image-tag:
