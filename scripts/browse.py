@@ -83,63 +83,95 @@ def create_message(chunk, question):
     }
 
 
-def summarize_text(text, is_website=True):
+def summarize_text(text, question):
     if not text:
         return "Error: No text to summarize"
 
-    print("Text length: " + str(len(text)) + " characters")
+    text_length = len(text)
+    print(f"Text length: {text_length} characters")
+
     summaries = []
     chunks = list(split_text(text))
 
     for i, chunk in enumerate(chunks):
-        print("Summarizing chunk " + str(i + 1) + " / " + str(len(chunks)))
-        if is_website:
-            messages = [
-                {
-              "role": "user",
-              "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
-              chunk},
-            ]
-        else:
-            messages = [
-                {
-               "role": "user",
-               "content": "Please summarize the following text, focusing on extracting concise and specific information: " +
-               chunk},
-            ]
+        print(f"Summarizing chunk {i + 1} / {len(chunks)}")
+        messages = [create_message(chunk, question)]
+ 
+        summary = create_chat_completion_with_retry(
+            model=cfg.fast_llm_model,
+            messages=messages,
+            max_tokens=300,
+        )
+        summaries.append(summary)
 
-        
-        try:
-            summary = create_chat_completion_with_retry(messages)
-            summaries.append(summary)
-        except Exception as e:
-            print(f"Error encountered while summarizing chunk {i + 1}: {e}")
-
-    print("Summarized " + str(len(chunks)) + " chunks.")
-    print("Summarized " + str(len(chunks)) + " chunks.")
+    print(f"Summarized {len(chunks)} chunks.")
 
     combined_summary = "\n".join(summaries)
+    messages = [create_message(combined_summary, question)]
 
-    # Summarize the combined summary
-    if is_website:
-        messages = [
-            {
-                "role": "user",
-                "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
-                combined_summary},
-        ]
-    else:
-        messages = [
-            {
-                "role": "user",
-                "content": "Please summarize the following text, focusing on extracting concise and specific infomation: " +
-                combined_summary},
-        ]
-
-    final_summary = create_chat_completion(
+    final_summary = create_chat_completion_with_retry(
         model=cfg.fast_llm_model,
         messages=messages,
         max_tokens=300,
     )
 
     return final_summary
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
