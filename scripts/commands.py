@@ -268,7 +268,7 @@ def message_agent(key, message):
 
     # Speak response
     if cfg.speak_mode:
-        say.speak(agent_response)
+        speak.say_text(agent_response, 1)
     return agent_response
 
 
