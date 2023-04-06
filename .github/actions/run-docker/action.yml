@@ -3,9 +3,6 @@ name: 'Run Docker'
 description: 'Runs a command inside a Docker container.'
 
 inputs:
-  image-url:
-    description: 'The tag of the Docker image to run.'
-    required: true
   command:
     description: 'The command to run.'
     required: true
@@ -30,7 +27,7 @@ runs:
         key: ${{ steps.load_image_url.outputs.image-url }}
     - name: load image
       shell: bash
-      run: docker load --input docker-image.tar
+      run: docker load --input image.tar
     - name: run
       shell: bash
       env:
