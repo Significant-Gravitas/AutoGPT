@@ -16,6 +16,13 @@ from googleapiclient.errors import HttpError
 cfg = Config()
 
 
+def is_valid_int(value):
+    try:
+        int(value)
+        return True
+    except ValueError:
+        return False
+
 def get_command(response):
     try:
         response_json = fix_and_parse_json(response)
@@ -194,14 +201,28 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
-    if int(key) >= 0 and key < len(mem.permanent_memory):
-        _text = "Overwriting memory with key " + \
-            str(key) + " and string " + string
+    # Check if the key is a valid integer
+    if is_valid_int(key):
+        key_int = int(key)
+        # Check if the integer key is within the range of the permanent_memory list
+        if 0 <= key_int < len(mem.permanent_memory):
+            _text = "Overwriting memory with key " + str(key) + " and string " + string
+            # Overwrite the memory slot with the given integer key and string
+            mem.permanent_memory[key_int] = string
+            print(_text)
+            return _text
+        else:
+            print(f"Invalid key '{key}', out of range.")
+            return None
+    # Check if the key is a valid string
+    elif isinstance(key, str):
+        _text = "Overwriting memory with key " + key + " and string " + string
+        # Overwrite the memory slot with the given string key and string
         mem.permanent_memory[key] = string
         print(_text)
         return _text
     else:
-        print("Invalid key, cannot overwrite memory.")
+        print(f"Invalid key '{key}', must be an integer or a string.")
         return None
 
 
@@ -235,13 +256,20 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
 
 def message_agent(key, message):
     global cfg
-    agent_response = agents.message_agent(key, message)
+
+    # Check if the key is a valid integer
+    if is_valid_int(key):
+        agent_response = agents.message_agent(int(key), message)
+    # Check if the key is a valid string
+    elif isinstance(key, str):
+        agent_response = agents.message_agent(key, message)
+    else:
+        return "Invalid key, must be an integer or a string."
 
     # Speak response
     if cfg.speak_mode:
         speak.say_text(agent_response, 1)
-
-    return f"Agent {key} responded: {agent_response}"
+    return agent_response
 
 
 def list_agents():
