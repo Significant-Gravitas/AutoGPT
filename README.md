@@ -140,6 +140,35 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
+## 🌲 Pinecone API Key Setup
+
+Pinecone enable a vector based memory so a vast memory can be stored and only relevant memories
+are loaded for the agent at any given time.
+
+1. Go to app.pinecone.io and make an account if you don't already have one.
+2. Choose the `Starter` plan to avoid being charged.
+3. Find your API key and region under the default project in the left sidebar.
+
+### Setting up environment variables
+   For Windows Users:
+```
+setx PINECONE_API_KEY "YOUR_GOOGLE_API_KEY"
+export PINECONE_ENV="Your region" # something like: us-east4-gcp
+
+```
+For macOS and Linux users:
+```
+export PINECONE_API_KEY="YOUR_GOOGLE_API_KEY"
+export PINECONE_ENV="Your region" # something like: us-east4-gcp
+
+```
+
+Or you can set them in the `.env` file.
+
+## View Memory Usage
+
+1. View memory usage by using the `--debug` flag :)
+
 ## 💀 Continuous Mode ⚠️
 Run the AI **without** user authorisation, 100% automated.
 Continuous mode is not recommended. 
