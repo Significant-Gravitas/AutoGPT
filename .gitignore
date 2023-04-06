@@ -2,10 +2,11 @@
 *.mpeg
 *.pyc
 auto_gpt_workspace/
-last_run_ai_settings.yaml
 outputs/*
 package-lock.json
 scripts/__pycache__/
 scripts/*json
 scripts/auto_gpt_workspace/*
 scripts/node_modules/
+scripts/keys.py
+ai_settings.yaml
