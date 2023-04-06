@@ -3,8 +3,6 @@ import pinecone
 import openai
 
 cfg = Config()
-
-
 def get_ada_embedding(text):
     text = text.replace("\n", " ")
     return openai.Embedding.create(input=[text], model="text-embedding-ada-002")["data"][0]["embedding"]
@@ -14,20 +12,26 @@ def get_text_from_embedding(embedding):
     return openai.Embedding.retrieve(embedding, model="text-embedding-ada-002")["data"][0]["text"]
 
 
+def create_memory():
+    if (cfg.pinecone_api_key and cfg.pinecone_region):
+        return PineconeMemory()
+    else:
+        return SimpleMemory()
+
 class PineconeMemory(metaclass=Singleton):
     def __init__(self):
         pinecone_api_key = cfg.pinecone_api_key
         pinecone_region = cfg.pinecone_region
         pinecone.init(api_key=pinecone_api_key, environment=pinecone_region)
-        dimension = 1536
-        metric = "cosine"
-        pod_type = "p1"
         table_name = "auto-gpt"
         # this assumes we don't start with memory.
         # for now this works.
         # we'll need a more complicated and robust system if we want to start with memory.
         self.vec_num = 0
         if table_name not in pinecone.list_indexes():
+            dimension = 1536
+            metric = "cosine"
+            pod_type = "p1"
             pinecone.create_index(table_name, dimension=dimension, metric=metric, pod_type=pod_type)
         self.index = pinecone.Index(table_name)
 
@@ -59,3 +63,17 @@ class PineconeMemory(metaclass=Singleton):
 
     def get_stats(self):
         return self.index.describe_index_stats()
+
+class SimpleMemory():
+    def init(self):
+        self.memory = []
+    
+    def get(self, data):
+        return self.memory[-5:]
+    
+    def clear(self):
+        self.memory = []
+        return "Obliviated"
+    
+    def add(self, data):
+        self.memory.append(data)

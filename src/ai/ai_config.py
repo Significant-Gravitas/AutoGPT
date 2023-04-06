@@ -1,5 +1,5 @@
 import yaml
-import data
+import utils.data as data
 
 
 class AIConfig:

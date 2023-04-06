@@ -1,6 +1,6 @@
 import json
 import commands as cmd
-from utils.memory import PineconeMemory
+from utils.memory import create_memory
 import data
 from chat import chat
 from utils.spinner import Spinner
@@ -262,10 +262,10 @@ user_input = "Determine which next command to use, and respond using the format 
 
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
-memory = PineconeMemory()
+memory = create_memory()
 memory.clear()
 
-print('Using memory of type: ' + memory.__class__.__name__)
+print_to_console('Memory System:', Fore.GREEN, memory.__class__.__name__)
 
 # Interaction Loop
 while True:

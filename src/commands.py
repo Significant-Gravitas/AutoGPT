@@ -1,6 +1,6 @@
 import utils.browse as browse
 import json
-from utils.memory import PineconeMemory
+from utils.memory import create_memory
 import datetime
 import chat.agent_manager as agents
 import utils.speak as speak
@@ -50,9 +50,10 @@ def get_command(response):
     except Exception as e:
         return "Error:", str(e)
 
+memory = create_memory()
 
 def execute_command(command_name, arguments):
-    memory = PineconeMemory()
+    
     try:
         if command_name == "google":
             
@@ -91,9 +92,8 @@ def execute_command(command_name, arguments):
             return search_files(arguments["directory"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
-        # TODO: Change these to take in a file rather than pasted code, if
-        # non-file is given, return instructions "Input should be a python
-        # filepath, write your code to file and try again"
+        elif command_name == "memory_add":
+            return memory.add(arguments["string"])
         elif command_name == "evaluate_code":
             return ai.evaluate_code(arguments["code"])
         elif command_name == "improve_code":
