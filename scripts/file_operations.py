@@ -61,7 +61,11 @@ def delete_file(filename):
 
 def search_files(directory):
     found_files = []
-    search_directory = safe_join(working_directory, directory)
+
+    if directory == "" or directory == "/":
+        search_directory = working_directory
+    else:
+        search_directory = safe_join(working_directory, directory)
 
     for root, _, files in os.walk(search_directory):
         for file in files:
