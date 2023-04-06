@@ -154,12 +154,14 @@ are loaded for the agent at any given time.
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
+export PINECONE_TABLE="your-table-name" 
 
 ```
 For macOS and Linux users:
 ```
 export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
+export PINECONE_TABLE="your-table-name"
 
 ```
 

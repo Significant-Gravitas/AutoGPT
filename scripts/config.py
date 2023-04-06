@@ -52,6 +52,7 @@ class Config(metaclass=Singleton):
 
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
+        self.pinecone_table = os.getenv("PINECONE_TABLE")
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
@@ -95,3 +96,6 @@ class Config(metaclass=Singleton):
 
     def set_pinecone_region(self, value: str):
         self.pinecone_region = value
+    
+    def set_pinecone_table(self, value: str):
+        self.pinecone_table = value
