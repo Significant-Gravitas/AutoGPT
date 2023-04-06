@@ -23,4 +23,6 @@ runs:
       run: docker load docker-image.tar
     - name: run
       shell: bash
+      env:
+        NO_IMAGE_BUILD: 1
       run: ${{ inputs.command }}
