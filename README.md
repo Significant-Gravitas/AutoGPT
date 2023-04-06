@@ -95,7 +95,7 @@ For this step you need Git installed, but you can just download the zip file ins
     pip install -r requirements.txt
     ```
 
-5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY` and `PINECONE_API_KEY`. If you want to use a higher quality Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
 
     - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
     - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
