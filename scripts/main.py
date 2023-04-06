@@ -280,6 +280,13 @@ result = None
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
 
+statement = {
+    "statement": f"{user_input}"
+}
+
+user_input = json.dumps(statement)
+
+counter=0
 # Interaction Loop
 while True:
     # Send message to AI, get response
@@ -335,9 +342,43 @@ while True:
             print("Exiting...", flush=True)
             break
     else:
-        # Print command
+       if counter % 10 == 0:
+        ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+        # Get key press: Prompt the user to press enter to continue or escape
+        # to exit
+        user_input = ""
         print_to_console(
             "NEXT ACTION: ",
+            Fore.CYAN,
+            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
+        print(
+            f"Enter 'y' to authorise command or 'n' to exit program, or enter feedback for {ai_name}...",
+            flush=True)
+        while True:
+            console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+            if console_input.lower() == "y":
+                user_input = "GENERATE NEXT COMMAND JSON"
+                break
+            elif console_input.lower() == "n":
+                user_input = "EXIT"
+                break
+            else:
+                user_input = console_input
+                command_name = "human_feedback"
+                break
+
+        if user_input == "GENERATE NEXT COMMAND JSON":
+            print_to_console(
+            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+            Fore.MAGENTA,
+            "")
+        elif user_input == "EXIT":
+            print("Exiting...", flush=True)
+            break
+       else:
+        # Print command
+        print_to_console(
+            f"NEXT ACTION ({counter}): ",
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
@@ -345,10 +386,14 @@ while True:
     if command_name.lower() == "error":
         result = f"Command {command_name} threw the following error: " + arguments
     elif command_name == "human_feedback":
-        result = f"#FOR_CONSIDERATION: {user_input}"
+        statement = {
+            "statement": f"{user_input}"
+        }
+        result = json.dumps(statement)
     else:
         result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
 
+    counter += 1
     # Check if there's a result from the command append it to the message
     # history
     if result is not None:

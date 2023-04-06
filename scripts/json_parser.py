@@ -32,6 +32,16 @@ def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
     except json.JSONDecodeError:
         try:
 
+            # Use regular expression to find JSON strings in the document
+            json_pattern = r'\{(?:[^{}]|(?R))*\}'
+            matches = re.findall(json_pattern, json_str, re.MULTILINE | re.DOTALL)
+
+            for match in matches:
+                print(f"JSON string: {match}")
+                jsonobj = json.loads(match)
+                print(f"Parsed JSON data: {json_str}")
+                print()
+                return jsonobj
             
             clarify = """{"command": {"name": "output_content", "args": {"priority": "low", "task": "additional_input"}}, "thoughts": {"text": "", "reasoning": "I must always remember to <cmd_expand>DO NOT DEVIATE-FRM ##RESPONSE_FORMAT; breaking format may->incorrect results.", "plan": "do not forget <cmd_expand>DO NOT DEVIATE-FRM ##RESPONSE_FORMAT; breaking format may->incorrect results.", "speak": "I will do my best to contiune my assigned task autonomously as described for me in ##AUTOGPT_ROLE", "criticism": "I produced a poorly formatted message I must always remember to <cmd_expand>DO NOT DEVIATE-FRM ##RESPONSE_FORMAT; breaking format may->incorrect results."}}"""
             
