@@ -25,7 +25,7 @@ def read_file(filename):
             content = f.read()
         return content
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
 
 
 def write_to_file(filename, text):
@@ -38,7 +38,7 @@ def write_to_file(filename, text):
             f.write(text)
         return "File written to successfully."
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
 
 
 def append_to_file(filename, text):
@@ -48,7 +48,7 @@ def append_to_file(filename, text):
             f.write(text)
         return "Text appended successfully."
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
 
 
 def delete_file(filename):
@@ -57,12 +57,12 @@ def delete_file(filename):
         os.remove(filepath)
         return "File deleted successfully."
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
 
 def search_files(directory):
     found_files = []
 
-    if directory == "" or directory == "/":
+    if directory in ["", "/"]:
         search_directory = working_directory
     else:
         search_directory = safe_join(working_directory, directory)

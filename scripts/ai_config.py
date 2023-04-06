@@ -3,7 +3,9 @@ import data
 
 
 class AIConfig:
-    def __init__(self, ai_name="", ai_role="", ai_goals=[]):
+    def __init__(self, ai_name="", ai_role="", ai_goals=None):
+        if ai_goals is None:
+            ai_goals = []
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
