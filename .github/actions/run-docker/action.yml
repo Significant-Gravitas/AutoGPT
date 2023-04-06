@@ -13,15 +13,20 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Load image url
+      id: load_image_url
+      run: |
+        IMAGE_URL=`make image-url`
+        echo "image-url=$IMAGE_URL" >> "$GITHUB_OUTPUT"
     - name: setup
       shell: bash
       run: |
-        echo "Loading cached image: ${{ inputs.image-url }}"
+        echo "Loading cached image: ${{ steps.load_image_url.outputs.image-url }}"
     - name: Cache docker image
       uses: actions/cache@v2
       with:
         path: docker-image.tar
-        key: ${{ inputs.image-url }}
+        key: ${{ steps.load_image_url.outputs.image-url }}
     - name: load image
       shell: bash
       run: docker load docker-image.tar
