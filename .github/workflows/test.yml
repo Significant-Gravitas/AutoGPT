@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  DOCKER_REPOSITORY=ghcr.io/auto-gpt/sandbox
+  DOCKER_REPOSITORY: ghcr.io/auto-gpt/sandbox
 
 jobs:
   build:
