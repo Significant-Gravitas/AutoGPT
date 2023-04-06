@@ -174,7 +174,7 @@ def construct_prompt():
             Goals: {config.ai_goals}  
             Continue (y/n): """)
 
-            if should_continue and (should_continue.lower == 'n' or should_continue.lower() == 'y'):
+            if should_continue and (should_continue.lower() == 'n' or should_continue.lower() == 'y'):
                 break
             print_to_console('Error', Fore.RED, "Invalid input, please choose between y/n")
 
