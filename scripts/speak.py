@@ -46,6 +46,7 @@ def gtts_speech(text):
         os.remove("speech.mp3")
 
 def say_text(text, voice_index=0):
+
     def speak():
         if not cfg.elevenlabs_api_key:
             gtts_speech(text)
