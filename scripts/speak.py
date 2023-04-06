@@ -42,7 +42,7 @@ def say_text(text, voice_index=0):
     if not cfg.elevenlabs_api_key:
         gtts_speech(text)
     else:
-        success = eleven_labs_speech(text)
+        success = eleven_labs_speech(text, voice_index)
         if not success:
             gtts_speech(text)
 
