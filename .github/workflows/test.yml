@@ -28,7 +28,7 @@ jobs:
           cache-name: cache-node-modules
         with:
           path: docker-image.tar
-          key: test-image-${{ steps.build.outputs.image-url }}
+          key: ${{ steps.build.outputs.image-url }}
 
   pytest:
     needs: build
