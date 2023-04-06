@@ -1,5 +1,7 @@
 import os
 import os.path
+from auto_gpt.commands import command
+
 
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
@@ -17,20 +19,20 @@ def safe_join(base, *paths):
 
     return norm_new_path
 
-
-def read_file(filename):
+@command("read_file", "Read file", '"file": "<file>"')
+def read_file(file):
     try:
-        filepath = safe_join(working_directory, filename)
+        filepath = safe_join(working_directory, file)
         with open(filepath, "r") as f:
             content = f.read()
         return content
     except Exception as e:
         return "Error: " + str(e)
 
-
-def write_to_file(filename, text):
+@command("write_to_file", "Write to file", '"file": "<file>", "text": "<text>"')
+def write_to_file(file, text):
     try:
-        filepath = safe_join(working_directory, filename)
+        filepath = safe_join(working_directory, file)
         directory = os.path.dirname(filepath)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -40,25 +42,26 @@ def write_to_file(filename, text):
     except Exception as e:
         return "Error: " + str(e)
 
-
-def append_to_file(filename, text):
+@command("append_to_file", "Append to file", '"file": "<file>", "text": "<text>"')
+def append_to_file(file, text):
     try:
-        filepath = safe_join(working_directory, filename)
+        filepath = safe_join(working_directory, file)
         with open(filepath, "a") as f:
             f.write(text)
         return "Text appended successfully."
     except Exception as e:
         return "Error: " + str(e)
 
-
-def delete_file(filename):
+@command("delete_file", "Delete file", '"file": "<file>"')
+def delete_file(file):
     try:
-        filepath = safe_join(working_directory, filename)
+        filepath = safe_join(working_directory, file)
         os.remove(filepath)
         return "File deleted successfully."
     except Exception as e:
         return "Error: " + str(e)
 
+@command("search_files", "Search Files", '"directory": "<directory>"')
 def search_files(directory):
     found_files = []
 

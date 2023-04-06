@@ -5,13 +5,10 @@ import datetime
 import agent_manager as agents
 import speak
 from config import Config
-import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
-from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+
+from auto_gpt.commands import CommandRegistry, command
 
 cfg = Config()
 
@@ -51,62 +48,27 @@ def get_command(response):
         return "Error:", str(e)
 
 
-def execute_command(command_name, arguments):
-    memory = PineconeMemory()
+def execute_command(command_registry: CommandRegistry, command_name: str, arguments: dict) -> str:
     try:
+        # Look up the command in the registry
+        cmd = command_registry.commands.get(command_name)
+
+        # If the command is found, call it with the provided arguments
+        if cmd:
+            return cmd(**arguments)
+        # special case google until this can be moved down into the function.
         if command_name == "google":
-            
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
             if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
                 return google_official_search(arguments["input"])
             else:
                 return google_search(arguments["input"])
-        elif command_name == "memory_add":
-            return memory.add(arguments["string"])
-        elif command_name == "start_agent":
-            return start_agent(
-                arguments["name"],
-                arguments["task"],
-                arguments["prompt"])
-        elif command_name == "message_agent":
-            return message_agent(arguments["key"], arguments["message"])
-        elif command_name == "list_agents":
-            return list_agents()
-        elif command_name == "delete_agent":
-            return delete_agent(arguments["key"])
-        elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"], arguments["question"])
-        elif command_name == "get_hyperlinks":
-            return get_hyperlinks(arguments["url"])
-        elif command_name == "read_file":
-            return read_file(arguments["file"])
-        elif command_name == "write_to_file":
-            return write_to_file(arguments["file"], arguments["text"])
-        elif command_name == "append_to_file":
-            return append_to_file(arguments["file"], arguments["text"])
-        elif command_name == "delete_file":
-            return delete_file(arguments["file"])
-        elif command_name == "search_files":
-            return search_files(arguments["directory"])
-        elif command_name == "browse_website":
-            return browse_website(arguments["url"], arguments["question"])
-        # TODO: Change these to take in a file rather than pasted code, if
-        # non-file is given, return instructions "Input should be a python
-        # filepath, write your code to file and try again"
-        elif command_name == "evaluate_code":
-            return ai.evaluate_code(arguments["code"])
-        elif command_name == "improve_code":
-            return ai.improve_code(arguments["suggestions"], arguments["code"])
-        elif command_name == "write_tests":
-            return ai.write_tests(arguments["code"], arguments.get("focus"))
-        elif command_name == "execute_python_file":  # Add this command
-            return execute_python_file(arguments["file"])
         elif command_name == "task_complete":
             shutdown()
         else:
             return f"Unknown command {command_name}"
-    # All errors, return "Error: + error message"
+
     except Exception as e:
         return "Error: " + str(e)
 
@@ -158,6 +120,7 @@ def google_official_search(query, num_results=8):
     # Return the list of search result URLs
     return search_results_links
 
+@command("browse_website", "Browse Website", '"url": "<url>", "question": "<what_you_want_to_find_on_website>"')
 def browse_website(url, question):
     summary = get_text_summary(url, question)
     links = get_hyperlinks(url)
@@ -230,6 +193,7 @@ def shutdown():
     quit()
 
 
+@command("start_agent", "Start GPT Agent", '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"')
 def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     global cfg
 

@@ -1,3 +1,4 @@
+from auto_gpt.commands import command
 from llm_utils import create_chat_completion
 
 next_key = 0
@@ -31,6 +32,7 @@ def create_agent(task, prompt, model):
     return key, agent_reply
 
 
+@command("message_agent", "Message GPT Agent", '"key": "<key>", "message": "<message>"')
 def message_agent(key, message):
     global agents
 
@@ -51,6 +53,7 @@ def message_agent(key, message):
     return agent_reply
 
 
+@command("list_agents", "List GPT Agents", "")
 def list_agents():
     global agents
 
@@ -58,6 +61,7 @@ def list_agents():
     return [(key, task) for key, (task, _, _) in agents.items()]
 
 
+@command("delete_agent", "Delete GPT Agent", '"key": "<key>"')
 def delete_agent(key):
     global agents
 

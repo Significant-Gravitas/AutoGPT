@@ -8,14 +8,13 @@ from colorama import Fore, Style
 from spinner import Spinner
 import time
 import speak
-from enum import Enum, auto
-import sys
 from config import Config
 from json_parser import fix_and_parse_json
 from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
+from auto_gpt.commands import CommandRegistry
 
 
 def print_to_console(
@@ -281,12 +280,17 @@ next_action_count = 0
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
 
+
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
 memory = PineconeMemory()
 memory.clear()
 
 print('Using memory of type: ' + memory.__class__.__name__)
+
+# Create a CommandRegistry instance and scan default folder
+command_registry = CommandRegistry()
+command_registry.scan_directory_for_plugins('./scripts')
 
 # Interaction Loop
 while True:
@@ -362,7 +366,7 @@ while True:
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"
     else:
-        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
+        result = f"Command {command_name} returned: {cmd.execute_command(command_registry, command_name, arguments)}"
         if next_action_count > 0:
             next_action_count -= 1
 

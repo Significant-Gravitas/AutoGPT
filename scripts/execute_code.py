@@ -1,7 +1,9 @@
 import docker
 import os
+from auto_gpt.commands import command
 
 
+@command("execute_python_file", "Execute Python File", '"file": "<file>"')
 def execute_python_file(file):
     workspace_folder = "auto_gpt_workspace"
 
