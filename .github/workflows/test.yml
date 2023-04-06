@@ -28,23 +28,23 @@ jobs:
         id: build_image
         run: |
           IMAGE_TAG=$(md5sum DOCKERFILE requirements.txt | awk '{ print $1 }')
-          echo "Building Docker image with tag: $$IMAGE_TAG"
-          docker build -t ${{ DOCKER_REPOSITORY }}:$$IMAGE_TAG -f $DOCKERFILE .
-          echo "image-tag=$$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "Building Docker image with tag: $IMAGE_TAG"
+          docker build -t $DOCKER_REPOSITORY:$IMAGE_TAG -f $DOCKERFILE .
+          echo "image-tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
 
       - name: Push Docker image
         run: |
           IMAGE_TAG=${{ steps.build_image.outputs.image-tag }}
-          echo "Pushing Docker image with tag: $$IMAGE_TAG"
-          docker tag ${{ DOCKER_REPOSITORY }}:$$IMAGE_TAG ghcr.io/${{ GITHUB_REPOSITORY }}:latest
-          docker push ${{ DOCKER_REPOSITORY }}:$$IMAGE_TAG
+          echo "Pushing Docker image with tag: $IMAGE_TAG"
+          docker tag $DOCKER_REPOSITORY:$IMAGE_TAG ghcr.io/$$DOCKER_REPOSITORY:latest
+          docker push $DOCKER_REPOSITORY:$IMAGE_TAG
 
   pytest:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Pull Docker image
-        run: docker pull ghcr.io/${{ github.repository }}:${{ needs.build_image.outputs.image-tag }}
+        run: docker pull $DOCKER_REPOSITORY:${{ needs.build_image.outputs.image-tag }}
 
       - name: Run pytest
         uses: ./actions/docker/run-docker
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Pull Docker image
-        run: docker pull ghcr.io/${{ github.repository }}:${{ needs.build_image.outputs.image-tag }}
+        run: docker pull $DOCKER_REPOSITORY:${{ needs.build_image.outputs.image-tag }}
 
       - name: Run black
         uses: ./actions/docker/run-docker
@@ -70,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Pull Docker image
-        run: docker pull ghcr.io/${{ github.repository }}:${{ needs.build_image.outputs.image-tag }}
+        run: docker pull $DOCKER_REPOSITORY:${{ needs.build_image.outputs.image-tag }}
 
       - name: Run flake8
         uses: ./actions/docker/run-docker
