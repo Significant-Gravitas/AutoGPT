@@ -6,24 +6,21 @@ on:
   push:
     branches: [main]
 
-env:
-  DOCKER_REPOSITORY: "ghcr.io/auto-gpt/sandbox"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-
       - name: Build Docker image
         id: build
         run: |
           IMAGE_TAG=`make image-tag`
           IMAGE_URL=`make image-url`
-          echo "Building Docker image with tag: $IMAGE_URL"
+          echo "Building Docker image: $IMAGE_URL"
           make image
-          docker save -o image.tar $IMAGE_URL
           docker save $IMAGE_URL > image.tar
+          echo "image-url=$IMAGE_URL" >> $GITHUB_OUTPUT
 
       - name: Cache docker image
         uses: actions/cache@v2
@@ -31,44 +28,37 @@ jobs:
           cache-name: cache-node-modules
         with:
           path: docker-image.tar
-          key: test-image
+          key: test-image-${{ steps.build.outputs.image-url }}
 
   pytest:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Cache docker image
-        uses: actions/cache@v2
-        with:
-          path: docker-image.tar
-          key: test-image
+      - uses: actions/checkout@v2
       - name: Run pytest
         uses: ./.github/actions/run-docker
         with:
-          image-tag: ${{ needs.build.outputs.image-tag }}
+          image-url: ${{ needs.build.outputs.image-url }}
           command: make pytest
 
   black:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Cache docker image
-        uses: actions/cache@v2
-        with:
-          path: docker-image.tar
-          key: test-image
+      - uses: actions/checkout@v2
       - name: Run black
         uses: ./.github/actions/run-docker
         with:
-          image-tag: ${{ needs.build.outputs.image-tag }}
+          image-url: ${{ needs.build.outputs.image-url }}
           command: make black-check
 
   flake8:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
       - name: Run flake8
         uses: ./.github/actions/run-docker
         with:
-          image-tag: ${{ needs.build.outputs.image-tag }}
+          image-url: ${{ needs.build.outputs.image-url }}
           command: make flake8

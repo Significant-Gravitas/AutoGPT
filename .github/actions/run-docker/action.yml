@@ -3,7 +3,7 @@ name: 'Run Docker'
 description: 'Runs a command inside a Docker container.'
 
 inputs:
-  image-tag:
+  image-url:
     description: 'The tag of the Docker image to run.'
     required: true
   command:
@@ -13,6 +13,11 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Cache docker image
+      uses: actions/cache@v2
+      with:
+        path: docker-image.tar
+        key: ${{ inputs.image-url }}
     - name: load image
       shell: bash
       run: docker load docker-image.tar
