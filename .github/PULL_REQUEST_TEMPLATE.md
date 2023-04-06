@@ -8,7 +8,7 @@
 
 ### Test Plan
 
-<!-- Explain how you tested this functionality. Include the testing environment, steps to reproduce, and any relevant test cases. -->
+<!-- Explain how you tested this functionality. Include the steps to reproduce and any relevant test cases. -->
 
 ### Change Safety
 
