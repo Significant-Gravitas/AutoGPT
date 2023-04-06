@@ -139,7 +139,7 @@ def chat_with_ai(
             return assistant_reply
         except (openai.error.RateLimitError, openai.error.APIError) as exc:
             if isinstance(exc, openai.error.APIError):
-                if 'Please try again in a few minutes' not in exc:
+                if 'Please try again in a few minutes' not in str(exc):
                     raise exc
                 print("Error: ", "API Gateway error. Waiting 10 seconds...")
             else:
