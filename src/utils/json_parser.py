@@ -1,5 +1,5 @@
 import json
-from call_ai_function import call_ai_function
+from ai.call_ai_function import call_ai_function
 from config import Config
 cfg = Config()
 

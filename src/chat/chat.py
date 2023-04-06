@@ -2,11 +2,11 @@ import time
 import openai
 from dotenv import load_dotenv
 from config import Config
-import token_counter
+import utils.token_counter as token_counter
 
 cfg = Config()
 
-from llm_utils import create_chat_completion
+from utils.llm_utils import create_chat_completion
 
 
 def create_chat_message(role, content):

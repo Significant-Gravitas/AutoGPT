@@ -1,3 +1,4 @@
+
 import openai
 from config import Config
 cfg = Config()

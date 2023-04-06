@@ -1,22 +1,18 @@
 import json
-import random
 import commands as cmd
-from memory import PineconeMemory
+from utils.memory import PineconeMemory
 import data
-import chat
-from spinner import Spinner
-import time
+from chat import chat
+from utils.spinner import Spinner
 from colorama import Fore, Style
-import speak
-from enum import Enum, auto
-import sys
+import utils.speak as speak
 from config import Config
-from json_parser import fix_and_parse_json
-from ai_config import AIConfig
+from utils.json_parser import fix_and_parse_json
+from ai.ai_config import AIConfig
 import traceback
 import yaml
 import argparse
-from console_log import print_to_console, print_error
+from utils.console_log import print_to_console, print_error
 
 
 

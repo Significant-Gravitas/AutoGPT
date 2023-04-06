@@ -4,7 +4,7 @@ from playsound import playsound
 import requests
 from colorama import Fore, Style
 from config import Config
-import console_log
+import utils.console_log as console_log
 cfg = Config()
 
 # TODO: Nicer names for these ids

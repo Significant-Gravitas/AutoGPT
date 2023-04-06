@@ -1,14 +1,14 @@
-import browse
+import utils.browse as browse
 import json
-from memory import PineconeMemory
+from utils.memory import PineconeMemory
 import datetime
-import agent_manager as agents
-import speak
+import chat.agent_manager as agents
+import utils.speak as speak
 from config import Config
-import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
-from execute_code import execute_python_file
-from json_parser import fix_and_parse_json
+import ai.ai_functions as ai
+from utils.file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
+from utils.execute_code import execute_python_file
+from utils.json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -124,8 +124,6 @@ def google_search(query, num_results=8):
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 def google_official_search(query, num_results=8):
-    from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
     import json
 
     try:
