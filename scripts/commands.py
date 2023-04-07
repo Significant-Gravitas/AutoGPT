@@ -68,27 +68,28 @@ def execute_command(command_name, arguments, chat_id=None):
             return start_agent(
                 arguments["name"],
                 arguments["task"],
-                arguments["prompt"])
+                arguments["prompt"],
+                chat_id=chat_id)
         elif command_name == "message_agent":
-            return message_agent(arguments["key"], arguments["message"])
+            return message_agent(arguments["key"], arguments["message"], chat_id=chat_id)
         elif command_name == "list_agents":
-            return list_agents()
+            return list_agents(chat_id=chat_id)
         elif command_name == "delete_agent":
-            return delete_agent(arguments["key"])
+            return delete_agent(arguments["key"], chat_id=chat_id)
         elif command_name == "get_text_summary":
             return get_text_summary(arguments["url"], arguments["question"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
         elif command_name == "read_file":
-            return read_file(arguments["file"])
+            return read_file(arguments["file"], chat_id=chat_id)
         elif command_name == "write_to_file":
-            return write_to_file(arguments["file"], arguments["text"])
+            return write_to_file(arguments["file"], arguments["text"], chat_id=chat_id)
         elif command_name == "append_to_file":
-            return append_to_file(arguments["file"], arguments["text"])
+            return append_to_file(arguments["file"], arguments["text"], chat_id=chat_id)
         elif command_name == "delete_file":
-            return delete_file(arguments["file"])
+            return delete_file(arguments["file"], chat_id=chat_id)
         elif command_name == "search_files":
-            return search_files(arguments["directory"])
+            return search_files(arguments["directory"], chat_id=chat_id)
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
         # TODO: Change these to take in a file rather than pasted code, if
@@ -230,7 +231,7 @@ def shutdown():
     quit()
 
 
-def start_agent(name, task, prompt, model=cfg.fast_llm_model):
+def start_agent(name, task, prompt, model=cfg.fast_llm_model, chat_id=None):
     global cfg
 
     # Remove underscores from name
@@ -242,26 +243,26 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     # Create agent
     if cfg.speak_mode:
         speak.say_text(agent_intro, 1)
-    key, ack = agents.create_agent(task, first_message, model)
+    key, ack = agents.create_agent(task, first_message, model, chat_id=chat_id)
 
     if cfg.speak_mode:
         speak.say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
     # Assign task (prompt), get response
-    agent_response = message_agent(key, prompt)
+    agent_response = message_agent(key, prompt, chat_id=chat_id)
 
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
 
-def message_agent(key, message):
+def message_agent(key, message, chat_id=None):
     global cfg
 
     # Check if the key is a valid integer
     if is_valid_int(key):
-        agent_response = agents.message_agent(int(key), message)
+        agent_response = agents.message_agent(int(key), message, chat_id=chat_id)
     # Check if the key is a valid string
     elif isinstance(key, str):
-        agent_response = agents.message_agent(key, message)
+        agent_response = agents.message_agent(key, message, chat_id=chat_id)
     else:
         return "Invalid key, must be an integer or a string."
 
@@ -271,12 +272,12 @@ def message_agent(key, message):
     return agent_response
 
 
-def list_agents():
-    return agents.list_agents()
+def list_agents(chat_id=None):
+    return agents.list_agents(chat_id=chat_id)
 
 
-def delete_agent(key):
-    result = agents.delete_agent(key)
+def delete_agent(key, chat_id=None):
+    result = agents.delete_agent(key, chat_id=None)
     if not result:
         return f"Agent {key} does not exist."
     return f"Agent {key} deleted."

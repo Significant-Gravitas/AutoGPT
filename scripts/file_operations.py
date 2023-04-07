@@ -8,7 +8,9 @@ if not os.path.exists(working_directory):
     os.makedirs(working_directory)
 
 
-def safe_join(base, *paths):
+def safe_join(base, *paths, chat_id=None):
+    if chat_id:
+        return safe_join(base, chat_id, *paths)
     new_path = os.path.join(base, *paths)
     norm_new_path = os.path.normpath(new_path)
 
@@ -18,9 +20,9 @@ def safe_join(base, *paths):
     return norm_new_path
 
 
-def read_file(filename):
+def read_file(filename, chat_id=None):
     try:
-        filepath = safe_join(working_directory, filename)
+        filepath = safe_join(working_directory, filename, chat_id=chat_id)
         with open(filepath, "r") as f:
             content = f.read()
         return content
@@ -28,9 +30,9 @@ def read_file(filename):
         return "Error: " + str(e)
 
 
-def write_to_file(filename, text):
+def write_to_file(filename, text, chat_id=None):
     try:
-        filepath = safe_join(working_directory, filename)
+        filepath = safe_join(working_directory, filename, chat_id=chat_id)
         directory = os.path.dirname(filepath)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -41,9 +43,9 @@ def write_to_file(filename, text):
         return "Error: " + str(e)
 
 
-def append_to_file(filename, text):
+def append_to_file(filename, text, chat_id=None):
     try:
-        filepath = safe_join(working_directory, filename)
+        filepath = safe_join(working_directory, filename, chat_id=chat_id)
         with open(filepath, "a") as f:
             f.write(text)
         return "Text appended successfully."
@@ -51,21 +53,21 @@ def append_to_file(filename, text):
         return "Error: " + str(e)
 
 
-def delete_file(filename):
+def delete_file(filename, chat_id=None):
     try:
-        filepath = safe_join(working_directory, filename)
+        filepath = safe_join(working_directory, filename, chat_id=chat_id)
         os.remove(filepath)
         return "File deleted successfully."
     except Exception as e:
         return "Error: " + str(e)
 
-def search_files(directory):
+def search_files(directory, chat_id=None):
     found_files = []
 
     if directory == "" or directory == "/":
         search_directory = working_directory
     else:
-        search_directory = safe_join(working_directory, directory)
+        search_directory = safe_join(working_directory, directory, chat_id=chat_id)
 
     for root, _, files in os.walk(search_directory):
         for file in files:

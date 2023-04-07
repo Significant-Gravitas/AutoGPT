@@ -1,12 +1,12 @@
 from llm_utils import create_chat_completion
 
-next_key = 0
-agents = {}  # key, (task, full_message_history, model)
+next_key = {None: 0}
+agents = {None: {}}  # key, (task, full_message_history, model)
 
 # Create new GPT agent
 # TODO: Centralise use of create_chat_completion() to globally enforce token limit
 
-def create_agent(task, prompt, model):
+def create_agent(task, prompt, model, chat_id=None):
     global next_key
     global agents
 
@@ -21,20 +21,24 @@ def create_agent(task, prompt, model):
     # Update full message history
     messages.append({"role": "assistant", "content": agent_reply})
 
-    key = next_key
+    if not chat_id in next_key:
+        next_key[chat_id] = 0
+    key = next_key[chat_id]
     # This is done instead of len(agents) to make keys unique even if agents
     # are deleted
-    next_key += 1
+    next_key[chat_id] += 1
 
-    agents[key] = (task, messages, model)
+    if not chat_id in agents:
+        agents[chat_id] = {}
+    agents[chat_id][key] = (task, messages, model)
 
     return key, agent_reply
 
 
-def message_agent(key, message):
+def message_agent(key, message, chat_id=None):
     global agents
 
-    task, messages, model = agents[int(key)]
+    task, messages, model = agents[chat_id][int(key)]
 
     # Add user message to message history before sending to agent
     messages.append({"role": "user", "content": message})
@@ -47,22 +51,23 @@ def message_agent(key, message):
 
     # Update full message history
     messages.append({"role": "assistant", "content": agent_reply})
+    agents[chat_id][int(key)] = (task, messages, model)
 
     return agent_reply
 
 
-def list_agents():
+def list_agents(chat_id=None):
     global agents
 
     # Return a list of agent keys and their tasks
-    return [(key, task) for key, (task, _, _) in agents.items()]
+    return [(key, task) for key, (task, _, _) in agents[chat_id].items()]
 
 
-def delete_agent(key):
+def delete_agent(key, chat_id=None):
     global agents
 
     try:
-        del agents[int(key)]
+        del agents[chat_id][int(key)]
         return True
     except KeyError:
         return False
