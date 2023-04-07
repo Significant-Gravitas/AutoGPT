@@ -1,44 +1,28 @@
-from kandinsky2 import get_kandinsky2
+import requests
+import io
+import os.path
+from PIL import Image
 from config import Config
+import uuid
 
 cfg = Config()
 
+working_directory = "auto_gpt_workspace"
+
+API_URL = "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
+headers = {"Authorization": "Bearer " + cfg.huggingface_api_token}
+
 def generate_image(prompt):
-        
-    model = get_kandinsky2('cuda', task_type='text2img', model_version='2.1', use_flash_attention=False)
-    images = model.generate_text2img(
-        "red cat, 4k photo", # prompt
-        num_steps=100,
-        batch_size=1, 
-        guidance_scale=4,
-        h=768, w=768,
-        sampler='p_sampler', 
-        prior_cf_scale=4,
-        prior_steps="5"
-    )
-    return images
-    
-    # base_url = 'http://export.arxiv.org/api/query?'
-    # query = f'search_query=all:{search_query}&start=0&max_results={max_results}'
-    # url = base_url + query
-    # response = requests.get(url)
+    response = requests.post(API_URL, headers=headers, json={
+        "inputs": prompt,
+    })
+    image = Image.open(io.BytesIO(response.content))
+    print("Image Generated for prompt:" + prompt)
 
-    # if response.status_code == 200:
-    #     soup = BeautifulSoup(response.content, 'xml')
-    #     entries = soup.find_all('entry')
+    filename = str(uuid.uuid4()) + ".jpg"
 
-    #     articles = []
-    #     for entry in entries:
-    #         title = entry.title.text.strip()
-    #         url = entry.id.text.strip()
-    #         published = entry.published.text.strip()
+    image.save(os.path.join(working_directory, filename))
 
-    #         articles.append({
-    #             'title': title,
-    #             'url': url,
-    #             'published': published
-    #         })
+    print("Saved to disk:" + filename)
 
-    #     return articles
-    # else:
-    #     return None
+    return str("Image " + filename + " saved to disk for prompt: " + prompt)
