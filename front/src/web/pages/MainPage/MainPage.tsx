@@ -1,6 +1,17 @@
 import { useState } from "react"
 import Flex from "../../style/Flex"
-import { Button, Comment, Grid, Input } from "./MainPage.styled"
+import {
+  CardTask,
+  Comment,
+  Container,
+  Discussion,
+  Grid,
+  Input,
+  Line,
+  RightTasks,
+  Search,
+} from "./MainPage.styled"
+import SButton from "../../style/SButton"
 
 const MainPage = () => {
   const [output, setOutput] = useState([
@@ -64,39 +75,109 @@ const MainPage = () => {
   }
 
   return (
-    <Grid>
-      <div></div>
-      <div>
-        <Button
-          onClick={() => {
-            startScript()
-          }}
-        >
-          start script
-        </Button>
-        <Button
-          onClick={() => {
-            fetchData()
-          }}
-        >
-          fetch data
-        </Button>
-        <Button
-          onClick={() => {
-            killScript()
-          }}
-        >
-          kill script
-        </Button>
-        <Flex direction="column" gap={0.5}>
-          {output.map((line) => (
-            <Comment>{JSON.stringify(line)}</Comment>
-          ))}
-          <Input placeholder="your input" />
-        </Flex>
-      </div>
-      <div />
-    </Grid>
+    <Container>
+      <Grid>
+        <RightTasks>
+          <Flex direction="column" gap={0.5}>
+            <h2>Your AI</h2>
+            <Search>
+              <input type="text" placeholder="Search" />
+            </Search>
+            <CardTask>
+              <Flex justify="space-between" align="center">
+                <h3>Task 1</h3>
+                <div>7 Apr</div>
+              </Flex>
+              <p>
+                Use my Google search command to evaluate market trends and
+                determine business strategies.
+              </p>
+            </CardTask>
+            <CardTask>
+              <Flex justify="space-between" align="center">
+                <h3>Task 2</h3>
+                <div>6 Apr</div>
+              </Flex>
+              <p>
+                Use my Google search command to evaluate market trends and
+                determine business strategies.
+              </p>
+            </CardTask>
+            <SButton $color="yellow300" variant="outlined">
+              Create a new Ai
+            </SButton>
+          </Flex>
+        </RightTasks>
+        <Discussion>
+          <Flex direction="column" gap={0.5}>
+            <Flex gap={1}>
+              <SButton
+                $color="yellow"
+                variant="contained"
+                onClick={() => {
+                  startScript()
+                }}
+              >
+                start script
+              </SButton>
+              <SButton
+                $color="yellow"
+                onClick={() => {
+                  fetchData()
+                }}
+              >
+                fetch data
+              </SButton>
+              <SButton
+                $color="yellow"
+                onClick={() => {
+                  killScript()
+                }}
+              >
+                kill script
+              </SButton>
+            </Flex>
+            <Flex direction="column" gap={0.5}>
+              {output.map((line) => (
+                <>
+                  <Line content={line.title} />
+                  <Comment>
+                    {line.content === "" ? line.title : line.content}
+                  </Comment>
+                </>
+              ))}
+              <Input placeholder="your input" />
+            </Flex>
+          </Flex>
+        </Discussion>
+        <RightTasks>
+          <Flex direction="column" gap={0.5}>
+            <h2>Your agents</h2>
+            <CardTask>
+              <Flex justify="space-between" align="center">
+                <h3>Agent - 1</h3>
+                <div>6 Apr</div>
+              </Flex>
+              <p>Scrapping</p>
+            </CardTask>
+            <CardTask>
+              <Flex justify="space-between" align="center">
+                <h3>Agent - 2</h3>
+                <div>6 Apr</div>
+              </Flex>
+              <p>Searching</p>
+            </CardTask>
+            <CardTask>
+              <Flex justify="space-between" align="center">
+                <h3>Agent - 3</h3>
+                <div>6 Apr</div>
+              </Flex>
+              <p>Writing</p>
+            </CardTask>
+          </Flex>
+        </RightTasks>
+      </Grid>
+    </Container>
   )
 }
 
