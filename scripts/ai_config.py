@@ -5,16 +5,17 @@ import data
 class AIConfig:
     """
     A class object that contains the configuration information for the AI
-      
+
     Attributes:
         ai_name (str): The name of the AI.
         ai_role (str): The description of the AI's role.
         ai_goals (list): The list of objectives the AI is supposed to complete.
     """
-    def __init__(self, ai_name:str="", ai_role:str="", ai_goals:list=[]) -> None:
+
+    def __init__(self, ai_name: str="", ai_role: str="", ai_goals: list=[]) -> None:
         """
         Initialize a class instance
-        
+
         Parameters:
             ai_name (str): The name of the AI.
             ai_role (str): The description of the AI's role.
@@ -30,15 +31,15 @@ class AIConfig:
     SAVE_FILE = "../ai_settings.yaml"
 
     @classmethod
-    def load(cls:object, config_file:str=SAVE_FILE) -> object:
+    def load(cls: object, config_file: str=SAVE_FILE) -> object:
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from yaml file if yaml file exists, 
         else returns class with no parameters.
-  
+
         Parameters:
            cls (class object): An AIConfig Class object.
            config_file (int): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
-           
+
         Returns:
             cls (object): A instance of given cls object  
         """
@@ -54,13 +55,13 @@ class AIConfig:
 
         return cls(ai_name, ai_role, ai_goals)
 
-    def save(self, config_file:str=SAVE_FILE) -> None:
+    def save(self, config_file: str=SAVE_FILE) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
-  
+
         Parameters: 
             config_file(str): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
-           
+
         Returns:
             None 
         """
@@ -71,10 +72,10 @@ class AIConfig:
     def construct_full_prompt(self) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
-  
+
         Parameters: 
             None
-           
+
         Returns:
             full_prompt (str): A string containing the intitial prompt for the user including the ai_name, ai_role and ai_goals.
         """
@@ -87,6 +88,7 @@ class AIConfig:
 
         full_prompt += f"\n\n{data.load_prompt()}"
         return full_prompt
+
 
 if __name__ == "__main__":
     import doctest
