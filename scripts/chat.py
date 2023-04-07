@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from config import Config
 import token_counter
 from llm_utils import create_chat_completion
+from logger import logger
+import logging
 
 cfg = Config()
 
@@ -64,15 +66,12 @@ def chat_with_ai(
             model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
 
-            if cfg.debug_mode:
-                print(f"Token limit: {token_limit}")
-
+            logger.log(content=f"Token limit: {token_limit}", level=logging.DEBUG)
             send_token_limit = token_limit - 1000
 
             relevant_memory = permanent_memory.get_relevant(str(full_message_history[-9:]), 10)
 
-            if cfg.debug_mode:
-                print('Memory Stats: ', permanent_memory.get_stats())
+            logger.log(content=f'Memory Stats: {permanent_memory.get_stats()}', level=logging.DEBUG)
 
             next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
                 prompt, relevant_memory, full_message_history, model)
@@ -110,19 +109,17 @@ def chat_with_ai(
             # assert tokens_remaining >= 0, "Tokens remaining is negative. This should never happen, please submit a bug report at https://www.github.com/Torantulino/Auto-GPT"
 
             # Debug print the current context
-            if cfg.debug_mode:
-                print(f"Token limit: {token_limit}")
-                print(f"Send Token Count: {current_tokens_used}")
-                print(f"Tokens remaining for response: {tokens_remaining}")
-                print("------------ CONTEXT SENT TO AI ---------------")
-                for message in current_context:
-                    # Skip printing the prompt
-                    if message["role"] == "system" and message["content"] == prompt:
-                        continue
-                    print(
-                        f"{message['role'].capitalize()}: {message['content']}")
-                    print()
-                print("----------- END OF CONTEXT ----------------")
+            logger.log(content=f"Token limit: {token_limit}", level=logging.DEBUG)
+            logger.log(content=f"Send Token Count: {current_tokens_used}", level=logging.DEBUG)
+            logger.log(content=f"Tokens remaining for response: {tokens_remaining}", level=logging.DEBUG)
+            logger.log(content="------------ CONTEXT SENT TO AI ---------------", level=logging.DEBUG)
+            for message in current_context:
+                # Skip printing the prompt
+                if message["role"] == "system" and message["content"] == prompt:
+                    continue
+                logger.log(content=f"{message['role'].capitalize()}: {message['content']}", level=logging.DEBUG)
+                logger.log(content="", level=logging.DEBUG)
+            logger.log(content="----------- END OF CONTEXT ----------------", level=logging.DEBUG)
 
             # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
             assistant_reply = create_chat_completion(
