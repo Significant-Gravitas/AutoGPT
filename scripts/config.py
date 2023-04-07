@@ -61,7 +61,12 @@ class Config(metaclass=Singleton):
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
         self.user_agent_header = {"User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
-
+        self.redis_host = os.getenv("REDIS_HOST")
+        self.redis_port = os.getenv("REDIS_PORT")
+        self.redis_password = os.getenv("REDIS_PASSWORD")
+        # Note that indexes must be created on db 0 in redis, this is not configureable.
+        
+        self.memory_backend = os.getenv("MEMORY_BACKEND", 'pinecone')
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 

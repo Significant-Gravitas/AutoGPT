@@ -1,6 +1,7 @@
 import browse
 import json
 from memory.pinecone import PineconeMemory
+from memory.redismem import RedisMemory
 import datetime
 import agent_manager as agents
 import speak
@@ -52,7 +53,10 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
-    memory = PineconeMemory(cfg=cfg)
+    if cfg.memory_backend == "pinecone":
+        memory = PineconeMemory(cfg=cfg)
+    else:
+        memory = RedisMemory(cfg=cfg)
     try:
         if command_name == "google":
             
