@@ -1,20 +1,10 @@
-from config import Config, Singleton
+from config import Config
+from providers.memory import Memory, get_ada_embedding
 import pinecone
-import openai
 
 cfg = Config()
 
-
-def get_ada_embedding(text):
-    text = text.replace("\n", " ")
-    return openai.Embedding.create(input=[text], model="text-embedding-ada-002")["data"][0]["embedding"]
-
-
-def get_text_from_embedding(embedding):
-    return openai.Embedding.retrieve(embedding, model="text-embedding-ada-002")["data"][0]["text"]
-
-
-class PineconeMemory(metaclass=Singleton):
+class PineconeMemory(Memory):
     def __init__(self):
         pinecone_api_key = cfg.pinecone_api_key
         pinecone_region = cfg.pinecone_region
