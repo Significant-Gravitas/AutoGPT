@@ -105,6 +105,9 @@ python scripts/main.py
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
+### Logs
+You will find activity and error logs in the folder ```./logs```
+
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```

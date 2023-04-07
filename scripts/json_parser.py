@@ -1,6 +1,9 @@
 import json
 from typing import Any, Dict, Union
+import logging
+
 from call_ai_function import call_ai_function
+from logger import logger
 from config import Config
 from json_utils import correct_json
 
@@ -26,7 +29,7 @@ JSON_SCHEMA = """
 """
 
 
-def fix_and_parse_json(    
+def fix_and_parse_json(
     json_str: str,
     try_to_fix_with_gpt: bool = True
 ) -> Union[str, Dict[Any, Any]]:
@@ -55,10 +58,10 @@ def fix_and_parse_json(
         return json.loads(json_str)
     except (json.JSONDecodeError, ValueError) as e:  # noqa: F841
         if try_to_fix_with_gpt:
-            print("Warning: Failed to parse AI output, attempting to fix."
+            logger.log(content="Warning: Failed to parse AI output, attempting to fix."
                   "\n If you see this warning frequently, it's likely that"
                   " your prompt is confusing the AI. Try changing it up"
-                  " slightly.")
+                  " slightly.", level=logging.WARN)
             # Now try to fix this up using the ai_functions
             ai_fixed_json = fix_json(json_str, JSON_SCHEMA)
 
@@ -67,7 +70,7 @@ def fix_and_parse_json(
             else:
                 # This allows the AI to react to the error message,
                 #   which usually results in it correcting its ways.
-                print("Failed to fix AI output, telling the AI.")
+                logger.log(content="Failed to fix AI output, telling the AI.", level=logging.ERROR)
                 return json_str
         else:
             raise e
