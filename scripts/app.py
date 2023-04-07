@@ -128,6 +128,15 @@ async def continue_chat(request: Request, body: ChatBody):
         return {"messages": messages}
 
     # execute command
+    if command_name == "task_complete":
+        messages += create_message(
+            "Shutting down chat...",
+            Fore.MAGENTA,
+            ""
+        )
+        chat_data.pop(chat_id)
+        return {"messages": messages}
+
     if command_name.lower() == "error":
         result = f"Command {command_name} threw the following error: " + arguments
     elif command_name == "human_feedback":
