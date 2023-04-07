@@ -1,3 +1,4 @@
+"""Base class for memory providers."""
 import abc
 from config import AbstractSingleton
 import openai
