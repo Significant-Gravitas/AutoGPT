@@ -9,6 +9,7 @@ import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
+from image_gen import generate_image
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -102,6 +103,8 @@ def execute_command(command_name, arguments):
             return ai.write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
+        elif command_name == "generate_image":  # Add this command
+            return generate_image(arguments["prompt"])
         elif command_name == "task_complete":
             shutdown()
         else:
