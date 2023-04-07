@@ -51,7 +51,7 @@ def get_command(response):
         return "Error:", str(e)
 
 
-def execute_command(command_name, arguments):
+def execute_command(command_name, arguments, chat_id=None):
     memory = PineconeMemory()
     try:
         if command_name == "google":
@@ -63,7 +63,7 @@ def execute_command(command_name, arguments):
             else:
                 return google_search(arguments["input"])
         elif command_name == "memory_add":
-            return memory.add(arguments["string"])
+            return memory.add(arguments["string"], namespace=chat_id)
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"],

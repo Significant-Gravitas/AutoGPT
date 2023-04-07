@@ -31,29 +31,29 @@ class PineconeMemory(metaclass=Singleton):
             pinecone.create_index(table_name, dimension=dimension, metric=metric, pod_type=pod_type)
         self.index = pinecone.Index(table_name)
 
-    def add(self, data):
+    def add(self, data, namespace=None):
         vector = get_ada_embedding(data)
         # no metadata here. We may wish to change that long term.
-        resp = self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})])
+        resp = self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})], namespace=namespace)
         _text = f"Inserting data into memory at index: {self.vec_num}:\n data: {data}"
         self.vec_num += 1
         return _text
 
-    def get(self, data):
-        return self.get_relevant(data, 1)
+    def get(self, data, namespace=None):
+        return self.get_relevant(data, 1, namespace=namespace)
 
     def clear(self):
         self.index.delete(deleteAll=True)
         return "Obliviated"
 
-    def get_relevant(self, data, num_relevant=5):
+    def get_relevant(self, data, num_relevant=5, namespace=None):
         """
         Returns all the data in the memory that is relevant to the given data.
         :param data: The data to compare to.
         :param num_relevant: The number of relevant data to return. Defaults to 5
         """
         query_embedding = get_ada_embedding(data)
-        results = self.index.query(query_embedding, top_k=num_relevant, include_metadata=True)
+        results = self.index.query(query_embedding, top_k=num_relevant, include_metadata=True, namespace=namespace)
         sorted_results = sorted(results.matches, key=lambda x: x.score)
         return [str(item['metadata']["raw_text"]) for item in sorted_results]
 
