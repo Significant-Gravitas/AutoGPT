@@ -1,3 +1,4 @@
+import abc
 import os
 import openai
 from dotenv import load_dotenv
@@ -5,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-class Singleton(type):
+class Singleton(abc.ABCMeta, type):
     """
     Singleton metaclass for ensuring only one instance of a class.
     """
@@ -18,6 +19,10 @@ class Singleton(type):
                 Singleton, cls).__call__(
                 *args, **kwargs)
         return cls._instances[cls]
+
+
+class AbstractSingleton(abc.ABC, metaclass=Singleton):
+    pass
 
 
 class Config(metaclass=Singleton):

@@ -1,6 +1,6 @@
 import browse
 import json
-from memory import PineconeMemory
+from memory.pinecone import PineconeMemory
 import datetime
 import agent_manager as agents
 import speak
@@ -52,7 +52,7 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
-    memory = PineconeMemory()
+    memory = PineconeMemory(cfg=cfg)
     try:
         if command_name == "google":
             
