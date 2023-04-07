@@ -21,3 +21,4 @@ def load_prompt(cfg: Config):
             prompt = chevron.render(prompt, {"QA_PROMPT": ""})
 
     return prompt
+
