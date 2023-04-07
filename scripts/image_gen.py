@@ -11,40 +11,49 @@ cfg = Config()
 
 working_directory = "auto_gpt_workspace"
 
-API_URL = "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
-headers = {"Authorization": "Bearer " + cfg.huggingface_api_token}
-
 def generate_image(prompt):
 
     filename = str(uuid.uuid4()) + ".jpg"
-
+    
     # DALL-E
-    openai.api_key = cfg.openai_api_key
+    if cfg.image_provider == 'dalle':
+        
+        openai.api_key = cfg.openai_api_key
 
-    response = openai.Image.create(
-        prompt=prompt,
-        n=1,
-        size="256x256",
-        response_format="b64_json",
-    )
+        response = openai.Image.create(
+            prompt=prompt,
+            n=1,
+            size="256x256",
+            response_format="b64_json",
+        )
 
-    print("Image Generated for prompt:" + prompt)
-    print(response["data"][0]["b64_json"][:50])
+        print("Image Generated for prompt:" + prompt)
+        print(response["data"][0]["b64_json"][:50])
 
-    image_data = b64decode(response["data"][0]["b64_json"])
-    with open(working_directory + "/" + filename, mode="wb") as png:
-        png.write(image_data)
+        image_data = b64decode(response["data"][0]["b64_json"])
 
-    return "Saved to disk:" + filename
+        with open(working_directory + "/" + filename, mode="wb") as png:
+            png.write(image_data)
+
+        return "Saved to disk:" + filename
 
     # STABLE DIFFUSION
-    response = requests.post(API_URL, headers=headers, json={
-        "inputs": prompt,
-    })
-    image = Image.open(io.BytesIO(response.content))
-    print("Image Generated for prompt:" + prompt)
+    elif cfg.image_provider == 'sd':
 
-    image.save(os.path.join(working_directory, filename))
-    print("Saved to disk:" + filename)
+        API_URL = "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
+        headers = {"Authorization": "Bearer " + cfg.huggingface_api_token}
 
-    return str("Image " + filename + " saved to disk for prompt: " + prompt)
+        response = requests.post(API_URL, headers=headers, json={
+            "inputs": prompt,
+        })
+
+        image = Image.open(io.BytesIO(response.content))
+        print("Image Generated for prompt:" + prompt)
+
+        image.save(os.path.join(working_directory, filename))
+        print("Saved to disk:" + filename)
+
+        return str("Image " + filename + " saved to disk for prompt: " + prompt)
+
+    else:
+        return "No Image Provider Set"
