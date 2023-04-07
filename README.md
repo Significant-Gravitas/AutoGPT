@@ -149,6 +149,27 @@ are loaded for the agent at any given time.
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
 
+
+## Redis Setup
+
+Install docker desktop.
+
+Run:
+```
+docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+```
+
+Set the following environment variables:
+```
+MEMORY_BACKEND=redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+```
+
+Note that this is not intended to be run facing the internet and is not secure, do not expose redis to the internet without a password or at all really.
+
+
 ### Setting up environment variables
    For Windows Users:
 ```
