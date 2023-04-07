@@ -44,7 +44,8 @@ class RedisMemory(MemoryProviderSingleton):
             password=redis_password,
             db=0  # Cannot be changed
         )
-        self.redis.flushall()
+        if cfg.wipe_redis_on_start:
+            self.redis.flushall()
         try:
             self.redis.ft("gpt").create_index(
                 fields=SCHEMA,
@@ -55,7 +56,9 @@ class RedisMemory(MemoryProviderSingleton):
                 )
         except Exception as e:
             print("Error creating Redis search index: ", e)
-        self.vec_num = 0
+        existing_vec_num = self.redis.get('vec_num')
+        self.vec_num = int(existing_vec_num.decode('utf-8')) if\
+            existing_vec_num else 0
 
     def add(self, data: str) -> str:
         """
@@ -72,10 +75,13 @@ class RedisMemory(MemoryProviderSingleton):
             b"data": data,
             "embedding": vector
         }
-        self.redis.hset(f"gpt:{self.vec_num}", mapping=data_dict)
+        pipe = self.redis.pipeline()
+        pipe.hset(f"gpt:{self.vec_num}", mapping=data_dict)
         _text = f"Inserting data into memory at index: {self.vec_num}:\n"\
             f"data: {data}"
         self.vec_num += 1
+        pipe.set('vec_num', self.vec_num)
+        pipe.execute()
         return _text
 
     def get(self, data: str) -> Optional[List[Any]]:
