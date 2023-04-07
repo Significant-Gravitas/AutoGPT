@@ -45,6 +45,7 @@ Your support is greatly appreciated
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
+  - [🌌 Ecosystem](#-ecosystem)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
 
 
@@ -206,6 +207,10 @@ The developers and contributors of this project do not accept any responsibility
 As an autonomous experiment, Auto-GPT may generate content or take actions that are not in line with real-world business practices or legal requirements. It is your responsibility to ensure that any actions or decisions made based on the output of this software comply with all applicable laws, regulations, and ethical standards. The developers and contributors of this project shall not be held responsible for any consequences arising from the use of this software.
 
 By using Auto-GPT, you agree to indemnify, defend, and hold harmless the developers, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software or your violation of these terms.
+
+## 🌌 Ecosystem
+
+- [JavaScript Web-based Auto-GPT](https://github.com/jina-ai/auto-gpt-web)
 
 ## 🐦 Connect with Us on Twitter 
 
