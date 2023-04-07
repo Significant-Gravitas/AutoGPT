@@ -140,7 +140,13 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
-## 🌲 Pinecone API Key Setup
+## Vector based memory provider
+Auto-GPT supports two providers for vector-based memory, [Pinecone](https://www.pinecone.io/) and [Weaviate](https://weaviate.io/). To select the provider to use, specify the following in your `.env`:
+
+```
+MEMORY_PROVIDER="pinecone" # change to "weaviate" to use weaviate as the memory provider
+```
+### 🌲 Pinecone API Key Setup
 
 Pinecone enable a vector based memory so a vast memory can be stored and only relevant memories
 are loaded for the agent at any given time.
@@ -149,7 +155,7 @@ are loaded for the agent at any given time.
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
 
-### Setting up environment variables
+#### Setting up environment variables
    For Windows Users:
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
@@ -164,6 +170,22 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 ```
 
 Or you can set them in the `.env` file.
+
+### Weaviate Setup
+
+[Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
+
+#### Setting up enviornment variables
+
+In your `.env` file set the following:
+
+```
+WEAVIATE_HOST="http://127.0.0.1" # the URL of the running Weaviate instance
+WEAVIATE_PORT="8080" 
+WEAVIATE_USERNAME="your username"
+WEAVIATE_PASSWORD="your password"
+WEAVIATE_INDEX="Autogpt" # name of the index to create for the application
+```
 
 ## View Memory Usage
 

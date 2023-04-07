@@ -50,8 +50,16 @@ class Config(metaclass=Singleton):
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
+        self.memory_provider = os.getenv("MEMORY_PROVIDER", 'pinecone')
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
+
+        self.weaviate_host  = os.getenv("WEAVIATE_HOST")
+        self.weaviate_port = os.getenv("WEAVIATE_PORT")
+        self.weaviate_username = os.getenv("WEAVIATE_USERNAME", None)
+        self.weaviate_password = os.getenv("WEAVIATE_PASSWORD", None)
+        self.weaviate_scopes = os.getenv("WEAVIATE_SCOPES", None)
+        self.weaviate_index = os.getenv("WEAVIATE_INDEX", 'auto-gpt')
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.

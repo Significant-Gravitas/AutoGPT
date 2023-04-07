@@ -1,6 +1,6 @@
 import browse
 import json
-from memory import PineconeMemory
+from factory import MemoryFactory
 import datetime
 import agent_manager as agents
 import speak
@@ -52,7 +52,7 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
-    memory = PineconeMemory()
+    memory = MemoryFactory.get_memory(cfg.memory_provider)
     try:
         if command_name == "google":
             
