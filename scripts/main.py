@@ -1,9 +1,7 @@
 import json
 import random
 import commands as cmd
-from memory.local import LocalCache
-from memory.pinecone import PineconeMemory
-from memory.redismem import RedisMemory
+from memory import get_memory
 import data
 import chat
 from colorama import Fore, Style
@@ -285,13 +283,7 @@ user_input = "Determine which next command to use, and respond using the format 
 
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
-if cfg.memory_backend == "pinecone":
-    memory = PineconeMemory(cfg)
-    memory.clear()
-elif cfg.memory_backend == "redis":
-    memory = RedisMemory(cfg)
-else:
-    memory = LocalCache(cfg)
+memory = get_memory(cfg, init=True)
 
 print('Using memory of type: ' + memory.__class__.__name__)
 
