@@ -8,6 +8,7 @@ CONSTRAINTS:
 COMMANDS:
 
 1. Google Search: "google", args: "input": "<search>"
+2. Solve a factual question: "solve", args: "input": "<query>"
 5. Browse Website: "browse_website", args: "url": "<url>", "question": "<what_you_want_to_find_on_website>"
 6. Start GPT Agent: "start_agent",  args: "name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"
 7. Message GPT Agent: "message_agent", args: "key": "<key>", "message": "<message>"
@@ -29,9 +30,10 @@ COMMANDS:
 RESOURCES:
 
 1. Internet access for searches and information gathering.
-2. Long Term memory management.
-3. GPT-3.5 powered Agents for delegation of simple tasks.
-4. File output.
+2. A solver for getting factual information about the world.
+3. Long Term memory management.
+4. GPT-3.5 powered Agents for delegation of simple tasks.
+5. File output.
 
 PERFORMANCE EVALUATION:
 

@@ -13,6 +13,7 @@ from image_gen import generate_image
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from solve import WolframAlphaSolver
 
 cfg = Config()
 
@@ -51,9 +52,14 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
+<<<<<<< HEAD
     """Execute the command and return the result"""
     memory = get_memory(cfg)
 
+=======
+    memory = PineconeMemory()
+    solve = WolframAlphaSolver()
+>>>>>>> c5ad011 (initial wolfram alpha integration)
     try:
         if command_name == "google":
 
@@ -109,6 +115,8 @@ def execute_command(command_name, arguments):
             return "No action performed."
         elif command_name == "task_complete":
             shutdown()
+        elif command_name == "solve":
+            return solve.query(arguments["input"])
         else:
             return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for availabe commands and only respond in the specified JSON format."
     # All errors, return "Error: + error message"
