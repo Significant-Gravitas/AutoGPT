@@ -108,11 +108,15 @@ python scripts/main.py
 ### Logs
 You will find activity and error logs in the folder ```./logs```
 
+To output debug logs:
+```
+python scripts/main.py --debug
+```
+
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
 python scripts/main.py --speak
-
 ```
 
 ## 🔍 Google API Keys Configuration

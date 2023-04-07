@@ -241,6 +241,10 @@ def parse_arguments():
     parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
     args = parser.parse_args()
 
+    if args.debug:
+        logger.log("Debug Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_debug_mode(True)
+
     if args.continuous:
         logger.log("Continuous Mode: ", Fore.RED, "ENABLED")
         logger.log(
@@ -270,6 +274,7 @@ def parse_arguments():
 check_openai_api_key()
 cfg = Config()
 parse_arguments()
+logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
 ai_name = ""
 prompt = construct_prompt()
 # print(prompt)

@@ -26,16 +26,16 @@ class Logger(metaclass=Singleton):
         error_file = "error.log"
 
         # Create a handler for INFO level logs
-        console_handler = TypingConsoleHandler()
-        console_handler.setLevel(logging.INFO)
+        self.console_handler = TypingConsoleHandler()
+        self.console_handler.setLevel(logging.INFO)
         console_formatter = AutoGptFormatter('%(title_color)s %(message)s')
-        console_handler.setFormatter(console_formatter)
+        self.console_handler.setFormatter(console_formatter)
 
         # Info handler in activity.log
-        file_handler = logging.FileHandler(os.path.join(log_dir, log_file))
-        file_handler.setLevel(logging.INFO)
+        self.file_handler = logging.FileHandler(os.path.join(log_dir, log_file))
+        self.file_handler.setLevel(logging.INFO)
         info_formatter = AutoGptFormatter('%(asctime)s %(levelname)s %(title)s %(message_no_color)s')
-        file_handler.setFormatter(info_formatter)
+        self.file_handler.setFormatter(info_formatter)
 
         # Error handler error.log
         error_handler = logging.FileHandler(os.path.join(log_dir, error_file))
@@ -45,16 +45,15 @@ class Logger(metaclass=Singleton):
         error_handler.setFormatter(error_formatter)
 
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.DEBUG)
-        self.logger.addHandler(console_handler)
-        self.logger.addHandler(file_handler)
+        self.logger.addHandler(self.console_handler)
+        self.logger.addHandler(self.file_handler)
         self.logger.addHandler(error_handler)
 
     def log(
             self,
-            title = '',
-            title_color = '',
-            content = '',
+            title='',
+            title_color='',
+            content='',
             speak_text=False,
             level=logging.INFO):
         if speak_text and cfg.speak_mode:
@@ -67,6 +66,11 @@ class Logger(metaclass=Singleton):
             content = ""
 
         self.logger.log(level, content, extra={'title': title, 'color': title_color})
+
+    def set_level(self, level):
+        self.logger.setLevel(level)
+        self.console_handler.setLevel(level)
+        self.file_handler.setLevel(level)
 
 
 class TypingConsoleHandler(logging.StreamHandler):
@@ -91,9 +95,6 @@ class TypingConsoleHandler(logging.StreamHandler):
             self.handleError(record)
 
 
-def remove_color_codes(s: str) -> str:
-    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    return ansi_escape.sub('', s)
 
 
 class AutoGptFormatter(logging.Formatter):
@@ -104,6 +105,11 @@ class AutoGptFormatter(logging.Formatter):
         else:
             record.message_no_color = ''
         return super().format(record)
+
+
+def remove_color_codes(s: str) -> str:
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', s)
 
 
 logger = Logger()
