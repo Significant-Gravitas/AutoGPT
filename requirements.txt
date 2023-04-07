@@ -11,4 +11,5 @@ python-dotenv==1.0.0
 pyyaml==6.0
 readability-lxml==0.8.1
 requests==2.28.2
+requests==2.28.2
 tiktoken==0.3.3
