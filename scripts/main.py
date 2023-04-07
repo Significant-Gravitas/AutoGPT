@@ -290,7 +290,11 @@ print('Using memory of type: ' + memory.__class__.__name__)
 
 # Create a CommandRegistry instance and scan default folder
 command_registry = CommandRegistry()
-command_registry.scan_directory_for_plugins('./scripts')
+command_registry.import_commands('scripts.ai_functions')
+command_registry.import_commands('scripts.commands')
+command_registry.import_commands('scripts.execute_code')
+command_registry.import_commands('scripts.agent_manager')
+command_registry.import_commands('scripts.file_operations')
 
 # Interaction Loop
 while True:
