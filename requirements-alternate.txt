@@ -1,0 +1,14 @@
+beautifulsoup4
+colorama
+openai
+playsound
+python-dotenv
+pyyaml
+readability-lxml
+requests
+tiktoken
+gTTS
+docker
+duckduckgo-search
+google-api-python-client #(https://developers.google.com/custom-search/v1/overview) 
+googlesearch-python
