@@ -1,0 +1,16 @@
+-r requirements.txt
+pytest==7.2.1
+flake8==4.0.1
+mypy==0.991
+isort==5.11.4
+pre-commit==3.0.1
+wemake-python-styleguide==0.17.0
+black==22.12.0
+autoflake==1.6.1
+pytest-cov==4.0.0
+anyio==3.6.2
+pytest-env==0.8.1
+httpx==0.23.3
+jsonpointer==2.3
+pytest-xdist==3.2.1
+pydevd-pycharm==223.8617.48

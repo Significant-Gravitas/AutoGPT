@@ -1,32 +1,22 @@
 import yaml
 import data
 import os
+from pydantic import BaseModel
+from typing import List
 
-class AIConfig:
+class Agent(BaseModel):
     """
     A class object that contains the configuration information for the AI
 
     Attributes:
         ai_name (str): The name of the AI.
         ai_role (str): The description of the AI's role.
-        ai_goals (list): The list of objectives the AI is supposed to complete.
+        ai_goals (List[str]): The list of objectives the AI is supposed to complete.
     """
 
-    def __init__(self, ai_name: str="", ai_role: str="", ai_goals: list=[]) -> None:
-        """
-        Initialize a class instance
-
-        Parameters:
-            ai_name (str): The name of the AI.
-            ai_role (str): The description of the AI's role.
-            ai_goals (list): The list of objectives the AI is supposed to complete.
-        Returns:
-            None
-        """
-
-        self.ai_name = ai_name
-        self.ai_role = ai_role
-        self.ai_goals = ai_goals
+    ai_name: str = ""
+    ai_role: str = ""
+    ai_goals: List[str] = []
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
     SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
@@ -38,13 +28,12 @@ class AIConfig:
         else returns class with no parameters.
 
         Parameters:
-           cls (class object): An AIConfig Class object.
+           cls (class object): An Agent Class object.
            config_file (int): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
 
         Returns:
             cls (object): An instance of given cls object
         """
-
         try:
             with open(config_file) as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
@@ -54,8 +43,11 @@ class AIConfig:
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
-
-        return cls(ai_name, ai_role, ai_goals)
+        return cls(
+            ai_name=ai_name,
+            ai_role=ai_role,
+            ai_goals=ai_goals
+        )
 
     def save(self, config_file: str=SAVE_FILE) -> None:
         """
@@ -69,6 +61,7 @@ class AIConfig:
         """
 
         config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
+
         with open(config_file, "w") as file:
             yaml.dump(config, file)
 

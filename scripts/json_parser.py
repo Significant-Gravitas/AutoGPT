@@ -26,7 +26,7 @@ JSON_SCHEMA = """
 """
 
 
-def fix_and_parse_json(    
+def fix_and_parse_json(
     json_str: str,
     try_to_fix_with_gpt: bool = True
 ) -> Union[str, Dict[Any, Any]]:
@@ -74,9 +74,15 @@ def fix_and_parse_json(
 
 
 def fix_json(json_str: str, schema: str) -> str:
+<<<<<<< HEAD
     """Fix the given JSON string to make it parseable and fully compliant with the provided schema."""
 
     # Try to fix the JSON using GPT:
+=======
+    """Fix the given JSON string to make it parseable and fully complient with the provided schema."""
+
+    # Try to fix the JSON using gpt:
+>>>>>>> 141e550f (Create, Start and Stop Autonomous Agents)
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
     description_string = "Fixes the provided JSON string to make it parseable"\
@@ -91,7 +97,7 @@ def fix_json(json_str: str, schema: str) -> str:
     result_string = call_ai_function(
         function_string, args, description_string, model=cfg.fast_llm_model
     )
-    if cfg.debug:
+    if cfg.debug_mode:
         print("------------ JSON FIX ATTEMPT ---------------")
         print(f"Original JSON: {json_str}")
         print("-----------")

@@ -1,0 +1,10 @@
+{
+    "status_code": 500,
+    "headers": {
+        "content-length": "46",
+        "content-type": "application/json"
+    },
+    "body": {
+        "message": "The thread is already terminated"
+    }
+}

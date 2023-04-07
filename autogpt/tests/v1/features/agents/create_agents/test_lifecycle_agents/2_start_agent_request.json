@@ -1,0 +1,8 @@
+{
+    "method": "PATCH",
+    "url": "http://localhost:6060/api/v1/agents/1",
+    "headers": {},
+    "body": {
+        "status": "active"
+    }
+}

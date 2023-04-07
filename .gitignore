@@ -14,3 +14,6 @@ ai_settings.yaml
 .idea/*
 auto-gpt.json
 log.txt
+.idea
+.DS_Store
+uvicorn.log

@@ -1,0 +1,10 @@
+{
+    "status_code": 200,
+    "headers": {
+        "content-length": "42",
+        "content-type": "application/json"
+    },
+    "body": {
+        "message": "agent terminated gracefully."
+    }
+}

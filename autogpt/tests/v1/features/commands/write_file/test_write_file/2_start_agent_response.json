@@ -1,0 +1,11 @@
+{
+    "status_code": 200,
+    "headers": {
+        "content-length": "55",
+        "content-type": "application/json"
+    },
+    "body": {
+        "message": "agent created",
+        "thread_id": 281472956293600
+    }
+}

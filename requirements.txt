@@ -15,3 +15,7 @@ pinecone-client==2.2.1
 redis
 orjson
 Pillow
+fastapi>=0.94.1,<0.95
+uvicorn[standard]==0.21.0
+pydantic[dotenv]==1.10.6
+sqlmodel==0.0.8

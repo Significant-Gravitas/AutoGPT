@@ -1,0 +1,18 @@
+version: '3.11.2'
+
+services:
+  auto-gpt-api:
+    image: auto-gpt-api
+    container_name: auto-gpt-api
+    ports:
+      # Exposes application port.
+      - "6060:6060"
+    build:
+      context: .
+      dockerfile: Dockerfile_dev
+    restart: always
+    volumes:
+      # Adds current directory as volume.
+      - .:/app/
+    env_file:
+    - .env

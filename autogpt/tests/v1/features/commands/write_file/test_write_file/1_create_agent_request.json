@@ -1,0 +1,20 @@
+{
+    "method": "POST",
+    "url": "http://localhost:6060/api/v1/agents",
+    "headers": {},
+    "body": {
+        "ai_name": "task_complete-GPT",
+        "ai_role": "an AI designed to use the write_file command to write 'Hello World' into a file and then use the task_complete command to complete the task",
+        "ai_goals": [
+            "Use the write_file command to write 'Hello World' into a file",
+            "Use the task_complete command to complete the task",
+            "Do not use any other commands"
+        ],
+        "full_message_history": [],
+        "result": null,
+        "next_action_count": 1,
+        "user_input": "Determine which next command to use, and respond using the format specified above:",
+        "memory": null,
+        "mode": "continuous"
+    }
+}
