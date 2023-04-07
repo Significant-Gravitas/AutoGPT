@@ -6,8 +6,19 @@ import agent_manager as agents
 import speak
 from config import Config
 import ai_functions as ai
-from react_operations import create_react_app, run_react_app, build_react_app, run_react_app_tests, eject_react_app, install_packages
-import git_operations
+from react_operations import (
+    create_react_app,
+    run_react_app,
+    build_react_app,
+    run_react_app_tests,
+    eject_react_app,
+    install_packages,
+    create_component,
+    update_component,
+    update_app_js,
+    add_styling_css
+)
+from git_operations import create_github_repo, clone_github_repo, add_file_to_github_repo, push_to_github_repo
 from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
@@ -109,13 +120,22 @@ def execute_command(command_name, arguments):
         elif command_name == "eject_react_app":
             return eject_react_app(arguments["app_name"])
         elif command_name == "create_github_repo":
-            return github_functions.create_github_repo(arguments["repo_name"])
+            return create_github_repo(arguments["repo_name"])
         elif command_name == "clone_github_repo":
-            return github_functions.clone_github_repo(arguments["repo_name"])
+            return clone_github_repo(arguments["repo_name"])
         elif command_name == "add_files_to_github_repo":
-            return github_functions.add_files_to_github_repo(arguments["repo_name"], arguments["files"])
+            return add_file_to_github_repo(arguments["repo_name"], arguments["files"])
         elif command_name == "commit_and_push_to_github_repo":
-            return github_functions.commit_and_push_to_github_repo(arguments["repo_name"], arguments["message"])
+            return push_to_github_repo(arguments["repo_name"], arguments["message"])
+        elif command_name == "create_component":
+            return create_component(arguments["component_name"], arguments["app_name"], arguments["content"])
+        elif command_name == "update_component":
+            return update_component(arguments["component_name"], arguments["app_name"], arguments["content"])
+        elif command_name == "update_app_js":
+            return update_app_js(arguments["app_name"], arguments["content"])
+        elif command_name == "add_styling_css":
+            return add_styling_css(arguments["component_name"], arguments["app_name"], arguments["content"])
+
 
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python

@@ -1,5 +1,9 @@
 import os
 import subprocess
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 working_directory = "auto_gpt_workspace"
 

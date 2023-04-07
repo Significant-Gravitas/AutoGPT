@@ -31,11 +31,16 @@ COMMANDS:
 22. Build React App: "build_react_app", args: "app_name": "<app_name>"
 23. Run React App Tests: "run_react_app_tests", args: "app_name": "<app_name>"
 24. Eject React App: "eject_react_app", args: "app_name": "<app_name>"
-25. Create GitHub Repository: "create_github_repo", args: "username": "<username>", "token": "<token>", "repo_name": "<repo_name>"
-26. Clone GitHub Repository: "clone_github_repo", args: "username": "<username>", "repo_name": "<repo_name>"
-27. Add Files to GitHub Repository: "add_files_to_github_repo", args: "repo_name": "<repo_name>", "files": "<list_of_files>"
-28. Commit and Push to GitHub Repository: "commit_and_push_to_github_repo", args: "repo_name": "<repo_name>", "message": "<commit_message>"
-29. Install Packages: "install_packages", args: "input": "<package_installation_command>"
+25. Create React Component: "create_component", args: "component_name": "<component_name>", "app_name": "<app_name>", "content": "<content>"
+26. Update React Component: "update_component", args: "component_name": "<component_name>", "app_name": "<app_name>", "content": "<content>"
+27. Update App.js: "update_app_js", args: "app_name": "<app_name>", "content": "<content>"
+28. Add Styling CSS: "add_styling_css", args: "component_name": "<component_name>", "app_name": "<app_name>", "content": "<content>"
+29. Create GitHub Repository: "create_github_repo", args: "username": "<username>", "token": "<token>", "repo_name": "<repo_name>"
+30. Clone GitHub Repository: "clone_github_repo", args: "username": "<username>", "repo_name": "<repo_name>"
+31. Add Files to GitHub Repository: "add_files_to_github_repo", args: "repo_name": "<repo_name>", "files": "<list_of_files>"
+32. Commit and Push to GitHub Repository: "commit_and_push_to_github_repo", args: "repo_name": "<repo_name>", "message": "<commit_message>"
+33. Install Packages: "install_packages", args: "input": "<package_installation_command>"
+
 
 RESOURCES:
 

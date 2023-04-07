@@ -1,5 +1,6 @@
 import os
 import subprocess
+from file_operations import write_to_file
 
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
@@ -81,3 +82,26 @@ def eject_react_app(app_name):
         return f"Successfully ejected the React app '{app_name}' from create-react-app."
     except subprocess.CalledProcessError as e:
         return f"An error occurred while ejecting: {e}"
+    
+def create_component(component_name, app_name, content):
+    component_file = f"{component_name}.js"
+    component_path = os.path.join(app_name, "src", "components", component_file)
+    return write_to_file(component_path, content)
+
+
+def update_component(component_name, app_name, content):
+    component_file = f"{component_name}.js"
+    component_path = os.path.join(app_name, "src", "components", component_file)
+    return write_to_file(component_path, content)
+
+
+def update_app_js(app_name, content):
+    app_js_path = os.path.join(app_name, "src", "App.js")
+    return write_to_file(app_js_path, content)
+
+
+def add_styling_css(component_name, app_name, content):
+    css_file = f"{component_name}.css"
+    css_path = os.path.join(app_name, "src", "components", css_file)
+    return write_to_file(css_path, content)
+
