@@ -140,16 +140,6 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
-## 🌲 Pinecone API Key Setup
-
-Pinecone enable a vector based memory so a vast memory can be stored and only relevant memories
-are loaded for the agent at any given time.
-
-1. Go to app.pinecone.io and make an account if you don't already have one.
-2. Choose the `Starter` plan to avoid being charged.
-3. Find your API key and region under the default project in the left sidebar.
-
-
 ## Redis Setup
 
 Install docker desktop.
@@ -176,6 +166,15 @@ WIPE_REDIS_ON_START=False
 ```
 
 To persist memory stored in Redis.
+
+## 🌲 Pinecone API Key Setup
+
+Pinecone enable a vector based memory so a vast memory can be stored and only relevant memories
+are loaded for the agent at any given time.
+
+1. Go to app.pinecone.io and make an account if you don't already have one.
+2. Choose the `Starter` plan to avoid being charged.
+3. Find your API key and region under the default project in the left sidebar.
 
 ### Setting up environment variables
    For Windows Users:
