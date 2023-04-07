@@ -12,6 +12,7 @@ from json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from solve import WolframAlphaSolver
 
 cfg = Config()
 
@@ -53,6 +54,7 @@ def get_command(response):
 
 def execute_command(command_name, arguments):
     memory = PineconeMemory()
+    solve = WolframAlphaSolver()
     try:
         if command_name == "google":
             
@@ -104,6 +106,8 @@ def execute_command(command_name, arguments):
             return execute_python_file(arguments["file"])
         elif command_name == "task_complete":
             shutdown()
+        elif command_name == "solve":
+            return solve.query(arguments["input"])
         else:
             return f"Unknown command {command_name}"
     # All errors, return "Error: + error message"
