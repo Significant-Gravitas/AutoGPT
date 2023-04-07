@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import random
 from typing import List, Optional
 from custom_types import ChatMessage
@@ -161,7 +162,7 @@ def load_variables(config_file="config.yaml"):
 
 
 def construct_prompt():
-    config = AIConfig.load()
+    config = AIConfig.load(config_file=cfg.personality)
     if config.ai_name:
         print_to_console(
             f"Welcome back! ",
@@ -251,7 +252,12 @@ def parse_arguments():
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--personality', type=str, help='Specify personality file', default=AIConfig.SAVE_FILE)
     args = parser.parse_args()
+
+    if args.personality:
+        assert Path(args.personality).is_file(), f"Personality file {args.personality} does not exist."
+        cfg.set_personality(args.personality)
 
     if args.continuous:
         print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
@@ -400,7 +406,7 @@ while True:
 
     # Check if there is a new response from the user
     if qamodel is not None:
-        user_responses = qamodel.receive_user_response()
+        user_responses = qamodel.receive_all_user_responses()
         for response in user_responses:
             role, content = response['role'], response['content']
             full_message_history.append(response)

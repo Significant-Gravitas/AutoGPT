@@ -1,4 +1,5 @@
 * Message User: "message_user", args: "message": "<message>"
+* Wait for User Response: "wait_user", args: ""
 
 REASONS FOR MESSAGING THE USER:
 * Notifying them of an event, discovery, goal acheivement, failure, or to deliver a progress report.

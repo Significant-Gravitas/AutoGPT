@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+from typing import Optional
 import openai
 from dotenv import load_dotenv
 # Load environment variables from .env file
@@ -25,11 +27,13 @@ class Config(metaclass=Singleton):
     Configuration class to store the state of bools for different scripts access.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.continuous_mode = False
         self.speak_mode = False
         self.qa_mode = False
         self.debug_mode = False
+        self.personality: Optional[Path] = None
+
         # TODO - make these models be self-contained, using langchain, so we can configure them once and call it good
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -46,7 +50,7 @@ class Config(metaclass=Singleton):
             openai.api_type = "azure"
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
-        
+
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
 
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
@@ -61,6 +65,9 @@ class Config(metaclass=Singleton):
 
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
+
+    def set_personality(self, value: Path):
+        self.personality = value
 
     def set_continuous_mode(self, value: bool):
         self.continuous_mode = value

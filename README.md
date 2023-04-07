@@ -136,6 +136,14 @@ PYTHONPATH=. python scripts/qa/cli_client.py
 5. To exit the program, type `^C` in terminal window B, and type "exit" and press Enter in terminal window A, in that order.
 6. To use continuous mode, type `--continuous` after `--qa` in terminal window A.
 
+## Personality Examples
+
+I created some example personalities you can use for QA Mode. You can select them using the `--personality` flag. For example, to use the `ResearcherGPT` personality, run the following command:
+
+```bash
+PYTHONPATH=. python scripts/main.py --qa --personality examples/qa/researchgpt.yaml
+```
+
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```

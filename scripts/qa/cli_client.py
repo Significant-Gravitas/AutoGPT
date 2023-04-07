@@ -1,3 +1,5 @@
+import json
+from colorama import init
 from scripts.qa import connect_to_redis
 from scripts import chat
 from typing import List
@@ -10,6 +12,21 @@ from rich.prompt import Prompt
 from rich.markdown import Markdown
 from rich.console import Console
 import os
+from uuid import uuid4
+import datetime
+from pathlib import Path
+
+# Get the current timestamp
+now = datetime.datetime.now()
+
+# Format the timestamp as a string
+timestamp = now.strftime("%Y-%m-%d-%H-%M-%S")
+
+# Create a Path object with the timestamp
+path = Path("outputs/logs")
+assert path.is_dir(), "The logs directory doesn't exist."
+LOG_PATH = path/f"{timestamp}.jsonl"
+assert not path.is_file(), "Somehow the log file already exists."
 
 class QAClient:
     """
@@ -19,69 +36,59 @@ class QAClient:
 
     def __init__(self) -> None:
         self.redis = connect_to_redis()
-        self.message_history: List[str] = []
-        self.message_history_thread_lock = threading.Lock()
 
-    def receive_continuous(self) -> None:
+    def receive_continuous(self, console: Console, console_lock: threading.Lock) -> None:
         """Continuously meant to check for new messages from the Auto GPT Instance and add them to the list of questions that haven't been answered yet. Meant to run in a thread."""
         # Try to get a message from the queue
         while True:
             if self.redis.llen("touser") > 0:
                 message = self.redis.rpop("touser")
-                with self.message_history_thread_lock:
-                    self.message_history.append(chat.create_chat_message("assistant", message))
+                with console_lock:
+                    msg = chat.create_chat_message("assistant", message)
+                    with open(LOG_PATH, "a") as f:
+                        f.write(json.dumps(msg))
+                    console.print(pretty_format_message(msg))
 
     def send_message(self, message: str) -> None:
         self.redis.lpush("togpt", message)
 
 
-def display_message_history(message_history: List[str]) -> None:
-    os.system("cls" if os.name == "nt" else "clear")  # Clear console
-    for message in message_history:
-        print(Text.from_markup(message))
-
-def pretty_format_message(message: chat.ChatMessage) -> str:
+def pretty_format_message(message: chat.ChatMessage) -> Markdown:
     role = message["role"]
     content = message["content"]
 
-    if role == chat.RolesEnum.user:
-        sender_color = "blue"
-    elif role == chat.RolesEnum.assistant:
-        sender_color = "red"
-    else:
-        sender_color = "green"
-
-    formatted_content = str(Markdown(content))
-    formatted_message = f"[{sender_color}]{role}:[/{sender_color}] {formatted_content}"
-    return formatted_message
+    formatted_message = f"**[{role.name.capitalize()}]**: {content}"
+    return Markdown(formatted_message)
 
 def main():
     init(autoreset=True)  # Initialize colorama
 
-    console = Console()
     qa_client = QAClient()
 
-    receive_thread = threading.Thread(target=qa_client.receive_continuous)
+    console = Console()
+    console_lock = threading.Lock()
+
+    receive_thread = threading.Thread(target=qa_client.receive_continuous, args=(console, console_lock))
     receive_thread.daemon = True
     receive_thread.start()
 
-    message_history_text = Text()
-    with Live(Panel(message_history_text), console=console, auto_refresh=False) as live:
-        while True:
-            user_message = Prompt.ask("Enter your message")
+    console.print("Welcome to the Auto GPT Client!")
+    console.print("Type your messages below and press enter to send them to the Auto GPT Instance.")
+    console.print("You can also type \"exit\" to exit the client.")
+    console.print("")
 
-            if user_message.strip() == "":  # Ignore empty messages
-                continue
+    while True:
+        message = console.input("")
+        if message:
+            if message == "exit":
+                break
+            qa_client.send_message(message)
+            with console_lock:
+                msg = chat.create_chat_message("user", message)
+                with open(LOG_PATH, "a") as f:
+                    f.write(json.dumps(msg))
 
-            with qa_client.message_history_thread_lock:
-                qa_client.message_history.append(chat.create_chat_message("user", user_message))
-                pretty_format_message_history = [
-                    pretty_format_message(message) for message in qa_client.message_history
-                ]
-                message_history_text = Text("\n".join(pretty_format_message_history))
-                live.update(Panel(message_history_text))
-
-            qa_client.send_message(user_message)
+    console.print("Exiting client...")
 
 if __name__ == "__main__":
     main()

@@ -1,3 +1,4 @@
+import time
 import browse
 import json
 from memory import PineconeMemory
@@ -101,15 +102,20 @@ def execute_command(command_name, arguments, qamodel: QAAgent | None = None):
             return ai.improve_code(arguments["suggestions"], arguments["code"])
         elif command_name == "write_tests":
             return ai.write_tests(arguments["code"], arguments.get("focus"))
+        elif command_name == "sleep":
+            print("Sleeping for " + str(arguments["seconds"]) + " seconds")
+            time.sleep(int(arguments["seconds"]))
+            return "Slept for " + arguments["seconds"] + " seconds"
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
-        elif cfg.qa_mode and qamodel is not None and command_name == "message_user":
-            breakpoint()
-            return qamodel.message_user(arguments["message"])
+        elif cfg.qa_mode and qamodel is not None:
+            if command_name == "message_user":
+                return qamodel.message_user(arguments["message"])
+            if command_name == "wait_user":
+                return qamodel.wait()
         elif command_name == "task_complete":
             shutdown()
         else:
-            breakpoint()
             return f"WARNING: Unknown command {command_name}"
     # All errors, return "Error: + error message"
     except Exception as e:

@@ -1,10 +1,10 @@
 import time
 
 import openai
-import token_counter
-from config import Config
-from llm_utils import create_chat_completion
-from custom_types import RolesEnum, ChatMessage
+from scripts import token_counter
+from scripts.config import Config
+from scripts.llm_utils import create_chat_completion
+from scripts.custom_types import RolesEnum, ChatMessage
 
 cfg = Config()
 
