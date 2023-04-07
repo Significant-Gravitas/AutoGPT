@@ -1,18 +1,18 @@
 import json
 import random
-import commands as cmd
-from memory import PineconeMemory
+import scripts.commands as cmd
+from scripts.memory import PineconeMemory
 import data
-import chat
+import scripts.chat as chat
 from colorama import Fore, Style
 from spinner import Spinner
 import time
-import speak
+import scripts.speak as speak
 from enum import Enum, auto
 import sys
-from config import Config
-from json_parser import fix_and_parse_json
-from ai_config import AIConfig
+from scripts.config import Config
+from scripts.json_parser import fix_and_parse_json
+from scripts.ai_config import AIConfig
 import traceback
 import yaml
 import argparse
