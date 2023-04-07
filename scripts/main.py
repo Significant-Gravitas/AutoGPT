@@ -1,6 +1,7 @@
 import json
 import random
 import commands as cmd
+from memory.local import LocalCache
 from memory.pinecone import PineconeMemory
 from memory.redismem import RedisMemory
 import data
@@ -287,8 +288,10 @@ user_input = "Determine which next command to use, and respond using the format 
 if cfg.memory_backend == "pinecone":
     memory = PineconeMemory(cfg)
     memory.clear()
-else:
+elif cfg.memory_backend == "redis":
     memory = RedisMemory(cfg)
+else:
+    memory = LocalCache(cfg)
 
 print('Using memory of type: ' + memory.__class__.__name__)
 
