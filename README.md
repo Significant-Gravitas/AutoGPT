@@ -169,6 +169,13 @@ REDIS_PASSWORD=
 
 Note that this is not intended to be run facing the internet and is not secure, do not expose redis to the internet without a password or at all really.
 
+You can optionally set
+
+```
+WIPE_REDIS_ON_START=False
+```
+
+To persist memory stored in Redis.
 
 ### Setting up environment variables
    For Windows Users:
