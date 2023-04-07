@@ -1,7 +1,7 @@
 import json
 import random
 import commands as cmd
-from memory import PineconeMemory
+from memory.pinecone import PineconeMemory
 import data
 import chat
 from colorama import Fore, Style
@@ -283,7 +283,7 @@ user_input = "Determine which next command to use, and respond using the format 
 
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
-memory = PineconeMemory()
+memory = PineconeMemory(cfg)
 memory.clear()
 
 print('Using memory of type: ' + memory.__class__.__name__)
