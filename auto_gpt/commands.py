@@ -79,38 +79,30 @@ class CommandRegistry:
         commands_list = [f"{idx + 1}. {str(cmd)}" for idx, cmd in enumerate(self.commands.values())]
         return "\n".join(commands_list)
 
-    def scan_directory_for_plugins(self, directory: str) -> None:
+    def import_commands(self, module_name: str) -> None:
         """
-        Scans the specified directory for Python files containing command plugins.
+        Imports the specified Python module containing command plugins.
 
-       For each file in the directory that ends with ".py", this method imports the associated module and registers any
-       functions or classes that are decorated with the `AUTO_GPT_COMMAND_IDENTIFIER` attribute as `Command` objects.
-       The registered `Command` objects are then added to the `commands` dictionary of the `CommandRegistry` object.
+        This method imports the associated module and registers any functions or
+        classes that are decorated with the `AUTO_GPT_COMMAND_IDENTIFIER` attribute
+        as `Command` objects. The registered `Command` objects are then added to the
+        `commands` dictionary of the `CommandRegistry` object.
 
-       Args:
-           directory (str): The directory to scan for command plugins.
-       """
+        Args:
+            module_name (str): The name of the module to import for command plugins.
+        """
 
-        for file in os.listdir(directory):
-            if file.endswith(".py"):
-                file_path = os.path.join(directory, file)
-                module_name = file[:-3]
+        module = importlib.import_module(module_name)
 
-                spec = importlib.util.spec_from_file_location(module_name, file_path)
-                module = importlib.util.module_from_spec(spec)
-
-                spec.loader.exec_module(module)
-
-                for attr_name in dir(module):
-                    attr = getattr(module, attr_name)
-                    # Register decorated functions
-                    if hasattr(attr, AUTO_GPT_COMMAND_IDENTIFIER) and getattr(attr, AUTO_GPT_COMMAND_IDENTIFIER):
-                        self.register(attr.command)
-                    # Register command classes
-                    elif inspect.isclass(attr) and issubclass(attr, Command) and attr != Command:
-                        cmd_instance = attr()
-                        self.register(cmd_instance)
-
+        for attr_name in dir(module):
+            attr = getattr(module, attr_name)
+            # Register decorated functions
+            if hasattr(attr, AUTO_GPT_COMMAND_IDENTIFIER) and getattr(attr, AUTO_GPT_COMMAND_IDENTIFIER):
+                self.register(attr.command)
+            # Register command classes
+            elif inspect.isclass(attr) and issubclass(attr, Command) and attr != Command:
+                cmd_instance = attr()
+                self.register(cmd_instance)
 
 def command(name: str, description: str, signature: str = None) -> Callable[..., Any]:
     """The command decorator is used to create Command objects from ordinary functions."""

@@ -1,4 +1,5 @@
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -112,21 +113,19 @@ class TestCommandRegistry:
 
         assert f"(arg1: int, arg2: str)" in command_prompt
 
-    def test_scan_directory_for_mock_commands(self):
-        """Test that the registry can scan a directory for mocks command plugins."""
+    def test_import_mock_commands_module(self):
+        """Test that the registry can import a module with mock command plugins."""
         registry = CommandRegistry()
-        mock_commands_dir = Path("/app/auto_gpt/tests/mocks")
-        import os
+        mock_commands_module = "auto_gpt.tests.mocks.mock_commands"
 
-        print(os.getcwd())
-        registry.scan_directory_for_plugins(mock_commands_dir)
+        registry.import_commands(mock_commands_module)
 
         assert "function_based" in registry.commands
         assert registry.commands["function_based"].name == "function_based"
         assert registry.commands["function_based"].description == "Function-based test command"
 
-    def test_scan_directory_for_temp_command_file(self, tmp_path):
-        """Test that the registry can scan a directory for command plugins in a temp file."""
+    def test_import_temp_command_file_module(self, tmp_path):
+        """Test that the registry can import a command plugins module from a temp file."""
         registry = CommandRegistry()
 
         # Create a temp command file
@@ -134,8 +133,14 @@ class TestCommandRegistry:
         temp_commands_file = tmp_path / "mock_commands.py"
         shutil.copyfile(src, temp_commands_file)
 
-        registry.scan_directory_for_plugins(tmp_path)
-        print(registry.commands)
+        # Add the temp directory to sys.path to make the module importable
+        sys.path.append(str(tmp_path))
+
+        temp_commands_module = "mock_commands"
+        registry.import_commands(temp_commands_module)
+
+        # Remove the temp directory from sys.path
+        sys.path.remove(str(tmp_path))
 
         assert "function_based" in registry.commands
         assert registry.commands["function_based"].name == "function_based"
