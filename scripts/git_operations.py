@@ -1,79 +1,43 @@
 import os
 import subprocess
 
-GITHUB_USERNAME = os.getenv('GITHUB_USERNAME')
-GITHUB_PAT = os.getenv('GITHUB_PAT')
+working_directory = "auto_gpt_workspace"
 
+if not os.path.exists(working_directory):
+    os.makedirs(working_directory)
 
-def create_github_repo(repo_name):
-    """
-    Creates a new repository on GitHub with the given name.
+def create_github_repo(repo_name, description):
+    try:
+        github_username = os.getenv("GITHUB_USERNAME")
+        github_pat = os.getenv("GITHUB_PAT")
 
-    Args:
-    repo_name (str): The name of the repository to create.
+        command = f'curl -u {github_username}:{github_pat} https://api.github.com/user/repos -d \'{{"name":"{repo_name}","description":"{description}"}}\''
+        subprocess.run(command, shell=True, check=True, cwd=working_directory, text=True)
+        return f"Successfully created a new Github repository named '{repo_name}'."
+    except subprocess.CalledProcessError as e:
+        return f"An error occurred during the creation of the Github repository: {e}"
 
-    Returns:
-    str: The URL of the newly created repository.
-    """
-    command = f"curl -u {GITHUB_USERNAME}:{GITHUB_PAT} https://api.github.com/user/repos -d '{{\"name\":\"{repo_name}\"}}'"
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = process.communicate()
-    if process.returncode != 0:
-        raise Exception(f"Error creating repository: {stderr.decode('utf-8')}")
-    repo_url = f"https://github.com/{GITHUB_USERNAME}/{repo_name}"
-    return repo_url
+def clone_github_repo(repo_url):
+    try:
+        command = f'git clone {repo_url}'
+        subprocess.run(command, shell=True, check=True, cwd=working_directory, text=True)
+        return f"Successfully cloned the Github repository from {repo_url}."
+    except subprocess.CalledProcessError as e:
+        return f"An error occurred while cloning the Github repository: {e}"
 
+def add_file_to_github_repo(repo_name, file_path, commit_message):
+    try:
+        command = f'cd {repo_name} && git add {file_path} && git commit -m "{commit_message}"'
+        subprocess.run(command, shell=True, check=True, cwd=working_directory, text=True)
+        return f"Successfully added the file '{file_path}' to the Github repository '{repo_name}'."
+    except subprocess.CalledProcessError as e:
+        return f"An error occurred while adding the file to the Github repository: {e}"
 
-def clone_github_repo(repo_name):
-    """
-    Clones an existing GitHub repository with the given name.
-
-    Args:
-    repo_name (str): The name of the repository to clone.
-
-    Returns:
-    None
-    """
-    repo_url = f"https://github.com/{GITHUB_USERNAME}/{repo_name}.git"
-    command = f"git clone {repo_url}"
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = process.communicate()
-    if process.returncode != 0:
-        raise Exception(f"Error cloning repository: {stderr.decode('utf-8')}")
-
-
-def add_files_to_github_repo(repo_name, files):
-    """
-    Adds files to an existing GitHub repository with the given name.
-
-    Args:
-    repo_name (str): The name of the repository to add files to.
-    files (list): A list of file paths to add to the repository.
-
-    Returns:
-    None
-    """
-    for file in files:
-        command = f"cd {repo_name} && git add {file}"
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        if process.returncode != 0:
-            raise Exception(f"Error adding file {file} to repository: {stderr.decode('utf-8')}")
-
-
-def commit_and_push_to_github_repo(repo_name, message):
-    """
-    Commits changes to an existing GitHub repository with the given name and pushes them to the remote repository.
-
-    Args:
-    repo_name (str): The name of the repository to commit changes to.
-    message (str): The commit message.
-
-    Returns:
-    None
-    """
-    command = f"cd {repo_name} && git commit -m \"{message}\" && git push"
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = process.communicate()
-    if process.returncode != 0:
-        raise Exception(f"Error committing and pushing changes to repository: {stderr.decode('utf-8')}")
+def push_to_github_repo(repo_name, branch):
+    try:
+        github_username = os.getenv("GITHUB_USERNAME")
+        command = f'cd {repo_name} && git push --set-upstream https://github.com/{github_username}/{repo_name}.git {branch}'
+        subprocess.run(command, shell=True, check=True, cwd=working_directory, text=True)
+        return f"Successfully pushed to the Github repository '{repo_name}' on branch '{branch}'."
+    except subprocess.CalledProcessError as e:
+        return f"An error occurred while pushing to the Github repository: {e}"
