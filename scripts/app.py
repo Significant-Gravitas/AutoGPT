@@ -62,7 +62,7 @@ async def start_chat(request: Request, body: StartBody):
     )
 
     # get assistant thoughts
-    messages += create_assistant_thoughts(config.ai_name, assistant_reply)
+    messages += create_assistant_thoughts(config["ai_name"], assistant_reply)
 
     # get command name and arguments
     try:
@@ -176,7 +176,7 @@ async def continue_chat(request: Request, body: ChatBody):
     )
 
     # get assistant thoughts
-    messages += create_assistant_thoughts(config.ai_name, assistant_reply)
+    messages += create_assistant_thoughts(config["ai_name"], assistant_reply)
 
     # get command name and arguments
     try:
