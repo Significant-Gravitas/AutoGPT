@@ -26,6 +26,7 @@ class QAAgent:
 
     def wait(self) -> str:
         """Wait for a response from the user and return it as a JSON string."""
+        self.redis.lpush("touser", "Waiting for a response from the user...")
         while self.redis.llen("togpt") == 0:
             pass
 
