@@ -24,6 +24,19 @@ COMMANDS:
 18. Execute Python File: "execute_python_file", args: "file": "<file>"
 19. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 
+//Developer Prompts
+
+20. Create React App: "create_react_app", args: "app_name": "<app_name>"
+21. Run React App: "run_react_app", args: "app_name": "<app_name>"
+22. Build React App: "build_react_app", args: "app_name": "<app_name>"
+23. Run React App Tests: "run_react_app_tests", args: "app_name": "<app_name>"
+24. Eject React App: "eject_react_app", args: "app_name": "<app_name>"
+25. Create GitHub Repository: "create_github_repo", args: "username": "<username>", "token": "<token>", "repo_name": "<repo_name>"
+26. Clone GitHub Repository: "clone_github_repo", args: "username": "<username>", "repo_name": "<repo_name>"
+27. Add Files to GitHub Repository: "add_files_to_github_repo", args: "repo_name": "<repo_name>", "files": "<list_of_files>"
+28. Commit and Push to GitHub Repository: "commit_and_push_to_github_repo", args: "repo_name": "<repo_name>", "message": "<commit_message>"
+29. Install Packages: "install_packages", args: "input": "<package_installation_command>"
+
 RESOURCES:
 
 1. Internet access for searches and information gathering.
