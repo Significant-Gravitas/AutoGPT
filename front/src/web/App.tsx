@@ -18,8 +18,13 @@ function App() {
   const fetchData = async () => {
     const res = await fetch("/api/data")
     let data = await res.json()
-    const lines = data.output.split("\n")
-    setOutput(lines)
+    // remove last char from data data is a string
+    // remove \n
+    data = data.output.replace("\n", "")
+    data = data.slice(0, -2)
+    console.log(data)
+    const json = JSON.parse(`[${data}]`)
+    setOutput(json)
   }
 
   return (
@@ -47,7 +52,7 @@ function App() {
       </button>
       <Flex direction="column" gap={0.5}>
         {output.map((line) => (
-          <div>{line}</div>
+          <div>{JSON.stringify(line)}</div>
         ))}
       </Flex>
     </>

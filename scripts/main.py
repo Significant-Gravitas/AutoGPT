@@ -20,28 +20,15 @@ import argparse
 
 def print_to_console(
         title,
-        content,
+        content="",
         speak_text=False,
         min_typing_speed=0.05,
         max_typing_speed=0.01):
-    global cfg
-    if speak_text and cfg.speak_mode:
-        speak.say_text(f"{title}. {content}")
-    print(title)
-    if content:
-        if isinstance(content, list):
-            content = " ".join(content)
-        words = content.split()
-        for i, word in enumerate(words):
-            print(word, end="", flush=True)
-            if i < len(words) - 1:
-                print(" ", end="", flush=True)
-            typing_speed = random.uniform(min_typing_speed, max_typing_speed)
-            time.sleep(typing_speed)
-            # type faster after each word
-            min_typing_speed = min_typing_speed * 0.95
-            max_typing_speed = max_typing_speed * 0.95
-    print()
+    object = {
+        "title": title,
+        "content": content
+    }
+    print(json.dumps(object) + ",")
 
 
 def print_assistant_thoughts(assistant_reply):
@@ -128,9 +115,9 @@ def load_variables(config_file="config.yaml"):
             ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
     if not ai_goals:
-        print("Enter up to 5 goals for your AI: ")
-        print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
-        print("Enter nothing to load defaults, enter nothing when finished.")
+        print_to_console("Enter up to 5 goals for your AI: ")
+        print_to_console("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+        print_to_console("Enter nothing to load defaults, enter nothing when finished.")
         ai_goals = []
         for i in range(5):
             ai_goal = input(f"Goal {i+1}: ")
@@ -213,7 +200,7 @@ def prompt_user():
     print_to_console(
         "Enter up to 5 goals for your AI: ",
         "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
-    print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
+    print_to_console("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
         ai_goal = input(f"Goal {i+1}: ")
@@ -261,7 +248,7 @@ cfg = Config()
 parse_arguments()
 ai_name = ""
 prompt = construct_prompt()
-# print(prompt)
+# print_to_console(prompt)
 # Initialize variables
 full_message_history = []
 result = None
@@ -274,12 +261,12 @@ user_input = "Determine which next command to use, and respond using the format 
 memory = PineconeMemory()
 memory.clear()
 
-print('Using memory of type: ' + memory.__class__.__name__)
+print_to_console('Using memory of type: ' + memory.__class__.__name__)
 
 # Interaction Loop
 while True:
     # Send message to AI, get response
-    print("Thinking...")
+    print_to_console("Thinking...")
     assistant_reply = chat.chat_with_ai(
         prompt,
         user_input,
@@ -304,7 +291,7 @@ while True:
         print_to_console(
             "NEXT ACTION: ",
             f"COMMAND = {command_name}  ARGUMENTS = {arguments}")
-        print(
+        print_to_console(
             f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
             flush=True)
         while True:
@@ -317,7 +304,7 @@ while True:
                     next_action_count = abs(int(console_input.split(" ")[1]))
                     user_input = "GENERATE NEXT COMMAND JSON"
                 except ValueError:
-                    print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
+                    print_to_console("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
                     continue
                 break
             elif console_input.lower() == "n":
@@ -333,7 +320,7 @@ while True:
             "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
             "")
         elif user_input == "EXIT":
-            print("Exiting...", flush=True)
+            print_to_console("Exiting...", flush=True)
             break
     else:
         # Print command
