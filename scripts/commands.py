@@ -1,6 +1,5 @@
 import browse
 import json
-from memory import PineconeMemory
 import datetime
 import agent_manager as agents
 import speak
