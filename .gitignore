@@ -1,6 +1,7 @@
 .env
 *.mpeg
 *.pyc
+*ai_settings.yaml
 auto_gpt_workspace/
 outputs/*
 package-lock.json
@@ -9,4 +10,3 @@ scripts/*json
 scripts/auto_gpt_workspace/*
 scripts/node_modules/
 scripts/keys.py
-ai_settings.yaml
