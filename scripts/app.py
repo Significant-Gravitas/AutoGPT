@@ -10,6 +10,7 @@ from chat import chat_with_ai
 from config import Config
 from commands import get_command, execute_command
 from chat import create_chat_message
+from agent_manager import next_key, agents
 
 
 app = FastAPI()
@@ -20,15 +21,23 @@ print('Using memory of type: ' + memory.__class__.__name__)
 cfg = Config()
 
 
-def get_chat_workspace(chat_id: str) -> str:
-    return os.path.join(".", "auto_gpt_workspace", chat_id)
+def shutdown_chat(chat_id: str):
+    if chat_id in chat_data:
+        chat_data.pop[chat_id]
+    if chat_id in next_key:
+        next_key.pop[chat_id]
+    if chat_id in agents:
+        agents.pop[chat_id]
+    return create_message(
+        "Shutting down chat...",
+        Fore.MAGENTA,
+        ""
+    )
 
 
 @app.post("/start")
 async def start_chat(request: Request, body: StartBody):
     chat_id = str(uuid.uuid4())
-    chat_workspace = get_chat_workspace(chat_id)
-    os.makedirs(chat_workspace, exist_ok=True)
 
     # set up chat context
     config = {
@@ -119,22 +128,12 @@ async def continue_chat(request: Request, body: ChatBody):
             ""
         )
     elif user_input == "EXIT":
-        messages += create_message(
-            "Shutting down chat...",
-            Fore.MAGENTA,
-            ""
-        )
-        chat_data.pop(chat_id)
+        messages += shutdown_chat(chat_id)
         return {"messages": messages}
 
     # execute command
     if command_name == "task_complete":
-        messages += create_message(
-            "Shutting down chat...",
-            Fore.MAGENTA,
-            ""
-        )
-        chat_data.pop(chat_id)
+        messages += shutdown_chat(chat_id)
         return {"messages": messages}
 
     if command_name.lower() == "error":
