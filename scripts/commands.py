@@ -10,7 +10,7 @@ from file_operations import read_file, write_to_file, append_to_file, delete_fil
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
-import qa
+from scripts.qa.agent import QAAgent
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -45,7 +45,7 @@ def get_command(response):
         return "Error:", str(e)
 
 
-def execute_command(command_name, arguments, qamodel: qa.QAModel | None = None):
+def execute_command(command_name, arguments, qamodel: QAAgent | None = None):
     try:
         if command_name == "google":
 
@@ -98,11 +98,13 @@ def execute_command(command_name, arguments, qamodel: qa.QAModel | None = None):
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
         elif cfg.qa_mode and qamodel is not None and command_name == "message_user":
+            breakpoint()
             return qamodel.message_user(arguments["message"])
         elif command_name == "task_complete":
             shutdown()
         else:
-            return f"Unknown command {command_name}"
+            breakpoint()
+            return f"WARNING: Unknown command {command_name}"
     # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)

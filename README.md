@@ -95,19 +95,17 @@ pip install -r requirements.txt
 
 ## Installation of the QA version
 
-The only additional dependency is that you need to run rabbitmq-server on your machine. This is the default way to run it from `https://www.rabbitmq.com/download.html`
+The only additional dependency is that you need to run redis instance on your machine.
 
 ```bash
-docker run -it --rm --name rabbitmq -p 5672:5672 -p 15672:15672 -v $(pwd)/rabbitmq-config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf -v $(pwd)/rabbitmq-config/definitions.json:/etc/rabbitmq/definitions.json rabbitmq:3.11-management
+docker run --name my-redis -p 6379:6379 -d redis
 ```
 
 Now, add to your `.env` file the following (modified as necessary)
 
 ```bash
-RABBITMQ_HOST=localhost
-RABBITMQ_PORT=5672
-RABBITMQ_USER=guest
-RABBITMQ_PASSWORD=guest
+REDIS_HOST=localhost
+REDIS_PORT=6379
 ```
 
 ## 🔧 Usage
@@ -115,7 +113,7 @@ RABBITMQ_PASSWORD=guest
 1. Run the `main.py` Python script in your terminal:
 *(Type this into your CMD window)*
 ```
-python scripts/main.py
+PYTHONPATH=. python scripts/main.py
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
@@ -125,12 +123,12 @@ python scripts/main.py
 1. Run the `main.py` Python script in terminal window A:
 *(Type this into your CMD window)*
 ```
-python scripts/main.py --qa
+PYTHONPATH=. python scripts/main.py --qa
 ```
 2. Run the `qa.py` Python script in terminal window B:
 *(Type this into your CMD window)*
 ```
-python scripts/qa.py
+PYTHONPATH=. python scripts/qa/cli_client.py
 ```
 3. After each of AUTO-GPT's actions in terminal window A, type "NEXT COMMAND" to authorise them to continue.
 4. Periodically, AUTO-GPT's action will be to ask the user a question. In this case, the question will be displayed in terminal window B. Type your answer and press Enter.
@@ -140,8 +138,7 @@ python scripts/qa.py
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
-python scripts/main.py --speak
-
+PYTHONPATH=. python scripts/main.py --speak
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -180,7 +177,7 @@ It is potentially dangerous and may cause your AI to run forever or carry out ac
 Use at your own risk.
 1. Run the `main.py` Python script in your terminal:
 ```
-python scripts/main.py --continuous
+PYTHONPATH=. python scripts/main.py --continuous
 
 ```
 2. To exit the program, press Ctrl + C
@@ -188,7 +185,7 @@ python scripts/main.py --continuous
 ## GPT3.5 ONLY Mode
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 ```
-python scripts/main.py --gpt3only
+PYTHONPATH=. python scripts/main.py --gpt3only
 ```
 
 ## ⚠️ Limitations

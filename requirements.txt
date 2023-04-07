@@ -9,9 +9,8 @@ requests
 tiktoken==0.3.3
 gTTS==2.3.1
 docker
-pika==1.3.1
-keyboard==0.13.5
+redis==4.5.4
 duckduckgo-search
 google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
-rich
-chevron
+rich==12.6.0
+chevron==0.14.0

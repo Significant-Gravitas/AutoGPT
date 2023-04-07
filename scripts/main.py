@@ -17,7 +17,7 @@ from json_parser import fix_and_parse_json
 from ai_config import AIConfig
 import traceback
 import yaml
-import qa
+from scripts.qa.agent import QAAgent
 import argparse
 
 def print_to_console(
@@ -273,7 +273,7 @@ def parse_arguments():
         print_to_console("QA Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_qa_mode(True)
 
-    if args.debug;
+    if args.debug:
         print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_debug_mode(True)
 
@@ -282,12 +282,12 @@ def parse_arguments():
 cfg = Config()
 parse_arguments()
 if cfg.qa_mode:
-    qamodel: Optional[qa.QAModel] = qa.QAModel()
+    qamodel: Optional[QAAgent] = QAAgent()
 else:
     qamodel = None
 ai_name = ""
 prompt = construct_prompt()
-if cfg.debug:
+if cfg.debug_mode:
     print(prompt)
 # Initialize variables
 full_message_history: List[ChatMessage] = []
@@ -362,7 +362,7 @@ while True:
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"
     else:
-        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
+        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments, qamodel=qamodel)}"
 
     # Check if there's a result from the command append it to the message
     # history
