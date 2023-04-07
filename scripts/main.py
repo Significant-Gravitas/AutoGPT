@@ -307,17 +307,8 @@ if not cfg.pinecone_api_key or not cfg.pinecone_region:
     raise Exception("Please provide pinecone_api_key and pinecone_region")
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
-<<<<<<< HEAD
 memory = get_memory(cfg, init=True)
-=======
-memory = PineconeMemory(cfg)
-memory.clear()
-<<<<<<< HEAD
->>>>>>> 6c3d95a (Create an abstract MemoryProviderSingleton class. Pass config instead of instantiating a new one where used.)
-print('Using memory of type: ' + memory.__class__.__name__)
-=======
 print("Using memory of type: " + memory.__class__.__name__)
->>>>>>> 6dd3e46 (Implement redis memory backend.)
 
 # Interaction Loop
 while True:
