@@ -9,7 +9,7 @@ cfg = Config()
 def evaluate_code(code: str) -> List[str]:
     """
     A function that takes in a string and returns a response from create chat completion api call.
-      
+
     Parameters:
         code (str): Code to be evaluated.
     Returns:
@@ -20,14 +20,14 @@ def evaluate_code(code: str) -> List[str]:
     description_string = """Analyzes the given code and returns a list of suggestions for improvements."""
 
     result_string = call_ai_function(function_string, args, description_string)
-    
+
     return result_string
 
 
 def improve_code(suggestions: List[str], code: str) -> str:
     """
     A function that takes in code and suggestions and returns a response from create chat completion api call. 
-      
+
     Parameters:
         suggestions (List): A list of suggestions around what needs to be improved.
         code (str): Code to be improved.
@@ -47,7 +47,7 @@ def improve_code(suggestions: List[str], code: str) -> str:
 def write_tests(code: str, focus: List[str]) -> str:
     """
     A function that takes in code and focus topics and returns a response from create chat completion api call.
-      
+
     Parameters:
         focus (List): A list of suggestions around what needs to be improved.
         code (str): Code for test cases to be generated against.
@@ -62,5 +62,3 @@ def write_tests(code: str, focus: List[str]) -> str:
 
     result_string = call_ai_function(function_string, args, description_string)
     return result_string
-
-
