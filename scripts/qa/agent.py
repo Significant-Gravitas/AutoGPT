@@ -8,11 +8,14 @@ class QAAgent:
     def __init__(self):
         self.redis = connect_to_redis()
 
-    def message_user(self, message: str) -> str:
+    def message_user(self, message: str, wait_for_response: bool) -> str:
         """Notify the user of a message and return a message to the gpt agent to check back later for a response."""
         # Send the message to the user
         self.redis.lpush("touser", message)
-        return "You have sent the message to the user. You may or may not receive a response. You may ask other questions without waiting for a response. You may also send other messages to the user without waiting for a response. Or, you may use the command \"wait_user\" to wait for a response."
+        if not wait_for_response:
+            return "You have sent the message to the user. You may or may not receive a response. You may ask other questions without waiting for a response. You may also send other messages to the user without waiting for a response. "
+        else:
+            return self.wait()
 
     def receive_all_user_responses(self) -> List[chat.ChatMessage]:
         """Checks to see if there has yet been a single response from the user and if so returns it as a JSON string."""

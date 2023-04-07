@@ -110,9 +110,7 @@ def execute_command(command_name, arguments, qamodel: QAAgent | None = None):
             return execute_python_file(arguments["file"])
         elif cfg.qa_mode and qamodel is not None:
             if command_name == "message_user":
-                return qamodel.message_user(arguments["message"])
-            if command_name == "wait_user":
-                return qamodel.wait()
+                return qamodel.message_user(arguments["message"], arguments["wait_for_response"])
         elif command_name == "task_complete":
             shutdown()
         else:
