@@ -76,7 +76,6 @@ def fix_and_parse_json(
 
 def fix_json(json_str: str, schema: str) -> str:
     """Fix the given JSON string to make it parseable and fully compliant with the provided schema."""
-
     # Try to fix the JSON using GPT:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
@@ -92,12 +91,11 @@ def fix_json(json_str: str, schema: str) -> str:
     result_string = call_ai_function(
         function_string, args, description_string, model=cfg.fast_llm_model
     )
-    if cfg.debug_mode:
-        print("------------ JSON FIX ATTEMPT ---------------")
-        print(f"Original JSON: {json_str}")
-        print("-----------")
-        print(f"Fixed JSON: {result_string}")
-        print("----------- END OF FIX ATTEMPT ----------------")
+    logger.log(content="------------ JSON FIX ATTEMPT ---------------", level=logging.DEBUG)
+    logger.log(content=f"Original JSON: {json_str}", level=logging.DEBUG)
+    logger.log(content="-----------", level=logging.DEBUG)
+    logger.log(content=f"Fixed JSON: {result_string}", level=logging.DEBUG)
+    logger.log(content="----------- END OF FIX ATTEMPT ----------------", level=logging.DEBUG)
 
     try:
         json.loads(result_string)  # just check the validity
