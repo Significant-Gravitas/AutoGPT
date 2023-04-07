@@ -9,3 +9,5 @@ class MemoryFactory:
 
         if mem_type == 'weaviate':
             return WeaviateMemory()
+
+        raise ValueError('Unknown memory provider')
