@@ -13,7 +13,6 @@ class Command:
     Attributes:
         name (str): The name of the command.
         description (str): A brief description of what the command does.
-        method (Callable[..., Any]): The function that the command executes.
         signature (str): The signature of the function that the command executes. Defaults to None.
     """
 
@@ -46,8 +45,14 @@ class CommandRegistry:
     def _reload_module(self, module: Any) -> Any:
         return importlib.reload(module)
 
-    def register_command(self, cmd: Command) -> None:
+    def register(self, cmd: Command) -> None:
         self.commands[cmd.name] = cmd
+
+    def unregister(self, command_name: str):
+        if command_name in self.commands:
+            del self.commands[command_name]
+        else:
+            raise KeyError(f"Command '{command_name}' not found in registry.")
 
     def reload_commands(self) -> None:
         """Reloads all loaded command plugins."""
@@ -59,10 +64,13 @@ class CommandRegistry:
                 reloaded_module.register(self)
 
     def get_command(self, name: str) -> Callable[..., Any]:
-        return self.commands.get(name)
+        return self.commands[name]
 
-    def list_commands(self) -> List[str]:
-        return [str(cmd) for cmd in self.commands.values()]
+    def call(self, command_name: str, **kwargs) -> Any:
+        if command_name not in self.commands:
+            raise KeyError(f"Command '{command_name}' not found in registry.")
+        command = self.commands[command_name]
+        return command(**kwargs)
 
     def command_prompt(self) -> str:
         """
@@ -85,17 +93,23 @@ class CommandRegistry:
 
         for file in os.listdir(directory):
             if file.endswith(".py"):
+                file_path = os.path.join(directory, file)
                 module_name = file[:-3]
-                module = importlib.import_module(module_name)
+
+                spec = importlib.util.spec_from_file_location(module_name, file_path)
+                module = importlib.util.module_from_spec(spec)
+
+                spec.loader.exec_module(module)
+
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     # Register decorated functions
                     if hasattr(attr, AUTO_GPT_COMMAND_IDENTIFIER) and getattr(attr, AUTO_GPT_COMMAND_IDENTIFIER):
-                        self.register_command(attr.register_command)
+                        self.register(attr.command)
                     # Register command classes
                     elif inspect.isclass(attr) and issubclass(attr, Command) and attr != Command:
                         cmd_instance = attr()
-                        self.register_command(cmd_instance)
+                        self.register(cmd_instance)
 
 
 def command(name: str, description: str, signature: str = None) -> Callable[..., Any]:
@@ -106,7 +120,8 @@ def command(name: str, description: str, signature: str = None) -> Callable[...,
         def wrapper(*args, **kwargs) -> Any:
             return func(*args, **kwargs)
 
-        wrapper.register_command = cmd
+        wrapper.command = cmd
+
         setattr(wrapper, AUTO_GPT_COMMAND_IDENTIFIER, True)
         return wrapper
 
