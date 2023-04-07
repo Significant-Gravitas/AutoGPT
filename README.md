@@ -153,7 +153,7 @@ are loaded for the agent at any given time.
 
 Simply set them in the `.env` file. 
 
-Alternatively you can use the appropriate following method (advanced):
+Alternatively, you can set them from the command line (advanced):
 
 For Windows Users:
 ```
