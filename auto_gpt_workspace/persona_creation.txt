@@ -1,0 +1,10 @@
+According to usability.gov, there are key steps when creating user personas to ensure reliable and realistic representations of key audience segments for references:
+
+1. Conduct user research: Gather information about users, including demographics and behavioral patterns/trends/similarities.
+2. Condense research into creative elements: Identify key behavioral patterns/trends/similarities and condense them into specific themes/categorize them into specific characteristics.
+3. Brainstorm preliminary persona groups: Collaboratively brainstorm page users and identify needs and characteristics in focus groups.
+4. Develop rough personas: Create one or more basic personas based around research themes by combining the characteristics and goals of the target user groups.
+5. Refine and prioritize rough personas: Collect feedback from the group, prioritize based on user impact, and distill the key characteristics and actionable information so that the personas become helpful references to the product team throughout a project's lifecycle.
+6. Writing persona descriptions: It's time to write detailed descriptions of each persona's background, motivations, expectations and goals, behaviors, and pain points. Always add the user's name, photo, and role to give it its personality and make it memorable. Use the persona to inform design decisions.
+
+Ensuring the personas are based on reliable research and limiting the number of personas created only to main audiences to focus team efforts is essential. Accurate user personas should be referenced throughout the design process to inform design decisions.

@@ -1,0 +1,13 @@
+Values: To provide users with a platform to establish online authenticity and trust in secure online interactions.
+
+Goals: To make Whag Tags ubiquitous and promote distinctly human connections online.
+
+Features: 
+1. Verified Links: Add a layer of security to every link with Whag’s Verified Links.
+2. Whitelists: Organize and share Verified Links to ensure added security.
+3. The Blacklist: Report and block malicious links for a safer online experience.
+4. The Whag Tags: Create a verified digital identity for a more authentic online experience.
+5. Chrome Extension: Protect users and provide secure insight to current webpage protection status.
+6. Protection Mode: Customizable feature that provides real-time threat identification and personalized settings.
+
+Purpose: To provide users with a customizable, secure browsing experience with multiple layers of protection and the ability to establish authenticity and trust online.
