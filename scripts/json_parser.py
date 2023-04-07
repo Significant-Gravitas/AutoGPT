@@ -16,7 +16,7 @@ def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
     {
         "text": "thought",
         "reasoning": "reasoning",
-        "plan": "- short bulleted\n- list that conveys\n- long-term plan",
+        "plan": "- short bulleted\\n- list that conveys\\n- long-term plan",
         "criticism": "constructive self-criticism",
         "speak": "thoughts summary to say to user"
     }
