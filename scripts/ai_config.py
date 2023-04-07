@@ -89,7 +89,3 @@ class AIConfig:
         full_prompt += f"\n\n{data.load_prompt()}"
         return full_prompt
 
-
-if __name__ == "__main__":
-    import doctest
-    doctest.testmod()
