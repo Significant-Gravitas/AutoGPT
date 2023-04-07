@@ -14,6 +14,12 @@ import re
 
 cfg = Config()
 
+'''
+Logger that handle titles in different colors.
+Outputs logs in console, activity.log, and errors.log
+For console handler: simulates typing
+'''
+
 
 class Logger(metaclass=Singleton):
     def __init__(self):
@@ -73,6 +79,11 @@ class Logger(metaclass=Singleton):
         self.file_handler.setLevel(level)
 
 
+'''
+Output stream to console using simulated typing
+'''
+
+
 class TypingConsoleHandler(logging.StreamHandler):
     def emit(self, record):
         min_typing_speed = 0.05
@@ -95,6 +106,10 @@ class TypingConsoleHandler(logging.StreamHandler):
             self.handleError(record)
 
 
+'''
+Allows to handle custom placeholders 'title_color' and 'message_no_color'.
+To use this formatter, make sure to pass 'color', 'title' as log extras.
+'''
 
 
 class AutoGptFormatter(logging.Formatter):
