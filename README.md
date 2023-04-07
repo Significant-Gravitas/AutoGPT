@@ -167,6 +167,12 @@ WIPE_REDIS_ON_START=False
 
 To persist memory stored in Redis.
 
+You can specify the memory index for redis using the following:
+
+````
+MEMORY_INDEX=whatever
+````
+
 ## 🌲 Pinecone API Key Setup
 
 Pinecone enable a vector based memory so a vast memory can be stored and only relevant memories
