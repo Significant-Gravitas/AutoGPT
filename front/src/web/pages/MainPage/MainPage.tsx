@@ -1,17 +1,21 @@
 import { useState } from "react"
 import Flex from "../../style/Flex"
 import {
+  ActionBar,
   CardTask,
   Comment,
+  CommentContainer,
   Container,
   Discussion,
   Grid,
   Input,
+  InputContainer,
   Line,
   RightTasks,
   Search,
 } from "./MainPage.styled"
 import SButton from "../../style/SButton"
+import { TextField } from "@mui/material"
 
 const MainPage = () => {
   const [output, setOutput] = useState([
@@ -81,9 +85,13 @@ const MainPage = () => {
           <Flex direction="column" gap={0.5}>
             <h2>Your AI</h2>
             <Search>
-              <input type="text" placeholder="Search" />
+              <TextField
+                id="outlined-basic"
+                label="Outlined"
+                variant="outlined"
+              />
             </Search>
-            <CardTask>
+            <CardTask elevation={0}>
               <Flex justify="space-between" align="center">
                 <h3>Task 1</h3>
                 <div>7 Apr</div>
@@ -93,7 +101,7 @@ const MainPage = () => {
                 determine business strategies.
               </p>
             </CardTask>
-            <CardTask>
+            <CardTask elevation={0}>
               <Flex justify="space-between" align="center">
                 <h3>Task 2</h3>
                 <div>6 Apr</div>
@@ -110,7 +118,7 @@ const MainPage = () => {
         </RightTasks>
         <Discussion>
           <Flex direction="column" gap={0.5}>
-            <Flex gap={1}>
+            <ActionBar>
               <SButton
                 $color="yellow"
                 variant="contained"
@@ -136,8 +144,8 @@ const MainPage = () => {
               >
                 kill script
               </SButton>
-            </Flex>
-            <Flex direction="column" gap={0.5}>
+            </ActionBar>
+            <CommentContainer>
               {output.map((line) => (
                 <>
                   <Line content={line.title} />
@@ -146,8 +154,10 @@ const MainPage = () => {
                   </Comment>
                 </>
               ))}
+            </CommentContainer>
+            <InputContainer>
               <Input placeholder="your input" />
-            </Flex>
+            </InputContainer>
           </Flex>
         </Discussion>
         <RightTasks>

@@ -2,8 +2,9 @@ import React from "react"
 import { useRef } from "react"
 import styled, { css, keyframes } from "styled-components"
 import colored from "./colored"
+import { Button } from "@mui/material"
 
-const StyledButton = styled.button<{
+const StyledButton = styled(Button)<{
   variant?: "contained" | "outlined" | "text"
   $noScale?: boolean
 }>`
