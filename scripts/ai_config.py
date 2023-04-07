@@ -1,6 +1,7 @@
 import yaml
-import data
+from data.response_prompt import load_prompt
 import os
+
 
 class AIConfig:
     def __init__(self, ai_name="", ai_role="", ai_goals=[]):
@@ -9,7 +10,7 @@ class AIConfig:
         self.ai_goals = ai_goals
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
+    SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "ai_settings.yaml")
 
     @classmethod
     def load(cls, config_file=SAVE_FILE):
@@ -17,17 +18,20 @@ class AIConfig:
         try:
             with open(config_file) as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
+                ai_name = config_params.get("ai_name", "")
+                ai_role = config_params.get("ai_role", "")
+                ai_goals = config_params.get("ai_goals", [])
+
+                return cls(ai_name, ai_role, ai_goals)
         except FileNotFoundError:
-            config_params = {}
-
-        ai_name = config_params.get("ai_name", "")
-        ai_role = config_params.get("ai_role", "")
-        ai_goals = config_params.get("ai_goals", [])
-
-        return cls(ai_name, ai_role, ai_goals)
+            return None
 
     def save(self, config_file=SAVE_FILE):
-        config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
+        config = {
+            "ai_name": self.ai_name,
+            "ai_role": self.ai_role,
+            "ai_goals": self.ai_goals,
+        }
         with open(config_file, "w") as file:
             yaml.dump(config, file)
 
@@ -35,9 +39,11 @@ class AIConfig:
         prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
         # Construct full prompt
-        full_prompt = f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+        full_prompt = (
+            f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+        )
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
-        full_prompt += f"\n\n{data.load_prompt()}"
+        full_prompt += f"\n\n{load_prompt()}"
         return full_prompt
