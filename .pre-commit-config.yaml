@@ -1,0 +1,22 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-ast
+      - id: check-added-large-files
+      - id: check-executables-have-shebangs
+      - id: pretty-format-json
+      - id: debug-statements
+      - id: detect-private-key
+      - id: requirements-txt-fixer
+  - repo: https://github.com/akaihola/darker
+    rev: 1.7.1
+    hooks:
+      - id: darker
+        args: [--isort]
+        additional_dependencies:
+          - black==23.3
+          - isort==5.12
