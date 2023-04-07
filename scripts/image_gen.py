@@ -17,7 +17,7 @@ def generate_image(prompt):
     
     # DALL-E
     if cfg.image_provider == 'dalle':
-        
+
         openai.api_key = cfg.openai_api_key
 
         response = openai.Image.create(
@@ -28,7 +28,6 @@ def generate_image(prompt):
         )
 
         print("Image Generated for prompt:" + prompt)
-        print(response["data"][0]["b64_json"][:50])
 
         image_data = b64decode(response["data"][0]["b64_json"])
 
@@ -51,9 +50,8 @@ def generate_image(prompt):
         print("Image Generated for prompt:" + prompt)
 
         image.save(os.path.join(working_directory, filename))
-        print("Saved to disk:" + filename)
 
-        return str("Image " + filename + " saved to disk for prompt: " + prompt)
+        return "Saved to disk:" + filename
 
     else:
         return "No Image Provider Set"
