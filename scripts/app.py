@@ -2,15 +2,15 @@ import os
 import uuid
 from colorama import Fore, Style
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
-from app_types import StartBody, ChatBody
-from app_utils import create_assistant_thoughts, create_message
-from memory import PineconeMemory
-from ai_config import AIConfig
-from chat import chat_with_ai
-from config import Config
-from commands import get_command, execute_command
-from chat import create_chat_message
-from agent_manager import next_key, agents
+from .app_types import StartBody, ChatBody
+from .app_utils import create_assistant_thoughts, create_message
+from .memory import PineconeMemory
+from .ai_config import AIConfig
+from .chat import chat_with_ai
+from .config import Config
+from .commands import get_command, execute_command
+from .chat import create_chat_message
+from .agent_manager import next_key, agents
 
 
 app = FastAPI()

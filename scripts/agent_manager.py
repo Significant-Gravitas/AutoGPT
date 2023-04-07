@@ -1,4 +1,4 @@
-from llm_utils import create_chat_completion
+from .llm_utils import create_chat_completion
 
 next_key = {None: 0}
 agents = {None: {}}  # key, (task, full_message_history, model)

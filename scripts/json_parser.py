@@ -1,6 +1,6 @@
 import json
-from call_ai_function import call_ai_function
-from config import Config
+from .call_ai_function import call_ai_function
+from .config import Config
 cfg = Config()
 
 def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):

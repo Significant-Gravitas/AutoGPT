@@ -1,8 +1,8 @@
 from typing import List
 from colorama import Fore, Style
-from app_types import ConsoleMessage
+from .app_types import ConsoleMessage
 import json
-from json_parser import fix_and_parse_json
+from .json_parser import fix_and_parse_json
 import traceback
 
 
