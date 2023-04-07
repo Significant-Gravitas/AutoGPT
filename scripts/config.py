@@ -55,6 +55,11 @@ class Config(metaclass=Singleton):
         self.pinecone_namespace_override = os.getenv("PINECONE_NAMESPACE_OVERRIDE")
         self.pinecone_clear_long_term_memory_requested = False
 
+        #
+        # wolfram Alpha
+        #
+        self.wolframalpha_appid = os.getenv("WOLFRAMALPHA_APPID")
+
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
         self.user_agent_header = {"User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
@@ -103,3 +108,6 @@ class Config(metaclass=Singleton):
 
     def set_pinecone_clear_long_term_memory_requested(self, value: str):
         self.pinecone_clear_long_term_memory_requested = value
+
+    def set_wolframalpha_appid(self, value: str):
+        self.wolframalpha_appid = value        
