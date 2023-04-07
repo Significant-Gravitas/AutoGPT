@@ -86,7 +86,9 @@ $ cd 'Auto-GPT'
 3. Install the required dependencies:
 *(Again, type this into your CMD window)*
 ```
-pip install -r requirements.txt
+pip install poetry
+poetry install
+poetry shell
 ```
 
 4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
@@ -99,7 +101,7 @@ pip install -r requirements.txt
 1. Run the `main.py` Python script in your terminal:
 *(Type this into your CMD window)*
 ```
-python scripts/main.py
+poetry run python scripts/main.py
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
@@ -107,7 +109,7 @@ python scripts/main.py
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
-python scripts/main.py --speak
+poetry run python scripts/main.py --speak
 
 ```
 

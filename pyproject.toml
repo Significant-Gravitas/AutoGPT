@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "Auto-GPT"
+version = "0.1.0"
+description = ""
+authors = ["Torantulino"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+pinecone-client = "2.2.1"
+beautifulsoup4 = "^4.12.1"
+colorama = "0.4.6"
+openai = "0.27.2"
+playsound = "1.2.2"
+python-dotenv = "1.0.0"
+PyYAML = "6.0"
+readability-lxml = "0.8.1"
+requests = "^2.28.2"
+tiktoken = "0.3.3"
+gTTS = "2.3.1"
+docker = "^6.0.1"
+duckduckgo-search = "^2.8.5"
+google-api-python-client = "^2.84.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
