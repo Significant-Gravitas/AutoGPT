@@ -4,7 +4,6 @@ import redis
 from redis.commands.search.field import VectorField, TextField
 from redis.commands.search.query import Query
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
-import traceback
 import numpy as np
 
 from memory.base import MemoryProviderSingleton, get_ada_embedding

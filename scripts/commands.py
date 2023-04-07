@@ -1,5 +1,6 @@
 import browse
 import json
+from memory.local import LocalCache
 from memory.pinecone import PineconeMemory
 from memory.redismem import RedisMemory
 import datetime
@@ -55,11 +56,14 @@ def get_command(response):
 def execute_command(command_name, arguments):
     if cfg.memory_backend == "pinecone":
         memory = PineconeMemory(cfg=cfg)
-    else:
+    elif cfg.memory_backend == "redis":
         memory = RedisMemory(cfg=cfg)
+    else:
+        memory = LocalCache(cfg=cfg)
+
     try:
         if command_name == "google":
-            
+
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
             if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
