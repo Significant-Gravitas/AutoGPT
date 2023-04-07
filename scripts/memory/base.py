@@ -9,10 +9,6 @@ def get_ada_embedding(text):
     return openai.Embedding.create(input=[text], model="text-embedding-ada-002")["data"][0]["embedding"]
 
 
-def get_text_from_embedding(embedding):
-    return openai.Embedding.retrieve(embedding, model="text-embedding-ada-002")["data"][0]["text"]
-
-
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
     def add(self, data):
