@@ -44,6 +44,7 @@ Your support is greatly appreciated
     - [Setting up environment variables](#setting-up-environment-variables)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
+  - [🖼 Image Generation](#image-generation)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
@@ -206,6 +207,7 @@ Or you can set them in the `.env` file.
 
 1. View memory usage by using the `--debug` flag :)
 
+
 ## 💀 Continuous Mode ⚠️
 
 Run the AI **without** user authorisation, 100% automated.
@@ -227,6 +229,15 @@ If you don't have access to the GPT4 api, this mode will allow you to use Auto-G
 
 ```bash
 python scripts/main.py --gpt3only
+```
+
+## 🖼 Image Generation
+By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [HuggingFace API Token](https://huggingface.co/settings/tokens) is required.
+
+Once you have a token, set these variables in your `.env`:
+```
+IMAGE_PROVIDER=sd
+HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 ```
 
 ## ⚠️ Limitations
