@@ -17,8 +17,8 @@ Here is the output schema:
 
 def parse_pydantic_object(text: str, pydantic_object: Type[BaseModel]):
     try:
-        pattern = rf"{pydantic_object.__name__}\s*:?\s*"
-        match = re.search(pattern, text)
+        pattern = rf"{pydantic_object.__name__}\s*:\s*"
+        match = re.search(pattern, text, re.MULTILINE)
 
         if not match:
             raise ValueError(f"{pydantic_object.__name__} not found in text")
