@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-
 class Singleton(abc.ABCMeta, type):
     """
     Singleton metaclass for ensuring only one instance of a class.
@@ -36,11 +35,13 @@ class Config(metaclass=Singleton):
         self.debug = False
         self.continuous_mode = False
         self.speak_mode = False
+        self.caching = False
+        self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo") 
 
-        self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.use_azure = False
@@ -55,9 +56,6 @@ class Config(metaclass=Singleton):
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
 
-        self.use_mac_os_tts = False
-        self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
-        
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
@@ -120,6 +118,7 @@ class Config(metaclass=Singleton):
         """Set the Google API key value."""
         self.google_api_key = value
 
+
     def set_custom_search_engine_id(self, value: str):
         """Set the custom search engine id value."""
         self.custom_search_engine_id = value
@@ -135,3 +134,6 @@ class Config(metaclass=Singleton):
     def set_debug_mode(self, value: bool):
         """Set the debug mode value."""
         self.debug = value
+
+    def set_caching(self, value: bool):
+        self.caching = value
