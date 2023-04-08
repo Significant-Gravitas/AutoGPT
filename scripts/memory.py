@@ -1,4 +1,4 @@
-from .config import Config, Singleton
+from config import Config, Singleton
 import pinecone
 import openai
 

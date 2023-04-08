@@ -1,6 +1,5 @@
 from pydantic import BaseModel
 from typing import List, Literal
-from colorama.ansi import AnsiCodes
 
 
 class StartBody(BaseModel):

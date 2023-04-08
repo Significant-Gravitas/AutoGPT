@@ -1,10 +1,10 @@
-from .llm_utils import create_chat_completion
+from llm_utils import create_chat_completion
 import time
 import openai
 from dotenv import load_dotenv
-from .config import Config
-from . import token_counter
-from .memory import PineconeMemory
+from config import Config
+import token_counter
+from memory import PineconeMemory
 
 cfg = Config()
 

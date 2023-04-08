@@ -1,14 +1,14 @@
-from . import browse
+import browse
 import json
-from .memory import PineconeMemory
+from memory import PineconeMemory
 import datetime
-from . import agent_manager as agents
-from . import speak
-from .config import Config
-from . import ai_functions as ai
-from .file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
-from .execute_code import execute_python_file
-from .json_parser import fix_and_parse_json
+import agent_manager as agents
+import speak
+from config import Config
+import ai_functions as ai
+from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
+from execute_code import execute_python_file
+from json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
