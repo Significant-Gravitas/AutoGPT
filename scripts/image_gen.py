@@ -6,14 +6,15 @@ from config import Config
 import uuid
 import openai
 from base64 import b64decode
+from file_operations import working_directory, safe_join
 
 cfg = Config()
 
-working_directory = "auto_gpt_workspace"
 
-def generate_image(prompt):
+def generate_image(prompt, chat_id=None):
 
     filename = str(uuid.uuid4()) + ".jpg"
+    filepath = safe_join(working_directory, filename, chat_id=chat_id)
     
     # DALL-E
     if cfg.image_provider == 'dalle':
@@ -31,7 +32,7 @@ def generate_image(prompt):
 
         image_data = b64decode(response["data"][0]["b64_json"])
 
-        with open(working_directory + "/" + filename, mode="wb") as png:
+        with open(filepath, mode="wb") as png:
             png.write(image_data)
 
         return "Saved to disk:" + filename
@@ -49,7 +50,7 @@ def generate_image(prompt):
         image = Image.open(io.BytesIO(response.content))
         print("Image Generated for prompt:" + prompt)
 
-        image.save(os.path.join(working_directory, filename))
+        image.save(filepath)
 
         return "Saved to disk:" + filename
 
