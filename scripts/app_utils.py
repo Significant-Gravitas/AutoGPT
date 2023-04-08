@@ -1,12 +1,11 @@
 from typing import List
-from colorama import Fore, Style
 from .app_types import ConsoleMessage
 import json
 from .json_parser import fix_and_parse_json
 import traceback
 
 
-def create_message(title, title_color, content: str | List[str] | None) -> List[ConsoleMessage]:
+def create_message(title, content: str | List[str] | None) -> List[ConsoleMessage]:
     # replacement for print_to_console()
     if isinstance(content, list):
         message = " ".join(content)
@@ -28,7 +27,7 @@ def create_assistant_thoughts(ai_name: str, assistant_reply: str) -> List[Consol
                 assistant_reply_json = json.loads(assistant_reply_json)
             except json.JSONDecodeError as e:
                 messages += create_message("Error: Invalid JSON\n",
-                                           Fore.RED, assistant_reply)
+                                           assistant_reply)
                 assistant_reply_json = {}
 
         assistant_thoughts_reasoning = None
@@ -45,12 +44,11 @@ def create_assistant_thoughts(ai_name: str, assistant_reply: str) -> List[Consol
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
         messages += create_message(f"{ai_name.upper()} THOUGHTS:",
-                                   Fore.YELLOW, assistant_thoughts_text)
-        messages += create_message("REASONING:", Fore.YELLOW,
-                                   assistant_thoughts_reasoning)
+                                   assistant_thoughts_text)
+        messages += create_message("REASONING:", assistant_thoughts_reasoning)
 
         if assistant_thoughts_plan:
-            messages += create_message("PLAN:", Fore.YELLOW, "")
+            messages += create_message("PLAN:", "")
             # If it's a list, join it into a string
             if isinstance(assistant_thoughts_plan, list):
                 assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
@@ -61,18 +59,16 @@ def create_assistant_thoughts(ai_name: str, assistant_reply: str) -> List[Consol
             lines = assistant_thoughts_plan.split('\n')
             for line in lines:
                 line = line.lstrip("- ")
-                messages += create_message("- ", Fore.GREEN, line.strip())
+                messages += create_message("- ", line.strip())
 
-        messages += create_message("CRITICISM:", Fore.YELLOW,
-                                   assistant_thoughts_criticism)
+        messages += create_message("CRITICISM:", assistant_thoughts_criticism)
 
     except json.decoder.JSONDecodeError:
-        messages += create_message("Error: Invalid JSON\n",
-                                   Fore.RED, assistant_reply)
+        messages += create_message("Error: Invalid JSON\n", assistant_reply)
 
     # All other errors, return "Error: + error message"
     except Exception as e:
         call_stack = traceback.format_exc()
-        messages += create_message("Error: \n", Fore.RED, call_stack)
+        messages += create_message("Error: \n", call_stack)
 
     return messages

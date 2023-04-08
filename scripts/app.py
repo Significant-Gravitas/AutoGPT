@@ -1,6 +1,5 @@
 import os
 import uuid
-from colorama import Fore, Style
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from .app_types import StartBody, ChatBody
 from .app_utils import create_assistant_thoughts, create_message
@@ -30,13 +29,12 @@ def shutdown_chat(chat_id: str):
         agents.pop[chat_id]
     return create_message(
         "Shutting down chat...",
-        Fore.MAGENTA,
         ""
     )
 
 
 @app.post("/start")
-async def start_chat(request: Request, body: StartBody):
+async def start_chat(request: Request, body: StartBody, response: Response):
     chat_id = str(uuid.uuid4())
 
     # set up chat context
@@ -68,13 +66,12 @@ async def start_chat(request: Request, body: StartBody):
     try:
         command_name, arguments = get_command(assistant_reply)
     except Exception as e:
-        messages += create_message("Error: \n", Fore.RED, str(e))
+        messages += create_message("Error: \n", str(e))
 
     # needs authorization from user
     messages += create_message(
         "NEXT ACTION: ",
-        Fore.CYAN,
-        f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+        f"COMMAND = {command_name}  ARGUMENTS = {arguments}",
     )
 
     # save chat context
@@ -87,14 +84,13 @@ async def start_chat(request: Request, body: StartBody):
         "assistant_reply": assistant_reply,
     }
 
-    response = Response()
     response.headers["chat_id"] = chat_id
 
     return {"messages": messages}
 
 
 @app.post("/chat")
-async def continue_chat(request: Request, body: ChatBody):
+async def continue_chat(request: Request, body: ChatBody, response: Response):
     chat_id = request.headers.get("chat_id")
     if not chat_id or chat_id not in chat_data:
         raise HTTPException(status_code=400, detail="Invalid chat_id")
@@ -124,7 +120,6 @@ async def continue_chat(request: Request, body: ChatBody):
     if user_input == "GENERATE NEXT COMMAND JSON":
         messages += create_message(
             "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-            Fore.MAGENTA,
             ""
         )
     elif user_input == "EXIT":
@@ -152,18 +147,14 @@ async def continue_chat(request: Request, body: ChatBody):
     # update message history
     if result is not None:
         full_message_history.append(create_chat_message("system", result))
-        messages += create_message(
-            "SYSTEM: ", Fore.YELLOW, result
-        )
+        messages += create_message("SYSTEM: ", result)
     else:
         full_message_history.append(
             create_chat_message(
                 "system", "Unable to execute command"
             )
         )
-        messages += create_message(
-            "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
-        )
+        messages += create_message("SYSTEM: ", "Unable to execute command")
 
     # send message to AI, get response
     assistant_reply = chat_with_ai(
@@ -182,13 +173,12 @@ async def continue_chat(request: Request, body: ChatBody):
     try:
         command_name, arguments = get_command(assistant_reply)
     except Exception as e:
-        messages += create_message("Error: \n", Fore.RED, str(e))
+        messages += create_message("Error: \n", str(e))
 
     # needs authorization from user
     messages += create_message(
         "NEXT ACTION: ",
-        Fore.CYAN,
-        f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+        f"COMMAND = {command_name}  ARGUMENTS = {arguments}",
     )
 
     # save chat context
@@ -201,7 +191,6 @@ async def continue_chat(request: Request, body: ChatBody):
         "assistant_reply": assistant_reply,
     }
 
-    response = Response()
     response.headers["chat_id"] = chat_id
 
     return {"messages": messages}
