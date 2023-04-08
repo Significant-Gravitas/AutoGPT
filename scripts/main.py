@@ -280,12 +280,12 @@ next_action_count = 0
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
 
-
+# raise an exception if pinecone_api_key or region is not provided
+if not cfg.pinecone_api_key or not cfg.pinecone_region: raise Exception("Please provide pinecone_api_key and pinecone_region")
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
 memory = PineconeMemory()
 memory.clear()
-
 print('Using memory of type: ' + memory.__class__.__name__)
 
 # Create a CommandRegistry instance and scan default folder
