@@ -32,7 +32,6 @@ Your support is greatly appreciated
 
 - [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
   - [Demo (30/03/2023)](#demo-30032023)
-  - [💖 Help Fund Auto-GPT's Development](#-help-fund-auto-gpts-development)
   - [Table of Contents](#table-of-contents)
   - [🚀 Features](#-features)
   - [📋 Requirements](#-requirements)
@@ -42,9 +41,12 @@ Your support is greatly appreciated
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
+  - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+    - [Setting up environment variables](#setting-up-environment-variables-1)
+  - [View Memory Usage](#view-memory-usage)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
-  - [🖼 Image Generation](#image-generation)
+  - [🖼 Image Generation](#-image-generation)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
@@ -64,6 +66,7 @@ Your support is greatly appreciated
 - PINECONE API key
 
 Optional:
+
 - ElevenLabs Key (If you want the AI to speak)
 
 ## 💾 Installation
@@ -104,27 +107,44 @@ For this step you need Git installed, but you can just download the zip file ins
 
 ### Running in Docker
 
-You can build and run an image in Docker like this:
+You can run an [up-to-date image](https://hub.docker.com/r/kayvan/auto-gpt) from Docker Hub, or you can build and run your own image in Docker like this:
 
 ```bash
 docker build -t auto-gpt .
-docker run --rm -it -v ${PWD}:/app auto-gpt
+docker run --rm -it -v $PWD/.env:/app/.env auto-gpt
 ```
 
 Alternatively, you can mount the `auto_gpt_workspace` directory from a different location,
-keeping your source directory clean:
+keeping your source directory clean.
 
 ```bash
 mkdir ~/AGPT
-docker run --rm -it -v ${PWD}:/app -v $HOME/AGPT:/app/auto_gpt_workspace auto-gpt
+docker run --rm -it -v $PWD/.env:/app/.env -v $HOME/AGPT:/app/auto_gpt_workspace auto-gpt
 ```
 
-4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
-  - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
-  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
-  - Obtain your Pinecone key from: https://app.pinecone.io/. You can view your API key using the API keys secltion on the left hand side.
-  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
+You can also have multiple instances of Auto-GPT running, each with their own `ai_settings.yaml` file.
+For example:
 
+```bash
+mkdir ~/AGPT
+cp ai_settings.yaml ~/AGPT
+docker run --rm -it -v $PWD/.env:/app/.env \
+  -v ~/AGPT/ai_settings.yaml:/app/ai_settings.yaml \
+  -v $HOME/AGPT:/app/auto_gpt_workspace \
+  auto-gpt /bin/bash
+```
+
+Then you can edit `/tmp/AGPT/ai_settings.yaml` on the host,
+install additional software in the Debian based image, and run the script
+`python scripts/main.py` with your desired options.
+
+1. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+
+- Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+- Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+- Obtain your Pinecone key from: https://app.pinecone.io/. You can view your API key using the API keys secltion on the left hand side.
+- If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values
+  as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
 
 ## 🔧 Usage
 
@@ -188,14 +208,17 @@ are loaded for the agent at any given time.
 3. Find your API key and region under the default project in the left sidebar.
 
 ### Setting up environment variables
+
    For Windows Users:
-```
+
+```powershell
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
+```
 
-```
 For macOS and Linux users:
-```
+
+```bash
 export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
@@ -232,10 +255,12 @@ python scripts/main.py --gpt3only
 ```
 
 ## 🖼 Image Generation
+
 By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [HuggingFace API Token](https://huggingface.co/settings/tokens) is required.
 
 Once you have a token, set these variables in your `.env`:
-```
+
+```bash
 IMAGE_PROVIDER=sd
 HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 ```
