@@ -7,7 +7,7 @@ import gtts
 
 
 # TODO: Nicer names for these ids - default male: ErXwobaYiN019PkySvjV | default female: EXAVITQu4vr4xnSDxMaL
-voices = ["HC8wj4CGDYOopajfnOrr", "EXAVITQu4vr4xnSDxMaL"]
+voices = ["TxGEqnHWrfWFTfGW9XjX", "EXAVITQu4vr4xnSDxMaL"]
 
 tts_headers = {
     "Content-Type": "application/json",
