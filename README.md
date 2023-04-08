@@ -40,9 +40,9 @@ Your support is greatly appreciated
   - [🔧 Usage](#-usage)
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
-    - [Setting up environment variables](#setting-up-environment-variables)
+    - [Setting up Google API environment variables](#setting-up-google-api-environment-variables)
   - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
-    - [Setting up environment variables](#setting-up-environment-variables-1)
+    - [Setting up PINECONE API environment variables](#setting-up-pinecone-api-environment-variables)
   - [View Memory Usage](#view-memory-usage)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
@@ -181,7 +181,7 @@ To use the `google_official_search` command, you need to set up your Google API 
 8. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
 9. Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
 
-### Setting up environment variables
+### Setting up Google API environment variables
 
    For Windows Users:
 
@@ -207,7 +207,7 @@ are loaded for the agent at any given time.
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
 
-### Setting up environment variables
+### Setting up PINECONE API environment variables
 
    For Windows Users:
 
