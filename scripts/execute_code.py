@@ -1,5 +1,6 @@
 import docker
 import os
+import subprocess
 
 
 def execute_python_file(file):
@@ -45,3 +46,17 @@ def execute_python_file(file):
 
     except Exception as e:
         return f"Error: {str(e)}"
+    
+
+
+def exec_shell(command_line):
+
+    args = command_line.split()
+
+    result = subprocess.run(args, capture_output=True)
+
+    output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}";
+
+    # print(f"Shell execution complete. Output: {output}")
+
+    return output
