@@ -6,6 +6,9 @@ cfg = Config()
 
 class PineconeMemory(Memory):
     def __init__(self):
+        # raise an exception if pinecone_api_key or region is not provided
+        if not cfg.pinecone_api_key or not cfg.pinecone_region: raise Exception("Please provide pinecone_api_key and pinecone_region")
+
         pinecone_api_key = cfg.pinecone_api_key
         pinecone_region = cfg.pinecone_region
         pinecone.init(api_key=pinecone_api_key, environment=pinecone_region)
