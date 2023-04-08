@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Literal
+from colorama.ansi import AnsiCodes
 
 
 class StartBody(BaseModel):
@@ -14,5 +15,4 @@ class ChatBody(BaseModel):
 
 class ConsoleMessage(BaseModel):
     title: str
-    title_color: str
     message: str | None

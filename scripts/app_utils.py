@@ -12,7 +12,7 @@ def create_message(title, title_color, content: str | List[str] | None) -> List[
         message = " ".join(content)
     else:
         message = content
-    return [ConsoleMessage(title=title, title_color=title_color, message=message)]
+    return [ConsoleMessage(title=title, message=message)]
 
 
 def create_assistant_thoughts(ai_name: str, assistant_reply: str) -> List[ConsoleMessage]:
