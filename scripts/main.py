@@ -13,6 +13,9 @@ import sys
 from config import Config
 from json_parser import fix_and_parse_json
 from ai_config import AIConfig
+from task_management.task_manager import TaskManager
+from task_management.task import Task
+from task_management.task_state import TaskState
 import traceback
 import yaml
 import argparse
@@ -78,11 +81,9 @@ def print_assistant_thoughts(assistant_reply):
 
         if assistant_thoughts_plan:
             print_to_console("PLAN:", Fore.YELLOW, "")
-            # If it's a list, join it into a string
-            if isinstance(assistant_thoughts_plan, list):
-                assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
-            elif isinstance(assistant_thoughts_plan, dict):
-                assistant_thoughts_plan = str(assistant_thoughts_plan)
+            for subtask in assistant_thoughts_plan:
+                task_manager.create_task(subtask, parent_task_id=task_manager.current_task.id)
+            assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
 
             # Split the input_string using the newline character and dashes
             lines = assistant_thoughts_plan.split('\n')
@@ -181,6 +182,13 @@ Continue (y/n): """)
     # Get rid of this global:
     global ai_name
     ai_name = config.ai_name
+
+    # Add goals to our task manager and set current task
+    if cfg.task_manager_mode:
+            for goal in config.ai_goals:
+                task_manager.create_task(name=goal)
+            task_manager.set_current_task(1)
+            task_manager.update_task_state(1, TaskState.IN_PROGRESS)
     
     full_prompt = config.construct_full_prompt()
     return full_prompt
@@ -248,6 +256,7 @@ def parse_arguments():
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--taskmanager', action='store_true', help='Enable Task Manager Mode')
     args = parser.parse_args()
 
     if args.continuous:
@@ -261,15 +270,23 @@ def parse_arguments():
     if args.speak:
         print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_speak_mode(True)
+    
+    if args.debug:
+        print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_debug_mode(True)
 
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
+    if args.taskmanager:
+        print_to_console("Task Manager Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_task_manager_mode(True)
 
 # TODO: fill in llm values here
 
 cfg = Config()
+task_manager = TaskManager()
 parse_arguments()
 ai_name = ""
 prompt = construct_prompt()
@@ -281,12 +298,11 @@ next_action_count = 0
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
 
-# raise an exception if pinecone_api_key or region is not provided
-if not cfg.pinecone_api_key or not cfg.pinecone_region: raise Exception("Please provide pinecone_api_key and pinecone_region")
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
 memory = PineconeMemory()
 memory.clear()
+
 print('Using memory of type: ' + memory.__class__.__name__)
 
 # Interaction Loop
@@ -297,8 +313,10 @@ while True:
             prompt,
             user_input,
             full_message_history,
+            task_manager.get_task_hierarchy(),
             memory,
-            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.fast_token_limit, # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.debug_mode)
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
