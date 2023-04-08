@@ -16,7 +16,7 @@ def generate_image(prompt, image_size="256x256"):
     allowed_sizes = ["256x256", "512x512", "1024x1024"]
 
     if image_size not in allowed_sizes:
-        return f"Invalid image size. Allowed sizes are {', '.join(allowed_sizes)}"
+       image_size = "256x256"
 
     filename = str(uuid.uuid4()) + ".jpg"
     
