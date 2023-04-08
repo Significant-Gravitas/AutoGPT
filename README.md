@@ -61,6 +61,7 @@ Your support is greatly appreciated
 
 - [Python 3.7 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - OpenAI API key
+- PINECONE API key
 
 Optional:
 - ElevenLabs Key (If you want the AI to speak)
