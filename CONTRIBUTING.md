@@ -52,5 +52,5 @@ git merge upstream/master
 Finally, delete the branch you created with the following command:
 ```
 git branch -d branch-name
-```
+```git transfer info
 That's it you made it 🐣⭐⭐
