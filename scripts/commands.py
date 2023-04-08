@@ -104,7 +104,7 @@ def execute_command(command_name, arguments):
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
         elif command_name == "generate_image":
-            return generate_image(arguments["prompt"])
+            return generate_image(arguments["prompt"], arguments["image_size"])
         elif command_name == "task_complete":
             shutdown()
         else:

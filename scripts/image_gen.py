@@ -11,7 +11,12 @@ cfg = Config()
 
 working_directory = "auto_gpt_workspace"
 
-def generate_image(prompt):
+def generate_image(prompt, image_size="256x256"):
+
+    allowed_sizes = ["256x256", "512x512", "1024x1024"]
+
+    if image_size not in allowed_sizes:
+        return f"Invalid image size. Allowed sizes are {', '.join(allowed_sizes)}"
 
     filename = str(uuid.uuid4()) + ".jpg"
     
@@ -23,7 +28,7 @@ def generate_image(prompt):
         response = openai.Image.create(
             prompt=prompt,
             n=1,
-            size="256x256",
+            size=image_size,
             response_format="b64_json",
         )
 
