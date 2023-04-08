@@ -11,6 +11,8 @@ interface IFlex {
   align?: "flex-start" | "flex-end" | "center" | "stretch" | "baseline"
   wrap?: "nowrap" | "wrap" | "wrap-reverse"
   gap?: number
+  fullWidth?: boolean
+  fullHeight?: boolean
 }
 
 const Flex = styled.div<IFlex>`
@@ -20,6 +22,8 @@ const Flex = styled.div<IFlex>`
   align-items: ${({ align }) => align || "stretch"};
   flex-wrap: ${({ wrap }) => wrap || "nowrap"};
   gap: ${({ gap }) => gap || 0}rem;
+  width: ${({ fullWidth }) => (fullWidth ? "100%" : "auto")};
+  height: ${({ fullHeight }) => (fullHeight ? "100%" : "auto")};
 `
 
 export default Flex

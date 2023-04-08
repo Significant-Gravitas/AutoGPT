@@ -1,4 +1,4 @@
-import styled from "styled-components";
+import styled from "styled-components"
 
 const LineSeparatorWithTitle = styled.div<{ title: string }>`
   width: 100%;
@@ -8,15 +8,16 @@ const LineSeparatorWithTitle = styled.div<{ title: string }>`
   margin-top: 1rem;
   // text in middle
   &::before {
-    content: "${({ title }) => title}";
+    content: "${({ title }) => title.toUpperCase()}";
     position: relative;
     top: -0.5rem;
     right: -50%;
     display: inline-block;
+    font-weight: 500;
+    color: var(--yellow300);
     padding: 0 0.5rem;
-    background-color: var(--grey700);
+    background-color: var(--grey800);
     transform: translateX(-50%);
   }
-`;
-
-export default LineSeparatorWithTitle;
+`
+export default LineSeparatorWithTitle
