@@ -45,7 +45,7 @@ def fix_and_parse_json(
           if try_to_fix_with_gpt:
             print(f"Warning: Failed to parse AI output, attempting to fix.\n If you see this warning frequently, it's likely that your prompt is confusing the AI. Try changing it up slightly.")
             # Now try to fix this up using the ai_functions
-            ai_fixed_json = fix_json(json_str, json_schema, False)
+            ai_fixed_json = fix_json(json_str, json_schema)
             if ai_fixed_json != "failed":
                 return json.loads(ai_fixed_json)
             else:
@@ -53,10 +53,8 @@ def fix_and_parse_json(
               return json_str
           else:
             raise e
-
-
-def fix_json(json_str: str, schema: str, debug=False) -> str:
-    """Fix the given JSON string to make it parseable and fully complient with the provided schema."""
+        
+def fix_json(json_str: str, schema: str) -> str:
     # Try to fix the JSON using gpt:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
