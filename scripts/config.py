@@ -60,6 +60,8 @@ class Config(metaclass=Singleton):
         # Some websites might just completely deny request with an error code if no user agent was found.
         self.user_agent_header = {"User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
 
+        self.validate_configs()
+
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
@@ -98,3 +100,19 @@ class Config(metaclass=Singleton):
 
     def set_pinecone_region(self, value: str):
         self.pinecone_region = value
+
+    def validate_configs(self):
+        required_configs = [
+            ("OPENAI_API_KEY", self.openai_api_key),
+            ("PINECONE_API_KEY", self.pinecone_api_key),
+            ("PINECONE_ENV", self.pinecone_region),
+        ]
+
+        missing_configs = [config_name for config_name, config_value in required_configs if not config_value]
+
+        if missing_configs:
+            raise ValueError(
+                f"The following required configurations are missing: {', '.join(missing_configs)}. " +
+                "Please check your environment variables and .env file."
+            )
+        return
