@@ -46,12 +46,14 @@ class PineconeMemory(metaclass=Singleton):
         self.index.delete(deleteAll=True)
         return "Obliviated"
 
-    def get_relevant(self, data, num_relevant=5):
+    def get_relevant(self, data: str, num_relevant=5):
         """
         Returns all the data in the memory that is relevant to the given data.
         :param data: The data to compare to.
         :param num_relevant: The number of relevant data to return. Defaults to 5
         """
+        if data == "[]":
+            return []
         query_embedding = get_ada_embedding(data)
         results = self.index.query(query_embedding, top_k=num_relevant, include_metadata=True)
         sorted_results = sorted(results.matches, key=lambda x: x.score)
