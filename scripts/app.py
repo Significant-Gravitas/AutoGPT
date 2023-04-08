@@ -22,15 +22,12 @@ cfg = Config()
 
 def shutdown_chat(chat_id: str):
     if chat_id in chat_data:
-        chat_data.pop[chat_id]
+        chat_data.pop(chat_id)
     if chat_id in next_key:
-        next_key.pop[chat_id]
+        next_key.pop(chat_id)
     if chat_id in agents:
-        agents.pop[chat_id]
-    return create_message(
-        "Shutting down chat...",
-        ""
-    )
+        agents.pop(chat_id)
+    return create_message("Shutting down chat...", "")
 
 
 @app.post("/start")
