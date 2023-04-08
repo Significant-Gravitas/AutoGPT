@@ -1,7 +1,7 @@
 
 import pinecone
 
-from memory.base import MemoryProviderSingleton, get_ada_embedding
+from scripts.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 
 class PineconeMemory(MemoryProviderSingleton):

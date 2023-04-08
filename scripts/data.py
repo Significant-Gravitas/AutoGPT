@@ -1,17 +1,24 @@
 import os
 from pathlib import Path
+import chevron
+from config import Config
+SRC_DIR = Path(__file__).parent
 
-def load_prompt():
-    try:
-        # get directory of this file:
-        file_dir = Path(__file__).parent
-        prompt_file_path = file_dir / "data" / "prompt.txt"
-        
-        # Load the prompt from data/prompt.txt
-        with open(prompt_file_path, "r") as prompt_file:
-            prompt = prompt_file.read()
+def load_prompt(cfg: Config):
+    # get directory of this file:
+    file_dir = Path(os.path.dirname(os.path.realpath(__file__)))
+    data_dir = file_dir / "data"
 
-        return prompt
-    except FileNotFoundError:
-        print("Error: Prompt file not found", flush=True)
-        return ""
+    # Load the promt from data/prompt.txt
+    with (data_dir/ "qa_prompt.txt").open() as prompt_file:
+        QA_PROMPT = prompt_file.read()
+
+    with (data_dir/ "prompt.txt.mustache").open() as prompt_file:
+        prompt = prompt_file.read()
+        if cfg.qa_mode:
+            prompt = chevron.render(prompt, {"QA_PROMPT": QA_PROMPT})
+        else:
+            prompt = chevron.render(prompt, {"QA_PROMPT": ""})
+
+    return prompt
+

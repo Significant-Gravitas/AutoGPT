@@ -1,15 +1,15 @@
 import time
+
 import openai
-from dotenv import load_dotenv
-from config import Config
-import token_counter
+from scripts import token_counter
+from scripts.config import Config
+from scripts.llm_utils import create_chat_completion
+from scripts.custom_types import RolesEnum, ChatMessage
 
 cfg = Config()
 
-from llm_utils import create_chat_completion
 
-
-def create_chat_message(role, content):
+def create_chat_message(role: str | RolesEnum, content: str) -> ChatMessage:
     """
     Create a chat message with the given role and content.
 
@@ -20,6 +20,7 @@ def create_chat_message(role, content):
     Returns:
     dict: A dictionary containing the role and content of the message.
     """
+    role = RolesEnum(role)
     return {"role": role, "content": content}
 
 
@@ -66,6 +67,10 @@ def chat_with_ai(
                 print(f"Token limit: {token_limit}")
             send_token_limit = token_limit - 1000
 
+            current_context = [
+                create_chat_message(
+                    "system", prompt), create_chat_message(
+                    "system", f"Permanent memory: {permanent_memory}")]
             relevant_memory = permanent_memory.get_relevant(str(full_message_history[-5:]), 10)
 
             if debug:
@@ -95,7 +100,7 @@ def chat_with_ai(
 
                 # Count the currently used tokens
                 current_tokens_used += tokens_to_add
-                
+
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
 

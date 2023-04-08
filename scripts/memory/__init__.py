@@ -1,12 +1,12 @@
-from memory.local import LocalCache
+from scripts.memory.local import LocalCache
 try:
-    from memory.redismem import RedisMemory
+    from scripts.memory.redismem import RedisMemory
 except ImportError:
     print("Redis not installed. Skipping import.")
     RedisMemory = None
 
 try:
-    from memory.pinecone import PineconeMemory
+    from scripts.memory.pinecone import PineconeMemory
 except ImportError:
     print("Pinecone not installed. Skipping import.")
     PineconeMemory = None

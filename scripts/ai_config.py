@@ -31,7 +31,7 @@ class AIConfig:
         with open(config_file, "w") as file:
             yaml.dump(config, file)
 
-    def construct_full_prompt(self):
+    def construct_full_prompt(self, cfg: data.Config):
         prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
         # Construct full prompt
@@ -39,5 +39,5 @@ class AIConfig:
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
-        full_prompt += f"\n\n{data.load_prompt()}"
+        full_prompt += f"\n\n{data.load_prompt(cfg=cfg)}"
         return full_prompt

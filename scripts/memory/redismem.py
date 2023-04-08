@@ -5,8 +5,10 @@ from redis.commands.search.field import VectorField, TextField
 from redis.commands.search.query import Query
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 import numpy as np
+import os
 
-from memory.base import MemoryProviderSingleton, get_ada_embedding
+from scripts.memory.base import MemoryProviderSingleton, get_ada_embedding
+from scripts.config import Config
 
 
 SCHEMA = [
@@ -23,8 +25,14 @@ SCHEMA = [
 ]
 
 
+def connect_to_redis(cfg: Config) -> redis.StrictRedis:
+    redis_conn = redis.StrictRedis(host=cfg.redis_host, port=cfg.redis_port, password=cfg.redis_password, decode_responses=True, db=0)
+    redis_conn.ping()
+    return redis_conn
+
+
 class RedisMemory(MemoryProviderSingleton):
-    def __init__(self, cfg):
+    def __init__(self, cfg: Config):
         """
         Initializes the Redis memory provider.
 
@@ -33,16 +41,8 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: None
         """
-        redis_host = cfg.redis_host
-        redis_port = cfg.redis_port
-        redis_password = cfg.redis_password
         self.dimension = 1536
-        self.redis = redis.Redis(
-            host=redis_host,
-            port=redis_port,
-            password=redis_password,
-            db=0  # Cannot be changed
-        )
+        self.redis = connect_to_redis(cfg)
         self.cfg = cfg
         if cfg.wipe_redis_on_start:
             self.redis.flushall()

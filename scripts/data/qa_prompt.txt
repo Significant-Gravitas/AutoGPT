@@ -1,0 +1,6 @@
+* Message User: "message_user", args: "message": "<message>", "wait_for_response": "<bool>"
+
+COMMENTS ON MESSAGING USERS:
+* Notifying them of an event, discovery, goal acheivement, failure, or to deliver a progress report.
+* Asking the user a question to aide in your goal acheivement.
+* Only "wait_user" if you have asked a question of the user and need a response to continue.

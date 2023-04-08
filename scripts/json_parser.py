@@ -45,10 +45,11 @@ def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
               return json.loads(ai_fixed_json)
             else:
               print(f"Failed to fix ai output, telling the AI.") # This allows the AI to react to the error message, which usually results in it correcting its ways.
+              
               return json_str
           else:
             raise e
-        
+
 def fix_json(json_str: str, schema: str, debug=False) -> str:
     # Try to fix the JSON using gpt:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"

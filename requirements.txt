@@ -9,8 +9,12 @@ requests
 tiktoken==0.3.3
 gTTS==2.3.1
 docker
+redis==4.5.4
 duckduckgo-search
 google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
+rich==12.6.0
+chevron==0.14.0
 pinecone-client==2.2.1
-redis
-orjson
+orjson==3.8.9
+types-redis==4.5.4
+token_counter

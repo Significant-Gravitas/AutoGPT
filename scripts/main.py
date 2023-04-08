@@ -1,5 +1,8 @@
 import json
+from pathlib import Path
 import random
+from typing import List, Optional
+from custom_types import ChatMessage
 import commands as cmd
 from memory import get_memory
 import data
@@ -15,8 +18,8 @@ from json_parser import fix_and_parse_json
 from ai_config import AIConfig
 import traceback
 import yaml
+from scripts.qa.agent import QAAgent
 import argparse
-
 
 def print_to_console(
         title,
@@ -123,7 +126,7 @@ def load_variables(config_file="config.yaml"):
         if ai_name == "":
             ai_name = "Entrepreneur-GPT"
 
-    if not ai_role:        
+    if not ai_role:
         ai_role = input(f"{ai_name} is: ")
         if ai_role == "":
             ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
@@ -140,13 +143,13 @@ def load_variables(config_file="config.yaml"):
             ai_goals.append(ai_goal)
         if len(ai_goals) == 0:
             ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
-         
+
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
     with open(config_file, "w") as file:
         documents = yaml.dump(config, file)
 
-    prompt = data.load_prompt()
+    prompt = data.load_prompt(cfg=cfg)
     prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
     # Construct full prompt
@@ -159,30 +162,30 @@ def load_variables(config_file="config.yaml"):
 
 
 def construct_prompt():
-    config = AIConfig.load()
+    config = AIConfig.load(config_file=cfg.personality)
     if config.ai_name:
         print_to_console(
             f"Welcome back! ",
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
-        should_continue = input(f"""Continue with the last settings? 
+        should_continue = input(f"""Continue with the last settings?
 Name:  {config.ai_name}
 Role:  {config.ai_role}
-Goals: {config.ai_goals}  
+Goals: {config.ai_goals}
 Continue (y/n): """)
         if should_continue.lower() == "n":
             config = AIConfig()
 
-    if not config.ai_name:         
+    if not config.ai_name:
         config = prompt_user()
         config.save()
 
     # Get rid of this global:
     global ai_name
     ai_name = config.ai_name
-    
-    full_prompt = config.construct_full_prompt()
+
+    full_prompt = config.construct_full_prompt(cfg=cfg)
     return full_prompt
 
 
@@ -242,13 +245,19 @@ def parse_arguments():
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
-    
+
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
+    parser.add_argument('--qa', action='store_true', help='Enable QA Mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--personality', type=str, help='Specify personality file', default=AIConfig.SAVE_FILE)
     args = parser.parse_args()
+
+    if args.personality:
+        assert Path(args.personality).is_file(), f"Personality file {args.personality} does not exist."
+        cfg.set_personality(args.personality)
 
     if args.continuous:
         print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
@@ -266,16 +275,28 @@ def parse_arguments():
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
+    if args.qa:
+        print_to_console("QA Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_qa_mode(True)
+
+    if args.debug:
+        print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_debug_mode(True)
+
 
 # TODO: fill in llm values here
-
 cfg = Config()
 parse_arguments()
+if cfg.qa_mode:
+    qamodel: Optional[QAAgent] = QAAgent(cfg)
+else:
+    qamodel = None
 ai_name = ""
 prompt = construct_prompt()
-# print(prompt)
+if cfg.debug_mode:
+    print(prompt)
 # Initialize variables
-full_message_history = []
+full_message_history: List[ChatMessage] = []
 result = None
 next_action_count = 0
 # Make a constant:
@@ -362,7 +383,7 @@ while True:
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"
     else:
-        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
+        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments, qamodel=qamodel)}"
         if next_action_count > 0:
             next_action_count -= 1
 
@@ -383,3 +404,17 @@ while True:
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
 
+    # Check if there is a new response from the user
+    if qamodel is not None:
+        user_responses = qamodel.receive_all_user_responses()
+        for response in user_responses:
+            role, content = response['role'], response['content']
+            full_message_history.append(response)
+            if role == chat.RolesEnum.user:
+                print_to_console(role.upper() + ": ", Fore.BLUE, content)
+            elif role == chat.RolesEnum.assistant:
+                print_to_console(role.upper() + ": ", Fore.GREEN, content)
+            elif role == chat.RolesEnum.system:
+                print_to_console(role.upper() + ": ", Fore.YELLOW, content)
+            else:
+                raise ValueError("Invalid role")
