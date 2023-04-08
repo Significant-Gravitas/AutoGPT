@@ -358,7 +358,7 @@ while True:
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
     # Execute command
-    if command_name.lower() == "error":
+    if command_name.lower().startswith( "error" ):
         result = f"Command {command_name} threw the following error: " + arguments
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"
