@@ -1,3 +1,5 @@
+import asyncio
+import pyppeteer
 import browse
 import json
 from memory import PineconeMemory
@@ -51,7 +53,7 @@ def get_command(response):
         return "Error:", str(e)
 
 
-def execute_command(command_name, arguments):
+async def execute_command(command_name, arguments):
     memory = PineconeMemory()
     try:
         if command_name == "google":
@@ -76,21 +78,23 @@ def execute_command(command_name, arguments):
         elif command_name == "delete_agent":
             return delete_agent(arguments["key"])
         elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"], arguments["question"])
+            return await get_text_summary(arguments["url"], arguments["question"])
         elif command_name == "get_hyperlinks":
-            return get_hyperlinks(arguments["url"])
+            return await get_hyperlinks(arguments["url"])
         elif command_name == "read_file":
             return read_file(arguments["file"])
         elif command_name == "write_to_file":
             return write_to_file(arguments["file"], arguments["text"])
         elif command_name == "append_to_file":
             return append_to_file(arguments["file"], arguments["text"])
+        elif command_name == "scrape_website":
+            return scrape_website(arguments["url"])
         elif command_name == "delete_file":
             return delete_file(arguments["file"])
         elif command_name == "search_files":
             return search_files(arguments["directory"])
         elif command_name == "browse_website":
-            return browse_website(arguments["url"], arguments["question"])
+            return await browse_website(arguments["url"], arguments["question"])
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
@@ -158,9 +162,9 @@ def google_official_search(query, num_results=8):
     # Return the list of search result URLs
     return search_results_links
 
-def browse_website(url, question):
-    summary = get_text_summary(url, question)
-    links = get_hyperlinks(url)
+async def browse_website(url, question):
+    summary = await get_text_summary(url, question)
+    links = await get_hyperlinks(url)
 
     # Limit links to 5
     if len(links) > 5:
@@ -171,16 +175,35 @@ def browse_website(url, question):
     return result
 
 
-def get_text_summary(url, question):
-    text = browse.scrape_text(url)
-    summary = browse.summarize_text(text, question)
-    return """ "Result" : """ + summary
+
+async def get_text_summary(url, question):
+    text = await browse.scrape_text(url)
+    summary = await browse.summarize_text(text, question)
+    return summary
 
 
-def get_hyperlinks(url):
-    link_list = browse.scrape_links(url)
+async def get_hyperlinks(url):
+    link_list = await browse.scrape_links(url)
     return link_list
 
+async def scrape_website(url):
+    # Launch the browser
+    browser = await pyppeteer.launch()
+    # Create a new page
+    page = await browser.newPage()
+    
+    # Navigate to the URL
+    await page.goto(url)
+
+    # Extract the text from the HTML
+    text = await page.evaluate('''() => {
+        return document.body.innerText;
+    }''')
+
+    # Close the browser
+    await browser.close()
+
+    return text
 
 def commit_memory(string):
     _text = f"""Committing memory with string "{string}" """

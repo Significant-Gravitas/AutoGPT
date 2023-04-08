@@ -4,6 +4,7 @@ openai==0.27.2
 playsound==1.2.2
 python-dotenv==1.0.0
 pyyaml==6.0
+pyppeteer==1.0.2
 readability-lxml==0.8.1
 requests
 tiktoken==0.3.3

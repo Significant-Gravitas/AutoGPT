@@ -1,65 +1,45 @@
-import requests
-from bs4 import BeautifulSoup
+# Import necessary libraries
+import asyncio
+from pyppeteer import launch
 from config import Config
 from llm_utils import create_chat_completion
 
+# Initialize configuration
 cfg = Config()
 
-# Fetch URL and return error message (if any) and parsed HTML content
-def fetch_url(url):
-    response = requests.get(url, headers=cfg.user_agent_header)
+# Fetch a URL using Pyppeteer
+async def fetch_url(url):
+    browser = await launch(headless=True)
+    page = await browser.newPage()
+    await page.goto(url)
+    return page, browser
 
-    if response.status_code >= 400:
-        return "Error: HTTP " + str(response.status_code) + " error", None
+# Scrape text from a given URL
+async def scrape_text(url):
+    page, browser = await fetch_url(url)
+    text = await page.evaluate('() => document.body.innerText')
+    await browser.close()
 
-    return None, BeautifulSoup(response.text, "html.parser")
-
-# Remove script and style tags from the parsed HTML content
-def remove_scripts_and_styles(soup):
-    for element in soup(["script", "style"]):
-        element.extract()
-
-# Scrape text content from a given URL
-def scrape_text(url):
-    error, soup = fetch_url(url)
-
-    if error:
-        return error
-
-    remove_scripts_and_styles(soup)
-
-    text = soup.get_text()
+    # Process the scraped text
     lines = (line.strip() for line in text.splitlines())
     chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-    text = '\n'.join(chunk for chunk in chunks if chunk)
+    return '\n'.join(chunk for chunk in chunks if chunk)
 
-    return text
+# Scrape links from a given URL
+async def scrape_links(url):
+    page, browser = await fetch_url(url)
+    hyperlinks = await page.evaluate('''() => Array.from(document.querySelectorAll('a[href]')).map(a => ({
+        text: a.innerText,
+        href: a.href
+    }))''')
+    await browser.close()
 
-# Extract and return hyperlinks (text and URL) from parsed HTML content
-def extract_hyperlinks(soup):
-    return [(link.text, link['href']) for link in soup.find_all('a', href=True)]
+    # Format scraped links
+    return [f"{link['text']} ({link['href']})" for link in hyperlinks]
 
-# Format a list of hyperlinks as strings with text and URL
-def format_hyperlinks(hyperlinks):
-    return [f"{link_text} ({link_url})" for link_text, link_url in hyperlinks]
-
-# Scrape hyperlinks from a given URL and return them formatted as strings
-def scrape_links(url):
-    error, soup = fetch_url(url)
-
-    if error:
-        return "error"
-
-    remove_scripts_and_styles(soup)
-
-    hyperlinks = extract_hyperlinks(soup)
-    return format_hyperlinks(hyperlinks)
-
-# Split text into chunks based on a specified maximum length
+# Split text into chunks based on a maximum length
 def split_text(text, max_length=8192):
-    paragraphs = text.split("\n")
-    current_length = 0
-    current_chunk = []
+    paragraphs, current_length, current_chunk = text.split("\n"), 0, []
 
     for paragraph in paragraphs:
         if current_length + len(paragraph) + 1 <= max_length:
@@ -67,50 +47,45 @@ def split_text(text, max_length=8192):
             current_length += len(paragraph) + 1
         else:
             yield "\n".join(current_chunk)
-            current_chunk = [paragraph]
-            current_length = len(paragraph) + 1
+            current_chunk, current_length = [paragraph], len(paragraph) + 1
 
     if current_chunk:
         yield "\n".join(current_chunk)
 
-# Create a message object for LLM with text chunk and question
-def create_message(chunk, question):
+# Create a message for the chat completion
+async def create_message(chunk, question):
     return {
         "role": "user",
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
     }
 
-# Summarize text using LLM and a given question
-def summarize_text(text, question):
+# Summarize text using the chat completion
+async def summarize_text(text, question):
     if not text:
         return "Error: No text to summarize"
 
-    text_length = len(text)
-    print(f"Text length: {text_length} characters")
-
-    summaries = []
-    chunks = list(split_text(text))
+    print(f"Text length: {len(text)} characters")
+    chunks, summaries = list(split_text(text)), []
 
     for i, chunk in enumerate(chunks):
         print(f"Summarizing chunk {i + 1} / {len(chunks)}")
-        messages = [create_message(chunk, question)]
+        message = await create_message(chunk, question)
 
         summary = create_chat_completion(
             model=cfg.fast_llm_model,
-            messages=messages,
+            messages=[message],
             max_tokens=300,
         )
         summaries.append(summary)
 
     print(f"Summarized {len(chunks)} chunks.")
-
     combined_summary = "\n".join(summaries)
-    messages = [create_message(combined_summary, question)]
+    message = await create_message(combined_summary, question)
 
-    final_summary = create_chat_completion(
+    return create_chat_completion(
         model=cfg.fast_llm_model,
-        messages=messages,
+        messages=[message],
         max_tokens=300,
-        )
+    )
 
-    return final_summary
+
