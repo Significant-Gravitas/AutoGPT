@@ -61,7 +61,7 @@ def fix_json(json_str: str, schema: str, debug=False) -> str:
     result_string = call_ai_function(
         function_string, args, description_string, model=cfg.fast_llm_model
     )
-    if debug:
+    if cfg.debug_mode:
         print("------------ JSON FIX ATTEMPT ---------------")
         print(f"Original JSON: {json_str}")
         print("-----------")

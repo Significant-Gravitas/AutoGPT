@@ -9,3 +9,4 @@ auto_gpt_workspace/*
 .env
 outputs/*
 ai_settings.yaml
+.venv/*
