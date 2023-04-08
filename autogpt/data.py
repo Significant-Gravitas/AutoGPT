@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+
 def load_prompt():
     try:
         # get directory of this file:

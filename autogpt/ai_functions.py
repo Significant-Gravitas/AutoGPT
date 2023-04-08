@@ -1,9 +1,9 @@
 import json
 from typing import List
 
-from config import Config
-
 from autogpt.call_ai_function import call_ai_function
+from autogpt.config import Config
+from autogpt.json_parser import fix_and_parse_json
 
 cfg = Config()
 
@@ -44,5 +44,3 @@ def write_tests(code: str, focus: List[str]) -> str:
 
     result_string = call_ai_function(function_string, args, description_string)
     return result_string
-
-

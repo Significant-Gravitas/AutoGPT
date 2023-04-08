@@ -9,7 +9,6 @@ from autogpt.llm_utils import create_chat_completion
 cfg = Config()
 
 
-
 def create_chat_message(role, content):
     """
     Create a chat message with the given role and content.
@@ -138,7 +137,13 @@ def chat_with_ai(
                     "assistant", assistant_reply))
 
             return assistant_reply
-        except openai.error.RateLimitError:
+        except (openai.error.RateLimitError, openai.error.APIError) as exc:
+            if isinstance(exc, openai.error.APIError):
+                if 'Please try again in a few minutes' not in str(exc):
+                    raise exc
+                print("Error: ", "API Gateway error. Waiting 10 seconds...")
+            else:
+                print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
+
             # TODO: WHen we switch to langchain, this is built in
-            print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)

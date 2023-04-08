@@ -1,6 +1,7 @@
-from config import Config, Singleton
-import pinecone
 import openai
+import pinecone
+
+from autogpt.config import Config, Singleton
 
 cfg = Config()
 

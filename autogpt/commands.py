@@ -1,21 +1,19 @@
-import browse
-import json
-from autogpt.memory import PineconeMemory
 import datetime
 import json
 
-import agent_manager as agents
-import browse
-import memory as mem
-import speak
-from autogpt.config import Config
-import autogpt.ai_functions as ai
-from autogpt.file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
-from autogpt.execute_code import execute_python_file
-from autogpt.json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+import autogpt.agent_manager as agents
+import autogpt.ai_functions as ai
+from autogpt import browse, speak
+from autogpt.config import Config
+from autogpt.execute_code import execute_python_file
+from autogpt.file_operations import (append_to_file, delete_file, read_file,
+                                     search_files, write_to_file)
+from autogpt.json_parser import fix_and_parse_json
+from autogpt.memory import PineconeMemory
 
 cfg = Config()
 
@@ -128,9 +126,10 @@ def google_search(query, num_results=8):
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 def google_official_search(query, num_results=8):
+    import json
+
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
-    import json
 
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
