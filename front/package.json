@@ -18,6 +18,7 @@
     "react-dom": "^18.2.0",
     "react-router": "^6.10.0",
     "react-router-dom": "^6.10.0",
+    "rome": "^12.0.0",
     "styled-components": "^5.3.9"
   },
   "devDependencies": {

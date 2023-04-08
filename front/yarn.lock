@@ -868,6 +868,48 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@rometools/cli-darwin-arm64@npm:12.0.0":
+  version: 12.0.0
+  resolution: "@rometools/cli-darwin-arm64@npm:12.0.0"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@rometools/cli-darwin-x64@npm:12.0.0":
+  version: 12.0.0
+  resolution: "@rometools/cli-darwin-x64@npm:12.0.0"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@rometools/cli-linux-arm64@npm:12.0.0":
+  version: 12.0.0
+  resolution: "@rometools/cli-linux-arm64@npm:12.0.0"
+  conditions: os=linux & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@rometools/cli-linux-x64@npm:12.0.0":
+  version: 12.0.0
+  resolution: "@rometools/cli-linux-x64@npm:12.0.0"
+  conditions: os=linux & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@rometools/cli-win32-arm64@npm:12.0.0":
+  version: 12.0.0
+  resolution: "@rometools/cli-win32-arm64@npm:12.0.0"
+  conditions: os=win32 & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@rometools/cli-win32-x64@npm:12.0.0":
+  version: 12.0.0
+  resolution: "@rometools/cli-win32-x64@npm:12.0.0"
+  conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
 "@tootallnate/once@npm:2":
   version: 2.0.0
   resolution: "@tootallnate/once@npm:2.0.0"
@@ -1757,6 +1799,7 @@ __metadata:
     react-dom: ^18.2.0
     react-router: ^6.10.0
     react-router-dom: ^6.10.0
+    rome: ^12.0.0
     styled-components: ^5.3.9
     typescript: ^4.9.3
     vite: ^4.2.0
@@ -2794,6 +2837,35 @@ __metadata:
   bin:
     rollup: dist/bin/rollup
   checksum: 34b0932839b7c2a5d1742fb21ce95a47e0b49a0849f4abee2dccf25833187aa7babb898ca90d4fc761cffa4102b9ed0ac6ad7f6f6b96c8b8e2d67305abc5da65
+  languageName: node
+  linkType: hard
+
+"rome@npm:^12.0.0":
+  version: 12.0.0
+  resolution: "rome@npm:12.0.0"
+  dependencies:
+    "@rometools/cli-darwin-arm64": 12.0.0
+    "@rometools/cli-darwin-x64": 12.0.0
+    "@rometools/cli-linux-arm64": 12.0.0
+    "@rometools/cli-linux-x64": 12.0.0
+    "@rometools/cli-win32-arm64": 12.0.0
+    "@rometools/cli-win32-x64": 12.0.0
+  dependenciesMeta:
+    "@rometools/cli-darwin-arm64":
+      optional: true
+    "@rometools/cli-darwin-x64":
+      optional: true
+    "@rometools/cli-linux-arm64":
+      optional: true
+    "@rometools/cli-linux-x64":
+      optional: true
+    "@rometools/cli-win32-arm64":
+      optional: true
+    "@rometools/cli-win32-x64":
+      optional: true
+  bin:
+    rome: bin/rome
+  checksum: e26adcf06da28ec61b048b69f0387ad72c0f105444cb59f633f330aa9975e382f4055c6d17748e6630b303a33d87c5a3a0fc465bbb1054b74b88f01d14a70529
   languageName: node
   linkType: hard
 
