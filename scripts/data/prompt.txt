@@ -29,7 +29,7 @@ RESOURCES:
 
 1. Internet access for searches and information gathering.
 2. Long Term memory management.
-3. GPT-3.5 powered Agents for delegation of simple tasks.
+3. GPT-4 powered Agents for delegation of simple tasks.
 4. File output.
 
 PERFORMANCE EVALUATION:
