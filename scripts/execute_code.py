@@ -1,11 +1,12 @@
-import docker
 import os
+
+import docker
 
 
 def execute_python_file(file):
     workspace_folder = "auto_gpt_workspace"
 
-    print (f"Executing file '{file}' in workspace '{workspace_folder}'")
+    print(f"Executing file '{file}' in workspace '{workspace_folder}'")
 
     if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
@@ -22,12 +23,12 @@ def execute_python_file(file):
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
         container = client.containers.run(
-            'python:3.10',
+            'fsamir/python:3.11',
             f'python {file}',
-            volumes={
-                os.path.abspath(workspace_folder): {
-                    'bind': '/workspace',
-                    'mode': 'ro'}},
+            volumes={os.path.abspath(workspace_folder): {
+                'bind': '/workspace',
+                'mode': 'rw'}
+            },
             working_dir='/workspace',
             stderr=True,
             stdout=True,

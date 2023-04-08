@@ -17,6 +17,8 @@ import traceback
 import yaml
 import argparse
 
+MAX_GOALS = 10
+
 
 def print_to_console(
         title,
@@ -133,7 +135,7 @@ def load_variables(config_file="config.yaml"):
         print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
         print("Enter nothing to load defaults, enter nothing when finished.")
         ai_goals = []
-        for i in range(5):
+        for i in range(MAX_GOALS):
             ai_goal = input(f"Goal {i+1}: ")
             if ai_goal == "":
                 break
@@ -160,7 +162,7 @@ def load_variables(config_file="config.yaml"):
 
 def construct_prompt():
     config = AIConfig.load()
-    if config.ai_name:
+    if config.ai_name and config.ai_continue is False:
         print_to_console(
             f"Welcome back! ",
             Fore.GREEN,
@@ -226,7 +228,7 @@ def prompt_user():
         "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
-    for i in range(5):
+    for i in range(MAX_GOALS):
         ai_goal = input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
         if ai_goal == "":
             break

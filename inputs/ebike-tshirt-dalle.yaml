@@ -1,0 +1,11 @@
+ai_goals:
+  - Learn how to create DALLE prompts to produce T-shirt vector designs.
+  - The t-shirt theme is "Electric mountain bike"
+  - Creates 1 DALLE prompts to generate an tshirt design with the given theme, with white background.
+  - Save each prompt to a file. Name the file wih the following format  <now>-<theme>-<counter>.txt where <now> is the current time, <them> is the current theme and <counter> is the prompt number. eg. Sun  09-04-2023-08:35:21-electric-mountain-bike-1.txt
+  - use dalle_api_call.py to generate the images from the prompt and save the resulting images to a file.
+  - Make sure to write your code outputs to file.
+  - Shut yourself down.
+
+ai_name: Python test
+ai_role: Execute a python script

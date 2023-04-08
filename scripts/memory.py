@@ -1,13 +1,19 @@
-from config import Config, Singleton
-import pinecone
 import openai
+import pinecone
+
+from config import Config, Singleton
 
 cfg = Config()
 
 
 def get_ada_embedding(text):
-    text = text.replace("\n", " ")
-    return openai.Embedding.create(input=[text], model="text-embedding-ada-002")["data"][0]["embedding"]
+    try:
+        # print("txt 2 embd:", text)
+        text = text.replace("\n", " ")
+        return openai.Embedding.create(input=[text], model="text-embedding-ada-002")["data"][0]["embedding"]
+    except:
+        print("Cannot create embeddings:", text)
+
 
 
 def get_text_from_embedding(embedding):
@@ -33,10 +39,13 @@ class PineconeMemory(metaclass=Singleton):
 
     def add(self, data):
         vector = get_ada_embedding(data)
-        # no metadata here. We may wish to change that long term.
-        resp = self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})])
-        _text = f"Inserting data into memory at index: {self.vec_num}:\n data: {data}"
-        self.vec_num += 1
+        _text = f"Unable to insert data into memory at index: {self.vec_num}:\n data: []"
+        if vector is not None:
+            # no metadata here. We may wish to change that long term.
+            resp = self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})])
+            _text = f"Inserting data into memory at index: {self.vec_num}:\n data: {data}"
+            self.vec_num += 1
+
         return _text
 
     def get(self, data):

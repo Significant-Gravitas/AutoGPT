@@ -6,8 +6,8 @@ cfg = Config()
 import gtts
 
 
-# TODO: Nicer names for these ids
-voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
+# TODO: Nicer names for these ids - default male: ErXwobaYiN019PkySvjV | default female: EXAVITQu4vr4xnSDxMaL
+voices = ["TxGEqnHWrfWFTfGW9XjX", "EXAVITQu4vr4xnSDxMaL"]
 
 tts_headers = {
     "Content-Type": "application/json",
