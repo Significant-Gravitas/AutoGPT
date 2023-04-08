@@ -142,7 +142,7 @@ async def continue_chat(request: Request, body: ChatBody, response: Response):
                     f"\nResult: {result} " \
                     f"\nHuman Feedback: {user_input} "
 
-    memory.add(memory_to_add, chat_id=chat_id)
+    memory.add(memory_to_add, namespace=chat_id)
 
     # update message history
     if result is not None:
