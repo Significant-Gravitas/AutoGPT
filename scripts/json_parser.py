@@ -6,20 +6,23 @@ cfg = Config()
 def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
     json_schema = """
     {
-    "command": {
+      "command": {
         "name": "command name",
-        "args":{
-            "arg name": "value"
+        "args": {
+          "arg name": "value"
         }
-    },
-    "thoughts":
-    {
+      },
+      "thoughts": {
         "text": "thought",
         "reasoning": "reasoning",
-        "plan": "- short bulleted\n- list that conveys\n- long-term plan",
+        "plan": [
+          "short task that conveys",
+          "long-term plan",
+          "additional task"
+        ],
         "criticism": "constructive self-criticism",
         "speak": "thoughts summary to say to user"
-    }
+      }
     }
     """
 
