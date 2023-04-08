@@ -113,7 +113,7 @@ def construct_prompt():
 
     if config.ai_name:
         print_to_console(
-            f"Welcome to Swarm AI!",
+            f"Welcome!",
             Fore.GREEN,
             f"Please select one of the following options:",
             speak_text=True)
