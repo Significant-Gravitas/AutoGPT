@@ -1,20 +1,13 @@
 import os
 import sys
 
-<<<<<<< HEAD
 import unittest
 
 from autogpt.json_parser import fix_and_parse_json
 
 # Probably a better way:
-sys.path.append(os.path.abspath('../scripts'))
+sys.path.append(os.path.abspath('../autogpt'))
 
-=======
-
-
-from autogpt.json_parser import fix_and_parse_json
-
->>>>>>> autogpt-namespace-fix-imports
 
 class TestParseJson(unittest.TestCase):
     def test_valid_json(self):

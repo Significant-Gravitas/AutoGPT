@@ -42,6 +42,9 @@ Your support is greatly appreciated
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
+  - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+  - [Setting up environment variables](#setting-up-environment-variables-1)
+  - [View Memory Usage](#view-memory-usage)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
@@ -83,13 +86,26 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 $ cd 'Auto-GPT'
 ```
 
-3. Install the required dependencies:
+3. Create and activate Virtual Environment, OPTIONAL
+```
+python -m venv ./
+```
+mac + linux:
+```
+source ./bin/activate
+```
+windows:
+```
+./scripts/activate
+```
+4. Install the required dependencies:
+
 *(Again, type this into your CMD window)*
 ```
 pip install -r requirements.txt
 ```
 
-4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
