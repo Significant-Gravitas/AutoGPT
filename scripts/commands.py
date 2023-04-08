@@ -12,9 +12,11 @@ from json_parser import fix_and_parse_json
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from task_management.task_manager import TaskManager
+from task_management.task_state import TaskState
 
 cfg = Config()
-
+task_manager = TaskManager()
 
 def is_valid_int(value):
     try:
@@ -102,8 +104,12 @@ def execute_command(command_name, arguments):
             return ai.write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
-        elif command_name == "task_complete":
+        elif command_name == "all_tasks_complete":
             shutdown()
+        elif command_name == "update_task_state":
+            update_task_state(arguments["task_id"], arguments["new_state"])
+        elif command_name == "set_current_task":
+            set_current_task(arguments["task_id"])
         else:
             return f"Unknown command {command_name}"
     # All errors, return "Error: + error message"
@@ -280,3 +286,11 @@ def delete_agent(key):
     if not result:
         return f"Agent {key} does not exist."
     return f"Agent {key} deleted."
+
+
+def update_task_state(task_id, new_state):
+    return task_manager.update_task_state(task_id, TaskState(new_state))
+
+
+def set_current_task(task_id):
+    return task_manager.set_current_task(task_id)
