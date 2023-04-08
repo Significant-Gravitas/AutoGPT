@@ -1,27 +1,17 @@
 import browse
 import json
-from memory import PineconeMemory
+import memory as mem
 import datetime
 import agent_manager as agents
 import speak
 from config import Config
 import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
+from file_operations import read_file, write_to_file, append_to_file, delete_file
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
-from duckduckgo_search import ddg
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-
+from googlesearch import search
 cfg = Config()
 
-
-def is_valid_int(value):
-    try:
-        int(value)
-        return True
-    except ValueError:
-        return False
 
 def get_command(response):
     try:
@@ -52,18 +42,15 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
-    memory = PineconeMemory()
     try:
         if command_name == "google":
-            
-            # Check if the Google API key is set and use the official search method
-            # If the API key is not set or has only whitespaces, use the unofficial search method
-            if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
-                return google_official_search(arguments["input"])
-            else:
-                return google_search(arguments["input"])
+            return google_search(arguments["input"])
         elif command_name == "memory_add":
-            return memory.add(arguments["string"])
+            return commit_memory(arguments["string"])
+        elif command_name == "memory_del":
+            return delete_memory(arguments["key"])
+        elif command_name == "memory_ovr":
+            return overwrite_memory(arguments["key"], arguments["string"])
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"],
@@ -76,7 +63,7 @@ def execute_command(command_name, arguments):
         elif command_name == "delete_agent":
             return delete_agent(arguments["key"])
         elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"], arguments["question"])
+            return get_text_summary(arguments["url"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
         elif command_name == "read_file":
@@ -87,10 +74,10 @@ def execute_command(command_name, arguments):
             return append_to_file(arguments["file"], arguments["text"])
         elif command_name == "delete_file":
             return delete_file(arguments["file"])
-        elif command_name == "search_files":
-            return search_files(arguments["directory"])
         elif command_name == "browse_website":
-            return browse_website(arguments["url"], arguments["question"])
+            return browse_website(arguments["url"])
+        elif command_name == "view_website_page":
+            return view_website_page(arguments["page_number"])
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
@@ -118,62 +105,26 @@ def get_datetime():
 
 def google_search(query, num_results=8):
     search_results = []
-    for j in ddg(query, max_results=num_results):
+    for j in search(query, num_results=num_results):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
-def google_official_search(query, num_results=8):
-    from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
-    import json
 
-    try:
-        # Get the Google API key and Custom Search Engine ID from the config file
-        api_key = cfg.google_api_key
-        custom_search_engine_id = cfg.custom_search_engine_id
+def browse_website(url):
+    browse.fetch_url(url)
+    return browse.view_page(0)
 
-        # Initialize the Custom Search API service
-        service = build("customsearch", "v1", developerKey=api_key)
-        
-        # Send the search query and retrieve the results
-        result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
+def view_website_page(page):
+    if browse.has_fetched():
+        res = browse.view_page(page)
+        return res + "\n To view the next page, use the command 'view_website_page " + str(int(page) + 1)
+    else:
+        return "No website has been fetched yet. Use the browse_website command to fetch a website."
 
-        # Extract the search result items from the response
-        search_results = result.get("items", [])
-        
-        # Create a list of only the URLs from the search results
-        search_results_links = [item["link"] for item in search_results]
-
-    except HttpError as e:
-        # Handle errors in the API call
-        error_details = json.loads(e.content.decode())
-        
-        # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
-            return "Error: The provided Google API key is invalid or missing."
-        else:
-            return f"Error: {e}"
-
-    # Return the list of search result URLs
-    return search_results_links
-
-def browse_website(url, question):
-    summary = get_text_summary(url, question)
-    links = get_hyperlinks(url)
-
-    # Limit links to 5
-    if len(links) > 5:
-        links = links[:5]
-
-    result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
-
-    return result
-
-
-def get_text_summary(url, question):
+def get_text_summary(url):
     text = browse.scrape_text(url)
-    summary = browse.summarize_text(text, question)
+    summary = browse.summarize_text(text)
     return """ "Result" : """ + summary
 
 
@@ -200,29 +151,29 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
-    # Check if the key is a valid integer
-    if is_valid_int(key):
+    # Convert key to integer and handle any conversion errors
+    try:
         key_int = int(key)
+    except ValueError:
+        if isinstance(key, str):
+            # Overwrite memory slot with the given string key and string
+            _text = f"Overwriting memory with key {key} and string {string}"
+            mem.string_key_memory[key] = string
+        else:
+            raise TypeError(f"Invalid key '{key}', must be an integer or a string.")
+    else:
         # Check if the integer key is within the range of the permanent_memory list
         if 0 <= key_int < len(mem.permanent_memory):
-            _text = "Overwriting memory with key " + str(key) + " and string " + string
             # Overwrite the memory slot with the given integer key and string
+            _text = f"Overwriting memory with key {key_int} and string {string}"
             mem.permanent_memory[key_int] = string
-            print(_text)
-            return _text
         else:
-            print(f"Invalid key '{key}', out of range.")
-            return None
-    # Check if the key is a valid string
-    elif isinstance(key, str):
-        _text = "Overwriting memory with key " + key + " and string " + string
-        # Overwrite the memory slot with the given string key and string
-        mem.permanent_memory[key] = string
-        print(_text)
-        return _text
-    else:
-        print(f"Invalid key '{key}', must be an integer or a string.")
-        return None
+            raise IndexError(f"Invalid key '{key_int}', out of range.")
+
+    # Print message and return result
+    print(_text)
+    return _text
+
 
 
 def shutdown():
@@ -253,22 +204,21 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
 
-def message_agent(key, message):
-    global cfg
+def message_agent(key, message, speak_mode=False):
+    # Convert key to integer and handle any conversion errors
+    try:
+        int_key = int(key)
+    except ValueError:
+        return "Invalid key, cannot message agent."
+    
+    # Message the agent with the valid integer key
+    agent_response = agents.message_agent(int_key, message)
 
-    # Check if the key is a valid integer
-    if is_valid_int(key):
-        agent_response = agents.message_agent(int(key), message)
-    # Check if the key is a valid string
-    elif isinstance(key, str):
-        agent_response = agents.message_agent(key, message)
-    else:
-        return "Invalid key, must be an integer or a string."
+    # Speak response if speak_mode is enabled
+    if speak_mode:
+        speak.say_text(agent_response)
 
-    # Speak response
-    if cfg.speak_mode:
-        speak.say_text(agent_response, 1)
-    return agent_response
+    return f"Agent {key} responded: {agent_response}"
 
 
 def list_agents():

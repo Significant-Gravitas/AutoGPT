@@ -1,5 +1,6 @@
 import yaml
 import data
+import time
 
 
 class AIConfig:
@@ -38,6 +39,10 @@ class AIConfig:
         full_prompt = f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
+
+        # Add knowledge cutoff date and current date
+        current_date = time.strftime("%B %d %Y")
+        full_prompt += f"Knowledge Cutoff Date: September 2021\nCurrent Date: {current_date}\n\n"
 
         full_prompt += f"\n\n{data.load_prompt()}"
         return full_prompt

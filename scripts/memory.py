@@ -4,6 +4,10 @@ import openai
 
 cfg = Config()
 
+# stub added back in to make sure we don't break anything
+permanent_memory = []
+string_key_memory = {}
+
 
 def get_ada_embedding(text):
     text = text.replace("\n", " ")
