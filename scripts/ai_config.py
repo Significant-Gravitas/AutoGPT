@@ -1,5 +1,20 @@
-import yaml
+import shutil
+import time
+from pathlib import Path
+
 import data
+import yaml
+
+# Constants
+SRC_DIR = Path(__file__).parent
+PROMPT_START_FILE = SRC_DIR / "data" / "prompts" / "prompt_start.txt"
+SAVE_FILE = SRC_DIR / "data" / "ai_settings" / "last_settings.yaml"
+HISTORY_DIR = SRC_DIR / "data" / "ai_settings" / "history"
+
+
+def get_timestamped_filename(prefix, extension):
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    return f"{prefix}_{timestamp}.{extension}"
 
 
 class AIConfig:
@@ -7,9 +22,6 @@ class AIConfig:
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
-
-    # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = "../ai_settings.yaml"
 
     @classmethod
     def load(cls, config_file=SAVE_FILE):
@@ -26,13 +38,39 @@ class AIConfig:
 
         return cls(ai_name, ai_role, ai_goals)
 
+    @classmethod
+    def load_from_history(cls, filename, history_path=HISTORY_DIR):
+        try:
+            with open(history_path / filename) as file:
+                config_params = yaml.load(file, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            print(f"File {filename} not found in the history folder.")
+            return None
+
+        ai_name = config_params.get("ai_name", "")
+        ai_role = config_params.get("ai_role", "")
+        ai_goals = config_params.get("ai_goals", [])
+
+        return cls(ai_name, ai_role, ai_goals)
+
+    @classmethod
+    def get_history_files(cls, history_path=HISTORY_DIR):
+        return [f.name for f in history_path.glob("*.yaml")]
+
     def save(self, config_file=SAVE_FILE):
-        config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
+        config = {"ai_name": self.ai_name,
+                  "ai_role": self.ai_role, "ai_goals": self.ai_goals}
         with open(config_file, "w") as file:
             yaml.dump(config, file)
 
+    def save_to_history(self):
+        timestamped_filename = get_timestamped_filename("settings", "yaml")
+        shutil.copy2(SAVE_FILE, HISTORY_DIR / timestamped_filename)
+
     def construct_full_prompt(self):
-        prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+        # Load prompt_start from the text file
+        with open(PROMPT_START_FILE, "r") as file:
+            prompt_start = file.read()
 
         # Construct full prompt
         full_prompt = f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"

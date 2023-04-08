@@ -57,7 +57,8 @@ def print_assistant_thoughts(assistant_reply):
             try:
                 assistant_reply_json = json.loads(assistant_reply_json)
             except json.JSONDecodeError as e:
-                print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
+                print_to_console("Error: Invalid JSON\n",
+                                 Fore.RED, assistant_reply)
                 assistant_reply_json = {}
 
         assistant_thoughts_reasoning = None
@@ -73,8 +74,10 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_criticism = assistant_thoughts.get("criticism")
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
-        print_to_console(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
-        print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
+        print_to_console(f"{ai_name.upper()} THOUGHTS:",
+                         Fore.YELLOW, assistant_thoughts_text)
+        print_to_console("REASONING:", Fore.YELLOW,
+                         assistant_thoughts_reasoning)
 
         if assistant_thoughts_plan:
             print_to_console("PLAN:", Fore.YELLOW, "")
@@ -90,7 +93,8 @@ def print_assistant_thoughts(assistant_reply):
                 line = line.lstrip("- ")
                 print_to_console("- ", Fore.GREEN, line.strip())
 
-        print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
+        print_to_console("CRITICISM:", Fore.YELLOW,
+                         assistant_thoughts_criticism)
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
@@ -104,85 +108,159 @@ def print_assistant_thoughts(assistant_reply):
         print_to_console("Error: \n", Fore.RED, call_stack)
 
 
-def load_variables(config_file="config.yaml"):
-    # Load variables from yaml file if it exists
-    try:
-        with open(config_file) as file:
-            config = yaml.load(file, Loader=yaml.FullLoader)
-        ai_name = config.get("ai_name")
-        ai_role = config.get("ai_role")
-        ai_goals = config.get("ai_goals")
-    except FileNotFoundError:
-        ai_name = ""
-        ai_role = ""
-        ai_goals = []
+# def load_variables(config_file="config.yaml"):
+#     # Load variables from yaml file if it exists
+#     try:
+#         with open(config_file) as file:
+#             config = yaml.load(file, Loader=yaml.FullLoader)
+#         ai_name = config.get("ai_name")
+#         ai_role = config.get("ai_role")
+#         ai_goals = config.get("ai_goals")
+#     except FileNotFoundError:
+#         ai_name = ""
+#         ai_role = ""
+#         ai_goals = []
 
-    # Prompt the user for input if config file is missing or empty values
-    if not ai_name:
-        ai_name = input("Name your AI: ")
-        if ai_name == "":
-            ai_name = "Entrepreneur-GPT"
+#     # Prompt the user for input if config file is missing or empty values
+#     if not ai_name:
+#         ai_name = input("Name your AI: ")
+#         if ai_name == "":
+#             ai_name = "Entrepreneur-GPT"
 
-    if not ai_role:        
-        ai_role = input(f"{ai_name} is: ")
-        if ai_role == "":
-            ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
+#     if not ai_role:
+#         ai_role = input(f"{ai_name} is: ")
+#         if ai_role == "":
+#             ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
-    if not ai_goals:
-        print("Enter up to 5 goals for your AI: ")
-        print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
-        print("Enter nothing to load defaults, enter nothing when finished.")
-        ai_goals = []
-        for i in range(5):
-            ai_goal = input(f"Goal {i+1}: ")
-            if ai_goal == "":
-                break
-            ai_goals.append(ai_goal)
-        if len(ai_goals) == 0:
-            ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
-         
-    # Save variables to yaml file
-    config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
-    with open(config_file, "w") as file:
-        documents = yaml.dump(config, file)
+#     if not ai_goals:
+#         print("Enter up to 5 goals for your AI: ")
+#         print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+#         print("Enter nothing to load defaults, enter nothing when finished.")
+#         ai_goals = []
+#         for i in range(5):
+#             ai_goal = input(f"Goal {i+1}: ")
+#             if ai_goal == "":
+#                 break
+#             ai_goals.append(ai_goal)
+#         if len(ai_goals) == 0:
+#             ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
 
-    prompt = data.load_prompt()
-    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+#     # Save variables to yaml file
+#     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
+#     with open(config_file, "w") as file:
+#         documents = yaml.dump(config, file)
 
-    # Construct full prompt
-    full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
-    for i, goal in enumerate(ai_goals):
-        full_prompt += f"{i+1}. {goal}\n"
+#     prompt = data.load_prompt()
+#     prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
-    full_prompt += f"\n\n{prompt}"
-    return full_prompt
+#     # Construct full prompt
+#     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+#     for i, goal in enumerate(ai_goals):
+#         full_prompt += f"{i+1}. {goal}\n"
+
+#     full_prompt += f"\n\n{prompt}"
+#     return full_prompt
 
 
 def construct_prompt():
     config = AIConfig.load()
+
     if config.ai_name:
         print_to_console(
-            f"Welcome back! ",
+            f"Welcome to Swarm AI!",
             Fore.GREEN,
-            f"Would you like me to return to being {config.ai_name}?",
+            f"Please select one of the following options:",
             speak_text=True)
-        should_continue = input(f"""Continue with the last settings? 
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}  
-Continue (y/n): """)
-        if should_continue.lower() == "n":
-            config = AIConfig()
+        print_to_console(
+            f"a",
+            Fore.YELLOW,
+            f" - Load last used settings",
+            speak_text=True)
+        print_to_console(
+            f"b",
+            Fore.YELLOW,
+            f" - Load another settings file",
+            speak_text=True)
+        print_to_console(
+            f"c",
+            Fore.YELLOW,
+            f" - Create new settings",
+            speak_text=True)
 
-    if not config.ai_name:         
+        choice = input("\nEnter your choice (a/b/c): ").lower()
+        if choice == "a":
+            pass
+        elif choice == "b":
+            available_files = AIConfig.get_history_files()
+            if available_files:
+                while True:
+                    print("Available files:")
+                    for idx, filename in enumerate(available_files):
+                        print(f"{idx + 1}. {filename}")
+
+                    file_choice = int(
+                        input("Enter the number of the file to load: "))
+                    if 0 < file_choice <= len(available_files):
+                        filename = available_files[file_choice - 1]
+                        config = AIConfig.load_from_history(filename)
+                        config.save()
+                        break
+                    else:
+                        print("Invalid choice. Please try again.")
+            else:
+                print("No files found in the history folder.")
+        elif choice == "c":
+            # ()
+            config = prompt_user()
+            config.save()
+        else:
+            print("Invalid choice. Loading last settings.")
+    else:
         config = prompt_user()
         config.save()
 
-    # Get rid of this global:
     global ai_name
     ai_name = config.ai_name
-    
+
     full_prompt = config.construct_full_prompt()
+
+    # Show final settings and ask for confirmation
+    while True:
+        print_to_console(
+            f"\nCURRENT SETTINGS",
+            Fore.LIGHTBLUE_EX,
+            f"",
+            speak_text=True)
+        print_to_console(
+            f"AI Name:",
+            Fore.GREEN,
+            f"{config.ai_name}",
+            speak_text=True)
+        print_to_console(
+            f"AI Role:",
+            Fore.GREEN,
+            f"{config.ai_role}",
+            speak_text=True)
+        print_to_console(
+            f"AI Goals:",
+            Fore.GREEN,
+            f"",
+            speak_text=True)
+        for i, goal in enumerate(config.ai_goals):
+            print(f"      {i+1}. {goal}")
+
+        confirmation = input(
+            "\nDo you want to continue with these settings? (y/n): ").lower()
+        if confirmation == 'n':
+            print("Please provide new settings.")
+            return construct_prompt()
+        elif confirmation == 'y':
+            # log this config to the history folder
+            config.save_to_history()
+            break
+        else:
+            print("Invalid input. Please try again.")
+
     return full_prompt
 
 
@@ -238,16 +316,21 @@ def prompt_user():
     config = AIConfig(ai_name, ai_role, ai_goals)
     return config
 
+
 def parse_arguments():
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
-    
+
     parser = argparse.ArgumentParser(description='Process arguments.')
-    parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
-    parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
-    parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
-    parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--continuous', action='store_true',
+                        help='Enable Continuous Mode')
+    parser.add_argument('--speak', action='store_true',
+                        help='Enable Speak Mode')
+    parser.add_argument('--debug', action='store_true',
+                        help='Enable Debug Mode')
+    parser.add_argument('--gpt3only', action='store_true',
+                        help='Enable GPT3.5 Only Mode')
     args = parser.parse_args()
 
     if args.continuous:
@@ -297,7 +380,7 @@ while True:
             user_input,
             full_message_history,
             memory,
-            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.fast_token_limit)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
@@ -330,7 +413,8 @@ while True:
                     next_action_count = abs(int(console_input.split(" ")[1]))
                     user_input = "GENERATE NEXT COMMAND JSON"
                 except ValueError:
-                    print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
+                    print(
+                        "Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
                     continue
                 break
             elif console_input.lower() == "n":
@@ -343,9 +427,9 @@ while True:
 
         if user_input == "GENERATE NEXT COMMAND JSON":
             print_to_console(
-            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-            Fore.MAGENTA,
-            "")
+                "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                Fore.MAGENTA,
+                "")
         elif user_input == "EXIT":
             print("Exiting...", flush=True)
             break
@@ -382,4 +466,3 @@ while True:
             chat.create_chat_message(
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
-

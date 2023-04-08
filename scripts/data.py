@@ -1,14 +1,16 @@
 import os
 from pathlib import Path
 
+# Constants
+# file location: src/data/prompts/index.txt
+SRC_DIR = Path(__file__).parent
+PROMPT_FILE = SRC_DIR / "data" / "prompts" / "index.txt"
+
+
 def load_prompt():
     try:
-        # get directory of this file:
-        file_dir = Path(__file__).parent
-        prompt_file_path = file_dir / "data" / "prompt.txt"
-        
-        # Load the prompt from data/prompt.txt
-        with open(prompt_file_path, "r") as prompt_file:
+        # Load the prompt from src/data/prompts/index.txt
+        with open(PROMPT_FILE, "r") as prompt_file:
             prompt = prompt_file.read()
 
         return prompt
