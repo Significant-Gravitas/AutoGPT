@@ -1,14 +1,15 @@
+Pillow
 beautifulsoup4
 colorama==0.4.6
+docker
+duckduckgo-search
+gTTS==2.3.1
+google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
 openai==0.27.2
+pinecone-client==2.2.1
 playsound==1.2.2
 python-dotenv==1.0.0
 pyyaml==6.0
 readability-lxml==0.8.1
 requests
 tiktoken==0.3.3
-gTTS==2.3.1
-docker
-duckduckgo-search
-google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
-pinecone-client==2.2.1
