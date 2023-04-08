@@ -23,11 +23,14 @@ def create_chat_message(role, content):
     return {"role": role, "content": content}
 
 
-def generate_context(prompt, relevant_memory, full_message_history, model):
+def generate_context(prompt, relevant_memory, full_message_history, model, task_hierarchy):
     current_context = [
-        create_chat_message(
-            "system", prompt), create_chat_message(
-            "system", f"Permanent memory: {relevant_memory}")]
+        create_chat_message("system", prompt), 
+        create_chat_message("system", f"Permanent memory: {relevant_memory}")
+    ]
+
+    if cfg.task_manager_mode:
+        current_context.append(create_chat_message("system", f"Task hierarchy:\n{task_hierarchy}"))
 
     # Add messages from the full message history until we reach the token limit
     next_message_to_add_index = len(full_message_history) - 1
@@ -42,18 +45,20 @@ def chat_with_ai(
         prompt,
         user_input,
         full_message_history,
+        task_hierarchy,
         permanent_memory,
         token_limit,
         debug=False):
     while True:
         try:
             """
-            Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory.
+            Interact with the OpenAI API, sending the prompt, user input, message history, permanent memory, and task hierarchy.
 
             Args:
             prompt (str): The prompt explaining the rules to the AI.
             user_input (str): The input from the user.
             full_message_history (list): The list of all messages sent between the user and the AI.
+            task_list (str): A string representation of the task hierarchy of the current_task, showing ancestors, siblings, and children.
             permanent_memory (Obj): The memory object containing the permanent memory.
             token_limit (int): The maximum number of tokens allowed in the API call.
 
@@ -72,13 +77,13 @@ def chat_with_ai(
                 print('Memory Stats: ', permanent_memory.get_stats())
 
             next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
-                prompt, relevant_memory, full_message_history, model)
+                prompt, relevant_memory, full_message_history, model, task_hierarchy)
 
             while current_tokens_used > 2500:
                 # remove memories until we are under 2500 tokens
                 relevant_memory = relevant_memory[1:]
                 next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
-                    prompt, relevant_memory, full_message_history, model)
+                    prompt, relevant_memory, full_message_history, model, task_hierarchy)
 
             current_tokens_used += token_counter.count_message_tokens([create_chat_message("user", user_input)], model) # Account for user input (appended later)
 
