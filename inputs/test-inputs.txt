@@ -1,0 +1,66 @@
+
+
+====
+
+AI Name: Code improvement GPT.
+Goals: Write , evaluate improve write tests for and execute the code contained in scraping-gpt.js
+
+1. DEmonstrate your programming abilities.
+2. improve scraping-gpt.js
+3. build and run tests for it.
+4. When the file is error free, shut yourself down.
+5. Make sure to write your outputs to file.
+
+
+AI Name: Code improvement GPT.
+Goals: Convert, Write, evaluate improve write tests for and execute code
+
+DEmonstrate your programming abilities.
+Convert scraping-gpt.js from NodeJS to Python and write at scraping-gpt.py.
+improve tscraping-gpt.py
+build and run tests for it.
+Make sure to write your outputs to file. When the file is error free, shut yourself down.
+
+=======
+AI Name: Python converter
+Goals: Convert nodejs and javascript code to Python code, evaluate improve write tests for and execute code
+
+DEmonstrate your programming abilities.
+Convert scraping-gpt.js from NodeJS to Python and write at scraping-gpt.py.
+improve scraping-gpt.py and Make sure to write your outputs to file.
+build and run tests for it.
+When the file is error free, shut yourself down.
+
+=======
+REsults: It simulated the prompt but didn't call DALLE API
+AI Name: Aqua image generator
+Goals: Create images of Marine Aquarium themes using DALLE API from OpenAI.
+
+Research the trending topics on the Marine Aquarium Hobby.
+Create an image using DALLE Api about the trending topic.
+Save the image to file.
+When the file is saved, shut yourself down.
+
+=======
+AI Name: Aqua image generator
+Goals: Creates code to call OpenAI's DALLE API to generate images of Marine Aquarium trending topics.
+
+Research the trending topics on the Marine Aquarium Hobby.
+Create and prompt for DALLE to generate the image about the trending topic.
+Create code to call DALLE API with the prompt.
+Save the image to file.
+When the file is saved, shut yourself down.
+
+=======
+REsults: Takes a long time researchign but works well.
+AI Name: Aqua image generator
+Goals: Generates images of Marine Aquarium trending topics.
+
+Research the trending topics on the Marine Aquarium Hobby.
+Create and prompt for DALLE to generate the image about the trending topic.
+Generates image using the prompt.
+Save the image to file.
+When the file is saved, shut yourself down.
+
+
+=======
