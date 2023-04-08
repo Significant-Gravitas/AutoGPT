@@ -1,4 +1,3 @@
-import argparse
 import chat
 from config import Config
 from colorama import Fore, Style
@@ -20,27 +19,20 @@ DEF_USER_INPUT = (
 class AutoGPT:
     def __init__(
         self,
-        continous_mode=False,
-        speak_mode=False,
-        gpt3only_mode=False,
     ):
         self.cfg = Config()
-        if continous_mode:
-            print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
+        self.ai_config = get_ai_config(self.cfg.speak_mode)
+        self.prompt = self.ai_config.construct_full_prompt()
+        if self.cfg.continuous_mode:
             print_to_console(
                 "WARNING: ",
                 Fore.RED,
-                "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.",
+                "Continuous mode is enabled, this is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.",
             )
-            self.cfg.set_continuous_mode(True)
-        if speak_mode:
+        if self.cfg.speak_mode:
             print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
-            self.cfg.set_speak_mode(True)
-        if gpt3only_mode:
-            print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-            self.cfg.set_smart_llm_model(self.cfg.fast_llm_model)
-        self.ai_config = get_ai_config(self.cfg.speak_mode)
-        self.prompt = self.ai_config.construct_full_prompt()
+        if self.cfg.debug_mode:
+            print("Using prompt: \n", self.prompt)
         self.memory = get_memory(self.cfg, init=True)
         self.full_message_history = []
         print("Using memory of type: " + self.memory.__class__.__name__)
@@ -56,6 +48,7 @@ class AutoGPT:
                     self.full_message_history,
                     self.memory,
                     self.cfg.fast_token_limit,
+                    self.cfg.debug_mode,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
             print_assistant_thoughts(
                 self.ai_config.ai_name, assistant_reply, self.cfg.speak_mode
@@ -138,22 +131,7 @@ class AutoGPT:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Process arguments.")
-    parser.add_argument(
-        "--continuous", action="store_true", help="Enable Continuous Mode"
-    )
-    parser.add_argument("--speak", action="store_true", help="Enable Speak Mode")
-    parser.add_argument("--debug", action="store_true", help="Enable Debug Mode")
-    parser.add_argument(
-        "--gpt3only", action="store_true", help="Enable GPT3.5 Only Mode"
-    )
-    args = parser.parse_args()
-    # Initialize AutoGPT
-    auto_gpt = AutoGPT(
-        continous_mode=args.continuous,
-        speak_mode=args.speak,
-        gpt3only_mode=args.gpt3only,
-    )
+    auto_gpt = AutoGPT()
     auto_gpt.run()
 
 
