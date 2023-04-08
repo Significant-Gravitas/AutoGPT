@@ -1,0 +1,39 @@
+name: Bug report 🐛
+description: Create a bug report for Auto-GPT.
+labels: ['status: needs triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please provide a searchable summary of the issue in the title above ⬆️.
+
+        Thanks for contributing by creating an issue! ❤️
+  - type: checkboxes
+    attributes:
+      label: Duplicates
+      description: Please [search the history](https://github.com/Torantulino/Auto-GPT/issues) to see if an issue already exists for the same problem.
+      options:
+        - label: I have searched the existing issues
+          required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce 🕹
+      description: |
+        **⚠️ Issues that we can't reproduce will be closed.**
+  - type: textarea
+    attributes:
+      label: Current behavior 😯
+      description: Describe what happens instead of the expected behavior.
+  - type: textarea
+    attributes:
+      label: Expected behavior 🤔
+      description: Describe what should happen.
+  - type: textarea
+    attributes:
+      label: Your prompt 📝
+      description: |
+        Please provide the prompt you are using. You can find your last-used prompt in last_run_ai_settings.yaml.
+      value: |
+        ```yaml
+        # Paste your prompt here
+        ```
