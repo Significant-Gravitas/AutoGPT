@@ -1,6 +1,6 @@
 import json
 import random
-import commands as cmd
+import command as cmd
 from memory import PineconeMemory
 import data
 import chat
