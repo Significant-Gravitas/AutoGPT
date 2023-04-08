@@ -1,6 +1,6 @@
 # Run Auto-GPT as an HTTP server
 
-A fastapi app is lives in `scripts/app.py`. You can start it from the project root by running `uvicorn scripts.app:app --reload`. The app is configured to run on port 8000 by default.
+A fastapi app is lives in `scripts/app.py`. You can start it from the `scripts` folder by running `uvicorn app:app --reload`. The app is configured to run on port 8000 by default. Running from `scripts` is not ideal since a new `auto_gpt_workspace` folder will be created in the `scripts` folder. Ideally you would run it from the project root with `uvicorn scripts.app:app --reload` but currently there's a problem with python imports that prevents it from running. Should be fixed soon.
 
 You should already have uvicorn installed if you ran `pip install -r requirements.txt`.
 
