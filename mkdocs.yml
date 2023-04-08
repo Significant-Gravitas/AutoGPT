@@ -1,0 +1,22 @@
+site_name: Auto-GPT
+repo_name: Auto-GPT
+repo_url: https://github.com/Torantulino/Auto-GPT
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.instant
+  palette: 
+    - scheme: default
+      toggle:
+        icon: material/toggle-switch-off-outline 
+        name: Switch to dark mode
+    - scheme: slate 
+      primary: light blue
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+
