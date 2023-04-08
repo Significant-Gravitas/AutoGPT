@@ -182,49 +182,6 @@ def get_hyperlinks(url):
     return link_list
 
 
-def commit_memory(string):
-    _text = f"""Committing memory with string "{string}" """
-    mem.permanent_memory.append(string)
-    return _text
-
-
-def delete_memory(key):
-    if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Deleting memory with key " + str(key)
-        del mem.permanent_memory[key]
-        print(_text)
-        return _text
-    else:
-        print("Invalid key, cannot delete memory.")
-        return None
-
-
-def overwrite_memory(key, string):
-    # Check if the key is a valid integer
-    if is_valid_int(key):
-        key_int = int(key)
-        # Check if the integer key is within the range of the permanent_memory list
-        if 0 <= key_int < len(mem.permanent_memory):
-            _text = "Overwriting memory with key " + str(key) + " and string " + string
-            # Overwrite the memory slot with the given integer key and string
-            mem.permanent_memory[key_int] = string
-            print(_text)
-            return _text
-        else:
-            print(f"Invalid key '{key}', out of range.")
-            return None
-    # Check if the key is a valid string
-    elif isinstance(key, str):
-        _text = "Overwriting memory with key " + key + " and string " + string
-        # Overwrite the memory slot with the given string key and string
-        mem.permanent_memory[key] = string
-        print(_text)
-        return _text
-    else:
-        print(f"Invalid key '{key}', must be an integer or a string.")
-        return None
-
-
 def shutdown():
     print("Shutting down...")
     quit()
