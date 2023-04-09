@@ -170,10 +170,10 @@ def construct_prompt():
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
         should_continue = input(f"""Continue with the last settings? 
-            Name:  {config.ai_name}
-            Role:  {config.ai_role}
-            Goals: {config.ai_goals}  
-            Continue (y/n): """)        
+Name:  {config.ai_name}
+Role:  {config.ai_role}
+Goals: {config.ai_goals}  
+Continue (y/n): """)        
         if should_continue.lower() == "n":
             config = AIConfig()
 
