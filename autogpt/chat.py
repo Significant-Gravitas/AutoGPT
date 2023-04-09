@@ -1,13 +1,12 @@
 import time
 
 import openai
-from scripts import token_counter
-from scripts.config import Config
-from scripts.llm_utils import create_chat_completion
-from scripts.custom_types import RolesEnum, ChatMessage
+
+from autogpt import token_counter
+from autogpt.config import Config
+from autogpt.llm_utils import create_chat_completion
 
 cfg = Config()
-
 
 def create_chat_message(role: str | RolesEnum, content: str) -> ChatMessage:
     """
@@ -142,7 +141,13 @@ def chat_with_ai(
                     "assistant", assistant_reply))
 
             return assistant_reply
-        except openai.error.RateLimitError:
+        except (openai.error.RateLimitError, openai.error.APIError) as exc:
+            if isinstance(exc, openai.error.APIError):
+                if 'Please try again in a few minutes' not in str(exc):
+                    raise exc
+                print("Error: ", "API Gateway error. Waiting 10 seconds...")
+            else:
+                print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
+
             # TODO: WHen we switch to langchain, this is built in
-            print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)

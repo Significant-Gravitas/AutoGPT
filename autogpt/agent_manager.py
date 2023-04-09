@@ -1,6 +1,5 @@
 from typing import List
-from scripts.llm_utils import create_chat_completion
-from scripts.chat import ChatMessage
+from autogpt.llm_utils import create_chat_completion
 
 next_key = 0
 agents = {}  # key, (task, full_message_history, model)

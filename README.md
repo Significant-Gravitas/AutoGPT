@@ -9,7 +9,7 @@ Auto-GPT is an experimental open-source application showcasing the capabilities 
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
 
-<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2> 
+<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
 <p align="center">
 If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 A full day of development can easily cost as much as $20 in API costs, which for a free project is quite limiting.
@@ -41,6 +41,9 @@ Your support is greatly appreciated
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
+  - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+  - [Setting up environment variables](#setting-up-environment-variables-1)
+  - [View Memory Usage](#view-memory-usage)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#image-generation)
   - [⚠️ Limitations](#️-limitations)
@@ -84,13 +87,26 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 $ cd 'Auto-GPT'
 ```
 
-3. Install the required dependencies:
+3. Create and activate Virtual Environment, OPTIONAL
+```
+python -m venv ./
+```
+mac + linux:
+```
+source ./bin/activate
+```
+windows:
+```
+./scripts/activate
+```
+4. Install the required dependencies:
+
 *(Again, type this into your CMD window)*
 ```
 pip install -r requirements.txt
 ```
 
-4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
@@ -112,10 +128,10 @@ REDIS_PORT=6379
 
 ## 🔧 Usage
 
-1. Run the `main.py` Python script in your terminal:
+1. Run the `autogpt` Python module in your terminal:
 *(Type this into your CMD window)*
 ```
-PYTHONPATH=. python scripts/main.py
+python -m autogpt
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
@@ -142,13 +158,27 @@ PYTHONPATH=. python scripts/qa/cli_client.py
 I created some example personalities you can use for QA Mode. You can select them using the `--personality` flag. For example, to use the `ResearcherGPT` personality, run the following command:
 
 ```bash
-PYTHONPATH=. python scripts/main.py --qa --personality examples/qa/researchgpt.yaml
+PYTHONPATH=. python -m autogpt --qa --personality examples/qa/researchgpt.yaml
+```
+
+### Docker
+
+You can also build this into a docker image and run it:
+
+```
+docker build -t autogpt .
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt
+```
+
+You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
+```
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt --gpt3only --continuous
 ```
 
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
-PYTHONPATH=. python scripts/main.py --speak
+python -m autogpt --speak
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -215,17 +245,16 @@ Run the AI **without** user authorisation, 100% automated.
 Continuous mode is not recommended.
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
-1. Run the `main.py` Python script in your terminal:
+1. Run the `autogpt` python module in your terminal:
 ```
-PYTHONPATH=. python scripts/main.py --continuous
-
+python -m autogpt --speak --continuous
 ```
 2. To exit the program, press Ctrl + C
 
 ## GPT3.5 ONLY Mode
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 ```
-PYTHONPATH=. python scripts/main.py --gpt3only
+python -m autogpt --speak --gpt3only
 ```
 
 ## 🖼 Image Generation
@@ -265,4 +294,3 @@ Stay up-to-date with the latest news, updates, and insights about Auto-GPT by fo
 - **Entrepreneur-GPT**: Join the conversation with the AI itself by following [@En_GPT](https://twitter.com/En_GPT). Share your experiences, discuss the AI's outputs, and engage with the growing community of users.
 
 We look forward to connecting with you and hearing your thoughts, ideas, and experiences with Auto-GPT. Join us on Twitter and let's explore the future of AI together!
-

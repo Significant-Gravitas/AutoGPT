@@ -1,25 +1,27 @@
+import argparse
 import json
 from pathlib import Path
 import random
-from typing import List, Optional
-from custom_types import ChatMessage
-import commands as cmd
-from memory import PineconeMemory
-import data
-import chat
-from colorama import Fore, Style
-from spinner import Spinner
-import time
-import speak
-from enum import Enum, auto
 import sys
-from config import Config
-from json_parser import fix_and_parse_json
-from ai_config import AIConfig
+import time
 import traceback
+from enum import Enum, auto
+
 import yaml
-from scripts.qa.agent import QAAgent
+from autogpt.qa.agent import QAAgent
 import argparse
+from colorama import Fore, Style
+
+import autogpt.commands as cmd
+import autogpt.memory as mem
+from autogpt import chat
+from autogpt import commands as cmd
+from autogpt import data, speak
+from autogpt.ai_config import AIConfig
+from autogpt.config import Config
+from autogpt.json_parser import fix_and_parse_json
+from autogpt.memory import PineconeMemory
+from autogpt.spinner import Spinner
 
 def print_to_console(
         title,
@@ -282,7 +284,6 @@ def parse_arguments():
     if args.debug:
         print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_debug_mode(True)
-
 
 # TODO: fill in llm values here
 cfg = Config()

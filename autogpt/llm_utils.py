@@ -1,7 +1,9 @@
 from typing import List
 import openai
-from scripts.config import Config
-from scripts.custom_types import ChatMessage
+
+from autogpt.config import Config
+from autogpt.custom_types import ChatMessage
+
 cfg = Config()
 
 openai.api_key = cfg.openai_api_key

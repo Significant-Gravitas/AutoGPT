@@ -3,18 +3,21 @@ import browse
 import json
 from memory import PineconeMemory
 import datetime
-import agent_manager as agents
-import speak
-from config import Config
-import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
-from execute_code import execute_python_file
-from json_parser import fix_and_parse_json
-from image_gen import generate_image
+import json
 from duckduckgo_search import ddg
 from scripts.qa.agent import QAAgent
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+import autogpt.agent_manager as agents
+import autogpt.ai_functions as ai
+from autogpt import browse, speak
+from autogpt.image_gen import generate_image
+from autogpt.config import Config
+from autogpt.execute_code import execute_python_file
+from autogpt.file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
+from autogpt.json_parser import fix_and_parse_json
+from autogpt.memory import PineconeMemory
 
 cfg = Config()
 
@@ -79,7 +82,7 @@ def execute_command(command_name, arguments, qamodel: QAAgent | None = None):
         elif command_name == "delete_agent":
             return delete_agent(arguments["key"])
         elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"], arguments["question"])
+            return get_text_summary(arguments["url"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
         elif command_name == "read_file":
@@ -93,7 +96,7 @@ def execute_command(command_name, arguments, qamodel: QAAgent | None = None):
         elif command_name == "search_files":
             return search_files(arguments["directory"])
         elif command_name == "browse_website":
-            return browse_website(arguments["url"], arguments["question"])
+            return browse_website(arguments["url"])
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
@@ -130,15 +133,16 @@ def get_datetime():
 
 def google_search(query, num_results=8):
     search_results = []
-    for j in ddg(query, max_results=num_results):
+    for j in search(query, num_results=num_results):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 def google_official_search(query, num_results=8):
+    import json
+
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
-    import json
 
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
@@ -170,8 +174,8 @@ def google_official_search(query, num_results=8):
     # Return the list of search result URLs
     return search_results_links
 
-def browse_website(url, question):
-    summary = get_text_summary(url, question)
+def browse_website(url):
+    summary = get_text_summary(url)
     links = get_hyperlinks(url)
 
     # Limit links to 5
@@ -183,9 +187,9 @@ def browse_website(url, question):
     return result
 
 
-def get_text_summary(url, question):
+def get_text_summary(url):
     text = browse.scrape_text(url)
-    summary = browse.summarize_text(text, question)
+    summary = browse.summarize_text(text)
     return """ "Result" : """ + summary
 
 
