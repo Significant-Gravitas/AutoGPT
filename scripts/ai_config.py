@@ -1,6 +1,6 @@
 import yaml
 import data
-
+import os
 
 class AIConfig:
     def __init__(self, ai_name="", ai_role="", ai_goals=[]):
@@ -9,7 +9,7 @@ class AIConfig:
         self.ai_goals = ai_goals
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = "../ai_settings.yaml"
+    SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
 
     @classmethod
     def load(cls, config_file=SAVE_FILE):
