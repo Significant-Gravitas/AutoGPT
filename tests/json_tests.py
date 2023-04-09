@@ -1,6 +1,5 @@
 import os
 import sys
-
 import unittest
 
 from autogpt.json_parser import fix_and_parse_json
