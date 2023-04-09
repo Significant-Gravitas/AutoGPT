@@ -57,7 +57,7 @@ Your support is greatly appreciated
 - 🗃️ File storage and summarization with GPT-3.5
 
 ## 📋 Requirements
-- [Python 3.7 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
+- [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - OpenAI API key
 - PINECONE API key
 
