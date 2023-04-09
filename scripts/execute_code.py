@@ -1,5 +1,5 @@
 import docker
-from os import path
+import os
 
 
 def execute_python_file(file):
@@ -11,9 +11,9 @@ def execute_python_file(file):
     if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    file_path = path.join(workspace_folder, file)
+    file_path = os.path.join(workspace_folder, file)
 
-    if not path.isfile(file_path):
+    if not os.path.isfile(file_path):
         return f"Error: File '{file}' does not exist."
 
     try:

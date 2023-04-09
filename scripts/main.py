@@ -27,24 +27,17 @@ def print_to_console(
         max_typing_speed=0.01):
     """Prints text to the console with a typing effect"""
     global cfg
-
     if speak_text and cfg.speak_mode:
         speak.say_text(f"{title}. {content}")
-
     print(title_color + title + " " + Style.RESET_ALL, end="")
-
     if content:
-
         if isinstance(content, list):
             content = " ".join(content)
         words = content.split()
-
         for i, word in enumerate(words):
             print(word, end="", flush=True)
-
             if i < len(words) - 1:
                 print(" ", end="", flush=True)
-
             typing_speed = random.uniform(min_typing_speed, max_typing_speed)
             time.sleep(typing_speed)
             # type faster after each word
@@ -88,7 +81,6 @@ def print_assistant_thoughts(assistant_reply):
         if assistant_thoughts_plan:
             print_to_console("PLAN:", Fore.YELLOW, "")
             # If it's a list, join it into a string
-
             if isinstance(assistant_thoughts_plan, list):
                 assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
             elif isinstance(assistant_thoughts_plan, dict):
@@ -96,7 +88,6 @@ def print_assistant_thoughts(assistant_reply):
 
             # Split the input_string using the newline character and dashes
             lines = assistant_thoughts_plan.split('\n')
-
             for line in lines:
                 line = line.lstrip("- ")
                 print_to_console("- ", Fore.GREEN, line.strip())
@@ -131,13 +122,11 @@ def load_variables(config_file="config.yaml"):
     # Prompt the user for input if config file is missing or empty values
     if not ai_name:
         ai_name = input("Name your AI: ")
-
         if ai_name == "":
             ai_name = "Entrepreneur-GPT"
 
     if not ai_role:        
         ai_role = input(f"{ai_name} is: ")
-
         if ai_role == "":
             ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
@@ -146,20 +135,16 @@ def load_variables(config_file="config.yaml"):
         print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
         print("Enter nothing to load defaults, enter nothing when finished.")
         ai_goals = []
-
         for i in range(5):
             ai_goal = input(f"Goal {i+1}: ")
-
             if ai_goal == "":
                 break
             ai_goals.append(ai_goal)
-
         if len(ai_goals) == 0:
             ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
          
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
-
     with open(config_file, "w") as file:
         documents = yaml.dump(config, file)
 
@@ -168,7 +153,6 @@ def load_variables(config_file="config.yaml"):
 
     # Construct full prompt
     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
-
     for i, goal in enumerate(ai_goals):
         full_prompt += f"{i+1}. {goal}\n"
 
@@ -179,7 +163,6 @@ def load_variables(config_file="config.yaml"):
 def construct_prompt():
     """Construct the prompt for the AI to respond to"""
     config = AIConfig.load()
-
     if config.ai_name:
         print_to_console(
             f"Welcome back! ",
@@ -190,8 +173,7 @@ def construct_prompt():
             Name:  {config.ai_name}
             Role:  {config.ai_role}
             Goals: {config.ai_goals}  
-            Continue (y/n): """)
-        
+            Continue (y/n): """)        
         if should_continue.lower() == "n":
             config = AIConfig()
 
@@ -221,10 +203,8 @@ def prompt_user():
     print_to_console(
         "Name your AI: ",
         Fore.GREEN,
-        "For example, 'Entrepreneur-GPT'")
-    
+        "For example, 'Entrepreneur-GPT'")    
     ai_name = input("AI Name: ")
-
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
@@ -240,7 +220,6 @@ def prompt_user():
         Fore.GREEN,
         "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'")
     ai_role = input(f"{ai_name} is: ")
-
     if ai_role == "":
         ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
@@ -248,26 +227,20 @@ def prompt_user():
     print_to_console(
         "Enter up to 5 goals for your AI: ",
         Fore.GREEN,
-        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
-    
+        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")    
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
-
     for i in range(5):
         ai_goal = input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
-
         if ai_goal == "":
             break
-
         ai_goals.append(ai_goal)
-
     if len(ai_goals) == 0:
         ai_goals = ["Increase net worth", "Grow Twitter Account",
                     "Develop and manage multiple businesses autonomously"]
 
     config = AIConfig(ai_name, ai_role, ai_goals)
     return config
-
 
 def parse_arguments():
     """Parses the arguments passed to the script"""
@@ -346,8 +319,7 @@ while True:
             f"Enter 'y' to authorise command or 'n' to exit program, or enter feedback for {ai_name}...",
             flush=True)
         while True:
-            console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-            
+            console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)            
             if console_input.lower() == "y":
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break

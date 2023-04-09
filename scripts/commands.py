@@ -1,7 +1,7 @@
 import browse
 import json
 import memory as mem
-from datetime import datetime
+import datetime
 import agent_manager as agents
 import speak
 from config import Config
@@ -110,7 +110,7 @@ def execute_command(command_name, arguments):
 def get_datetime():
     """Return the current date and time"""
     return "Current date and time: " + \
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def google_search(query, num_results=8):
