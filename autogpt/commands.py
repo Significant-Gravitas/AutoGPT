@@ -15,7 +15,7 @@ from autogpt.config import Config
 from autogpt.execute_code import execute_python_file
 from autogpt.file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
 from autogpt.json_parser import fix_and_parse_json
-from autogpt.memory import PineconeMemory
+from autogpt.memory import PineconeMemory, get_memory
 
 cfg = Config()
 
@@ -56,7 +56,8 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments, qamodel: QAAgent | None = None):
-    memory = PineconeMemory()
+    memory = get_memory(cfg)
+
     try:
         if command_name == "google":
 
@@ -118,7 +119,7 @@ def execute_command(command_name, arguments, qamodel: QAAgent | None = None):
         elif command_name == "task_complete":
             shutdown()
         else:
-            return f"WARNING: Unknown command {command_name}"
+            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for availabe commands and only respond in the specified JSON format."
     # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)

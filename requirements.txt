@@ -17,4 +17,6 @@ chevron==0.14.0
 pinecone-client==2.2.1
 types-redis==4.5.4
 token_counter
+redis
+orjson
 Pillow

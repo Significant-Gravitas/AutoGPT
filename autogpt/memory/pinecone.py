@@ -4,6 +4,7 @@ import pinecone
 from autogpt.config import Config, Singleton
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
+
 cfg = Config()
 
 

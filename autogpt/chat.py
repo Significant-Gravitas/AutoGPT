@@ -27,8 +27,11 @@ def create_chat_message(role: str | RolesEnum, content: str) -> ChatMessage:
 def generate_context(prompt, relevant_memory, full_message_history, model):
     current_context = [
         create_chat_message(
-            "system", prompt), create_chat_message(
-            "system", f"Permanent memory: {relevant_memory}")]
+            "system", prompt),
+        create_chat_message(
+            "system", f"The current time and date is {time.strftime('%c')}"),
+        create_chat_message(
+            "system", f"This reminds you of these events from your past:\n{relevant_memory}\n\n")]
 
     # Add messages from the full message history until we reach the token limit
     next_message_to_add_index = len(full_message_history) - 1

@@ -1,4 +1,4 @@
-* Message User: "message_user", args: "message": "<message>", "wait_for_response": "<bool>"
+22. Message User: "message_user", args: "message": "<message>", "wait_for_response": "<bool>"
 
 COMMENTS ON MESSAGING USERS:
 * Notifying them of an event, discovery, goal acheivement, failure, or to deliver a progress report.
