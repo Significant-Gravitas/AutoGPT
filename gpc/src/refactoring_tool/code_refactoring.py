@@ -1,5 +1,4 @@
 from typing import List, Optional
-from dataclasses import dataclass
 
 from .code_analysis import (
     analyze_code_readability,
@@ -19,19 +18,33 @@ from .test_generation import (
     write_system_tests,
 )
 
-@dataclass
 class RefactoringOptions:
-    analyze_readability: bool = True
-    analyze_performance: bool = True
-    analyze_security: bool = False
-    analyze_modularity: bool = True
-    refactor_variables: bool = True
-    optimize_loops: bool = True
-    simplify_conditionals: bool = True
-    refactor_functions: bool = True
-    generate_unit_tests: bool = True
-    generate_integration_tests: bool = False
-    generate_system_tests: bool = False
+    def __init__(
+        self,
+        analyze_readability: bool = True,
+        analyze_performance: bool = True,
+        analyze_security: bool = False,
+        analyze_modularity: bool = True,
+        refactor_variables: bool = True,
+        optimize_loops: bool = True,
+        simplify_conditionals: bool = True,
+        refactor_functions: bool = True,
+        generate_unit_tests: bool = True,
+        generate_integration_tests: bool = False,
+        generate_system_tests: bool = False,
+    ):
+        self.analyze_readability = analyze_readability
+        self.analyze_performance = analyze_performance
+        self.analyze_security = analyze_security
+        self.analyze_modularity = analyze_modularity
+        self.refactor_variables = refactor_variables
+        self.optimize_loops = optimize_loops
+        self.simplify_conditionals = simplify_conditionals
+        self.refactor_functions = refactor_functions
+        self.generate_unit_tests = generate_unit_tests
+        self.generate_integration_tests = generate_integration_tests
+        self.generate_system_tests = generate_system_tests
+
 
 def refactor_code(code: str, options: Optional[RefactoringOptions] = None) -> str:
     if options is None:

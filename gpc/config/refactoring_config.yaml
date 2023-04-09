@@ -1,3 +1,8 @@
+openai:
+  api_key: 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
+  
+  
+
 analyze_options:
   readability: true
   performance: true

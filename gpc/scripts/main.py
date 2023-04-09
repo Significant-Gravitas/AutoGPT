@@ -1,9 +1,14 @@
+import sys
+import os
+import openai
 import yaml
-from src.refactoring_tool.code_analysis import *
-from src.refactoring_tool.code_improvement import *
-from src.refactoring_tool.test_generation import *
+import time
+
+sys.path.insert(0, os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '..')))
+
+from src.refactoring_tool.ai_functions import call_ai_function
 from src.refactoring_tool.code_refactoring import RefactoringOptions, refactor_code
-from src.refactoring_tool.ai_functions import call_ai_function  # Import the function
 
 
 
@@ -11,13 +16,14 @@ from src.refactoring_tool.ai_functions import call_ai_function  # Import the fun
 # Read config file
 with open("config/refactoring_config.yaml", "r") as config_file:
     config = yaml.safe_load(config_file)
+    openai.api_key = config["openai"]["api_key"]
 
 # Define the input code using AI-generated code
 function_name = "calculate"
 args = ["a", "b"]
 description = "Calculate the result of two numbers based on their relationship."
 
-input_code = call_ai_function(function_name, args, description)
+input_code = call_ai_function(function_name, tuple(args), description)
 
 # Set refactoring options based on config file
 options = RefactoringOptions(

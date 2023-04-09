@@ -8,7 +8,7 @@ def validate_and_sanitize_input(function: str, args: List[str], description: str
     if not function or not isinstance(function, str):
         return False
 
-    if not args or not isinstance(args, List):
+    if not args or not isinstance(args, (List, tuple)):
         return False
 
     if not description or not isinstance(description, str):
@@ -18,7 +18,7 @@ def validate_and_sanitize_input(function: str, args: List[str], description: str
 
 
 @lru_cache(maxsize=100)
-def call_ai_function(function: str, args: List[str], description: str, model: str = "gpt-4", temperature: float = 0.5) -> str:
+def call_ai_function(function: str, args: List[str], description: str, model: str = "gpt-3.5-turbo", temperature: float = 0.5) -> str:
     # Validate and sanitize inputs
     if not validate_and_sanitize_input(function, args, description):
         raise ValueError("Invalid input parameters")
@@ -43,6 +43,7 @@ def call_ai_function(function: str, args: List[str], description: str, model: st
         response = openai.ChatCompletion.create(
             model=model, messages=messages, temperature=temperature
         )
+        print("API Response:", response)  # Add this line to print the full response
     except Exception as e:
         print(f"Error calling AI API: {e}")
         return ""
