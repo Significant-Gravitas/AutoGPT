@@ -1,7 +1,7 @@
 name: auto-format
 on: pull_request
 jobs:
-  lint:
+  format:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR branch
