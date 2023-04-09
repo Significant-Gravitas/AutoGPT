@@ -1,16 +1,16 @@
+from llm_utils import create_chat_completion
+from config import Config
+
 import time
 
 import openai
 
 import token_counter
-from config import Config
 
 cfg = Config()
 
-from llm_utils import create_chat_completion
 
-
-def create_chat_message(role, content):
+def create_chat_message(role: str, content: str) -> dict:
     """
     Create a chat message with the given role and content.
 
@@ -26,12 +26,10 @@ def create_chat_message(role, content):
 
 def generate_context(prompt, relevant_memory, full_message_history, model):
     current_context = [
-        create_chat_message(
-            "system", prompt),
-        create_chat_message(
-            "system", f"The current time and date is {time.strftime('%c')}"),
-        create_chat_message(
-            "system", f"This reminds you of these events from your past:\n{relevant_memory}\n\n")]
+        create_chat_message("system", prompt),
+        create_chat_message("system", f"The current time and date is {time.strftime('%c')}"),
+        create_chat_message("system", f"This reminds you of these events from your past:\n{relevant_memory}\n\n")
+    ]
 
     # Add messages from the full message history until we reach the token limit
     next_message_to_add_index = len(full_message_history) - 1
@@ -109,7 +107,8 @@ def chat_with_ai(
 
             # Calculate remaining tokens
             tokens_remaining = token_limit - current_tokens_used
-            # assert tokens_remaining >= 0, "Tokens remaining is negative. This should never happen, please submit a bug report at https://www.github.com/Torantulino/Auto-GPT"
+            # assert tokens_remaining >= 0, "Tokens remaining is negative. This should never happen, please submit
+            # a bug report at https://www.github.com/Torantulino/Auto-GPT"
 
             # Debug print the current context
             if debug:
@@ -126,7 +125,8 @@ def chat_with_ai(
                     print()
                 print("----------- END OF CONTEXT ----------------")
 
-            # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
+            # TODO: use a model defined elsewhere, so that model can contain temperature and other settings
+            #  we care about
             assistant_reply = create_chat_completion(
                 model=model,
                 messages=current_context,

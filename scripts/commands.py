@@ -25,7 +25,7 @@ def is_valid_int(value):
         return False
 
 
-ERROR_MSG_BEGIN = "Unhandled error:"
+ERROR_MSG_BEGIN = "Error:"
 
 
 def get_command(response: str) -> (str, dict):
@@ -143,9 +143,8 @@ def google_official_search(query, num_results=8):
         error_details = json.loads(e.content.decode())
 
         # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error",
-                                                                                                        {}).get(
-            "message", ""):
+        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in \
+                error_details.get("error", {}).get("message", ""):
             return "Error: The provided Google API key is invalid or missing."
         else:
             return f"Error: {e}"
