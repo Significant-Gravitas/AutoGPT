@@ -1,7 +1,7 @@
 import json
 import random
 import commands as cmd
-from memory import PineconeMemory
+from memory import get_memory
 import data
 import chat
 from colorama import Fore, Style
@@ -123,7 +123,7 @@ def load_variables(config_file="config.yaml"):
         if ai_name == "":
             ai_name = "Entrepreneur-GPT"
 
-    if not ai_role:        
+    if not ai_role:
         ai_role = input(f"{ai_name} is: ")
         if ai_role == "":
             ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
@@ -140,7 +140,7 @@ def load_variables(config_file="config.yaml"):
             ai_goals.append(ai_goal)
         if len(ai_goals) == 0:
             ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
-         
+
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
     with open(config_file, "w") as file:
@@ -166,22 +166,22 @@ def construct_prompt():
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
-        should_continue = input(f"""Continue with the last settings? 
+        should_continue = input(f"""Continue with the last settings?
 Name:  {config.ai_name}
 Role:  {config.ai_role}
-Goals: {config.ai_goals}  
+Goals: {config.ai_goals}
 Continue (y/n): """)
         if should_continue.lower() == "n":
             config = AIConfig()
 
-    if not config.ai_name:         
+    if not config.ai_name:
         config = prompt_user()
         config.save()
 
     # Get rid of this global:
     global ai_name
     ai_name = config.ai_name
-    
+
     full_prompt = config.construct_full_prompt()
     return full_prompt
 
@@ -242,7 +242,7 @@ def parse_arguments():
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
-    
+
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
@@ -266,6 +266,10 @@ def parse_arguments():
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
+    if args.debug:
+        print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_debug_mode(True)
+
 
 # TODO: fill in llm values here
 
@@ -281,12 +285,9 @@ next_action_count = 0
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
 
-# raise an exception if pinecone_api_key or region is not provided
-if not cfg.pinecone_api_key or not cfg.pinecone_region: raise Exception("Please provide pinecone_api_key and pinecone_region")
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
-memory = PineconeMemory()
-memory.clear()
+memory = get_memory(cfg, init=True)
 print('Using memory of type: ' + memory.__class__.__name__)
 
 # Interaction Loop
@@ -298,7 +299,7 @@ while True:
             user_input,
             full_message_history,
             memory,
-            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.fast_token_limit, cfg.debug) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
@@ -358,7 +359,7 @@ while True:
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
     # Execute command
-    if command_name is not None and command_name.lower() == "error":
+    if command_name is not None and command_name.lower().startswith( "error" ):
         result = f"Command {command_name} threw the following error: " + arguments
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"

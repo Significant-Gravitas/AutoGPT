@@ -57,7 +57,7 @@ Your support is greatly appreciated
 - 🗃️ File storage and summarization with GPT-3.5
 
 ## 📋 Requirements
-- [Python 3.7 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
+- [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - OpenAI API key
 - PINECONE API key
 
@@ -140,6 +140,40 @@ export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
 export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
+
+## Redis Setup
+
+Install docker desktop.
+
+Run:
+```
+docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+```
+See https://hub.docker.com/r/redis/redis-stack-server for setting a password and additional configuration.
+
+Set the following environment variables:
+```
+MEMORY_BACKEND=redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+```
+
+Note that this is not intended to be run facing the internet and is not secure, do not expose redis to the internet without a password or at all really.
+
+You can optionally set
+
+```
+WIPE_REDIS_ON_START=False
+```
+
+To persist memory stored in Redis.
+
+You can specify the memory index for redis using the following:
+
+````
+MEMORY_INDEX=whatever
+````
 
 ## 🌲 Pinecone API Key Setup
 
