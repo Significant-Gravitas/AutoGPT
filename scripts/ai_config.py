@@ -1,6 +1,9 @@
-import yaml
-import data
 import os
+
+import yaml
+
+import data
+
 
 class AIConfig:
     def __init__(self, ai_name="", ai_role="", ai_goals=[]):
@@ -37,7 +40,7 @@ class AIConfig:
         # Construct full prompt
         full_prompt = f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
-            full_prompt += f"{i+1}. {goal}\n"
+            full_prompt += f"{i + 1}. {goal}\n"
 
         full_prompt += f"\n\n{data.load_prompt()}"
         return full_prompt

@@ -1,20 +1,22 @@
-import requests
 import io
 import os.path
-from PIL import Image
-from config import Config
 import uuid
-import openai
 from base64 import b64decode
+
+import openai
+import requests
+from PIL import Image
+
+from config import Config
 
 cfg = Config()
 
 working_directory = "auto_gpt_workspace"
 
-def generate_image(prompt):
 
+def generate_image(prompt):
     filename = str(uuid.uuid4()) + ".jpg"
-    
+
     # DALL-E
     if cfg.image_provider == 'dalle':
 

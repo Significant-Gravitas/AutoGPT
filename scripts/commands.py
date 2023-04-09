@@ -1,18 +1,18 @@
-import browse
-import json
-from memory import get_memory
 import datetime
+import json
+
+from duckduckgo_search import ddg
+
 import agent_manager as agents
+import ai_functions as ai
+import browse
 import speak
 from config import Config
-import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
 from execute_code import execute_python_file
-from json_parser import fix_and_parse_json
+from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
 from image_gen import generate_image
-from duckduckgo_search import ddg
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+from json_parser import fix_and_parse_json
+from memory import get_memory
 
 cfg = Config()
 
@@ -24,18 +24,22 @@ def is_valid_int(value):
     except ValueError:
         return False
 
-def get_command(response):
+
+ERROR_MSG_BEGIN = "Unhandled error:"
+
+
+def get_command(response: str) -> (str, dict):
     try:
         response_json = fix_and_parse_json(response)
-        
+
         if "command" not in response_json:
-            return "Error:" , "Missing 'command' object in JSON"
-        
+            return ERROR_MSG_BEGIN, "Missing 'command' object in JSON"
+
         command = response_json["command"]
 
         if "name" not in command:
-            return "Error:", "Missing 'name' field in 'command' object"
-        
+            return ERROR_MSG_BEGIN, "Missing 'name' field in 'command' object"
+
         command_name = command["name"]
 
         # Use an empty dictionary if 'args' field is not present in 'command' object
@@ -46,73 +50,57 @@ def get_command(response):
 
         return command_name, arguments
     except json.decoder.JSONDecodeError:
-        return "Error:", "Invalid JSON"
+        return ERROR_MSG_BEGIN, "Invalid JSON"
     # All other errors, return "Error: + error message"
     except Exception as e:
-        return "Error:", str(e)
+        return ERROR_MSG_BEGIN, str(e)
 
 
-def execute_command(command_name, arguments):
+def execute_command(command_name: str, arguments) -> str:
+    """
+    Execute the command specified by the user.
+    Returns a string containing the result of the command.
+    If an error occurs, returns a string containing the error message.
+    """
     memory = get_memory(cfg)
 
-    try:
-        if command_name == "google":
-
-            # Check if the Google API key is set and use the official search method
-            # If the API key is not set or has only whitespaces, use the unofficial search method
-            if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
-                return google_official_search(arguments["input"])
-            else:
-                return google_search(arguments["input"])
-        elif command_name == "memory_add":
-            return memory.add(arguments["string"])
-        elif command_name == "start_agent":
-            return start_agent(
-                arguments["name"],
-                arguments["task"],
-                arguments["prompt"])
-        elif command_name == "message_agent":
-            return message_agent(arguments["key"], arguments["message"])
-        elif command_name == "list_agents":
-            return list_agents()
-        elif command_name == "delete_agent":
-            return delete_agent(arguments["key"])
-        elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"], arguments["question"])
-        elif command_name == "get_hyperlinks":
-            return get_hyperlinks(arguments["url"])
-        elif command_name == "read_file":
-            return read_file(arguments["file"])
-        elif command_name == "write_to_file":
-            return write_to_file(arguments["file"], arguments["text"])
-        elif command_name == "append_to_file":
-            return append_to_file(arguments["file"], arguments["text"])
-        elif command_name == "delete_file":
-            return delete_file(arguments["file"])
-        elif command_name == "search_files":
-            return search_files(arguments["directory"])
-        elif command_name == "browse_website":
-            return browse_website(arguments["url"], arguments["question"])
-        # TODO: Change these to take in a file rather than pasted code, if
-        # non-file is given, return instructions "Input should be a python
-        # filepath, write your code to file and try again"
-        elif command_name == "evaluate_code":
-            return ai.evaluate_code(arguments["code"])
-        elif command_name == "improve_code":
-            return ai.improve_code(arguments["suggestions"], arguments["code"])
-        elif command_name == "write_tests":
-            return ai.write_tests(arguments["code"], arguments.get("focus"))
-        elif command_name == "execute_python_file":  # Add this command
-            return execute_python_file(arguments["file"])
-        elif command_name == "generate_image":
-            return generate_image(arguments["prompt"])
-        elif command_name == "task_complete":
-            shutdown()
+    def execute_google():
+        if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
+            return google_official_search(arguments["input"])
         else:
-            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for availabe commands and only respond in the specified JSON format."
-    # All errors, return "Error: + error message"
+            return google_search(arguments["input"])
+
+    command_mapping = {
+        "google": execute_google,
+        "memory_add": lambda: memory.add(arguments["string"]),
+        "start_agent": lambda: start_agent(arguments["name"], arguments["task"], arguments["prompt"]),
+        "message_agent": lambda: message_agent(arguments["key"], arguments["message"]),
+        "list_agents": list_agents,
+        "delete_agent": lambda: delete_agent(arguments["key"]),
+        "get_text_summary": lambda: get_text_summary(arguments["url"], arguments["question"]),
+        "get_hyperlinks": lambda: get_hyperlinks(arguments["url"]),
+        "read_file": lambda: read_file(arguments["file"]),
+        "write_to_file": lambda: write_to_file(arguments["file"], arguments["text"]),
+        "append_to_file": lambda: append_to_file(arguments["file"], arguments["text"]),
+        "delete_file": lambda: delete_file(arguments["file"]),
+        "search_files": lambda: search_files(arguments["directory"]),
+        "browse_website": lambda: browse_website(arguments["url"], arguments["question"]),
+        "evaluate_code": lambda: ai.evaluate_code(arguments["code"]),
+        "improve_code": lambda: ai.improve_code(arguments["suggestions"], arguments["code"]),
+        "write_tests": lambda: ai.write_tests(arguments["code"], arguments.get("focus")),
+        "execute_python_file": lambda: execute_python_file(arguments["file"]),
+        "generate_image": lambda: generate_image(arguments["prompt"]),
+        "task_complete": shutdown,
+    }
+
+    try:
+        if command_name in command_mapping:
+            return command_mapping[command_name]()
+        else:
+            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for available commands " \
+                   f"and only respond in the specified JSON format."
     except Exception as e:
-        return "Error: " + str(e)
+        return ERROR_MSG_BEGIN + str(e)
 
 
 def get_datetime():
@@ -127,6 +115,7 @@ def google_search(query, num_results=8):
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
+
 def google_official_search(query, num_results=8):
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
@@ -139,22 +128,24 @@ def google_official_search(query, num_results=8):
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)
-        
+
         # Send the search query and retrieve the results
         result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
 
         # Extract the search result items from the response
         search_results = result.get("items", [])
-        
+
         # Create a list of only the URLs from the search results
         search_results_links = [item["link"] for item in search_results]
 
     except HttpError as e:
         # Handle errors in the API call
         error_details = json.loads(e.content.decode())
-        
+
         # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
+        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error",
+                                                                                                        {}).get(
+            "message", ""):
             return "Error: The provided Google API key is invalid or missing."
         else:
             return f"Error: {e}"
@@ -162,7 +153,8 @@ def google_official_search(query, num_results=8):
     # Return the list of search result URLs
     return search_results_links
 
-def browse_website(url, question):
+
+def browse_website(url, question) -> str:
     summary = get_text_summary(url, question)
     links = get_hyperlinks(url)
 
@@ -175,7 +167,7 @@ def browse_website(url, question):
     return result
 
 
-def get_text_summary(url, question):
+def get_text_summary(url, question) -> str:
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text, question)
     return """ "Result" : """ + summary
@@ -193,7 +185,7 @@ def commit_memory(string):
 
 
 def delete_memory(key):
-    if key >= 0 and key < len(mem.permanent_memory):
+    if 0 <= key < len(mem.permanent_memory):
         _text = "Deleting memory with key " + str(key)
         del mem.permanent_memory[key]
         print(_text)

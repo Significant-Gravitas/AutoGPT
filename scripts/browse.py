@@ -1,9 +1,11 @@
 import requests
 from bs4 import BeautifulSoup
+
 from config import Config
 from llm_utils import create_chat_completion
 
 cfg = Config()
+
 
 def scrape_text(url):
     response = requests.get(url, headers=cfg.user_agent_header)
@@ -39,7 +41,7 @@ def format_hyperlinks(hyperlinks):
     return formatted_links
 
 
-def scrape_links(url):
+def scrape_links(url: str):
     response = requests.get(url, headers=cfg.user_agent_header)
 
     # Check if the response contains an HTTP error
@@ -79,6 +81,7 @@ def create_message(chunk, question):
         "role": "user",
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
     }
+
 
 def summarize_text(text, question):
     if not text:
