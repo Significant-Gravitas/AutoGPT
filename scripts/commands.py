@@ -1,6 +1,6 @@
 import browse
 import json
-from memory import PineconeMemory
+from memory import get_memory
 import datetime
 import agent_manager as agents
 import speak
@@ -9,6 +9,7 @@ import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
+from image_gen import generate_image
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -52,10 +53,11 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
-    memory = PineconeMemory()
+    memory = get_memory(cfg)
+
     try:
         if command_name == "google":
-            
+
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
             if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
@@ -102,10 +104,12 @@ def execute_command(command_name, arguments):
             return ai.write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
+        elif command_name == "generate_image":
+            return generate_image(arguments["prompt"])
         elif command_name == "task_complete":
             shutdown()
         else:
-            return f"Unknown command {command_name}"
+            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for availabe commands and only respond in the specified JSON format."
     # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)
