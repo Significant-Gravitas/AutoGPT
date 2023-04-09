@@ -1,12 +1,11 @@
 import time
 import openai
 from dotenv import load_dotenv
-from config import Config
+from llm_utils import create_chat_completion
 import token_counter
+from config import Config
 
 cfg = Config()
-
-from llm_utils import create_chat_completion
 
 
 def create_chat_message(role, content):
@@ -63,7 +62,7 @@ def chat_with_ai(
             Returns:
             str: The AI's response.
             """
-            model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
+            model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
             if debug:
                 print(f"Token limit: {token_limit}")
@@ -83,7 +82,8 @@ def chat_with_ai(
                 next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
                     prompt, relevant_memory, full_message_history, model)
 
-            current_tokens_used += token_counter.count_message_tokens([create_chat_message("user", user_input)], model) # Account for user input (appended later)
+            current_tokens_used += token_counter.count_message_tokens([create_chat_message("user", user_input)],
+                                                                      model)  # Account for user input (appended later)
 
             while next_message_to_add_index >= 0:
                 # print (f"CURRENT TOKENS USED: {current_tokens_used}")
@@ -124,7 +124,7 @@ def chat_with_ai(
                     print()
                 print("----------- END OF CONTEXT ----------------")
 
-            # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
+            # TODO: Use a model defined elsewhere, so that model can contain temperature and other settings we care about
             assistant_reply = create_chat_completion(
                 model=model,
                 messages=current_context,
@@ -141,6 +141,6 @@ def chat_with_ai(
 
             return assistant_reply
         except openai.error.RateLimitError:
-            # TODO: WHen we switch to langchain, this is built in
+            # TODO: When we switch to langchain, this is built in
             print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)

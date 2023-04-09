@@ -59,6 +59,7 @@ def delete_file(filename):
     except Exception as e:
         return "Error: " + str(e)
 
+
 def search_files(directory):
     found_files = []
 

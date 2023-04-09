@@ -123,36 +123,39 @@ def load_variables(config_file="config.yaml"):
         if ai_name == "":
             ai_name = "Entrepreneur-GPT"
 
-    if not ai_role:        
+    if not ai_role:
         ai_role = input(f"{ai_name} is: ")
         if ai_role == "":
             ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
     if not ai_goals:
         print("Enter up to 5 goals for your AI: ")
-        print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+        print(
+            "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
         print("Enter nothing to load defaults, enter nothing when finished.")
         ai_goals = []
         for i in range(5):
-            ai_goal = input(f"Goal {i+1}: ")
+            ai_goal = input(f"Goal {i + 1}: ")
             if ai_goal == "":
                 break
             ai_goals.append(ai_goal)
         if len(ai_goals) == 0:
-            ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
-         
+            ai_goals = ["Increase net worth", "Grow Twitter Account",
+                        "Develop and manage multiple businesses autonomously"]
+
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
     with open(config_file, "w") as file:
         documents = yaml.dump(config, file)
 
     prompt = data.load_prompt()
-    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+    prompt_start = """Your decisions must always be made independently without seeking user assistance. 
+                        Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
     # Construct full prompt
     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
     for i, goal in enumerate(ai_goals):
-        full_prompt += f"{i+1}. {goal}\n"
+        full_prompt += f"{i + 1}. {goal}\n"
 
     full_prompt += f"\n\n{prompt}"
     return full_prompt
@@ -174,14 +177,14 @@ Continue (y/n): """)
         if should_continue.lower() == "n":
             config = AIConfig()
 
-    if not config.ai_name:         
+    if not config.ai_name:
         config = prompt_user()
         config.save()
 
     # Get rid of this global:
     global ai_name
     ai_name = config.ai_name
-    
+
     full_prompt = config.construct_full_prompt()
     return full_prompt
 
@@ -227,7 +230,7 @@ def prompt_user():
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
-        ai_goal = input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
+        ai_goal = input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i + 1}: ")
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)
@@ -238,11 +241,12 @@ def prompt_user():
     config = AIConfig(ai_name, ai_role, ai_goals)
     return config
 
+
 def parse_arguments():
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
-    
+
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
@@ -255,7 +259,8 @@ def parse_arguments():
         print_to_console(
             "WARNING: ",
             Fore.RED,
-            "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
+            "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or "
+            "carry out actions you would not usually authorise. Use at your own risk.")
         cfg.set_continuous_mode(True)
 
     if args.speak:
@@ -299,7 +304,7 @@ while True:
             user_input,
             full_message_history,
             memory,
-            cfg.fast_token_limit, cfg.debug) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.fast_token_limit, cfg.debug)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
@@ -320,7 +325,8 @@ while True:
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
         print(
-            f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+            f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, "
+            f"or enter feedback for {ai_name}...",
             flush=True)
         while True:
             console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
@@ -345,9 +351,9 @@ while True:
 
         if user_input == "GENERATE NEXT COMMAND JSON":
             print_to_console(
-            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-            Fore.MAGENTA,
-            "")
+                "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                Fore.MAGENTA,
+                "")
         elif user_input == "EXIT":
             print("Exiting...", flush=True)
             break
@@ -359,7 +365,7 @@ while True:
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
     # Execute command
-    if command_name.lower().startswith( "error" ):
+    if command_name.lower().startswith("error"):
         result = f"Command {command_name} threw the following error: " + arguments
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"
@@ -384,4 +390,3 @@ while True:
             chat.create_chat_message(
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
-

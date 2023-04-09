@@ -1,9 +1,9 @@
 import os
 from playsound import playsound
 import requests
+import gtts
 from config import Config
 cfg = Config()
-import gtts
 
 
 # TODO: Nicer names for these ids
@@ -13,6 +13,7 @@ tts_headers = {
     "Content-Type": "application/json",
     "xi-api-key": cfg.elevenlabs_api_key
 }
+
 
 def eleven_labs_speech(text, voice_index=0):
     tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(
@@ -32,11 +33,13 @@ def eleven_labs_speech(text, voice_index=0):
         print("Response content:", response.content)
         return False
 
+
 def gtts_speech(text):
     tts = gtts.gTTS(text)
     tts.save("speech.mp3")
     playsound("speech.mp3")
     os.remove("speech.mp3")
+
 
 def say_text(text, voice_index=0):
     if not cfg.elevenlabs_api_key:
@@ -45,4 +48,3 @@ def say_text(text, voice_index=0):
         success = eleven_labs_speech(text, voice_index)
         if not success:
             gtts_speech(text)
-

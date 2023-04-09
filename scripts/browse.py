@@ -1,9 +1,10 @@
 import requests
 from bs4 import BeautifulSoup
-from config import Config
 from llm_utils import create_chat_completion
+from config import Config
 
 cfg = Config()
+
 
 def scrape_text(url):
     response = requests.get(url, headers=cfg.user_agent_header)
@@ -77,8 +78,10 @@ def split_text(text, max_length=8192):
 def create_message(chunk, question):
     return {
         "role": "user",
-        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
+        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" "
+                   f"-- if the question cannot be answered using the text, please summarize the text."
     }
+
 
 def summarize_text(text, question):
     if not text:
