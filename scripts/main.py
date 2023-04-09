@@ -16,7 +16,15 @@ from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
+import logging
 
+def configure_logging():
+    logging.basicConfig(filename='log.txt',
+                    filemode='a',
+                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.DEBUG)
+    return logging.getLogger('AutoGPT')
 
 def print_to_console(
         title,
@@ -26,10 +34,12 @@ def print_to_console(
         min_typing_speed=0.05,
         max_typing_speed=0.01):
     global cfg
+    global logger
     if speak_text and cfg.speak_mode:
         speak.say_text(f"{title}. {content}")
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
+        logger.info(title + ': ' + content)
         if isinstance(content, list):
             content = " ".join(content)
         words = content.split()
@@ -270,6 +280,7 @@ def parse_arguments():
 # TODO: fill in llm values here
 
 cfg = Config()
+logger = configure_logging()
 parse_arguments()
 ai_name = ""
 prompt = construct_prompt()
@@ -355,7 +366,7 @@ while True:
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
     # Execute command
-    if command_name.lower() == "error":
+    if command_name.lower().startswith( "error" ):
         result = f"Command {command_name} threw the following error: " + arguments
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"
@@ -380,4 +391,5 @@ while True:
             chat.create_chat_message(
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+
 
