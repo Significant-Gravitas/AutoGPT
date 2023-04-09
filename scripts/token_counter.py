@@ -1,9 +1,10 @@
-from typing import List, Dict
 
 import tiktoken
 
+GPT_3_5_TURBO = "gpt-3.5-turbo-0301"
 
-def count_message_tokens(messages: List[Dict[str, str]], model: str = "gpt-3.5-turbo-0301") -> int:
+
+def count_message_tokens(messages: list[dict[str, str]], model: str = GPT_3_5_TURBO) -> int:
     """
     Returns the number of tokens used by a list of messages.
 
@@ -21,11 +22,11 @@ def count_message_tokens(messages: List[Dict[str, str]], model: str = "gpt-3.5-t
         encoding = tiktoken.get_encoding("cl100k_base")
     if model == "gpt-3.5-turbo":
         # !Node: gpt-3.5-turbo may change over time. Returning num tokens assuming gpt-3.5-turbo-0301.")
-        return count_message_tokens(messages, model="gpt-3.5-turbo-0301")
+        return count_message_tokens(messages, model=GPT_3_5_TURBO)
     elif model == "gpt-4":
         # !Note: gpt-4 may change over time. Returning num tokens assuming gpt-4-0314.")
         return count_message_tokens(messages, model="gpt-4-0314")
-    elif model == "gpt-3.5-turbo-0301":
+    elif model == GPT_3_5_TURBO:
         tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
         tokens_per_name = -1  # if there's a name, the role is omitted
     elif model == "gpt-4-0314":

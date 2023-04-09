@@ -1,5 +1,5 @@
 """Redis memory provider."""
-from typing import Any, List, Optional
+from typing import Optional
 import redis
 from redis.commands.search.field import VectorField, TextField
 from redis.commands.search.query import Query
@@ -86,7 +86,7 @@ class RedisMemory(MemoryProviderSingleton):
         pipe.execute()
         return _text
 
-    def get(self, data: str) -> Optional[List[Any]]:
+    def get(self, data: str) -> Optional[list[any]]:
         """
         Gets the data from the memory that is most relevant to the given data.
 
@@ -110,7 +110,7 @@ class RedisMemory(MemoryProviderSingleton):
         self,
         data: str,
         num_relevant: int = 5
-    ) -> Optional[List[Any]]:
+    ) -> Optional[list[any]]:
         """
         Returns all the data in the memory that is relevant to the given data.
         Args:

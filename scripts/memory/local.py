@@ -1,6 +1,6 @@
 import dataclasses
 import orjson
-from typing import Any, List, Optional
+from typing import Optional
 import numpy as np
 import os
 from memory.base import MemoryProviderSingleton, get_ada_embedding
@@ -16,7 +16,7 @@ def create_default_embeddings():
 
 @dataclasses.dataclass
 class CacheContent:
-    texts: List[str] = dataclasses.field(default_factory=list)
+    texts: list[str] = dataclasses.field(default_factory=list)
     embeddings: np.ndarray = dataclasses.field(
         default_factory=create_default_embeddings
     )
@@ -77,7 +77,7 @@ class LocalCache(MemoryProviderSingleton):
         self.data = CacheContent()
         return "Obliviated"
 
-    def get(self, data: str) -> Optional[List[Any]]:
+    def get(self, data: str) -> Optional[list[any]]:
         """
         Gets the data from the memory that is most relevant to the given data.
 
@@ -88,7 +88,7 @@ class LocalCache(MemoryProviderSingleton):
         """
         return self.get_relevant(data, 1)
 
-    def get_relevant(self, text: str, k: int) -> List[Any]:
+    def get_relevant(self, text: str, k: int) -> list[any]:
         """"
         matrix-vector mult to find score-for-each-row-of-matrix
          get indices for top-k winning scores

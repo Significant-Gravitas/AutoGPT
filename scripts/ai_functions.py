@@ -1,5 +1,4 @@
 import json
-from typing import List
 
 from call_ai_function import call_ai_function
 from config import Config
@@ -9,7 +8,7 @@ cfg = Config()
 
 # Evaluating code
 
-def evaluate_code(code: str) -> List[str]:
+def evaluate_code(code: str) -> list[str]:
     function_string = "def analyze_code(code: str) -> List[str]:"
     args = [code]
     description_string = """Analyzes the given code and returns a list of suggestions for improvements."""
@@ -21,7 +20,7 @@ def evaluate_code(code: str) -> List[str]:
 
 # Improving code
 
-def improve_code(suggestions: List[str], code: str) -> str:
+def improve_code(suggestions: list[str], code: str) -> str:
     function_string = (
         "def generate_improved_code(suggestions: List[str], code: str) -> str:"
     )
@@ -35,7 +34,7 @@ def improve_code(suggestions: List[str], code: str) -> str:
 # Writing tests
 
 
-def write_tests(code: str, focus: List[str]) -> str:
+def write_tests(code: str, focus: list[str]) -> str:
     function_string = (
         "def create_test_cases(code: str, focus: Optional[str] = None) -> str:"
     )
