@@ -320,7 +320,7 @@ while True:
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
         print(
-            f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+            f"Enter 'y' to authorize command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
             flush=True)
         while True:
             console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
@@ -345,7 +345,7 @@ while True:
 
         if user_input == "GENERATE NEXT COMMAND JSON":
             print_to_console(
-            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+            "-=-=-=-=-=-=-= COMMAND AUTHORIZED BY USER -=-=-=-=-=-=-=",
             Fore.MAGENTA,
             "")
         elif user_input == "EXIT":
