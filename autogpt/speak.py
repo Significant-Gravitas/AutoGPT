@@ -1,9 +1,12 @@
 import os
-from playsound import playsound
-import requests
-from config import Config
-cfg = Config()
+
 import gtts
+import requests
+from playsound import playsound
+
+from autogpt.config import Config
+
+cfg = Config()
 
 
 # TODO: Nicer names for these ids
@@ -45,4 +48,3 @@ def say_text(text, voice_index=0):
         success = eleven_labs_speech(text, voice_index)
         if not success:
             gtts_speech(text)
-

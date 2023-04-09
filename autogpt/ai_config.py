@@ -1,6 +1,6 @@
 import yaml
-import data
 import os
+from autogpt import data
 
 class AIConfig:
     def __init__(self, ai_name="", ai_role="", ai_goals=[]):

@@ -6,7 +6,7 @@ from redis.commands.search.query import Query
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 import numpy as np
 
-from memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 
 SCHEMA = [
