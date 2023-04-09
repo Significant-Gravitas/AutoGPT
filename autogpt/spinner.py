@@ -1,6 +1,6 @@
+import itertools
 import sys
 import threading
-import itertools
 import time
 
 

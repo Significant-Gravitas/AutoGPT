@@ -1,7 +1,11 @@
-
+import openai
 import pinecone
 
-from memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.config import Config, Singleton
+from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+
+
+cfg = Config()
 
 
 class PineconeMemory(MemoryProviderSingleton):
