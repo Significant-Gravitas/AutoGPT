@@ -7,7 +7,7 @@ cfg = Config()
 
 def scrape_text(url):
     """Scrape text from a webpage"""
-    response = requests.get(url)
+    response = requests.get(url, headers=cfg.user_agent_header)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
@@ -43,8 +43,8 @@ def format_hyperlinks(hyperlinks):
 
 
 def scrape_links(url):
-    """Scrape hyperlinks from a webpage"""
-    response = requests.get(url)
+    """Scrape links from a webpage"""
+    response = requests.get(url, headers=cfg.user_agent_header)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
