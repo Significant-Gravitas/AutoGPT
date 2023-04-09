@@ -28,9 +28,8 @@ def browse_website(url, question):
     # Limit links to 5
     if len(links) > 5:
         links = links[:5]
-    goodSource = good_source(summary,question)
     close_browser(driver)
-    return f"Did the website answer my question?: {goodSource} \n \n Website Content Summary: {summary} \n \n Links: {links}", driver
+    return f" Website Content Summary: {summary} \n \n Links: {links}", driver
 
 def scrape_text_with_selenium(url):
     import logging
@@ -58,12 +57,6 @@ def scrape_text_with_selenium(url):
     text = '\n'.join(chunk for chunk in chunks if chunk)
     
     return driver, text
-
-
-
-def good_source(text,question):
-    prompt = open(f"{file_dir}/data/good_source_prompt.txt", "r").read().replace("(question)", question).replace("(summary)", text),
-    return create_chat_completion([{"role": "user", "content": prompt}], model = cfg.fast_llm_model)
 
 def scrape_links_with_selenium(driver):
     page_source = driver.page_source
