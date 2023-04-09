@@ -9,7 +9,7 @@ Auto-GPT is an experimental open-source application showcasing the capabilities 
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
 
-## 💖 Help Fund Auto-GPT's Development
+<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2> 
 <p align="center">
 If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 A full day of development can easily cost as much as $20 in API costs, which for a free project is quite limiting.
@@ -17,14 +17,13 @@ Your support is greatly appreciated
 </p>
 
 <p align="center">
- Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>. 💖
-<p align="center">
-<p align="center">
-<a href="https://github.com/thepok"><img src="https://github.com/thepok.png" width="50px" alt="thepok" /></a>&nbsp;&nbsp;<a href="https://github.com/SpacingLily"><img src="https://github.com/SpacingLily.png" width="50px" alt="SpacingLily" /></a>&nbsp;&nbsp;<a href="https://github.com/m"><img src="https://github.com/m.png" width="50px" alt="m" /></a>&nbsp;&nbsp;<a href="https://github.com/zkonduit"><img src="https://github.com/zkonduit.png" width="50px" alt="zkonduit" /></a>&nbsp;&nbsp;<a href="https://github.com/maxxflyer"><img src="https://github.com/maxxflyer.png" width="50px" alt="maxxflyer" /></a>&nbsp;&nbsp;<a href="https://github.com/tekelsey"><img src="https://github.com/tekelsey.png" width="50px" alt="tekelsey" /></a>&nbsp;&nbsp;<a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="tjarmain" /></a>&nbsp;&nbsp;<a href="https://github.com/alexisneuhaus"><img src="https://github.com/alexisneuhaus.png" width="50px" alt="alexisneuhaus" /></a>&nbsp;&nbsp;<a href="https://github.com/jaumebalust"><img src="https://github.com/jaumebalust.png" width="50px" alt="jaumebalust" /></a>&nbsp;&nbsp;<a href="https://github.com/robinicus"><img src="https://github.com/robinicus.png" width="50px" alt="robinicus" /></a>&nbsp;&nbsp;<a href="https://github.com/digisomni"><img src="https://github.com/digisomni.png" width="50px" alt="digisomni" /></a>&nbsp;&nbsp;
-</p>
+ Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
 
+<h3 align="center">Individual Sponsors</h3>
 <p align="center">
-<a href="https://github.com/alexisneuhaus"><img src="https://github.com/alexisneuhaus.png" width="30px" alt="alexisneuhaus" /></a>&nbsp;&nbsp;<a href="https://github.com/iokode"><img src="https://github.com/iokode.png" width="30px" alt="iokode" /></a>&nbsp;&nbsp;<a href="https://github.com/jaumebalust"><img src="https://github.com/jaumebalust.png" width="30px" alt="jaumebalust" /></a>&nbsp;&nbsp;<a href="https://github.com/nova-land"><img src="https://github.com/nova-land.png" width="30px" alt="nova-land" /></a>&nbsp;&nbsp;<a href="https://github.com/robinicus"><img src="https://github.com/robinicus.png" width="30px" alt="robinicus" /></a>&nbsp;&nbsp;<a href="https://github.com/Void-n-Null"><img src="https://github.com/Void-n-Null.png" width="30px" alt="Void-n-Null" /></a>&nbsp;&nbsp;<a href="https://github.com/ritesh24"><img src="https://github.com/ritesh24.png" width="30px" alt="ritesh24" /></a>&nbsp;&nbsp;<a href="https://github.com/merwanehamadi"><img src="https://github.com/merwanehamadi.png" width="30px" alt="merwanehamadi" /></a>&nbsp;&nbsp;<a href="https://github.com/raulmarindev"><img src="https://github.com/raulmarindev.png" width="30px" alt="raulmarindev" /></a>&nbsp;&nbsp;<a href="https://github.com/siduppal"><img src="https://github.com/siduppal.png" width="30px" alt="siduppal" /></a>&nbsp;&nbsp;<a href="https://github.com/goosecubedaddy"><img src="https://github.com/goosecubedaddy.png" width="30px" alt="goosecubedaddy" /></a>&nbsp;&nbsp;<a href="https://github.com/pleabargain"><img src="https://github.com/pleabargain.png" width="30px" alt="pleabargain" /></a>&nbsp;&nbsp;
+<a href="https://github.com/robinicus"><img src="https://github.com/robinicus.png" width="50px" alt="robinicus" /></a>&nbsp;&nbsp;<a href="https://github.com/prompthero"><img src="https://github.com/prompthero.png" width="50px" alt="prompthero" /></a>&nbsp;&nbsp;<a href="https://github.com/crizzler"><img src="https://github.com/crizzler.png" width="50px" alt="crizzler" /></a>&nbsp;&nbsp;<a href="https://github.com/tob-le-rone"><img src="https://github.com/tob-le-rone.png" width="50px" alt="tob-le-rone" /></a>&nbsp;&nbsp;<a href="https://github.com/FSTatSBS"><img src="https://github.com/FSTatSBS.png" width="50px" alt="FSTatSBS" /></a>&nbsp;&nbsp;<a href="https://github.com/toverly1"><img src="https://github.com/toverly1.png" width="50px" alt="toverly1" /></a>&nbsp;&nbsp;<a href="https://github.com/ddtarazona"><img src="https://github.com/ddtarazona.png" width="50px" alt="ddtarazona" /></a>&nbsp;&nbsp;<a href="https://github.com/Nalhos"><img src="https://github.com/Nalhos.png" width="50px" alt="Nalhos" /></a>&nbsp;&nbsp;<a href="https://github.com/Kazamario"><img src="https://github.com/Kazamario.png" width="50px" alt="Kazamario" /></a>&nbsp;&nbsp;<a href="https://github.com/pingbotan"><img src="https://github.com/pingbotan.png" width="50px" alt="pingbotan" /></a>&nbsp;&nbsp;<a href="https://github.com/indoor47"><img src="https://github.com/indoor47.png" width="50px" alt="indoor47" /></a>&nbsp;&nbsp;<a href="https://github.com/AuroraHolding"><img src="https://github.com/AuroraHolding.png" width="50px" alt="AuroraHolding" /></a>&nbsp;&nbsp;<a href="https://github.com/kreativai"><img src="https://github.com/kreativai.png" width="50px" alt="kreativai" /></a>&nbsp;&nbsp;<a href="https://github.com/hunteraraujo"><img src="https://github.com/hunteraraujo.png" width="50px" alt="hunteraraujo" /></a>&nbsp;&nbsp;<a href="https://github.com/Explorergt92"><img src="https://github.com/Explorergt92.png" width="50px" alt="Explorergt92" /></a>&nbsp;&nbsp;<a href="https://github.com/judegomila"><img src="https://github.com/judegomila.png" width="50px" alt="judegomila" /></a>&nbsp;&nbsp;
+<a href="https://github.com/thepok"><img src="https://github.com/thepok.png" width="50px" alt="thepok" /></a>
+&nbsp;&nbsp;<a href="https://github.com/SpacingLily"><img src="https://github.com/SpacingLily.png" width="50px" alt="SpacingLily" /></a>&nbsp;&nbsp;<a href="https://github.com/merwanehamadi"><img src="https://github.com/merwanehamadi.png" width="50px" alt="merwanehamadi" /></a>&nbsp;&nbsp;<a href="https://github.com/m"><img src="https://github.com/m.png" width="50px" alt="m" /></a>&nbsp;&nbsp;<a href="https://github.com/zkonduit"><img src="https://github.com/zkonduit.png" width="50px" alt="zkonduit" /></a>&nbsp;&nbsp;<a href="https://github.com/maxxflyer"><img src="https://github.com/maxxflyer.png" width="50px" alt="maxxflyer" /></a>&nbsp;&nbsp;<a href="https://github.com/tekelsey"><img src="https://github.com/tekelsey.png" width="50px" alt="tekelsey" /></a>&nbsp;&nbsp;<a href="https://github.com/digisomni"><img src="https://github.com/digisomni.png" width="50px" alt="digisomni" /></a>&nbsp;&nbsp;<a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="tjarmain" /></a>
 </p>
 
 
@@ -43,6 +42,7 @@ Your support is greatly appreciated
     - [Setting up environment variables](#setting-up-environment-variables)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
+  - [🖼 Image Generation](#image-generation)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
@@ -57,8 +57,9 @@ Your support is greatly appreciated
 - 🗃️ File storage and summarization with GPT-3.5
 
 ## 📋 Requirements
-- [Python 3.7 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
+- [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - OpenAI API key
+- PINECONE API key
 
 Optional:
 - ElevenLabs Key (If you want the AI to speak)
@@ -92,6 +93,7 @@ pip install -r requirements.txt
 4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
 
 ## 🔧 Usage
 
@@ -139,6 +141,70 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
+## Redis Setup
+
+Install docker desktop.
+
+Run:
+```
+docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+```
+See https://hub.docker.com/r/redis/redis-stack-server for setting a password and additional configuration.
+
+Set the following environment variables:
+```
+MEMORY_BACKEND=redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+```
+
+Note that this is not intended to be run facing the internet and is not secure, do not expose redis to the internet without a password or at all really.
+
+You can optionally set
+
+```
+WIPE_REDIS_ON_START=False
+```
+
+To persist memory stored in Redis.
+
+You can specify the memory index for redis using the following:
+
+````
+MEMORY_INDEX=whatever
+````
+
+## 🌲 Pinecone API Key Setup
+
+Pinecone enable a vector based memory so a vast memory can be stored and only relevant memories
+are loaded for the agent at any given time.
+
+1. Go to app.pinecone.io and make an account if you don't already have one.
+2. Choose the `Starter` plan to avoid being charged.
+3. Find your API key and region under the default project in the left sidebar.
+
+### Setting up environment variables
+   For Windows Users:
+```
+setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
+export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
+
+```
+For macOS and Linux users:
+```
+export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
+export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
+
+```
+
+Or you can set them in the `.env` file.
+
+## View Memory Usage
+
+1. View memory usage by using the `--debug` flag :)
+
+
 ## 💀 Continuous Mode ⚠️
 Run the AI **without** user authorisation, 100% automated.
 Continuous mode is not recommended. 
@@ -155,6 +221,15 @@ python scripts/main.py --continuous
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 ```
 python scripts/main.py --gpt3only
+```
+
+## 🖼 Image Generation
+By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [HuggingFace API Token](https://huggingface.co/settings/tokens) is required.
+
+Once you have a token, set these variables in your `.env`:
+```
+IMAGE_PROVIDER=sd
+HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 ```
 
 ## ⚠️ Limitations

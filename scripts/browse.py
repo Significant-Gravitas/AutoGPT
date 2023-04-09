@@ -21,7 +21,7 @@ def sanitize_url(url):
 # Function to make a request with a specified timeout and handle exceptions
 def make_request(url, timeout=10):
     try:
-        response = requests.get(url, timeout=timeout)
+        response = requests.get(url, headers=cfg.user_agent_header, timeout=timeout)
         response.raise_for_status()
         return response
     except requests.exceptions.RequestException as e:
@@ -69,7 +69,7 @@ def format_hyperlinks(hyperlinks):
 
 
 def scrape_links(url):
-    response = requests.get(url)
+    response = requests.get(url, headers=cfg.user_agent_header)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
