@@ -69,6 +69,8 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: Message indicating that the data has been added.
         """
+        if 'Command Error:' in data:
+            return ""
         vector = get_ada_embedding(data)
         vector = np.array(vector).astype(np.float32).tobytes()
         data_dict = {
@@ -132,7 +134,7 @@ class RedisMemory(MemoryProviderSingleton):
         except Exception as e:
             print("Error calling Redis search: ", e)
             return None
-        return list(results.docs)
+        return [result.data for result in results.docs]
 
     def get_stats(self):
         """
