@@ -26,7 +26,10 @@ def create_chat_message(role, content):
 def generate_context(prompt, relevant_memory, full_message_history, model):
     current_context = [
         create_chat_message(
-            "system", prompt), create_chat_message(
+            "system", prompt),
+        create_chat_message(
+            "system", f"The current time and date is {time.strftime('%c')}"),
+        create_chat_message(
             "system", f"Permanent memory: {relevant_memory}")]
 
     # Add messages from the full message history until we reach the token limit
@@ -95,7 +98,7 @@ def chat_with_ai(
 
                 # Count the currently used tokens
                 current_tokens_used += tokens_to_add
-                
+
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
 
