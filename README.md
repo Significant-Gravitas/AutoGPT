@@ -9,7 +9,7 @@ Auto-GPT is an experimental open-source application showcasing the capabilities 
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
 
-<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2> 
+<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
 <p align="center">
 If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 A full day of development can easily cost as much as $20 in API costs, which for a free project is quite limiting.
@@ -100,7 +100,7 @@ pip install -r requirements.txt
 1. Run the `main.py` Python script in your terminal:
 *(Type this into your CMD window)*
 ```
-python scripts/main.py
+python -m autogpt
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
@@ -108,8 +108,7 @@ python scripts/main.py
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
-python scripts/main.py --speak
-
+python -m autogpt --speak
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -207,12 +206,12 @@ Or you can set them in the `.env` file.
 
 ## 💀 Continuous Mode ⚠️
 Run the AI **without** user authorisation, 100% automated.
-Continuous mode is not recommended. 
-It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
+Continuous mode is not recommended.
+It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
 1. Run the `main.py` Python script in your terminal:
 ```
-python scripts/main.py --continuous
+python -m autogpt --continuous
 
 ```
 2. To exit the program, press Ctrl + C
@@ -220,7 +219,7 @@ python scripts/main.py --continuous
 ## GPT3.5 ONLY Mode
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 ```
-python scripts/main.py --gpt3only
+python -m autogpt --gpt3only
 ```
 
 ## 🖼 Image Generation
@@ -252,7 +251,7 @@ As an autonomous experiment, Auto-GPT may generate content or take actions that 
 
 By using Auto-GPT, you agree to indemnify, defend, and hold harmless the developers, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software or your violation of these terms.
 
-## 🐦 Connect with Us on Twitter 
+## 🐦 Connect with Us on Twitter
 
 Stay up-to-date with the latest news, updates, and insights about Auto-GPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
 
