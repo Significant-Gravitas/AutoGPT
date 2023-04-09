@@ -1,14 +1,13 @@
-from requests import get
+import requests
 from bs4 import BeautifulSoup
 from config import Config
 from llm_utils import create_chat_completion
 
 cfg = Config()
 
-
 def scrape_text(url):
     """Scrape text from a webpage"""
-    response = get(url)
+    response = requests.get(url)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
@@ -30,26 +29,22 @@ def scrape_text(url):
 def extract_hyperlinks(soup):
     """Extract hyperlinks from a BeautifulSoup object"""
     hyperlinks = []
-
     for link in soup.find_all('a', href=True):
         hyperlinks.append((link.text, link['href']))
-
     return hyperlinks
 
 
 def format_hyperlinks(hyperlinks):
     """Format hyperlinks into a list of strings"""
     formatted_links = []
-
     for link_text, link_url in hyperlinks:
         formatted_links.append(f"{link_text} ({link_url})")
-
     return formatted_links
 
 
 def scrape_links(url):
     """Scrape hyperlinks from a webpage"""
-    response = get(url)
+    response = requests.get(url)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
@@ -72,7 +67,6 @@ def split_text(text, max_length=8192):
     current_chunk = []
 
     for paragraph in paragraphs:
-
         if current_length + len(paragraph) + 1 <= max_length:
             current_chunk.append(paragraph)
             current_length += len(paragraph) + 1

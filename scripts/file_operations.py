@@ -36,10 +36,8 @@ def write_to_file(filename, text):
     try:
         filepath = safe_join(working_directory, filename)
         directory = os.path.dirname(filepath)
-
         if not os.path.exists(directory):
             os.makedirs(directory)
-
         with open(filepath, "w") as f:
             f.write(text)
         return "File written to successfully."
