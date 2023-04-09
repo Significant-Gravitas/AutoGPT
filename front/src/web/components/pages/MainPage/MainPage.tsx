@@ -1,7 +1,7 @@
-import { Archive, Delete } from "@mui/icons-material"
+import { Archive, Delete, Pause, PlayArrow, Stop } from "@mui/icons-material"
 import CommentRoundedIcon from "@mui/icons-material/CommentRounded"
 import { Chip } from "@mui/material"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Flex from "../../../style/Flex"
 import SButton from "../../../style/SButton"
 import AgentCard from "../../UI/molecules/AgentCard"
@@ -19,8 +19,12 @@ import {
   RightTasks,
   SIconButton,
 } from "./MainPage.styled"
+import AutoGPTAPI from "../../../api/AutoGPTAPI"
 
 const MainPage = () => {
+  const [playing, setPlaying] = useState(false)
+  const commentsEndRef = useRef(null)
+
   const [output, setOutput] = useState([
     {
       title: "Welcome back! ",
@@ -60,6 +64,26 @@ const MainPage = () => {
         "COMMAND = google ARGUMENTS = {'input': 'market trends for new businesses'}",
     },
   ])
+
+  // This function will scroll to the bottom of the messages element
+  const scrollToBottom = () => {
+    commentsEndRef.current.scrollIntoView({ behavior: "smooth" })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [output])
+
+  // AutoGpt.fetchData every 5 seconds if playing
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (playing) {
+        const data = await AutoGPTAPI.fetchData()
+        setOutput(data)
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [playing])
 
   return (
     <Container>
@@ -104,9 +128,30 @@ const MainPage = () => {
             </ActionBar>
             <CommentContainer>
               <Comments comments={output} />
+              <div ref={commentsEndRef} />
             </CommentContainer>
             <InputContainer>
               <Input placeholder="your input" />
+              {!playing && (
+                <SIconButton
+                  onClick={() => {
+                    setPlaying(!playing)
+                    AutoGPTAPI.startScript()
+                  }}
+                >
+                  <PlayArrow />
+                </SIconButton>
+              )}
+              {playing && (
+                <SIconButton
+                  onClick={() => {
+                    setPlaying(!playing)
+                    AutoGPTAPI.killScript()
+                  }}
+                >
+                  <Stop />
+                </SIconButton>
+              )}
             </InputContainer>
           </Flex>
         </Discussion>

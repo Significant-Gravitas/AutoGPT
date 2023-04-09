@@ -16,19 +16,9 @@ from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
+from internal_print import print_to_console
 
 
-def print_to_console(
-        title,
-        content="",
-        speak_text=False,
-        min_typing_speed=0.05,
-        max_typing_speed=0.01):
-    object = {
-        "title": title,
-        "content": content
-    }
-    print(json.dumps(object) + ",")
 
 
 def print_assistant_thoughts(assistant_reply):
@@ -200,7 +190,7 @@ def prompt_user():
     print_to_console(
         "Enter up to 5 goals for your AI: ",
         "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
-    print_to_console("Enter nothing to load defaults, enter nothing when finished.", flush=True)
+    # print_to_console("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
         ai_goal = input(f"Goal {i+1}: ")
@@ -293,9 +283,9 @@ while True:
         print_to_console(
             "NEXT ACTION: ",
             f"COMMAND = {command_name}  ARGUMENTS = {arguments}")
-        print_to_console(
-            f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
-            flush=True)
+        # print_to_console(
+        #     f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+        #     flush=True)
         while True:
             console_input = "y"#input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
             if console_input.lower() == "y":
@@ -322,7 +312,7 @@ while True:
             "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
             "")
         elif user_input == "EXIT":
-            print_to_console("Exiting...", flush=True)
+            # print_to_console("Exiting...", flush=True)
             break
     else:
         # Print command

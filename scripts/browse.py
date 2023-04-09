@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 from config import Config
 from llm_utils import create_chat_completion
-
+from internal_print import print_to_console
 cfg = Config()
 
 def scrape_text(url):
@@ -85,13 +85,13 @@ def summarize_text(text, question):
         return "Error: No text to summarize"
 
     text_length = len(text)
-    print(f"Text length: {text_length} characters")
+    print_to_console(f"Text length: {text_length} characters")
 
     summaries = []
     chunks = list(split_text(text))
 
     for i, chunk in enumerate(chunks):
-        print(f"Summarizing chunk {i + 1} / {len(chunks)}")
+        print_to_console(f"Summarizing chunk {i + 1} / {len(chunks)}")
         messages = [create_message(chunk, question)]
 
         summary = create_chat_completion(
@@ -101,7 +101,7 @@ def summarize_text(text, question):
         )
         summaries.append(summary)
 
-    print(f"Summarized {len(chunks)} chunks.")
+    print_to_console(f"Summarized {len(chunks)} chunks.")
 
     combined_summary = "\n".join(summaries)
     messages = [create_message(combined_summary, question)]

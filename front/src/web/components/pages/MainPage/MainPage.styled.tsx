@@ -99,6 +99,7 @@ export const InputContainer = styled.div`
   background-color: var(--grey800);
   padding: 0.5rem;
   width: 100%;
+  height: min-content;
 `
 export const CommentContainer = styled.div`
   max-height: calc(

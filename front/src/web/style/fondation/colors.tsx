@@ -1,23 +1,23 @@
 import { css } from "styled-components"
 
 const colors = css`
-  --yellow-hue: 50;
-  --yellow-saturation: 100%;
+  --yellow-hue: 67;
+  --yellow-saturation: 93%;
 
-  --yellow50-lightness: 93%;
-  --yellow100-lightness: 88%;
-  --yellow-200-lightness: 78%;
-  --yellow300-lightness: 68%;
-  --yellow400-lightness: 58%;
-  --yellow500-lightness: 48%;
-  --yellow600-lightness: 38%;
-  --yellow700-lightness: 28%;
-  --yellow800-lightness: 18%;
-  --yellow900-lightness: 8%;
+  --yellow50-lightness: 89%;
+  --yellow100-lightness: 83%;
+  --yellow-200-lightness: 73%;
+  --yellow300-lightness: 63%;
+  --yellow400-lightness: 53%;
+  --yellow500-lightness: 43%;
+  --yellow600-lightness: 33%;
+  --yellow700-lightness: 23%;
+  --yellow800-lightness: 13%;
+  --yellow900-lightness: 3%;
 
   --yellow-lightness: var(--yellow300-lightness);
 
-  // --yellow: hsl(50, 100%, 68%);
+  // --yellow: hsl(67, 93%, 63%)
   --yellow: hsl(
     var(--yellow-hue),
     var(--yellow-saturation),
@@ -25,63 +25,70 @@ const colors = css`
   );
   --yellow-text-color: black;
 
-  // hsl(50, 100%, 88%)
+  // hsl(67, 93%, 89%)
+  --yellow50: hsl(
+    var(--yellow-hue),
+    var(--yellow-saturation),
+    var(--yellow50-lightness)
+  );
+
+  // hsl(67, 93%, 83%)
   --yellow100: hsl(
     var(--yellow-hue),
     var(--yellow-saturation),
     var(--yellow100-lightness)
   );
 
-  // hsl(50, 100%, 78%)
+  // hsl(67, 93%, 73%)
   --yellow200: hsl(
     var(--yellow-hue),
     var(--yellow-saturation),
     var(--yellow200-lightness)
   );
 
-  // hsl(50, 100%, 68%)
+  // hsl(67, 93%, 63%)
   --yellow300: hsl(
     var(--yellow-hue),
     var(--yellow-saturation),
     var(--yellow300-lightness)
   );
 
-  // hsl(50, 100%, 58%)
+  // hsl(67, 93%, 53%);
   --yellow400: hsl(
     var(--yellow-hue),
     var(--yellow-saturation),
     var(--yellow400-lightness)
   );
 
-  // hsl(50, 100%, 48%)
+  // hsl(67, 93%, 43%)
   --yellow500: hsl(
     var(--yellow-hue),
     var(--yellow-saturation),
     var(--yellow500-lightness)
   );
 
-  // hsl(50, 100%, 38%)
+  // hsl(67, 93%, 33%)
   --yellow600: hsl(
     var(--yellow-hue),
     var(--yellow-saturation),
     var(--yellow600-lightness)
   );
 
-  // hsl(50, 100%, 28%)
+  // hsl(67, 93%, 23%)
   --yellow700: hsl(
     var(--yellow-hue),
     var(--yellow-saturation),
     var(--yellow700-lightness)
   );
 
-  // hsl(50, 100%, 18%)
+  // hsl(67, 93%, 13%)
   --yellow800: hsl(
     var(--yellow-hue),
     var(--yellow-saturation),
     var(--yellow800-lightness)
   );
 
-  // hsl(50, 100%, 8%)
+  // hsl(67, 93%, 3%)
   --yellow900: hsl(
     var(--yellow-hue),
     var(--yellow-saturation),

@@ -15,6 +15,7 @@ const StyledButton = styled(Button)<{
   cursor: pointer;
   outline: none;
   border: none;
+  text-transform: none;
 
   ${({ variant }) =>
     (variant === undefined || variant === "contained") &&
