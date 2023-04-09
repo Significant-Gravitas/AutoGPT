@@ -47,7 +47,6 @@ Your support is greatly appreciated
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
 
-
 ## 🚀 Features
 
 - 🌐 Internet access for searches and information gathering
@@ -57,7 +56,7 @@ Your support is greatly appreciated
 - 🗃️ File storage and summarization with GPT-3.5
 
 ## 📋 Requirements
-- [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
+- Python 3.8 or later
 - OpenAI API key
 - PINECONE API key
 
@@ -70,46 +69,69 @@ To install Auto-GPT, follow these steps:
 
 0. Make sure you have all the **requirements** above, if not, install/get them.
 
-*The following commands should be executed in a CMD, Bash or Powershell window. To do this, go to a folder on your computer, click in the folder path at the top and type CMD, then press enter.*
+	*The following commands should be executed in a CMD, Bash or Powershell window. To do this, go to a folder on your computer, click in the folder path at the top and type CMD, then press enter.*
 
 1. Clone the repository:
-For this step you need Git installed, but you can just download the zip file instead by clicking the button at the top of this page ☝️
-```
-git clone https://github.com/Torantulino/Auto-GPT.git
-```
+
+	For this step you need Git installed, but you can just download the zip file instead by clicking the button at the top of this page ☝️
+
+	```bash
+	git clone git@github.com:Torantulino/Auto-GPT.git
+	```
 
 2. Navigate to the project directory:
-*(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)*
-```
-$ cd 'Auto-GPT'
-```
 
-3. Install the required dependencies:
-*(Again, type this into your CMD window)*
-```
-pip install -r requirements.txt
-```
+	*(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)*
 
-4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
-  - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
-  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
-  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
+	```bash
+	cd Auto-GPT
+	```
+
+3. Create a virtual environment for Python 3.8:
+
+	```bash
+	python3.8 -m venv .venv
+	```
+
+4. Activate the virtual environment:
+
+	For Windows Users:
+
+	```
+	.venv\Scripts\activate
+	```
+
+	For macOS and Linux users:
+
+	```bash
+	source .venv/bin/activate
+	```
+
+5. Install the required dependencies:
+	*(Type this into your CMD window)*
+
+	```
+	pip install -r requirements.txt
+	```
+
+6. Copy `.env.template` to `.env` and fill in your `OPENAI_API_KEY` and `ELEVEN_LABS_API_KEY` (if using Speech Mode). If using GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values as explained [here](https://pypi.org/project/openai/) in the `Microsoft Azure Endpoints` section.
 
 ## 🔧 Usage
 
 1. Run the `main.py` Python script in your terminal:
 *(Type this into your CMD window)*
-```
-python scripts/main.py
-```
+
+	```
+	python scripts/main.py
+	```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
+
 ```
 python scripts/main.py --speak
-
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -128,13 +150,17 @@ To use the `google_official_search` command, you need to set up your Google API 
 9.  Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
 
 ### Setting up environment variables
-   For Windows Users:
+
+For Windows Users:
+   
 ```
 setx GOOGLE_API_KEY "YOUR_GOOGLE_API_KEY"
 setx CUSTOM_SEARCH_ENGINE_ID "YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
+
 For macOS and Linux users:
+
 ```
 export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
 export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
@@ -211,14 +237,15 @@ Continuous mode is not recommended.
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
 Use at your own risk.
 1. Run the `main.py` Python script in your terminal:
-```
-python scripts/main.py --continuous
 
-```
+	```
+	python scripts/main.py --continuous
+	```
 2. To exit the program, press Ctrl + C
 
 ## GPT3.5 ONLY Mode
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
+
 ```
 python scripts/main.py --gpt3only
 ```
