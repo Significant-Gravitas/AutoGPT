@@ -163,17 +163,6 @@ def google_official_search(query, num_results=8):
     return search_results_links
 
 
-def get_text_summary(url, question):
-    text = browse.scrape_text(url)
-    summary = browse.summarize_text(text, question)
-    return """ "Result" : """ + summary
-
-
-def get_hyperlinks(url):
-    link_list = browse.scrape_links(url)
-    return link_list
-
-
 def commit_memory(string):
     _text = f"""Committing memory with string "{string}" """
     mem.permanent_memory.append(string)
