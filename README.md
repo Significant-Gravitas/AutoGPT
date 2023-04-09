@@ -31,7 +31,6 @@ Your support is greatly appreciated
 
 - [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
     - [Demo (30/03/2023):](#demo-30032023)
-  - [💖 Help Fund Auto-GPT's Development](#-help-fund-auto-gpts-development)
   - [Table of Contents](#table-of-contents)
   - [🚀 Features](#-features)
   - [📋 Requirements](#-requirements)
@@ -40,9 +39,14 @@ Your support is greatly appreciated
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
+  - [Redis Setup](#redis-setup)
+  - [Redis Stack Setup with Docker Composer on Linux](#redis-stack-setup-with-docker-composer-on-linux)
+  - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+    - [Setting up environment variables](#setting-up-environment-variables-1)
+  - [View Memory Usage](#view-memory-usage)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
-  - [🖼 Image Generation](#image-generation)
+  - [🖼 Image Generation](#-image-generation)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
@@ -143,7 +147,7 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ## Redis Setup
 
-Install docker desktop.
+Install Docker Desktop.
 
 Run:
 ```
@@ -174,6 +178,20 @@ You can specify the memory index for redis using the following:
 ````
 MEMORY_INDEX=whatever
 ````
+## Redis Stack Setup with Docker Composer on Linux
+
+Steps:
+1. Improve security by setting up a Redis password in .env.
+```
+MEMORY_BACKEND=redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=secret
+```
+2. Run `./start_redis_docker.sh` and check with `docker ps` the presence of "redis-stack" under the NAMES column.
+3. Launch Auto-GPT and check for "Using memory of type: RedisMemory" at runtime.
+4. Start a query and then access [RedisInsight](http://localhost:8001/) using the defined password. Visualize data in real time, including performance statistics.
+
 
 ## 🌲 Pinecone API Key Setup
 

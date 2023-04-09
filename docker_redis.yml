@@ -1,0 +1,19 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis/redis-stack:latest # use redis/redis-stack-server:latest for Production deployment without RedisInsight
+    container_name: redis-stack
+    ports:
+      - "6379:6379"
+      - '8001:8001'
+    environment: 
+      REDIS_ARGS: --requirepass $REDIS_PASSWORD # value taken from REDIS_PASSWORD=secret in .env
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+    driver: local
+
+# You can use RedisInsight by pointing your browser to http://localhost:8001.
