@@ -1,9 +1,8 @@
 from typing import List, Optional
 import json
-from my_project.my_project.refactoring_tool.ai_functions import call_ai
 from typing import List, Optional
 import json
-from my_project.my_project.refactoring_tool.ai_functions import call_ai_function
+from src.refactoring_tool.ai_functions import call_ai_function
 
 def write_tests(code: str, focus: Optional[List[str]] = None) -> str:
     function_string = "def write_tests(code: str, focus: Optional[List[str]] = None) -> str:"

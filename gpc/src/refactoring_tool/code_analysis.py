@@ -1,6 +1,6 @@
 from typing import List
 import json
-from my_project.my_project.refactoring_tool.ai_functions import call_ai_function
+from src.refactoring_tool.ai_functions import call_ai_function
 
 def analyze_code_readability(code: str) -> List[str]:
     function_string = "def analyze_code_readability(code: str) -> List[str]:"

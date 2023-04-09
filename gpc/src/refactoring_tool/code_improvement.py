@@ -1,6 +1,6 @@
 from typing import List
 import json
-from my_project.my_project.refactoring_tool.ai_functions import call_ai_function
+from src.refactoring_tool.ai_functions import call_ai_function
 
 def refactor_variables(suggestions: List[str], code: str) -> str:
     function_string = "def refactor_variables(suggestions: List[str], code: str) -> str:"

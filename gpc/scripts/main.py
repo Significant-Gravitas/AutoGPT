@@ -1,22 +1,23 @@
 import yaml
-from code_analysis import *
-from code_improvement import *
-from test_generation import *
-from code_refactoring import RefactoringOptions, refactor_code
+from src.refactoring_tool.code_analysis import *
+from src.refactoring_tool.code_improvement import *
+from src.refactoring_tool.test_generation import *
+from src.refactoring_tool.code_refactoring import RefactoringOptions, refactor_code
+from src.refactoring_tool.ai_functions import call_ai_function  # Import the function
+
+
+
 
 # Read config file
 with open("config/refactoring_config.yaml", "r") as config_file:
     config = yaml.safe_load(config_file)
 
-# Define the input code
-input_code = """
-def calculate(a, b):
-    if a < b:
-        result = a * b
-    else:
-        result = a + b
-    return result
-"""
+# Define the input code using AI-generated code
+function_name = "calculate"
+args = ["a", "b"]
+description = "Calculate the result of two numbers based on their relationship."
+
+input_code = call_ai_function(function_name, args, description)
 
 # Set refactoring options based on config file
 options = RefactoringOptions(
