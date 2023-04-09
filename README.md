@@ -149,6 +149,7 @@ Run:
 ```
 docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
 ```
+See https://hub.docker.com/r/redis/redis-stack-server for setting a password and additional configuration.
 
 Set the following environment variables:
 ```
