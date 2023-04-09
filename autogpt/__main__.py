@@ -8,7 +8,6 @@ from enum import Enum, auto
 
 import yaml
 from colorama import Fore, Style
-from config import Config
 
 import autogpt.commands as cmd
 import autogpt.memory as mem

@@ -116,11 +116,7 @@ pip install -r requirements.txt
 1. Run the `autogpt` Python module in your terminal:
 *(Type this into your CMD window)*
 ```
-<<<<<<< HEAD
-PYTHONPATH=. python autogpt/main.py
-=======
 python -m autogpt
->>>>>>> autogpt-namespace-fix-imports
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
@@ -142,12 +138,7 @@ docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_worksp
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
 ```
-<<<<<<< HEAD
-PYTHONPATH=. python autogpt/main.py --speak
-=======
 python -m autogpt --speak
-
->>>>>>> autogpt-namespace-fix-imports
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -215,23 +206,14 @@ It is potentially dangerous and may cause your AI to run forever or carry out ac
 Use at your own risk.
 1. Run the `autogpt` python module in your terminal:
 ```
-<<<<<<< HEAD
-PYTHONPATH=. python autogpt/main.py --continuous
-=======
 python -m autogpt --speak --continuous
-
->>>>>>> autogpt-namespace-fix-imports
 ```
 2. To exit the program, press Ctrl + C
 
 ## GPT3.5 ONLY Mode
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 ```
-<<<<<<< HEAD
-PYTHONPATH=. python autogpt/main.py --gpt3only
-=======
 python -m autogpt --speak --gpt3only
->>>>>>> autogpt-namespace-fix-imports
 ```
 
 ## ⚠️ Limitations
