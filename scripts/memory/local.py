@@ -44,6 +44,8 @@ class LocalCache(MemoryProviderSingleton):
 
         Returns: None
         """
+        if 'Command Error:' in text:
+            return ""
         self.data.texts.append(text)
 
         embedding = get_ada_embedding(text)
@@ -64,6 +66,7 @@ class LocalCache(MemoryProviderSingleton):
                 option=SAVE_OPTIONS
             )
             f.write(out)
+        return text
 
     def clear(self) -> str:
         """
