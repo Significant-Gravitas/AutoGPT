@@ -1,53 +1,49 @@
 import unittest
-from unittest.mock import MagicMock, patch
-from typing import List, Optional
-from src.refactoring_tool.ai_functions import AIFunctionCaller
+from unittest.mock import patch
+from typing import List
+from src.refactoring_tool.ai_functions import call_ai_function, validate_and_sanitize_input
 
 
-class TestAIFunctionCaller(unittest.TestCase):
-
-    def setUp(self) -> None:
-        """
-        Set up a default instance of the AIFunctionCaller class for each test case.
-        """
-        self.ai_function_caller = AIFunctionCaller()
+class TestAIFunctions(unittest.TestCase):
 
     def test_validate_and_sanitize_input(self):
-        """
-        Test the validate_and_sanitize_input method of the AIFunctionCaller class.
-        """
-        valid_function = "def test_function(a: str, b: str) -> str:"
+        valid_function = "def test_function(a, b):"
         valid_args = ["arg1", "arg2"]
-        valid_description = "Test description"
+        valid_description = "Test function description."
 
-        self.assertTrue(self.ai_function_caller.validate_and_sanitize_input(
-            valid_function, valid_args, valid_description))
-        self.assertFalse(self.ai_function_caller.validate_and_sanitize_input(
-            "", valid_args, valid_description))
-        self.assertFalse(self.ai_function_caller.validate_and_sanitize_input(
-            valid_function, [], valid_description))
-        self.assertFalse(self.ai_function_caller.validate_and_sanitize_input(
-            valid_function, valid_args, ""))
+        self.assertTrue(validate_and_sanitize_input(valid_function, valid_args, valid_description))
 
-    @patch("src.refactoring_tool.ai_functions.openai.ChatCompletion.create")
-    def test_call_ai_function(self, mock_openai_chat_completion_create: MagicMock):
-        """
-        Test the call_ai_function method of the AIFunctionCaller class.
-        """
-        mock_openai_chat_completion_create.return_value = MagicMock(
-            choices=[MagicMock(message={"content": "Test AI response"})])
+        # Test invalid inputs
+        self.assertFalse(validate_and_sanitize_input(None, valid_args, valid_description))
+        self.assertFalse(validate_and_sanitize_input(valid_function, None, valid_description))
+        self.assertFalse(validate_and_sanitize_input(valid_function, valid_args, None))
 
-        function = "def test_function(a: str, b: str) -> str:"
+    @patch('src.refactoring_tool.ai_functions.openai.ChatCompletion.create')
+    def test_call_ai_function(self, mock_chat_completion_create):
+        function = "def test_function(a, b):"
         args = ["arg1", "arg2"]
-        description = "Test description"
+        description = "Test function description."
 
-        ai_response = self.ai_function_caller.call_ai_function(
-            function, args, description)
-        self.assertEqual(ai_response, "Test AI response")
+        # Create a nested object structure that mimics the API response
+        response_obj = lambda: None
+        response_obj.choices = [lambda: None]
+        response_obj.choices[0].message = {"content": "Test AI response"}
+
+        mock_chat_completion_create.return_value = response_obj
+
+        response = call_ai_function(function, tuple(args), description)
+        self.assertEqual(response, "Test AI response")
+
+        # Test with invalid inputs
+        with self.assertRaises(ValueError):
+            call_ai_function(None, tuple(args), description)
 
         with self.assertRaises(ValueError):
-            self.ai_function_caller.call_ai_function("", args, description)
+            call_ai_function(function, None, description)
+
+        with self.assertRaises(ValueError):
+            call_ai_function(function, tuple(args), None)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

@@ -1,56 +1,72 @@
 import unittest
-from src.agent_manager import Agent, AgentManager
+from unittest.mock import MagicMock, patch
+from typing import Dict, List
+import openai
+
+from src.agent_management.agent_manager import Agent, AgentManager
+
+
 
 class TestAgent(unittest.TestCase):
 
-    def test_agent_creation(self):
-        agent = Agent()
-        self.assertIsInstance(agent, Agent)
-        self.assertEqual(agent.model, "gpt-3.5-turbo")
-        self.assertEqual(agent.message_history, [])
+    def setUp(self) -> None:
+        self.agent = Agent()
 
-    def test_add_message(self):
-        agent = Agent()
-        agent.add_message("system", "Test message")
-        self.assertEqual(len(agent.message_history), 1)
-        self.assertEqual(agent.message_history[0], {"role": "system", "content": "Test message"})
+    def test_init(self) -> None:
+        self.assertIsInstance(self.agent, Agent)
+        self.assertEqual(self.agent.model, "gpt-3.5-turbo")
+        self.assertEqual(self.agent.message_history, [])
 
-    def test_get_history(self):
-        agent = Agent()
-        agent.add_message("system", "Test message")
-        history = agent.get_history()
+    def test_add_message(self) -> None:
+        self.agent.add_message("system", "Hello, Assistant!")
+        self.assertEqual(len(self.agent.message_history), 1)
+        self.assertEqual(self.agent.message_history[0], {"role": "system", "content": "Hello, Assistant!"})
+
+    def test_get_history(self) -> None:
+        self.agent.add_message("system", "Hello, Assistant!")
+        history = self.agent.get_history()
         self.assertEqual(len(history), 1)
-        self.assertEqual(history[0], {"role": "system", "content": "Test message"})
+        self.assertEqual(history[0], {"role": "system", "content": "Hello, Assistant!"})
 
 
 class TestAgentManager(unittest.TestCase):
 
-    def setUp(self):
-        self.manager = AgentManager(api_key="your_openai_api_key")
+    def setUp(self) -> None:
+        self.api_key = "your_openai_api_key"
+        self.agent_manager = AgentManager(self.api_key)
 
-    def test_create_agent(self):
-        self.manager.create_agent("test_agent")
-        self.assertIn("test_agent", self.manager.agents)
-        self.assertIsInstance(self.manager.agents["test_agent"], Agent)
+    def test_init(self) -> None:
+        self.assertIsInstance(self.agent_manager, AgentManager)
+        self.assertEqual(self.agent_manager.agents, {})
 
-    def test_list_agents(self):
-        self.manager.create_agent("test_agent")
-        agent_list = self.manager.list_agents()
-        self.assertEqual(agent_list, ["test_agent"])
+    def test_create_agent(self) -> None:
+        self.agent_manager.create_agent("test_agent")
+        self.assertIn("test_agent", self.agent_manager.agents)
 
-    def test_delete_agent(self):
-        self.manager.create_agent("test_agent")
-        self.manager.delete_agent("test_agent")
-        self.assertNotIn("test_agent", self.manager.agents)
+    @patch('src.agent_management.agent_manager.openai.ChatCompletion.create')
+    def test_send_message(self, mock_chat_completion_create) -> None:
+        mock_response = MagicMock()
+        mock_response.choices[0].text.strip.return_value = "Hello, I am your Assistant!"
+        mock_chat_completion_create.return_value = mock_response
 
-    def test_delete_agent_not_found(self):
-        with self.assertRaises(ValueError):
-            self.manager.delete_agent("non_existent_agent")
+        self.agent_manager.create_agent("test_agent")
+        response = self.agent_manager.send_message("test_agent", "Hello, Assistant!")
+        self.assertEqual(response, "Hello, I am your Assistant!")
+        self.assertEqual(len(self.agent_manager.agents["test_agent"].message_history), 2)
 
+    def test_list_agents(self) -> None:
+        self.agent_manager.create_agent("test_agent")
+        self.agent_manager.create_agent("test_agent2")
+        agent_list = self.agent_manager.list_agents()
+        self.assertIn("test_agent", agent_list)
+        self.assertIn("test_agent2", agent_list)
 
-# Make sure to replace "your_openai_api_key" with your actual OpenAI API key.
-# Note that running this test will make API calls, so you may want to mock the API calls for testing purposes.
-# We have not mocked the `send_message` method as it requires mocking the OpenAI API. You can do that using the `unittest.mock` library if needed.
+    def test_delete_agent(self) -> None:
+        self.agent_manager.create_agent("test_agent")
+        self.assertIn("test_agent", self.agent_manager.agents)
+        self.agent_manager.delete_agent("test_agent")
+        self.assertNotIn("test_agent", self.agent_manager.agents)
+
 
 if __name__ == "__main__":
     unittest.main()

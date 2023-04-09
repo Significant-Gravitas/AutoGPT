@@ -1,81 +1,55 @@
 import unittest
-from unittest.mock import MagicMock, patch
-from src.refactoring_tool.ai_functions import call_ai_function
-from src.refactoring_tool.code_improvements import CodeImprovement
+from unittest.mock import patch
+from typing import List
+from src.refactoring_tool.code_improvement import CodeImprovement
 
 
 class TestCodeImprovement(unittest.TestCase):
-    def setUp(self) -> None:
-        """
-        Create a clean instance of the CodeImprovement class for each test case.
-        """
-        self.code_improvement = CodeImprovement()
 
-    @patch("src.refactoring_tool.ai_functions.call_ai_function")
-    def test_refactor_variables(self, mock_call_ai_function: MagicMock):
-        """
-        Test the refactor_variables method.
-        """
-        # Mock the AI function call response
-        mock_call_ai_function.return_value = "def add_numbers(num1, num2):\n    return num1 + num2"
+    @patch('src.refactoring_tool.code_improvement.call_ai_function')
+    def test_refactor_variables(self, mock_call_ai_function):
+        suggestions = ["rename 'x' to 'count'", "rename 'y' to 'total'"]
+        code = "def example_function(x, y):\n    return x + y"
 
-        # Call the method
-        suggestions = ["num1", "num2"]
-        code = "def add_numbers(a, b):\n    return a + b"
-        result = self.code_improvement.refactor_variables(suggestions, code)
+        mock_call_ai_function.return_value = "def example_function(count, total):\n    return count + total"
 
-        # Check the result
-        self.assertEqual(
-            result, "def add_numbers(num1, num2):\n    return num1 + num2")
+        result = CodeImprovement.refactor_variables(suggestions, code)
+        self.assertEqual(result, "def example_function(count, total):\n    return count + total")
+        mock_call_ai_function.assert_called_once()
 
-    @patch("src.refactoring_tool.ai_functions.call_ai_function")
-    def test_optimize_loops(self, mock_call_ai_function: MagicMock):
-        """
-        Test the optimize_loops method.
-        """
-        # Mock the AI function call response
-        mock_call_ai_function.return_value = "for i in range(5):\n    print(i)"
+    @patch('src.refactoring_tool.code_improvement.call_ai_function')
+    def test_optimize_loops(self, mock_call_ai_function):
+        suggestions = ["use enumerate instead of range(len)"]
+        code = "for i in range(len(items)):\n    print(i, items[i])"
 
-        # Call the method
-        suggestions = ["use range instead of enumerate"]
-        code = "for i, _ in enumerate(range(5)):\n    print(i)"
-        result = self.code_improvement.optimize_loops(suggestions, code)
+        mock_call_ai_function.return_value = "for i, item in enumerate(items):\n    print(i, item)"
 
-        # Check the result
-        self.assertEqual(result, "for i in range(5):\n    print(i)")
+        result = CodeImprovement.optimize_loops(suggestions, code)
+        self.assertEqual(result, "for i, item in enumerate(items):\n    print(i, item)")
+        mock_call_ai_function.assert_called_once()
 
-    @patch("src.refactoring_tool.ai_functions.call_ai_function")
-    def test_simplify_conditionals(self, mock_call_ai_function: MagicMock):
-        """
-        Test the simplify_conditionals method.
-        """
-        # Mock the AI function call response
-        mock_call_ai_function.return_value = "if x > 0:\n    print('Positive')"
+    @patch('src.refactoring_tool.code_improvement.call_ai_function')
+    def test_simplify_conditionals(self, mock_call_ai_function):
+        suggestions = ["replace 'if x == True:' with 'if x:'"]
+        code = "if x == True:\n    print('x is True')"
 
-        # Call the method
-        suggestions = ["remove unnecessary else"]
-        code = "if x > 0:\n    print('Positive')\nelse:\n    if x == 0:\n        pass"
-        result = self.code_improvement.simplify_conditionals(suggestions, code)
+        mock_call_ai_function.return_value = "if x:\n    print('x is True')"
 
-        # Check the result
-        self.assertEqual(result, "if x > 0:\n    print('Positive')")
+        result = CodeImprovement.simplify_conditionals(suggestions, code)
+        self.assertEqual(result, "if x:\n    print('x is True')")
+        mock_call_ai_function.assert_called_once()
 
-    @patch("src.refactoring_tool.ai_functions.call_ai_function")
-    def test_refactor_functions(self, mock_call_ai_function: MagicMock):
-        """
-        Test the refactor_functions method.
-        """
-        # Mock the AI function call response
-        mock_call_ai_function.return_value = "def calculate_sum(a, b):\n    return a + b"
+    @patch('src.refactoring_tool.code_improvement.call_ai_function')
+    def test_refactor_functions(self, mock_call_ai_function):
+        suggestions = ["rename 'example_function' to 'renamed_example_function'"]
+        code = "def example_function():\n    pass"
 
-        # Call the method
-        suggestions = ["rename function to calculate_sum"]
-        code = "def add(a, b):\n    return a + b"
-        result = self.code_improvement.refactor_functions(suggestions, code)
+        mock_call_ai_function.return_value = "def renamed_example_function():\n    pass"
 
-        # Check the result
-        self.assertEqual(result, "def calculate_sum(a, b):\n    return a + b")
+        result = CodeImprovement.refactor_functions(suggestions, code)
+        self.assertEqual(result, "def renamed_example_function():\n    pass")
+        mock_call_ai_function.assert_called_once()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

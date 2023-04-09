@@ -1,79 +1,51 @@
 import unittest
-from unittest.mock import MagicMock, patch
-from src.refactoring_tool.ai_functions import call_ai_function
+from unittest.mock import patch
+from typing import List
 from src.refactoring_tool.code_analysis import CodeAnalysis
 
 
 class TestCodeAnalysis(unittest.TestCase):
-    def setUp(self) -> None:
-        """
-        Create a clean instance of the CodeAnalysis class for each test case.
-        """
-        self.code_analysis = CodeAnalysis()
 
-    @patch("src.refactoring_tool.ai_functions.call_ai_function")
-    def test_analyze_code_readability(self, mock_call_ai_function: MagicMock):
-        """
-        Test the analyze_code_readability method.
-        """
-        # Mock the AI function call response
-        mock_call_ai_function.return_value = "The code is easy to read."
+    @patch('src.refactoring_tool.code_analysis.call_ai_function')
+    def test_analyze_code_readability(self, mock_call_ai_function):
+        code = "def example_function(): pass"
 
-        # Call the method
-        code = "def add(a, b):\n    return a + b"
-        result = self.code_analysis.analyze_code_readability(code)
+        mock_call_ai_function.return_value = "Readable code example."
 
-        # Check the result
-        self.assertEqual(result, "The code is easy to read.")
+        result = CodeAnalysis.analyze_code_readability(code)
+        self.assertEqual(result, "Readable code example.")
+        mock_call_ai_function.assert_called_once()
 
-    @patch("src.refactoring_tool.ai_functions.call_ai_function")
-    def test_analyze_code_performance(self, mock_call_ai_function: MagicMock):
-        """
-        Test the analyze_code_performance method.
-        """
-        # Mock the AI function call response
-        mock_call_ai_function.return_value = '["Use list comprehensions.", "Optimize loop conditions."]'
+    @patch('src.refactoring_tool.code_analysis.call_ai_function')
+    def test_analyze_code_performance(self, mock_call_ai_function):
+        code = "def example_function(): pass"
 
-        # Call the method
-        code = "def add(a, b):\n    return a + b"
-        result = self.code_analysis.analyze_code_performance(code)
+        mock_call_ai_function.return_value = '["Optimization suggestion 1", "Optimization suggestion 2"]'
 
-        # Check the result
-        self.assertEqual(
-            result, ["Use list comprehensions.", "Optimize loop conditions."])
+        result = CodeAnalysis.analyze_code_performance(code)
+        self.assertEqual(result, ["Optimization suggestion 1", "Optimization suggestion 2"])
+        mock_call_ai_function.assert_called_once()
 
-    @patch("src.refactoring_tool.ai_functions.call_ai_function")
-    def test_analyze_code_security(self, mock_call_ai_function: MagicMock):
-        """
-        Test the analyze_code_security method.
-        """
-        # Mock the AI function call response
-        mock_call_ai_function.return_value = '["Sanitize user inputs.", "Use secure hashing algorithms."]'
+    @patch('src.refactoring_tool.code_analysis.call_ai_function')
+    def test_analyze_code_security(self, mock_call_ai_function):
+        code = "def example_function(): pass"
 
-        # Call the method
-        code = "def add(a, b):\n    return a + b"
-        result = self.code_analysis.analyze_code_security(code)
+        mock_call_ai_function.return_value = '["Security suggestion 1", "Security suggestion 2"]'
 
-        # Check the result
-        self.assertEqual(
-            result, ["Sanitize user inputs.", "Use secure hashing algorithms."])
+        result = CodeAnalysis.analyze_code_security(code)
+        self.assertEqual(result, ["Security suggestion 1", "Security suggestion 2"])
+        mock_call_ai_function.assert_called_once()
 
-    @patch("src.refactoring_tool.ai_functions.call_ai_function")
-    def test_analyze_code_modularity(self, mock_call_ai_function: MagicMock):
-        """
-        Test the analyze_code_modularity method.
-        """
-        # Mock the AI function call response
-        mock_call_ai_function.return_value = '["Break down large functions.", "Use classes and modules."]'
+    @patch('src.refactoring_tool.code_analysis.call_ai_function')
+    def test_analyze_code_modularity(self, mock_call_ai_function):
+        code = "def example_function(): pass"
 
-        # Call the method
-        code = "def add(a, b):\n    return a + b"
-        result = self.code_analysis.analyze_code_modularity(code)
+        mock_call_ai_function.return_value = '["Modularity suggestion 1", "Modularity suggestion 2"]'
 
-        # Check the result
-        self.assertEqual(
-            result, ["Break down large functions.", "Use classes and modules."])
+        result = CodeAnalysis.analyze_code_modularity(code)
+        self.assertEqual(result, ["Modularity suggestion 1", "Modularity suggestion 2"])
+        mock_call_ai_function.assert_called_once()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()
