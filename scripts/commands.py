@@ -10,6 +10,7 @@ import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
+from image_gen import generate_image
 from duckduckgo_search import ddg
 from scripts.qa.agent import QAAgent
 from googleapiclient.discovery import build
@@ -111,6 +112,8 @@ def execute_command(command_name, arguments, qamodel: QAAgent | None = None):
         elif cfg.qa_mode and qamodel is not None:
             if command_name == "message_user":
                 return qamodel.message_user(arguments["message"], arguments["wait_for_response"])
+        elif command_name == "generate_image":
+            return generate_image(arguments["prompt"])
         elif command_name == "task_complete":
             shutdown()
         else:
