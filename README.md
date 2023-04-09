@@ -9,7 +9,7 @@ Auto-GPT is an experimental open-source application showcasing the capabilities 
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
 
-<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2> 
+<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
 <p align="center">
 If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 A full day of development can easily cost as much as $20 in API costs, which for a free project is quite limiting.
@@ -120,6 +120,14 @@ python -m autogpt
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
+
+## Testing
+
+To run the tests for this project, run the following command:
+
+```
+python -m pytest
+```
 
 ### Docker
 
