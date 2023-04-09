@@ -39,7 +39,7 @@ class Config(metaclass=Singleton):
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
-        
+        self.gpt3only = False
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.use_azure = False
         self.use_azure = os.getenv("USE_AZURE") == 'True'
@@ -114,3 +114,6 @@ class Config(metaclass=Singleton):
 
     def set_debug_mode(self, value: bool):
         self.debug = value
+    
+    def set_gpt3_only(self, value:bool):
+        self.gpt3only = value
