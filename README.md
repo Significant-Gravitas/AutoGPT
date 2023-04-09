@@ -186,7 +186,7 @@ If you don't have access to the GPT4 api, this mode will allow you to use Auto-G
 ```
 python scripts/main.py --gpt3only
 ```
-For your safety we recommend using a VM(Virtual Machine) so your device may not get bricked as continous mode can potenially be dangerous for your computer.
+It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
 
 ## ⚠️ Limitations
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
