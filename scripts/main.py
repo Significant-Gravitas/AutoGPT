@@ -264,7 +264,7 @@ def parse_arguments():
 
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_smart_llm_model(cfg.fast_llm_model)
+        cfg.set_gpt3_only(True)
 
     if args.debug:
         print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
@@ -292,6 +292,9 @@ print('Using memory of type: ' + memory.__class__.__name__)
 
 # Interaction Loop
 while True:
+    # Setting up the token limit and model type according to model type
+    token_limit = (cfg.fast_token_limit if cfg.gpt3only else cfg.smart_token_limit)
+    model = (cfg.fast_llm_model if cfg.gpt3only else cfg.smart_llm_model)
     # Send message to AI, get response
     with Spinner("Thinking... "):
         assistant_reply = chat.chat_with_ai(
@@ -299,7 +302,9 @@ while True:
             user_input,
             full_message_history,
             memory,
-            cfg.fast_token_limit, cfg.debug) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            token_limit,
+            model,
+            cfg.debug)
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
