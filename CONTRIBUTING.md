@@ -1,12 +1,12 @@
 
 To contribute to this GitHub project, you can follow these steps:
 
-1. Fork the repository you want to contribute to by clicking the "Fork" button on the project page.
+1. Fork the repository you want to contribute to by clicking the "Fork" button on the project page. Note URL of the fork.
 
-2. Clone the repository to your local machine using the following command:
+2. Clone your forked repository to your local machine using the following command:
 
 ```
-git clone https://github.com/Torantulino/Auto-GPT
+git clone https://github.com/your_profile/Auto-GPT
 ```
 3. Create a new branch for your changes using the following command:
 
