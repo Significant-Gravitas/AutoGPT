@@ -10,7 +10,6 @@ def get_ada_embedding(text):
         return openai.Embedding.create(input=[text], model="text-embedding-ada-002")["data"][0]["embedding"]
     except Exception as e:
         print("Error getting embedding: ", e)
-        return None
 
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
