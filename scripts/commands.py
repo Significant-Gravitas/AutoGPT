@@ -1,6 +1,6 @@
 import browse
 import json
-from memory import PineconeMemory
+from memory import get_memory
 import datetime
 import agent_manager as agents
 import speak
@@ -53,10 +53,11 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
-    memory = PineconeMemory()
+    memory = get_memory(cfg)
+
     try:
         if command_name == "google":
-            
+
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
             if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
@@ -108,7 +109,7 @@ def execute_command(command_name, arguments):
         elif command_name == "task_complete":
             shutdown()
         else:
-            return f"Unknown command {command_name}"
+            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for availabe commands and only respond in the specified JSON format."
     # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)
