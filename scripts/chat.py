@@ -1,4 +1,4 @@
-import time
+from time import sleep, strftime
 import openai
 from dotenv import load_dotenv
 from config import Config
@@ -28,7 +28,7 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
         create_chat_message(
             "system", prompt),
         create_chat_message(
-            "system", f"The current time and date is {time.strftime('%c')}"),
+            "system", f"The current time and date is {strftime('%c')}"),
         create_chat_message(
             "system", f"This reminds you of these events from your past:\n{relevant_memory}\n\n")]
 
@@ -143,4 +143,4 @@ def chat_with_ai(
         except openai.error.RateLimitError:
             # TODO: WHen we switch to langchain, this is built in
             print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
-            time.sleep(10)
+            sleep(10)

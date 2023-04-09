@@ -1,6 +1,5 @@
 import docker
-import os
-
+from os import path 
 
 def execute_python_file(file):
     workspace_folder = "auto_gpt_workspace"
@@ -10,9 +9,9 @@ def execute_python_file(file):
     if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    file_path = os.path.join(workspace_folder, file)
+    file_path = path.join(workspace_folder, file)
 
-    if not os.path.isfile(file_path):
+    if not path.isfile(file_path):
         return f"Error: File '{file}' does not exist."
 
     try:
@@ -25,7 +24,7 @@ def execute_python_file(file):
             'python:3.10',
             f'python {file}',
             volumes={
-                os.path.abspath(workspace_folder): {
+                path.abspath(workspace_folder): {
                     'bind': '/workspace',
                     'mode': 'ro'}},
             working_dir='/workspace',

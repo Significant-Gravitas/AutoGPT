@@ -1,21 +1,20 @@
-import json
-import random
+from json import loads, decoder, JSONDecodeError
+from random import uniform
 import commands as cmd
 from memory import get_memory
 import data
 import chat
 from colorama import Fore, Style
 from spinner import Spinner
-import time
+from time import sleep
 import speak
 from enum import Enum, auto
-import sys
 from config import Config
 from json_parser import fix_and_parse_json
 from ai_config import AIConfig
-import traceback
-import yaml
-import argparse
+from traceback import format_exc
+from yaml import load, dump, FullLoader
+from argparse import ArgumentParser
 
 
 def print_to_console(
@@ -37,8 +36,8 @@ def print_to_console(
             print(word, end="", flush=True)
             if i < len(words) - 1:
                 print(" ", end="", flush=True)
-            typing_speed = random.uniform(min_typing_speed, max_typing_speed)
-            time.sleep(typing_speed)
+            typing_speed = uniform(min_typing_speed, max_typing_speed)
+            sleep(typing_speed)
             # type faster after each word
             min_typing_speed = min_typing_speed * 0.95
             max_typing_speed = max_typing_speed * 0.95
@@ -55,8 +54,8 @@ def print_assistant_thoughts(assistant_reply):
         # Check if assistant_reply_json is a string and attempt to parse it into a JSON object
         if isinstance(assistant_reply_json, str):
             try:
-                assistant_reply_json = json.loads(assistant_reply_json)
-            except json.JSONDecodeError as e:
+                assistant_reply_json = loads(assistant_reply_json)
+            except JSONDecodeError as e:
                 print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
                 assistant_reply_json = {}
 
@@ -95,12 +94,12 @@ def print_assistant_thoughts(assistant_reply):
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
 
-    except json.decoder.JSONDecodeError:
+    except decoder.JSONDecodeError:
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
 
     # All other errors, return "Error: + error message"
     except Exception as e:
-        call_stack = traceback.format_exc()
+        call_stack = format_exc()
         print_to_console("Error: \n", Fore.RED, call_stack)
 
 
@@ -108,7 +107,7 @@ def load_variables(config_file="config.yaml"):
     # Load variables from yaml file if it exists
     try:
         with open(config_file) as file:
-            config = yaml.load(file, Loader=yaml.FullLoader)
+            config = load(file, Loader=FullLoader)
         ai_name = config.get("ai_name")
         ai_role = config.get("ai_role")
         ai_goals = config.get("ai_goals")
@@ -144,7 +143,7 @@ def load_variables(config_file="config.yaml"):
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
     with open(config_file, "w") as file:
-        documents = yaml.dump(config, file)
+        documents = dump(config, file)
 
     prompt = data.load_prompt()
     prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
@@ -243,7 +242,7 @@ def parse_arguments():
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
     
-    parser = argparse.ArgumentParser(description='Process arguments.')
+    parser = ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')

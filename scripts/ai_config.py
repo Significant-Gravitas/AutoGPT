@@ -1,6 +1,6 @@
-import yaml
+from yaml import load, dump, FullLoader
 import data
-import os
+from os import path
 
 class AIConfig:
     def __init__(self, ai_name="", ai_role="", ai_goals=[]):
@@ -9,14 +9,14 @@ class AIConfig:
         self.ai_goals = ai_goals
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
+    SAVE_FILE = path.join(path.dirname(__file__), '..', 'ai_settings.yaml')
 
     @classmethod
     def load(cls, config_file=SAVE_FILE):
         # Load variables from yaml file if it exists
         try:
             with open(config_file) as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
+                config_params = load(file, Loader=FullLoader)
         except FileNotFoundError:
             config_params = {}
 
@@ -29,7 +29,7 @@ class AIConfig:
     def save(self, config_file=SAVE_FILE):
         config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
         with open(config_file, "w") as file:
-            yaml.dump(config, file)
+            dump(config, file)
 
     def construct_full_prompt(self):
         prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""

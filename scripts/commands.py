@@ -1,7 +1,7 @@
 import browse
-import json
+from json import loads, dumps, decoder
 from memory import get_memory
-import datetime
+from datetime import datetime
 import agent_manager as agents
 import speak
 from config import Config
@@ -45,7 +45,7 @@ def get_command(response):
             arguments = {}
 
         return command_name, arguments
-    except json.decoder.JSONDecodeError:
+    except decoder.JSONDecodeError:
         return "Error:", "Invalid JSON"
     # All other errors, return "Error: + error message"
     except Exception as e:
@@ -117,7 +117,7 @@ def execute_command(command_name, arguments):
 
 def get_datetime():
     return "Current date and time: " + \
-        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def google_search(query, num_results=8):
@@ -125,12 +125,11 @@ def google_search(query, num_results=8):
     for j in ddg(query, max_results=num_results):
         search_results.append(j)
 
-    return json.dumps(search_results, ensure_ascii=False, indent=4)
+    return dumps(search_results, ensure_ascii=False, indent=4)
 
 def google_official_search(query, num_results=8):
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
-    import json
 
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
@@ -151,7 +150,7 @@ def google_official_search(query, num_results=8):
 
     except HttpError as e:
         # Handle errors in the API call
-        error_details = json.loads(e.content.decode())
+        error_details = loads(e.content.decode())
         
         # Check if the error is related to an invalid or missing API key
         if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
