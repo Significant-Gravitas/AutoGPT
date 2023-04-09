@@ -37,6 +37,6 @@ def get_memory(cfg, init=False):
 __all__ = [
     "get_memory",
     "LocalCache",
-    "RedisCache",
-    "PineconeCache",
+    "RedisMemory",
+    "PineconeMemory",
 ]
