@@ -9,9 +9,7 @@ auto_gpt_workspace/*
 .env
 outputs/*
 ai_settings.yaml
-<<<<<<< HEAD
 outputs/logs/*.jsonl
-=======
 
 scripts/
 # Byte-compiled / optimized / DLL files
