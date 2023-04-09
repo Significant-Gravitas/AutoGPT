@@ -1,0 +1,16 @@
+analyze_options:
+  readability: true
+  performance: true
+  security: false
+  modularity: true
+
+refactoring_options:
+  refactor_variables: true
+  optimize_loops: true
+  simplify_conditionals: true
+  refactor_functions: true
+
+testing_options:
+  unit_tests: true
+  integration_tests: false
+  system_tests: false
