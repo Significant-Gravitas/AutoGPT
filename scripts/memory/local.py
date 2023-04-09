@@ -49,6 +49,8 @@ class LocalCache(MemoryProviderSingleton):
         self.data.texts.append(text)
 
         embedding = get_ada_embedding(text)
+        if embedding is None:
+            return ""
 
         vector = np.array(embedding).astype(np.float32)
         vector = vector[np.newaxis, :]
@@ -100,7 +102,8 @@ class LocalCache(MemoryProviderSingleton):
         Returns: List[str]
         """
         embedding = get_ada_embedding(text)
-
+        if embedding is None:
+            return []
         scores = np.dot(self.data.embeddings, embedding)
 
         top_k_indices = np.argsort(scores)[-k:][::-1]

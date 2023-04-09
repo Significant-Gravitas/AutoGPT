@@ -72,6 +72,8 @@ class RedisMemory(MemoryProviderSingleton):
         if 'Command Error:' in data:
             return ""
         vector = get_ada_embedding(data)
+        if vector is None:
+            return ""
         vector = np.array(vector).astype(np.float32).tobytes()
         data_dict = {
             b"data": data,
@@ -120,6 +122,8 @@ class RedisMemory(MemoryProviderSingleton):
         Returns: A list of the most relevant data.
         """
         query_embedding = get_ada_embedding(data)
+        if query_embedding is None:
+            return []
         base_query = f"*=>[KNN {num_relevant} @embedding $vector AS vector_score]"
         query = Query(base_query).return_fields(
             "data",

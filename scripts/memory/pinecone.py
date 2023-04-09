@@ -43,6 +43,8 @@ class PineconeMemory(MemoryProviderSingleton):
         :param num_relevant: The number of relevant data to return. Defaults to 5
         """
         query_embedding = get_ada_embedding(data)
+        if query_embedding is None:
+            return ""
         results = self.index.query(query_embedding, top_k=num_relevant, include_metadata=True)
         sorted_results = sorted(results.matches, key=lambda x: x.score)
         return [str(item['metadata']["raw_text"]) for item in sorted_results]
