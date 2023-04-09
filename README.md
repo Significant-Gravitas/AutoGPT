@@ -9,7 +9,7 @@ Auto-GPT is an experimental open-source application showcasing the capabilities 
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
 
-<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2> 
+<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
 <p align="center">
 If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 A full day of development can easily cost as much as $20 in API costs, which for a free project is quite limiting.
@@ -169,40 +169,6 @@ export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
 export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
-
-## Redis Setup
-
-Install docker desktop.
-
-Run:
-```
-docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
-```
-See https://hub.docker.com/r/redis/redis-stack-server for setting a password and additional configuration.
-
-Set the following environment variables:
-```
-MEMORY_BACKEND=redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=
-```
-
-Note that this is not intended to be run facing the internet and is not secure, do not expose redis to the internet without a password or at all really.
-
-You can optionally set
-
-```
-WIPE_REDIS_ON_START=False
-```
-
-To persist memory stored in Redis.
-
-You can specify the memory index for redis using the following:
-
-````
-MEMORY_INDEX=whatever
-````
 
 ## 🌲 Pinecone API Key Setup
 
