@@ -1,22 +1,9 @@
 from typing import List, Optional
 
-from .code_analysis import (
-    analyze_code_readability,
-    analyze_code_performance,
-    analyze_code_security,
-    analyze_code_modularity,
-)
-from .code_improvement import (
-    refactor_variables,
-    optimize_loops,
-    simplify_conditionals,
-    refactor_functions,
-)
-from .test_generation import (
-    write_tests,
-    write_integration_tests,
-    write_system_tests,
-)
+from .code_analysis import CodeAnalysis
+from .code_improvement import CodeImprovement
+from .test_generation import TestGeneration
+
 
 class RefactoringOptions:
     def __init__(
@@ -53,31 +40,33 @@ def refactor_code(code: str, options: Optional[RefactoringOptions] = None) -> st
     # Analyze code
     analysis_results = []
     if options.analyze_readability:
-        analysis_results.extend(analyze_code_readability(code))
+        analysis_result = CodeAnalysis.analyze_code_readability(code)
+        if analysis_result:  # Make sure the result is not empty
+            analysis_results.append(analysis_result)
     if options.analyze_performance:
-        analysis_results.extend(analyze_code_performance(code))
+        analysis_results.extend(CodeAnalysis.analyze_code_performance(code))
     if options.analyze_security:
-        analysis_results.extend(analyze_code_security(code))
+        analysis_results.extend(CodeAnalysis.analyze_code_security(code))
     if options.analyze_modularity:
-        analysis_results.extend(analyze_code_modularity(code))
+        analysis_results.extend(CodeAnalysis.analyze_code_modularity(code))
 
     # Improve code
     if options.refactor_variables:
-        code = refactor_variables(analysis_results, code)
+        code = CodeImprovement.refactor_variables(analysis_results, code)
     if options.optimize_loops:
-        code = optimize_loops(analysis_results, code)
+        code = CodeImprovement.optimize_loops(analysis_results, code)
     if options.simplify_conditionals:
-        code = simplify_conditionals(analysis_results, code)
+        code = CodeImprovement.simplify_conditionals(analysis_results, code)
     if options.refactor_functions:
-        code = refactor_functions(analysis_results, code)
+        code = CodeImprovement.refactor_functions(analysis_results, code)
 
     # Generate tests
     test_code = ""
     if options.generate_unit_tests:
-        test_code += write_tests(code)
+        test_code += TestGeneration.write_tests(code)
     if options.generate_integration_tests:
-        test_code += write_integration_tests(code)
+        test_code += TestGeneration.write_integration_tests(code)
     if options.generate_system_tests:
-        test_code += write_system_tests(code)
+        test_code += TestGeneration.write_system_tests(code)
 
     return code, test_code
