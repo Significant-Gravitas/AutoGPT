@@ -31,6 +31,7 @@ class Config(metaclass=Singleton):
     """
 
     def __init__(self):
+        self.debug = False
         self.continuous_mode = False
         self.speak_mode = False
         # TODO - make these models be self-contained, using langchain, so we can configure them once and call it good 
@@ -110,3 +111,6 @@ class Config(metaclass=Singleton):
 
     def set_pinecone_region(self, value: str):
         self.pinecone_region = value
+
+    def set_debug_mode(self, value: bool):
+        self.debug = value
