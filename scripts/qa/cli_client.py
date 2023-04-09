@@ -2,6 +2,7 @@ import json
 from colorama import init
 from scripts.qa import connect_to_redis
 from scripts import chat
+from scripts import speak
 from typing import List
 import threading
 from rich import print
@@ -14,7 +15,13 @@ from rich.console import Console
 import os
 from uuid import uuid4
 import datetime
+import argparse
 from pathlib import Path
+
+# Create an argparse that has the boolean parameter --speak
+parser = argparse.ArgumentParser(description='Process arguments.')
+parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
+args = parser.parse_args()
 
 # Get the current timestamp
 now = datetime.datetime.now()
@@ -46,7 +53,9 @@ class QAClient:
                 with console_lock:
                     msg = chat.create_chat_message("assistant", message)
                     with open(LOG_PATH, "a") as f:
-                        f.write(json.dumps(msg))
+                        f.write(json.dumps(msg)+"\n")
+                    if args.speak:
+                        speak.say_text(msg["content"])
                     console.print(pretty_format_message(msg))
 
     def send_message(self, message: str) -> None:
