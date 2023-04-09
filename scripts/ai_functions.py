@@ -1,5 +1,5 @@
 from typing import List, Optional
-from json import dumps
+import json
 from config import Config
 from call_ai_function import call_ai_function
 from json_parser import fix_and_parse_json
@@ -23,7 +23,7 @@ def improve_code(suggestions: List[str], code: str) -> str:
     function_string = (
         "def generate_improved_code(suggestions: List[str], code: str) -> str:"
     )
-    args = [dumps(suggestions), code]
+    args = [json.dumps(suggestions), code]
     description_string = """Improves the provided code based on the suggestions provided, making no other changes."""
 
     result_string = call_ai_function(function_string, args, description_string)
@@ -36,7 +36,7 @@ def write_tests(code: str, focus: List[str]) -> str:
     function_string = (
         "def create_test_cases(code: str, focus: Optional[str] = None) -> str:"
     )
-    args = [code, dumps(focus)]
+    args = [code, json.dumps(focus)]
     description_string = """Generates test cases for the existing code, focusing on specific areas if required."""
 
     result_string = call_ai_function(function_string, args, description_string)

@@ -13,7 +13,6 @@ class AIConfig:
     # Soon this will go in a folder where it remembers more stuff about the run(s)
     SAVE_FILE = "last_run_ai_settings.yaml"
 
-
     @classmethod
     def load(cls, config_file=SAVE_FILE):
         """Load variables from yaml file if it exists, otherwise use defaults."""
@@ -28,7 +27,6 @@ class AIConfig:
         ai_goals = config_params.get("ai_goals", [])
 
         return cls(ai_name, ai_role, ai_goals)
-
 
     def save(self, config_file=SAVE_FILE):
         """Save variables to yaml file."""

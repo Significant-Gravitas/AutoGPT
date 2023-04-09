@@ -1,7 +1,6 @@
 import json
 from call_ai_function import call_ai_function
 from config import Config
-
 cfg = Config()
 
 def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
@@ -38,18 +37,15 @@ def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
           json_str = json_str[:last_brace_index+1]
           return json.loads(json_str)
         except Exception as e:
-
           if try_to_fix_with_gpt:
             print(f"Warning: Failed to parse AI output, attempting to fix.\n If you see this warning frequently, it's likely that your prompt is confusing the AI. Try changing it up slightly.")
             # Now try to fix this up using the ai_functions
             ai_fixed_json = fix_json(json_str, json_schema, False)
-
             if ai_fixed_json != "failed":
               return json.loads(ai_fixed_json)
             else:
               print(f"Failed to fix ai output, telling the AI.") # This allows the AI to react to the error message, which usually results in it correcting its ways.
               return json_str
-            
           else:
             raise e
         
@@ -63,11 +59,9 @@ def fix_json(json_str: str, schema: str, debug=False) -> str:
     # If it doesn't already start with a "`", add one:
     if not json_str.startswith("`"):
       json_str = "```json\n" + json_str + "\n```"
-
     result_string = call_ai_function(
         function_string, args, description_string, model=cfg.fast_llm_model
     )
-
     if debug:
         print("------------ JSON FIX ATTEMPT ---------------")
         print(f"Original JSON: {json_str}")

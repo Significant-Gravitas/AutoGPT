@@ -1,8 +1,8 @@
 from config import Config
-from llm_utils import create_chat_completion
+
 cfg = Config()
 
-
+from llm_utils import create_chat_completion
 # This is a magic function that can do anything with no-code. See
 # https://github.com/Torantulino/AI-Functions for more info.
 def call_ai_function(function, args, description, model=cfg.smart_llm_model):
