@@ -2,8 +2,9 @@ from typing import List
 import json
 from src.refactoring_tool.ai_functions import call_ai_function
 
+
 class CodeAnalysis:
-    
+
     @staticmethod
     def analyze_code_readability(code: str) -> str:
         function_string = "def analyze_code_readability(code: str) -> str:"
