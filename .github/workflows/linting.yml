@@ -1,4 +1,4 @@
-name: auto-format
+name: Linting
 on: pull_request
 jobs:
   format:
