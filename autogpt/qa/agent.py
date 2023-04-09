@@ -1,5 +1,5 @@
-from scripts.qa import connect_to_redis
-from scripts import chat
+from autogpt.qa import connect_to_redis
+from autogpt import chat
 from typing import List
 
 class QAAgent:

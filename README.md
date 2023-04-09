@@ -141,12 +141,12 @@ python -m autogpt
 1. Run the `main.py` Python script in terminal window A:
 *(Type this into your CMD window)*
 ```
-PYTHONPATH=. python scripts/main.py --qa
+PYTHONPATH=. python -m autogpt --qa
 ```
 2. Run the `qa.py` Python script in terminal window B:
 *(Type this into your CMD window)*
 ```
-PYTHONPATH=. python scripts/qa/cli_client.py
+PYTHONPATH=. python autogpt/qa/cli_client.py
 ```
 3. After each of AUTO-GPT's actions in terminal window A, type "NEXT COMMAND" to authorise them to continue.
 4. Periodically, AUTO-GPT's action will be to ask the user a question. In this case, the question will be displayed in terminal window B. Type your answer and press Enter.

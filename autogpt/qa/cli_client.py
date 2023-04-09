@@ -1,8 +1,8 @@
 import json
 from colorama import init
-from scripts.qa import connect_to_redis
-from scripts import chat
-from scripts import speak
+from autogpt.qa import connect_to_redis
+from autogpt import chat
+from autogpt import speak
 from typing import List
 import threading
 from rich import print

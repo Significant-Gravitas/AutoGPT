@@ -1,11 +1,9 @@
 import time
-import browse
 import json
-from memory import PineconeMemory
 import datetime
 import json
 from duckduckgo_search import ddg
-from scripts.qa.agent import QAAgent
+from autogpt.qa.agent import QAAgent
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 

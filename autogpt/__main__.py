@@ -5,6 +5,7 @@ import random
 import sys
 import time
 import traceback
+from typing import Optional, List
 from enum import Enum, auto
 
 import yaml
@@ -22,6 +23,7 @@ from autogpt.config import Config
 from autogpt.json_parser import fix_and_parse_json
 from autogpt.memory import PineconeMemory
 from autogpt.spinner import Spinner
+from autogpt.custom_types import ChatMessage
 
 def print_to_console(
         title,

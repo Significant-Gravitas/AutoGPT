@@ -5,6 +5,7 @@ import openai
 from autogpt import token_counter
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
+from autogpt.custom_types import ChatMessage, RolesEnum
 
 cfg = Config()
 

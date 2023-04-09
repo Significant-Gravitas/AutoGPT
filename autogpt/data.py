@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import chevron
-from config import Config
+from autogpt.config import Config
 SRC_DIR = Path(__file__).parent
 
 def load_prompt(cfg: Config):
