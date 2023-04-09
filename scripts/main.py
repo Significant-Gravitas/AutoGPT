@@ -204,7 +204,7 @@ def prompt_user():
     print_to_console(
         "Name your AI: ",
         Fore.GREEN,
-        "For example, 'Entrepreneur-GPT'")    
+        "For example, 'Entrepreneur-GPT'")
     ai_name = input("AI Name: ")
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
@@ -228,7 +228,7 @@ def prompt_user():
     print_to_console(
         "Enter up to 5 goals for your AI: ",
         Fore.GREEN,
-        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")    
+        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
@@ -328,7 +328,7 @@ while True:
         print("Enter 'y' to authorise command or 'n' to exit program...", flush=True)
 
         while True:
-            console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)            
+            console_input = input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
             if console_input.lower() == "y":
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break
