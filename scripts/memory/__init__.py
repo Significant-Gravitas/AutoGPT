@@ -31,6 +31,8 @@ def get_memory(cfg, init=False):
 
     if memory is None:
         memory = LocalCache(cfg)
+        if init:
+            memory.clear()
     return memory
 
 
