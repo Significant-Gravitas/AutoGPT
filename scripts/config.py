@@ -36,12 +36,12 @@ class Config(metaclass=Singleton):
         self.debug = False
         self.continuous_mode = False
         self.speak_mode = False
-        # TODO - make these models be self-contained, using langchain, so we can configure them once and call it good 
-        self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo") 
+        # TODO - make these models be self-contained, using langchain, so we can configure them once and call it good
+        self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
-        
+
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.use_azure = False
         self.use_azure = os.getenv("USE_AZURE") == 'True'
@@ -52,9 +52,9 @@ class Config(metaclass=Singleton):
             openai.api_type = "azure"
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
-        
+
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        
+
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
