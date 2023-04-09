@@ -22,7 +22,7 @@ COMMANDS:
 16. Get Improved Code: "improve_code", args: "suggestions": "<list_of_suggestions>", "code": "<full_code_string>"
 17. Write Tests: "write_tests", args: "code": "<full_code_string>", "focus": "<list_of_focus_areas>"
 18. Execute Python File: "execute_python_file", args: "file": "<file>"
-19. Execute Shell Command: "exec_shell", args: "command_line": "<command_line>"
+19. Execute Shell Command: "exec_shell", args: "command_line": "<command_line>". Remember only to use commands that terminate, interactive tools like vim are not supported!
 20. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 
 RESOURCES:
