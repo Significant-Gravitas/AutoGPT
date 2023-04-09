@@ -1,13 +1,10 @@
 import time
-import openai
 from dotenv import load_dotenv
 from config import Config
 import token_counter
+from api_manager import api_manager
 
 cfg = Config()
-
-from llm_utils import create_chat_completion
-
 
 def create_chat_message(role, content):
     """
@@ -29,6 +26,8 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
             "system", prompt),
         create_chat_message(
             "system", f"The current time and date is {time.strftime('%c')}"),
+        create_chat_message(
+            "system", f"Your current running cost is ${api_manager.get_total_cost():.3f}"),
         create_chat_message(
             "system", f"This reminds you of these events from your past:\n{relevant_memory}\n\n")]
 
@@ -93,7 +92,7 @@ def chat_with_ai(
                 if current_tokens_used + tokens_to_add > send_token_limit:
                     break
 
-                # Add the most recent message to the start of the current context, after the two system prompts.
+                # Add the most recent message to the start of the current context, after the three system prompts.
                 current_context.insert(insertion_index, full_message_history[next_message_to_add_index])
 
                 # Count the currently used tokens
@@ -125,7 +124,7 @@ def chat_with_ai(
                 print("----------- END OF CONTEXT ----------------")
 
             # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
-            assistant_reply = create_chat_completion(
+            assistant_reply = api_manager.create_chat_completion(
                 model=model,
                 messages=current_context,
                 max_tokens=tokens_remaining,

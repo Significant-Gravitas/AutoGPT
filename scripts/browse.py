@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 from config import Config
-from llm_utils import create_chat_completion
+from api_manager import api_manager
 
 cfg = Config()
 
@@ -94,7 +94,7 @@ def summarize_text(text, question):
         print(f"Summarizing chunk {i + 1} / {len(chunks)}")
         messages = [create_message(chunk, question)]
 
-        summary = create_chat_completion(
+        summary = api_manager.create_chat_completion(
             model=cfg.fast_llm_model,
             messages=messages,
             max_tokens=300,
@@ -106,7 +106,7 @@ def summarize_text(text, question):
     combined_summary = "\n".join(summaries)
     messages = [create_message(combined_summary, question)]
 
-    final_summary = create_chat_completion(
+    final_summary = api_manager.create_chat_completion(
         model=cfg.fast_llm_model,
         messages=messages,
         max_tokens=300,
