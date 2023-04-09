@@ -47,6 +47,7 @@ def chat_with_ai(
         full_message_history,
         permanent_memory,
         token_limit,
+        model,
         debug=False):
     while True:
         try:
@@ -59,11 +60,10 @@ def chat_with_ai(
             full_message_history (list): The list of all messages sent between the user and the AI.
             permanent_memory (Obj): The memory object containing the permanent memory.
             token_limit (int): The maximum number of tokens allowed in the API call.
-
+            model_type(str): The type of model to use: gpt-3.5-turbo or gpt-4
             Returns:
             str: The AI's response.
             """
-            model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
             if debug:
                 print(f"Token limit: {token_limit}")
