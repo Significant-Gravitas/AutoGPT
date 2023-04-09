@@ -27,6 +27,23 @@ By following these guidelines, your PRs are more likely to be merged quickly aft
 - [ ] I have considered potential risks and mitigations for my changes.
 - [ ] I have documented my changes clearly and comprehensively.
 - [ ] I have not snuck in any "extra" small tweaks changes <!-- Submit these as seperate Pull Reqests, they are the easiest to merge! -->
+- [ ] This is not a duplicate PR <!-- If it's a defect many people submit the same thing -->
+
+<!-- Explain how you tested this functionality. Include the steps to reproduce and any relevant test cases. -->
+
+### Change Focus
+
+<!-- As there are many PRs, only quality PRs will be merged. This means that the PRs should be focused: 
+ 
+- if it's linting it should only include linting, such as changed whitespace, alignment, double empty lines etc
+- if it's refactoring, refactor one thing
+- if it's a new feature, make it so it doesn't complicate the installation procedure, especially for Windows users
+- if it does complicate it, make it entirely optional. Make sure the dummy .env is not littered with variables 99% of beginner users won't need.
+
+-->
+
+
+### Change Safety
 
 <!-- If you haven't added tests, please explain why. If you have, check the appropriate box. If you've ensured your PR is atomic and well-documented, check the corresponding boxes. -->
 
