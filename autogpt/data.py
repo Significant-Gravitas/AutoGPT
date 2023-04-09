@@ -4,7 +4,9 @@ import chevron
 from autogpt.config import Config
 SRC_DIR = Path(__file__).parent
 
-def load_prompt(cfg: Config):
+cfg = Config()
+
+def load_prompt():
     # get directory of this file:
     file_dir = Path(os.path.dirname(os.path.realpath(__file__)))
     data_dir = file_dir / "data"
