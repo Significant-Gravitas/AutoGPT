@@ -6,7 +6,10 @@ from llm_utils import create_chat_completion
 cfg = Config()
 
 def scrape_text(url):
-    response = requests.get(url, headers=cfg.user_agent_header)
+    try:
+        response = requests.get(url, headers=cfg.user_agent_header)
+    except requests.exceptions.RequestException as e:
+        return "Error: " + str(e)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
