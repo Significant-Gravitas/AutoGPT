@@ -173,7 +173,7 @@ def construct_prompt():
 Name:  {config.ai_name}
 Role:  {config.ai_role}
 Goals: {config.ai_goals}  
-Continue (y/n): """)        
+Continue (y/n): """)
         if should_continue.lower() == "n":
             config = AIConfig()
 
