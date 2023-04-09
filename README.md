@@ -188,7 +188,7 @@ are loaded for the agent at any given time.
    For Windows Users:
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
-export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
+setx PINECONE_ENV "Your pinecone region" # something like: us-east4-gcp
 
 ```
 For macOS and Linux users:
