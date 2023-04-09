@@ -12,4 +12,6 @@ docker
 duckduckgo-search
 google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
 pinecone-client==2.2.1
+redis
+orjson
 Pillow

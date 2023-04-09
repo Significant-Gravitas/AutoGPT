@@ -141,6 +141,39 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
+## Redis Setup
+
+Install docker desktop.
+
+Run:
+```
+docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+```
+
+Set the following environment variables:
+```
+MEMORY_BACKEND=redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+```
+
+Note that this is not intended to be run facing the internet and is not secure, do not expose redis to the internet without a password or at all really.
+
+You can optionally set
+
+```
+WIPE_REDIS_ON_START=False
+```
+
+To persist memory stored in Redis.
+
+You can specify the memory index for redis using the following:
+
+````
+MEMORY_INDEX=whatever
+````
+
 ## 🌲 Pinecone API Key Setup
 
 Pinecone enable a vector based memory so a vast memory can be stored and only relevant memories
