@@ -134,7 +134,7 @@ Entrepreneur-GTP:
 -----------------------------------------------------------------------
 USER:
 """
-Summary: 
+Summary:
 """
 The article discusses 18 profitable online business ideas, including starting an e-commerce store, providing virtual assistant services, becoming an affiliate marketer, offering online training or education, and creating mobile applications. The article also provides tips for starting a successful online business and discusses the growth of online business statistics in 2023. Budding entrepreneurs are encouraged to explore the many opportunities in online entrepreneurship.
 """
@@ -396,7 +396,7 @@ LONG TERM MEMORY:
 [0] : """18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""",
 [1] : """
 Chosen business idea: Blogging with affiliate marketing
-""" 
+"""
 }
 """
 -----------------------------------------------------------------------
@@ -564,7 +564,7 @@ LONG TERM MEMORY:
 [0] : """18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""",
 [1] : """
 Chosen business idea: Blogging with affiliate marketing
-""" 
+"""
 [2] : """
 Blogging with affiliate marketing strategy: 1. Choose a niche, 2. Domain and hosting, 3. Design your blog, 4. Create valuable content, 5. SEO optimization, 6. Build an email list, 7. Join affiliate programs, 8. Integrate affiliate links, 9. Promote your blog, 10. Analyze and adjust
 """
@@ -654,7 +654,7 @@ LONG TERM MEMORY:
 [0] : """18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""",
 [1] : """
 Chosen business idea: Blogging with affiliate marketing
-""" 
+"""
 [2] : """
 Blogging with affiliate marketing strategy: 1. Choose a niche, 2. Domain and hosting, 3. Design your blog, 4. Create valuable content, 5. SEO optimization, 6. Build an email list, 7. Join affiliate programs, 8. Integrate affiliate links, 9. Promote your blog, 10. Analyze and adjust
 """
@@ -792,7 +792,7 @@ LONG TERM MEMORY:
 [0] : """18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""",
 [1] : """
 Chosen business idea: Blogging with affiliate marketing
-""" 
+"""
 [2] : """
 Blogging with affiliate marketing strategy: 1. Choose a niche, 2. Domain and hosting, 3. Design your blog, 4. Create valuable content, 5. SEO optimization, 6. Build an email list, 7. Join affiliate programs, 8. Integrate affiliate links, 9. Promote your blog, 10. Analyze and adjust
 """
@@ -901,7 +901,7 @@ LONG TERM MEMORY:
 [0] : """18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""",
 [1] : """
 Chosen business idea: Blogging with affiliate marketing
-""" 
+"""
 [2] : """
 Blogging with affiliate marketing strategy: 1. Choose a niche, 2. Domain and hosting, 3. Design your blog, 4. Create valuable content, 5. SEO optimization, 6. Build an email list, 7. Join affiliate programs, 8. Integrate affiliate links, 9. Promote your blog, 10. Analyze and adjust
 """
