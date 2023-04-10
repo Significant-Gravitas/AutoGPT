@@ -49,4 +49,4 @@ def say_text(text, voice_index=0):
     else:
         success = eleven_labs_speech(text, voice_index)
         if not success:
-            gtts_speech()(text)
+            gtts_speech(text)
