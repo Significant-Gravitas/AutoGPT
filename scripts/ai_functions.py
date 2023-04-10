@@ -6,8 +6,8 @@ from json_parser import fix_and_parse_json
 cfg = Config()
 
 # Evaluating code
-
 def evaluate_code(code: str) -> List[str]:
+    """Evaluates the given code and returns a list of suggestions for improvements."""
     function_string = "def analyze_code(code: str) -> List[str]:"
     args = [code]
     description_string = """Analyzes the given code and returns a list of suggestions for improvements."""
@@ -18,8 +18,8 @@ def evaluate_code(code: str) -> List[str]:
 
 
 # Improving code
-
 def improve_code(suggestions: List[str], code: str) -> str:
+    """Improves the provided code based on the suggestions provided, making no other changes."""
     function_string = (
         "def generate_improved_code(suggestions: List[str], code: str) -> str:"
     )
@@ -31,9 +31,8 @@ def improve_code(suggestions: List[str], code: str) -> str:
 
 
 # Writing tests
-
-
 def write_tests(code: str, focus: List[str]) -> str:
+    """Generates test cases for the existing code, focusing on specific areas if required."""
     function_string = (
         "def create_test_cases(code: str, focus: Optional[str] = None) -> str:"
     )

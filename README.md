@@ -81,7 +81,7 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 2. Navigate to the project directory:
 *(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)*
 ```
-$ cd 'Auto-GPT'
+cd 'Auto-GPT'
 ```
 
 3. Install the required dependencies:
@@ -114,7 +114,7 @@ python scripts/main.py --speak
 
 ## 🔍 Google API Keys Configuration
 
-This section is optional, use the official google api if you are having issues with error 429 when running google search.
+This section is optional, use the official google api if you are having issues with error 429 when running a google search.
 To use the `google_official_search` command, you need to set up your Google API keys in your environment variables.
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).

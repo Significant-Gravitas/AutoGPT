@@ -24,6 +24,7 @@ def print_to_console(
         speak_text=False,
         min_typing_speed=0.05,
         max_typing_speed=0.01):
+    """Prints text to the console with a typing effect"""
     global cfg
     if speak_text and cfg.speak_mode:
         speak.say_text(f"{title}. {content}")
@@ -45,6 +46,7 @@ def print_to_console(
 
 
 def print_assistant_thoughts(assistant_reply):
+    """Prints the assistant's thoughts to the console"""
     global ai_name
     global cfg
     try:
@@ -104,7 +106,7 @@ def print_assistant_thoughts(assistant_reply):
 
 
 def load_variables(config_file="config.yaml"):
-    # Load variables from yaml file if it exists
+    """Load variables from yaml file if it exists, otherwise prompt the user for input"""
     try:
         with open(config_file) as file:
             config = load(file, Loader=FullLoader)
@@ -158,6 +160,7 @@ def load_variables(config_file="config.yaml"):
 
 
 def construct_prompt():
+    """Construct the prompt for the AI to respond to"""
     config = AIConfig.load()
     if config.ai_name:
         print_to_console(
@@ -186,6 +189,7 @@ Continue (y/n): """)
 
 
 def prompt_user():
+    """Prompt the user for input"""
     ai_name = ""
     # Construct the prompt
     print_to_console(
@@ -238,6 +242,7 @@ def prompt_user():
     return config
 
 def parse_arguments():
+    """Parses the arguments passed to the script"""
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)

@@ -3,13 +3,15 @@ from os import path, makedirs, walk, remove, rmdir
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
 
-if not path.exists(working_directory):
-    makedirs(working_directory)
+# Create the directory if it doesn't exist
+if not os.path.exists(working_directory):
+    os.makedirs(working_directory)
 
 
 def safe_join(base, *paths):
-    new_path = path.join(base, *paths)
-    norm_new_path = path.normpath(new_path)
+    """Join one or more path components intelligently."""
+    new_path = os.path.join(base, *paths)
+    norm_new_path = os.path.normpath(new_path)
 
     if path.commonprefix([base, norm_new_path]) != base:
         raise ValueError("Attempted to access outside of working directory.")
@@ -18,6 +20,7 @@ def safe_join(base, *paths):
 
 
 def read_file(filename):
+    """Read a file and return the contents"""
     try:
         filepath = safe_join(working_directory, filename)
         with open(filepath, "r") as f:
@@ -28,6 +31,7 @@ def read_file(filename):
 
 
 def write_to_file(filename, text):
+    """Write text to a file"""
     try:
         filepath = safe_join(working_directory, filename)
         directory = path.dirname(filepath)
@@ -41,6 +45,7 @@ def write_to_file(filename, text):
 
 
 def append_to_file(filename, text):
+    """Append text to a file"""
     try:
         filepath = safe_join(working_directory, filename)
         with open(filepath, "a") as f:
@@ -51,6 +56,7 @@ def append_to_file(filename, text):
 
 
 def delete_file(filename):
+    """Delete a file"""
     try:
         filepath = safe_join(working_directory, filename)
         remove(filepath)

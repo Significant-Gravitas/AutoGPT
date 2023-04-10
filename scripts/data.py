@@ -1,6 +1,7 @@
 from pathlib import Path
 
 def load_prompt():
+    """Load the prompt from data/prompt.txt"""
     try:
         # get directory of this file:
         file_dir = Path(__file__).parent

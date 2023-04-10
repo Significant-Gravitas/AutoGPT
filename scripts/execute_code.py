@@ -2,6 +2,7 @@ import docker
 from os import path 
 
 def execute_python_file(file):
+    """Execute a Python file in a Docker container and return the output"""
     workspace_folder = "auto_gpt_workspace"
 
     print (f"Executing file '{file}' in workspace '{workspace_folder}'")

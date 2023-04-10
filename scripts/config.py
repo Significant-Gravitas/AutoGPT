@@ -14,6 +14,7 @@ class Singleton(abc.ABCMeta, type):
     _instances = {}
 
     def __call__(cls, *args, **kwargs):
+        """Call method for the singleton metaclass."""
         if cls not in cls._instances:
             cls._instances[cls] = super(
                 Singleton, cls).__call__(
@@ -31,6 +32,7 @@ class Config(metaclass=Singleton):
     """
 
     def __init__(self):
+        """Initialize the Config class"""
         self.debug = False
         self.continuous_mode = False
         self.speak_mode = False
@@ -77,40 +79,53 @@ class Config(metaclass=Singleton):
         openai.api_key = self.openai_api_key
 
     def set_continuous_mode(self, value: bool):
+        """Set the continuous mode value."""
         self.continuous_mode = value
 
     def set_speak_mode(self, value: bool):
+        """Set the speak mode value."""
         self.speak_mode = value
 
     def set_fast_llm_model(self, value: str):
+        """Set the fast LLM model value."""
         self.fast_llm_model = value
 
     def set_smart_llm_model(self, value: str):
+        """Set the smart LLM model value."""
         self.smart_llm_model = value
 
     def set_fast_token_limit(self, value: int):
+        """Set the fast token limit value."""
         self.fast_token_limit = value
 
     def set_smart_token_limit(self, value: int):
+        """Set the smart token limit value."""
         self.smart_token_limit = value
 
     def set_openai_api_key(self, value: str):
+        """Set the OpenAI API key value."""
         self.openai_api_key = value
-    
+
     def set_elevenlabs_api_key(self, value: str):
+        """Set the ElevenLabs API key value."""
         self.elevenlabs_api_key = value
-        
+
     def set_google_api_key(self, value: str):
+        """Set the Google API key value."""
         self.google_api_key = value
-    
+
     def set_custom_search_engine_id(self, value: str):
+        """Set the custom search engine id value."""
         self.custom_search_engine_id = value
 
     def set_pinecone_api_key(self, value: str):
+        """Set the Pinecone API key value."""
         self.pinecone_api_key = value
 
     def set_pinecone_region(self, value: str):
+        """Set the Pinecone region value."""
         self.pinecone_region = value
 
     def set_debug_mode(self, value: bool):
+        """Set the debug mode value."""
         self.debug = value
