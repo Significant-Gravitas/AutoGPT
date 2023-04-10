@@ -8,8 +8,6 @@ from colorama import Fore, Style
 from spinner import Spinner
 import time
 import speak
-from enum import Enum, auto
-import sys
 from config import Config
 from json_parser import fix_and_parse_json
 from ai_config import AIConfig
