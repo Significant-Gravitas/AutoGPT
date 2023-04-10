@@ -32,7 +32,8 @@ class Config(metaclass=Singleton):
     """
 
     def __init__(self):
-        """Initialize the configuration class."""
+        """Initialize the Config class"""
+        self.debug_mode = False
         self.continuous_mode = False
         self.speak_mode = False
 
@@ -117,5 +118,17 @@ class Config(metaclass=Singleton):
         self.google_api_key = value
 
     def set_custom_search_engine_id(self, value: str):
-        """Set the custom search engine ID value."""
+        """Set the custom search engine id value."""
         self.custom_search_engine_id = value
+
+    def set_pinecone_api_key(self, value: str):
+        """Set the Pinecone API key value."""
+        self.pinecone_api_key = value
+
+    def set_pinecone_region(self, value: str):
+        """Set the Pinecone region value."""
+        self.pinecone_region = value
+
+    def set_debug_mode(self, value: bool):
+        """Set the debug mode value."""
+        self.debug_mode = value
