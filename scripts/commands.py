@@ -104,8 +104,11 @@ def execute_command(command_name, arguments):
             return ai.write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
-        elif command_name == "exec_shell":  # Add this command
-            return exec_shell(arguments["command_line"])
+        elif command_name == "exec_shell":
+            if cfg.execute_local_commands:
+                return exec_shell(arguments["command_line"])
+            else:
+                return "You are not allowed to run local shell commands. To execute shell commands, EXECUTE_SHELL_COMMANDS must be set to 'True' in your config. Do not attempt to bypass the restriction."
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
         elif command_name == "task_complete":
