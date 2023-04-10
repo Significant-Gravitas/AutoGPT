@@ -127,6 +127,8 @@ To use the `google_official_search` command, you need to set up your Google API 
 8. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
 9.  Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
 
+*Remember that your free daily custom search quota allows only up to 100 searches. To increase this limit, you need to assign a billing account to the project to profit from up to 10K daily searches.*
+
 ### Setting up environment variables
    For Windows Users:
 ```
