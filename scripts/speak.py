@@ -39,9 +39,15 @@ def gtts_speech(text):
     playsound("speech.mp3")
     os.remove("speech.mp3")
 
+def macos_tts_speech(text):
+    os.system(f'say "{text}"')
+
 def say_text(text, voice_index=0):
     if not cfg.elevenlabs_api_key:
-        gtts_speech(text)
+        if cfg.use_mac_os_tts == 'True':
+            macos_tts_speech(text)
+        else:
+            gtts_speech(text)
     else:
         success = eleven_labs_speech(text, voice_index)
         if not success:
