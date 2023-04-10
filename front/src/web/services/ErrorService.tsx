@@ -1,16 +1,18 @@
 const error = (error: unknown) => {
-	console.error(error);
-};
+  console.error(error)
+}
 
-const errorHandler = (fn: Function) => (...args: unknown[]) => {
-	try {
-		return fn(...args);
-	} catch (err) {
-		error(err);
-	}
-};
+const errorHandler =
+  (fn: Function) =>
+  (...args: unknown[]) => {
+    try {
+      return fn(...args)
+    } catch (err) {
+      error(err)
+    }
+  }
 
 export default {
-	error,
-	errorHandler,
-};
+  error,
+  errorHandler,
+}

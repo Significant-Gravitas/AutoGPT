@@ -35,6 +35,7 @@ app.get("/api/start", (_, res) => {
 
 app.get("/api/data", (req, res) => {
   res.json({ output: dataToSend })
+  dataToSend = ""
 })
 
 app.get("/api/stop", (_, res) => {

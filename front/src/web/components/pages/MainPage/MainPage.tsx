@@ -20,15 +20,19 @@ import {
   SIconButton,
 } from "./MainPage.styled"
 import AutoGPTAPI from "../../../api/AutoGPTAPI"
+import IAnswer from "../../../types/data/IAnswer"
+import useAnswerInterceptor from "../../../hooks/useAnswerInterceptor"
 
 const MainPage = () => {
   const [playing, setPlaying] = useState(false)
   const commentsEndRef = useRef(null)
-
-  const [output, setOutput] = useState([])
+  const [output, setOutput] = useState<IAnswer[]>([])
+  const { agents } = useAnswerInterceptor(output)
 
   // This function will scroll to the bottom of the messages element
   const scrollToBottom = () => {
+    if (!commentsEndRef.current) return
+    // @ts-ignore
     commentsEndRef.current.scrollIntoView({ behavior: "smooth" })
   }
 
@@ -41,11 +45,12 @@ const MainPage = () => {
     const interval = setInterval(async () => {
       if (playing) {
         const data = await AutoGPTAPI.fetchData()
-        setOutput(data)
+        if (data.length === 0) return
+        setOutput([...output, ...data])
       }
     }, 500)
     return () => clearInterval(interval)
-  }, [playing])
+  }, [playing, output])
 
   return (
     <Container>
@@ -120,9 +125,9 @@ const MainPage = () => {
         <RightTasks>
           <Flex direction="column" gap={0.5}>
             <h2>Your agents</h2>
-            <AgentCard />
-            <AgentCard />
-            <AgentCard />
+            {agents.map((agent) => (
+              <AgentCard key={agent.name} agent={agent} />
+            ))}
           </Flex>
         </RightTasks>
       </Grid>

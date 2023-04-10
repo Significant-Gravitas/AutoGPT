@@ -8,7 +8,7 @@ const LineSeparatorWithTitle = styled.div<{ title: string }>`
   margin-top: 1rem;
   // text in middle
   &::before {
-    content: "${({ title }) => title.toUpperCase()}";
+    content: "${({ title }) => title?.toUpperCase()}";
     position: relative;
     top: -0.5rem;
     right: -50%;
