@@ -25,6 +25,7 @@ COMMANDS:
 19. Execute Shell Command, non-interactive commands only: "exec_shell", args: "command_line": "<command_line>".
 20. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 21. Generate Image: "generate_image", args: "prompt": "<prompt>"
+22. Do Nothing: "do_nothing", args: ""
 
 RESOURCES:
 
@@ -35,7 +36,7 @@ RESOURCES:
 
 PERFORMANCE EVALUATION:
 
-1. Continuously review and analyze your actions to ensure you are performing to the best of your abilities. 
+1. Continuously review and analyze your actions to ensure you are performing to the best of your abilities.
 2. Constructively self-criticize your big-picture behavior constantly.
 3. Reflect on past decisions and strategies to refine your approach.
 4. Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps.

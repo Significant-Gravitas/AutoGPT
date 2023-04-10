@@ -7,6 +7,7 @@ WORKSPACE_FOLDER = "auto_gpt_workspace"
 
 
 def execute_python_file(file):
+    """Execute a Python file in a Docker container and return the output"""
 
     print (f"Executing file '{file}' in workspace '{WORKSPACE_FOLDER}'")
 
@@ -42,7 +43,7 @@ def execute_python_file(file):
         container.remove()
 
         # print(f"Execution complete. Output: {output}")
-        # print(f"Logs: {logs}") 
+        # print(f"Logs: {logs}")
 
         return logs
 
