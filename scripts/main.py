@@ -17,6 +17,8 @@ import traceback
 import yaml
 import argparse
 
+cfg = Config()
+
 def check_openai_api_key():
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     if not cfg.openai_api_key:
