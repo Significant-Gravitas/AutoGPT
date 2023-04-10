@@ -93,7 +93,8 @@ def execute_command(command_name, arguments):
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
         elif command_name == "send_text":
-            return send_text(arguments["message"], arguments["phone_number"])        
+            if cfg.twilio_auth_token and cfg.twilio_account_sid and cfg.twilio_from_number:
+                return send_text(arguments["message"], arguments["phone_number"])        
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
