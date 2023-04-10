@@ -12,4 +12,5 @@ outputs/*
 *.ai.txt
 auto_gpt_workspace/*
 suggestions/*
-autopilot/*
+.gitignore
+autopilot

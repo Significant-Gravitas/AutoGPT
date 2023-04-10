@@ -359,14 +359,18 @@ while True:
     # Check if there's a result from the command append it to the message
     # history
 
-    # Get user instruction and update memory, if provided
-    new_instruction = get_user_instruction()
         
     if result is not None:
-        if new_instruction:
-            newResult = result + ' New User Advice: ' + new_instruction
-            full_message_history.append(chat.create_chat_message("system", newResult))
-            print_to_console("SYSTEM: ", Fore.YELLOW, newResult)
+        if not cfg.continuous_mode:
+            new_instruction = get_user_instruction()
+            if new_instruction:
+                # Get user instruction and update memory, if provided
+                newResult = result + ' New User Advice: ' + new_instruction
+                full_message_history.append(chat.create_chat_message("system", newResult))
+                print_to_console("SYSTEM: ", Fore.YELLOW, newResult)
+            else:
+                full_message_history.append(chat.create_chat_message("system", result))
+                print_to_console("SYSTEM: ", Fore.YELLOW, result)
         else:
             full_message_history.append(chat.create_chat_message("system", result))
             print_to_console("SYSTEM: ", Fore.YELLOW, result)
@@ -375,4 +379,3 @@ while True:
             chat.create_chat_message(
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
-    
