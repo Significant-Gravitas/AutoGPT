@@ -11,6 +11,10 @@ def scrape_text(url):
     if not url.startswith('http'):
         return "Error: Invalid URL"
     
+    # Restrict access to local files
+    if url.startswith('file://') or url.startswith('file://localhost'):
+        return "Error: Access to local files is restricted"
+    
     try:
         response = requests.get(url, headers=cfg.user_agent_header)
     except requests.exceptions.RequestException as e:
