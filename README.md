@@ -185,7 +185,12 @@ are loaded for the agent at any given time.
 3. Find your API key and region under the default project in the left sidebar.
 
 ### Setting up environment variables
-   For Windows Users:
+
+Simply set them in the `.env` file. 
+
+Alternatively, you can set them from the command line (advanced):
+
+For Windows Users:
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
@@ -198,7 +203,6 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
 
-Or you can set them in the `.env` file.
 
 ## View Memory Usage
 
