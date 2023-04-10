@@ -4,14 +4,14 @@ from os import path, makedirs, walk, remove, rmdir
 working_directory = "auto_gpt_workspace"
 
 # Create the directory if it doesn't exist
-if not os.path.exists(working_directory):
-    os.makedirs(working_directory)
+if not path.exists(working_directory):
+    makedirs(working_directory)
 
 
 def safe_join(base, *paths):
     """Join one or more path components intelligently."""
-    new_path = os.path.join(base, *paths)
-    norm_new_path = os.path.normpath(new_path)
+    new_path = path.join(base, *paths)
+    norm_new_path = path.normpath(new_path)
 
     if path.commonprefix([base, norm_new_path]) != base:
         raise ValueError("Attempted to access outside of working directory.")

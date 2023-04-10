@@ -8,7 +8,7 @@ class Spinner:
     """A simple spinner class"""
     def __init__(self, message="Loading...", delay=0.1):
         """Initialize the spinner class"""
-        self.spinner = itertools.cycle(['-', '/', '|', '\\'])
+        self.spinner = cycle(['-', '/', '|', '\\'])
         self.delay = delay
         self.message = message
         self.running = False

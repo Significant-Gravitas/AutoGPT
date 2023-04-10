@@ -1,4 +1,4 @@
-from requests import get
+from requests import get, exceptions
 from bs4 import BeautifulSoup
 from config import Config
 from llm_utils import create_chat_completion
@@ -12,8 +12,8 @@ def scrape_text(url):
         return "Error: Invalid URL"
     
     try:
-        response = requests.get(url, headers=cfg.user_agent_header)
-    except requests.exceptions.RequestException as e:
+        response = get(url, headers=cfg.user_agent_header)
+    except exceptions.RequestException as e:
         return "Error: " + str(e)
 
     # Check if the response contains an HTTP error
@@ -51,7 +51,7 @@ def format_hyperlinks(hyperlinks):
 
 def scrape_links(url):
     """Scrape links from a webpage"""
-    response = requests.get(url, headers=cfg.user_agent_header)
+    response = get(url, headers=cfg.user_agent_header)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
