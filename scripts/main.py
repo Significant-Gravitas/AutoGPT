@@ -291,8 +291,8 @@ def parse_arguments():
 
 
 # TODO: fill in llm values here
-check_openai_api_key()
 cfg = Config()
+check_openai_api_key()
 parse_arguments()
 ai_name = ""
 prompt = construct_prompt()
