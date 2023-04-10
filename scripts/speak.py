@@ -22,7 +22,7 @@ queue_semaphore = Semaphore(1) # The amount of sounds to queue before blocking t
 def eleven_labs_speech(text, voice_index=0):
     tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(
         voice_id=voices[voice_index])
-    formatted_message = {"text": text, "voice_settings": {"stability": 0.05, "similarity_boost": 0.8}}
+    formatted_message = {"text": text}
     response = requests.post(
         tts_url, headers=tts_headers, json=formatted_message)
 
