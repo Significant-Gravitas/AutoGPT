@@ -1,6 +1,6 @@
 import yaml
 import data
-
+import os
 
 class AIConfig:
     """
@@ -23,12 +23,13 @@ class AIConfig:
         Returns:
             None
         """
+
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = "../ai_settings.yaml"
+    SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
 
     @classmethod
     def load(cls: object, config_file: str=SAVE_FILE) -> object:
@@ -43,6 +44,7 @@ class AIConfig:
         Returns:
             cls (object): A instance of given cls object  
         """
+
         try:
             with open(config_file) as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
@@ -65,6 +67,7 @@ class AIConfig:
         Returns:
             None 
         """
+
         config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
         with open(config_file, "w") as file:
             yaml.dump(config, file)
@@ -79,6 +82,7 @@ class AIConfig:
         Returns:
             full_prompt (str): A string containing the intitial prompt for the user including the ai_name, ai_role and ai_goals.
         """
+
         prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
         # Construct full prompt

@@ -19,7 +19,7 @@ git checkout -b "branch-name"
 
 5. Add the changes to the staging area using the following command:
 ```
-git add . 
+git add .
 ```
 
 6. Commit the changes with a meaningful commit message using the following command:
