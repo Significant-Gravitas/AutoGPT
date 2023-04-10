@@ -6,6 +6,10 @@ from llm_utils import create_chat_completion
 cfg = Config()
 
 def get_website_content(url):
+    # Most basic check if the URL is valid:
+    if not url.startswith('http'):
+        return "Error: Invalid URL"
+    
     response = requests.get(url, headers=cfg.user_agent_header)
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
