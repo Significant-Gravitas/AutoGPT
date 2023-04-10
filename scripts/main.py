@@ -69,9 +69,9 @@ def print_to_console(
     print()
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
-    if cfg.speak_mode:
-        speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
-    print_to_console("Attempting to fix JSON by finding outermost brackets\n", Fore.RED, json_string)
+    if cfg.speak_mode and cfg.debug:
+      speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
+    print_to_console("Attempting to fix JSON by finding outermost brackets\n", Fore.RED, "")
 
     try:
         # Use regex to search for JSON objects
@@ -83,8 +83,8 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
             # Extract the valid JSON object from the string
             json_string = json_match.group(0)
             print_to_console("Apparently json was fixed.", Fore.GREEN,"")
-            if cfg.speak_mode:
-                speak.say_text("Apparently json was fixed.")
+            if cfg.speak_mode and cfg.debug:
+               speak.say_text("Apparently json was fixed.")
         else:
             raise ValueError("No valid JSON object found")
 
