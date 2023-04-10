@@ -3,12 +3,10 @@ from playsound import playsound
 import requests
 from config import Config
 cfg = Config()
+import gtts
 
-# Remove the import of gtts
-# import gtts
-
-# Change voices to macOS voice identifiers
-voices = ["com.apple.speech.synthesis.voice.siri_female", "com.apple.speech.synthesis.voice.siri_male"]
+# TODO: Nicer names for these ids
+voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
 
 tts_headers = {
     "Content-Type": "application/json",
@@ -33,14 +31,21 @@ def eleven_labs_speech(text, voice_index=0):
         print("Response content:", response.content)
         return False
 
-# Use macOS built-in TTS instead of gtts
-def macos_tts_speech(text, voice_index=1):
+def gtts_speech(text):
+    tts = gtts.gTTS(text)
+    tts.save("speech.mp3")
+    playsound("speech.mp3")
+    os.remove("speech.mp3")
+
+def macos_tts_speech(text):
     os.system(f'say "{text}"')
 
 def say_text(text, voice_index=0):
     if not cfg.elevenlabs_api_key:
-        macos_tts_speech(text, voice_index)
+        if cfg.use_mac_os_tts == 'True':
+            macos_tts_speech(text)
+        gtts(text)
     else:
         success = eleven_labs_speech(text, voice_index)
         if not success:
-            macos_tts_speech(text, voice_index)
+            gtts_speech()(text)
