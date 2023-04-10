@@ -36,12 +36,12 @@ class Config(metaclass=Singleton):
         self.debug = False
         self.continuous_mode = False
         self.speak_mode = False
-        # TODO - make these models be self-contained, using langchain, so we can configure them once and call it good 
+
         self.fast_llm_model = getenv("FAST_LLM_MODEL", "gpt-3.5-turbo") 
         self.smart_llm_model = getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(getenv("SMART_TOKEN_LIMIT", 8000))
-        
+
         self.openai_api_key = getenv("OPENAI_API_KEY")
         self.use_azure = False
         self.use_azure = getenv("USE_AZURE") == 'True'
@@ -52,9 +52,9 @@ class Config(metaclass=Singleton):
             openai.api_type = "azure"
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
-        
+
         self.elevenlabs_api_key = getenv("ELEVENLABS_API_KEY")
-        
+
         self.google_api_key = getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = getenv("CUSTOM_SEARCH_ENGINE_ID")
 
@@ -85,6 +85,9 @@ class Config(metaclass=Singleton):
     def set_speak_mode(self, value: bool):
         """Set the speak mode value."""
         self.speak_mode = value
+
+    def set_debug_mode(self, value: bool):
+        self.debug_mode = value
 
     def set_fast_llm_model(self, value: str):
         """Set the fast LLM model value."""
