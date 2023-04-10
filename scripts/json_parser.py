@@ -79,7 +79,7 @@ def fix_json(json_str: str, schema: str, debug=False) -> str:
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
     description_string = "Fixes the provided JSON string to make it parseable"\
         " and fully complient with the provided schema.\n If an object or"\
-        " field specifed in the schema isn't contained within the correct"\
+        " field specified in the schema isn't contained within the correct"\
         " JSON, it is ommited.\n This function is brilliant at guessing"\
         " when the format is incorrect."
 
