@@ -226,6 +226,7 @@ If you don't have access to the GPT4 api, this mode will allow you to use Auto-G
 ```
 python scripts/main.py --gpt3only
 ```
+It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
 
 ## 🖼 Image Generation
 By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [HuggingFace API Token](https://huggingface.co/settings/tokens) is required.
