@@ -92,6 +92,8 @@ def execute_command(command_name, arguments):
             return search_files(arguments["directory"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
+        elif command_name == "send_text":
+            return send_text(arguments["message"], arguments["phone_number"])        
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
@@ -172,6 +174,19 @@ def browse_website(url, question):
     result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
 
     return result
+
+def send_text(message, phone_number):
+    from twilio.rest import Client
+
+    client = Client(cfg.twilio_account_sid, cfg.twilio_auth_token)
+
+    message = client.messages.create(
+        body=message,
+        from_=cfg.twilio_from_number,
+        to=phone_number
+    )
+
+    print(f'Text Message Sent To: {phone_number}')
 
 
 def get_text_summary(url, question):

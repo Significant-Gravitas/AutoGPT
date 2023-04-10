@@ -55,6 +55,10 @@ class Config(metaclass=Singleton):
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
+        
+        self.twilio_account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+        self.twilio_auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        self.twilio_from_number = os.getenv('TWILIO_FROM_NUMBER')
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
