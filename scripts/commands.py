@@ -169,9 +169,9 @@ def google_official_search(query, num_results=8):
     return search_results_links
 
 def browse_website(url, question):
-    """Browse a website and return the summary and links"""
-    summary = get_text_summary(url, question)
-    links = get_hyperlinks(url)
+    website_content = browse.get_website_content(url)
+    summary = get_text_summary(website_content, question)
+    links = get_hyperlinks(website_content)
 
     # Limit links to 5
     if len(links) > 5:
@@ -182,16 +182,14 @@ def browse_website(url, question):
     return result
 
 
-def get_text_summary(url):
-    """Return the results of a google search"""
-    text = browse.scrape_text(url)
+def get_text_summary(website_content, question):
+    text = browse.scrape_text(website_content)
     summary = browse.summarize_text(text, question)
     return """ "Result" : """ + summary
 
 
-def get_hyperlinks(url):
-    """Return the results of a google search"""
-    link_list = browse.scrape_links(url)
+def get_hyperlinks(website_content):
+    link_list = browse.scrape_links(website_content)
     return link_list
 
 

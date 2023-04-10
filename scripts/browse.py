@@ -5,15 +5,17 @@ from llm_utils import create_chat_completion
 
 cfg = Config()
 
-def scrape_text(url):
-    """Scrape text from a webpage"""
-    response = requests.get(url)
-
+def get_website_content(url):
+    response = requests.get(url, headers=cfg.user_agent_header)
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
         return "Error: HTTP " + str(response.status_code) + " error"
+    return response
 
-    soup = BeautifulSoup(response.text, "html.parser")
+
+
+def scrape_text(website_content):
+    soup = BeautifulSoup(website_content.text, "html.parser")
 
     for script in soup(["script", "style"]):
         script.extract()
@@ -42,15 +44,8 @@ def format_hyperlinks(hyperlinks):
     return formatted_links
 
 
-def scrape_links(url):
-    """Scrape hyperlinks from a webpage"""
-    response = requests.get(url)
-
-    # Check if the response contains an HTTP error
-    if response.status_code >= 400:
-        return "error"
-
-    soup = BeautifulSoup(response.text, "html.parser")
+def scrape_links(website_content):
+    soup = BeautifulSoup(website_content.text, "html.parser")
 
     for script in soup(["script", "style"]):
         script.extract()
