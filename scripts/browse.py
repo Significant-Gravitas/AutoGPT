@@ -6,6 +6,10 @@ from llm_utils import create_chat_completion
 cfg = Config()
 
 def scrape_text(url):
+    # Most basic check if the URL is valid:
+    if not url.startswith('http'):
+        return "Error: Invalid URL"
+    
     try:
         response = requests.get(url, headers=cfg.user_agent_header)
     except requests.exceptions.RequestException as e:
