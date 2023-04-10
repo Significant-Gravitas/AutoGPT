@@ -92,4 +92,3 @@ class AIConfig:
 
         full_prompt += f"\n\n{data.load_prompt()}"
         return full_prompt
-
