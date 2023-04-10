@@ -18,6 +18,18 @@ import traceback
 import yaml
 import argparse
 
+cfg = Config()
+
+def check_openai_api_key():
+    """Check if the OpenAI API key is set in config.py or as an environment variable."""
+    if not cfg.openai_api_key:
+        print(
+            Fore.RED +
+            "Please set your OpenAI API key in config.py or as an environment variable."
+        )
+        print("You can get your key from https://beta.openai.com/account/api-keys")
+        exit(1)
+
 
 def print_to_console(
         title,
@@ -26,6 +38,7 @@ def print_to_console(
         speak_text=False,
         min_typing_speed=0.05,
         max_typing_speed=0.01):
+    """Prints text to the console with a typing effect"""
     global cfg
     if speak_text and cfg.speak_mode:
         speak.say_text(f"{title}. {content}")
@@ -47,6 +60,7 @@ def print_to_console(
 
 
 def print_assistant_thoughts(assistant_reply):
+    """Prints the assistant's thoughts to the console"""
     global ai_name
     global cfg
     try:
@@ -106,7 +120,7 @@ def print_assistant_thoughts(assistant_reply):
 
 
 def load_variables(config_file="config.yaml"):
-    # Load variables from yaml file if it exists
+    """Load variables from yaml file if it exists, otherwise prompt the user for input"""
     try:
         with open(config_file) as file:
             config = yaml.load(file, Loader=yaml.FullLoader)
@@ -141,7 +155,7 @@ def load_variables(config_file="config.yaml"):
             ai_goals.append(ai_goal)
         if len(ai_goals) == 0:
             ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
-         
+
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
     with open(config_file, "w") as file:
@@ -160,6 +174,7 @@ def load_variables(config_file="config.yaml"):
 
 
 def construct_prompt():
+    """Construct the prompt for the AI to respond to"""
     config = AIConfig.load()
     if config.ai_name:
         print_to_console(
@@ -170,24 +185,25 @@ def construct_prompt():
         should_continue = utils.clean_input(f"""Continue with the last settings? 
 Name:  {config.ai_name}
 Role:  {config.ai_role}
-Goals: {config.ai_goals}  
+Goals: {config.ai_goals}
 Continue (y/n): """)
         if should_continue.lower() == "n":
             config = AIConfig()
 
-    if not config.ai_name:         
+    if not config.ai_name:
         config = prompt_user()
         config.save()
 
     # Get rid of this global:
     global ai_name
     ai_name = config.ai_name
-    
+
     full_prompt = config.construct_full_prompt()
     return full_prompt
 
 
 def prompt_user():
+    """Prompt the user for input"""
     ai_name = ""
     # Construct the prompt
     print_to_console(
@@ -240,10 +256,11 @@ def prompt_user():
     return config
 
 def parse_arguments():
+    """Parses the arguments passed to the script"""
     global cfg
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
-    
+
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
@@ -263,6 +280,10 @@ def parse_arguments():
         print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_speak_mode(True)
 
+    if args.debug:
+        print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_debug_mode(True)        
+
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
@@ -273,7 +294,7 @@ def parse_arguments():
 
 
 # TODO: fill in llm values here
-
+check_openai_api_key()
 cfg = Config()
 parse_arguments()
 ai_name = ""
@@ -300,7 +321,7 @@ while True:
             user_input,
             full_message_history,
             memory,
-            cfg.fast_token_limit, cfg.debug) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
