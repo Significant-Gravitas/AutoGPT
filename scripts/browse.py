@@ -6,7 +6,15 @@ from llm_utils import create_chat_completion
 cfg = Config()
 
 def scrape_text(url):
-    response = requests.get(url)
+    """Scrape text from a webpage"""
+    # Most basic check if the URL is valid:
+    if not url.startswith('http'):
+        return "Error: Invalid URL"
+    
+    try:
+        response = requests.get(url, headers=cfg.user_agent_header)
+    except requests.exceptions.RequestException as e:
+        return "Error: " + str(e)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
@@ -26,6 +34,7 @@ def scrape_text(url):
 
 
 def extract_hyperlinks(soup):
+    """Extract hyperlinks from a BeautifulSoup object"""
     hyperlinks = []
     for link in soup.find_all('a', href=True):
         hyperlinks.append((link.text, link['href']))
@@ -33,6 +42,7 @@ def extract_hyperlinks(soup):
 
 
 def format_hyperlinks(hyperlinks):
+    """Format hyperlinks into a list of strings"""
     formatted_links = []
     for link_text, link_url in hyperlinks:
         formatted_links.append(f"{link_text} ({link_url})")
@@ -40,7 +50,8 @@ def format_hyperlinks(hyperlinks):
 
 
 def scrape_links(url):
-    response = requests.get(url)
+    """Scrape links from a webpage"""
+    response = requests.get(url, headers=cfg.user_agent_header)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
@@ -57,6 +68,7 @@ def scrape_links(url):
 
 
 def split_text(text, max_length=8192):
+    """Split text into chunks of a maximum length"""
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
@@ -74,30 +86,27 @@ def split_text(text, max_length=8192):
         yield "\n".join(current_chunk)
 
 
-def summarize_text(text, is_website=True):
-    if text == "":
+def create_message(chunk, question):
+    """Create a message for the user to summarize a chunk of text"""
+    return {
+        "role": "user",
+        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
+    }
+
+def summarize_text(text, question):
+    """Summarize text using the LLM model"""
+    if not text:
         return "Error: No text to summarize"
 
-    print("Text length: " + str(len(text)) + " characters")
+    text_length = len(text)
+    print(f"Text length: {text_length} characters")
+
     summaries = []
     chunks = list(split_text(text))
 
     for i, chunk in enumerate(chunks):
-        print("Summarizing chunk " + str(i + 1) + " / " + str(len(chunks)))
-        if is_website:
-            messages = [
-                {
-                    "role": "user",
-                    "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
-                    chunk},
-            ]
-        else:
-            messages = [
-                {
-                    "role": "user",
-                    "content": "Please summarize the following text, focusing on extracting concise and specific information: " +
-                    chunk},
-            ]
+        print(f"Summarizing chunk {i + 1} / {len(chunks)}")
+        messages = [create_message(chunk, question)]
 
         summary = create_chat_completion(
             model=cfg.fast_llm_model,
@@ -105,25 +114,11 @@ def summarize_text(text, is_website=True):
             max_tokens=300,
         )
         summaries.append(summary)
-    print("Summarized " + str(len(chunks)) + " chunks.")
+
+    print(f"Summarized {len(chunks)} chunks.")
 
     combined_summary = "\n".join(summaries)
-
-    # Summarize the combined summary
-    if is_website:
-        messages = [
-            {
-                "role": "user",
-                "content": "Please summarize the following website text, do not describe the general website, but instead concisely extract the specific information this subpage contains.: " +
-                combined_summary},
-        ]
-    else:
-        messages = [
-            {
-                "role": "user",
-                "content": "Please summarize the following text, focusing on extracting concise and specific infomation: " +
-                combined_summary},
-        ]
+    messages = [create_message(combined_summary, question)]
 
     final_summary = create_chat_completion(
         model=cfg.fast_llm_model,
