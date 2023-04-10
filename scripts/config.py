@@ -43,6 +43,8 @@ class Config(metaclass=Singleton):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.use_azure = False
         self.use_azure = os.getenv("USE_AZURE") == 'True'
+        self.execute_local_commands = os.getenv('EXECUTE_LOCAL_COMMANDS', 'False') == 'True'
+    
         if self.use_azure:
             self.openai_api_base = os.getenv("OPENAI_API_BASE")
             self.openai_api_version = os.getenv("OPENAI_API_VERSION")
