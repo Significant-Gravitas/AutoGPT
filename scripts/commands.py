@@ -130,6 +130,7 @@ def get_datetime():
 
 def google_search(query, num_results=8):
     """Return the results of a google search"""
+    proxies = {"http": cfg.google_api_proxy, "https": cfg.google_api_proxy}
     search_results = []
     for j in ddg(query, max_results=num_results):
         search_results.append(j)
@@ -151,11 +152,11 @@ def google_official_search(query, num_results=8):
 
         parsed_proxy = urlparse(api_proxy)
         proxy_protocol = parsed_proxy.scheme
-        if proxy_protocol == 'http':
+        if proxy_protocol.lower() == 'http':
             proxy_type = socks.PROXY_TYPE_HTTP
-        elif proxy_protocol == 'socks4':
+        elif proxy_protocol.lower() == 'socks4':
             proxy_type = socks.PROXY_TYPE_SOCKS4
-        elif proxy_protocol == 'socks5':
+        elif proxy_protocol.lower() == 'socks5':
             proxy_type = socks.PROXY_TYPE_SOCKS5
         else:
             proxy_type = socks.PROXY_TYPE_HTTP

@@ -42,10 +42,11 @@ def generate_image(prompt):
 
         API_URL = "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
         headers = {"Authorization": "Bearer " + cfg.huggingface_api_token}
+        proxies = {"http": cfg.huggingface_api_proxy, "https": cfg.huggingface_api_proxy}
 
         response = requests.post(API_URL, headers=headers, json={
             "inputs": prompt,
-        })
+        }, proxies=proxies)
 
         image = Image.open(io.BytesIO(response.content))
         print("Image Generated for prompt:" + prompt)

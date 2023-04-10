@@ -240,6 +240,7 @@ Once you have a token, set these variables in your `.env`:
 ```
 IMAGE_PROVIDER=sd
 HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
+HUGGINGFACE_API_PROXY="[http, socks5, socks4]://USER:PASS@HOST:PORT"#optional
 ```
 
 ## ⚠️ Limitations
