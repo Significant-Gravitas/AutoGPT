@@ -1,0 +1,8 @@
+ai_goals:
+  - Evaluate code at print_env_variables.py and print the environment variables.
+  - Make sure file env_variables.txt is not empty.
+  - Shut yourself down.
+
+ai_name: env vars
+ai_role: AI that writes code.
+ai_continue: True

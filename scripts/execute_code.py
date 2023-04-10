@@ -19,9 +19,9 @@ def execute_python_file(file):
     try:
         client = docker.from_env()
 
-        # You can replace 'python:3.8' with the desired Python image/version
-        # You can find available Python images on Docker Hub:
-        # https://hub.docker.com/_/python
+        env_vars = {key: value for key, value in os.environ.items()}
+        print(f"Environment variables: {env_vars}")
+
         container = client.containers.run(
             'fsamir/python:3.11',
             f'python {file}',
@@ -29,6 +29,7 @@ def execute_python_file(file):
                 'bind': '/workspace',
                 'mode': 'rw'}
             },
+            environment=env_vars,
             working_dir='/workspace',
             stderr=True,
             stdout=True,

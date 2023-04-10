@@ -1,0 +1,12 @@
+ai_goals:
+  - "The youtube video URL is: https://www.youtube.com/watch?v=2M6T9XpofgE&t=3950s"
+  #  - Create a code that transcribes the youtube video to text in english using OpenAI Whisper API. Use OPENAI_API_KEY environment variable.
+  - Use the python script transcribe_youtube_video.py to donwload and transcribes the youtube video to text in english using OpenAI Whisper API.
+  - Safe the mp4 file.
+  - Save the transcription text file.
+  - Make sure to write your code to file and memorize it so it can be used in the future.
+  - Shut yourself down.
+
+ai_name: Download transcriber code
+ai_role: Ai that transcribes youtube videos
+ai_continue: True
