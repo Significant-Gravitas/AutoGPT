@@ -15,6 +15,7 @@ def evaluate_code(code: str) -> List[str]:
     Returns:
         A result string from create chat completion. A list of suggestions to improve the code.
     """
+
     function_string = "def analyze_code(code: str) -> List[str]:"
     args = [code]
     description_string = """Analyzes the given code and returns a list of suggestions for improvements."""
@@ -34,6 +35,7 @@ def improve_code(suggestions: List[str], code: str) -> str:
     Returns:
         A result string from create chat completion. Improved code in response.
     """
+
     function_string = (
         "def generate_improved_code(suggestions: List[str], code: str) -> str:"
     )
@@ -42,6 +44,7 @@ def improve_code(suggestions: List[str], code: str) -> str:
 
     result_string = call_ai_function(function_string, args, description_string)
     return result_string
+
 
 
 def write_tests(code: str, focus: List[str]) -> str:
@@ -54,6 +57,7 @@ def write_tests(code: str, focus: List[str]) -> str:
     Returns:
         A result string from create chat completion. Test cases for the submitted code in response.
     """
+
     function_string = (
         "def create_test_cases(code: str, focus: Optional[str] = None) -> str:"
     )

@@ -3,11 +3,9 @@ import openai
 from dotenv import load_dotenv
 from config import Config
 import token_counter
-
-cfg = Config()
-
 from llm_utils import create_chat_completion
 
+cfg = Config()
 
 def create_chat_message(role, content):
     """
@@ -26,8 +24,11 @@ def create_chat_message(role, content):
 def generate_context(prompt, relevant_memory, full_message_history, model):
     current_context = [
         create_chat_message(
-            "system", prompt), create_chat_message(
-            "system", f"Permanent memory: {relevant_memory}")]
+            "system", prompt),
+        create_chat_message(
+            "system", f"The current time and date is {time.strftime('%c')}"),
+        create_chat_message(
+            "system", f"This reminds you of these events from your past:\n{relevant_memory}\n\n")]
 
     # Add messages from the full message history until we reach the token limit
     next_message_to_add_index = len(full_message_history) - 1
@@ -43,8 +44,8 @@ def chat_with_ai(
         user_input,
         full_message_history,
         permanent_memory,
-        token_limit,
-        debug=False):
+        token_limit):
+    """Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory."""
     while True:
         try:
             """
@@ -62,13 +63,15 @@ def chat_with_ai(
             """
             model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
-            if debug:
+            
+            if cfg.debug_mode:
                 print(f"Token limit: {token_limit}")
+                
             send_token_limit = token_limit - 1000
 
             relevant_memory = permanent_memory.get_relevant(str(full_message_history[-5:]), 10)
 
-            if debug:
+            if cfg.debug_mode:
                 print('Memory Stats: ', permanent_memory.get_stats())
 
             next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
@@ -95,7 +98,7 @@ def chat_with_ai(
 
                 # Count the currently used tokens
                 current_tokens_used += tokens_to_add
-                
+
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
 
@@ -107,7 +110,7 @@ def chat_with_ai(
             # assert tokens_remaining >= 0, "Tokens remaining is negative. This should never happen, please submit a bug report at https://www.github.com/Torantulino/Auto-GPT"
 
             # Debug print the current context
-            if debug:
+            if cfg.debug_mode:
                 print(f"Token limit: {token_limit}")
                 print(f"Send Token Count: {current_tokens_used}")
                 print(f"Tokens remaining for response: {tokens_remaining}")
