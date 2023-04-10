@@ -5,6 +5,7 @@ from config import Config
 cfg = Config()
 import gtts
 
+
 # TODO: Nicer names for these ids
 voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
 
