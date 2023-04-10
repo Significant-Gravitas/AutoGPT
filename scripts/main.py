@@ -58,28 +58,30 @@ def print_to_console(
     print()
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
-    # Attempt to fix JSON by finding the outermost brackets
-    # This is a hacky solution to fix JSON that is missing the outermost brackets
-    # This is a common issue with the OpenAI API
-    # This is not a perfect solution, but it works for the most common cases
-    # it removes unnecessary text around the JSON
     if cfg.speak_mode:
         speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
-    print_to_console("Attempting to fix JSON by finding outermost brackets\n", Fore.RED,"")
+    print_to_console("Attempting to fix JSON by finding outermost brackets\n", Fore.RED, "")
+
     try:
-        # Find the first bracket
-        first_bracket_index = json_string.index("{")
-        # Find the last bracket
-        last_bracket_index = json_string.rindex("}")
-        # Slice the string to get the JSON
-        json_string = json_string[first_bracket_index:last_bracket_index + 1]
-        if cfg.speak_mode:
-            speak.say_text("Apparently I managed to fix it.")
-    except json.JSONDecodeError as e:
+        # Use regex to search for JSON objects
+        import re
+        json_pattern = re.compile(r"\{(?:[^{}]|(?R))*\}")
+        json_match = json_pattern.search(json_string)
+
+        if json_match:
+            # Extract the valid JSON object from the string
+            json_string = json_match.group(0)
+            if cfg.speak_mode:
+                speak.say_text("Apparently I managed to fix it.")
+        else:
+            raise ValueError("No valid JSON object found")
+
+    except (json.JSONDecodeError, ValueError) as e:
         if cfg.speak_mode:
             speak.say_text("Didn't work. I will have to ignore this response then.")
         print_to_console("Error: Invalid JSON, setting it to empty JSON now.\n", Fore.RED, "")
         json_string = {}
+
     return json_string
 
 def print_assistant_thoughts(assistant_reply):
