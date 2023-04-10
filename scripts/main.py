@@ -16,8 +16,17 @@ from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
+import logging
 
 cfg = Config()
+
+def configure_logging():
+    logging.basicConfig(filename='log.txt',
+                    filemode='a',
+                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.DEBUG)
+    return logging.getLogger('AutoGPT')
 
 def check_openai_api_key():
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
@@ -29,7 +38,6 @@ def check_openai_api_key():
         print("You can get your key from https://beta.openai.com/account/api-keys")
         exit(1)
 
-
 def print_to_console(
         title,
         title_color,
@@ -39,10 +47,12 @@ def print_to_console(
         max_typing_speed=0.01):
     """Prints text to the console with a typing effect"""
     global cfg
+    global logger
     if speak_text and cfg.speak_mode:
         speak.say_text(f"{title}. {content}")
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
+        logger.info(title + ': ' + content)
         if isinstance(content, list):
             content = " ".join(content)
         words = content.split()
@@ -295,6 +305,7 @@ def parse_arguments():
 # TODO: fill in llm values here
 check_openai_api_key()
 cfg = Config()
+logger = configure_logging()
 parse_arguments()
 ai_name = ""
 prompt = construct_prompt()
