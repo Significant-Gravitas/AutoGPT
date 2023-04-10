@@ -138,7 +138,7 @@ def load_variables(config_file="config.yaml"):
         if ai_name == "":
             ai_name = "Entrepreneur-GPT"
 
-    if not ai_role:        
+    if not ai_role:
         ai_role = utils.clean_input(f"{ai_name} is: ")
         if ai_role == "":
             ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
@@ -182,7 +182,7 @@ def construct_prompt():
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
-        should_continue = utils.clean_input(f"""Continue with the last settings? 
+        should_continue = utils.clean_input(f"""Continue with the last settings?
 Name:  {config.ai_name}
 Role:  {config.ai_role}
 Goals: {config.ai_goals}
@@ -282,7 +282,7 @@ def parse_arguments():
 
     if args.debug:
         print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_debug_mode(True)        
+        cfg.set_debug_mode(True)
 
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
