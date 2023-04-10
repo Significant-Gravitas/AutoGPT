@@ -6,7 +6,9 @@ agents = {None: {}}  # key, (task, full_message_history, model)
 # Create new GPT agent
 # TODO: Centralise use of create_chat_completion() to globally enforce token limit
 
+
 def create_agent(task, prompt, model, chat_id=None):
+    """Create a new agent and return its key"""
     global next_key
     global agents
 
@@ -36,6 +38,7 @@ def create_agent(task, prompt, model, chat_id=None):
 
 
 def message_agent(key, message, chat_id=None):
+    """Send a message to an agent and return its response"""
     global agents
 
     task, messages, model = agents[chat_id][int(key)]
@@ -57,6 +60,7 @@ def message_agent(key, message, chat_id=None):
 
 
 def list_agents(chat_id=None):
+    """Return a list of all agents"""
     global agents
 
     # Return a list of agent keys and their tasks
@@ -64,6 +68,7 @@ def list_agents(chat_id=None):
 
 
 def delete_agent(key, chat_id=None):
+    """Delete an agent and return True if successful, False otherwise"""
     global agents
 
     try:

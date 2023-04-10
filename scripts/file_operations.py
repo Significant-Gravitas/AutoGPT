@@ -4,11 +4,13 @@ import os.path
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
 
+# Create the directory if it doesn't exist
 if not os.path.exists(working_directory):
     os.makedirs(working_directory)
 
 
 def safe_join(base, *paths, chat_id=None):
+    """Join one or more path components intelligently."""
     if chat_id:
         return safe_join(base, chat_id, *paths)
     new_path = os.path.join(base, *paths)
@@ -21,6 +23,7 @@ def safe_join(base, *paths, chat_id=None):
 
 
 def read_file(filename, chat_id=None):
+    """Read a file and return the contents"""
     try:
         filepath = safe_join(working_directory, filename, chat_id=chat_id)
         with open(filepath, "r") as f:
@@ -31,6 +34,7 @@ def read_file(filename, chat_id=None):
 
 
 def write_to_file(filename, text, chat_id=None):
+    """Write text to a file"""
     try:
         filepath = safe_join(working_directory, filename, chat_id=chat_id)
         directory = os.path.dirname(filepath)
@@ -44,6 +48,7 @@ def write_to_file(filename, text, chat_id=None):
 
 
 def append_to_file(filename, text, chat_id=None):
+    """Append text to a file"""
     try:
         filepath = safe_join(working_directory, filename, chat_id=chat_id)
         with open(filepath, "a") as f:
@@ -54,6 +59,7 @@ def append_to_file(filename, text, chat_id=None):
 
 
 def delete_file(filename, chat_id=None):
+    """Delete a file"""
     try:
         filepath = safe_join(working_directory, filename, chat_id=chat_id)
         os.remove(filepath)

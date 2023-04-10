@@ -1,6 +1,6 @@
 import browse
 import json
-from memory import PineconeMemory
+from memory import get_memory
 import datetime
 import agent_manager as agents
 import speak
@@ -25,17 +25,18 @@ def is_valid_int(value):
         return False
 
 def get_command(response):
+    """Parse the response and return the command name and arguments"""
     try:
         response_json = fix_and_parse_json(response)
-        
+
         if "command" not in response_json:
             return "Error:" , "Missing 'command' object in JSON"
-        
+
         command = response_json["command"]
 
         if "name" not in command:
             return "Error:", "Missing 'name' field in 'command' object"
-        
+
         command_name = command["name"]
 
         # Use an empty dictionary if 'args' field is not present in 'command' object
@@ -53,10 +54,12 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments, chat_id=None):
-    memory = PineconeMemory()
+    """Execute the command and return the result"""
+    memory = get_memory(cfg)
+
     try:
         if command_name == "google":
-            
+
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
             if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
@@ -106,21 +109,25 @@ def execute_command(command_name, arguments, chat_id=None):
             return execute_python_file(arguments["file"])
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"], chat_id=chat_id)
+        elif command_name == "do_nothing":
+            return "No action performed."
         elif command_name == "task_complete":
             shutdown()
         else:
-            return f"Unknown command {command_name}"
+            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for availabe commands and only respond in the specified JSON format."
     # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)
 
 
 def get_datetime():
+    """Return the current date and time"""
     return "Current date and time: " + \
         datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def google_search(query, num_results=8):
+    """Return the results of a google search"""
     search_results = []
     for j in ddg(query, max_results=num_results):
         search_results.append(j)
@@ -128,6 +135,7 @@ def google_search(query, num_results=8):
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 def google_official_search(query, num_results=8):
+    """Return the results of a google search using the official Google API"""
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     import json
@@ -139,20 +147,20 @@ def google_official_search(query, num_results=8):
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)
-        
+
         # Send the search query and retrieve the results
         result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
 
         # Extract the search result items from the response
         search_results = result.get("items", [])
-        
+
         # Create a list of only the URLs from the search results
         search_results_links = [item["link"] for item in search_results]
 
     except HttpError as e:
         # Handle errors in the API call
         error_details = json.loads(e.content.decode())
-        
+
         # Check if the error is related to an invalid or missing API key
         if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
             return "Error: The provided Google API key is invalid or missing."
@@ -163,6 +171,7 @@ def google_official_search(query, num_results=8):
     return search_results_links
 
 def browse_website(url, question):
+    """Browse a website and return the summary and links"""
     summary = get_text_summary(url, question)
     links = get_hyperlinks(url)
 
@@ -176,23 +185,27 @@ def browse_website(url, question):
 
 
 def get_text_summary(url, question):
+    """Return the results of a google search"""
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text, question)
     return """ "Result" : """ + summary
 
 
 def get_hyperlinks(url):
+    """Return the results of a google search"""
     link_list = browse.scrape_links(url)
     return link_list
 
 
 def commit_memory(string):
+    """Commit a string to memory"""
     _text = f"""Committing memory with string "{string}" """
     mem.permanent_memory.append(string)
     return _text
 
 
 def delete_memory(key):
+    """Delete a memory with a given key"""
     if key >= 0 and key < len(mem.permanent_memory):
         _text = "Deleting memory with key " + str(key)
         del mem.permanent_memory[key]
@@ -204,6 +217,7 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
+    """Overwrite a memory with a given key and string"""
     # Check if the key is a valid integer
     if is_valid_int(key):
         key_int = int(key)
@@ -230,11 +244,13 @@ def overwrite_memory(key, string):
 
 
 def shutdown():
+    """Shut down the program"""
     print("Shutting down...")
     quit()
 
 
 def start_agent(name, task, prompt, model=cfg.fast_llm_model, chat_id=None):
+    """Start an agent with a given name, task, and prompt"""
     global cfg
 
     # Remove underscores from name
@@ -258,6 +274,7 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model, chat_id=None):
 
 
 def message_agent(key, message, chat_id=None):
+    """Message an agent with a given key and message"""
     global cfg
 
     # Check if the key is a valid integer
@@ -276,11 +293,13 @@ def message_agent(key, message, chat_id=None):
 
 
 def list_agents(chat_id=None):
+    """List all agents"""
     return agents.list_agents(chat_id=chat_id)
 
 
 def delete_agent(key, chat_id=None):
-    result = agents.delete_agent(key, chat_id=None)
+    """Delete an agent with a given key"""
+    result = agents.delete_agent(key, chat_id=chat_id)
     if not result:
         return f"Agent {key} does not exist."
     return f"Agent {key} deleted."
