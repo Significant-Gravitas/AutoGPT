@@ -1,0 +1,7 @@
+{
+    "editor.defaultFormatter": null,
+    "python.formatting.provider": "yapf",
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.python"
+    }
+}
