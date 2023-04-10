@@ -28,15 +28,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -50,7 +50,7 @@ Gmail: entrepreneurgpt@gmail.com
 Twitter: @En_GPT
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP: 
+Entrepreneur-GTP:
 {
 "command":
 {
@@ -69,7 +69,7 @@ Entrepreneur-GTP:
 }
 }
 -----------------------------------------------------------------------
-USER: 
+USER:
 RESULT:
 """
 29 best online business ideas
@@ -117,7 +117,7 @@ https://www.visitor-analytics.io › blog › best-online-b...
 26/10/2022 — 10 Best Online Business Ideas for 2023 · 1. Artificial Intelligence · 2. Digital Products · 3. Blogging · 4. Graphic Design · 5. Web Development · 6.
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP: 
+Entrepreneur-GTP:
 {
 "command":
 {
@@ -167,15 +167,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -193,7 +193,7 @@ Online business ideas: 1. Clothing line, 2. Dropshipping, 3. Sell art, 4. Freela
 """
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP: 
+Entrepreneur-GTP:
 {
 "command":
 {
@@ -282,15 +282,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -334,7 +334,7 @@ Entrepreneur-GTP:
 -----------------------------------------------------------------------
 USER:
 """
-Top Result: 
+Top Result:
 """
 Low-Cost Business Ideas:
 Mobile Food Shop: Mobile Food Shop is the top small business idea as people all over the world love to eat tasty and healthy food. ...
@@ -403,15 +403,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",

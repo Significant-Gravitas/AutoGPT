@@ -28,15 +28,15 @@ def get_command(response):
     """Parse the response and return the command name and arguments"""
     try:
         response_json = fix_and_parse_json(response)
-        
+
         if "command" not in response_json:
             return "Error:" , "Missing 'command' object in JSON"
-        
+
         command = response_json["command"]
 
         if "name" not in command:
             return "Error:", "Missing 'name' field in 'command' object"
-        
+
         command_name = command["name"]
 
         # Use an empty dictionary if 'args' field is not present in 'command' object
@@ -146,20 +146,20 @@ def google_official_search(query, num_results=8):
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)
-        
+
         # Send the search query and retrieve the results
         result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
 
         # Extract the search result items from the response
         search_results = result.get("items", [])
-        
+
         # Create a list of only the URLs from the search results
         search_results_links = [item["link"] for item in search_results]
 
     except HttpError as e:
         # Handle errors in the API call
         error_details = json.loads(e.content.decode())
-        
+
         # Check if the error is related to an invalid or missing API key
         if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
             return "Error: The provided Google API key is invalid or missing."
