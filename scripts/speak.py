@@ -15,7 +15,7 @@ tts_headers = {
 }
 
 def eleven_labs_speech(text, voice_index=0):
-    """Return the results of a google search"""
+    """Speak text using elevenlabs.io's API"""
     tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(
         voice_id=voices[voice_index])
     formatted_message = {"text": text}
