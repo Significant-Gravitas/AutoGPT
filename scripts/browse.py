@@ -28,18 +28,26 @@ def make_request(url, timeout=10):
         return "Error: " + str(e)
 
 def scrape_text(url):
-    # Validate the input URL
-    if not is_valid_url(url):
+    """Scrape text from a webpage"""
+    # Basic check if the URL is valid
+    if not url.startswith('http'):
         return "Error: Invalid URL"
     
-    # Sanitize the input URL
-    sanitized_url = sanitize_url(url)
-    
-    # Make the request with a timeout and handle exceptions
-    response = make_request(sanitized_url)
+    # Validate the input URL
+    if not is_valid_url(url):
+        # Sanitize the input URL
+        sanitized_url = sanitize_url(url)
 
-    if isinstance(response, str):
-        return response
+        # Make the request with a timeout and handle exceptions
+        response = make_request(sanitized_url)
+
+        if isinstance(response, str):
+            return response
+    else:
+        # Sanitize the input URL
+        sanitized_url = sanitize_url(url)
+
+        response = requests.get(sanitized_url, headers=cfg.user_agent_header)
 
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -55,6 +63,7 @@ def scrape_text(url):
 
 
 def extract_hyperlinks(soup):
+    """Extract hyperlinks from a BeautifulSoup object"""
     hyperlinks = []
     for link in soup.find_all('a', href=True):
         hyperlinks.append((link.text, link['href']))
@@ -62,6 +71,7 @@ def extract_hyperlinks(soup):
 
 
 def format_hyperlinks(hyperlinks):
+    """Format hyperlinks into a list of strings"""
     formatted_links = []
     for link_text, link_url in hyperlinks:
         formatted_links.append(f"{link_text} ({link_url})")
@@ -69,6 +79,7 @@ def format_hyperlinks(hyperlinks):
 
 
 def scrape_links(url):
+    """Scrape links from a webpage"""
     response = requests.get(url, headers=cfg.user_agent_header)
 
     # Check if the response contains an HTTP error
@@ -86,6 +97,7 @@ def scrape_links(url):
 
 
 def split_text(text, max_length=8192):
+    """Split text into chunks of a maximum length"""
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
@@ -104,12 +116,14 @@ def split_text(text, max_length=8192):
 
 
 def create_message(chunk, question):
+    """Create a message for the user to summarize a chunk of text"""
     return {
         "role": "user",
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
     }
 
 def summarize_text(text, question):
+    """Summarize text using the LLM model"""
     if not text:
         return "Error: No text to summarize"
 
