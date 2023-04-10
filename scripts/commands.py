@@ -189,6 +189,27 @@ def send_text(message, phone_number):
 
     print(f'Text Message Sent To: {phone_number}')
 
+# Function that takes in a message and a phone number 
+# to be used to send a text message
+def send_text(message, phone_number):
+    
+    # Import the Twilio REST API client
+    from twilio.rest import Client
+    
+    # Create a Twilio client object using your Twilio account SID and auth token
+    client = Client(cfg.twilio_account_sid, cfg.twilio_auth_token)
+    
+    # Use the Twilio client object to create a new text message object
+    # and send it to the specified phone number using the Twilio phone number as the sender
+    message = client.messages.create(
+        body=message,  # The message text to send
+        from_=cfg.twilio_from_number,  # Your Twilio phone number
+        to=phone_number  # The recipient's phone number
+    )
+    
+    print(f'Text Message Sent To: {phone_number}')
+
+
 
 def get_text_summary(url, question):
     text = browse.scrape_text(url)
