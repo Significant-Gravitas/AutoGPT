@@ -1,7 +1,12 @@
 import express from "express"
 import { spawn } from "child_process"
+import fs from "fs"
+import bodyParser from "body-parser"
+import yaml from "js-yaml"
 
 export const app = express()
+app.use(bodyParser.urlencoded({ extended: false }))
+app.use(bodyParser.json())
 
 if (!process.env["VITE"]) {
   const frontendFiles = `${process.cwd()}/dist`
@@ -32,6 +37,11 @@ app.get("/api/data", (req, res) => {
 app.get("/api/stop", (_, res) => {
   python.kill()
   res.json({ output: "Python script stopped" })
+})
+
+app.post("/api/init", (req, res) => {
+  const yamlString = yaml.dump(req.body)
+  fs.writeFileSync("../ai_settings.yaml", `${yamlString}`, "utf8")
 })
 
 // kill python process on exit
