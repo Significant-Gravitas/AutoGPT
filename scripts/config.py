@@ -53,6 +53,7 @@ class Config(metaclass=Singleton):
         
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
 
+        self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
         
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
