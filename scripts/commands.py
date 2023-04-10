@@ -108,6 +108,8 @@ def execute_command(command_name, arguments):
             return execute_python_file(arguments["file"])
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
+        elif command_name == "do_nothing":
+            return "No action performed."
         elif command_name == "task_complete":
             shutdown()
         else:
