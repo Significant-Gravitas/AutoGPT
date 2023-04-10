@@ -26,10 +26,11 @@ JSON_SCHEMA = """
 """
 
 
-def fix_and_parse_json(
+def fix_and_parse_json(    
     json_str: str,
     try_to_fix_with_gpt: bool = True
 ) -> Union[str, Dict[Any, Any]]:
+    """Fix and parse JSON string"""
     try:
         json_str = json_str.replace('\t', '')
         return json.loads(json_str)
@@ -72,6 +73,7 @@ def fix_and_parse_json(
 
 
 def fix_json(json_str: str, schema: str, debug=False) -> str:
+    """Fix the given JSON string to make it parseable and fully complient with the provided schema."""
     # Try to fix the JSON using gpt:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
@@ -93,6 +95,7 @@ def fix_json(json_str: str, schema: str, debug=False) -> str:
         print("-----------")
         print(f"Fixed JSON: {result_string}")
         print("----------- END OF FIX ATTEMPT ----------------")
+
     try:
         json.loads(result_string)  # just check the validity
         return result_string

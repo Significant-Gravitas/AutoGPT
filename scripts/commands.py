@@ -26,6 +26,7 @@ def is_valid_int(value):
         return False
 
 def get_command(response):
+    """Parse the response and return the command name and arguments"""
     try:
         response_json = fix_and_parse_json(response)
 
@@ -54,6 +55,7 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
+    """Execute the command and return the result"""
     memory = get_memory(cfg)
 
     try:
@@ -123,11 +125,13 @@ def execute_command(command_name, arguments):
 
 
 def get_datetime():
+    """Return the current date and time"""
     return "Current date and time: " + \
         datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def google_search(query, num_results=8):
+    """Return the results of a google search"""
     search_results = []
     for j in ddg(query, max_results=num_results):
         search_results.append(j)
@@ -135,6 +139,7 @@ def google_search(query, num_results=8):
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 def google_official_search(query, num_results=8):
+    """Return the results of a google search using the official Google API"""
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     import json
@@ -170,6 +175,7 @@ def google_official_search(query, num_results=8):
     return search_results_links
 
 def browse_website(url, question):
+    """Browse a website and return the summary and links"""
     summary = get_text_summary(url, question)
     links = get_hyperlinks(url)
 
@@ -183,23 +189,27 @@ def browse_website(url, question):
 
 
 def get_text_summary(url, question):
+    """Return the results of a google search"""
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text, question)
     return """ "Result" : """ + summary
 
 
 def get_hyperlinks(url):
+    """Return the results of a google search"""
     link_list = browse.scrape_links(url)
     return link_list
 
 
 def commit_memory(string):
+    """Commit a string to memory"""
     _text = f"""Committing memory with string "{string}" """
     mem.permanent_memory.append(string)
     return _text
 
 
 def delete_memory(key):
+    """Delete a memory with a given key"""
     if key >= 0 and key < len(mem.permanent_memory):
         _text = "Deleting memory with key " + str(key)
         del mem.permanent_memory[key]
@@ -211,6 +221,7 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
+    """Overwrite a memory with a given key and string"""
     # Check if the key is a valid integer
     if is_valid_int(key):
         key_int = int(key)
@@ -237,11 +248,13 @@ def overwrite_memory(key, string):
 
 
 def shutdown():
+    """Shut down the program"""
     print("Shutting down...")
     quit()
 
 
 def start_agent(name, task, prompt, model=cfg.fast_llm_model):
+    """Start an agent with a given name, task, and prompt"""
     global cfg
 
     # Remove underscores from name
@@ -265,6 +278,7 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
 
 
 def message_agent(key, message):
+    """Message an agent with a given key and message"""
     global cfg
 
     # Check if the key is a valid integer
@@ -283,10 +297,12 @@ def message_agent(key, message):
 
 
 def list_agents():
+    """List all agents"""
     return agents.list_agents()
 
 
 def delete_agent(key):
+    """Delete an agent with a given key"""
     result = agents.delete_agent(key)
     if not result:
         return f"Agent {key} does not exist."
