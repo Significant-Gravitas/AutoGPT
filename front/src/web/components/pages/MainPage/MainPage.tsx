@@ -25,45 +25,7 @@ const MainPage = () => {
   const [playing, setPlaying] = useState(false)
   const commentsEndRef = useRef(null)
 
-  const [output, setOutput] = useState([
-    {
-      title: "Welcome back! ",
-      content: "Would you like me to return to being Entrepreneur-GPT?",
-    },
-    { title: "Using memory of type: PineconeMemory", content: "" },
-    { title: "Thinking...", content: "" },
-    {
-      title: "ENTREPRENEUR-GPT THOUGHTS:",
-      content:
-        "As an entrepreneur AI, I should first start developing a business plan. I can use my Google search to gather data and inform my approach. ",
-    },
-    {
-      title: "REASONING:",
-      content:
-        "Designing a thoughtful business plan helps me to ensure that I am executing on a well-founded plan. Conducting some research through Google can inform my initial approach to create an efficient business model. ",
-    },
-    { title: "PLAN:", content: "" },
-    {
-      title: "- ",
-      content:
-        "Use my Google search command to evaluate market trends and determine business strategies.",
-    },
-    {
-      title: "- ",
-      content:
-        "Develop my initial business plan in writing and store it using write_to_file command.",
-    },
-    {
-      title: "CRITICISM:",
-      content:
-        "My goal should be airtight. I will have to ensure that any information I obtain over the internet is relevant for my business plan. ",
-    },
-    {
-      title: "NEXT ACTION: ",
-      content:
-        "COMMAND = google ARGUMENTS = {'input': 'market trends for new businesses'}",
-    },
-  ])
+  const [output, setOutput] = useState([])
 
   // This function will scroll to the bottom of the messages element
   const scrollToBottom = () => {
@@ -81,7 +43,7 @@ const MainPage = () => {
         const data = await AutoGPTAPI.fetchData()
         setOutput(data)
       }
-    }, 5000)
+    }, 500)
     return () => clearInterval(interval)
   }, [playing])
 

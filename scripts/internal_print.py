@@ -10,4 +10,4 @@ def print_to_console(
         "title": title,
         "content": content
     }
-    print(json.dumps(object) + ",")
+    print(json.dumps(object) + ",", flush=True)

@@ -1,6 +1,7 @@
 import json
 from call_ai_function import call_ai_function
 from config import Config
+from internal_print import print_to_console
 cfg = Config()
 
 def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
@@ -38,13 +39,13 @@ def fix_and_parse_json(json_str: str, try_to_fix_with_gpt: bool = True):
           return json.loads(json_str)
         except Exception as e:
           if try_to_fix_with_gpt:
-            print(f"Warning: Failed to parse AI output, attempting to fix.\n If you see this warning frequently, it's likely that your prompt is confusing the AI. Try changing it up slightly.")
+            internal_print(f"Warning: Failed to parse AI output, attempting to fix.\n If you see this warning frequently, it's likely that your prompt is confusing the AI. Try changing it up slightly.")
             # Now try to fix this up using the ai_functions
             ai_fixed_json = fix_json(json_str, json_schema, False)
             if ai_fixed_json != "failed":
               return json.loads(ai_fixed_json)
             else:
-              print(f"Failed to fix ai output, telling the AI.") # This allows the AI to react to the error message, which usually results in it correcting its ways.
+              internal_print(f"Failed to fix ai output, telling the AI.") # This allows the AI to react to the error message, which usually results in it correcting its ways.
               return json_str
           else:
             raise e
@@ -62,11 +63,11 @@ def fix_json(json_str: str, schema: str, debug=False) -> str:
         function_string, args, description_string, model=cfg.fast_llm_model
     )
     if debug:
-        print("------------ JSON FIX ATTEMPT ---------------")
-        print(f"Original JSON: {json_str}")
-        print("-----------")
-        print(f"Fixed JSON: {result_string}")
-        print("----------- END OF FIX ATTEMPT ----------------")
+        internal_print("------------ JSON FIX ATTEMPT ---------------")
+        internal_print(f"Original JSON: {json_str}")
+        internal_print("-----------")
+        internal_print(f"Fixed JSON: {result_string}")
+        internal_print("----------- END OF FIX ATTEMPT ----------------")
     try:
         json.loads(result_string) # just check the validity
         return result_string
@@ -74,5 +75,5 @@ def fix_json(json_str: str, schema: str, debug=False) -> str:
         # Get the call stack:
         # import traceback
         # call_stack = traceback.format_exc()
-        # print(f"Failed to fix JSON: '{json_str}' "+call_stack)
+        # internal_print(f"Failed to fix JSON: '{json_str}' "+call_stack)
         return "failed"

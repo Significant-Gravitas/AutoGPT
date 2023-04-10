@@ -18,13 +18,16 @@ let dataToSend = ""
 
 app.get("/api/start", (_, res) => {
   python = spawn("python", ["../scripts/main.py"])
+
   python.stdout.on("data", function (data: string) {
     console.log(data.toString())
     dataToSend = dataToSend + data.toString()
   })
+
   python.on("close", (code: string) => {
     console.log(`child process close all stdio with code ${code}`)
   })
+
   console.log("Python script started")
 
   res.json({ output: "Python script started" })
