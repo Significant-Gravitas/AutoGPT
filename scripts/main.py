@@ -281,7 +281,7 @@ def parse_arguments():
 
     if args.debug:
         print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_debug_mode(True)        
+        cfg.set_debug_mode(True)
 
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
