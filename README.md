@@ -166,6 +166,34 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 Or you can set them in the `.env` file.
 
+## Twilio API Key Setup
+
+Twilio is a cloud communication platform that provides APIs for sending 
+text messages (SMS).
+
+1. Go to www.twilio.com and make an account if you don't already have one.
+2. Generate an SID, AUTH TOKEN and Twilio phone number
+
+### Setting up environment variables
+   For Windows Users:
+```
+setx TWILIO_ACCOUNT_SID "YOUR_TWILIO_ACCOUNT_SID"
+setx TWILIO_AUTH_TOKEN="YOUR_TWILIO_AUTH_TOKEN"
+setx TWILIO_FROM_NUMBER="YOUR_TWILIO_FROM_NUMBER"
+
+```
+For macOS and Linux users:
+```
+export TWILIO_ACCOUNT_SID="YOUR_TWILIO_ACCOUNT_SID"
+export TWILIO_FROM_NUMBER="YOUR_TWILIO_AUTH_TOKEN"
+export TWILIO_FROM_NUMBER="YOUR_TWILIO_FROM_NUMBER"
+
+```
+
+Or you can set them in the `.env` file.
+
+
+
 ## View Memory Usage
 
 1. View memory usage by using the `--debug` flag :)
