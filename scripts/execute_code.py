@@ -3,15 +3,17 @@ import os
 import subprocess
 
 
-def execute_python_file(file):
-    workspace_folder = "auto_gpt_workspace"
+WORKSPACE_FOLDER = "auto_gpt_workspace"
 
-    print (f"Executing file '{file}' in workspace '{workspace_folder}'")
+
+def execute_python_file(file):
+
+    print (f"Executing file '{file}' in workspace '{WORKSPACE_FOLDER}'")
 
     if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    file_path = os.path.join(workspace_folder, file)
+    file_path = os.path.join(WORKSPACE_FOLDER, file)
 
     if not os.path.isfile(file_path):
         return f"Error: File '{file}' does not exist."
@@ -26,7 +28,7 @@ def execute_python_file(file):
             'python:3.10',
             f'python {file}',
             volumes={
-                os.path.abspath(workspace_folder): {
+                os.path.abspath(WORKSPACE_FOLDER): {
                     'bind': '/workspace',
                     'mode': 'ro'}},
             working_dir='/workspace',
@@ -51,11 +53,17 @@ def execute_python_file(file):
 
 def exec_shell(command_line):
 
+    print (f"Executing command '{command_line}' in workspace '{WORKSPACE_FOLDER}'")
+
     args = command_line.split()
+    base_path = os.getcwd()
+
+    os.chdir(f"{base_path}/{WORKSPACE_FOLDER}")
 
     result = subprocess.run(args, capture_output=True)
-
     output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}";
+
+    os.chdir(base_path)
 
     # print(f"Shell execution complete. Output: {output}")
 
