@@ -45,7 +45,7 @@ def say_text(text, voice_index=0):
         if cfg.use_mac_os_tts == 'True':
             macos_tts_speech(text)
         else:
-            gtts(text)
+            gtts_speech(text)
     else:
         success = eleven_labs_speech(text, voice_index)
         if not success:
