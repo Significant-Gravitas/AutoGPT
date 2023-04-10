@@ -94,7 +94,6 @@ def summarize_text(text, question):
     for i, chunk in enumerate(chunks):
         print(f"Summarizing chunk {i + 1} / {len(chunks)}")
         messages = [create_message(chunk, question)]
- 
         summary = create_chat_completion_with_retry(
             model=cfg.fast_llm_model,
             messages=messages,
