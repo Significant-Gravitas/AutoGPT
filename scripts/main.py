@@ -140,10 +140,8 @@ def print_assistant_thoughts(assistant_reply):
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
-
     except json.decoder.JSONDecodeError as e:
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
-        print_to_console("Stack trace:\n", Fore.RED, e.with_traceback)
         if cfg.speak_mode:
             speak.say_text("I have received an invalid JSON response from the OpenAI API. I cannot ignore this response.")
 
@@ -363,6 +361,8 @@ while True:
     # Get command name and arguments
     try:
         command_name, arguments = cmd.get_command(assistant_reply)
+        if cfg.speak_mode:
+            speak.say_text(f"I want to execute {command_name}")
     except Exception as e:
         print_to_console("Error: \n", Fore.RED, str(e))
 
