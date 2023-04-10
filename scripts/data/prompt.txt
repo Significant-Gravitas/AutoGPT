@@ -24,7 +24,7 @@ COMMANDS:
 18. Execute Python File: "execute_python_file", args: "file": "<file>"
 19. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 20. Generate Image: "generate_image", args: "prompt": "<prompt>"
-21. Do Nothing; command name: "do_nothing", args: ""
+21. Do Nothing: "do_nothing", args: ""
 
 RESOURCES:
 
