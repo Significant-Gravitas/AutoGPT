@@ -316,7 +316,7 @@ full_message_history = []
 result = None
 next_action_count = 0
 # Make a constant:
-user_input = "Determine which next command to use, and respond using the format specified above:"
+user_input = "Determine which next command to use, respond exclusively in JSON and only JSON:"
 
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
