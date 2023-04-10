@@ -1,4 +1,5 @@
 import json
+import regex
 from typing import Any, Dict, Union
 from call_ai_function import call_ai_function
 from config import Config
@@ -26,13 +27,20 @@ JSON_SCHEMA = """
 """
 
 
-def fix_and_parse_json(    
+def extract_json_from_string(input_string: str) -> Dict[str, Any]:
+    json_pattern = regex.compile(r"\{(?:[^{}]|(?R))*\}")
+    json_string = json_pattern.search(input_string).group(0)
+    json_string = json_string.replace("\n", " ").replace("  ", " ")
+    return json_string
+
+
+def fix_and_parse_json(
     json_str: str,
     try_to_fix_with_gpt: bool = True
 ) -> Union[str, Dict[Any, Any]]:
     """Fix and parse JSON string"""
     try:
-        json_str = json_str.replace('\t', '')
+        json_str = extract_json_from_string(json_str)
         return json.loads(json_str)
     except json.JSONDecodeError as _:  # noqa: F841
         json_str = correct_json(json_str)
