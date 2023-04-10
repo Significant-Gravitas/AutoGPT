@@ -71,8 +71,9 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
         if json_match:
             # Extract the valid JSON object from the string
             json_string = json_match.group(0)
+            print_to_console("Apparently json was fixed.", Fore.GREEN,"")
             if cfg.speak_mode:
-                speak.say_text("Apparently I managed to fix it.")
+                speak.say_text("Apparently json was fixed.")
         else:
             raise ValueError("No valid JSON object found")
 
