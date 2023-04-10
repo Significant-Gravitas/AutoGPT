@@ -52,8 +52,8 @@ class LocalCache(MemoryProviderSingleton):
         vector = vector[np.newaxis, :]
         self.data.embeddings = np.concatenate(
             [
-                vector,
                 self.data.embeddings,
+                vector,
             ],
             axis=0,
         )
