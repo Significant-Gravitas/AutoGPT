@@ -19,8 +19,17 @@ def eleven_labs_speech(text, voice_index=0):
     tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(
         voice_id=voices[voice_index])
     formatted_message = {"text": text}
+    proxies = {}
+    if cfg.elevenlabs_api_proxy is None:
+        pass
+    elif isinstance(cfg.elevenlabs_api_proxy, str):
+        proxies = {"http": cfg.elevenlabs_api_proxy, "https": cfg.elevenlabs_api_proxy}
+    elif isinstance(cfg.elevenlabs_api_proxy, dict):
+        proxies = cfg.elevenlabs_api_proxy
+    else:
+        pass
     response = requests.post(
-        tts_url, headers=tts_headers, json=formatted_message)
+        tts_url, headers=tts_headers, json=formatted_message, proxies=proxies)
 
     if response.status_code == 200:
         with open("speech.mpeg", "wb") as f:

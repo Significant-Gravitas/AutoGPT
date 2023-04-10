@@ -3,6 +3,8 @@ from config import Config
 cfg = Config()
 
 openai.api_key = cfg.openai_api_key
+openai.proxy = cfg.openai_api_proxy
+
 
 # Overly simple abstraction until we create something better
 def create_chat_completion(messages, model=None, temperature=None, max_tokens=None)->str:

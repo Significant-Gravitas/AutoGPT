@@ -19,6 +19,7 @@ def generate_image(prompt):
     if cfg.image_provider == 'dalle':
 
         openai.api_key = cfg.openai_api_key
+        openai.proxy = cfg.openai_api_proxy
 
         response = openai.Image.create(
             prompt=prompt,
