@@ -71,7 +71,7 @@ def chat_with_ai(
 
             relevant_memory = permanent_memory.get_relevant(str(full_message_history[-5:]), 10)
 
-            if cfg.debug_mode:
+            if cfg.debug:
                 print('Memory Stats: ', permanent_memory.get_stats())
 
             next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
@@ -110,7 +110,7 @@ def chat_with_ai(
             # assert tokens_remaining >= 0, "Tokens remaining is negative. This should never happen, please submit a bug report at https://www.github.com/Torantulino/Auto-GPT"
 
             # Debug print the current context
-            if cfg.debug_mode:
+            if cfg.debug:
                 print(f"Token limit: {token_limit}")
                 print(f"Send Token Count: {current_tokens_used}")
                 print(f"Tokens remaining for response: {tokens_remaining}")
