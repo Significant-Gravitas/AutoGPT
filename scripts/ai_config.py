@@ -1,6 +1,6 @@
+from pathlib import Path
 import yaml
 import data
-from pathlib import Path
 
 
 class AIConfig:
