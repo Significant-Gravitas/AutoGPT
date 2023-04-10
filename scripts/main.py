@@ -64,8 +64,8 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
 
     try:
         # Use regex to search for JSON objects
-        import re
-        json_pattern = re.compile(r"\{(?:[^{}]|(?R))*\}")
+        import regex
+        json_pattern = regex.compile(r"\{(?:[^{}]|(?R))*\}")
         json_match = json_pattern.search(json_string)
 
         if json_match:
