@@ -370,11 +370,11 @@ while True:
             cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # Print Assistant thoughts
-    assistant_reply = print_assistant_thoughts(assistant_reply)
+    print_assistant_thoughts(assistant_reply)
 
     # Get command name and arguments
     try:
-        command_name, arguments = cmd.get_command(assistant_reply)
+        command_name, arguments = cmd.get_command(attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply))
         if cfg.speak_mode:
             speak.say_text(f"I want to execute {command_name}")
     except Exception as e:
