@@ -81,7 +81,7 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 2. Navigate to the project directory:
 *(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)*
 ```
-$ cd 'Auto-GPT'
+cd 'Auto-GPT'
 ```
 
 3. Install the required dependencies:
@@ -92,7 +92,7 @@ pip install -r requirements.txt
 
 4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
-  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+  - Obtain your ElevenLabs API key from: https://beta.elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
 
 ## 🔧 Usage
@@ -114,7 +114,7 @@ python scripts/main.py --speak
 
 ## 🔍 Google API Keys Configuration
 
-This section is optional, use the official google api if you are having issues with error 429 when running google search.
+This section is optional, use the official google api if you are having issues with error 429 when running a google search.
 To use the `google_official_search` command, you need to set up your Google API keys in your environment variables.
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
@@ -185,7 +185,12 @@ are loaded for the agent at any given time.
 3. Find your API key and region under the default project in the left sidebar.
 
 ### Setting up environment variables
-   For Windows Users:
+
+Simply set them in the `.env` file. 
+
+Alternatively, you can set them from the command line (advanced):
+
+For Windows Users:
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
@@ -198,7 +203,6 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
 
-Or you can set them in the `.env` file.
 
 ## View Memory Usage
 
@@ -222,6 +226,7 @@ If you don't have access to the GPT4 api, this mode will allow you to use Auto-G
 ```
 python scripts/main.py --gpt3only
 ```
+It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
 
 ## 🖼 Image Generation
 By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [HuggingFace API Token](https://huggingface.co/settings/tokens) is required.
