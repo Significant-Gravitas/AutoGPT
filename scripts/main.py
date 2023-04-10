@@ -287,7 +287,6 @@ def parse_arguments():
 
 
 # TODO: fill in llm values here
-cfg = Config()
 check_openai_api_key()
 cfg = Config()
 parse_arguments()
