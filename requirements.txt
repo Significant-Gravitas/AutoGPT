@@ -16,3 +16,4 @@ redis
 orjson
 Pillow
 httplib2
+PySocks
