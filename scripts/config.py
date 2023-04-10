@@ -1,3 +1,4 @@
+import abc
 import os
 import openai
 from dotenv import load_dotenv
@@ -5,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-class Singleton(type):
+class Singleton(abc.ABCMeta, type):
     """
     Singleton metaclass for ensuring only one instance of a class.
     """
@@ -20,12 +21,17 @@ class Singleton(type):
         return cls._instances[cls]
 
 
+class AbstractSingleton(abc.ABC, metaclass=Singleton):
+    pass
+
+
 class Config(metaclass=Singleton):
     """
     Configuration class to store the state of bools for different scripts access.
     """
 
     def __init__(self):
+        self.debug = False
         self.continuous_mode = False
         self.speak_mode = False
         # TODO - make these models be self-contained, using langchain, so we can configure them once and call it good 
@@ -53,10 +59,20 @@ class Config(metaclass=Singleton):
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
 
+        self.image_provider = os.getenv("IMAGE_PROVIDER")
+        self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
+
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
         self.user_agent_header = {"User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
+        self.redis_host = os.getenv("REDIS_HOST", "localhost")
+        self.redis_port = os.getenv("REDIS_PORT", "6379")
+        self.redis_password = os.getenv("REDIS_PASSWORD", "")
+        self.wipe_redis_on_start = os.getenv("WIPE_REDIS_ON_START", "True") == 'True'
+        self.memory_index = os.getenv("MEMORY_INDEX", 'auto-gpt')
+        # Note that indexes must be created on db 0 in redis, this is not configureable.
 
+        self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
@@ -95,3 +111,6 @@ class Config(metaclass=Singleton):
 
     def set_pinecone_region(self, value: str):
         self.pinecone_region = value
+
+    def set_debug_mode(self, value: bool):
+        self.debug = value
