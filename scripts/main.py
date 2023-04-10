@@ -320,7 +320,7 @@ while True:
             user_input,
             full_message_history,
             memory,
-            cfg.fast_token_limit, cfg.debug) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
