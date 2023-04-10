@@ -4,7 +4,6 @@ from config import Config
 from llm_utils import create_chat_completion, create_chat_completion_with_retry
 from tenacity import retry, wait_exponential, stop_after_attempt
 
-
 cfg = Config()
 
 def scrape_text(url):
