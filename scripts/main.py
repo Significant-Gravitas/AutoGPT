@@ -265,6 +265,7 @@ def parse_arguments():
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
     args = parser.parse_args()
 
     if args.continuous:
@@ -286,6 +287,10 @@ def parse_arguments():
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
+    
+    if args.gpt4only:
+        print_to_console("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_fast_llm_model(cfg.smart_llm_model)
 
     if args.debug:
         print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
