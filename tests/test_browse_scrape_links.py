@@ -72,7 +72,7 @@ class TestScrapeLinks:
         result = scrape_links("https://www.invalidurl.com")
 
         # Assert that the function returns "error"
-        assert result == "error"
+        assert "Error:" in result
 
     # Tests that the function returns an empty list when the html contains no hyperlinks. 
     def test_no_hyperlinks(self, mocker):
