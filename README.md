@@ -211,7 +211,7 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 
 ## 💀 Continuous Mode ⚠️
-Run the AI **without** user authorisation, 100% automated.
+Run the AI **without** user authorization, 100% automated.
 Continuous mode is not recommended.
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
