@@ -34,7 +34,7 @@ class AIConfig:
     @classmethod
     def load(cls: object, config_file: str=SAVE_FILE) -> object:
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from yaml file if yaml file exists, 
+        Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from yaml file if yaml file exists,
         else returns class with no parameters.
 
         Parameters:
@@ -42,7 +42,7 @@ class AIConfig:
            config_file (int): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
 
         Returns:
-            cls (object): A instance of given cls object  
+            cls (object): A instance of given cls object
         """
 
         try:
@@ -61,11 +61,11 @@ class AIConfig:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
-        Parameters: 
+        Parameters:
             config_file(str): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
 
         Returns:
-            None 
+            None
         """
 
         config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
@@ -76,7 +76,7 @@ class AIConfig:
         """
         Returns a prompt to the user with the class information in an organized fashion.
 
-        Parameters: 
+        Parameters:
             None
 
         Returns:

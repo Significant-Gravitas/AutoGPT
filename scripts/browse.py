@@ -5,11 +5,20 @@ from llm_utils import create_chat_completion
 
 cfg = Config()
 
+# Define and check for local file address prefixes
+def check_local_file_access(url):
+    local_prefixes = ['file:///', 'file://localhost', 'http://localhost', 'https://localhost']
+    return any(url.startswith(prefix) for prefix in local_prefixes)
+
 def scrape_text(url):
     """Scrape text from a webpage"""
     # Most basic check if the URL is valid:
     if not url.startswith('http'):
         return "Error: Invalid URL"
+    
+    # Restrict access to local files
+    if check_local_file_access(url):
+        return "Error: Access to local files is restricted"
     
     try:
         response = requests.get(url, headers=cfg.user_agent_header)
