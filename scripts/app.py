@@ -3,7 +3,7 @@ import uuid
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from app_types import StartBody, ChatBody
 from app_utils import create_assistant_thoughts, create_message
-from memory import PineconeMemory
+from memory import get_memory
 from ai_config import AIConfig
 from chat import chat_with_ai
 from config import Config
@@ -14,10 +14,10 @@ from agent_manager import next_key, agents
 
 app = FastAPI()
 chat_data = {}
-memory = PineconeMemory()
-memory.clear()
-print('Using memory of type: ' + memory.__class__.__name__)
 cfg = Config()
+memory = get_memory(cfg, init=True)
+print('Using memory of type: ' + memory.__class__.__name__)
+
 
 
 def shutdown_chat(chat_id: str):
