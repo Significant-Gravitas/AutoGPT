@@ -59,7 +59,7 @@ Your support is greatly appreciated
 ## 📋 Requirements
 - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - OpenAI API key
-- PINECONE API key
+- [PINECONE API key](https://www.pinecone.io/)
 
 Optional:
 - ElevenLabs Key (If you want the AI to speak)
@@ -92,8 +92,8 @@ pip install -r requirements.txt
 
 4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
-  - Obtain your ElevenLabs API key from: https://beta.elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
-  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section. Additionally you need separate deployments for both embeddings and chat. Add their ID values to `AZURE_CHAT_DEPLOYMENT_ID` and `AZURE_EMBEDDINGS_DEPLOYMENT_ID` respectively
+  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_AZURE_API_BASE`, `OPENAI_AZURE_API_VERSION` and `OPENAI_AZURE_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section. Additionally you need separate deployments for both embeddings and chat. Add their ID values to `OPENAI_AZURE_CHAT_DEPLOYMENT_ID` and `OPENAI_AZURE_EMBEDDINGS_DEPLOYMENT_ID` respectively
 
 ## 🔧 Usage
 
@@ -179,8 +179,7 @@ MEMORY_INDEX=whatever
 
 ## 🌲 Pinecone API Key Setup
 
-Pinecone enable a vector based memory so a vast memory can be stored and only relevant memories
-are loaded for the agent at any given time.
+Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
 
 1. Go to app.pinecone.io and make an account if you don't already have one.
 2. Choose the `Starter` plan to avoid being charged.
