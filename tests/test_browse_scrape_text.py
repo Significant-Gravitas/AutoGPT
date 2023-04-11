@@ -37,7 +37,7 @@ Additional aspects:
 
 class TestScrapeText:
 
-    # Tests that scrape_text() returns the expected text when given a valid URL. 
+    # Tests that scrape_text() returns the expected text when given a valid URL.
     def test_scrape_text_with_valid_url(self, mocker):
         # Mock the requests.get() method to return a response with expected text
         expected_text = "This is some sample text"
@@ -50,7 +50,7 @@ class TestScrapeText:
         url = "http://www.example.com"
         assert scrape_text(url) == expected_text
 
-    # Tests that the function returns an error message when an invalid or unreachable url is provided. 
+    # Tests that the function returns an error message when an invalid or unreachable url is provided.
     def test_invalid_url(self, mocker):
         # Mock the requests.get() method to raise an exception
         mocker.patch("requests.get", side_effect=requests.exceptions.RequestException)
@@ -60,7 +60,7 @@ class TestScrapeText:
         error_message = scrape_text(url)
         assert "Error:" in error_message
 
-    # Tests that the function returns an empty string when the html page contains no text to be scraped. 
+    # Tests that the function returns an empty string when the html page contains no text to be scraped.
     def test_no_text(self, mocker):
         # Mock the requests.get() method to return a response with no text
         mock_response = mocker.Mock()
@@ -72,7 +72,7 @@ class TestScrapeText:
         url = "http://www.example.com"
         assert scrape_text(url) == ""
 
-    # Tests that the function returns an error message when the response status code is an http error (>=400).  
+    # Tests that the function returns an error message when the response status code is an http error (>=400).
     def test_http_error(self, mocker):
         # Mock the requests.get() method to return a response with a 404 status code
         mocker.patch('requests.get', return_value=mocker.Mock(status_code=404))
@@ -83,7 +83,7 @@ class TestScrapeText:
         # Check that the function returns an error message
         assert result == "Error: HTTP 404 error"
 
-    # Tests that scrape_text() properly handles HTML tags. 
+    # Tests that scrape_text() properly handles HTML tags.
     def test_scrape_text_with_html_tags(self, mocker):
         # Create a mock response object with HTML containing tags
         html = "<html><body><p>This is <b>bold</b> text.</p></body></html>"
