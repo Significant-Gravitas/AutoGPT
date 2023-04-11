@@ -26,10 +26,11 @@ JSON_SCHEMA = """
 """
 
 
-def fix_and_parse_json(
+def fix_and_parse_json(    
     json_str: str,
     try_to_fix_with_gpt: bool = True
 ) -> Union[str, Dict[Any, Any]]:
+    """Fix and parse JSON string"""
     try:
         json_str = json_str.replace('\t', '')
         return json.loads(json_str)
@@ -59,7 +60,8 @@ def fix_and_parse_json(
                   " your prompt is confusing the AI. Try changing it up"
                   " slightly.")
             # Now try to fix this up using the ai_functions
-            ai_fixed_json = fix_json(json_str, JSON_SCHEMA, cfg.debug)
+            ai_fixed_json = fix_json(json_str, JSON_SCHEMA)
+
             if ai_fixed_json != "failed":
                 return json.loads(ai_fixed_json)
             else:
@@ -69,15 +71,17 @@ def fix_and_parse_json(
                 return json_str
         else:
             raise e
-
-
-def fix_json(json_str: str, schema: str, debug=False) -> str:
+            
+        
+def fix_json(json_str: str, schema: str) -> str:
+    """Fix the given JSON string to make it parseable and fully complient with the provided schema."""
+    
     # Try to fix the JSON using gpt:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
     description_string = "Fixes the provided JSON string to make it parseable"\
         " and fully complient with the provided schema.\n If an object or"\
-        " field specifed in the schema isn't contained within the correct"\
+        " field specified in the schema isn't contained within the correct"\
         " JSON, it is ommited.\n This function is brilliant at guessing"\
         " when the format is incorrect."
 
@@ -87,12 +91,13 @@ def fix_json(json_str: str, schema: str, debug=False) -> str:
     result_string = call_ai_function(
         function_string, args, description_string, model=cfg.fast_llm_model
     )
-    if debug:
+    if cfg.debug:
         print("------------ JSON FIX ATTEMPT ---------------")
         print(f"Original JSON: {json_str}")
         print("-----------")
         print(f"Fixed JSON: {result_string}")
         print("----------- END OF FIX ATTEMPT ----------------")
+
     try:
         json.loads(result_string)  # just check the validity
         return result_string

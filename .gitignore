@@ -10,6 +10,7 @@ auto_gpt_workspace/*
 venv/*
 outputs/*
 ai_settings.yaml
+.vscode
 auto-gpt.json
-
+log.txt
 .idea/*

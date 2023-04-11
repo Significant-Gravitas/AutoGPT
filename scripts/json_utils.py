@@ -76,7 +76,7 @@ def balance_braces(json_string: str) -> str:
         json.loads(json_string)
         return json_string
     except json.JSONDecodeError as e:
-        raise e
+        pass
 
 
 def fix_invalid_escape(json_str: str, error_message: str) -> str:
