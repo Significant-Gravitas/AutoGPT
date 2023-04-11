@@ -1,6 +1,6 @@
 import re
 import json
-from config import Config
+from .config import Config
 
 cfg = Config()
 
