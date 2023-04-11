@@ -81,6 +81,10 @@ class Config(metaclass=Singleton):
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
+        self.plugins = []
+        self.plugins_whitelist = []
+        self.plugins_blacklist = []
+
     def set_continuous_mode(self, value: bool):
         """Set the continuous mode value."""
         self.continuous_mode = value
@@ -135,3 +139,7 @@ class Config(metaclass=Singleton):
     def set_debug_mode(self, value: bool):
         """Set the debug mode value."""
         self.debug = value
+
+    def set_plugins(self, value: list):
+        """Set the plugins value."""
+        self.plugins = value

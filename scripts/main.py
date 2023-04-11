@@ -13,7 +13,10 @@ from enum import Enum, auto
 import sys
 from config import Config
 from json_parser import fix_and_parse_json
+from plugins import load_plugins
 from ai_config import AIConfig
+import os
+from pathlib import Path
 import traceback
 import yaml
 import argparse
@@ -322,6 +325,30 @@ user_input = "Determine which next command to use, and respond using the format 
 # this is particularly important for indexing and referencing pinecone memory
 memory = get_memory(cfg, init=True)
 print('Using memory of type: ' + memory.__class__.__name__)
+
+
+plugins_found = load_plugins(Path(os.getcwd()) / "plugins")
+loaded_plugins = []
+for plugin in plugins_found:
+    if plugin.__name__ in cfg.plugins_blacklist:
+        continue
+    if plugin.__name__ in cfg.plugins_whitelist:
+        loaded_plugins.append(plugin())
+    else:
+        ack = input(
+            f"WARNNG Plugin {plugin.__name__} found. But not in the"
+            " whitelist... Load? (y/n): "
+        )
+        if ack.lower() == "y":
+            loaded_plugins.append(plugin())
+
+if loaded_plugins:
+    print(f"\nPlugins found: {len(loaded_plugins)}\n"
+           "--------------------")
+for plugin in loaded_plugins:
+    print(f"{plugin._name}: {plugin._version} - {plugin._description}")
+
+cfg.set_plugins(loaded_plugins)
 
 # Interaction Loop
 while True:
