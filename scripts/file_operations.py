@@ -24,7 +24,7 @@ def read_file(filename):
     """Read a file and return the contents"""
     try:
         filepath = safe_join(working_directory, filename)
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding='utf-8') as f:
             content = f.read()
         return content
     except Exception as e:
