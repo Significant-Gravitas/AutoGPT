@@ -18,7 +18,7 @@ def execute_python_file(file):
 
     try:
         client = docker.from_env()
-        #XXX: Do not load all env var or else it will crash the container run.
+        # XXX: Do not load all env var or else it will crash the container run.
         env_vars = {
             'OPENAI_API_KEY': os.environ.get('OPENAI_API_KEY'),
             'ANTICAPTCHA_KEY': os.environ.get('ANTICAPTCHA_KEY'),
@@ -32,9 +32,10 @@ def execute_python_file(file):
         container = client.containers.run(
             'fsamir/python:3.11',
             f'python {file}',
-            volumes={os.path.abspath(workspace_folder): {
-                'bind': '/workspace',
-                'mode': 'rw'}
+            volumes={
+                os.path.abspath(workspace_folder): {
+                    'bind': '/workspace',
+                    'mode': 'rw'}
             },
             environment=env_vars,
             working_dir='/workspace',
