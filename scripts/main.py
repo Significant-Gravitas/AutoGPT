@@ -3,7 +3,6 @@ import random
 import commands as cmd
 import utils
 from memory import get_memory
-import data
 import chat
 from colorama import Fore, Style
 from spinner import Spinner
