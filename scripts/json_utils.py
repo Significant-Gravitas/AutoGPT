@@ -88,7 +88,7 @@ def fix_invalid_escape(json_str: str, error_message: str) -> str:
             json.loads(json_str)
             return json_str
         except json.JSONDecodeError as e:
-            if cfg.debug:
+            if cfg.debug_mode:
                 print('json loads error - fix invalid escape', e)
             error_message = str(e)
     return json_str
@@ -103,12 +103,12 @@ def correct_json(json_str: str) -> str:
     """
 
     try:
-        if cfg.debug:
+        if cfg.debug_mode:
             print("json", json_str)
         json.loads(json_str)
         return json_str
     except json.JSONDecodeError as e:
-        if cfg.debug:
+        if cfg.debug_mode:
             print('json loads error', e)
         error_message = str(e)
         if error_message.startswith('Invalid \\escape'):
@@ -119,7 +119,7 @@ def correct_json(json_str: str) -> str:
                 json.loads(json_str)
                 return json_str
             except json.JSONDecodeError as e:
-                if cfg.debug:
+                if cfg.debug_mode:
                     print('json loads error - add quotes', e)
                 error_message = str(e)
         if balanced_str := balance_braces(json_str):
