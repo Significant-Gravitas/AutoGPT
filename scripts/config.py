@@ -33,7 +33,7 @@ class Config(metaclass=Singleton):
 
     def __init__(self):
         """Initialize the Config class"""
-        self.debug = False
+        self.debug_mode = False
         self.continuous_mode = False
         self.speak_mode = False
 
@@ -90,9 +90,6 @@ class Config(metaclass=Singleton):
         """Set the speak mode value."""
         self.speak_mode = value
 
-    def set_debug_mode(self, value: bool):
-        self.debug_mode = value
-
     def set_fast_llm_model(self, value: str):
         """Set the fast LLM model value."""
         self.fast_llm_model = value
@@ -135,4 +132,4 @@ class Config(metaclass=Singleton):
 
     def set_debug_mode(self, value: bool):
         """Set the debug mode value."""
-        self.debug = value
+        self.debug_mode = value
