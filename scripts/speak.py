@@ -1,9 +1,9 @@
-import gtts
 import os
 from playsound import playsound
 import requests
 from config import Config
 cfg = Config()
+import gtts
 
 
 # TODO: Nicer names for these ids
@@ -13,7 +13,6 @@ tts_headers = {
     "Content-Type": "application/json",
     "xi-api-key": cfg.elevenlabs_api_key
 }
-
 
 def eleven_labs_speech(text, voice_index=0):
     """Speak text using elevenlabs.io's API"""
@@ -34,7 +33,6 @@ def eleven_labs_speech(text, voice_index=0):
         print("Response content:", response.content)
         return False
 
-
 def brian_speech(text):
     """Speak text using Brian with the streamelements API"""
     tts_url = f"https://api.streamelements.com/kappa/v2/speech?voice=Brian&text={text}"
@@ -51,17 +49,14 @@ def brian_speech(text):
         print("Response content:", response.content)
         return False
 
-
 def gtts_speech(text):
     tts = gtts.gTTS(text)
     tts.save("speech.mp3")
     playsound("speech.mp3")
     os.remove("speech.mp3")
 
-
 def macos_tts_speech(text):
     os.system(f'say "{text}"')
-
 
 def say_text(text, voice_index=0):
     if not cfg.elevenlabs_api_key:
