@@ -26,7 +26,7 @@ def read_file(filename, chat_id=None):
     """Read a file and return the contents"""
     try:
         filepath = safe_join(working_directory, filename, chat_id=chat_id)
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding='utf-8') as f:
             content = f.read()
         return content
     except Exception as e:
@@ -67,19 +67,22 @@ def delete_file(filename, chat_id=None):
     except Exception as e:
         return "Error: " + str(e)
 
+
 def search_files(directory, chat_id=None):
     found_files = []
 
     if directory == "" or directory == "/":
         search_directory = working_directory
     else:
-        search_directory = safe_join(working_directory, directory, chat_id=chat_id)
+        search_directory = safe_join(
+            working_directory, directory, chat_id=chat_id)
 
     for root, _, files in os.walk(search_directory):
         for file in files:
             if file.startswith('.'):
                 continue
-            relative_path = os.path.relpath(os.path.join(root, file), working_directory)
+            relative_path = os.path.relpath(
+                os.path.join(root, file), working_directory)
             found_files.append(relative_path)
 
     return found_files
