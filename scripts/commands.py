@@ -51,6 +51,7 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
+    """Execute the command and return the result"""
     memory = get_memory(cfg)
 
     try:
@@ -166,6 +167,7 @@ def google_official_search(query, num_results=8):
     return search_results_links
 
 def browse_website(url, question):
+    """Browse a website and return the summary and links"""
     summary = get_text_summary(url, question)
     links = get_hyperlinks(url)
 
@@ -179,12 +181,14 @@ def browse_website(url, question):
 
 
 def get_text_summary(url, question):
+    """Return the results of a google search"""
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text, question)
     return """ "Result" : """ + summary
 
 
 def get_hyperlinks(url):
+    """Return the results of a google search"""
     link_list = browse.scrape_links(url)
     return link_list
 
@@ -209,10 +213,24 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
-    """Overwrite a memory with a given key"""
-    if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Overwriting memory with key " + \
-            str(key) + " and string " + string
+    """Overwrite a memory with a given key and string"""
+    # Check if the key is a valid integer
+    if is_valid_int(key):
+        key_int = int(key)
+        # Check if the integer key is within the range of the permanent_memory list
+        if 0 <= key_int < len(mem.permanent_memory):
+            _text = "Overwriting memory with key " + str(key) + " and string " + string
+            # Overwrite the memory slot with the given integer key and string
+            mem.permanent_memory[key_int] = string
+            print(_text)
+            return _text
+        else:
+            print(f"Invalid key '{key}', out of range.")
+            return None
+    # Check if the key is a valid string
+    elif isinstance(key, str):
+        _text = "Overwriting memory with key " + key + " and string " + string
+        # Overwrite the memory slot with the given string key and string
         mem.permanent_memory[key] = string
         print(_text)
         return _text
@@ -227,7 +245,7 @@ def shutdown():
     quit()
 
 
-def start_agent(name, task, prompt, model="gpt-3.5-turbo"):
+def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     """Start an agent with a given name, task, and prompt"""
     global cfg
 

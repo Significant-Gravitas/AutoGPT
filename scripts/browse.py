@@ -11,6 +11,7 @@ def check_local_file_access(url):
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
 def scrape_text(url):
+    """Scrape text from a webpage"""
     # Most basic check if the URL is valid:
     if not url.startswith('http'):
         return "Error: Invalid URL"
@@ -58,6 +59,7 @@ def format_hyperlinks(hyperlinks):
 
 
 def scrape_links(url):
+    """Scrape links from a webpage"""
     response = requests.get(url, headers=cfg.user_agent_header)
 
     # Check if the response contains an HTTP error
@@ -93,9 +95,16 @@ def split_text(text, max_length=8192):
         yield "\n".join(current_chunk)
 
 
-def summarize_text(text, is_website=True):
-    """Summarize text using GPT-3"""
-    if text == "":
+def create_message(chunk, question):
+    """Create a message for the user to summarize a chunk of text"""
+    return {
+        "role": "user",
+        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
+    }
+
+def summarize_text(text, question):
+    """Summarize text using the LLM model"""
+    if not text:
         return "Error: No text to summarize"
 
     text_length = len(text)

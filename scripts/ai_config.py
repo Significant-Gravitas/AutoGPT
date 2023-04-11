@@ -3,9 +3,27 @@ import data
 import os
 
 class AIConfig:
-    """Class to store the AI's name, role, and goals."""
-    def __init__(self, ai_name="", ai_role="", ai_goals=[]):
-        """Initialize the AIConfig class"""
+    """
+    A class object that contains the configuration information for the AI
+
+    Attributes:
+        ai_name (str): The name of the AI.
+        ai_role (str): The description of the AI's role.
+        ai_goals (list): The list of objectives the AI is supposed to complete.
+    """
+
+    def __init__(self, ai_name: str="", ai_role: str="", ai_goals: list=[]) -> None:
+        """
+        Initialize a class instance
+
+        Parameters:
+            ai_name (str): The name of the AI.
+            ai_role (str): The description of the AI's role.
+            ai_goals (list): The list of objectives the AI is supposed to complete.
+        Returns:
+            None
+        """
+
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
@@ -65,8 +83,6 @@ class AIConfig:
             full_prompt (str): A string containing the intitial prompt for the user including the ai_name, ai_role and ai_goals.
         """
 
-    def construct_full_prompt(self):
-        """Construct the full prompt for the AI to use."""
         prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
         # Construct full prompt

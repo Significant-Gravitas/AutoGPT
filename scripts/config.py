@@ -115,6 +115,7 @@ class Config(metaclass=Singleton):
         self.elevenlabs_api_key = value
 
     def set_google_api_key(self, value: str):
+        """Set the Google API key value."""
         self.google_api_key = value
 
     def set_custom_search_engine_id(self, value: str):

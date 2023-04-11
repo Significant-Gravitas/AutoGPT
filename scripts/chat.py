@@ -45,6 +45,7 @@ def chat_with_ai(
         full_message_history,
         permanent_memory,
         token_limit):
+    """Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory."""
     while True:
         try:
             """
@@ -65,6 +66,7 @@ def chat_with_ai(
 
             if cfg.debug:
                 print(f"Token limit: {token_limit}")
+
             send_token_limit = token_limit - 1000
 
             relevant_memory = permanent_memory.get_relevant(str(full_message_history[-5:]), 10)
