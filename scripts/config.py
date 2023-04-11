@@ -64,10 +64,15 @@ class Config(metaclass=Singleton):
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
         self.pinecone_namespace_override = os.getenv("PINECONE_NAMESPACE_OVERRIDE")
-        self.pinecone_clear_long_term_memory_requested = False
+        self.pinecone_clear_long_term_memory_requested = Falsed
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
+
+        #
+        # wolfram Alpha
+        #
+        self.wolframalpha_appid = os.getenv("WOLFRAMALPHA_APPID")
 
         #
         # wolfram Alpha

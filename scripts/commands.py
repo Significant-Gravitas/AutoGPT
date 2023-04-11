@@ -59,7 +59,10 @@ def execute_command(command_name, arguments):
 =======
     memory = PineconeMemory()
     solve = WolframAlphaSolver()
+<<<<<<< HEAD
 >>>>>>> c5ad011 (initial wolfram alpha integration)
+=======
+>>>>>>> c5ad011261e46643a3e853c64b118af79d8baa87
     try:
         if command_name == "google":
 
