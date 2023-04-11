@@ -1,4 +1,5 @@
 import unittest
+import tests.context
 
 from scripts.json_parser import fix_and_parse_json
 
