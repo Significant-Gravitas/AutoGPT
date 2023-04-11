@@ -89,9 +89,6 @@ class Config(metaclass=Singleton):
         """Set the speak mode value."""
         self.speak_mode = value
 
-    def set_debug_mode(self, value: bool):
-        self.debug_mode = value
-
     def set_fast_llm_model(self, value: str):
         """Set the fast LLM model value."""
         self.fast_llm_model = value
