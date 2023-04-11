@@ -196,8 +196,8 @@ def construct_prompt():
 Name:  {config.ai_name}
 Role:  {config.ai_role}
 Goals: {config.ai_goals}
-Continue (y/n): """)
-        if should_continue.lower() == "n":
+Continue (y/n) or (1/0): """)
+        if should_continue.lower() == "n" or should_continue == "0":
             config = AIConfig()
 
     if not config.ai_name:
@@ -353,22 +353,22 @@ while True:
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
         print(
-            f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+            f"Enter 'y' or '1' to authorise command, 'y -N' or '1 -N' to run N continuous commands, 'n' or '0' to exit program, or enter feedback for {ai_name}...",
             flush=True)
         while True:
             console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-            if console_input.lower() == "y":
+            if console_input.lower() == "y" or console_input == "1":
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break
-            elif console_input.lower().startswith("y -"):
+            elif console_input.lower().startswith("y -") or console_input.startswith("1 -"):
                 try:
                     next_action_count = abs(int(console_input.split(" ")[1]))
                     user_input = "GENERATE NEXT COMMAND JSON"
                 except ValueError:
-                    print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
+                    print("Invalid input format. Please enter 'y -n' or '1 -n' where n is the number of continuous tasks.")
                     continue
                 break
-            elif console_input.lower() == "n":
+            elif console_input.lower() == "n" or console_input == "0":
                 user_input = "EXIT"
                 break
             else:
