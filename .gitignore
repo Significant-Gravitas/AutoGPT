@@ -13,3 +13,8 @@ ai_settings.yaml
 .vscode
 auto-gpt.json
 log.txt
+
+# Coverage reports
+.coverage
+coverage.xml
+htmlcov/
