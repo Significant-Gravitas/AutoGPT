@@ -1,14 +1,13 @@
-from config import config,Singleton
 import chromadb
 from chromadb.config import Settings
 from chromadb.utils import embedding_functions
-import openai
 import uuid
 import os
 from datetime import datetime
 import random
+from memory.base import MemoryProviderSingleton
 
-class ChromaMemory(metaclass=Singleton):
+class ChromaMemory(MemoryProviderSingleton):
     def __init__(self):
         if os.getenv("CHROMA-DB-DIRECTORY") is not None:
             self.db = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet", persist_directory=os.getenv("CHROMA-DB-DIRECTORY")))
@@ -22,24 +21,27 @@ class ChromaMemory(metaclass=Singleton):
         self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction("paraphrase-MiniLM-L6-v2")
         self.collection = self.db.get_or_create_collection(name="autogpt", embedding_function=self.embedding_function)
 
-    def add(self, text):
+    def add(self, data):
         _timestamp = (datetime.now() - datetime(1970, 1, 1)).total_seconds()
-        if self.collection.add(documents=[text], metadatas=[{"timestamp": _timestamp}], id=[str(uuid.uuid4())]):
+        if self.collection.add(documents=[data], metadatas=[{"timestamp": _timestamp}], id=[str(uuid.uuid4())]):
             return True
         return False
 
-    def remove(self, id):
-        _deleted_id = self.collection.remove(id=[str(uuid.uuid4())])
+    def remove(self, data):
+        _deleted_id = self.collection.remove(data=[str(uuid.uuid4())])
         _result = f"Deleted {_deleted_id}"
         return _result
 
-    def get(self, text, count=5):
-        return self.collection.query(query_texts=[text], n_results=count)
+    def get_relevant(self, data, num_relevant=5):
+        return self.collection.query(query_texts=[data], n_results=num_relevant)
     
-    def serendipity_utility(self, text, breadth=50, depth=5):
-        # In order to prevent the same cluster of results from being returned from the agent's long-term memory within the immediate context of the conversation, 
-        # Here is an algorithm to "spike" the context with a random, yet, related result farther back in time. 
-        # This algorithm samples 50 related objects (or another value as denoted by "breadth") from the long-term memory, sorts them, then randomly samples 1 item from the oldest 5 (or other sample size as denoted by "depth").
+    def get_serendipity_request(self, text, breadth=50, depth=5):
+        """
+        In order to prevent the same cluster of results from being returned from the agent's long-term memory within the immediate context of the conversation, 
+        here is an algorithm to "spike" the context with a random, yet, related result farther back in time. 
+        This samples 50 related objects (or another value as denoted by "breadth") from the long-term memory, sorts them, 
+        then randomly samples 1 item from the oldest 5 (or other sample size as denoted by "depth").
+        """
         _results = self.collection.query(query_texts=[text], n_results=breadth)
         _curr_time = (datetime.now() - datetime(1970, 1, 1)).total_seconds()
         _ordered_results = []
@@ -50,8 +52,9 @@ class ChromaMemory(metaclass=Singleton):
         _serendipity_result = _serendipity_subset[random.randint(0, len(_serendipity_subset)-1)].text
         return _serendipity_result
 
-    
-
     def clear(self):
         self.collection.clear()
         return "Cleared"
+    
+    def get_stats(self):
+        return self.collection.count()

@@ -140,21 +140,14 @@ class Config(metaclass=Singleton):
         """Set the debug mode value."""
         self.debug_mode = value
 
-
     def set_chroma_db_directory(self, value: str):
+        """Set the Chroma DB directory value."""
         self.chroma_db_directory = value
 
     def set_chroma_server_host(self, value: str):
+        """Set the Chroma server host value."""
         self.chroma_server_host = value
         
     def set_chroma_server_port(self, value: str):
-        self.chroma_server_port = value
-
-    def set_chroma_db_directory(self, value: str):
-        self.chroma_db_directory = value
-
-    def set_chroma_server_host(self, value: str):
-        self.chroma_server_host = value
-        
-    def set_chroma_server_port(self, value: str):
+        """Set the Chroma server port value."""
         self.chroma_server_port = value

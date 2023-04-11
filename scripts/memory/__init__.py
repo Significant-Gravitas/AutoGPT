@@ -11,6 +11,12 @@ except ImportError:
     print("Pinecone not installed. Skipping import.")
     PineconeMemory = None
 
+try:
+    from memory.chroma import ChromaMemory
+except ImportError:
+    print("Chroma not installed. Skipping import.")
+    ChromaMemory = None
+
 
 def get_memory(cfg, init=False):
     memory = None
@@ -28,6 +34,14 @@ def get_memory(cfg, init=False):
                   " use Redis as a memory backend.")
         else:
             memory = RedisMemory(cfg)
+    elif cfg.memory_backend == "chroma":
+        if not ChromaMemory:
+            print("Error: Chroma is not installed. Please install chroma to"
+                  " use Chroma as a memory backend.")
+        else:
+            memory = ChromaMemory(cfg)
+            if init:
+                memory.clear()
 
     if memory is None:
         memory = LocalCache(cfg)
@@ -41,4 +55,5 @@ __all__ = [
     "LocalCache",
     "RedisMemory",
     "PineconeMemory",
+    "ChromaMemory"
 ]
