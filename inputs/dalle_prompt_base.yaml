@@ -1,0 +1,11 @@
+#Status: Working
+ai_name: DALLE
+ai_role: Generates images based on an existing DALLE prompt
+ai_continue: True
+
+ai_goals:
+  - Remember 3 random marine fishes from https://www.saltwateraquariumblog.com/best-reef-aquarium-fish/
+#  - For each of the fish, Create an image of a colorful 3D digital illustration of a [insert fish name] symmetrical artwork. Cinematic, hyper-realism, high detail, octane render, 8k, iridescent accents, wlop
+  - "For each of the fish, Create an image with the prompt: [insert fish name], closeup, dreamy, studio lighting, epic product photography, high resolution, on [white] background"
+  - Rename the image file to <fish name>.png
+  - Shut yourself down.

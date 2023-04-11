@@ -1,3 +1,7 @@
+#Status: draft. Not tested
+ai_name: DALLE
+ai_role: Generates images for t-shirt printing
+
 ai_goals:
 #  - Learn how to create Midjourney prompts to produce T-shirt vector designs
   - Browse https://medium.com/@robmoraisjr/4-great-styles-for-t-shirt-designs-with-midjourney-prompts-included-682334712a46 and find out how to create Midjourney prompts to produce T-shirt vector designs.
@@ -5,6 +9,3 @@ ai_goals:
   - Creates 5 Midjourney prompts to generate an tshirt design with the given theme, with white background.
   - Save each prompt to a file. Name the file wih the following format  <now>-mj-aqua-<counter>.txt where <now> is the current time and <counter> is the prompt number. eg. Sun  09-04-2023-08:35:21-midjourney-1.txt
   - Shut yourself down.
-
-ai_name: Sandbox
-ai_role: Generates images for t-shitt printing giving a subject

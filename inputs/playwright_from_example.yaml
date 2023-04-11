@@ -1,11 +1,12 @@
 #Teaches how to write a python script with Playright framework based on the code of another scraper.
+ai_name: Scraping coder
+ai_role: An AI that writes code.
+ai_continue: True
+
 ai_goals:
-  - Learn from file lessons/scraping_script.py
-  - Write a python script with Playright framework to scrape the books at https://books.toscrape.com/
-  - Save the code in a file.
+  - Learn from file example_scraper.py
+  - Write a python script with Playright framework to scrape the books at https://books.toscrape.com/ and return the list of results as json.
+  - Save the code to a file.
   - Save the result of the scraper to a file.
   - Shut yourself down.
 
-ai_name: Books scraper with Python and Playwright
-ai_role: An AI that writes code.
-ai_continue: True

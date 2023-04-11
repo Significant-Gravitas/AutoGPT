@@ -78,6 +78,9 @@ class Config(metaclass=Singleton):
         # Note that indexes must be created on db 0 in redis, this is not configureable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
+        self.reset_memory = True
+        self.reset_memory = os.getenv("RESET_MEMORY") != 'False'
+
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 

@@ -70,7 +70,7 @@ class LocalCache(MemoryProviderSingleton):
 
     def clear(self) -> str:
         """
-        Clears the redis server.
+        Clears the local cache.
 
         Returns: A message indicating that the memory has been cleared.
         """

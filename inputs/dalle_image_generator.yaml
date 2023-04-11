@@ -1,9 +1,7 @@
-#Status: It works partially by doesn't complete the task.
-ai_goals:
-  - "Execute Python File: dalle_image_generator.py with the following argument: 'a macro photograph of brain coral"
-  - Download the Image from the URL and save to a file named finished.png
-#  - Make sure to write your code to file.
-  - Shutdown yourself.
 ai_name: DALLE-2
 ai_role: Executes python files
 ai_continue: True
+
+ai_goals:
+  - Generate an image of a male with a beard and a hat.
+  - Shutdown yourself.
