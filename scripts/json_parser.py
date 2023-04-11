@@ -53,7 +53,7 @@ def fix_and_parse_json(
         last_brace_index = json_str.rindex("}")
         json_str = json_str[:last_brace_index+1]
         return json.loads(json_str)
-    except json.JSONDecodeError as e:  # noqa: F841
+    except (json.JSONDecodeError, ValueError) as e:  # noqa: F841
         if try_to_fix_with_gpt:
             print("Warning: Failed to parse AI output, attempting to fix."
                   "\n If you see this warning frequently, it's likely that"
