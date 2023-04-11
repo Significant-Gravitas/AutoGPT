@@ -32,7 +32,7 @@ def shutdown_chat(chat_id: str):
 
 @app.post("/start")
 async def start_chat(request: Request, body: StartBody, response: Response):
-    chat_id = str(uuid.uuid4())
+    chat_id = str(uuid.uuid4().hex)
 
     # set up chat context
     config = {
