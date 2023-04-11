@@ -18,10 +18,17 @@ def execute_python_file(file):
 
     try:
         client = docker.from_env()
+        #XXX: Do not load all env var or else it will crash the container run.
+        env_vars = {
+            'OPENAI_API_KEY': os.environ.get('OPENAI_API_KEY'),
+            'ANTICAPTCHA_KEY': os.environ.get('ANTICAPTCHA_KEY'),
+            'PINECONE_API_KEY': os.environ.get('PINECONE_API_KEY'),
+            'PINECONE_ENV': os.environ.get('PINECONE_ENV'),
+            'ELEVENLABS_API_KEY': os.environ.get('ELEVENLABS_API_KEY'),
+            'HUGGINGFACE_API_TOKEN': os.environ.get('HUGGINGFACE_API_TOKEN')
+        }
 
-        env_vars = {key: value for key, value in os.environ.items()}
-        print(f"Environment variables: {env_vars}")
-
+        # https://docker-py.readthedocs.io/en/stable/containers.html
         container = client.containers.run(
             'fsamir/python:3.11',
             f'python {file}',
@@ -31,6 +38,8 @@ def execute_python_file(file):
             },
             environment=env_vars,
             working_dir='/workspace',
+            # mem_limit='2g',
+            # mounts="type=tmpfs,destination=/tmp",
             stderr=True,
             stdout=True,
             detach=True,

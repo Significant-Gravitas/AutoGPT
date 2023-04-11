@@ -1,13 +1,13 @@
+#Teaches how to write a python script with Playright framework based on the code of another scraper.
+ai_name: Books scraper with Python and Playwright
+ai_role: An AI that writes code.
+ai_continue: True
+
 ai_goals:
-  - Learn from file lessons/scraping_script.py
-#  - Learn how to resolve captchas with Pyhon and python-anticaptcha module.
-  - Write a python script with Playright framework to submit the form at https://egov.sos.state.or.us/br/pkg_web_name_srch_inq.login
-  - Make sure to resolve the captcha challenge using python_anticaptcha. The ANTICAPTCHA_KEY is an environment variable.
-  - Scrape the search results page and return the results as a json object.
-  - Save the code in a file.
-  - Save the result of a search for "HSBC" in a file
+#  - Learn from file lessons/scraping_script.py
+  - Learn from file book_scraper.py
+  - Write a python script with Playright framework to scrape the books at https://books.toscrape.com/ and return the list of results as json.
+  - Save the code to a file.
+  - Save the result of the scraper to a file.
   - Shut yourself down.
 
-ai_name: env vars
-ai_role: AI that writes code.
-ai_continue: True

@@ -97,3 +97,5 @@ class TestScrapeText:
 
         # Check that the function properly handles HTML tags
         assert result == "This is bold text."
+
+        
