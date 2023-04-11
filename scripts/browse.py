@@ -79,7 +79,7 @@ def scrape_links(url):
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
-        return "error"
+        return "Error: HTTP " + str(response.status_code) + " error"
 
     soup = BeautifulSoup(response.text, "html.parser")
 
