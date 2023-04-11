@@ -30,7 +30,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run unittest tests
+    - name: Run unittest tests with coverage
       continue-on-error: true
       run: |
-        python -m unittest discover -t . -s tests
+        coverage run -m unittest discover tests
+
+    - name: Generate coverage report
+      run: |
+        coverage report
+        coverage xml
