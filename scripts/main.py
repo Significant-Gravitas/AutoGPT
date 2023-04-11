@@ -12,6 +12,8 @@ import speak
 from config import Config
 from json_parser import fix_and_parse_json
 from ai_config import AIConfig
+from agent_manager import create_agent, next_key
+from conversation_summary.summary import Summary, SummaryUtils
 import traceback
 import yaml
 import argparse
@@ -274,6 +276,7 @@ def parse_arguments():
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('-cs', '--conversation-summary', action='store_true', help='Enable Conversation Summary Mode')
     args = parser.parse_args()
 
     if args.continuous:
@@ -291,6 +294,10 @@ def parse_arguments():
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
+
+    if args.conversation_summary:
+        print_to_console("Conversation Summary Mode: ", Fore.LIGHTYELLOW_EX, "ENABLED")
+        cfg.set_conversation_summary_mode(True)
 
 
 
@@ -314,97 +321,121 @@ user_input = "Determine which next command to use, and respond using the format 
 memory = get_memory(cfg, init=True)
 print('Using memory of type: ' + memory.__class__.__name__)
 
-# Interaction Loop
-while True:
-    # Send message to AI, get response
-    with Spinner("Thinking... "):
-        assistant_reply = chat.chat_with_ai(
-            prompt,
-            user_input,
-            full_message_history,
-            memory,
-            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+# Initialize the Summary object
+summary = Summary(
+    step_summarization_prompt=cfg.step_summarization_prompt,
+    final_summarization_prompt=cfg.final_summarization_prompt,
+    ai_name=ai_name
+) if cfg.conversation_summary_mode else None
 
-    # Print Assistant thoughts
-    print_assistant_thoughts(assistant_reply)
+try:
+    # Interaction Loop
+    while True:
+        # Send message to AI, get response
+        with Spinner("Thinking... "):
+            assistant_reply = chat.chat_with_ai(
+                prompt,
+                user_input,
+                full_message_history,
+                memory,
+                cfg.fast_token_limit)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
-    # Get command name and arguments
-    try:
-        command_name, arguments = cmd.get_command(assistant_reply)
-    except Exception as e:
-        print_to_console("Error: \n", Fore.RED, str(e))
+        # Print Assistant thoughts
+        print_assistant_thoughts(assistant_reply)
 
-    if not cfg.continuous_mode and next_action_count == 0:
-        ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
-        # Get key press: Prompt the user to press enter to continue or escape
-        # to exit
-        user_input = ""
-        print_to_console(
-            "NEXT ACTION: ",
-            Fore.CYAN,
-            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
-        print(
-            f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
-            flush=True)
-        while True:
-            console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-            if console_input.lower() == "y":
-                user_input = "GENERATE NEXT COMMAND JSON"
-                break
-            elif console_input.lower().startswith("y -"):
-                try:
-                    next_action_count = abs(int(console_input.split(" ")[1]))
-                    user_input = "GENERATE NEXT COMMAND JSON"
-                except ValueError:
-                    print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
-                    continue
-                break
-            elif console_input.lower() == "n":
-                user_input = "EXIT"
-                break
-            else:
-                user_input = console_input
-                command_name = "human_feedback"
-                break
+        # Print the step summary
+        step_summary = SummaryUtils.get_step_summary_from_assistant_reply(assistant_reply, fix_and_parse_json, print_to_console) if cfg.conversation_summary_mode else None
 
-        if user_input == "GENERATE NEXT COMMAND JSON":
+        if step_summary:
+            summary.print_step_summary_to_console(step_summary)
+
+        # Get command name and arguments
+        try:
+            command_name, arguments = cmd.get_command(assistant_reply)
+        except Exception as e:
+            print_to_console("Error: \n", Fore.RED, str(e))
+
+        if not cfg.continuous_mode and next_action_count == 0:
+            ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+            # Get key press: Prompt the user to press enter to continue or escape
+            # to exit
+            user_input = ""
             print_to_console(
-            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-            Fore.MAGENTA,
-            "")
-        elif user_input == "EXIT":
-            print("Exiting...", flush=True)
-            break
-    else:
-        # Print command
-        print_to_console(
-            "NEXT ACTION: ",
-            Fore.CYAN,
-            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
+            print(
+                f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+                flush=True)
+            while True:
+                console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+                if console_input.lower() == "y":
+                    user_input = "GENERATE NEXT COMMAND JSON"
+                    break
+                elif console_input.lower().startswith("y -"):
+                    try:
+                        next_action_count = abs(int(console_input.split(" ")[1]))
+                        user_input = "GENERATE NEXT COMMAND JSON"
+                    except ValueError:
+                        print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
+                        continue
+                    break
+                elif console_input.lower() == "n":
+                    user_input = "EXIT"
+                    break
+                else:
+                    user_input = console_input
+                    command_name = "human_feedback"
+                    break
 
-    # Execute command
-    if command_name.lower().startswith( "error" ):
-        result = f"Command {command_name} threw the following error: " + arguments
-    elif command_name == "human_feedback":
-        result = f"Human feedback: {user_input}"
-    else:
-        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
-        if next_action_count > 0:
-            next_action_count -= 1
+            if user_input == "GENERATE NEXT COMMAND JSON":
+                print_to_console(
+                "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                Fore.MAGENTA,
+                "")
+            elif user_input == "EXIT":
+                print("Exiting...", flush=True)
+                break
+        else:
+            # Print command
+            print_to_console(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
-    memory_to_add = f"Assistant Reply: {assistant_reply} " \
-                    f"\nResult: {result} " \
-                    f"\nHuman Feedback: {user_input} "
+        # Execute command
+        if command_name.lower().startswith( "error" ):
+            result = f"Command {command_name} threw the following error: " + arguments
+        elif command_name == "human_feedback":
+            result = f"Human feedback: {user_input}"
+        else:
+            result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
+            if next_action_count > 0:
+                next_action_count -= 1
 
-    memory.add(memory_to_add)
+        memory_to_add = f"Assistant Reply: {assistant_reply} " \
+                        f"\nResult: {result} " \
+                        f"\nHuman Feedback: {user_input} "
 
-    # Check if there's a result from the command append it to the message
-    # history
-    if result is not None:
-        full_message_history.append(chat.create_chat_message("system", result))
-        print_to_console("SYSTEM: ", Fore.YELLOW, result)
-    else:
-        full_message_history.append(
-            chat.create_chat_message(
-                "system", "Unable to execute command"))
-        print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+        memory.add(memory_to_add)
+
+        # Check if there's a result from the command append it to the message
+        # history
+        if result is not None:
+            full_message_history.append(chat.create_chat_message("system", result))
+            print_to_console("SYSTEM: ", Fore.YELLOW, result)
+        else:
+            full_message_history.append(
+                chat.create_chat_message(
+                    "system", "Unable to execute command"))
+            print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+
+except KeyboardInterrupt:
+    # Append final summary if enabled and exit
+    if cfg.conversation_summary_mode:
+        final_summary = summary.append_final_summary_to_file(
+            gpt_agent_model=cfg.fast_llm_model,
+            create_agent_callback=create_agent,
+            next_agent_key=next_key,
+        )
+        summary.print_final_summary_to_console(final_summary)

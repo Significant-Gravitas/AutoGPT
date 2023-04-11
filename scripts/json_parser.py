@@ -4,6 +4,8 @@ from call_ai_function import call_ai_function
 from config import Config
 from json_utils import correct_json
 
+from conversation_summary.summary import SummaryUtils
+
 cfg = Config()
 
 JSON_SCHEMA = """
@@ -24,6 +26,9 @@ JSON_SCHEMA = """
     }
 }
 """
+
+if cfg.conversation_summary_mode:
+    JSON_SCHEMA = SummaryUtils.add_summary_field_to_json(JSON_SCHEMA, value=cfg.step_summarization_prompt)
 
 
 def fix_and_parse_json(    

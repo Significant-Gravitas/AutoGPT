@@ -43,6 +43,7 @@ Your support is greatly appreciated
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#image-generation)
+  - [📜 Conversation Summary Mode](#-conversation-summary-mode)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
@@ -237,6 +238,18 @@ Once you have a token, set these variables in your `.env`:
 IMAGE_PROVIDER=sd
 HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 ```
+
+## 📜 Conversation Summary Mode
+Conversation Summary mode is designed to provide users with concise summaries of the AI's responses during a conversation. 
+This mode can be especially useful for long conversations where it's crucial to quickly understand the key points without reading through the entire response. 
+It enhances readability and helps users grasp important information more efficiently.
+
+How to Use Conversation Summary Mode:
+
+1. Define `STEP_SUMMARIZATION_PROMPT` and `FINAL_SUMMARIZATION_PROMPT` in the .env file (you can play around with these prompts to get the best results)
+2. Run: `python scripts/main.py --conversation-summary`
+3. View step summaries in the console and a summary file inside `scripts/logs` folder
+4. Upon exit, a final summary is printed to console and appended to the file
 
 ## ⚠️ Limitations
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:

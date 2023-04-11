@@ -36,6 +36,7 @@ class Config(metaclass=Singleton):
         self.debug_mode = False
         self.continuous_mode = False
         self.speak_mode = False
+        self.conversation_summary_mode = False
 
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -67,6 +68,20 @@ class Config(metaclass=Singleton):
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
 
+        # Conversation Summary Mode - Prompts to use when summarizing
+        self.step_summarization_prompt = os.getenv(
+            "STEP_SUMMARIZATION_PROMPT",
+            "outline the key steps and insights you plan to take "
+            "and gain during the completion of your task in a concise and relevant manner"
+        )
+        self.final_summarization_prompt = os.getenv(
+            "FINAL_SUMMARIZATION_PROMPT",
+            "Consolidate and distill the essential information from the provided summaries of individual steps to "
+            "create a concise and coherent summary of the overall process by creating an output structured using "
+            "chapters, sub-chapters and bullet points. Don't include duplicate ideas. Leave only one instance if it's "
+            "present in multiple steps:{}"
+        )  # {} is replaced with the content
+
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
         self.user_agent_header = {"User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
@@ -88,6 +103,9 @@ class Config(metaclass=Singleton):
     def set_speak_mode(self, value: bool):
         """Set the speak mode value."""
         self.speak_mode = value
+
+    def set_conversation_summary_mode(self, value: bool):
+        self.conversation_summary_mode = value
 
     def set_fast_llm_model(self, value: str):
         """Set the fast LLM model value."""
