@@ -1,15 +1,22 @@
 import os
-from playsound import playsound
 import requests
 from config import Config
 cfg = Config()
 import gtts
 import threading
 from threading import Lock, Semaphore
+from pydub import AudioSegment
+from pydub.playback import play
+import os
+from dotenv import load_dotenv
+from pydub import AudioSegment
+from pydub.playback import play
 
+load_dotenv()
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
 
 # TODO: Nicer names for these ids
-voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
+voices = ["ErXwobaYiN019PkySvjV", "TxGEqnHWrfWFTfGW9XjX"]
 
 tts_headers = {
     "Content-Type": "application/json",
@@ -19,32 +26,38 @@ tts_headers = {
 mutex_lock = Lock() # Ensure only one sound is played at a time
 queue_semaphore = Semaphore(1) # The amount of sounds to queue before blocking the main thread
 
-def eleven_labs_speech(text, voice_index=0):
-    """Speak text using elevenlabs.io's API"""
-    tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(
-        voice_id=voices[voice_index])
-    formatted_message = {"text": text}
-    response = requests.post(
-        tts_url, headers=tts_headers, json=formatted_message)
+from pydub import AudioSegment
+from pydub.playback import play
 
+def eleven_labs_speech(text, voice_index):
+    url = f'https://api.elevenlabs.io/v1/synthesize?voice={voice_index}'
+    headers = {
+        'Authorization': f'Bearer {ELEVENLABS_API_KEY}',
+    }
+    data = {
+        'text': text,
+    }
+    response = requests.post(url, headers=headers, json=data)
     if response.status_code == 200:
-        with mutex_lock:
-            with open("speech.mpeg", "wb") as f:
-                f.write(response.content)
-            playsound("speech.mpeg", True)
-            os.remove("speech.mpeg")
+        with open('speech.mpeg', 'wb') as f:
+            f.write(response.content)
+
+        # Convert MPEG to WAV using FFmpeg
+        os.system(f'ffmpeg -i speech.mpeg -acodec pcm_s16le -ac 1 -ar 16000 speech.wav')
+
+        sound = AudioSegment.from_file("speech.wav", format="wav")
+        sound.export("output.wav", format="wav")
         return True
     else:
-        print("Request failed with status code:", response.status_code)
-        print("Response content:", response.content)
+        print(f'Eleven Labs API request failed with status code: {response.status_code}')
         return False
 
 def gtts_speech(text):
     tts = gtts.gTTS(text)
-    with mutex_lock:
-        tts.save("speech.mp3")
-        playsound("speech.mp3", True)
-        os.remove("speech.mp3")
+    tts.save("speech.mp3")
+    sound = AudioSegment.from_mp3("speech.mp3")
+    play(sound)
+    os.remove("speech.mp3")
 
 def macos_tts_speech(text):
     os.system(f'say "{text}"')
