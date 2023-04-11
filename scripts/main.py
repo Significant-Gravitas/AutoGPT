@@ -381,6 +381,12 @@ try:
                         continue
                     break
                 elif console_input.lower() == "n":
+                    # Print & append final summary to file
+                    final_summary = summary.append_final_summary_to_file(
+                        gpt_agent_model=cfg.fast_llm_model,
+                        create_agent_callback=create_agent,
+                        next_agent_key=next_key,
+                    )
                     user_input = "EXIT"
                     break
                 else:
@@ -424,6 +430,10 @@ try:
         if result is not None:
             full_message_history.append(chat.create_chat_message("system", result))
             print_to_console("SYSTEM: ", Fore.YELLOW, result)
+            if cfg.conversation_summary_mode:
+                # Append the step's summary and result to file and increment step count
+                summary.append_summarized_step_to_file(step_summary, result)
+                summary.increment_step_counter()
         else:
             full_message_history.append(
                 chat.create_chat_message(
