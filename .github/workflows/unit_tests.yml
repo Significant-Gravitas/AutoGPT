@@ -33,7 +33,7 @@ jobs:
     - name: Run unittest tests with coverage
       continue-on-error: true
       run: |
-        coverage run -m unittest discover tests
+        coverage run --source=scripts -m unittest discover tests
 
     - name: Generate coverage report
       run: |
