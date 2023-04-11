@@ -10,6 +10,7 @@ def load_prompt():
     try:
         # get directory of this file:
         file_dir = Path(__file__).parent
+
         f cfg.db_access:
             prompt_file_path = file_dir / "data" / "prompt_db.txt"
         else:
