@@ -45,6 +45,10 @@ class Config(metaclass=Singleton):
         self.chroma_server_host = os.getenv("CHROMA-SERVER-HOST")
         self.chroma_server_port = os.getenv("CHROMA-SERVER-PORT")
 
+        self.chroma_db_directory = os.getenv("CHROMA-DB-DIRECTORY")
+        self.chroma_server_host = os.getenv("CHROMA-SERVER-HOST")
+        self.chroma_server_port = os.getenv("CHROMA-SERVER-PORT")
+
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.use_azure = False
         self.use_azure = os.getenv("USE_AZURE") == 'True'
@@ -136,6 +140,15 @@ class Config(metaclass=Singleton):
         """Set the debug mode value."""
         self.debug_mode = value
 
+
+    def set_chroma_db_directory(self, value: str):
+        self.chroma_db_directory = value
+
+    def set_chroma_server_host(self, value: str):
+        self.chroma_server_host = value
+        
+    def set_chroma_server_port(self, value: str):
+        self.chroma_server_port = value
 
     def set_chroma_db_directory(self, value: str):
         self.chroma_db_directory = value
