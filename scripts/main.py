@@ -38,41 +38,6 @@ def check_openai_api_key():
         print("You can get your key from https://beta.openai.com/account/api-keys")
         exit(1)
 
-<<<<<<< HEAD
-
-<<<<<<< HEAD
-=======
-=======
->>>>>>> master
-def print_to_console(
-        title,
-        title_color,
-        content,
-        speak_text=False,
-        min_typing_speed=0.05,
-        max_typing_speed=0.01):
-    """Prints text to the console with a typing effect"""
-    global cfg
-    global logger
-    if speak_text and cfg.speak_mode:
-        speak.say_text(f"{title}. {content}")
-    print(title_color + title + " " + Style.RESET_ALL, end="")
-    if content:
-        logger.info(title + ': ' + content)
-        if isinstance(content, list):
-            content = " ".join(content)
-        words = content.split()
-        for i, word in enumerate(words):
-            print(word, end="", flush=True)
-            if i < len(words) - 1:
-                print(" ", end="", flush=True)
-            typing_speed = random.uniform(min_typing_speed, max_typing_speed)
-            time.sleep(typing_speed)
-            # type faster after each word
-            min_typing_speed = min_typing_speed * 0.95
-            max_typing_speed = max_typing_speed * 0.95
-    print()
->>>>>>> master
 
 
 def print_assistant_thoughts(assistant_reply):
@@ -197,21 +162,7 @@ def construct_prompt():
             f"Welcome back! ",
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
-<<<<<<< HEAD
-<<<<<<< HEAD
         should_continue = "y"
-=======
-        should_continue = input(f"""Continue with the last settings?
-=======
-        should_continue = utils.clean_input(f"""Continue with the last settings?
->>>>>>> master
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}
-Continue (y/n): """)
->>>>>>> master
-        if should_continue.lower() == "n":
-            config = AIConfig()
 
     if not config.ai_name:
         config = prompt_user()
@@ -262,11 +213,7 @@ def prompt_user():
     # print_to_console("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
-<<<<<<< HEAD
-        ai_goal = input(f"Goal {i+1}: ")
-=======
         ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
->>>>>>> master
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)
@@ -324,15 +271,8 @@ user_input = "Determine which next command to use, and respond using the format 
 
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
-<<<<<<< HEAD
-memory = PineconeMemory()
-memory.clear()
-
-print_to_console('Using memory of type: ' + memory.__class__.__name__)
-=======
 memory = get_memory(cfg, init=True)
-print('Using memory of type: ' + memory.__class__.__name__)
->>>>>>> master
+print_to_console('Using memory of type: ' + memory.__class__.__name__)
 
 # Interaction Loop
 while True:
@@ -362,15 +302,9 @@ while True:
         print_to_console(
             "NEXT ACTION: ",
             f"COMMAND = {command_name}  ARGUMENTS = {arguments}")
-        # print_to_console(
-        #     f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
-        #     flush=True)
+
         while True:
-<<<<<<< HEAD
-            console_input = "y"#input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-=======
-            console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
->>>>>>> master
+            console_input = "y"
             if console_input.lower() == "y":
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break
@@ -428,9 +362,4 @@ while True:
         full_message_history.append(
             chat.create_chat_message(
                 "system", "Unable to execute command"))
-<<<<<<< HEAD
-        print_to_console("SYSTEM: ", "Unable to execute command")
-
-=======
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
->>>>>>> master
