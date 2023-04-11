@@ -30,7 +30,7 @@ import useAutoGPTAPI from "@/hooks/useAutoGPTAPI"
 const MainPage = () => {
   const { aiHistoryArray, aiHistory } = useAiHistory()
   const { id } = useParams<{ id: string }>()
-  const { agentsArray } = useAgents()
+  const { agents } = useAgents()
   const [playing, setPlaying] = useState(false)
   const commentsEndRef = useRef(null)
   const navigate = useNavigate()
@@ -71,9 +71,13 @@ const MainPage = () => {
             <h2>All your AI</h2>
             <SearchInput />
             {aiHistoryArray.map((ai) => (
-              <TaskCard />
+              <TaskCard ai={ai} key={ai.id} />
             ))}
-            <SButton $color="yellow300" variant="outlined">
+            <SButton
+              $color="yellow300"
+              variant="outlined"
+              onClick={() => navigate("/")}
+            >
               Create a new Ai
             </SButton>
           </Flex>
@@ -133,11 +137,23 @@ const MainPage = () => {
           </Flex>
         </Discussion>
         <RightTasks>
+          <Flex>
+            {(currentAi.goals ?? []).map((goal) => (
+              <Chip
+                key={goal}
+                label={goal}
+                color="primary"
+                size="small"
+                sx={{ mr: 0.5 }}
+              />
+            ))}
+          </Flex>
           <Flex direction="column" gap={0.5}>
             <h2>Your agents</h2>
-            {agentsArray.map((agent) => (
-              <AgentCard key={agent.name} agent={agent} />
-            ))}
+            {currentAi.agents.map((agentName) => {
+              const agent = agents[agentName]
+              return <AgentCard key={agent.name} agent={agent} />
+            })}
           </Flex>
         </RightTasks>
       </Grid>

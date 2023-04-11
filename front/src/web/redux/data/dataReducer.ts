@@ -27,8 +27,14 @@ const dataReducer = createSlice<
     addAiHistory: (state: IDataState, action: PayloadAction<IAi>) => {
       state.aiHistory[action.payload.id] = action.payload
     },
-    addAgent: (state: IDataState, action: PayloadAction<IAgent>) => {
-      state.agents[action.payload.name] = action.payload
+    addAgent: (
+      state: IDataState,
+      action: PayloadAction<{ agent: IAgent; aiId: IAi["id"] }>,
+    ) => {
+      state.agents[action.payload.agent.name] = action.payload.agent
+      state.aiHistory[action.payload.aiId].agents.push(
+        action.payload.agent.name,
+      )
     },
     addAnswersToAi: (
       state: IDataState,
@@ -48,7 +54,10 @@ const dataReducer = createSlice<
 export const { addAiHistory, addAgent, removeAgent, addAnswersToAi } =
   dataReducer.actions as {
     addAiHistory: ActionCreatorWithPayload<IAi>
-    addAgent: ActionCreatorWithPayload<IAgent>
+    addAgent: ActionCreatorWithPayload<{
+      agent: IAgent
+      aiId: IAi["id"]
+    }>
     removeAgent: ActionCreatorWithPayload<IAgent["name"]>
     addAnswersToAi: ActionCreatorWithPayload<{
       aiId: string

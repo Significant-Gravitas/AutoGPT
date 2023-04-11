@@ -4,14 +4,17 @@ import IAgent from "../types/data/IAgent"
 import { useDispatch } from "react-redux"
 import { addAgent, removeAgent } from "@/redux/data/dataReducer"
 import useAgents from "./data/useAgents"
+import { useParams } from "react-router"
 
 const AGENT_CREATED = "COMMAND = start_agent  ARGUMENTS = "
 const DELETE_AGENT = "COMMAND = delete_agent  ARGUMENTS = "
 const useAnswerInterceptor = () => {
   const dispatch = useDispatch()
+  const { id } = useParams<{ id: string }>()
   const { agents, agentsArray } = useAgents()
 
   const interceptAnswer = (data: IAnswer[]) => {
+    if (!id) return
     data.forEach((answer) => {
       if (!answer.content) return
       if (answer.content.includes(AGENT_CREATED)) {
@@ -21,7 +24,7 @@ const useAnswerInterceptor = () => {
         ) as IAgent
 
         if (agentsArray.find((agent) => agent.name === jsonAgent.name)) return
-        dispatch(addAgent(jsonAgent))
+        dispatch(addAgent({ agent: jsonAgent, aiId: id }))
       }
       if (answer.content.includes(DELETE_AGENT)) {
         let agentSystemReturn = answer.content.split(DELETE_AGENT)[1]
