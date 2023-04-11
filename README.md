@@ -204,6 +204,17 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
 
+## Plugins
+
+See https://github.com/Torantulino/Auto-GPT-Plugin-Template for the template of the plugins.
+
+WARNING: Review the code of any plugin you use.
+
+Drop the repo's zipfile in the plugins folder.
+
+![Download Zip](https://raw.githubusercontent.com/BillSchumacher/Auto-GPT/master/plugin.png)
+
+If you add the plugins class name to the whitelist in the config.py you will not be prompted otherwise you'll be warned before loading the plugin.
 
 ## View Memory Usage
 

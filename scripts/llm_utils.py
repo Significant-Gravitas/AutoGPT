@@ -22,5 +22,7 @@ def create_chat_completion(messages, model=None, temperature=None, max_tokens=No
             temperature=temperature,
             max_tokens=max_tokens
         )
-
-    return response.choices[0].message["content"]
+    resp = response.choices[0].message["content"]
+    for plugin in cfg.plugins:
+        resp = plugin.on_response(resp)
+    return resp
