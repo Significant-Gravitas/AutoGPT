@@ -1,0 +1,65 @@
+Pinecone Software End User License Agreement (EULA)
+
+Last Updated: December 31, 2020
+
+
+
+IMPORTANT – THIS PINECONE SOFTWARE END USER LICENSE AGREEMENT (EULA) IS A LEGALLY BINDING AGREEMENT BETWEEN YOU (“YOU”) AND PINECONE SYSTEMS, INC. (“PINECONE” OR “WE”).  THIS EULA GOVERNS YOUR DOWNLOADING, INSTALLATION AND USE OF SOFTWARE THAT PINECONE MAKES AVAILABLE TO YOU FOR INSTALLATION AS A THIN-CLIENT TO ENABLE YOU TO ACCESS AND USE PINECONE’S PROPRIETARY PLATFORM THAT IT OFFERS AS A HOSTED SOLUTION (SUCH SOFTWARE, THE “LICENSED SOFTWARE”, AND THE PINECONE PLATFORM, THE “PLATFORM”). 
+
+BY DOWNLOADING, INSTALLING OR USING THE LICENSED SOFTWARE,  YOU AGREE TO BE BOUND BY THE TERMS OF THIS EULA AND THE PINECONE PRIVACY POLICY (https://www.pinecone.io/product-privacy/).  YOU (A) ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTAND, AND AGREE TO BE BOUND BY THIS EULA; AND (B) REPRESENT THAT YOU HAVE THE AUTHORITY TO ENTER INTO THIS EULA AS AN INDIVIDUAL, OR ON BEHALF OF THE ENTITY LICENSING THE LICENSED SOFTWARE, AND TO BIND SUCH ENTITY TO THE TERMS HEREIN.  IF YOU DO NOT AGREE TO ALL TERMS AND CONDITIONS IN THIS EULA, OR IF YOU DO NOT HAVE SUCH AUTHORITY, DISCONTINUE THE DOWNLOAD OF THE LICENSED SOFTWARE.
+
+1.	Scope.  This EULA governs your use of the Licensed Software.  If the parties have entered or subsequently enter into a written agreement that purports to govern or that includes provisions governing use of the Licensed Software (“Other Agreement”), and the Other Agreement contains any provision that conflicts with any term of this EULA, the conflicting provision in the Other Agreement will govern, but only to extent expressly specified in the Other Agreement.  
+2.	License.  Subject to the terms of this EULA, Pinecone grants to you a nontransferable, nonexclusive, royalty-free, fully paid, worldwide license (without the right to sublicense) to install and execute the Licensed Software, in executable object code format only, solely on computers that you own or control and for the sole purpose of obtaining access and use of the Platform as permitted under a separate agreement with Pinecone that permits your access and use of the Platform.
+3.	Restrictions.  The rights granted hereunder are subject to the following restrictions: (a) you shall not license, sell, rent, lease, transfer, assign, distribute, host, outsource, disclose or otherwise commercially exploit the Licensed Software or make the Licensed Software available to any third party (other than the entity on whose behalf you enter into this EULA); (b) you shall not modify, make derivative works of, disassemble, reverse compile or reverse engineer any part of the Licensed Software; (c) you shall not access the Licensed Software in order to build a similar or competitive product or service; (d) except as expressly stated herein, no part of the Licensed Software may be copied, reproduced, distributed, republished, downloaded, displayed, posted or transmitted in any form or by any means, including but not limited to electronic, mechanical, photocopying, recording or other means; and (e) any future release, update, or other addition to the functionality of the Licensed Software provided by Pinecone (if any) shall be subject to the terms of this EULA unless Pinecone expressly states otherwise.  You shall preserve all copyright and other proprietary rights notices on the Licensed Software and all copies thereof.
+4.	Responsibility. You are responsible and liable for all actions and failures to take required actions with respect to the Licensed Software by any party to whom you may provide access to or use of the Licensed Software, whether such access or use is permitted by or in violation of this EULA.
+5.	Ownership.  The Licensed Software and all worldwide copyrights, trade secrets, and other intellectual property rights therein, are the exclusive property of Pinecone and its suppliers.  All rights in and to the Licensed Software not expressly granted to you in this EULA are reserved by Pinecone and its suppliers.
+6.	Third Party Software.  Certain items of software included as part of the Licensed Software are licensed from third parties and are subject to terms and conditions provided by such third parties (“Third Party Software”).  The Third Party Software is not subject to the terms and conditions of Sections 1 and 2 of this EULA.  Instead, each item of Third Party Software is licensed under the terms of the license that accompanies such Third Party Software.  Nothing in this EULA limits your rights under, or grants you rights that supersede rights available in, the terms and conditions of any applicable license for the Third Party Software. 
+7.	Disclaimer of Warranties.  THE LICENSED SOFTWARE AND ANY THIRD PARTY SOFTWARE IS PROVIDED TO YOU ON AN “AS-IS” BASIS.  EXCEPT AS EXPRESSLY STATED HEREIN, PINECONE PROVIDES NO TECHNICAL SUPPORT, WARRANTIES OR REMEDIES FOR THE LICENSED SOFTWARE UNDER THIS EULA. PINECONE AND ITS SUPPLIERS, EMPLOYEES, AGENTS, OFFICERS AND PARTNERS (THE “PINECONE PARTIES”) DISCLAIM ALL EXPRESS, IMPLIED OR STATUTORY WARRANTIES RELATING TO THE LICENSED SOFTWARE, INCLUDING BUT NOT LIMITED TO, MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.  PINECONE DOES NOT WARRANT THAT USE OF THE LICENSED SOFTWARE WILL BE UNINTERRUPTED, OR ERROR-FREE, THAT DEFECTS WILL BE CORRECTED, OR THAT THE LICENSED SOFTWARE IS FREE OF VIRUSES OR OTHER HARMFUL COMPONENTS.  IF APPLICABLE LAW REQUIRES ANY WARRANTIES WITH RESPECT TO THE LICENSED SOFTWARE, ALL SUCH WARRANTIES ARE LIMITED IN DURATION TO NINETY (90) DAYS FROM THE DATE OF DOWNLOAD.  THE WARRANTY DISCLAIMER SET FORTH ABOVE IS A FUNDAMENTAL ELEMENT OF THE BASIS OF THE AGREEMENT BETWEEN PINECONE AND YOU.  PINECONE WOULD NOT BE ABLE TO PROVIDE THE LICENSED SOFTWARE ON AN ECONOMIC BASIS WITHOUT SUCH LIMITATIONS.  THE WARRANTY DISCLAIMER INURES TO THE BENEFIT OF THE PINECONE PARTIES.
+8.	Registration Information.  YOU ACKNOWLEDGE AND AGREE THAT WHEN YOU INSTALL AND REGISTER THE LICENSED SOFTWARE, THE LICENSED SOFTWARE TRANSMITS TO PINECONE CERTAIN INFORMATION THAT YOU PROVIDE DURING THE INSTALLATION OR REGISTRATION PROCESS, AS WELL AS COMPUTER OR DEVICE CONFIGURATION INFORMATION. YOU AGREE THAT PINECONE MAY COLLECT AND USE THIS DATA TO FACILITATE THE PROVISION OF SOFTWARE UPDATES, PRODUCT SUPPORT OR OTHER SERVICES TO YOU (IF ANY) RELATED TO THE LICENSED SOFTWARE.  PINECONE MAY USE THIS INFORMATION PROVIDED SUCH USE IS IN ACCORDANCE WITH ITS PRIVACY POLICY.  
+9.	Limitation on Liability.  TO THE MAXIMUM EXTENT PERMITTED UNDER APPLICABLE LAW, IN NO EVENT SHALL ANY PINECONE PARTY BE LIABLE FOR ANY INDIRECT, EXEMPLARY, SPECIAL, CONSEQUENTIAL OR INCIDENTAL DAMAGES OF ANY KIND, INCLUDING, WITHOUT LIMITATION, LOST PROFITS, REVENUES OR DATA, OR COSTS OF REPLACEMENT GOODS OR SERVICES, ARISING IN ANY WAY OUT OF THIS EULA OR YOUR USE OF OR INABILITY TO USE THE LICENSED SOFTWARE, HOWEVER CAUSED, REGARDLESS OF THE THEORY OF LIABILITY (CONTRACT, TORT, OR OTHERWISE) AND EVEN IF IT HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES AND NOTWITHSTANDING THE FAILURE OF ANY LIMITED REMEDY OF ITS ESSENTIAL PURPOSE.  SOME JURISDICTIONS DO NOT ALLOW THE LIMITATION OF LIABILITY FOR PERSONAL INJURY, OR OF INCIDENTAL OR CONSEQUENTIAL DAMAGES, SO THIS LIMITATION MAY NOT APPLY TO YOU. In no event shall Pinecone’s total liability to you for all damages (other than as may be required by applicable law in cases involving personal injury) exceed the amount of fifty dollars ($50.00). 
+10.	Term and Termination.  This EULA and the licenses granted hereunder are effective on the date you download the Licensed Software and shall continue unless this EULA is terminated by either party pursuant to this section.  Pinecone may terminate this EULA immediately upon notice to you in the event that you materially breach any of the terms hereof.  You may terminate this EULA at any time, with or without cause, by sending to Pinecone written notice indicating your intent to terminate your license (such notice to include your name and the subject “REMOVE”), either via email to info@pinecone.io or via mail or courier service to 400 Concar Drive, San Mateo, California 94402.  Upon termination, the license granted hereunder shall terminate and you shall immediately destroy any copies of the Licensed Software in your possession, but the terms of Sections 2-15 will remain in effect.
+11.	For U.S. Government End Users.  The Licensed Software is a “commercial item” as that term is defined at 48 C.F.R. 2.101 (OCT 1995), and more specifically is “commercial computer software” and “commercial computer software documentation” as such terms are used in 48 C.F.R. 12.212 (SEPT 1995).  Consistent with 48 C.F.R. 12.212 and 48 C.F.R. 227.7202-1 through 227.7202-4 (JUNE 1995), the Licensed Software is provided to U.S. Government End Users (a) only as a commercial end item and (b) with only those rights as are granted to all other customers pursuant to the terms and conditions herein.
+12.	Export.  The Licensed Software and related technology are subject to U.S. export control laws and may be subject to export or import regulations in other countries.  You agree to strictly comply with all such laws and regulations and acknowledge that you have the responsibility to obtain authorization to export, re-export, or import the Licensed Software and related technology, as may be required.  You will indemnify and hold the Pinecone Parties harmless from any and all claims, losses, liabilities, damages, fines, penalties, costs and expenses (including attorney’s fees) arising from or relating to any breach by you of your obligations under this section.  
+13.	Governing Law and Venue.  This EULA will be governed by the laws of the California without regard to its principles of conflicts of law. Any action or proceeding arising from or relating to this EULA must be brought in a federal or state court located in San Mateo, California, and each party irrevocably submits to the jurisdiction and venue of any such court in any such action or proceeding.
+14.	Miscellaneous.  Neither the rights nor the obligations arising under this EULA are assignable by you, and any such attempted assignment or transfer shall be void and without effect.  The United Nations Convention on Contracts for the International Sale of Goods shall not apply to this EULA.  Any notice to you may be provided by email.  Any modifications of this Agreement must be in writing and agreed to by both parties. 
+15.	Questions or Additional information.  If you have questions regarding this EULA, or wish to obtain additional information about the Licensed Software license, please send an e-mail to info@pinecone.io.
+
+
+--------------------------------------------------------------------------------
+
+Open-Source Code Included in Pinecone-io Python Library
+
+Last Updated: September 20, 2021
+
+
+3-clause BSD License (https://raw.githubusercontent.com/networkx/networkx/master/LICENSE.txt)
+
+   * Software: grpc-gateway-protoc-gen-openapiv2 - Version 0.1.0 (https://github.com/grpc-ecosystem/grpc-gateway)
+   * Software: protobuf - Version 3.13.0 (https://pypi.org/project/protobuf/)
+   * Software: lz4 - Version 3.1.3 (https://pypi.org/project/lz4/)
+   * Software: numpy - Version between 1.18.5 and 1.20.0 (https://github.com/numpy/numpy)
+
+2-clause BSD License (https://raw.githubusercontent.com/getsentry/sentry-python/master/LICENSE)
+
+   * Software: sentry-sdk - Version 1.0.0 or greater (https://github.com/getsentry/sentry-python)
+
+MIT License (https://raw.githubusercontent.com/urllib3/urllib3/main/LICENSE.txt)
+
+   * Software: urllib3 - Version 1.21.1 or greater (https://github.com/urllib3/urllib3)
+   * Software: pyyaml - Version 5.4 or greater (https://github.com/yaml/pyyaml/)
+   * Software: loguru - Version 0.5.0 or greater (https://github.com/Delgan/loguru)
+
+Apache License 2.0 (https://raw.githubusercontent.com/grpc/grpc/master/LICENSE)
+
+   * Software: grpcio - Version 1.37.1 (https://pypi.org/project/grpcio/)
+   * Software: googleapis-common-protos - Version 1.53.0 (https://github.com/googleapis/api-common-protos)
+   * Software: requests - Version 2.19.0 or greater (https://github.com/psf/requests)
+   * Software: python_dateutil - Version 2.5.3 or greater (https://github.com/dateutil/dateutil)
+
+Python Software Foundation License (PSF) (https://raw.githubusercontent.com/python/typing/master/typing_extensions/LICENSE)
+
+   * Software: typing-extensions - Version 3.7.4 or greater (https://pypi.org/project/typing-extensions/)
+
+ISC License (https://opensource.org/licenses/ISC)
+
+   * Software: dnspython - Version 2.0.0 or greater (https://www.dnspython.org/)

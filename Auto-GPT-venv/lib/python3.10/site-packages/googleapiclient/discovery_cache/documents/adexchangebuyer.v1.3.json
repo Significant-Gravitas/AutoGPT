@@ -1,0 +1,1686 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/adexchange.buyer": {
+          "description": "Manage your Ad Exchange buyer account configuration"
+        }
+      }
+    }
+  },
+  "basePath": "/adexchangebuyer/v1.3/",
+  "baseUrl": "https://www.googleapis.com/adexchangebuyer/v1.3/",
+  "batchPath": "batch/adexchangebuyer/v1.3",
+  "canonicalName": "Ad Exchange Buyer",
+  "description": "Accesses your bidding-account information, submits creatives for validation, finds available direct deals, and retrieves performance reports.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://developers.google.com/ad-exchange/buyer-rest",
+  "etag": "\"uWj2hSb4GVjzdDlAnRd2gbM1ZQ8/NOgo5Rz2N67ZT2NXIcz-dCGvAbI\"",
+  "icons": {
+    "x16": "https://www.google.com/images/icons/product/doubleclick-16.gif",
+    "x32": "https://www.google.com/images/icons/product/doubleclick-32.gif"
+  },
+  "id": "adexchangebuyer:v1.3",
+  "kind": "discovery#restDescription",
+  "name": "adexchangebuyer",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "alt": {
+      "default": "json",
+      "description": "Data format for the response.",
+      "enum": [
+        "json"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "An opaque string that represents a user for quota purposes. Must not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "userIp": {
+      "description": "Deprecated. Please use quotaUser instead.",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "accounts": {
+      "methods": {
+        "get": {
+          "description": "Gets one account by ID.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.accounts.get",
+          "parameterOrder": [
+            "id"
+          ],
+          "parameters": {
+            "id": {
+              "description": "The account id",
+              "format": "int32",
+              "location": "path",
+              "required": true,
+              "type": "integer"
+            }
+          },
+          "path": "accounts/{id}",
+          "response": {
+            "$ref": "Account"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "list": {
+          "description": "Retrieves the authenticated user's list of accounts.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.accounts.list",
+          "path": "accounts",
+          "response": {
+            "$ref": "AccountsList"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "patch": {
+          "description": "Updates an existing account. This method supports patch semantics.",
+          "httpMethod": "PATCH",
+          "id": "adexchangebuyer.accounts.patch",
+          "parameterOrder": [
+            "id"
+          ],
+          "parameters": {
+            "id": {
+              "description": "The account id",
+              "format": "int32",
+              "location": "path",
+              "required": true,
+              "type": "integer"
+            }
+          },
+          "path": "accounts/{id}",
+          "request": {
+            "$ref": "Account"
+          },
+          "response": {
+            "$ref": "Account"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "update": {
+          "description": "Updates an existing account.",
+          "httpMethod": "PUT",
+          "id": "adexchangebuyer.accounts.update",
+          "parameterOrder": [
+            "id"
+          ],
+          "parameters": {
+            "id": {
+              "description": "The account id",
+              "format": "int32",
+              "location": "path",
+              "required": true,
+              "type": "integer"
+            }
+          },
+          "path": "accounts/{id}",
+          "request": {
+            "$ref": "Account"
+          },
+          "response": {
+            "$ref": "Account"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        }
+      }
+    },
+    "billingInfo": {
+      "methods": {
+        "get": {
+          "description": "Returns the billing information for one account specified by account ID.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.billingInfo.get",
+          "parameterOrder": [
+            "accountId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id.",
+              "format": "int32",
+              "location": "path",
+              "required": true,
+              "type": "integer"
+            }
+          },
+          "path": "billinginfo/{accountId}",
+          "response": {
+            "$ref": "BillingInfo"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "list": {
+          "description": "Retrieves a list of billing information for all accounts of the authenticated user.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.billingInfo.list",
+          "path": "billinginfo",
+          "response": {
+            "$ref": "BillingInfoList"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        }
+      }
+    },
+    "budget": {
+      "methods": {
+        "get": {
+          "description": "Returns the budget information for the adgroup specified by the accountId and billingId.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.budget.get",
+          "parameterOrder": [
+            "accountId",
+            "billingId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id to get the budget information for.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "billingId": {
+              "description": "The billing id to get the budget information for.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "billinginfo/{accountId}/{billingId}",
+          "response": {
+            "$ref": "Budget"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "patch": {
+          "description": "Updates the budget amount for the budget of the adgroup specified by the accountId and billingId, with the budget amount in the request. This method supports patch semantics.",
+          "httpMethod": "PATCH",
+          "id": "adexchangebuyer.budget.patch",
+          "parameterOrder": [
+            "accountId",
+            "billingId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id associated with the budget being updated.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "billingId": {
+              "description": "The billing id associated with the budget being updated.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "billinginfo/{accountId}/{billingId}",
+          "request": {
+            "$ref": "Budget"
+          },
+          "response": {
+            "$ref": "Budget"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "update": {
+          "description": "Updates the budget amount for the budget of the adgroup specified by the accountId and billingId, with the budget amount in the request.",
+          "httpMethod": "PUT",
+          "id": "adexchangebuyer.budget.update",
+          "parameterOrder": [
+            "accountId",
+            "billingId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id associated with the budget being updated.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "billingId": {
+              "description": "The billing id associated with the budget being updated.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "billinginfo/{accountId}/{billingId}",
+          "request": {
+            "$ref": "Budget"
+          },
+          "response": {
+            "$ref": "Budget"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        }
+      }
+    },
+    "creatives": {
+      "methods": {
+        "get": {
+          "description": "Gets the status for a single creative. A creative will be available 30-40 minutes after submission.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.creatives.get",
+          "parameterOrder": [
+            "accountId",
+            "buyerCreativeId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The id for the account that will serve this creative.",
+              "format": "int32",
+              "location": "path",
+              "required": true,
+              "type": "integer"
+            },
+            "buyerCreativeId": {
+              "description": "The buyer-specific id for this creative.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "creatives/{accountId}/{buyerCreativeId}",
+          "response": {
+            "$ref": "Creative"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "insert": {
+          "description": "Submit a new creative.",
+          "httpMethod": "POST",
+          "id": "adexchangebuyer.creatives.insert",
+          "path": "creatives",
+          "request": {
+            "$ref": "Creative"
+          },
+          "response": {
+            "$ref": "Creative"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "list": {
+          "description": "Retrieves a list of the authenticated user's active creatives. A creative will be available 30-40 minutes after submission.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.creatives.list",
+          "parameters": {
+            "accountId": {
+              "description": "When specified, only creatives for the given account ids are returned.",
+              "format": "int32",
+              "location": "query",
+              "repeated": true,
+              "type": "integer"
+            },
+            "buyerCreativeId": {
+              "description": "When specified, only creatives for the given buyer creative ids are returned.",
+              "location": "query",
+              "repeated": true,
+              "type": "string"
+            },
+            "maxResults": {
+              "description": "Maximum number of entries returned on one result page. If not set, the default is 100. Optional.",
+              "format": "uint32",
+              "location": "query",
+              "maximum": "1000",
+              "minimum": "1",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "A continuation token, used to page through ad clients. To retrieve the next page, set this parameter to the value of \"nextPageToken\" from the previous response. Optional.",
+              "location": "query",
+              "type": "string"
+            },
+            "statusFilter": {
+              "description": "When specified, only creatives having the given status are returned.",
+              "enum": [
+                "approved",
+                "disapproved",
+                "not_checked"
+              ],
+              "enumDescriptions": [
+                "Creatives which have been approved.",
+                "Creatives which have been disapproved.",
+                "Creatives whose status is not yet checked."
+              ],
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "creatives",
+          "response": {
+            "$ref": "CreativesList"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        }
+      }
+    },
+    "directDeals": {
+      "methods": {
+        "get": {
+          "description": "Gets one direct deal by ID.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.directDeals.get",
+          "parameterOrder": [
+            "id"
+          ],
+          "parameters": {
+            "id": {
+              "description": "The direct deal id",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "directdeals/{id}",
+          "response": {
+            "$ref": "DirectDeal"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "list": {
+          "description": "Retrieves the authenticated user's list of direct deals.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.directDeals.list",
+          "path": "directdeals",
+          "response": {
+            "$ref": "DirectDealsList"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        }
+      }
+    },
+    "performanceReport": {
+      "methods": {
+        "list": {
+          "description": "Retrieves the authenticated user's list of performance metrics.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.performanceReport.list",
+          "parameterOrder": [
+            "accountId",
+            "endDateTime",
+            "startDateTime"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id to get the reports.",
+              "format": "int64",
+              "location": "query",
+              "required": true,
+              "type": "string"
+            },
+            "endDateTime": {
+              "description": "The end time of the report in ISO 8601 timestamp format using UTC.",
+              "location": "query",
+              "required": true,
+              "type": "string"
+            },
+            "maxResults": {
+              "description": "Maximum number of entries returned on one result page. If not set, the default is 100. Optional.",
+              "format": "uint32",
+              "location": "query",
+              "maximum": "1000",
+              "minimum": "1",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "A continuation token, used to page through performance reports. To retrieve the next page, set this parameter to the value of \"nextPageToken\" from the previous response. Optional.",
+              "location": "query",
+              "type": "string"
+            },
+            "startDateTime": {
+              "description": "The start time of the report in ISO 8601 timestamp format using UTC.",
+              "location": "query",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "performancereport",
+          "response": {
+            "$ref": "PerformanceReportList"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        }
+      }
+    },
+    "pretargetingConfig": {
+      "methods": {
+        "delete": {
+          "description": "Deletes an existing pretargeting config.",
+          "httpMethod": "DELETE",
+          "id": "adexchangebuyer.pretargetingConfig.delete",
+          "parameterOrder": [
+            "accountId",
+            "configId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id to delete the pretargeting config for.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "configId": {
+              "description": "The specific id of the configuration to delete.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "pretargetingconfigs/{accountId}/{configId}",
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "get": {
+          "description": "Gets a specific pretargeting configuration",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.pretargetingConfig.get",
+          "parameterOrder": [
+            "accountId",
+            "configId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id to get the pretargeting config for.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "configId": {
+              "description": "The specific id of the configuration to retrieve.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "pretargetingconfigs/{accountId}/{configId}",
+          "response": {
+            "$ref": "PretargetingConfig"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "insert": {
+          "description": "Inserts a new pretargeting configuration.",
+          "httpMethod": "POST",
+          "id": "adexchangebuyer.pretargetingConfig.insert",
+          "parameterOrder": [
+            "accountId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id to insert the pretargeting config for.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "pretargetingconfigs/{accountId}",
+          "request": {
+            "$ref": "PretargetingConfig"
+          },
+          "response": {
+            "$ref": "PretargetingConfig"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "list": {
+          "description": "Retrieves a list of the authenticated user's pretargeting configurations.",
+          "httpMethod": "GET",
+          "id": "adexchangebuyer.pretargetingConfig.list",
+          "parameterOrder": [
+            "accountId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id to get the pretargeting configs for.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "pretargetingconfigs/{accountId}",
+          "response": {
+            "$ref": "PretargetingConfigList"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "patch": {
+          "description": "Updates an existing pretargeting config. This method supports patch semantics.",
+          "httpMethod": "PATCH",
+          "id": "adexchangebuyer.pretargetingConfig.patch",
+          "parameterOrder": [
+            "accountId",
+            "configId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id to update the pretargeting config for.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "configId": {
+              "description": "The specific id of the configuration to update.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "pretargetingconfigs/{accountId}/{configId}",
+          "request": {
+            "$ref": "PretargetingConfig"
+          },
+          "response": {
+            "$ref": "PretargetingConfig"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        },
+        "update": {
+          "description": "Updates an existing pretargeting config.",
+          "httpMethod": "PUT",
+          "id": "adexchangebuyer.pretargetingConfig.update",
+          "parameterOrder": [
+            "accountId",
+            "configId"
+          ],
+          "parameters": {
+            "accountId": {
+              "description": "The account id to update the pretargeting config for.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "configId": {
+              "description": "The specific id of the configuration to update.",
+              "format": "int64",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "pretargetingconfigs/{accountId}/{configId}",
+          "request": {
+            "$ref": "PretargetingConfig"
+          },
+          "response": {
+            "$ref": "PretargetingConfig"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/adexchange.buyer"
+          ]
+        }
+      }
+    }
+  },
+  "revision": "20210815",
+  "rootUrl": "https://www.googleapis.com/",
+  "schemas": {
+    "Account": {
+      "description": "Configuration data for an Ad Exchange buyer account.",
+      "id": "Account",
+      "properties": {
+        "bidderLocation": {
+          "description": "Your bidder locations that have distinct URLs.",
+          "items": {
+            "properties": {
+              "maximumQps": {
+                "description": "The maximum queries per second the Ad Exchange will send.",
+                "format": "int32",
+                "type": "integer"
+              },
+              "region": {
+                "description": "The geographical region the Ad Exchange should send requests from. Only used by some quota systems, but always setting the value is recommended. Allowed values:  \n- ASIA \n- EUROPE \n- US_EAST \n- US_WEST",
+                "type": "string"
+              },
+              "url": {
+                "description": "The URL to which the Ad Exchange will send bid requests.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "cookieMatchingNid": {
+          "description": "The nid parameter value used in cookie match requests. Please contact your technical account manager if you need to change this.",
+          "type": "string"
+        },
+        "cookieMatchingUrl": {
+          "description": "The base URL used in cookie match requests.",
+          "type": "string"
+        },
+        "id": {
+          "description": "Account id.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "kind": {
+          "default": "adexchangebuyer#account",
+          "description": "Resource type.",
+          "type": "string"
+        },
+        "maximumActiveCreatives": {
+          "description": "The maximum number of active creatives that an account can have, where a creative is active if it was inserted or bid with in the last 30 days. Please contact your technical account manager if you need to change this.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "maximumTotalQps": {
+          "description": "The sum of all bidderLocation.maximumQps values cannot exceed this. Please contact your technical account manager if you need to change this.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "numberActiveCreatives": {
+          "description": "The number of creatives that this account inserted or bid with in the last 30 days.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "AccountsList": {
+      "description": "An account feed lists Ad Exchange buyer accounts that the user has access to. Each entry in the feed corresponds to a single buyer account.",
+      "id": "AccountsList",
+      "properties": {
+        "items": {
+          "description": "A list of accounts.",
+          "items": {
+            "$ref": "Account"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "adexchangebuyer#accountsList",
+          "description": "Resource type.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BillingInfo": {
+      "description": "The configuration data for an Ad Exchange billing info.",
+      "id": "BillingInfo",
+      "properties": {
+        "accountId": {
+          "description": "Account id.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "accountName": {
+          "description": "Account name.",
+          "type": "string"
+        },
+        "billingId": {
+          "description": "A list of adgroup IDs associated with this particular account. These IDs may show up as part of a realtime bidding BidRequest, which indicates a bid request for this account.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "adexchangebuyer#billingInfo",
+          "description": "Resource type.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BillingInfoList": {
+      "description": "A billing info feed lists Billing Info the Ad Exchange buyer account has access to. Each entry in the feed corresponds to a single billing info.",
+      "id": "BillingInfoList",
+      "properties": {
+        "items": {
+          "description": "A list of billing info relevant for your account.",
+          "items": {
+            "$ref": "BillingInfo"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "adexchangebuyer#billingInfoList",
+          "description": "Resource type.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Budget": {
+      "description": "The configuration data for Ad Exchange RTB - Budget API.",
+      "id": "Budget",
+      "properties": {
+        "accountId": {
+          "description": "The id of the account. This is required for get and update requests.",
+          "format": "int64",
+          "type": "string"
+        },
+        "billingId": {
+          "description": "The billing id to determine which adgroup to provide budget information for. This is required for get and update requests.",
+          "format": "int64",
+          "type": "string"
+        },
+        "budgetAmount": {
+          "description": "The daily budget amount in unit amount of the account currency to apply for the billingId provided. This is required for update requests.",
+          "format": "int64",
+          "type": "string"
+        },
+        "currencyCode": {
+          "description": "The currency code for the buyer. This cannot be altered here.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The unique id that describes this item.",
+          "type": "string"
+        },
+        "kind": {
+          "default": "adexchangebuyer#budget",
+          "description": "The kind of the resource, i.e. \"adexchangebuyer#budget\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Creative": {
+      "description": "A creative and its classification data.",
+      "id": "Creative",
+      "properties": {
+        "HTMLSnippet": {
+          "description": "The HTML snippet that displays the ad when inserted in the web page. If set, videoURL should not be set.",
+          "type": "string"
+        },
+        "accountId": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "Account id.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "adTechnologyProviders": {
+          "properties": {
+            "detectedProviderIds": {
+              "description": "The detected ad technology provider IDs for this creative. See https://storage.googleapis.com/adx-rtb-dictionaries/providers.csv for mapping of provider ID to provided name, a privacy policy URL, and a list of domains which can be attributed to the provider. If this creative contains provider IDs that are outside of those listed in the `BidRequest.adslot.consented_providers_settings.consented_providers` field on the  Authorized Buyers Real-Time Bidding protocol or the `BidRequest.user.ext.consented_providers_settings.consented_providers` field on the OpenRTB protocol, a bid submitted for a European Economic Area (EEA) user with this creative is not compliant with the GDPR policies as mentioned in the \"Third-party Ad Technology Vendors\" section of Authorized Buyers Program Guidelines.",
+              "items": {
+                "format": "int64",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "hasUnidentifiedProvider": {
+              "description": "Whether the creative contains an unidentified ad technology provider. If true, a bid submitted for a European Economic Area (EEA) user with this creative is not compliant with the GDPR policies as mentioned in the \"Third-party Ad Technology Vendors\" section of Authorized Buyers Program Guidelines.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "advertiserId": {
+          "description": "Detected advertiser id, if any. Read-only. This field should not be set in requests.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "advertiserName": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "The name of the company being advertised in the creative.",
+          "type": "string"
+        },
+        "agencyId": {
+          "description": "The agency id for this creative.",
+          "format": "int64",
+          "type": "string"
+        },
+        "apiUploadTimestamp": {
+          "description": "The last upload timestamp of this creative if it was uploaded via API. Read-only. The value of this field is generated, and will be ignored for uploads. (formatted RFC 3339 timestamp).",
+          "format": "date-time",
+          "type": "string"
+        },
+        "attribute": {
+          "description": "All attributes for the ads that may be shown from this snippet.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "buyerCreativeId": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "A buyer-specific id identifying the creative in this ad.",
+          "type": "string"
+        },
+        "clickThroughUrl": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "The set of destination urls for the snippet.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "corrections": {
+          "description": "Shows any corrections that were applied to this creative. Read-only. This field should not be set in requests.",
+          "items": {
+            "properties": {
+              "details": {
+                "description": "Additional details about the correction.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "reason": {
+                "description": "The type of correction that was applied to the creative.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "disapprovalReasons": {
+          "description": "The reasons for disapproval, if any. Note that not all disapproval reasons may be categorized, so it is possible for the creative to have a status of DISAPPROVED with an empty list for disapproval_reasons. In this case, please reach out to your TAM to help debug the issue. Read-only. This field should not be set in requests.",
+          "items": {
+            "properties": {
+              "details": {
+                "description": "Additional details about the reason for disapproval.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "reason": {
+                "description": "The categorized reason for disapproval.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "filteringReasons": {
+          "description": "The filtering reasons for the creative. Read-only. This field should not be set in requests.",
+          "properties": {
+            "date": {
+              "description": "The date in ISO 8601 format for the data. The data is collected from 00:00:00 to 23:59:59 in PST.",
+              "type": "string"
+            },
+            "reasons": {
+              "description": "The filtering reasons.",
+              "items": {
+                "properties": {
+                  "filteringCount": {
+                    "description": "The number of times the creative was filtered for the status. The count is aggregated across all publishers on the exchange.",
+                    "format": "int64",
+                    "type": "string"
+                  },
+                  "filteringStatus": {
+                    "description": "The filtering status code. Please refer to the creative-status-codes.txt file for different statuses.",
+                    "format": "int32",
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "height": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "Ad height.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "impressionTrackingUrl": {
+          "description": "The set of urls to be called to record an impression.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "adexchangebuyer#creative",
+          "description": "Resource type.",
+          "type": "string"
+        },
+        "nativeAd": {
+          "description": "If nativeAd is set, HTMLSnippet and videoURL should not be set.",
+          "properties": {
+            "advertiser": {
+              "type": "string"
+            },
+            "appIcon": {
+              "description": "The app icon, for app download ads.",
+              "properties": {
+                "height": {
+                  "format": "int32",
+                  "type": "integer"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "width": {
+                  "format": "int32",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "body": {
+              "description": "A long description of the ad.",
+              "type": "string"
+            },
+            "callToAction": {
+              "description": "A label for the button that the user is supposed to click.",
+              "type": "string"
+            },
+            "clickTrackingUrl": {
+              "description": "The URL to use for click tracking.",
+              "type": "string"
+            },
+            "headline": {
+              "description": "A short title for the ad.",
+              "type": "string"
+            },
+            "image": {
+              "description": "A large image.",
+              "properties": {
+                "height": {
+                  "format": "int32",
+                  "type": "integer"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "width": {
+                  "format": "int32",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "impressionTrackingUrl": {
+              "description": "The URLs are called when the impression is rendered.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "logo": {
+              "description": "A smaller image, for the advertiser logo.",
+              "properties": {
+                "height": {
+                  "format": "int32",
+                  "type": "integer"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "width": {
+                  "format": "int32",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "price": {
+              "description": "The price of the promoted app including the currency info.",
+              "type": "string"
+            },
+            "starRating": {
+              "description": "The app rating in the app store. Must be in the range [0-5].",
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "productCategories": {
+          "description": "Detected product categories, if any. Read-only. This field should not be set in requests.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "restrictedCategories": {
+          "description": "All restricted categories for the ads that may be shown from this snippet.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "sensitiveCategories": {
+          "description": "Detected sensitive categories, if any. Read-only. This field should not be set in requests.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "status": {
+          "description": "Creative serving status. Read-only. This field should not be set in requests.",
+          "type": "string"
+        },
+        "vendorType": {
+          "description": "All vendor types for the ads that may be shown from this snippet.",
+          "items": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "version": {
+          "description": "The version for this creative. Read-only. This field should not be set in requests.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "videoURL": {
+          "description": "The URL to fetch a video ad. If set, HTMLSnippet and the nativeAd should not be set.",
+          "type": "string"
+        },
+        "width": {
+          "annotations": {
+            "required": [
+              "adexchangebuyer.creatives.insert"
+            ]
+          },
+          "description": "Ad width.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "CreativesList": {
+      "description": "The creatives feed lists the active creatives for the Ad Exchange buyer accounts that the user has access to. Each entry in the feed corresponds to a single creative.",
+      "id": "CreativesList",
+      "properties": {
+        "items": {
+          "description": "A list of creatives.",
+          "items": {
+            "$ref": "Creative"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "adexchangebuyer#creativesList",
+          "description": "Resource type.",
+          "type": "string"
+        },
+        "nextPageToken": {
+          "description": "Continuation token used to page through creatives. To retrieve the next page of results, set the next request's \"pageToken\" value to this.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DirectDeal": {
+      "description": "The configuration data for an Ad Exchange direct deal.",
+      "id": "DirectDeal",
+      "properties": {
+        "accountId": {
+          "description": "The account id of the buyer this deal is for.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "advertiser": {
+          "description": "The name of the advertiser this deal is for.",
+          "type": "string"
+        },
+        "allowsAlcohol": {
+          "description": "Whether the publisher for this deal is eligible for alcohol ads.",
+          "type": "boolean"
+        },
+        "buyerAccountId": {
+          "description": "The account id that this deal was negotiated for. It is either the buyer or the client that this deal was negotiated on behalf of.",
+          "format": "int64",
+          "type": "string"
+        },
+        "currencyCode": {
+          "description": "The currency code that applies to the fixed_cpm value. If not set then assumed to be USD.",
+          "type": "string"
+        },
+        "dealTier": {
+          "description": "The deal type such as programmatic reservation or fixed price and so on.",
+          "type": "string"
+        },
+        "endTime": {
+          "description": "End time for when this deal stops being active. If not set then this deal is valid until manually disabled by the publisher. In seconds since the epoch.",
+          "format": "int64",
+          "type": "string"
+        },
+        "fixedCpm": {
+          "description": "The fixed price for this direct deal. In cpm micros of currency according to currency_code. If set, then this deal is eligible for the fixed price tier of buying (highest priority, pay exactly the configured fixed price).",
+          "format": "int64",
+          "type": "string"
+        },
+        "id": {
+          "description": "Deal id.",
+          "format": "int64",
+          "type": "string"
+        },
+        "kind": {
+          "default": "adexchangebuyer#directDeal",
+          "description": "Resource type.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Deal name.",
+          "type": "string"
+        },
+        "privateExchangeMinCpm": {
+          "description": "The minimum price for this direct deal. In cpm micros of currency according to currency_code. If set, then this deal is eligible for the private exchange tier of buying (below fixed price priority, run as a second price auction).",
+          "format": "int64",
+          "type": "string"
+        },
+        "publisherBlocksOverriden": {
+          "description": "If true, the publisher has opted to have their blocks ignored when a creative is bid with for this deal.",
+          "type": "boolean"
+        },
+        "sellerNetwork": {
+          "description": "The name of the publisher offering this direct deal.",
+          "type": "string"
+        },
+        "startTime": {
+          "description": "Start time for when this deal becomes active. If not set then this deal is active immediately upon creation. In seconds since the epoch.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DirectDealsList": {
+      "description": "A direct deals feed lists Direct Deals the Ad Exchange buyer account has access to. This includes direct deals set up for the buyer account as well as its merged stream seats.",
+      "id": "DirectDealsList",
+      "properties": {
+        "directDeals": {
+          "description": "A list of direct deals relevant for your account.",
+          "items": {
+            "$ref": "DirectDeal"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "adexchangebuyer#directDealsList",
+          "description": "Resource type.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PerformanceReport": {
+      "description": "The configuration data for an Ad Exchange performance report list.",
+      "id": "PerformanceReport",
+      "properties": {
+        "bidRate": {
+          "description": "The number of bid responses with an ad.",
+          "format": "double",
+          "type": "number"
+        },
+        "bidRequestRate": {
+          "description": "The number of bid requests sent to your bidder.",
+          "format": "double",
+          "type": "number"
+        },
+        "calloutStatusRate": {
+          "description": "Rate of various prefiltering statuses per match. Please refer to the callout-status-codes.txt file for different statuses.",
+          "items": {
+            "type": "any"
+          },
+          "type": "array"
+        },
+        "cookieMatcherStatusRate": {
+          "description": "Average QPS for cookie matcher operations.",
+          "items": {
+            "type": "any"
+          },
+          "type": "array"
+        },
+        "creativeStatusRate": {
+          "description": "Rate of ads with a given status. Please refer to the creative-status-codes.txt file for different statuses.",
+          "items": {
+            "type": "any"
+          },
+          "type": "array"
+        },
+        "filteredBidRate": {
+          "description": "The number of bid responses that were filtered due to a policy violation or other errors.",
+          "format": "double",
+          "type": "number"
+        },
+        "hostedMatchStatusRate": {
+          "description": "Average QPS for hosted match operations.",
+          "items": {
+            "type": "any"
+          },
+          "type": "array"
+        },
+        "inventoryMatchRate": {
+          "description": "The number of potential queries based on your pretargeting settings.",
+          "format": "double",
+          "type": "number"
+        },
+        "kind": {
+          "default": "adexchangebuyer#performanceReport",
+          "description": "Resource type.",
+          "type": "string"
+        },
+        "latency50thPercentile": {
+          "description": "The 50th percentile round trip latency(ms) as perceived from Google servers for the duration period covered by the report.",
+          "format": "double",
+          "type": "number"
+        },
+        "latency85thPercentile": {
+          "description": "The 85th percentile round trip latency(ms) as perceived from Google servers for the duration period covered by the report.",
+          "format": "double",
+          "type": "number"
+        },
+        "latency95thPercentile": {
+          "description": "The 95th percentile round trip latency(ms) as perceived from Google servers for the duration period covered by the report.",
+          "format": "double",
+          "type": "number"
+        },
+        "noQuotaInRegion": {
+          "description": "Rate of various quota account statuses per quota check.",
+          "format": "double",
+          "type": "number"
+        },
+        "outOfQuota": {
+          "description": "Rate of various quota account statuses per quota check.",
+          "format": "double",
+          "type": "number"
+        },
+        "pixelMatchRequests": {
+          "description": "Average QPS for pixel match requests from clients.",
+          "format": "double",
+          "type": "number"
+        },
+        "pixelMatchResponses": {
+          "description": "Average QPS for pixel match responses from clients.",
+          "format": "double",
+          "type": "number"
+        },
+        "quotaConfiguredLimit": {
+          "description": "The configured quota limits for this account.",
+          "format": "double",
+          "type": "number"
+        },
+        "quotaThrottledLimit": {
+          "description": "The throttled quota limits for this account.",
+          "format": "double",
+          "type": "number"
+        },
+        "region": {
+          "description": "The trading location of this data.",
+          "type": "string"
+        },
+        "successfulRequestRate": {
+          "description": "The number of properly formed bid responses received by our servers within the deadline.",
+          "format": "double",
+          "type": "number"
+        },
+        "timestamp": {
+          "description": "The unix timestamp of the starting time of this performance data.",
+          "format": "int64",
+          "type": "string"
+        },
+        "unsuccessfulRequestRate": {
+          "description": "The number of bid responses that were unsuccessful due to timeouts, incorrect formatting, etc.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "PerformanceReportList": {
+      "description": "The configuration data for an Ad Exchange performance report list.",
+      "id": "PerformanceReportList",
+      "properties": {
+        "kind": {
+          "default": "adexchangebuyer#performanceReportList",
+          "description": "Resource type.",
+          "type": "string"
+        },
+        "performanceReport": {
+          "description": "A list of performance reports relevant for the account.",
+          "items": {
+            "$ref": "PerformanceReport"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "PretargetingConfig": {
+      "id": "PretargetingConfig",
+      "properties": {
+        "billingId": {
+          "description": "The id for billing purposes, provided for reference. Leave this field blank for insert requests; the id will be generated automatically.",
+          "format": "int64",
+          "type": "string"
+        },
+        "configId": {
+          "description": "The config id; generated automatically. Leave this field blank for insert requests.",
+          "format": "int64",
+          "type": "string"
+        },
+        "configName": {
+          "description": "The name of the config. Must be unique. Required for all requests.",
+          "type": "string"
+        },
+        "creativeType": {
+          "description": "List must contain exactly one of PRETARGETING_CREATIVE_TYPE_HTML or PRETARGETING_CREATIVE_TYPE_VIDEO.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dimensions": {
+          "description": "Requests which allow one of these (width, height) pairs will match. All pairs must be supported ad dimensions.",
+          "items": {
+            "properties": {
+              "height": {
+                "description": "Height in pixels.",
+                "format": "int64",
+                "type": "string"
+              },
+              "width": {
+                "description": "Width in pixels.",
+                "format": "int64",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "excludedContentLabels": {
+          "description": "Requests with any of these content labels will not match. Values are from content-labels.txt in the downloadable files section.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "excludedGeoCriteriaIds": {
+          "description": "Requests containing any of these geo criteria ids will not match.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "excludedPlacements": {
+          "description": "Requests containing any of these placements will not match.",
+          "items": {
+            "properties": {
+              "token": {
+                "description": "The value of the placement. Interpretation depends on the placement type, e.g. URL for a site placement, channel name for a channel placement, app id for a mobile app placement.",
+                "type": "string"
+              },
+              "type": {
+                "description": "The type of the placement.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "excludedUserLists": {
+          "description": "Requests containing any of these users list ids will not match.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "excludedVerticals": {
+          "description": "Requests containing any of these vertical ids will not match. Values are from the publisher-verticals.txt file in the downloadable files section.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "geoCriteriaIds": {
+          "description": "Requests containing any of these geo criteria ids will match.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "isActive": {
+          "description": "Whether this config is active. Required for all requests.",
+          "type": "boolean"
+        },
+        "kind": {
+          "default": "adexchangebuyer#pretargetingConfig",
+          "description": "The kind of the resource, i.e. \"adexchangebuyer#pretargetingConfig\".",
+          "type": "string"
+        },
+        "languages": {
+          "description": "Request containing any of these language codes will match.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maximumQps": {
+          "description": "The maximum QPS allocated to this pretargeting configuration, used for pretargeting-level QPS limits. By default, this is not set, which indicates that there is no QPS limit at the configuration level (a global or account-level limit may still be imposed).",
+          "format": "int64",
+          "type": "string"
+        },
+        "mobileCarriers": {
+          "description": "Requests containing any of these mobile carrier ids will match. Values are from mobile-carriers.csv in the downloadable files section.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "mobileDevices": {
+          "description": "Requests containing any of these mobile device ids will match. Values are from mobile-devices.csv in the downloadable files section.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "mobileOperatingSystemVersions": {
+          "description": "Requests containing any of these mobile operating system version ids will match. Values are from mobile-os.csv in the downloadable files section.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "placements": {
+          "description": "Requests containing any of these placements will match.",
+          "items": {
+            "properties": {
+              "token": {
+                "description": "The value of the placement. Interpretation depends on the placement type, e.g. URL for a site placement, channel name for a channel placement, app id for a mobile app placement.",
+                "type": "string"
+              },
+              "type": {
+                "description": "The type of the placement.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "platforms": {
+          "description": "Requests matching any of these platforms will match. Possible values are PRETARGETING_PLATFORM_MOBILE, PRETARGETING_PLATFORM_DESKTOP, and PRETARGETING_PLATFORM_TABLET.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "supportedCreativeAttributes": {
+          "description": "Creative attributes should be declared here if all creatives corresponding to this pretargeting configuration have that creative attribute. Values are from pretargetable-creative-attributes.txt in the downloadable files section.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "userLists": {
+          "description": "Requests containing any of these user list ids will match.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "vendorTypes": {
+          "description": "Requests that allow any of these vendor ids will match. Values are from vendors.txt in the downloadable files section.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "verticals": {
+          "description": "Requests containing any of these vertical ids will match.",
+          "items": {
+            "format": "int64",
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "PretargetingConfigList": {
+      "id": "PretargetingConfigList",
+      "properties": {
+        "items": {
+          "description": "A list of pretargeting configs",
+          "items": {
+            "$ref": "PretargetingConfig"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "adexchangebuyer#pretargetingConfigList",
+          "description": "Resource type.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "adexchangebuyer/v1.3/",
+  "title": "Ad Exchange Buyer API",
+  "version": "v1.3"
+}

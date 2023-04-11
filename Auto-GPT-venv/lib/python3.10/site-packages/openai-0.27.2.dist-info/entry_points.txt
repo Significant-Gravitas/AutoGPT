@@ -1,0 +1,2 @@
+[console_scripts]
+openai = openai._openai_scripts:main

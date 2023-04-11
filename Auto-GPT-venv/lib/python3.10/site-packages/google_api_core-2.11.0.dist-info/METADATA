@@ -1,0 +1,68 @@
+Metadata-Version: 2.1
+Name: google-api-core
+Version: 2.11.0
+Summary: Google API client core library
+Home-page: https://github.com/googleapis/python-api-core
+Author: Google LLC
+Author-email: googleapis-packages@google.com
+License: Apache 2.0
+Platform: Posix; MacOS X; Windows
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Internet
+Requires-Python: >=3.7
+License-File: LICENSE
+Requires-Dist: googleapis-common-protos (<2.0dev,>=1.56.2)
+Requires-Dist: protobuf (!=3.20.0,!=3.20.1,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<5.0.0dev,>=3.19.5)
+Requires-Dist: google-auth (<3.0dev,>=2.14.1)
+Requires-Dist: requests (<3.0.0dev,>=2.18.0)
+Provides-Extra: grpc
+Requires-Dist: grpcio (<2.0dev,>=1.33.2) ; extra == 'grpc'
+Requires-Dist: grpcio-status (<2.0dev,>=1.33.2) ; extra == 'grpc'
+Requires-Dist: grpcio (<2.0dev,>=1.49.1) ; (python_version >= "3.11") and extra == 'grpc'
+Requires-Dist: grpcio-status (<2.0dev,>=1.49.1) ; (python_version >= "3.11") and extra == 'grpc'
+Provides-Extra: grpcgcp
+Requires-Dist: grpcio-gcp (<1.0dev,>=0.2.2) ; extra == 'grpcgcp'
+Provides-Extra: grpcio-gcp
+Requires-Dist: grpcio-gcp (<1.0dev,>=0.2.2) ; extra == 'grpcio-gcp'
+
+Core Library for Google Client Libraries
+========================================
+
+|pypi| |versions|
+
+This library is not meant to stand-alone. Instead it defines
+common helpers used by all Google API clients. For more information, see the
+`documentation`_.
+
+.. |pypi| image:: https://img.shields.io/pypi/v/google-api_core.svg
+   :target: https://pypi.org/project/google-api_core/
+.. |versions| image:: https://img.shields.io/pypi/pyversions/google-api_core.svg
+   :target: https://pypi.org/project/google-api_core/
+.. _documentation: https://googleapis.dev/python/google-api-core/latest
+
+
+Supported Python Versions
+-------------------------
+Python >= 3.7
+
+
+Unsupported Python Versions
+---------------------------
+
+Python == 2.7, Python == 3.5, Python == 3.6.
+
+The last version of this library compatible with Python 2.7 and 3.5 is
+`google-api-core==1.31.1`.
+
+The last version of this library compatible with Python 3.6 is
+`google-api-core==2.8.2`.

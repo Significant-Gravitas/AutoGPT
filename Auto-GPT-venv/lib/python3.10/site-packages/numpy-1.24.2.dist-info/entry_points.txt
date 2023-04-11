@@ -1,0 +1,11 @@
+[array_api]
+numpy = numpy.array_api
+
+[console_scripts]
+f2py = numpy.f2py.f2py2e:main
+f2py3 = numpy.f2py.f2py2e:main
+f2py3.10 = numpy.f2py.f2py2e:main
+
+[pyinstaller40]
+hook-dirs = numpy:_pyinstaller_hooks_dir
+

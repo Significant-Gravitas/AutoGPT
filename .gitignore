@@ -7,6 +7,7 @@ package-lock.json
 auto_gpt_workspace/*
 *.mpeg
 .env
+# add a unique, desciptive name to the left of venv, e.g. myprofile_venv, to ensure it gets ignored
 *venv/*
 outputs/*
 ai_settings.yaml

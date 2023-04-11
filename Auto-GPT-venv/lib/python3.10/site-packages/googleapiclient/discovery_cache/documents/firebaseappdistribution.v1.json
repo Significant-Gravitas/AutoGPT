@@ -1,0 +1,1947 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "See, edit, configure, and delete your Google Cloud data and see the email address for your Google Account."
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://firebaseappdistribution.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Firebase App Distribution",
+  "description": "",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://firebase.google.com/products/app-distribution",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "firebaseappdistribution:v1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://firebaseappdistribution.mtls.googleapis.com/",
+  "name": "firebaseappdistribution",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "media": {
+      "methods": {
+        "upload": {
+          "description": "Uploads a binary. Uploading a binary can result in a new release being created, an update to an existing release, or a no-op if a release with the same binary already exists.",
+          "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases:upload",
+          "httpMethod": "POST",
+          "id": "firebaseappdistribution.media.upload",
+          "mediaUpload": {
+            "accept": [
+              "*/*"
+            ],
+            "protocols": {
+              "simple": {
+                "multipart": true,
+                "path": "/upload/v1/{+app}/releases:upload"
+              }
+            }
+          },
+          "parameterOrder": [
+            "app"
+          ],
+          "parameters": {
+            "app": {
+              "description": "The name of the app resource. Format: `projects/{project_number}/apps/{app_id}`",
+              "location": "path",
+              "pattern": "^projects/[^/]+/apps/[^/]+$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v1/{+app}/releases:upload",
+          "request": {
+            "$ref": "GoogleFirebaseAppdistroV1UploadReleaseRequest"
+          },
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform"
+          ],
+          "supportsMediaUpload": true
+        }
+      }
+    },
+    "projects": {
+      "resources": {
+        "apps": {
+          "methods": {
+            "getAabInfo": {
+              "description": "Gets Android App Bundle (AAB) information for a Firebase app.",
+              "flatPath": "v1/projects/{projectsId}/apps/{appsId}/aabInfo",
+              "httpMethod": "GET",
+              "id": "firebaseappdistribution.projects.apps.getAabInfo",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "Required. The name of the `AabInfo` resource to retrieve. Format: `projects/{project_number}/apps/{app_id}/aabInfo`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/apps/[^/]+/aabInfo$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+name}",
+              "response": {
+                "$ref": "GoogleFirebaseAppdistroV1AabInfo"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            }
+          },
+          "resources": {
+            "releases": {
+              "methods": {
+                "batchDelete": {
+                  "description": "Deletes releases. A maximum of 100 releases can be deleted per request.",
+                  "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases:batchDelete",
+                  "httpMethod": "POST",
+                  "id": "firebaseappdistribution.projects.apps.releases.batchDelete",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "parent": {
+                      "description": "Required. The name of the app resource, which is the parent of the release resources. Format: `projects/{project_number}/apps/{app_id}`",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/apps/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1/{+parent}/releases:batchDelete",
+                  "request": {
+                    "$ref": "GoogleFirebaseAppdistroV1BatchDeleteReleasesRequest"
+                  },
+                  "response": {
+                    "$ref": "GoogleProtobufEmpty"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "distribute": {
+                  "description": "Distributes a release to testers. This call does the following: 1. Creates testers for the specified emails, if none exist. 2. Adds the testers and groups to the release. 3. Sends new testers an invitation email. 4. Sends existing testers a new release email. The request will fail with a `INVALID_ARGUMENT` if it contains a group that doesn't exist.",
+                  "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}:distribute",
+                  "httpMethod": "POST",
+                  "id": "firebaseappdistribution.projects.apps.releases.distribute",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. The name of the release resource to distribute. Format: `projects/{project_number}/apps/{app_id}/releases/{release_id}`",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1/{+name}:distribute",
+                  "request": {
+                    "$ref": "GoogleFirebaseAppdistroV1DistributeReleaseRequest"
+                  },
+                  "response": {
+                    "$ref": "GoogleFirebaseAppdistroV1DistributeReleaseResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "get": {
+                  "description": "Gets a release.",
+                  "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}",
+                  "httpMethod": "GET",
+                  "id": "firebaseappdistribution.projects.apps.releases.get",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "Required. The name of the release resource to retrieve. Format: projects/{project_number}/apps/{app_id}/releases/{release_id}",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1/{+name}",
+                  "response": {
+                    "$ref": "GoogleFirebaseAppdistroV1Release"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "list": {
+                  "description": "Lists releases. By default, sorts by `createTime` in descending order.",
+                  "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases",
+                  "httpMethod": "GET",
+                  "id": "firebaseappdistribution.projects.apps.releases.list",
+                  "parameterOrder": [
+                    "parent"
+                  ],
+                  "parameters": {
+                    "filter": {
+                      "description": "The expression to filter releases listed in the response. To learn more about filtering, refer to [Google's AIP-160 standard](http://aip.dev/160). Supported fields: - `releaseNotes.text` supports `=` (can contain a wildcard character (`*`) at the beginning or end of the string) - `createTime` supports `<`, `<=`, `>` and `>=`, and expects an RFC-3339 formatted string Examples: - `createTime <= \"2021-09-08T00:00:00+04:00\"` - `releaseNotes.text=\"fixes\" AND createTime >= \"2021-09-08T00:00:00.0Z\"` - `releaseNotes.text=\"*v1.0.0-rc*\"`",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "orderBy": {
+                      "description": "The fields used to order releases. Supported fields: - `createTime` To specify descending order for a field, append a \"desc\" suffix, for example, `createTime desc`. If this parameter is not set, releases are ordered by `createTime` in descending order.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "pageSize": {
+                      "description": "The maximum number of releases to return. The service may return fewer than this value. The valid range is [1-100]; If unspecified (0), at most 25 releases are returned. Values above 100 are coerced to 100.",
+                      "format": "int32",
+                      "location": "query",
+                      "type": "integer"
+                    },
+                    "pageToken": {
+                      "description": "A page token, received from a previous `ListReleases` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListReleases` must match the call that provided the page token.",
+                      "location": "query",
+                      "type": "string"
+                    },
+                    "parent": {
+                      "description": "Required. The name of the app resource, which is the parent of the release resources. Format: `projects/{project_number}/apps/{app_id}`",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/apps/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1/{+parent}/releases",
+                  "response": {
+                    "$ref": "GoogleFirebaseAppdistroV1ListReleasesResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                },
+                "patch": {
+                  "description": "Updates a release.",
+                  "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}",
+                  "httpMethod": "PATCH",
+                  "id": "firebaseappdistribution.projects.apps.releases.patch",
+                  "parameterOrder": [
+                    "name"
+                  ],
+                  "parameters": {
+                    "name": {
+                      "description": "The name of the release resource. Format: `projects/{project_number}/apps/{app_id}/releases/{release_id}`",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    },
+                    "updateMask": {
+                      "description": "The list of fields to update.",
+                      "format": "google-fieldmask",
+                      "location": "query",
+                      "type": "string"
+                    }
+                  },
+                  "path": "v1/{+name}",
+                  "request": {
+                    "$ref": "GoogleFirebaseAppdistroV1Release"
+                  },
+                  "response": {
+                    "$ref": "GoogleFirebaseAppdistroV1Release"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                }
+              },
+              "resources": {
+                "feedbackReports": {
+                  "methods": {
+                    "delete": {
+                      "description": "Deletes a feedback report.",
+                      "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}/feedbackReports/{feedbackReportsId}",
+                      "httpMethod": "DELETE",
+                      "id": "firebaseappdistribution.projects.apps.releases.feedbackReports.delete",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The name of the feedback report to delete. Format: projects/{project_number}/apps/{app}/releases/{release}/feedbackReports/{feedback_report}",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+/feedbackReports/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1/{+name}",
+                      "response": {
+                        "$ref": "GoogleProtobufEmpty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "get": {
+                      "description": "Gets a feedback report.",
+                      "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}/feedbackReports/{feedbackReportsId}",
+                      "httpMethod": "GET",
+                      "id": "firebaseappdistribution.projects.apps.releases.feedbackReports.get",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. The name of the feedback report to retrieve. Format: projects/{project_number}/apps/{app}/releases/{release}/feedbackReports/{feedback_report}",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+/feedbackReports/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1/{+name}",
+                      "response": {
+                        "$ref": "GoogleFirebaseAppdistroV1FeedbackReport"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists feedback reports. By default, sorts by `createTime` in descending order.",
+                      "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}/feedbackReports",
+                      "httpMethod": "GET",
+                      "id": "firebaseappdistribution.projects.apps.releases.feedbackReports.list",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "filter": {
+                          "description": "The expression to filter feedback reports listed in the response. To learn more about filtering, refer to [Google's AIP-160 standard](http://aip.dev/160). Supported fields: - `tester` - `createTime` supports `<`, `<=`, `>` and `>=`, and expects an RFC-3339 formatted string Example: - `createTime <= \"2023-03-10T00:00:00+04:00\"` - `tester = \"projects/-/testers/*@example.com\"`",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "orderBy": {
+                          "description": "The fields used to order releases. Supported fields: - `createTime` - `tester` To specify descending order for a field, append a \"desc\" suffix, for example, `createTime desc`. If this parameter is not set, releases are ordered by `createTime` in descending order.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "The maximum number of feedback reports to return. The service may return fewer than this value. The valid range is [1-100]; If unspecified (0), at most 25 feedback reports are returned. Values above 100 are coerced to 100.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "A page token, received from a previous `ListFeedbackReports` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListFeedbackReports` must match the call that provided the page token.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "parent": {
+                          "description": "Required. The name of the release resource, which is the parent of the feedback report resources. Format: `projects/{project_number}/apps/{app}/releases/{release}`",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1/{+parent}/feedbackReports",
+                      "response": {
+                        "$ref": "GoogleFirebaseAppdistroV1ListFeedbackReportsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                },
+                "operations": {
+                  "methods": {
+                    "cancel": {
+                      "description": "Starts asynchronous cancellation on a long-running operation. The server makes a best effort to cancel the operation, but success is not guaranteed. If the server doesn't support this method, it returns `google.rpc.Code.UNIMPLEMENTED`. Clients can use Operations.GetOperation or other methods to check whether the cancellation succeeded or whether the operation completed despite cancellation. On successful cancellation, the operation is not deleted; instead, it becomes an operation with an Operation.error value with a google.rpc.Status.code of 1, corresponding to `Code.CANCELLED`.",
+                      "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}/operations/{operationsId}:cancel",
+                      "httpMethod": "POST",
+                      "id": "firebaseappdistribution.projects.apps.releases.operations.cancel",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "The name of the operation resource to be cancelled.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+/operations/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1/{+name}:cancel",
+                      "request": {
+                        "$ref": "GoogleLongrunningCancelOperationRequest"
+                      },
+                      "response": {
+                        "$ref": "GoogleProtobufEmpty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "delete": {
+                      "description": "Deletes a long-running operation. This method indicates that the client is no longer interested in the operation result. It does not cancel the operation. If the server doesn't support this method, it returns `google.rpc.Code.UNIMPLEMENTED`.",
+                      "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}/operations/{operationsId}",
+                      "httpMethod": "DELETE",
+                      "id": "firebaseappdistribution.projects.apps.releases.operations.delete",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "The name of the operation resource to be deleted.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+/operations/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1/{+name}",
+                      "response": {
+                        "$ref": "GoogleProtobufEmpty"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "get": {
+                      "description": "Gets the latest state of a long-running operation. Clients can use this method to poll the operation result at intervals as recommended by the API service.",
+                      "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}/operations/{operationsId}",
+                      "httpMethod": "GET",
+                      "id": "firebaseappdistribution.projects.apps.releases.operations.get",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "The name of the operation resource.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+/operations/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1/{+name}",
+                      "response": {
+                        "$ref": "GoogleLongrunningOperation"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Lists operations that match the specified filter in the request. If the server doesn't support this method, it returns `UNIMPLEMENTED`.",
+                      "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}/operations",
+                      "httpMethod": "GET",
+                      "id": "firebaseappdistribution.projects.apps.releases.operations.list",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "filter": {
+                          "description": "The standard list filter.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "The name of the operation's parent resource.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        },
+                        "pageSize": {
+                          "description": "The standard list page size.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "The standard list page token.",
+                          "location": "query",
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1/{+name}/operations",
+                      "response": {
+                        "$ref": "GoogleLongrunningListOperationsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "wait": {
+                      "description": "Waits until the specified long-running operation is done or reaches at most a specified timeout, returning the latest state. If the operation is already done, the latest state is immediately returned. If the timeout specified is greater than the default HTTP/RPC timeout, the HTTP/RPC timeout is used. If the server does not support this method, it returns `google.rpc.Code.UNIMPLEMENTED`. Note that this method is on a best-effort basis. It may return the latest state before the specified timeout (including immediately), meaning even an immediate response is no guarantee that the operation is done.",
+                      "flatPath": "v1/projects/{projectsId}/apps/{appsId}/releases/{releasesId}/operations/{operationsId}:wait",
+                      "httpMethod": "POST",
+                      "id": "firebaseappdistribution.projects.apps.releases.operations.wait",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "The name of the operation resource to wait on.",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/apps/[^/]+/releases/[^/]+/operations/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v1/{+name}:wait",
+                      "request": {
+                        "$ref": "GoogleLongrunningWaitOperationRequest"
+                      },
+                      "response": {
+                        "$ref": "GoogleLongrunningOperation"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "groups": {
+          "methods": {
+            "batchJoin": {
+              "description": "Batch adds members to a group. The testers will gain access to all releases that the groups have access to.",
+              "flatPath": "v1/projects/{projectsId}/groups/{groupsId}:batchJoin",
+              "httpMethod": "POST",
+              "id": "firebaseappdistribution.projects.groups.batchJoin",
+              "parameterOrder": [
+                "group"
+              ],
+              "parameters": {
+                "group": {
+                  "description": "Required. The name of the group resource to which testers are added. Format: `projects/{project_number}/groups/{group_alias}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/groups/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+group}:batchJoin",
+              "request": {
+                "$ref": "GoogleFirebaseAppdistroV1BatchJoinGroupRequest"
+              },
+              "response": {
+                "$ref": "GoogleProtobufEmpty"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "batchLeave": {
+              "description": "Batch removed members from a group. The testers will lose access to all releases that the groups have access to.",
+              "flatPath": "v1/projects/{projectsId}/groups/{groupsId}:batchLeave",
+              "httpMethod": "POST",
+              "id": "firebaseappdistribution.projects.groups.batchLeave",
+              "parameterOrder": [
+                "group"
+              ],
+              "parameters": {
+                "group": {
+                  "description": "Required. The name of the group resource from which testers are removed. Format: `projects/{project_number}/groups/{group_alias}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/groups/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+group}:batchLeave",
+              "request": {
+                "$ref": "GoogleFirebaseAppdistroV1BatchLeaveGroupRequest"
+              },
+              "response": {
+                "$ref": "GoogleProtobufEmpty"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "create": {
+              "description": "Create a group.",
+              "flatPath": "v1/projects/{projectsId}/groups",
+              "httpMethod": "POST",
+              "id": "firebaseappdistribution.projects.groups.create",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "groupId": {
+                  "description": "Optional. The \"alias\" to use for the group, which will become the final component of the group's resource name. This value must be unique per project. The field is named `groupId` to comply with AIP guidance for user-specified IDs. This value should be 4-63 characters, and valid characters are `/a-z-/`. If not set, it will be generated based on the display name.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "parent": {
+                  "description": "Required. The name of the project resource, which is the parent of the group resource. Format: `projects/{project_number}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+parent}/groups",
+              "request": {
+                "$ref": "GoogleFirebaseAppdistroV1Group"
+              },
+              "response": {
+                "$ref": "GoogleFirebaseAppdistroV1Group"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "delete": {
+              "description": "Delete a group.",
+              "flatPath": "v1/projects/{projectsId}/groups/{groupsId}",
+              "httpMethod": "DELETE",
+              "id": "firebaseappdistribution.projects.groups.delete",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "Required. The name of the group resource. Format: `projects/{project_number}/groups/{group_alias}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/groups/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+name}",
+              "response": {
+                "$ref": "GoogleProtobufEmpty"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "get": {
+              "description": "Get a group.",
+              "flatPath": "v1/projects/{projectsId}/groups/{groupsId}",
+              "httpMethod": "GET",
+              "id": "firebaseappdistribution.projects.groups.get",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "Required. The name of the group resource to retrieve. Format: `projects/{project_number}/groups/{group_alias}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/groups/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+name}",
+              "response": {
+                "$ref": "GoogleFirebaseAppdistroV1Group"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "list": {
+              "description": "List groups.",
+              "flatPath": "v1/projects/{projectsId}/groups",
+              "httpMethod": "GET",
+              "id": "firebaseappdistribution.projects.groups.list",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "pageSize": {
+                  "description": "Optional. The maximum number of groups to return. The service may return fewer than this value. The valid range is [1-100]; If unspecified (0), at most 25 groups are returned. Values above 100 are coerced to 100.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "pageToken": {
+                  "description": "Optional. A page token, received from a previous `ListGroups` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListGroups` must match the call that provided the page token.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "parent": {
+                  "description": "Required. The name of the project resource, which is the parent of the group resources. Format: `projects/{project_number}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+parent}/groups",
+              "response": {
+                "$ref": "GoogleFirebaseAppdistroV1ListGroupsResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "patch": {
+              "description": "Update a group.",
+              "flatPath": "v1/projects/{projectsId}/groups/{groupsId}",
+              "httpMethod": "PATCH",
+              "id": "firebaseappdistribution.projects.groups.patch",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "The name of the group resource. Format: `projects/{project_number}/groups/{group_alias}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/groups/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                },
+                "updateMask": {
+                  "description": "The list of fields to update.",
+                  "format": "google-fieldmask",
+                  "location": "query",
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+name}",
+              "request": {
+                "$ref": "GoogleFirebaseAppdistroV1Group"
+              },
+              "response": {
+                "$ref": "GoogleFirebaseAppdistroV1Group"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            }
+          }
+        },
+        "testers": {
+          "methods": {
+            "batchAdd": {
+              "description": "Batch adds testers. This call adds testers for the specified emails if they don't already exist. Returns all testers specified in the request, including newly created and previously existing testers. This action is idempotent.",
+              "flatPath": "v1/projects/{projectsId}/testers:batchAdd",
+              "httpMethod": "POST",
+              "id": "firebaseappdistribution.projects.testers.batchAdd",
+              "parameterOrder": [
+                "project"
+              ],
+              "parameters": {
+                "project": {
+                  "description": "Required. The name of the project resource. Format: `projects/{project_number}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+project}/testers:batchAdd",
+              "request": {
+                "$ref": "GoogleFirebaseAppdistroV1BatchAddTestersRequest"
+              },
+              "response": {
+                "$ref": "GoogleFirebaseAppdistroV1BatchAddTestersResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "batchRemove": {
+              "description": "Batch removes testers. If found, this call deletes testers for the specified emails. Returns all deleted testers.",
+              "flatPath": "v1/projects/{projectsId}/testers:batchRemove",
+              "httpMethod": "POST",
+              "id": "firebaseappdistribution.projects.testers.batchRemove",
+              "parameterOrder": [
+                "project"
+              ],
+              "parameters": {
+                "project": {
+                  "description": "Required. The name of the project resource. Format: `projects/{project_number}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+project}/testers:batchRemove",
+              "request": {
+                "$ref": "GoogleFirebaseAppdistroV1BatchRemoveTestersRequest"
+              },
+              "response": {
+                "$ref": "GoogleFirebaseAppdistroV1BatchRemoveTestersResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "list": {
+              "description": "Lists testers and their resource ids.",
+              "flatPath": "v1/projects/{projectsId}/testers",
+              "httpMethod": "GET",
+              "id": "firebaseappdistribution.projects.testers.list",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "filter": {
+                  "description": "Optional. The expression to filter testers listed in the response. To learn more about filtering, refer to [Google's AIP-160 standard](http://aip.dev/160). Supported fields: - `name` - `displayName` - `groups` Example: - `name = \"projects/-/testers/*@example.com\"` - `displayName = \"Joe Sixpack\"` - `groups = \"projects/*/groups/qa-team\"`",
+                  "location": "query",
+                  "type": "string"
+                },
+                "pageSize": {
+                  "description": "Optional. The maximum number of testers to return. The service may return fewer than this value. The valid range is [1-1000]; If unspecified (0), at most 10 testers are returned. Values above 1000 are coerced to 1000.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "pageToken": {
+                  "description": "Optional. A page token, received from a previous `ListTesters` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListTesters` must match the call that provided the page token.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "parent": {
+                  "description": "Required. The name of the project resource, which is the parent of the tester resources. Format: `projects/{project_number}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+parent}/testers",
+              "response": {
+                "$ref": "GoogleFirebaseAppdistroV1ListTestersResponse"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            },
+            "patch": {
+              "description": "Update a tester. If the testers joins a group they gain access to all releases that the group has access to.",
+              "flatPath": "v1/projects/{projectsId}/testers/{testersId}",
+              "httpMethod": "PATCH",
+              "id": "firebaseappdistribution.projects.testers.patch",
+              "parameterOrder": [
+                "name"
+              ],
+              "parameters": {
+                "name": {
+                  "description": "The name of the tester resource. Format: `projects/{project_number}/testers/{email_address}`",
+                  "location": "path",
+                  "pattern": "^projects/[^/]+/testers/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                },
+                "updateMask": {
+                  "description": "The list of fields to update.",
+                  "format": "google-fieldmask",
+                  "location": "query",
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+name}",
+              "request": {
+                "$ref": "GoogleFirebaseAppdistroV1Tester"
+              },
+              "response": {
+                "$ref": "GoogleFirebaseAppdistroV1Tester"
+              },
+              "scopes": [
+                "https://www.googleapis.com/auth/cloud-platform"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230403",
+  "rootUrl": "https://firebaseappdistribution.googleapis.com/",
+  "schemas": {
+    "GdataBlobstore2Info": {
+      "description": "Information to read/write to blobstore2.",
+      "id": "GdataBlobstore2Info",
+      "properties": {
+        "blobGeneration": {
+          "description": "The blob generation id.",
+          "format": "int64",
+          "type": "string"
+        },
+        "blobId": {
+          "description": "The blob id, e.g., /blobstore/prod/playground/scotty",
+          "type": "string"
+        },
+        "downloadReadHandle": {
+          "description": "Read handle passed from Bigstore -> Scotty for a GCS download. This is a signed, serialized blobstore2.ReadHandle proto which must never be set outside of Bigstore, and is not applicable to non-GCS media downloads.",
+          "format": "byte",
+          "type": "string"
+        },
+        "readToken": {
+          "description": "The blob read token. Needed to read blobs that have not been replicated. Might not be available until the final call.",
+          "type": "string"
+        },
+        "uploadMetadataContainer": {
+          "description": "Metadata passed from Blobstore -> Scotty for a new GCS upload. This is a signed, serialized blobstore2.BlobMetadataContainer proto which must never be consumed outside of Bigstore, and is not applicable to non-GCS media uploads.",
+          "format": "byte",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GdataCompositeMedia": {
+      "description": "A sequence of media data references representing composite data. Introduced to support Bigstore composite objects. For details, visit http://go/bigstore-composites.",
+      "id": "GdataCompositeMedia",
+      "properties": {
+        "blobRef": {
+          "description": "Blobstore v1 reference, set if reference_type is BLOBSTORE_REF This should be the byte representation of a blobstore.BlobRef. Since Blobstore is deprecating v1, use blobstore2_info instead. For now, any v2 blob will also be represented in this field as v1 BlobRef.",
+          "format": "byte",
+          "type": "string"
+        },
+        "blobstore2Info": {
+          "$ref": "GdataBlobstore2Info",
+          "description": "Blobstore v2 info, set if reference_type is BLOBSTORE_REF and it refers to a v2 blob."
+        },
+        "cosmoBinaryReference": {
+          "description": "A binary data reference for a media download. Serves as a technology-agnostic binary reference in some Google infrastructure. This value is a serialized storage_cosmo.BinaryReference proto. Storing it as bytes is a hack to get around the fact that the cosmo proto (as well as others it includes) doesn't support JavaScript. This prevents us from including the actual type of this field.",
+          "format": "byte",
+          "type": "string"
+        },
+        "crc32cHash": {
+          "description": "crc32.c hash for the payload.",
+          "format": "uint32",
+          "type": "integer"
+        },
+        "inline": {
+          "description": "Media data, set if reference_type is INLINE",
+          "format": "byte",
+          "type": "string"
+        },
+        "length": {
+          "description": "Size of the data, in bytes",
+          "format": "int64",
+          "type": "string"
+        },
+        "md5Hash": {
+          "description": "MD5 hash for the payload.",
+          "format": "byte",
+          "type": "string"
+        },
+        "objectId": {
+          "$ref": "GdataObjectId",
+          "description": "Reference to a TI Blob, set if reference_type is BIGSTORE_REF."
+        },
+        "path": {
+          "description": "Path to the data, set if reference_type is PATH",
+          "type": "string"
+        },
+        "referenceType": {
+          "description": "Describes what the field reference contains.",
+          "enum": [
+            "PATH",
+            "BLOB_REF",
+            "INLINE",
+            "BIGSTORE_REF",
+            "COSMO_BINARY_REFERENCE"
+          ],
+          "enumDescriptions": [
+            "Reference contains a GFS path or a local path.",
+            "Reference points to a blobstore object. This could be either a v1 blob_ref or a v2 blobstore2_info. Clients should check blobstore2_info first, since v1 is being deprecated.",
+            "Data is included into this proto buffer",
+            "Reference points to a bigstore object",
+            "Indicates the data is stored in cosmo_binary_reference."
+          ],
+          "type": "string"
+        },
+        "sha1Hash": {
+          "description": "SHA-1 hash for the payload.",
+          "format": "byte",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GdataContentTypeInfo": {
+      "description": "Detailed Content-Type information from Scotty. The Content-Type of the media will typically be filled in by the header or Scotty's best_guess, but this extended information provides the backend with more information so that it can make a better decision if needed. This is only used on media upload requests from Scotty.",
+      "id": "GdataContentTypeInfo",
+      "properties": {
+        "bestGuess": {
+          "description": "Scotty's best guess of what the content type of the file is.",
+          "type": "string"
+        },
+        "fromBytes": {
+          "description": "The content type of the file derived by looking at specific bytes (i.e. \"magic bytes\") of the actual file.",
+          "type": "string"
+        },
+        "fromFileName": {
+          "description": "The content type of the file derived from the file extension of the original file name used by the client.",
+          "type": "string"
+        },
+        "fromHeader": {
+          "description": "The content type of the file as specified in the request headers, multipart headers, or RUPIO start request.",
+          "type": "string"
+        },
+        "fromUrlPath": {
+          "description": "The content type of the file derived from the file extension of the URL path. The URL path is assumed to represent a file name (which is typically only true for agents that are providing a REST API).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GdataDiffChecksumsResponse": {
+      "description": "Backend response for a Diff get checksums response. For details on the Scotty Diff protocol, visit http://go/scotty-diff-protocol.",
+      "id": "GdataDiffChecksumsResponse",
+      "properties": {
+        "checksumsLocation": {
+          "$ref": "GdataCompositeMedia",
+          "description": "Exactly one of these fields must be populated. If checksums_location is filled, the server will return the corresponding contents to the user. If object_location is filled, the server will calculate the checksums based on the content there and return that to the user. For details on the format of the checksums, see http://go/scotty-diff-protocol."
+        },
+        "chunkSizeBytes": {
+          "description": "The chunk size of checksums. Must be a multiple of 256KB.",
+          "format": "int64",
+          "type": "string"
+        },
+        "objectLocation": {
+          "$ref": "GdataCompositeMedia",
+          "description": "If set, calculate the checksums based on the contents and return them to the caller."
+        },
+        "objectSizeBytes": {
+          "description": "The total size of the server object.",
+          "format": "int64",
+          "type": "string"
+        },
+        "objectVersion": {
+          "description": "The object version of the object the checksums are being returned for.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GdataDiffDownloadResponse": {
+      "description": "Backend response for a Diff download response. For details on the Scotty Diff protocol, visit http://go/scotty-diff-protocol.",
+      "id": "GdataDiffDownloadResponse",
+      "properties": {
+        "objectLocation": {
+          "$ref": "GdataCompositeMedia",
+          "description": "The original object location."
+        }
+      },
+      "type": "object"
+    },
+    "GdataDiffUploadRequest": {
+      "description": "A Diff upload request. For details on the Scotty Diff protocol, visit http://go/scotty-diff-protocol.",
+      "id": "GdataDiffUploadRequest",
+      "properties": {
+        "checksumsInfo": {
+          "$ref": "GdataCompositeMedia",
+          "description": "The location of the checksums for the new object. Agents must clone the object located here, as the upload server will delete the contents once a response is received. For details on the format of the checksums, see http://go/scotty-diff-protocol."
+        },
+        "objectInfo": {
+          "$ref": "GdataCompositeMedia",
+          "description": "The location of the new object. Agents must clone the object located here, as the upload server will delete the contents once a response is received."
+        },
+        "objectVersion": {
+          "description": "The object version of the object that is the base version the incoming diff script will be applied to. This field will always be filled in.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GdataDiffUploadResponse": {
+      "description": "Backend response for a Diff upload request. For details on the Scotty Diff protocol, visit http://go/scotty-diff-protocol.",
+      "id": "GdataDiffUploadResponse",
+      "properties": {
+        "objectVersion": {
+          "description": "The object version of the object at the server. Must be included in the end notification response. The version in the end notification response must correspond to the new version of the object that is now stored at the server, after the upload.",
+          "type": "string"
+        },
+        "originalObject": {
+          "$ref": "GdataCompositeMedia",
+          "description": "The location of the original file for a diff upload request. Must be filled in if responding to an upload start notification."
+        }
+      },
+      "type": "object"
+    },
+    "GdataDiffVersionResponse": {
+      "description": "Backend response for a Diff get version response. For details on the Scotty Diff protocol, visit http://go/scotty-diff-protocol.",
+      "id": "GdataDiffVersionResponse",
+      "properties": {
+        "objectSizeBytes": {
+          "description": "The total size of the server object.",
+          "format": "int64",
+          "type": "string"
+        },
+        "objectVersion": {
+          "description": "The version of the object stored at the server.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GdataDownloadParameters": {
+      "description": "Parameters specific to media downloads.",
+      "id": "GdataDownloadParameters",
+      "properties": {
+        "allowGzipCompression": {
+          "description": "A boolean to be returned in the response to Scotty. Allows/disallows gzip encoding of the payload content when the server thinks it's advantageous (hence, does not guarantee compression) which allows Scotty to GZip the response to the client.",
+          "type": "boolean"
+        },
+        "ignoreRange": {
+          "description": "Determining whether or not Apiary should skip the inclusion of any Content-Range header on its response to Scotty.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "GdataMedia": {
+      "description": "A reference to data stored on the filesystem, on GFS or in blobstore.",
+      "id": "GdataMedia",
+      "properties": {
+        "algorithm": {
+          "description": "Deprecated, use one of explicit hash type fields instead. Algorithm used for calculating the hash. As of 2011/01/21, \"MD5\" is the only possible value for this field. New values may be added at any time.",
+          "type": "string"
+        },
+        "bigstoreObjectRef": {
+          "description": "Use object_id instead.",
+          "format": "byte",
+          "type": "string"
+        },
+        "blobRef": {
+          "description": "Blobstore v1 reference, set if reference_type is BLOBSTORE_REF This should be the byte representation of a blobstore.BlobRef. Since Blobstore is deprecating v1, use blobstore2_info instead. For now, any v2 blob will also be represented in this field as v1 BlobRef.",
+          "format": "byte",
+          "type": "string"
+        },
+        "blobstore2Info": {
+          "$ref": "GdataBlobstore2Info",
+          "description": "Blobstore v2 info, set if reference_type is BLOBSTORE_REF and it refers to a v2 blob."
+        },
+        "compositeMedia": {
+          "description": "A composite media composed of one or more media objects, set if reference_type is COMPOSITE_MEDIA. The media length field must be set to the sum of the lengths of all composite media objects. Note: All composite media must have length specified.",
+          "items": {
+            "$ref": "GdataCompositeMedia"
+          },
+          "type": "array"
+        },
+        "contentType": {
+          "description": "MIME type of the data",
+          "type": "string"
+        },
+        "contentTypeInfo": {
+          "$ref": "GdataContentTypeInfo",
+          "description": "Extended content type information provided for Scotty uploads."
+        },
+        "cosmoBinaryReference": {
+          "description": "A binary data reference for a media download. Serves as a technology-agnostic binary reference in some Google infrastructure. This value is a serialized storage_cosmo.BinaryReference proto. Storing it as bytes is a hack to get around the fact that the cosmo proto (as well as others it includes) doesn't support JavaScript. This prevents us from including the actual type of this field.",
+          "format": "byte",
+          "type": "string"
+        },
+        "crc32cHash": {
+          "description": "For Scotty Uploads: Scotty-provided hashes for uploads For Scotty Downloads: (WARNING: DO NOT USE WITHOUT PERMISSION FROM THE SCOTTY TEAM.) A Hash provided by the agent to be used to verify the data being downloaded. Currently only supported for inline payloads. Further, only crc32c_hash is currently supported.",
+          "format": "uint32",
+          "type": "integer"
+        },
+        "diffChecksumsResponse": {
+          "$ref": "GdataDiffChecksumsResponse",
+          "description": "Set if reference_type is DIFF_CHECKSUMS_RESPONSE."
+        },
+        "diffDownloadResponse": {
+          "$ref": "GdataDiffDownloadResponse",
+          "description": "Set if reference_type is DIFF_DOWNLOAD_RESPONSE."
+        },
+        "diffUploadRequest": {
+          "$ref": "GdataDiffUploadRequest",
+          "description": "Set if reference_type is DIFF_UPLOAD_REQUEST."
+        },
+        "diffUploadResponse": {
+          "$ref": "GdataDiffUploadResponse",
+          "description": "Set if reference_type is DIFF_UPLOAD_RESPONSE."
+        },
+        "diffVersionResponse": {
+          "$ref": "GdataDiffVersionResponse",
+          "description": "Set if reference_type is DIFF_VERSION_RESPONSE."
+        },
+        "downloadParameters": {
+          "$ref": "GdataDownloadParameters",
+          "description": "Parameters for a media download."
+        },
+        "filename": {
+          "description": "Original file name",
+          "type": "string"
+        },
+        "hash": {
+          "description": "Deprecated, use one of explicit hash type fields instead. These two hash related fields will only be populated on Scotty based media uploads and will contain the content of the hash group in the NotificationRequest: http://cs/#google3/uploader/service/proto/upload_listener.proto&q=class:Hash Hex encoded hash value of the uploaded media.",
+          "type": "string"
+        },
+        "hashVerified": {
+          "description": "For Scotty uploads only. If a user sends a hash code and the backend has requested that Scotty verify the upload against the client hash, Scotty will perform the check on behalf of the backend and will reject it if the hashes don't match. This is set to true if Scotty performed this verification.",
+          "type": "boolean"
+        },
+        "inline": {
+          "description": "Media data, set if reference_type is INLINE",
+          "format": "byte",
+          "type": "string"
+        },
+        "isPotentialRetry": {
+          "description": "|is_potential_retry| is set false only when Scotty is certain that it has not sent the request before. When a client resumes an upload, this field must be set true in agent calls, because Scotty cannot be certain that it has never sent the request before due to potential failure in the session state persistence.",
+          "type": "boolean"
+        },
+        "length": {
+          "description": "Size of the data, in bytes",
+          "format": "int64",
+          "type": "string"
+        },
+        "md5Hash": {
+          "description": "Scotty-provided MD5 hash for an upload.",
+          "format": "byte",
+          "type": "string"
+        },
+        "mediaId": {
+          "description": "Media id to forward to the operation GetMedia. Can be set if reference_type is GET_MEDIA.",
+          "format": "byte",
+          "type": "string"
+        },
+        "objectId": {
+          "$ref": "GdataObjectId",
+          "description": "Reference to a TI Blob, set if reference_type is BIGSTORE_REF."
+        },
+        "path": {
+          "description": "Path to the data, set if reference_type is PATH",
+          "type": "string"
+        },
+        "referenceType": {
+          "description": "Describes what the field reference contains.",
+          "enum": [
+            "PATH",
+            "BLOB_REF",
+            "INLINE",
+            "GET_MEDIA",
+            "COMPOSITE_MEDIA",
+            "BIGSTORE_REF",
+            "DIFF_VERSION_RESPONSE",
+            "DIFF_CHECKSUMS_RESPONSE",
+            "DIFF_DOWNLOAD_RESPONSE",
+            "DIFF_UPLOAD_REQUEST",
+            "DIFF_UPLOAD_RESPONSE",
+            "COSMO_BINARY_REFERENCE",
+            "ARBITRARY_BYTES"
+          ],
+          "enumDescriptions": [
+            "Reference contains a GFS path or a local path.",
+            "Reference points to a blobstore object. This could be either a v1 blob_ref or a v2 blobstore2_info. Clients should check blobstore2_info first, since v1 is being deprecated.",
+            "Data is included into this proto buffer",
+            "Data should be accessed from the current service using the operation GetMedia.",
+            "The content for this media object is stored across multiple partial media objects under the composite_media field.",
+            "Reference points to a bigstore object",
+            "Indicates the data is stored in diff_version_response.",
+            "Indicates the data is stored in diff_checksums_response.",
+            "Indicates the data is stored in diff_download_response.",
+            "Indicates the data is stored in diff_upload_request.",
+            "Indicates the data is stored in diff_upload_response.",
+            "Indicates the data is stored in cosmo_binary_reference.",
+            "Informs Scotty to generate a response payload with the size specified in the length field. The contents of the payload are generated by Scotty and are undefined. This is useful for testing download speeds between the user and Scotty without involving a real payload source. Note: range is not supported when using arbitrary_bytes."
+          ],
+          "type": "string"
+        },
+        "sha1Hash": {
+          "description": "Scotty-provided SHA1 hash for an upload.",
+          "format": "byte",
+          "type": "string"
+        },
+        "sha256Hash": {
+          "description": "Scotty-provided SHA256 hash for an upload.",
+          "format": "byte",
+          "type": "string"
+        },
+        "timestamp": {
+          "description": "Time at which the media data was last updated, in milliseconds since UNIX epoch",
+          "format": "uint64",
+          "type": "string"
+        },
+        "token": {
+          "description": "A unique fingerprint/version id for the media data",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GdataObjectId": {
+      "description": "This is a copy of the tech.blob.ObjectId proto, which could not be used directly here due to transitive closure issues with JavaScript support; see http://b/8801763.",
+      "id": "GdataObjectId",
+      "properties": {
+        "bucketName": {
+          "description": "The name of the bucket to which this object belongs.",
+          "type": "string"
+        },
+        "generation": {
+          "description": "Generation of the object. Generations are monotonically increasing across writes, allowing them to be be compared to determine which generation is newer. If this is omitted in a request, then you are requesting the live object. See http://go/bigstore-versions",
+          "format": "int64",
+          "type": "string"
+        },
+        "objectName": {
+          "description": "The name of the object.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1AabInfo": {
+      "description": "Android App Bundle (AAB) information for a Firebase app.",
+      "id": "GoogleFirebaseAppdistroV1AabInfo",
+      "properties": {
+        "integrationState": {
+          "description": "App bundle integration state. Only valid for android apps.",
+          "enum": [
+            "AAB_INTEGRATION_STATE_UNSPECIFIED",
+            "INTEGRATED",
+            "PLAY_ACCOUNT_NOT_LINKED",
+            "NO_APP_WITH_GIVEN_BUNDLE_ID_IN_PLAY_ACCOUNT",
+            "APP_NOT_PUBLISHED",
+            "AAB_STATE_UNAVAILABLE",
+            "PLAY_IAS_TERMS_NOT_ACCEPTED"
+          ],
+          "enumDescriptions": [
+            "Aab integration state unspecified",
+            "App can receive app bundle uploads",
+            "Firebase project is not linked to a Play developer account",
+            "There is no app in linked Play developer account with the same bundle id",
+            "The app in Play developer account is not in a published state",
+            "Play App status is unavailable",
+            "Play IAS terms not accepted"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of the `AabInfo` resource. Format: `projects/{project_number}/apps/{app}/aabInfo`",
+          "type": "string"
+        },
+        "testCertificate": {
+          "$ref": "GoogleFirebaseAppdistroV1TestCertificate",
+          "description": "App bundle test certificate generated for the app. Set after the first app bundle is uploaded for this app."
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1BatchAddTestersRequest": {
+      "description": "The Request message for batch adding testers",
+      "id": "GoogleFirebaseAppdistroV1BatchAddTestersRequest",
+      "properties": {
+        "emails": {
+          "description": "Required. The email addresses of the tester resources to create. A maximum of 999 and a minimum of 1 tester can be created in a batch.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1BatchAddTestersResponse": {
+      "description": "The Response message for `BatchAddTesters`.",
+      "id": "GoogleFirebaseAppdistroV1BatchAddTestersResponse",
+      "properties": {
+        "testers": {
+          "description": "The testers which are created and/or already exist",
+          "items": {
+            "$ref": "GoogleFirebaseAppdistroV1Tester"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1BatchDeleteReleasesRequest": {
+      "description": "The request message for `BatchDeleteReleases`.",
+      "id": "GoogleFirebaseAppdistroV1BatchDeleteReleasesRequest",
+      "properties": {
+        "names": {
+          "description": "Required. The names of the release resources to delete. Format: `projects/{project_number}/apps/{app_id}/releases/{release_id}` A maximum of 100 releases can be deleted per request.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1BatchJoinGroupRequest": {
+      "description": "The request message for `BatchJoinGroup`",
+      "id": "GoogleFirebaseAppdistroV1BatchJoinGroupRequest",
+      "properties": {
+        "createMissingTesters": {
+          "description": "Indicates whether to create tester resources based on `emails` if they don't exist yet.",
+          "type": "boolean"
+        },
+        "emails": {
+          "description": "Required. The emails of the testers to be added to the group. A maximum of 999 and a minimum of 1 tester can be created in a batch.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1BatchLeaveGroupRequest": {
+      "description": "Request message for `BatchLeaveGroup`",
+      "id": "GoogleFirebaseAppdistroV1BatchLeaveGroupRequest",
+      "properties": {
+        "emails": {
+          "description": "Required. The email addresses of the testers to be removed from the group. A maximum of 999 and a minimum of 1 testers can be removed in a batch.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1BatchRemoveTestersRequest": {
+      "description": "The request message for `BatchRemoveTesters`.",
+      "id": "GoogleFirebaseAppdistroV1BatchRemoveTestersRequest",
+      "properties": {
+        "emails": {
+          "description": "Required. The email addresses of the tester resources to removed. A maximum of 999 and a minimum of 1 testers can be deleted in a batch.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1BatchRemoveTestersResponse": {
+      "description": "The response message for `BatchRemoveTesters`",
+      "id": "GoogleFirebaseAppdistroV1BatchRemoveTestersResponse",
+      "properties": {
+        "emails": {
+          "description": "List of deleted tester emails",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1DistributeReleaseRequest": {
+      "description": "The request message for `DistributeRelease`.",
+      "id": "GoogleFirebaseAppdistroV1DistributeReleaseRequest",
+      "properties": {
+        "groupAliases": {
+          "description": "A list of group aliases (IDs) to be given access to this release. A combined maximum of 999 `testerEmails` and `groupAliases` can be specified in a single request.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "testerEmails": {
+          "description": "A list of tester email addresses to be given access to this release. A combined maximum of 999 `testerEmails` and `groupAliases` can be specified in a single request.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1DistributeReleaseResponse": {
+      "description": "The response message for `DistributeRelease`.",
+      "id": "GoogleFirebaseAppdistroV1DistributeReleaseResponse",
+      "properties": {},
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1FeedbackReport": {
+      "description": "A feedback report submitted by a tester for a release.",
+      "id": "GoogleFirebaseAppdistroV1FeedbackReport",
+      "properties": {
+        "createTime": {
+          "description": "Output only. The time when the feedback report was created.",
+          "format": "google-datetime",
+          "readOnly": true,
+          "type": "string"
+        },
+        "firebaseConsoleUri": {
+          "description": "Output only. A link to the Firebase console displaying the feedback report.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of the feedback report resource. Format: `projects/{project_number}/apps/{app}/releases/{release}/feedbackReports/{feedback_report}`",
+          "type": "string"
+        },
+        "screenshotUri": {
+          "description": "Output only. A signed link (which expires in one hour) that lets you directly download the screenshot.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "tester": {
+          "description": "Output only. The resource name of the tester who submitted the feedback report.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "text": {
+          "description": "Output only. The text of the feedback report.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1Group": {
+      "description": "A group which can contain testers. A group can be invited to test apps in a Firebase project.",
+      "id": "GoogleFirebaseAppdistroV1Group",
+      "properties": {
+        "displayName": {
+          "description": "Required. The display name of the group.",
+          "type": "string"
+        },
+        "inviteLinkCount": {
+          "description": "Output only. The number of invite links for this group.",
+          "format": "int32",
+          "readOnly": true,
+          "type": "integer"
+        },
+        "name": {
+          "description": "The name of the group resource. Format: `projects/{project_number}/groups/{group_alias}`",
+          "type": "string"
+        },
+        "releaseCount": {
+          "description": "Output only. The number of releases this group is permitted to access.",
+          "format": "int32",
+          "readOnly": true,
+          "type": "integer"
+        },
+        "testerCount": {
+          "description": "Output only. The number of testers who are members of this group.",
+          "format": "int32",
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1ListFeedbackReportsResponse": {
+      "description": "The response message for `ListFeedbackReports`.",
+      "id": "GoogleFirebaseAppdistroV1ListFeedbackReportsResponse",
+      "properties": {
+        "feedbackReports": {
+          "description": "The feedback reports",
+          "items": {
+            "$ref": "GoogleFirebaseAppdistroV1FeedbackReport"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A short-lived token, which can be sent as `pageToken` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1ListGroupsResponse": {
+      "description": "The response message for `ListGroups`.",
+      "id": "GoogleFirebaseAppdistroV1ListGroupsResponse",
+      "properties": {
+        "groups": {
+          "description": "The groups listed.",
+          "items": {
+            "$ref": "GoogleFirebaseAppdistroV1Group"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A short-lived token, which can be sent as `pageToken` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1ListReleasesResponse": {
+      "description": "The response message for `ListReleases`.",
+      "id": "GoogleFirebaseAppdistroV1ListReleasesResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A short-lived token, which can be sent as `pageToken` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "releases": {
+          "description": "The releases",
+          "items": {
+            "$ref": "GoogleFirebaseAppdistroV1Release"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1ListTestersResponse": {
+      "description": "The response message for `ListTesters`.",
+      "id": "GoogleFirebaseAppdistroV1ListTestersResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "A short-lived token, which can be sent as `pageToken` to retrieve the next page. If this field is omitted, there are no subsequent pages.",
+          "type": "string"
+        },
+        "testers": {
+          "description": "The testers listed.",
+          "items": {
+            "$ref": "GoogleFirebaseAppdistroV1Tester"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1Release": {
+      "description": "A release of a Firebase app.",
+      "id": "GoogleFirebaseAppdistroV1Release",
+      "properties": {
+        "binaryDownloadUri": {
+          "description": "Output only. A signed link (which expires in one hour) to directly download the app binary (IPA/APK/AAB) file.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "buildVersion": {
+          "description": "Output only. Build version of the release. For an Android release, the build version is the `versionCode`. For an iOS release, the build version is the `CFBundleVersion`.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "createTime": {
+          "description": "Output only. The time the release was created.",
+          "format": "google-datetime",
+          "readOnly": true,
+          "type": "string"
+        },
+        "displayVersion": {
+          "description": "Output only. Display version of the release. For an Android release, the display version is the `versionName`. For an iOS release, the display version is the `CFBundleShortVersionString`.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "firebaseConsoleUri": {
+          "description": "Output only. A link to the Firebase console displaying a single release.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of the release resource. Format: `projects/{project_number}/apps/{app_id}/releases/{release_id}`",
+          "type": "string"
+        },
+        "releaseNotes": {
+          "$ref": "GoogleFirebaseAppdistroV1ReleaseNotes",
+          "description": "Notes of the release."
+        },
+        "testingUri": {
+          "description": "Output only. A link to the release in the tester web clip or Android app that lets testers (which were granted access to the app) view release notes and install the app onto their devices.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1ReleaseNotes": {
+      "description": "Notes that belong to a release.",
+      "id": "GoogleFirebaseAppdistroV1ReleaseNotes",
+      "properties": {
+        "text": {
+          "description": "The text of the release notes.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1TestCertificate": {
+      "description": "App bundle test certificate",
+      "id": "GoogleFirebaseAppdistroV1TestCertificate",
+      "properties": {
+        "hashMd5": {
+          "description": "Hex string of MD5 hash of the test certificate used to resign the AAB",
+          "type": "string"
+        },
+        "hashSha1": {
+          "description": "Hex string of SHA1 hash of the test certificate used to resign the AAB",
+          "type": "string"
+        },
+        "hashSha256": {
+          "description": "Hex string of SHA256 hash of the test certificate used to resign the AAB",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1Tester": {
+      "description": "A person that can be invited to test apps in a Firebase project.",
+      "id": "GoogleFirebaseAppdistroV1Tester",
+      "properties": {
+        "displayName": {
+          "description": "The name of the tester associated with the Google account used to accept the tester invitation.",
+          "type": "string"
+        },
+        "groups": {
+          "description": "The resource names of the groups this tester belongs to.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "lastActivityTime": {
+          "description": "Output only. The time the tester was last active. This is the most recent time the tester installed one of the apps. If they've never installed one or if the release no longer exists, this is the time the tester was added to the project.",
+          "format": "google-datetime",
+          "readOnly": true,
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of the tester resource. Format: `projects/{project_number}/testers/{email_address}`",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1UploadReleaseMetadata": {
+      "description": "Operation metadata for `UploadRelease`.",
+      "id": "GoogleFirebaseAppdistroV1UploadReleaseMetadata",
+      "properties": {},
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1UploadReleaseRequest": {
+      "description": "Request message for `UploadRelease`.",
+      "id": "GoogleFirebaseAppdistroV1UploadReleaseRequest",
+      "properties": {
+        "blob": {
+          "$ref": "GdataMedia",
+          "description": "Binary to upload"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleFirebaseAppdistroV1UploadReleaseResponse": {
+      "description": "Response message for `UploadRelease`.",
+      "id": "GoogleFirebaseAppdistroV1UploadReleaseResponse",
+      "properties": {
+        "release": {
+          "$ref": "GoogleFirebaseAppdistroV1Release",
+          "description": "Release associated with the uploaded binary."
+        },
+        "result": {
+          "description": "Result of upload release.",
+          "enum": [
+            "UPLOAD_RELEASE_RESULT_UNSPECIFIED",
+            "RELEASE_CREATED",
+            "RELEASE_UPDATED",
+            "RELEASE_UNMODIFIED"
+          ],
+          "enumDescriptions": [
+            "Upload binary result unspecified",
+            "Upload binary resulted in a new release",
+            "Upload binary updated an existing release",
+            "Upload binary resulted in a no-op. A release with the exact same binary already exists."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleLongrunningCancelOperationRequest": {
+      "description": "The request message for Operations.CancelOperation.",
+      "id": "GoogleLongrunningCancelOperationRequest",
+      "properties": {},
+      "type": "object"
+    },
+    "GoogleLongrunningListOperationsResponse": {
+      "description": "The response message for Operations.ListOperations.",
+      "id": "GoogleLongrunningListOperationsResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "The standard List next-page token.",
+          "type": "string"
+        },
+        "operations": {
+          "description": "A list of operations that matches the specified filter in the request.",
+          "items": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleLongrunningOperation": {
+      "description": "This resource represents a long-running operation that is the result of a network API call.",
+      "id": "GoogleLongrunningOperation",
+      "properties": {
+        "done": {
+          "description": "If the value is `false`, it means the operation is still in progress. If `true`, the operation is completed, and either `error` or `response` is available.",
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "GoogleRpcStatus",
+          "description": "The error result of the operation in case of failure or cancellation."
+        },
+        "metadata": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "Service-specific metadata associated with the operation. It typically contains progress information and common metadata such as create time. Some services might not provide such metadata. Any method that returns a long-running operation should document the metadata type, if any.",
+          "type": "object"
+        },
+        "name": {
+          "description": "The server-assigned name, which is only unique within the same service that originally returns it. If you use the default HTTP mapping, the `name` should be a resource name ending with `operations/{unique_id}`.",
+          "type": "string"
+        },
+        "response": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "The normal response of the operation in case of success. If the original method returns no data on success, such as `Delete`, the response is `google.protobuf.Empty`. If the original method is standard `Get`/`Create`/`Update`, the response should be the resource. For other methods, the response should have the type `XxxResponse`, where `Xxx` is the original method name. For example, if the original method name is `TakeSnapshot()`, the inferred response type is `TakeSnapshotResponse`.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleLongrunningWaitOperationRequest": {
+      "description": "The request message for Operations.WaitOperation.",
+      "id": "GoogleLongrunningWaitOperationRequest",
+      "properties": {
+        "timeout": {
+          "description": "The maximum duration to wait before timing out. If left blank, the wait will be at most the time permitted by the underlying HTTP/RPC protocol. If RPC context deadline is also specified, the shorter one will be used.",
+          "format": "google-duration",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleProtobufEmpty": {
+      "description": "A generic empty message that you can re-use to avoid defining duplicated empty messages in your APIs. A typical example is to use it as the request or the response type of an API method. For instance: service Foo { rpc Bar(google.protobuf.Empty) returns (google.protobuf.Empty); }",
+      "id": "GoogleProtobufEmpty",
+      "properties": {},
+      "type": "object"
+    },
+    "GoogleRpcStatus": {
+      "description": "The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).",
+      "id": "GoogleRpcStatus",
+      "properties": {
+        "code": {
+          "description": "The status code, which should be an enum value of google.rpc.Code.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "details": {
+          "description": "A list of messages that carry the error details. There is a common set of message types for APIs to use.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "message": {
+          "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the google.rpc.Status.details field, or localized by the client.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Firebase App Distribution API",
+  "version": "v1",
+  "version_module": true
+}

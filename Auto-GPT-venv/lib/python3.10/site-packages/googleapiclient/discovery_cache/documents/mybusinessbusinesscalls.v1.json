@@ -1,0 +1,398 @@
+{
+  "basePath": "",
+  "baseUrl": "https://mybusinessbusinesscalls.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "My Business Business Calls",
+  "description": "The My Business Business Calls API manages business calls information of a location on Google and collect insights like the number of missed calls to their location. Additional information about Business calls can be found at https://support.google.com/business/answer/9688285?p=call_history. If the Google Business Profile links to a Google Ads account and call history is turned on, calls that last longer than a specific time, and that can be attributed to an ad interaction, will show in the linked Google Ads account under the \"Calls from Ads\" conversion. If smart bidding and call conversions are used in the optimization strategy, there could be a change in ad spend. Learn more about smart bidding. To view and perform actions on a location's calls, you need to be a `OWNER`, `CO_OWNER` or `MANAGER` of the location. Note - If you have a quota of 0 after enabling the API, please request for GBP API access.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://developers.google.com/my-business/",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "mybusinessbusinesscalls:v1",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://mybusinessbusinesscalls.mtls.googleapis.com/",
+  "name": "mybusinessbusinesscalls",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "locations": {
+      "methods": {
+        "getBusinesscallssettings": {
+          "description": "Returns the Business calls settings resource for the given location.",
+          "flatPath": "v1/locations/{locationsId}/businesscallssettings",
+          "httpMethod": "GET",
+          "id": "mybusinessbusinesscalls.locations.getBusinesscallssettings",
+          "parameterOrder": [
+            "name"
+          ],
+          "parameters": {
+            "name": {
+              "description": "Required. The BusinessCallsSettings to get. The `name` field is used to identify the business call settings to get. Format: locations/{location_id}/businesscallssettings.",
+              "location": "path",
+              "pattern": "^locations/[^/]+/businesscallssettings$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v1/{+name}",
+          "response": {
+            "$ref": "BusinessCallsSettings"
+          }
+        },
+        "updateBusinesscallssettings": {
+          "description": "Updates the Business call settings for the specified location.",
+          "flatPath": "v1/locations/{locationsId}/businesscallssettings",
+          "httpMethod": "PATCH",
+          "id": "mybusinessbusinesscalls.locations.updateBusinesscallssettings",
+          "parameterOrder": [
+            "name"
+          ],
+          "parameters": {
+            "name": {
+              "description": "Required. The resource name of the calls settings. Format: locations/{location}/businesscallssettings",
+              "location": "path",
+              "pattern": "^locations/[^/]+/businesscallssettings$",
+              "required": true,
+              "type": "string"
+            },
+            "updateMask": {
+              "description": "Required. The list of fields to update.",
+              "format": "google-fieldmask",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "v1/{+name}",
+          "request": {
+            "$ref": "BusinessCallsSettings"
+          },
+          "response": {
+            "$ref": "BusinessCallsSettings"
+          }
+        }
+      },
+      "resources": {
+        "businesscallsinsights": {
+          "methods": {
+            "list": {
+              "description": "Returns insights for Business calls for a location.",
+              "flatPath": "v1/locations/{locationsId}/businesscallsinsights",
+              "httpMethod": "GET",
+              "id": "mybusinessbusinesscalls.locations.businesscallsinsights.list",
+              "parameterOrder": [
+                "parent"
+              ],
+              "parameters": {
+                "filter": {
+                  "description": "Optional. A filter constraining the calls insights to return. The response includes only entries that match the filter. If the MetricType is not provided, AGGREGATE_COUNT is returned. If no end_date is provided, the last date for which data is available is used. If no start_date is provided, we will default to the first date for which data is available, which is currently 6 months. If start_date is before the date when data is available, data is returned starting from the date when it is available. At this time we support following filters. 1. start_date=\"DATE\" where date is in YYYY-MM-DD format. 2. end_date=\"DATE\" where date is in YYYY-MM-DD format. 3. metric_type=XYZ where XYZ is a valid MetricType. 4. Conjunctions(AND) of all of the above. e.g., \"start_date=2021-08-01 AND end_date=2021-08-10 AND metric_type=AGGREGATE_COUNT\" The AGGREGATE_COUNT metric_type ignores the DD part of the date.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "pageSize": {
+                  "description": "Optional. The maximum number of BusinessCallsInsights to return. If unspecified, at most 20 will be returned. Some of the metric_types(e.g, AGGREGATE_COUNT) returns a single page. For these metrics, the page_size is ignored.",
+                  "format": "int32",
+                  "location": "query",
+                  "type": "integer"
+                },
+                "pageToken": {
+                  "description": "Optional. A page token, received from a previous `ListBusinessCallsInsights` call. Provide this to retrieve the subsequent page. When paginating, all other parameters provided to `ListBusinessCallsInsights` must match the call that provided the page token. Some of the metric_types (e.g, AGGREGATE_COUNT) returns a single page. For these metrics, the pake_token is ignored.",
+                  "location": "query",
+                  "type": "string"
+                },
+                "parent": {
+                  "description": "Required. The parent location to fetch calls insights for. Format: locations/{location_id}",
+                  "location": "path",
+                  "pattern": "^locations/[^/]+$",
+                  "required": true,
+                  "type": "string"
+                }
+              },
+              "path": "v1/{+parent}/businesscallsinsights",
+              "response": {
+                "$ref": "ListBusinessCallsInsightsResponse"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230402",
+  "rootUrl": "https://mybusinessbusinesscalls.googleapis.com/",
+  "schemas": {
+    "AggregateMetrics": {
+      "description": "Metrics aggregated over the input time range.",
+      "id": "AggregateMetrics",
+      "properties": {
+        "answeredCallsCount": {
+          "description": "Total count of answered calls.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "endDate": {
+          "$ref": "Date",
+          "description": "End date for this metric."
+        },
+        "hourlyMetrics": {
+          "description": "A list of metrics by hour of day.",
+          "items": {
+            "$ref": "HourlyMetrics"
+          },
+          "type": "array"
+        },
+        "missedCallsCount": {
+          "description": "Total count of missed calls.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "startDate": {
+          "$ref": "Date",
+          "description": "Date for this metric. If metric is monthly, only year and month are used."
+        },
+        "weekdayMetrics": {
+          "description": "A list of metrics by day of week.",
+          "items": {
+            "$ref": "WeekDayMetrics"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "BusinessCallsInsights": {
+      "description": "Insights for calls made to a location.",
+      "id": "BusinessCallsInsights",
+      "properties": {
+        "aggregateMetrics": {
+          "$ref": "AggregateMetrics",
+          "description": "Metric for the time range based on start_date and end_date."
+        },
+        "metricType": {
+          "description": "The metric for which the value applies.",
+          "enum": [
+            "METRIC_TYPE_UNSPECIFIED",
+            "AGGREGATE_COUNT"
+          ],
+          "enumDescriptions": [
+            "Type of metric is unspecified.",
+            "The metrics provided are counts aggregated over the input time_range."
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "Required. The resource name of the calls insights. Format: locations/{location}/businesscallsinsights",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BusinessCallsSettings": {
+      "description": "Business calls settings for a location.",
+      "id": "BusinessCallsSettings",
+      "properties": {
+        "callsState": {
+          "description": "Required. The state of this location's enrollment in Business calls.",
+          "enum": [
+            "CALLS_STATE_UNSPECIFIED",
+            "ENABLED",
+            "DISABLED"
+          ],
+          "enumDescriptions": [
+            "Unspecified.",
+            "Business calls is enabled for the location.",
+            "Business calls is disabled for the location."
+          ],
+          "type": "string"
+        },
+        "consentTime": {
+          "description": "Input only. Time when the end user provided consent to the API user to enable business calls.",
+          "format": "google-datetime",
+          "type": "string"
+        },
+        "name": {
+          "description": "Required. The resource name of the calls settings. Format: locations/{location}/businesscallssettings",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Date": {
+      "description": "Represents a whole or partial calendar date, such as a birthday. The time of day and time zone are either specified elsewhere or are insignificant. The date is relative to the Gregorian Calendar. This can represent one of the following: * A full date, with non-zero year, month, and day values. * A month and day, with a zero year (for example, an anniversary). * A year on its own, with a zero month and a zero day. * A year and month, with a zero day (for example, a credit card expiration date). Related types: * google.type.TimeOfDay * google.type.DateTime * google.protobuf.Timestamp",
+      "id": "Date",
+      "properties": {
+        "day": {
+          "description": "Day of a month. Must be from 1 to 31 and valid for the year and month, or 0 to specify a year by itself or a year and month where the day isn't significant.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "month": {
+          "description": "Month of a year. Must be from 1 to 12, or 0 to specify a year without a month and day.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "year": {
+          "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without a year.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "HourlyMetrics": {
+      "description": "Metrics for an hour.",
+      "id": "HourlyMetrics",
+      "properties": {
+        "hour": {
+          "description": "Hour of the day. Allowed values are 0-23.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "missedCallsCount": {
+          "description": "Total count of missed calls for this hour.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ListBusinessCallsInsightsResponse": {
+      "description": "Response message for ListBusinessCallsInsights.",
+      "id": "ListBusinessCallsInsightsResponse",
+      "properties": {
+        "businessCallsInsights": {
+          "description": "A collection of business calls insights for the location.",
+          "items": {
+            "$ref": "BusinessCallsInsights"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "A token, which can be sent as `page_token` to retrieve the next page. If this field is omitted, there are no subsequent pages. Some of the metric_types (e.g, AGGREGATE_COUNT) returns a single page. For these metrics, the next_page_token will be empty.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "WeekDayMetrics": {
+      "description": "Metrics for a week day.",
+      "id": "WeekDayMetrics",
+      "properties": {
+        "day": {
+          "description": "Day of the week. Allowed values are Sunday - Saturday.",
+          "enum": [
+            "DAY_OF_WEEK_UNSPECIFIED",
+            "MONDAY",
+            "TUESDAY",
+            "WEDNESDAY",
+            "THURSDAY",
+            "FRIDAY",
+            "SATURDAY",
+            "SUNDAY"
+          ],
+          "enumDescriptions": [
+            "The day of the week is unspecified.",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+          ],
+          "type": "string"
+        },
+        "missedCallsCount": {
+          "description": "Total count of missed calls for this hour.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "My Business Business Calls API",
+  "version": "v1",
+  "version_module": true
+}

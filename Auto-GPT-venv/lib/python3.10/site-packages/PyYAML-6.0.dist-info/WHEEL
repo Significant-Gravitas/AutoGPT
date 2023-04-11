@@ -1,0 +1,8 @@
+Wheel-Version: 1.0
+Generator: bdist_wheel (0.37.0)
+Root-Is-Purelib: false
+Tag: cp310-cp310-manylinux_2_5_x86_64
+Tag: cp310-cp310-manylinux1_x86_64
+Tag: cp310-cp310-manylinux_2_12_x86_64
+Tag: cp310-cp310-manylinux2010_x86_64
+

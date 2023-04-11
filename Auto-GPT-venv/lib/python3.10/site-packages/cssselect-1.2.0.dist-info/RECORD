@@ -1,0 +1,14 @@
+cssselect-1.2.0.dist-info/AUTHORS,sha256=0xOj3H8iII6M_KWmoDYQRuzTrYrLPbJ8K2kVSAoQ5zQ,171
+cssselect-1.2.0.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+cssselect-1.2.0.dist-info/LICENSE,sha256=XI2p90Tgr7qBpIybXb5zBI95izKH1vGvigXuCOuxCJI,1517
+cssselect-1.2.0.dist-info/METADATA,sha256=21lDM1FkN1ZwK-M9RZ14vqt3YIZSMdsWPwBBTpXFcGY,2223
+cssselect-1.2.0.dist-info/RECORD,,
+cssselect-1.2.0.dist-info/WHEEL,sha256=z9j0xAa_JmUKMpmz72K0ZGALSM_n-wQVmGbleXx2VHg,110
+cssselect-1.2.0.dist-info/top_level.txt,sha256=GKK3Utu_ceog6CK27VXNdbyiqGnoyJo3970FLo5JdUU,10
+cssselect/__init__.py,sha256=GdnBnlBkBCP_XnY2yytiVR4h5WeXYC4jmh_APRDCPvo,824
+cssselect/__pycache__/__init__.cpython-310.pyc,,
+cssselect/__pycache__/parser.cpython-310.pyc,,
+cssselect/__pycache__/xpath.cpython-310.pyc,,
+cssselect/parser.py,sha256=YoYSp2czC_Gm1ZeDuo7iDgcCyDYGoNnlqkC_bw5hjqE,33946
+cssselect/py.typed,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+cssselect/xpath.py,sha256=RDU2SgWfnKt_4-fy8Oc3UX1g-Zl2oD4ejpmAQD4CZs4,33190

@@ -1,0 +1,1098 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "See, edit, configure, and delete your Google Cloud data and see the email address for your Google Account."
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://connectors.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Connectors",
+  "description": "Enables users to create and manage connections to Google Cloud services and third-party business applications using the Connectors interface.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://cloud.google.com/apigee/docs/api-platform/connectors/about-connectors",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "connectors:v2",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://connectors.mtls.googleapis.com/",
+  "name": "connectors",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "projects": {
+      "resources": {
+        "locations": {
+          "resources": {
+            "connections": {
+              "methods": {
+                "executeSqlQuery": {
+                  "description": "Executes a SQL statement specified in the body of the request. An example of this SQL statement in the case of Salesforce connector would be 'select * from Account a, Order o where a.Id = o.AccountId'.",
+                  "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}:executeSqlQuery",
+                  "httpMethod": "POST",
+                  "id": "connectors.projects.locations.connections.executeSqlQuery",
+                  "parameterOrder": [
+                    "connection"
+                  ],
+                  "parameters": {
+                    "connection": {
+                      "description": "Required. Resource name of the Connection. Format: projects/{project}/locations/{location}/connections/{connection}",
+                      "location": "path",
+                      "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+$",
+                      "required": true,
+                      "type": "string"
+                    }
+                  },
+                  "path": "v2/{+connection}:executeSqlQuery",
+                  "request": {
+                    "$ref": "ExecuteSqlQueryRequest"
+                  },
+                  "response": {
+                    "$ref": "ExecuteSqlQueryResponse"
+                  },
+                  "scopes": [
+                    "https://www.googleapis.com/auth/cloud-platform"
+                  ]
+                }
+              },
+              "resources": {
+                "actions": {
+                  "methods": {
+                    "execute": {
+                      "description": "Executes an action with the name specified in the request. The input parameters for executing the action are passed through the body of the ExecuteAction request.",
+                      "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}/actions/{actionsId}:execute",
+                      "httpMethod": "POST",
+                      "id": "connectors.projects.locations.connections.actions.execute",
+                      "parameterOrder": [
+                        "name"
+                      ],
+                      "parameters": {
+                        "name": {
+                          "description": "Required. Resource name of the Action. Format: projects/{project}/locations/{location}/connections/{connection}/actions/{action}",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+/actions/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v2/{+name}:execute",
+                      "request": {
+                        "$ref": "ExecuteActionRequest"
+                      },
+                      "response": {
+                        "$ref": "ExecuteActionResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    },
+                    "list": {
+                      "description": "Gets the schema of all the actions supported by the connector.",
+                      "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}/actions",
+                      "httpMethod": "GET",
+                      "id": "connectors.projects.locations.connections.actions.list",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "pageSize": {
+                          "description": "Number of Actions to return. Defaults to 25.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Page token, return from a previous ListActions call, that can be used retrieve the next page of content. If unspecified, the request returns the first page of actions.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "parent": {
+                          "description": "Required. Parent resource name of the Action. Format: projects/{project}/locations/{location}/connections/{connection}",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v2/{+parent}/actions",
+                      "response": {
+                        "$ref": "ListActionsResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  }
+                },
+                "entityTypes": {
+                  "methods": {
+                    "list": {
+                      "description": "Lists metadata related to all entity types present in the external system.",
+                      "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}/entityTypes",
+                      "httpMethod": "GET",
+                      "id": "connectors.projects.locations.connections.entityTypes.list",
+                      "parameterOrder": [
+                        "parent"
+                      ],
+                      "parameters": {
+                        "pageSize": {
+                          "description": "Number of entity types to return. Defaults to 25.",
+                          "format": "int32",
+                          "location": "query",
+                          "type": "integer"
+                        },
+                        "pageToken": {
+                          "description": "Page token, return from a previous ListEntityTypes call, that can be used retrieve the next page of content. If unspecified, the request returns the first page of entity types.",
+                          "location": "query",
+                          "type": "string"
+                        },
+                        "parent": {
+                          "description": "Required. Resource name of the Entity Type. Format: projects/{project}/locations/{location}/connections/{connection}",
+                          "location": "path",
+                          "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+$",
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "path": "v2/{+parent}/entityTypes",
+                      "response": {
+                        "$ref": "ListEntityTypesResponse"
+                      },
+                      "scopes": [
+                        "https://www.googleapis.com/auth/cloud-platform"
+                      ]
+                    }
+                  },
+                  "resources": {
+                    "entities": {
+                      "methods": {
+                        "create": {
+                          "description": "Creates a new entity row of the specified entity type in the external system. The field values for creating the row are contained in the body of the request. The response message contains a `Entity` message object returned as a response by the external system.",
+                          "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}/entityTypes/{entityTypesId}/entities",
+                          "httpMethod": "POST",
+                          "id": "connectors.projects.locations.connections.entityTypes.entities.create",
+                          "parameterOrder": [
+                            "parent"
+                          ],
+                          "parameters": {
+                            "parent": {
+                              "description": "Required. Resource name of the Entity Type. Format: projects/{project}/locations/{location}/connections/{connection}/entityTypes/{type}",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+/entityTypes/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v2/{+parent}/entities",
+                          "request": {
+                            "$ref": "Entity"
+                          },
+                          "response": {
+                            "$ref": "Entity"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "delete": {
+                          "description": "Deletes an existing entity row matching the entity type and entity id specified in the request.",
+                          "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}/entityTypes/{entityTypesId}/entities/{entitiesId}",
+                          "httpMethod": "DELETE",
+                          "id": "connectors.projects.locations.connections.entityTypes.entities.delete",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "name": {
+                              "description": "Required. Resource name of the Entity Type. Format: projects/{project}/locations/{location}/connections/{connection}/entityTypes/{type}/entities/{id}",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+/entityTypes/[^/]+/entities/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v2/{+name}",
+                          "response": {
+                            "$ref": "Empty"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "deleteEntitiesWithConditions": {
+                          "description": "Deletes entities based on conditions specified in the request and not on entity id.",
+                          "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}/entityTypes/{entityTypesId}/entities:deleteEntitiesWithConditions",
+                          "httpMethod": "POST",
+                          "id": "connectors.projects.locations.connections.entityTypes.entities.deleteEntitiesWithConditions",
+                          "parameterOrder": [
+                            "entityType"
+                          ],
+                          "parameters": {
+                            "conditions": {
+                              "description": "Required. Conditions to be used when deleting entities. From a proto standpoint, There are no restrictions on what can be passed using this field. The connector documentation should have information about what format of filters/conditions are supported. Note: If this conditions field is left empty, an exception is thrown. We don't want to consider 'empty conditions' to be a match-all case. Connector developers can determine and document what a match-all case constraint would be.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "entityType": {
+                              "description": "Required. Resource name of the Entity Type. Format: projects/{project}/locations/{location}/connections/{connection}/entityTypes/{type}",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+/entityTypes/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v2/{+entityType}/entities:deleteEntitiesWithConditions",
+                          "response": {
+                            "$ref": "Empty"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "get": {
+                          "description": "Gets a single entity row matching the entity type and entity id specified in the request.",
+                          "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}/entityTypes/{entityTypesId}/entities/{entitiesId}",
+                          "httpMethod": "GET",
+                          "id": "connectors.projects.locations.connections.entityTypes.entities.get",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "name": {
+                              "description": "Required. Resource name of the Entity Type. Format: projects/{project}/locations/{location}/connections/{connection}/entityTypes/{type}/entities/{id}",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+/entityTypes/[^/]+/entities/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v2/{+name}",
+                          "response": {
+                            "$ref": "Entity"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "list": {
+                          "description": "Lists entity rows of a particular entity type contained in the request. Note: 1. Currently, only max of one 'sort_by' column is supported. 2. If no 'sort_by' column is provided, the primary key of the table is used. If zero or more than one primary key is available, we default to the unpaginated list entities logic which only returns the first page. 3. The values of the 'sort_by' columns must uniquely identify an entity row, otherwise undefined behaviors may be observed during pagination. 4. Since transactions are not supported, any updates, inserts or deletes during pagination can lead to stale data being returned or other unexpected behaviors.",
+                          "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}/entityTypes/{entityTypesId}/entities",
+                          "httpMethod": "GET",
+                          "id": "connectors.projects.locations.connections.entityTypes.entities.list",
+                          "parameterOrder": [
+                            "parent"
+                          ],
+                          "parameters": {
+                            "conditions": {
+                              "description": "Conditions to be used when listing entities. From a proto standpoint, There are no restrictions on what can be passed using this field. The connector documentation should have information about what format of filters/conditions are supported.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "pageSize": {
+                              "description": "Number of entity rows to return. Defaults page size = 25. Max page size = 200.",
+                              "format": "int32",
+                              "location": "query",
+                              "type": "integer"
+                            },
+                            "pageToken": {
+                              "description": "Page token value if available from a previous request.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "parent": {
+                              "description": "Required. Resource name of the Entity Type. Format: projects/{project}/locations/{location}/connections/{connection}/entityTypes/{type}",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+/entityTypes/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            },
+                            "sortBy": {
+                              "description": "List of 'sort_by' columns to use when returning the results.",
+                              "location": "query",
+                              "repeated": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v2/{+parent}/entities",
+                          "response": {
+                            "$ref": "ListEntitiesResponse"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "patch": {
+                          "description": "Updates an existing entity row matching the entity type and entity id specified in the request. The fields in the entity row that need to be modified are contained in the body of the request. All unspecified fields are left unchanged. The response message contains a `Entity` message object returned as a response by the external system.",
+                          "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}/entityTypes/{entityTypesId}/entities/{entitiesId}",
+                          "httpMethod": "PATCH",
+                          "id": "connectors.projects.locations.connections.entityTypes.entities.patch",
+                          "parameterOrder": [
+                            "name"
+                          ],
+                          "parameters": {
+                            "name": {
+                              "description": "Output only. Resource name of the Entity. Format: projects/{project}/locations/{location}/connections/{connection}/entityTypes/{type}/entities/{id}",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+/entityTypes/[^/]+/entities/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v2/{+name}",
+                          "request": {
+                            "$ref": "Entity"
+                          },
+                          "response": {
+                            "$ref": "Entity"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        },
+                        "updateEntitiesWithConditions": {
+                          "description": "Updates entities based on conditions specified in the request and not on entity id.",
+                          "flatPath": "v2/projects/{projectsId}/locations/{locationsId}/connections/{connectionsId}/entityTypes/{entityTypesId}/entities:updateEntitiesWithConditions",
+                          "httpMethod": "POST",
+                          "id": "connectors.projects.locations.connections.entityTypes.entities.updateEntitiesWithConditions",
+                          "parameterOrder": [
+                            "entityType"
+                          ],
+                          "parameters": {
+                            "conditions": {
+                              "description": "Required. Conditions to be used when updating entities. From a proto standpoint, There are no restrictions on what can be passed using this field. The connector documentation should have information about what format of filters/conditions are supported. Note: If this conditions field is left empty, an exception is thrown. We don't want to consider 'empty conditions' to be a match-all case. Connector developers can determine and document what a match-all case constraint would be.",
+                              "location": "query",
+                              "type": "string"
+                            },
+                            "entityType": {
+                              "description": "Required. Resource name of the Entity Type. Format: projects/{project}/locations/{location}/connections/{connection}/entityTypes/{type}",
+                              "location": "path",
+                              "pattern": "^projects/[^/]+/locations/[^/]+/connections/[^/]+/entityTypes/[^/]+$",
+                              "required": true,
+                              "type": "string"
+                            }
+                          },
+                          "path": "v2/{+entityType}/entities:updateEntitiesWithConditions",
+                          "request": {
+                            "$ref": "Entity"
+                          },
+                          "response": {
+                            "$ref": "UpdateEntitiesWithConditionsResponse"
+                          },
+                          "scopes": [
+                            "https://www.googleapis.com/auth/cloud-platform"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "revision": "20230322",
+  "rootUrl": "https://connectors.googleapis.com/",
+  "schemas": {
+    "Action": {
+      "description": "Action message contains metadata information about a single action present in the external system.",
+      "id": "Action",
+      "properties": {
+        "inputParameters": {
+          "description": "List containing input parameter metadata.",
+          "items": {
+            "$ref": "InputParameter"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Name of the action.",
+          "type": "string"
+        },
+        "resultMetadata": {
+          "description": "List containing the metadata of result fields.",
+          "items": {
+            "$ref": "ResultMetadata"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Empty": {
+      "description": "A generic empty message that you can re-use to avoid defining duplicated empty messages in your APIs. A typical example is to use it as the request or the response type of an API method. For instance: service Foo { rpc Bar(google.protobuf.Empty) returns (google.protobuf.Empty); }",
+      "id": "Empty",
+      "properties": {},
+      "type": "object"
+    },
+    "Entity": {
+      "description": "'Entity row'/ 'Entity' refers to a single row of an entity type.",
+      "id": "Entity",
+      "properties": {
+        "fields": {
+          "additionalProperties": {
+            "type": "any"
+          },
+          "description": "Fields of the entity. The key is name of the field and the value contains the applicable `google.protobuf.Value` entry for this field.",
+          "type": "object"
+        },
+        "name": {
+          "description": "Output only. Resource name of the Entity. Format: projects/{project}/locations/{location}/connections/{connection}/entityTypes/{type}/entities/{id}",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "EntityType": {
+      "description": "EntityType message contains metadata information about a single entity type present in the external system.",
+      "id": "EntityType",
+      "properties": {
+        "fields": {
+          "description": "List containing metadata information about each field of the entity type.",
+          "items": {
+            "$ref": "Field"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "The name of the entity type.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ExecuteActionRequest": {
+      "description": "Request message for ActionService.ExecuteAction",
+      "id": "ExecuteActionRequest",
+      "properties": {
+        "parameters": {
+          "additionalProperties": {
+            "description": "Properties of the object.",
+            "type": "any"
+          },
+          "description": "Parameters for executing the action. The parameters can be key/value pairs or nested structs.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ExecuteActionResponse": {
+      "description": "Response message for ActionService.ExecuteAction",
+      "id": "ExecuteActionResponse",
+      "properties": {
+        "results": {
+          "description": "In the case of successful invocation of the specified action, the results Struct contains values based on the response of the action invoked. 1. If the action execution produces any entities as a result, they are returned as an array of Structs with the 'key' being the field name and the 'value' being the value of that field in each result row. { 'results': [{'key': 'value'}, ...] }",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ExecuteSqlQueryRequest": {
+      "description": "An execute sql query request containing the query and the connection to execute it on.",
+      "id": "ExecuteSqlQueryRequest",
+      "properties": {
+        "query": {
+          "$ref": "Query",
+          "description": "Required. SQL statement passed by clients like Integration Platform, the query is passed as-is to the driver used for interfacing with external systems."
+        }
+      },
+      "type": "object"
+    },
+    "ExecuteSqlQueryResponse": {
+      "description": "A response returned by the connection after executing the sql query.",
+      "id": "ExecuteSqlQueryResponse",
+      "properties": {
+        "results": {
+          "description": "In the case of successful execution of the query the response contains results returned by the external system. For example, the result rows of the query are contained in the 'results' Struct list - \"results\": [ { \"field1\": \"val1\", \"field2\": \"val2\",.. },.. ] Each Struct row can contain fields any type of like nested Structs or lists.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Field": {
+      "description": "Message contains EntityType's Field metadata.",
+      "id": "Field",
+      "properties": {
+        "additionalDetails": {
+          "additionalProperties": {
+            "description": "Properties of the object.",
+            "type": "any"
+          },
+          "description": "The following map contains fields that are not explicitly mentioned above,this give connectors the flexibility to add new metadata fields.",
+          "type": "object"
+        },
+        "dataType": {
+          "description": "The data type of the Field.",
+          "enum": [
+            "DATA_TYPE_UNSPECIFIED",
+            "INT",
+            "SMALLINT",
+            "DOUBLE",
+            "DATE",
+            "DATETIME",
+            "TIME",
+            "STRING",
+            "LONG",
+            "BOOLEAN",
+            "DECIMAL",
+            "UUID",
+            "BLOB",
+            "BIT",
+            "TINYINT",
+            "INTEGER",
+            "BIGINT",
+            "FLOAT",
+            "REAL",
+            "NUMERIC",
+            "CHAR",
+            "VARCHAR",
+            "LONGVARCHAR",
+            "TIMESTAMP",
+            "NCHAR",
+            "NVARCHAR",
+            "LONGNVARCHAR",
+            "NULL",
+            "OTHER",
+            "JAVA_OBJECT",
+            "DISTINCT",
+            "STRUCT",
+            "ARRAY",
+            "CLOB",
+            "REF",
+            "DATALINK",
+            "ROWID",
+            "BINARY",
+            "VARBINARY",
+            "LONGVARBINARY",
+            "NCLOB",
+            "SQLXML",
+            "REF_CURSOR",
+            "TIME_WITH_TIMEZONE",
+            "TIMESTAMP_WITH_TIMEZONE"
+          ],
+          "enumDescriptions": [
+            "Datatype unspecified.",
+            "Deprecated Int type, use INTEGER type instead.",
+            "Small int type.",
+            "Double type.",
+            "Date type.",
+            "Deprecated Datetime type.",
+            "Time type.",
+            "Deprecated string type, use VARCHAR type instead.",
+            "Deprecated Long type, use BIGINT type instead.",
+            "Boolean type.",
+            "Decimal type.",
+            "Deprecated UUID type, use VARCHAR instead.",
+            "Blob type.",
+            "Bit type.",
+            "Tiny int type.",
+            "Integer type.",
+            "Big int type.",
+            "Float type.",
+            "Real type.",
+            "Numeric type.",
+            "Char type.",
+            "Varchar type.",
+            "Long varchar type.",
+            "Timestamp type.",
+            "Nchar type.",
+            "Nvarchar type.",
+            "Long Nvarchar type.",
+            "Null type.",
+            "Other type.",
+            "Java object type.",
+            "Distinct type keyword.",
+            "Struct type.",
+            "Array type.",
+            "Clob type.",
+            "Ref type.",
+            "Datalink type.",
+            "Row ID type.",
+            "Binary type.",
+            "Varbinary type.",
+            "Long Varbinary type.",
+            "Nclob type.",
+            "SQLXML type.",
+            "Ref_cursor type.",
+            "Time with timezone type.",
+            "Timestamp with timezone type."
+          ],
+          "type": "string"
+        },
+        "defaultValue": {
+          "description": "The following field specifies the default value of the Field provided by the external system if a value is not provided.",
+          "type": "any"
+        },
+        "description": {
+          "description": "A brief description of the Field.",
+          "type": "string"
+        },
+        "key": {
+          "description": "The following boolean field specifies if the current Field acts as a primary key or id if the parent is of type entity.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "Name of the Field.",
+          "type": "string"
+        },
+        "nullable": {
+          "description": "Specifies whether a null value is allowed.",
+          "type": "boolean"
+        },
+        "reference": {
+          "$ref": "Reference",
+          "description": "Reference captures the association between two different entity types. Value links to the reference of another entity type."
+        }
+      },
+      "type": "object"
+    },
+    "InputParameter": {
+      "description": "Input Parameter message contains metadata about the parameters required for executing an Action.",
+      "id": "InputParameter",
+      "properties": {
+        "dataType": {
+          "description": "The data type of the Parameter",
+          "enum": [
+            "DATA_TYPE_UNSPECIFIED",
+            "INT",
+            "SMALLINT",
+            "DOUBLE",
+            "DATE",
+            "DATETIME",
+            "TIME",
+            "STRING",
+            "LONG",
+            "BOOLEAN",
+            "DECIMAL",
+            "UUID",
+            "BLOB",
+            "BIT",
+            "TINYINT",
+            "INTEGER",
+            "BIGINT",
+            "FLOAT",
+            "REAL",
+            "NUMERIC",
+            "CHAR",
+            "VARCHAR",
+            "LONGVARCHAR",
+            "TIMESTAMP",
+            "NCHAR",
+            "NVARCHAR",
+            "LONGNVARCHAR",
+            "NULL",
+            "OTHER",
+            "JAVA_OBJECT",
+            "DISTINCT",
+            "STRUCT",
+            "ARRAY",
+            "CLOB",
+            "REF",
+            "DATALINK",
+            "ROWID",
+            "BINARY",
+            "VARBINARY",
+            "LONGVARBINARY",
+            "NCLOB",
+            "SQLXML",
+            "REF_CURSOR",
+            "TIME_WITH_TIMEZONE",
+            "TIMESTAMP_WITH_TIMEZONE"
+          ],
+          "enumDescriptions": [
+            "Datatype unspecified.",
+            "Deprecated Int type, use INTEGER type instead.",
+            "Small int type.",
+            "Double type.",
+            "Date type.",
+            "Deprecated Datetime type.",
+            "Time type.",
+            "Deprecated string type, use VARCHAR type instead.",
+            "Deprecated Long type, use BIGINT type instead.",
+            "Boolean type.",
+            "Decimal type.",
+            "Deprecated UUID type, use VARCHAR instead.",
+            "Blob type.",
+            "Bit type.",
+            "Tiny int type.",
+            "Integer type.",
+            "Big int type.",
+            "Float type.",
+            "Real type.",
+            "Numeric type.",
+            "Char type.",
+            "Varchar type.",
+            "Long varchar type.",
+            "Timestamp type.",
+            "Nchar type.",
+            "Nvarchar type.",
+            "Long Nvarchar type.",
+            "Null type.",
+            "Other type.",
+            "Java object type.",
+            "Distinct type keyword.",
+            "Struct type.",
+            "Array type.",
+            "Clob type.",
+            "Ref type.",
+            "Datalink type.",
+            "Row ID type.",
+            "Binary type.",
+            "Varbinary type.",
+            "Long Varbinary type.",
+            "Nclob type.",
+            "SQLXML type.",
+            "Ref_cursor type.",
+            "Time with timezone type.",
+            "Timestamp with timezone type."
+          ],
+          "type": "string"
+        },
+        "defaultValue": {
+          "description": "The following field specifies the default value of the Parameter provided by the external system if a value is not provided.",
+          "type": "any"
+        },
+        "description": {
+          "description": "A brief description of the Parameter.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the Parameter.",
+          "type": "string"
+        },
+        "nullable": {
+          "description": "Specifies whether a null value is allowed.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ListActionsResponse": {
+      "description": "Response message for ActionService.ListActions",
+      "id": "ListActionsResponse",
+      "properties": {
+        "actions": {
+          "description": "List of action metadata.",
+          "items": {
+            "$ref": "Action"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Next page token if more actions available.",
+          "type": "string"
+        },
+        "unsupportedActionNames": {
+          "description": "List of actions which contain unsupported Datatypes. Check datatype.proto for more information.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ListEntitiesResponse": {
+      "description": "Response message for EntityService.ListEntities",
+      "id": "ListEntitiesResponse",
+      "properties": {
+        "entities": {
+          "description": "List containing entity rows.",
+          "items": {
+            "$ref": "Entity"
+          },
+          "type": "array"
+        },
+        "nextPageToken": {
+          "description": "Next page token if more records are available.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ListEntityTypesResponse": {
+      "description": "Response message for EntityService.ListEntityTypes",
+      "id": "ListEntityTypesResponse",
+      "properties": {
+        "nextPageToken": {
+          "description": "Next page token if more entity types available.",
+          "type": "string"
+        },
+        "types": {
+          "description": "List of metadata related to all entity types.",
+          "items": {
+            "$ref": "EntityType"
+          },
+          "type": "array"
+        },
+        "unsupportedTypeNames": {
+          "description": "List of entity type names which contain unsupported Datatypes. Check datatype.proto for more information.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Query": {
+      "description": "A wrapper around the SQL query statement. This is needed so that the JSON representation of ExecuteSqlQueryRequest has the following format: `{\"query\":\"select *\"}`.",
+      "id": "Query",
+      "properties": {
+        "query": {
+          "description": "Required. Sql query to execute.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Reference": {
+      "id": "Reference",
+      "properties": {
+        "name": {
+          "description": "Name of the reference field.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Name of reference entity type.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ResultMetadata": {
+      "description": "Result Metadata message contains metadata about the result returned after executing an Action.",
+      "id": "ResultMetadata",
+      "properties": {
+        "dataType": {
+          "description": "The data type of the metadata field",
+          "enum": [
+            "DATA_TYPE_UNSPECIFIED",
+            "INT",
+            "SMALLINT",
+            "DOUBLE",
+            "DATE",
+            "DATETIME",
+            "TIME",
+            "STRING",
+            "LONG",
+            "BOOLEAN",
+            "DECIMAL",
+            "UUID",
+            "BLOB",
+            "BIT",
+            "TINYINT",
+            "INTEGER",
+            "BIGINT",
+            "FLOAT",
+            "REAL",
+            "NUMERIC",
+            "CHAR",
+            "VARCHAR",
+            "LONGVARCHAR",
+            "TIMESTAMP",
+            "NCHAR",
+            "NVARCHAR",
+            "LONGNVARCHAR",
+            "NULL",
+            "OTHER",
+            "JAVA_OBJECT",
+            "DISTINCT",
+            "STRUCT",
+            "ARRAY",
+            "CLOB",
+            "REF",
+            "DATALINK",
+            "ROWID",
+            "BINARY",
+            "VARBINARY",
+            "LONGVARBINARY",
+            "NCLOB",
+            "SQLXML",
+            "REF_CURSOR",
+            "TIME_WITH_TIMEZONE",
+            "TIMESTAMP_WITH_TIMEZONE"
+          ],
+          "enumDescriptions": [
+            "Datatype unspecified.",
+            "Deprecated Int type, use INTEGER type instead.",
+            "Small int type.",
+            "Double type.",
+            "Date type.",
+            "Deprecated Datetime type.",
+            "Time type.",
+            "Deprecated string type, use VARCHAR type instead.",
+            "Deprecated Long type, use BIGINT type instead.",
+            "Boolean type.",
+            "Decimal type.",
+            "Deprecated UUID type, use VARCHAR instead.",
+            "Blob type.",
+            "Bit type.",
+            "Tiny int type.",
+            "Integer type.",
+            "Big int type.",
+            "Float type.",
+            "Real type.",
+            "Numeric type.",
+            "Char type.",
+            "Varchar type.",
+            "Long varchar type.",
+            "Timestamp type.",
+            "Nchar type.",
+            "Nvarchar type.",
+            "Long Nvarchar type.",
+            "Null type.",
+            "Other type.",
+            "Java object type.",
+            "Distinct type keyword.",
+            "Struct type.",
+            "Array type.",
+            "Clob type.",
+            "Ref type.",
+            "Datalink type.",
+            "Row ID type.",
+            "Binary type.",
+            "Varbinary type.",
+            "Long Varbinary type.",
+            "Nclob type.",
+            "SQLXML type.",
+            "Ref_cursor type.",
+            "Time with timezone type.",
+            "Timestamp with timezone type."
+          ],
+          "type": "string"
+        },
+        "description": {
+          "description": "A brief description of the metadata field.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the metadata field.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "UpdateEntitiesWithConditionsResponse": {
+      "description": "Response message for EntityService.UpdateEntitiesWithConditions",
+      "id": "UpdateEntitiesWithConditionsResponse",
+      "properties": {
+        "response": {
+          "additionalProperties": {
+            "description": "Properties of the object.",
+            "type": "any"
+          },
+          "description": "Response returned by the external system.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Connectors API",
+  "version": "v2",
+  "version_module": true
+}

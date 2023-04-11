@@ -1,0 +1,1302 @@
+{
+  "auth": {
+    "oauth2": {
+      "scopes": {
+        "https://www.googleapis.com/auth/cloud-billing": {
+          "description": "View and manage your Google Cloud Platform billing accounts"
+        },
+        "https://www.googleapis.com/auth/cloud-billing.readonly": {
+          "description": "View your Google Cloud Platform billing accounts"
+        },
+        "https://www.googleapis.com/auth/cloud-platform": {
+          "description": "See, edit, configure, and delete your Google Cloud data and see the email address for your Google Account."
+        }
+      }
+    }
+  },
+  "basePath": "",
+  "baseUrl": "https://cloudbilling.googleapis.com/",
+  "batchPath": "batch",
+  "canonicalName": "Cloudbilling",
+  "description": "Allows developers to manage billing for their Google Cloud Platform projects programmatically.",
+  "discoveryVersion": "v1",
+  "documentationLink": "https://cloud.google.com/billing/",
+  "fullyEncodeReservedExpansion": true,
+  "icons": {
+    "x16": "http://www.google.com/images/icons/product/search-16.gif",
+    "x32": "http://www.google.com/images/icons/product/search-32.gif"
+  },
+  "id": "cloudbilling:v1beta",
+  "kind": "discovery#restDescription",
+  "mtlsRootUrl": "https://cloudbilling.mtls.googleapis.com/",
+  "name": "cloudbilling",
+  "ownerDomain": "google.com",
+  "ownerName": "Google",
+  "parameters": {
+    "$.xgafv": {
+      "description": "V1 error format.",
+      "enum": [
+        "1",
+        "2"
+      ],
+      "enumDescriptions": [
+        "v1 error format",
+        "v2 error format"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "access_token": {
+      "description": "OAuth access token.",
+      "location": "query",
+      "type": "string"
+    },
+    "alt": {
+      "default": "json",
+      "description": "Data format for response.",
+      "enum": [
+        "json",
+        "media",
+        "proto"
+      ],
+      "enumDescriptions": [
+        "Responses with Content-Type of application/json",
+        "Media download with context-dependent Content-Type",
+        "Responses with Content-Type of application/x-protobuf"
+      ],
+      "location": "query",
+      "type": "string"
+    },
+    "callback": {
+      "description": "JSONP",
+      "location": "query",
+      "type": "string"
+    },
+    "fields": {
+      "description": "Selector specifying which fields to include in a partial response.",
+      "location": "query",
+      "type": "string"
+    },
+    "key": {
+      "description": "API key. Your API key identifies your project and provides you with API access, quota, and reports. Required unless you provide an OAuth 2.0 token.",
+      "location": "query",
+      "type": "string"
+    },
+    "oauth_token": {
+      "description": "OAuth 2.0 token for the current user.",
+      "location": "query",
+      "type": "string"
+    },
+    "prettyPrint": {
+      "default": "true",
+      "description": "Returns response with indentations and line breaks.",
+      "location": "query",
+      "type": "boolean"
+    },
+    "quotaUser": {
+      "description": "Available to use for quota purposes for server-side applications. Can be any arbitrary string assigned to a user, but should not exceed 40 characters.",
+      "location": "query",
+      "type": "string"
+    },
+    "uploadType": {
+      "description": "Legacy upload protocol for media (e.g. \"media\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    },
+    "upload_protocol": {
+      "description": "Upload protocol for media (e.g. \"raw\", \"multipart\").",
+      "location": "query",
+      "type": "string"
+    }
+  },
+  "protocol": "rest",
+  "resources": {
+    "billingAccounts": {
+      "methods": {
+        "estimateCostScenario": {
+          "description": "Use custom pricing in the estimate, using a `CostScenario` with a defined `billingAccount`.",
+          "flatPath": "v1beta/billingAccounts/{billingAccountsId}:estimateCostScenario",
+          "httpMethod": "POST",
+          "id": "cloudbilling.billingAccounts.estimateCostScenario",
+          "parameterOrder": [
+            "billingAccount"
+          ],
+          "parameters": {
+            "billingAccount": {
+              "description": "Resource name of the billing account for the cost estimate. The resource name has the form `billingAccounts/{billing_acount_id}`. For example, `billingAccounts/012345-567890-ABCDEF` is the resource name for billing account `012345-567890-ABCDEF`. Must be specified.",
+              "location": "path",
+              "pattern": "^billingAccounts/[^/]+$",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "v1beta/{+billingAccount}:estimateCostScenario",
+          "request": {
+            "$ref": "EstimateCostScenarioForBillingAccountRequest"
+          },
+          "response": {
+            "$ref": "EstimateCostScenarioForBillingAccountResponse"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-billing",
+            "https://www.googleapis.com/auth/cloud-billing.readonly",
+            "https://www.googleapis.com/auth/cloud-platform"
+          ]
+        }
+      }
+    },
+    "v1beta": {
+      "methods": {
+        "estimateCostScenario": {
+          "description": "Estimate list prices using a `CostScenario` without a defined `billingAccount`.",
+          "flatPath": "v1beta:estimateCostScenario",
+          "httpMethod": "POST",
+          "id": "cloudbilling.estimateCostScenario",
+          "parameterOrder": [],
+          "parameters": {},
+          "path": "v1beta:estimateCostScenario",
+          "request": {
+            "$ref": "EstimateCostScenarioWithListPriceRequest"
+          },
+          "response": {
+            "$ref": "EstimateCostScenarioWithListPriceResponse"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-billing",
+            "https://www.googleapis.com/auth/cloud-billing.readonly",
+            "https://www.googleapis.com/auth/cloud-platform"
+          ]
+        }
+      }
+    }
+  },
+  "revision": "20230402",
+  "rootUrl": "https://cloudbilling.googleapis.com/",
+  "schemas": {
+    "CacheFillRegions": {
+      "description": "Specifies the regions for Cache Fill.",
+      "id": "CacheFillRegions",
+      "properties": {
+        "destinationRegion": {
+          "description": "The destination region for cache fill.",
+          "enum": [
+            "CACHE_FILL_DESTINATION_REGION_UNSPECIFIED",
+            "CACHE_FILL_DESTINATION_REGION_ASIA_PACIFIC",
+            "CACHE_FILL_DESTINATION_REGION_EUROPE",
+            "CACHE_FILL_DESTINATION_REGION_NORTH_AMERICA",
+            "CACHE_FILL_DESTINATION_REGION_OCEANIA",
+            "CACHE_FILL_DESTINATION_REGION_SOUTH_AMERICA",
+            "CACHE_FILL_DESTINATION_REGION_CHINA",
+            "CACHE_FILL_DESTINATION_REGION_OTHERS"
+          ],
+          "enumDescriptions": [
+            "Not specified.",
+            "Asia Pacific.",
+            "Europe",
+            "North America.",
+            "Oceania.",
+            "South America.",
+            "China.",
+            "Others."
+          ],
+          "type": "string"
+        },
+        "sourceRegion": {
+          "description": "The source region for cache fill.",
+          "enum": [
+            "CACHE_FILL_SOURCE_REGION_UNSPECIFIED",
+            "CACHE_FILL_REGION_ASIA_PACIFIC",
+            "CACHE_FILL_SOURCE_REGION_EUROPE",
+            "CACHE_FILL_SOURCE_REGION_NORTH_AMERICA",
+            "CACHE_FILL_SOURCE_REGION_OCEANIA",
+            "CACHE_FILL_SOURCE_REGION_SOUTH_AMERICA"
+          ],
+          "enumDescriptions": [
+            "Not specified.",
+            "Asia Pacific.",
+            "Europe",
+            "North America.",
+            "Oceania.",
+            "South America."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CloudCdnEgressWorkload": {
+      "description": "Specifies usage for Cloud CDN egress.",
+      "id": "CloudCdnEgressWorkload",
+      "properties": {
+        "cacheEgressDestination": {
+          "description": "The destination for the cache egress charges.",
+          "enum": [
+            "CACHE_EGRESS_DESTINATION_UNSPECIFIED",
+            "CACHE_EGRESS_DESTINATION_ASIA_PACIFIC",
+            "CACHE_EGRESS_DESTINATION_CHINA",
+            "CACHE_EGRESS_DESTINATION_EUROPE",
+            "CACHE_EGRESS_DESTINATION_NORTH_AMERICA",
+            "CACHE_EGRESS_DESTINATION_OCEANIA",
+            "CACHE_EGRESS_DESTINATION_LATIN_AMERICA",
+            "CACHE_EGRESS_DESTINATION_OTHER_DESTINATIONS"
+          ],
+          "enumDescriptions": [
+            "Unspecified.",
+            "Asia Pacific.",
+            "China.",
+            "Europe.",
+            "North America.",
+            "Oceania including Australia, New Zealand, and surrounding Pacific Ocean islands such as Papua New Guinea and Fiji. This region excludes Hawaii.",
+            "Latin America (Including the Caribbean, South America and Central America.)",
+            "All other destinations (including Africa and Antarctica)"
+          ],
+          "type": "string"
+        },
+        "cacheEgressRate": {
+          "$ref": "Usage",
+          "description": "Cache egress usage. The rate of data cache egressed in the destination. For example : units such as \"GiBy/s\" or \"TBy/mo\"."
+        }
+      },
+      "type": "object"
+    },
+    "CloudCdnWorkload": {
+      "description": "Specifies usage for Cloud CDN resources.",
+      "id": "CloudCdnWorkload",
+      "properties": {
+        "cacheFillOriginService": {
+          "description": "The source service for the cache fill.",
+          "enum": [
+            "CACHE_FILL_ORIGIN_SERVICE_UNSPECIFIED",
+            "CACHE_FILL_ORIGIN_SERVICE_GOOGLE_CLOUD_STORAGE_BUCKET",
+            "CACHE_FILL_ORIGIN_SERVICE_BACKEND_SERVICE"
+          ],
+          "enumDescriptions": [
+            "Not specified.",
+            "Origin service is Google Cloud Storage.",
+            "Origin service is backend service, such as Compute VMs, external backend, etc."
+          ],
+          "type": "string"
+        },
+        "cacheFillRate": {
+          "$ref": "Usage",
+          "description": "Cache fill usage. The rate of data transferred between cache fill regions. For example: units such as \"GiBy/s\" or \"TBy/mo\"."
+        },
+        "cacheFillRegions": {
+          "$ref": "CacheFillRegions",
+          "description": "The regions where data is transferred from Google data locations into Google global cache servers. The SKU prices for cache fill across services are the same."
+        },
+        "cacheLookUpRate": {
+          "$ref": "Usage",
+          "description": "Cache look up requests. This is specified to indicate the number of requests. For example: units such as \"1/s\"."
+        }
+      },
+      "type": "object"
+    },
+    "CloudInterconnectEgressWorkload": {
+      "description": "The interconnect egress only includes the Interconnect Egress. Please use the standard egress traffic interface to specify your standard egress usage.",
+      "id": "CloudInterconnectEgressWorkload",
+      "properties": {
+        "egressRate": {
+          "$ref": "Usage",
+          "description": "Data egress usage. This usage applies when you move or copy data from one Google Cloud service to another service. Expected units such as \"GiBy/s, By/s, etc.\""
+        },
+        "interconnectConnectionLocation": {
+          "description": "Locations in the [Interconnect connection location table](https://cloud.google.com/vpc/network-pricing#interconnect-pricing). This is the interconnect egress charges.",
+          "enum": [
+            "INTERCONNECT_CONNECTION_LOCATION_UNSPECIFIED",
+            "INTERCONNECT_CONNECTION_LOCATION_ASIA",
+            "INTERCONNECT_CONNECTION_LOCATION_EUROPE",
+            "INTERCONNECT_CONNECTION_LOCATION_NORTH_AMERICA",
+            "INTERCONNECT_CONNECTION_LOCATION_SOUTH_AMERICA",
+            "INTERCONNECT_CONNECTION_LOCATION_AUSTRALIA"
+          ],
+          "enumDescriptions": [
+            "Unspecified.",
+            "Asia.",
+            "Europe.",
+            "North America.",
+            "South America.",
+            "Australia."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CloudInterconnectWorkload": {
+      "description": "Specifies usage for Cloud Interconnect resources.",
+      "id": "CloudInterconnectWorkload",
+      "properties": {
+        "interconnectAttachments": {
+          "description": "VLAN attachment used for interconnect.",
+          "items": {
+            "$ref": "VlanAttachment"
+          },
+          "type": "array"
+        },
+        "interconnectType": {
+          "description": "Vlan attachment type.",
+          "enum": [
+            "INTERCONNECT_TYPE_UNSPECIFIED",
+            "INTERCONNECT_TYPE_DEDICATED",
+            "INTERCONNECT_TYPE_PARTNER"
+          ],
+          "enumDescriptions": [
+            "Unspecified.",
+            "Type is dedicated.",
+            "Type is partner."
+          ],
+          "type": "string"
+        },
+        "linkType": {
+          "description": "Interconnect circuit link type.",
+          "enum": [
+            "LINK_TYPE_UNSPECIFIED",
+            "LINK_TYPE_ETHERNET_10G_LR",
+            "LINK_TYPE_ETHERNET_100G_LR"
+          ],
+          "enumDescriptions": [
+            "Unspecified.",
+            "Link type is 10 gbps.",
+            "Link type is 100 gbps."
+          ],
+          "type": "string"
+        },
+        "provisionedLinkCount": {
+          "$ref": "Usage",
+          "description": "Interconnect usage. This is specified as a unitless quantity which indicates the number of circuit provisioned in interconnect."
+        }
+      },
+      "type": "object"
+    },
+    "CloudStorageEgressWorkload": {
+      "description": "Specification of a network type. Network egress within Google Cloud applies when you move or copy data from one Cloud Storage bucket to another or when another Google Cloud service accesses data in your Cloud Storage bucket.This includes the network egress within Google Cloud and the general network usage.",
+      "id": "CloudStorageEgressWorkload",
+      "properties": {
+        "destinationContinent": {
+          "description": "Where the data is sent to.",
+          "enum": [
+            "DESTINATION_CONTINENT_UNSPECIFIED",
+            "DESTINATION_CONTINENT_ASIA_PACIFIC",
+            "DESTINATION_CONTINENT_AUTRALIA",
+            "DESTINATION_CONTINENT_EUROPE",
+            "DESTINATION_CONTINENT_NORTH_AMERICA",
+            "DESTINATION_CONTINENT_SOUTH_AMERICA"
+          ],
+          "enumDescriptions": [
+            "Not specified.",
+            "Asia Pacific.",
+            "Australia.",
+            "Europe.",
+            "North America.",
+            "South America"
+          ],
+          "type": "string"
+        },
+        "egressRate": {
+          "$ref": "Usage",
+          "description": "Egress usage rate. This usage applies when you move or copy data from one Cloud Storage bucket to another or when another Google Cloud service accesses data in your Cloud Storage bucket. Expected units such as \"GiBy/s, By/s, ...\""
+        },
+        "sourceContinent": {
+          "description": "Where the data comes from.",
+          "enum": [
+            "SOURCE_CONTINENT_UNSPECIFIED",
+            "SOURCE_CONTINENT_ASIA_PACIFIC",
+            "SOURCE_CONTINENT_AUSTRALIA",
+            "SOURCE_CONTINENT_EUROPE",
+            "SOURCE_CONTINENT_NORTH_AMERICA",
+            "SOURCE_CONTINENT_SOUTH_AMERICA"
+          ],
+          "enumDescriptions": [
+            "Not specified.",
+            "Asia Pacific.",
+            "Australia.",
+            "Europe.",
+            "North America.",
+            "South America."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CloudStorageWorkload": {
+      "description": "Specifies usage of Cloud Storage resources.",
+      "id": "CloudStorageWorkload",
+      "properties": {
+        "dataRetrieval": {
+          "$ref": "Usage",
+          "description": "Data retrieval usage. A retrieval cost applies when data or metadata is read, copied, or rewritten . For example: units such as \"GiBy/s\" or \"By/s\"."
+        },
+        "dataStored": {
+          "$ref": "Usage",
+          "description": "Data storage usage. The amount of data stored in buckets. For example: units such as \"GiBy/s\" or \"TBy/mo\"."
+        },
+        "dualRegion": {
+          "$ref": "DualRegional",
+          "description": "Specify dual regions."
+        },
+        "multiRegion": {
+          "$ref": "MultiRegional",
+          "description": "Specify multi regions."
+        },
+        "operationA": {
+          "$ref": "Usage",
+          "description": "Class A operation usage in Cloud Storage, such as listing the objects in buckets. See the [operations pricing](https://cloud.google.com/storage/pricing#operations-pricing) tables for a list of which operations fall into each class. For example: units such as \"1/s\"."
+        },
+        "operationB": {
+          "$ref": "Usage",
+          "description": "Class B operation usage in Cloud Storage, such as `getIamPolicy`. See the [operations pricing](https://cloud.google.com/storage/pricing#operations-pricing) tables for a list of which operations fall into each class. For example: units such as \"1/s\"."
+        },
+        "region": {
+          "$ref": "Regional",
+          "description": "Specify a single region."
+        },
+        "storageClass": {
+          "description": "The [storage class](https://cloud.google.com/storage/docs/storage-classes#classes) of the data and operation. For example: \"standard\" and \"nearline\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Commitment": {
+      "description": "Commitments give you the ability to pay a recurring fee in exchange for a benefit, such as a discount for your use. For example, this object might contain details of a [spend-based committed use discount (CUD)](https://cloud.google.com/docs/cuds#spend_based_commitments). Within a CostScenario, adding a commitment includes the cost of the commitment and any discounts.",
+      "id": "Commitment",
+      "properties": {
+        "name": {
+          "description": "Required. A name for this commitment. All commitments in a CostScenario must have unique names. Each name may be at most 128 characters long.",
+          "type": "string"
+        },
+        "vmResourceBasedCud": {
+          "$ref": "VmResourceBasedCud",
+          "description": "A resource-based committed use discount (CUD)."
+        }
+      },
+      "type": "object"
+    },
+    "CommitmentCostEstimate": {
+      "description": "Estimated cost for a commitment.",
+      "id": "CommitmentCostEstimate",
+      "properties": {
+        "commitmentTotalCostEstimate": {
+          "$ref": "CostEstimate",
+          "description": "Total estimated costs for the commitment."
+        },
+        "name": {
+          "description": "The name of the commitment, as specified in the `CostScenario`.",
+          "type": "string"
+        },
+        "skuCostEstimates": {
+          "description": "Estimated costs for each SKU in the commitment.",
+          "items": {
+            "$ref": "SkuCostEstimate"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ComputeVmWorkload": {
+      "description": "Specificies usage of a set of identical compute VM instances.",
+      "id": "ComputeVmWorkload",
+      "properties": {
+        "enableConfidentialCompute": {
+          "description": "Defines whether each instance has confidential compute enabled.",
+          "type": "boolean"
+        },
+        "guestAccelerator": {
+          "$ref": "GuestAccelerator",
+          "description": "Guest accelerators attached to each machine."
+        },
+        "instancesRunning": {
+          "$ref": "Usage",
+          "description": "VM usage. This is specified as a unitless quantity which indicates the number of instances running."
+        },
+        "licenses": {
+          "description": "Premium image licenses used by each instance.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "machineType": {
+          "$ref": "MachineType",
+          "description": "The machine type."
+        },
+        "persistentDisks": {
+          "description": "Persistent disks attached to each instance. Must include a boot disk.",
+          "items": {
+            "$ref": "PersistentDisk"
+          },
+          "type": "array"
+        },
+        "preemptible": {
+          "description": "Defines whether each instance is preemptible.",
+          "type": "boolean"
+        },
+        "region": {
+          "description": "The [region](https://cloud.google.com/compute/docs/regions-zones) where the VMs run. For example: \"us-central1\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CostEstimate": {
+      "description": "An estimated cost.",
+      "id": "CostEstimate",
+      "properties": {
+        "creditEstimates": {
+          "description": "The estimated credits applied.",
+          "items": {
+            "$ref": "CreditEstimate"
+          },
+          "type": "array"
+        },
+        "netCostEstimate": {
+          "$ref": "Money",
+          "description": "The estimated net cost after applying credits."
+        },
+        "preCreditCostEstimate": {
+          "$ref": "Money",
+          "description": "The estimated cost prior to applying credits."
+        }
+      },
+      "type": "object"
+    },
+    "CostEstimationResult": {
+      "description": "The result of a estimating the costs of a `CostScenario`.",
+      "id": "CostEstimationResult",
+      "properties": {
+        "currencyCode": {
+          "description": "Required. The ISO 4217 currency code for the cost estimate.",
+          "type": "string"
+        },
+        "segmentCostEstimates": {
+          "description": "Required. Estimated costs for each idealized month of a `CostScenario`.",
+          "items": {
+            "$ref": "SegmentCostEstimate"
+          },
+          "type": "array"
+        },
+        "skus": {
+          "description": "Required. Information about SKUs used in the estimate.",
+          "items": {
+            "$ref": "Sku"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "CostScenario": {
+      "description": "Encapsulates all the information needed to perform a cost estimate. It includes a specification of the Google Cloud usage whose costs are estimated, and configuration options.",
+      "id": "CostScenario",
+      "properties": {
+        "commitments": {
+          "description": "New commitments to estimate the costs for. The cost of the commitments will be included in the estimate result and discounts the commitment entitles will be included in the workload cost estimates. A maximum of 100 workloads can be provided.",
+          "items": {
+            "$ref": "Commitment"
+          },
+          "type": "array"
+        },
+        "scenarioConfig": {
+          "$ref": "ScenarioConfig",
+          "description": "Configuration for the scenario."
+        },
+        "workloads": {
+          "description": "The Google Cloud usage whose costs are estimated. A maximum of 100 workloads can be provided.",
+          "items": {
+            "$ref": "Workload"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "CreditEstimate": {
+      "description": "An estimated credit applied to the costs on a SKU.",
+      "id": "CreditEstimate",
+      "properties": {
+        "creditAmount": {
+          "$ref": "Money",
+          "description": "The estimated credit amount."
+        },
+        "creditDescription": {
+          "description": "The credit description.",
+          "type": "string"
+        },
+        "creditType": {
+          "description": "The credit type.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CustomMachineType": {
+      "description": "Specification of a custom machine type.",
+      "id": "CustomMachineType",
+      "properties": {
+        "machineSeries": {
+          "description": "Required. The machine series. Only certain [machine series](https://cloud.google.com/compute/docs/general-purpose-machines#custom_machine_types) support custom configurations. For example: \"n1\".",
+          "type": "string"
+        },
+        "memorySizeGb": {
+          "description": "Required. Memory size of the VM in GB (2^30 bytes). Must be an increment of 0.25 (256 MB). Each [machine series](https://cloud.google.com/compute/docs/machine-types#machine_type_comparison) has limitations on allowed values for the ratio of memory-to-vCPU count.",
+          "format": "double",
+          "type": "number"
+        },
+        "virtualCpuCount": {
+          "description": "Required. The number of vCPUs. The allowed values depend on the [machine series](https://cloud.google.com/compute/docs/machine-types#machine_type_comparison).",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "DualRegional": {
+      "description": "Area contains dual locations.",
+      "id": "DualRegional",
+      "properties": {
+        "name": {
+          "description": "The [location name](https://cloud.google.com/storage/docs/locations#available-locations) where the data is stored. For example: \"asia1\" for dual region.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "EstimateCostScenarioForBillingAccountRequest": {
+      "description": "Request for EstimateCostScenarioForBillingAccount.",
+      "id": "EstimateCostScenarioForBillingAccountRequest",
+      "properties": {
+        "costScenario": {
+          "$ref": "CostScenario",
+          "description": "The scenario to estimate costs for."
+        }
+      },
+      "type": "object"
+    },
+    "EstimateCostScenarioForBillingAccountResponse": {
+      "description": "Response for EstimateCostScenarioForBillingAccount",
+      "id": "EstimateCostScenarioForBillingAccountResponse",
+      "properties": {
+        "costEstimationResult": {
+          "$ref": "CostEstimationResult",
+          "description": "The result of the cost estimation."
+        }
+      },
+      "type": "object"
+    },
+    "EstimateCostScenarioWithListPriceRequest": {
+      "description": "Request for EstimateCostScenarioWithListPrice.",
+      "id": "EstimateCostScenarioWithListPriceRequest",
+      "properties": {
+        "costScenario": {
+          "$ref": "CostScenario",
+          "description": "The scenario to estimate costs for."
+        }
+      },
+      "type": "object"
+    },
+    "EstimateCostScenarioWithListPriceResponse": {
+      "description": "Response for EstimateCostScenarioWithListPrice",
+      "id": "EstimateCostScenarioWithListPriceResponse",
+      "properties": {
+        "costEstimationResult": {
+          "$ref": "CostEstimationResult",
+          "description": "The result of the cost estimation."
+        }
+      },
+      "type": "object"
+    },
+    "EstimationTimePoint": {
+      "description": "Represents a point in time.",
+      "id": "EstimationTimePoint",
+      "properties": {
+        "estimationTimeFrameOffset": {
+          "description": "The point in time, relative to the start of the time frame covered by the cost estimate.",
+          "format": "google-duration",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GuestAccelerator": {
+      "description": "Specification of a set of guest accelerators attached to a machine.",
+      "id": "GuestAccelerator",
+      "properties": {
+        "acceleratorCount": {
+          "description": "The number of the guest accelerator cards exposed to each instance.",
+          "format": "int64",
+          "type": "string"
+        },
+        "acceleratorType": {
+          "description": "The type of the guest accelerator cards. For example: \"nvidia-tesla-t4\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "InterRegionEgress": {
+      "description": "Egress traffic between two regions.",
+      "id": "InterRegionEgress",
+      "properties": {
+        "destinationRegion": {
+          "description": "Which [region](https://cloud.google.com/compute/docs/regions-zones) the egress data goes to.",
+          "type": "string"
+        },
+        "egressRate": {
+          "$ref": "Usage",
+          "description": "VM to VM egress usage. Expected units such as \"GiBy/s, By/s, etc.\""
+        },
+        "sourceRegion": {
+          "description": "Which [region](https://cloud.google.com/compute/docs/regions-zones) the egress data comes from.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "IntraRegionEgress": {
+      "description": "Egress traffic within the same region. When source region and destination region are in the same zone, using the internal IP addresses, there isn't any egress charge.",
+      "id": "IntraRegionEgress",
+      "properties": {
+        "egressRate": {
+          "$ref": "Usage",
+          "description": "VM to VM egress usage. Expected units such as \"GiBy/s, By/s, etc.\""
+        }
+      },
+      "type": "object"
+    },
+    "MachineType": {
+      "description": "Specification of machine series, memory, and number of vCPUs.",
+      "id": "MachineType",
+      "properties": {
+        "customMachineType": {
+          "$ref": "CustomMachineType"
+        },
+        "predefinedMachineType": {
+          "$ref": "PredefinedMachineType"
+        }
+      },
+      "type": "object"
+    },
+    "Money": {
+      "description": "Represents an amount of money with its currency type.",
+      "id": "Money",
+      "properties": {
+        "currencyCode": {
+          "description": "The three-letter currency code defined in ISO 4217.",
+          "type": "string"
+        },
+        "nanos": {
+          "description": "Number of nano (10^-9) units of the amount. The value must be between -999,999,999 and +999,999,999 inclusive. If `units` is positive, `nanos` must be positive or zero. If `units` is zero, `nanos` can be positive, zero, or negative. If `units` is negative, `nanos` must be negative or zero. For example $-1.75 is represented as `units`=-1 and `nanos`=-750,000,000.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "units": {
+          "description": "The whole units of the amount. For example if `currencyCode` is `\"USD\"`, then 1 unit is one US dollar.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "MultiRegional": {
+      "description": "Area contains multiple locations.",
+      "id": "MultiRegional",
+      "properties": {
+        "name": {
+          "description": "The [location name](https://cloud.google.com/storage/docs/locations#available-locations) where the data is stored. For example: \"us\" for multi-region.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PersistentDisk": {
+      "description": "Specification of a persistent disk attached to a VM.",
+      "id": "PersistentDisk",
+      "properties": {
+        "diskSize": {
+          "$ref": "Usage",
+          "description": "Specifies the size of disk. Must be at least 10 GB."
+        },
+        "diskType": {
+          "description": "The [disk type](https://cloud.google.com/compute/docs/disks#disk-types). For example: \"pd-standard\".",
+          "type": "string"
+        },
+        "provisionedIops": {
+          "$ref": "Usage",
+          "description": "Indicates how many IOPS to provision for the disk for extreme persistent disks. This sets the number of I/O operations per second that the disk can handle. Values must be between 10,000 and 120,000."
+        },
+        "scope": {
+          "description": "The geographic scope of the disk. Defaults to `SCOPE_ZONAL` if not specified.",
+          "enum": [
+            "SCOPE_UNSPECIFIED",
+            "SCOPE_ZONAL",
+            "SCOPE_REGIONAL"
+          ],
+          "enumDescriptions": [
+            "Unspecified.",
+            "The disk exists in a single zone.",
+            "The disk is replicated in a secondary zone within the same region."
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PredefinedMachineType": {
+      "description": "Specification of a predefined machine type.",
+      "id": "PredefinedMachineType",
+      "properties": {
+        "machineType": {
+          "description": "The [machine type](https://cloud.google.com/compute/docs/machine-types). For example: \"n1-standard1\".",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PremiumTierEgressWorkload": {
+      "description": "Specify Premium Tier Internet egress networking.",
+      "id": "PremiumTierEgressWorkload",
+      "properties": {
+        "destinationContinent": {
+          "description": "Where the data is sent to.",
+          "enum": [
+            "DESTINATION_CONTINENT_UNSPECIFIED",
+            "DESTINATION_CONTINENT_ASIA_PACIFIC",
+            "DESTINATION_CONTINENT_AFRICA",
+            "DESTINATION_CONTINENT_NORTH_AMERICA",
+            "DESTINATION_CONTINENT_AUTRALIA",
+            "DESTINATION_CONTINENT_CENTRAL_AMERICA",
+            "DESTINATION_CONTINENT_CHINA",
+            "DESTINATION_CONTINENT_EASTERN_EUROPE",
+            "DESTINATION_CONTINENT_WESTERN_EUROPE",
+            "DESTINATION_CONTINENT_EMEA",
+            "DESTINATION_CONTINENT_INDIA",
+            "DESTINATION_CONTINENT_MIDDLE_EAST",
+            "DESTINATION_CONTINENT_SOUTH_AMERICA"
+          ],
+          "enumDescriptions": [
+            "Not specified.",
+            "Asia Pacific.",
+            "Africa.",
+            "North America.",
+            "Australia.",
+            "Central America.",
+            "China.",
+            "Eastern Europe.",
+            "Western Europe.",
+            "Other regions in Europe, Middle East and Africa.",
+            "India",
+            "Middle East.",
+            "South America."
+          ],
+          "type": "string"
+        },
+        "egressRate": {
+          "$ref": "Usage",
+          "description": "Premium Tier egress usage. Expected units such as \"GiBy/s, By/s, etc.\""
+        },
+        "sourceRegion": {
+          "description": "Which [region](https://cloud.google.com/compute/docs/regions-zones) the egress data comes from.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Price": {
+      "description": "The price of a SKU at a point int time.",
+      "id": "Price",
+      "properties": {
+        "effectiveTime": {
+          "$ref": "EstimationTimePoint",
+          "description": "The timestamp within the estimation time frame when the price was set."
+        },
+        "priceType": {
+          "description": "The type of price. Possible values: \"RATE\"",
+          "type": "string"
+        },
+        "rate": {
+          "$ref": "Rate",
+          "description": "A set of tiered rates."
+        }
+      },
+      "type": "object"
+    },
+    "Rate": {
+      "description": "A SKU price consisting of tiered rates.",
+      "id": "Rate",
+      "properties": {
+        "tiers": {
+          "description": "The service tiers.",
+          "items": {
+            "$ref": "RateTier"
+          },
+          "type": "array"
+        },
+        "unit": {
+          "description": "The SKU's pricing unit. For example, if the tier price is $1 per 1000000 Bytes, then this field will show 'By'. The `start_amount` field in each tier will be in this unit.",
+          "type": "string"
+        },
+        "unitCount": {
+          "description": "The SKU's count for the pricing unit. For example, if the tier price is $1 per 1000000 Bytes, then this column will show 1000000.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "RateTier": {
+      "description": "Pricing details for a service tier.",
+      "id": "RateTier",
+      "properties": {
+        "price": {
+          "$ref": "Money",
+          "description": "The price for this tier."
+        },
+        "startAmount": {
+          "description": "The magnitude of usage in which the tier interval begins. Example: \"From 100 GiBi the price is $1 per byte\" implies `start_amount` = 100",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "Regional": {
+      "description": "Area contains only one location.",
+      "id": "Regional",
+      "properties": {
+        "name": {
+          "description": "The [location name](https://cloud.google.com/storage/docs/locations#available-locations). For example: \"us-central1\" for region.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ScenarioConfig": {
+      "description": "Configuration for a CostScenario. Specifies how costs are calculated.",
+      "id": "ScenarioConfig",
+      "properties": {
+        "estimateDuration": {
+          "description": "Time frame for the estimate. Workloads must specify usage for this duration. Duration must be at least 1 hour (3,600 seconds) and at most 10 years (315,360,000 seconds). The calculations for years and months are based on a 730-hour (2,628,000-second) month. For durations longer than one month (2,628,000 seconds), the duration is rounded up to the next month, so the estimate shows you the costs for full months. For example, a duration of 3,232,800 seconds (roughly 5 weeks) is rounded up to 2 months.",
+          "format": "google-duration",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SegmentCostEstimate": {
+      "description": "Workload cost estimates for a single time segment.",
+      "id": "SegmentCostEstimate",
+      "properties": {
+        "commitmentCostEstimates": {
+          "description": "Estimated costs for each commitment.",
+          "items": {
+            "$ref": "CommitmentCostEstimate"
+          },
+          "type": "array"
+        },
+        "segmentStartTime": {
+          "$ref": "EstimationTimePoint",
+          "description": "Timestamp for the start of the segment."
+        },
+        "segmentTotalCostEstimate": {
+          "$ref": "CostEstimate",
+          "description": "Total estimated costs for the time segment."
+        },
+        "workloadCostEstimates": {
+          "description": "Estimated costs for each workload.",
+          "items": {
+            "$ref": "WorkloadCostEstimate"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Sku": {
+      "description": "Information about SKUs appearing in the cost estimate.",
+      "id": "Sku",
+      "properties": {
+        "displayName": {
+          "description": "The display name for the SKU. Example: A2 Instance Core running in Americas",
+          "type": "string"
+        },
+        "prices": {
+          "description": "A timeline of prices for a SKU in chronological order. Note: The API currently only supports using a constant price for the entire estimation time frame so this list will contain a single value.",
+          "items": {
+            "$ref": "Price"
+          },
+          "type": "array"
+        },
+        "sku": {
+          "description": "The resource name for the SKU. Example: \"services/DA34-426B-A397/skus/AA95-CD31-42FE\"",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "SkuCostEstimate": {
+      "description": "Estimated cost for usage on a SKU.",
+      "id": "SkuCostEstimate",
+      "properties": {
+        "costEstimate": {
+          "$ref": "CostEstimate",
+          "description": "The estimated cost for the usage on this SKU."
+        },
+        "sku": {
+          "description": "The resource name for the SKU. Example: \"services/DA34-426B-A397/skus/AA95-CD31-42FE\" More information about the SKU can be found in the `skus` field of the `CostEstimationResult`.",
+          "type": "string"
+        },
+        "usageAmount": {
+          "description": "The amount of usage on this SKU.",
+          "format": "double",
+          "type": "number"
+        },
+        "usageUnit": {
+          "description": "The unit for the usage on this SKU.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "StandardTierEgressWorkload": {
+      "description": "Specify Standard Tier Internet egress networking.",
+      "id": "StandardTierEgressWorkload",
+      "properties": {
+        "egressRate": {
+          "$ref": "Usage",
+          "description": "Standard tier egress usage. Expected units such as \"GiBy/s, By/s, etc.\""
+        },
+        "sourceRegion": {
+          "description": "Which [region](https://cloud.google.com/compute/docs/regions-zones) the egress data comes from.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Usage": {
+      "description": "An amount of usage over a time frame.",
+      "id": "Usage",
+      "properties": {
+        "usageRateTimeline": {
+          "$ref": "UsageRateTimeline",
+          "description": "A timeline of usage rates over the estimate interval."
+        }
+      },
+      "type": "object"
+    },
+    "UsageRateTimeline": {
+      "description": "A timeline of usage rates. Consists of a series of entries, each of which specifies a constant rate of usage during a time interval. Each entry contains an effective time. The usage rate is in effect from that time until the effective time of the subsequent entry, or, for the last entry, for the remaining portion of estimation time frame. Effective times are specified as an offset into the estimation time frame. Usage is considered to be zero until the `effective_time` of the first entry. All subsequent entries must have an effective time greater than the previous entry and less than the estimate time frame. The effective time on all entries must be an integer number of hours.",
+      "id": "UsageRateTimeline",
+      "properties": {
+        "unit": {
+          "description": "The unit for the usage rate in each timeline entry. If you provide an incorrect unit for an instance, the correct unit is provided in the error message. The supported units are a subset of [The Unified Code for Units of Measure](https://ucum.org/ucum.html) standard: * **Time units (TIME-UNIT)** * `s` second * `min` minute * `h` hour * `d` day * `wk` week * `mo` month * `yr` year * `ms` millisecond * `us` microsecond * `ns` nanosecond * **Basic storage units (BASIC-STORAGE-UNIT)** * `bit` bit * `By` byte * **Count units (COUNT-UNIT)** * `count` count * **Prefixes (PREFIX)** * `k` kilo (10^3) * `M` mega (10^6) * `G` giga (10^9) * `T` tera (10^12) * `P` peta (10^15) * `Ki` kibi (2^10) * `Mi` mebi (2^20) * `Gi` gibi (2^30) * `Ti` tebi (2^40) * `Pi` pebi (2^50) **Grammar** The grammar also includes these connectors: * `/` division or ratio (as an infix operator). For example: `kBy/{email}` or `MiBy/10ms`. * `.` multiplication or composition (as an infix operator). For example: `GBy.d` or `k{watt}.h`. The grammar for a unit is as follows: ``` Expression = Component { \".\" Component } { \"/\" Component } ; Component = ( [ PREFIX ] UNIT | \"%\" ) [ Annotation ] | Annotation | \"1\" ; UNIT = TIME-UNIT | STORAGE-UNIT | DATA-UNIT | COUNT-UNIT Annotation = \"{\" NAME \"}\" ; ``` Examples: * Request per second: `1/s` or `{requests}/s` * GibiBytes: `GiBy` * GibiBytes * seconds: `GiBy.s`",
+          "type": "string"
+        },
+        "usageRateTimelineEntries": {
+          "description": "The timeline entries. Each entry has a start time and usage rate. The start time specifies the effective time of the usage rate. The entries must be sorted by start time in an increasing order.",
+          "items": {
+            "$ref": "UsageRateTimelineEntry"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "UsageRateTimelineEntry": {
+      "description": "A usage rate timeline entry. Each entry specifies a constant usage rate during a time interval.",
+      "id": "UsageRateTimelineEntry",
+      "properties": {
+        "effectiveTime": {
+          "$ref": "EstimationTimePoint",
+          "description": "The effective time for this entry. The usage rate is in effect starting at this time until the effective time of the subsequent entry in the timeline. The last entry defines the usage rate until the end of the `Usage` time frame. Must correspond to an integer number of hours."
+        },
+        "usageRate": {
+          "description": "The usage rate.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "VlanAttachment": {
+      "description": "VLAN attachment for cloud interconnect.",
+      "id": "VlanAttachment",
+      "properties": {
+        "bandwidth": {
+          "description": "Capacities in the [pricing table](https://cloud.google.com/vpc/network-pricing#interconnect-pricing) Examples of capacity are: 50/100/200/300/400/500-Mbps, 1/2/5/10/20/50-Gbps.",
+          "enum": [
+            "BANDWIDTH_UNSPECIFIED",
+            "BANDWIDTH_BPS_50M",
+            "BANDWIDTH_BPS_100M",
+            "BANDWIDTH_BPS_200M",
+            "BANDWIDTH_BPS_300M",
+            "BANDWIDTH_BPS_400M",
+            "BANDWIDTH_BPS_500M",
+            "BANDWIDTH_BPS_1G",
+            "BANDWIDTH_BPS_2G",
+            "BANDWIDTH_BPS_5G",
+            "BANDWIDTH_BPS_10G",
+            "BANDWIDTH_BPS_20G",
+            "BANDWIDTH_BPS_50G"
+          ],
+          "enumDescriptions": [
+            "Unspecified.",
+            "50 Mbit/s",
+            "100 Mbit/s",
+            "200 Mbit/s",
+            "300 Mbit/s",
+            "400 Mbit/s",
+            "500 Mbit/s",
+            "1 Gbit/s",
+            "2 Gbit/s",
+            "5 Gbit/s",
+            "10 Gbit/s",
+            "20 Gbit/s",
+            "50 Gbit/s"
+          ],
+          "type": "string"
+        },
+        "vlanCount": {
+          "$ref": "Usage",
+          "description": "VLAN usage. This is specified as a unitless quantity which indicates the number of VLAN attachment used in interconnect."
+        }
+      },
+      "type": "object"
+    },
+    "VmResourceBasedCud": {
+      "description": "Specifies a resource-based committed use discount (CUD).",
+      "id": "VmResourceBasedCud",
+      "properties": {
+        "guestAccelerator": {
+          "$ref": "GuestAccelerator",
+          "description": "Guest accelerator, known as GPU."
+        },
+        "machineSeries": {
+          "description": "The machine series for CUD. For example: \"n1\" for general purpose N1 machine type commitments. \"n2\" for general purpose N2 machine type commitments. \"e2\" for general purpose E2 machine type commitments. \"n2d\" for general purpose N2D machine type commitments. \"t2d\" for general purpose T2D machine type commitments. \"c2\"/\"c2d\" for compute-optimized commitments. \"m1\"/\"m2\" for the memory-optimized commitments. \"a2' for the accelerator-optimized commitments.",
+          "type": "string"
+        },
+        "memorySizeGb": {
+          "description": "Memory size of the VM in GB (2^30 bytes). Must be an increment of 0.25 (256 MB).",
+          "format": "double",
+          "type": "number"
+        },
+        "plan": {
+          "description": "Commitment usage plan.",
+          "enum": [
+            "COMMITMENT_PLAN_UNSPECIFIED",
+            "TWELVE_MONTH",
+            "THIRTY_SIX_MONTH"
+          ],
+          "enumDescriptions": [
+            "Not specified commitment plan.",
+            "1 year commitment.",
+            "3 years commitment."
+          ],
+          "type": "string"
+        },
+        "region": {
+          "description": "The region where the VM runs. For example: \"us-central1\"",
+          "type": "string"
+        },
+        "virtualCpuCount": {
+          "description": "The number of vCPUs. The number of vCPUs must be an integer of 0 or more and can be even or odd.",
+          "format": "int64",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "VmToVmEgressWorkload": {
+      "description": "Specify VM to VM egress.",
+      "id": "VmToVmEgressWorkload",
+      "properties": {
+        "interRegionEgress": {
+          "$ref": "InterRegionEgress"
+        },
+        "intraRegionEgress": {
+          "$ref": "IntraRegionEgress"
+        }
+      },
+      "type": "object"
+    },
+    "Workload": {
+      "description": "Specifies usage on a single Google Cloud product over a time frame. Each Google Cloud product has its own message, containing specific product configuration parameters of the product usage amounts along each dimension in which the product is billed.",
+      "id": "Workload",
+      "properties": {
+        "cloudCdnEgressWorkload": {
+          "$ref": "CloudCdnEgressWorkload",
+          "description": "Usage on Google Cloud CDN Egress."
+        },
+        "cloudCdnWorkload": {
+          "$ref": "CloudCdnWorkload",
+          "description": "Usage on Google Cloud CDN."
+        },
+        "cloudInterconnectEgressWorkload": {
+          "$ref": "CloudInterconnectEgressWorkload",
+          "description": "Usage on Google Cloud Interconnect Egress."
+        },
+        "cloudInterconnectWorkload": {
+          "$ref": "CloudInterconnectWorkload",
+          "description": "Usage on Google Cloud Interconnect."
+        },
+        "cloudStorageEgressWorkload": {
+          "$ref": "CloudStorageEgressWorkload",
+          "description": "Usage on a cloud storage egress."
+        },
+        "cloudStorageWorkload": {
+          "$ref": "CloudStorageWorkload",
+          "description": "Usage on Google Cloud Storage."
+        },
+        "computeVmWorkload": {
+          "$ref": "ComputeVmWorkload",
+          "description": "Usage of a Google Compute Engine Virtual Machine."
+        },
+        "name": {
+          "description": "Required. A name for this workload. All workloads in a `CostScenario` must have a unique `name`. Each `name` may be at most 128 characters long.",
+          "type": "string"
+        },
+        "premiumTierEgressWorkload": {
+          "$ref": "PremiumTierEgressWorkload",
+          "description": "Usage on Premium Tier Internet Egress."
+        },
+        "standardTierEgressWorkload": {
+          "$ref": "StandardTierEgressWorkload",
+          "description": "Usage on Standard Tier Internet Egress."
+        },
+        "vmToVmEgressWorkload": {
+          "$ref": "VmToVmEgressWorkload",
+          "description": "Usage on Vm to Vm Egress."
+        }
+      },
+      "type": "object"
+    },
+    "WorkloadCostEstimate": {
+      "description": "Estimated cost for a workload.",
+      "id": "WorkloadCostEstimate",
+      "properties": {
+        "name": {
+          "description": "The name of the workload, as specified in the `CostScenario`.",
+          "type": "string"
+        },
+        "skuCostEstimates": {
+          "description": "Estimated costs for each SKU in the workload.",
+          "items": {
+            "$ref": "SkuCostEstimate"
+          },
+          "type": "array"
+        },
+        "workloadTotalCostEstimate": {
+          "$ref": "CostEstimate",
+          "description": "Total estimated costs for the workload."
+        }
+      },
+      "type": "object"
+    }
+  },
+  "servicePath": "",
+  "title": "Cloud Billing API",
+  "version": "v1beta",
+  "version_module": true
+}

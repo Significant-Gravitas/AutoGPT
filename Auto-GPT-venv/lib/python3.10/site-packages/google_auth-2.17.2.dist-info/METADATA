@@ -1,0 +1,125 @@
+Metadata-Version: 2.1
+Name: google-auth
+Version: 2.17.2
+Summary: Google Authentication Library
+Home-page: https://github.com/googleapis/google-auth-library-python
+Author: Google Cloud Platform
+Author-email: googleapis-packages@google.com
+License: Apache 2.0
+Keywords: google auth oauth client
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: POSIX
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: OS Independent
+Classifier: Topic :: Internet :: WWW/HTTP
+Requires-Python: >=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*
+License-File: LICENSE
+Requires-Dist: cachetools (<6.0,>=2.0.0)
+Requires-Dist: pyasn1-modules (>=0.2.1)
+Requires-Dist: six (>=1.9.0)
+Requires-Dist: enum34 (>=1.1.10) ; python_version < "3.4"
+Requires-Dist: rsa (<4.6) ; python_version < "3.6"
+Requires-Dist: rsa (<5,>=3.1.4) ; python_version >= "3.6"
+Provides-Extra: aiohttp
+Requires-Dist: requests (<3.0.0dev,>=2.20.0) ; extra == 'aiohttp'
+Requires-Dist: aiohttp (<4.0.0dev,>=3.6.2) ; (python_version >= "3.6") and extra == 'aiohttp'
+Provides-Extra: enterprise_cert
+Requires-Dist: cryptography (==36.0.2) ; extra == 'enterprise_cert'
+Requires-Dist: pyopenssl (==22.0.0) ; extra == 'enterprise_cert'
+Provides-Extra: pyopenssl
+Requires-Dist: pyopenssl (>=20.0.0) ; extra == 'pyopenssl'
+Requires-Dist: cryptography (>=38.0.3) ; extra == 'pyopenssl'
+Provides-Extra: reauth
+Requires-Dist: pyu2f (>=0.1.5) ; extra == 'reauth'
+Provides-Extra: requests
+Requires-Dist: requests (<3.0.0dev,>=2.20.0) ; extra == 'requests'
+
+Google Auth Python Library
+==========================
+
+|pypi|
+
+This library simplifies using Google's various server-to-server authentication
+mechanisms to access Google APIs.
+
+.. |pypi| image:: https://img.shields.io/pypi/v/google-auth.svg
+   :target: https://pypi.python.org/pypi/google-auth
+
+Installing
+----------
+
+You can install using `pip`_::
+
+    $ pip install google-auth
+
+.. _pip: https://pip.pypa.io/en/stable/
+
+For more information on setting up your Python development environment, please refer to `Python Development Environment Setup Guide`_ for Google Cloud Platform.
+
+.. _`Python Development Environment Setup Guide`: https://cloud.google.com/python/setup
+
+Extras
+------
+
+google-auth has few extras that you can install. For example::
+
+    $ pip install google-auth[pyopenssl]
+
+Note that the extras pyopenssl and enterprise_cert should not be used together because they use conflicting versions of `cryptography`_.
+
+.. _`cryptography`: https://cryptography.io/en/latest/
+
+Supported Python Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^
+Python >= 3.6
+
+Unsupported Python Versions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+- Python == 2.7:  The last version of this library with support for Python 2.7
+  was `google.auth == 1.34.0`.
+
+- Python 3.5:   The last version of this library with support for Python 3.5
+  was `google.auth == 1.23.0`.
+
+Documentation
+-------------
+
+Google Auth Python Library has usage and reference documentation at https://googleapis.dev/python/google-auth/latest/index.html.
+
+Current Maintainers
+-------------------
+- googleapis-auth@google.com
+
+Authors
+-------
+
+- `@theacodes <https://github.com/theacodes>`_ (Thea Flowers)
+- `@dhermes <https://github.com/dhermes>`_ (Danny Hermes)
+- `@lukesneeringer <https://github.com/lukesneeringer>`_ (Luke Sneeringer)
+- `@busunkim96 <https://github.com/busunkim96>`_ (Bu Sun Kim)
+
+Contributing
+------------
+
+Contributions to this library are always welcome and highly encouraged.
+
+See `CONTRIBUTING.rst`_ for more information on how to get started.
+
+.. _CONTRIBUTING.rst: https://github.com/googleapis/google-auth-library-python/blob/main/CONTRIBUTING.rst
+
+License
+-------
+
+Apache 2.0 - See `the LICENSE`_ for more information.
+
+.. _the LICENSE: https://github.com/googleapis/google-auth-library-python/blob/main/LICENSE

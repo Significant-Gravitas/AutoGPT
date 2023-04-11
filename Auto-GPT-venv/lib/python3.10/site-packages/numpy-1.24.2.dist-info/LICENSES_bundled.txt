@@ -1,0 +1,22 @@
+The NumPy repository and source distributions bundle several libraries that are
+compatibly licensed.  We list these here.
+
+Name: lapack-lite
+Files: numpy/linalg/lapack_lite/*
+License: BSD-3-Clause
+  For details, see numpy/linalg/lapack_lite/LICENSE.txt
+
+Name: tempita
+Files: tools/npy_tempita/*
+License: MIT
+  For details, see tools/npy_tempita/license.txt
+
+Name: dragon4
+Files: numpy/core/src/multiarray/dragon4.c
+License: MIT
+  For license text, see numpy/core/src/multiarray/dragon4.c
+
+Name: libdivide
+Files: numpy/core/include/numpy/libdivide/*
+License: Zlib
+  For license text, see numpy/core/include/numpy/libdivide/LICENSE.txt
