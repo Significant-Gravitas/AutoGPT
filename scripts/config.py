@@ -41,9 +41,6 @@ class Config(metaclass=Singleton):
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
-        self.chroma_db_directory = os.getenv("CHROMA-DB-DIRECTORY")
-        self.chroma_server_host = os.getenv("CHROMA-SERVER-HOST")
-        self.chroma_server_port = os.getenv("CHROMA-SERVER-PORT")
 
         self.chroma_db_directory = os.getenv("CHROMA-DB-DIRECTORY")
         self.chroma_server_host = os.getenv("CHROMA-SERVER-HOST")
