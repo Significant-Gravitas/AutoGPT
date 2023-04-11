@@ -185,7 +185,6 @@ Pinecone enables the storage of vast amounts of vector-based memory, allowing fo
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
 
-
 ### Setting up environment variables
 
 Simply set them in the `.env` file. 
@@ -193,7 +192,6 @@ Simply set them in the `.env` file.
 Alternatively, you can set them from the command line (advanced):
 
 For Windows Users:
-
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
 setx PINECONE_ENV "Your pinecone region" # something like: us-east4-gcp
