@@ -93,4 +93,3 @@ class AIConfig:
 
         full_prompt += f"\n\n{get_prompt()}"
         return full_prompt
-
