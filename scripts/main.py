@@ -9,8 +9,6 @@ from colorama import Fore, Style
 from spinner import Spinner
 import time
 import speak
-from enum import Enum, auto
-import sys
 from config import Config
 from json_parser import fix_and_parse_json
 from ai_config import AIConfig
@@ -172,7 +170,7 @@ def load_variables(config_file="config.yaml"):
         documents = yaml.dump(config, file)
 
     prompt = data.load_prompt()
-    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."""
 
     # Construct full prompt
     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
@@ -290,17 +288,10 @@ def parse_arguments():
         print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_speak_mode(True)
 
-    if args.debug:
-        print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_debug_mode(True)
-
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
-    if args.debug:
-        print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_debug_mode(True)
 
 
 # TODO: fill in llm values here
@@ -417,4 +408,3 @@ while True:
             chat.create_chat_message(
                 "system", "Unable to execute command"))
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
-
