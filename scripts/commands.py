@@ -13,6 +13,8 @@ from image_gen import generate_image
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+# Add this import for Bitcoin functionality
+from bitcoin_utils import create_wallet, get_balance, send_bitcoin
 
 cfg = Config()
 
@@ -109,6 +111,13 @@ def execute_command(command_name, arguments):
             return "No action performed."
         elif command_name == "task_complete":
             shutdown()
+    # Add Bitcoin functionality
+        elif command_name == "create_wallet":
+            return create_wallet()
+        elif command_name == "get_balance":
+            return get_balance(arguments["address"])
+        elif command_name == "send_bitcoin":
+            return send_bitcoin(arguments["sender_private_key"], arguments["recipient_address"], arguments["amount"])
         else:
             return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for availabe commands and only respond in the specified JSON format."
     # All errors, return "Error: + error message"
