@@ -10,6 +10,7 @@ from memory.base import MemoryProviderSingleton, get_ada_embedding
 
 
 SCHEMA = [
+    TextField("namespace"),
     TextField("data"),
     VectorField(
         "embedding",
@@ -50,17 +51,14 @@ class RedisMemory(MemoryProviderSingleton):
             self.redis.ft(f"{cfg.memory_index}").create_index(
                 fields=SCHEMA,
                 definition=IndexDefinition(
-                    prefix=[f"{cfg.memory_index}:"],
+                    prefix=["namespace:"],
                     index_type=IndexType.HASH
-                    )
                 )
+            )
         except Exception as e:
             print("Error creating Redis search index: ", e)
-        existing_vec_num = self.redis.get(f'{cfg.memory_index}-vec_num')
-        self.vec_num = int(existing_vec_num.decode('utf-8')) if\
-            existing_vec_num else 0
 
-    def add(self, data: str) -> str:
+    def add(self, data: str, namespace="default") -> str:
         """
         Adds a data point to the memory.
 
@@ -74,19 +72,25 @@ class RedisMemory(MemoryProviderSingleton):
         vector = get_ada_embedding(data)
         vector = np.array(vector).astype(np.float32).tobytes()
         data_dict = {
+            "namespace": namespace,
             b"data": data,
             "embedding": vector
         }
+
+        base_key = f"namespace:{namespace}"
+        vec_num = self.redis.get(f"{base_key}-vec_num")
+        vec_num = int(vec_num.decode('utf-8')) + 1 if vec_num else 0
+        doc_id = f"{base_key}:{vec_num}"
+
         pipe = self.redis.pipeline()
-        pipe.hset(f"{self.cfg.memory_index}:{self.vec_num}", mapping=data_dict)
-        _text = f"Inserting data into memory at index: {self.vec_num}:\n"\
+        pipe.hset(doc_id, mapping=data_dict)
+        _text = f"Inserting data into memory at index: {vec_num}:\n"\
             f"data: {data}"
-        self.vec_num += 1
-        pipe.set(f'{self.cfg.memory_index}-vec_num', self.vec_num)
+        pipe.set(f'{base_key}-vec_num', vec_num)
         pipe.execute()
         return _text
 
-    def get(self, data: str) -> Optional[List[Any]]:
+    def get(self, data: str, namespace="default") -> Optional[List[Any]]:
         """
         Gets the data from the memory that is most relevant to the given data.
 
@@ -95,7 +99,7 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: The most relevant data.
         """
-        return self.get_relevant(data, 1)
+        return self.get_relevant(data, 1, namespace=namespace)
 
     def clear(self) -> str:
         """
@@ -109,7 +113,8 @@ class RedisMemory(MemoryProviderSingleton):
     def get_relevant(
         self,
         data: str,
-        num_relevant: int = 5
+        num_relevant: int = 5,
+        namespace="default"
     ) -> Optional[List[Any]]:
         """
         Returns all the data in the memory that is relevant to the given data.
@@ -120,7 +125,7 @@ class RedisMemory(MemoryProviderSingleton):
         Returns: A list of the most relevant data.
         """
         query_embedding = get_ada_embedding(data)
-        base_query = f"*=>[KNN {num_relevant} @embedding $vector AS vector_score]"
+        base_query = f"(@namespace:{namespace})=>[KNN {num_relevant} @embedding $vector AS vector_score]"
         query = Query(base_query).return_fields(
             "data",
             "vector_score"

@@ -72,8 +72,9 @@ def chat_with_ai(
                 
             send_token_limit = token_limit - 1000
 
+            namespace = chat_id if chat_id else "default"
             relevant_memory = permanent_memory.get_relevant(
-                str(full_message_history[-5:]), 10, namespace=chat_id)
+                str(full_message_history[-5:]), 10, namespace=namespace)
 
             if cfg.debug:
                 print('Memory Stats: ', permanent_memory.get_stats())

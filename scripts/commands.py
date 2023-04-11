@@ -56,6 +56,7 @@ def get_command(response):
 def execute_command(command_name, arguments, chat_id=None):
     """Execute the command and return the result"""
     memory = get_memory(cfg)
+    namespace = chat_id if chat_id else "default"
 
     try:
         if command_name == "google":
@@ -67,7 +68,7 @@ def execute_command(command_name, arguments, chat_id=None):
             else:
                 return google_search(arguments["input"])
         elif command_name == "memory_add":
-            return memory.add(arguments["string"], namespace=chat_id)
+            return memory.add(arguments["string"], namespace=namespace)
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"],

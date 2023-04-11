@@ -21,7 +21,7 @@ class PineconeMemory(MemoryProviderSingleton):
             pinecone.create_index(table_name, dimension=dimension, metric=metric, pod_type=pod_type)
         self.index = pinecone.Index(table_name)
 
-    def add(self, data, namespace=None):
+    def add(self, data, namespace="default"):
         vector = get_ada_embedding(data)
         # no metadata here. We may wish to change that long term.
         resp = self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})], namespace=namespace)
@@ -29,14 +29,14 @@ class PineconeMemory(MemoryProviderSingleton):
         self.vec_num += 1
         return _text
 
-    def get(self, data, namespace=None):
+    def get(self, data, namespace="default"):
         return self.get_relevant(data, 1, namespace=namespace)
 
     def clear(self):
         self.index.delete(deleteAll=True)
         return "Obliviated"
 
-    def get_relevant(self, data, num_relevant=5, namespace=None):
+    def get_relevant(self, data, num_relevant=5, namespace="default"):
         """
         Returns all the data in the memory that is relevant to the given data.
         :param data: The data to compare to.
