@@ -25,6 +25,7 @@ import {
   RightTasks,
   SIconButton,
 } from "./MainPage.styled"
+import useAutoGPTAPI from "@/hooks/useAutoGPTAPI"
 
 const MainPage = () => {
   const { aiHistoryArray, aiHistory } = useAiHistory()
@@ -32,30 +33,25 @@ const MainPage = () => {
   const { agentsArray } = useAgents()
   const [playing, setPlaying] = useState(false)
   const commentsEndRef = useRef(null)
-  const [output, setOutput] = useState<IAnswer[]>([])
   const navigate = useNavigate()
 
-  const {} = useAutoGPTAPI()
-
-  useAnswerInterceptor(output)
+  const { fetchData } = useAutoGPTAPI()
 
   useEffect(() => {
     scrollToBottom()
-  }, [output])
+  }, [aiHistoryArray])
 
   useEffect(() => {
     const interval = setInterval(async () => {
       if (playing) {
-        const data = await AutoGPTAPI.fetchData()
-        if (data.length === 0) return
-        setOutput([...output, ...data])
+        fetchData()
       }
     }, 500)
     return () => clearInterval(interval)
-  }, [playing, output])
+  }, [playing])
 
   if (!id) {
-    navigate('/')
+    navigate("/")
     return null
   }
   const currentAi = aiHistory[id]
@@ -66,8 +62,6 @@ const MainPage = () => {
     // @ts-ignore
     commentsEndRef.current.scrollIntoView({ behavior: "smooth" })
   }
-
-
 
   return (
     <Container>

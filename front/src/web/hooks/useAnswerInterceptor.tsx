@@ -7,7 +7,7 @@ import useAgents from "./data/useAgents"
 
 const AGENT_CREATED = "COMMAND = start_agent  ARGUMENTS = "
 const DELETE_AGENT = "COMMAND = delete_agent  ARGUMENTS = "
-const useAnswerInterceptor = (data: IAnswer[]) => {
+const useAnswerInterceptor = () => {
   const dispatch = useDispatch()
   const { agents, agentsArray } = useAgents()
 
@@ -34,10 +34,9 @@ const useAnswerInterceptor = (data: IAnswer[]) => {
     })
   }
 
-  useEffect(() => {
-    interceptAnswer(data)
-  }, [data, agents])
-
+  return {
+    interceptAnswer,
+  }
 }
 
 export default useAnswerInterceptor

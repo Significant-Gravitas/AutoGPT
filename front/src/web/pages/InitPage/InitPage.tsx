@@ -1,7 +1,7 @@
 import { yupResolver } from "@hookform/resolvers/yup"
 import { Add, Close, Info } from "@mui/icons-material"
 import { AlertTitle } from "@mui/material"
-import { FieldValues, FormProvider, useForm } from "react-hook-form"
+import { FieldValues, FormProvider, useForm, useWatch } from "react-hook-form"
 import { useNavigate } from "react-router"
 import AutoGPTAPI from "../../api/AutoGPTAPI"
 import H2 from "../../components/atom/H2"
@@ -14,10 +14,10 @@ import FTextField from "../../components/molecules/forms/FTextField"
 import Flex from "../../style/Flex"
 import SButton from "../../style/SButton"
 import { schema } from "./InitPage.schema"
-import { ColoredIconButton, Container, Modal } from "./InitPage.styled"
+import { ColoredIconButton, Container, Modal, OnOff } from "./InitPage.styled"
 import { addAiHistory } from "../../redux/data/dataReducer"
 import { useDispatch } from "react-redux"
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidv4 } from "uuid"
 const InitPage = () => {
   const navigate = useNavigate()
   const dispatch = useDispatch()
@@ -29,17 +29,26 @@ const InitPage = () => {
 
   const onSubmit = (data: FieldValues) => {
     AutoGPTAPI.createInitData(data)
-    dispatch(addAiHistory({
-      id: uuidv4(),
-      agents: [],
-      name: data.ai_name,
-      role: data.ai_role,
-      goals: data.goals,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }))
-    navigate(`/main/${data.id}`)
+    const newId = uuidv4()
+    dispatch(
+      addAiHistory({
+        id: newId,
+        agents: [],
+        name: data.ai_name,
+        role: data.ai_role,
+        goals: data.goals,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        answers: [],
+      }),
+    )
+    navigate(`/main/${newId}`)
   }
+
+  const continuous = useWatch({
+    control: methods.control,
+    name: "continuous",
+  })
 
   return (
     <Container>
@@ -64,14 +73,19 @@ const InitPage = () => {
               placeholder="What is your AI for?"
             />
             <Flex direction="column" gap={0.5}>
-              <FSwitch name="continuous" label="Continuous mode" />
-              <SAlert $color="yellow" $textColor="grey100" severity="info">
-                <AlertTitle>Continuous mode</AlertTitle>
-                <p>
-                  In continuous mode, your AI will be trained every time you add
-                  a new goal.
-                </p>
-              </SAlert>
+              <Flex gap={0.5} align="center">
+                <FSwitch name="continuous" label="Continuous mode :" />
+                <OnOff>{continuous ? "ON" : "OFF"}</OnOff>
+              </Flex>
+              {continuous && (
+                <SAlert $color="yellow" $textColor="grey100" severity="info">
+                  <AlertTitle>Continuous mode</AlertTitle>
+                  <p>
+                    In continuous mode, your AI will be trained every time you
+                    add a new goal.
+                  </p>
+                </SAlert>
+              )}
             </Flex>
 
             <Flex direction="column" gap={0.5}>

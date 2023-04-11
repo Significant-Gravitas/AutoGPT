@@ -20,3 +20,8 @@ export const Modal = styled.div`
   max-width: 800px;
   width: 100%;
 `
+export const OnOff = styled.div`
+  color: var(--grey100);
+  font-size: 1rem;
+  font-weight: 500;
+`

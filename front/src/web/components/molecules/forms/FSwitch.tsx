@@ -1,20 +1,22 @@
 import Flex from "@/style/Flex"
 import { Switch } from "@mui/material"
 import { useController, useFormContext } from "react-hook-form"
-import styled from "styled-components"
+import styled, { css } from "styled-components"
 import Label from "../../atom/Label"
 
-export const StyledSwitch = styled(Switch) <{ $active?: boolean }>`
+export const StyledSwitch = styled(Switch)<{ $active?: boolean }>`
   & * {
     color: var(--yellow) !important;
   }
   & .MuiSwitch-track {
     background-color: var(--yellow100) !important;
+    opacity: 0.2 !important;
     ${({ $active }) =>
-    $active &&
-    `
-      background-color: var(--yellow) !important;
-    `}
+      $active &&
+      css`
+        opacity: 0.7 !important;
+        background-color: var(--yellow) !important;
+      `}
 `
 
 interface IFSwitchProps {
@@ -34,7 +36,7 @@ const FSwitch = ({ name, label }: IFSwitchProps) => {
     defaultValue: "",
   })
   return (
-    <Flex direction="column" gap={0.5}>
+    <Flex gap={0.5} align="center">
       <Label>{label ?? name}</Label>
       <StyledSwitch
         disableRipple
