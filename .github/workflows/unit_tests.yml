@@ -31,7 +31,6 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run unittest tests with coverage
-      continue-on-error: true
       run: |
         coverage run --source=scripts -m unittest discover tests
 
