@@ -306,6 +306,7 @@ def delete_agent(key):
 
 
 def arxiv_search(search_query, max_results=5):
+    """This function searches the ArXiv API for a given query and returns the results as a JSON-formatted string."""
     base_url = 'http://export.arxiv.org/api/query?'
     query = f'search_query=all:{search_query}&start=0&max_results={max_results}'
     url = base_url + query
