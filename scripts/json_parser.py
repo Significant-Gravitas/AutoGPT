@@ -48,10 +48,12 @@ def fix_and_parse_json(
     # So let's try to find the first brace and then parse the rest
     #  of the string
     try:
-        brace_index = json_str.index("{")
-        json_str = json_str[brace_index:]
-        last_brace_index = json_str.rindex("}")
-        json_str = json_str[:last_brace_index+1]
+        brace_index = json_str.find("{")
+        if brace_index <= 0:
+            tmp_json_str = json_str[brace_index:]
+            last_brace_index = tmp_json_str.rindex("}")
+            if brace_index >= 0 and last_brace_index >= brace_index:
+                json_str = tmp_json_str[:last_brace_index+1]
         return json.loads(json_str)
     except json.JSONDecodeError as e:  # noqa: F841
         if try_to_fix_with_gpt:

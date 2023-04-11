@@ -25,6 +25,7 @@ COMMANDS:
 19. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 20. Generate Image: "generate_image", args: "prompt": "<prompt>"
 21. Do Nothing: "do_nothing", args: ""
+22. Execute Python Code: "execute_python_code", args: "code": "<full_code_string>"
 
 RESOURCES:
 
@@ -40,7 +41,8 @@ PERFORMANCE EVALUATION:
 3. Reflect on past decisions and strategies to refine your approach.
 4. Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps.
 
-You should only respond in JSON format as described below
+CRITICAL! You may only respond in JSON format as described below. Go carefully and step by step. 
+Do not output any additional instructions outside of the JSON format. Under no circumstances should your response deviate from valid JSON format.
 
 RESPONSE FORMAT:
 {
@@ -60,4 +62,4 @@ RESPONSE FORMAT:
     }
 }
 
-Ensure the response can be parsed by Python json.loads
+Be absolutely sure the response can be parsed by Python json.loads.  

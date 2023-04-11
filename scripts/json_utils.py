@@ -122,6 +122,11 @@ def correct_json(json_str: str) -> str:
                 if cfg.debug_mode:
                     print('json loads error - add quotes', e)
                 error_message = str(e)
-        if balanced_str := balance_braces(json_str):
-            return balanced_str
+        try:
+            if balanced_str := balance_braces(json_str):
+                return balanced_str
+        except json.JSONDecodeError as e:
+            if cfg.debug:
+                print('json loads error - balance_braces', e)
+            error_message = str(e)
     return json_str
