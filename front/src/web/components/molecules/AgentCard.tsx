@@ -1,10 +1,10 @@
+import Flex from "@/style/Flex"
+import IAgent from "@/types/data/IAgent"
 import { ArrowForwardIos, SmartToy } from "@mui/icons-material"
-import Flex from "../../../style/Flex"
-import { Card } from "../atom/Card"
-import H3 from "../atom/H3"
-import Details from "../atom/Details"
-import IAgent from "../../../types/data/IAgent"
 import styled from "styled-components"
+import { Card } from "../atom/Card"
+import Details from "../atom/Details"
+import H3 from "../atom/H3"
 
 // console like looking
 const Prompt = styled.div`

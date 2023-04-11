@@ -1,6 +1,6 @@
+import colored from "@/style/colored"
 import { Alert } from "@mui/material"
 import styled from "styled-components"
-import colored from "../../../style/colored"
 
 const SAlert = colored(styled(Alert)`
   background-color: hsla(

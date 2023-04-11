@@ -1,26 +1,26 @@
+import { yupResolver } from "@hookform/resolvers/yup"
 import { Add, Close, Info } from "@mui/icons-material"
 import { AlertTitle } from "@mui/material"
-import React from "react"
-import { useNavigate } from "react-router"
-import Flex from "../../../style/Flex"
-import SButton from "../../../style/SButton"
-import H2 from "../../UI/atom/H2"
-import STextField from "../../UI/atom/STextField"
-import SmallText from "../../UI/atom/SmallText"
-import { yupResolver } from "@hookform/resolvers/yup"
-import Spacer from "../../UI/atom/Spacer"
-import SAlert from "../../UI/molecules/SAlert"
-import { ColoredIconButton, Container, Modal } from "./InitPage.styled"
 import { FieldValues, FormProvider, useForm } from "react-hook-form"
+import { useNavigate } from "react-router"
+import AutoGPTAPI from "../../api/AutoGPTAPI"
+import H2 from "../../components/atom/H2"
+import Label from "../../components/atom/Label"
+import SmallText from "../../components/atom/SmallText"
+import Spacer from "../../components/atom/Spacer"
+import SAlert from "../../components/molecules/SAlert"
+import FSwitch from "../../components/molecules/forms/FSwitch"
+import FTextField from "../../components/molecules/forms/FTextField"
+import Flex from "../../style/Flex"
+import SButton from "../../style/SButton"
 import { schema } from "./InitPage.schema"
-import AutoGPTAPI from "../../../api/AutoGPTAPI"
-import FTextField from "../../UI/molecules/forms/FTextField"
-import FSwitch from "../../UI/molecules/forms/FSwitch"
-import Label from "../../UI/atom/Label"
-
+import { ColoredIconButton, Container, Modal } from "./InitPage.styled"
+import { addAiHistory } from "../../redux/data/dataReducer"
+import { useDispatch } from "react-redux"
+import { v4 as uuidv4 } from 'uuid'
 const InitPage = () => {
   const navigate = useNavigate()
-
+  const dispatch = useDispatch()
   const methods = useForm({
     mode: "onBlur",
     defaultValues: schema.getDefault(),
@@ -29,7 +29,16 @@ const InitPage = () => {
 
   const onSubmit = (data: FieldValues) => {
     AutoGPTAPI.createInitData(data)
-    navigate("/main")
+    dispatch(addAiHistory({
+      id: uuidv4(),
+      agents: [],
+      name: data.ai_name,
+      role: data.ai_role,
+      goals: data.goals,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }))
+    navigate(`/main/${data.id}`)
   }
 
   return (

@@ -1,10 +1,8 @@
+import Flex from "@/style/Flex"
 import { CommentRounded } from "@mui/icons-material"
-import Flex from "../../../style/Flex"
-import { Paper } from "@mui/material"
-import styled from "styled-components"
 import { Card } from "../atom/Card"
-import H3 from "../atom/H3"
 import Details from "../atom/Details"
+import H3 from "../atom/H3"
 
 interface ITaskCard {
   $active?: boolean

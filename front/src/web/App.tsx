@@ -1,8 +1,11 @@
+import LeftPanel from "@/components/organisms/LeftPanel"
+import styled from "styled-components"
 import Router from "./Router"
-import LeftPanel from "./components/UI/organisms/LeftPanel"
 import Flex from "./style/Flex"
 import GlobalStyle from "./style/GlobalStyle"
-import styled from "styled-components"
+import { persistor, store } from "@/redux/store"
+import { Provider } from "react-redux"
+import { PersistGate } from 'redux-persist/integration/react'
 
 const AppContainer = styled.div`
   display: flex;
@@ -13,13 +16,17 @@ const AppContainer = styled.div`
 
 function App() {
   return (
-    <AppContainer>
-      <GlobalStyle />
-      <Flex fullWidth>
-        <LeftPanel />
-        <Router />
-      </Flex>
-    </AppContainer>
+    <Provider store={store}>
+      <PersistGate persistor={persistor}>
+        <AppContainer>
+          <GlobalStyle />
+          <Flex fullWidth>
+            <LeftPanel />
+            <Router />
+          </Flex>
+        </AppContainer>
+      </PersistGate>
+    </Provider>
   )
 }
 

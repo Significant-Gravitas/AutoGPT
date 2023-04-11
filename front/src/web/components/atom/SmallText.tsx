@@ -1,5 +1,5 @@
+import colored from "@/style/colored"
 import styled from "styled-components"
-import colored from "../../../style/colored"
 
 const SmallText = colored(styled.div`
   color: var(--text-color);

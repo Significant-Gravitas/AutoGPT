@@ -1,8 +1,8 @@
+import Label from "@/components/atom/Label"
+import STextField from "@/components/atom/STextField"
+import Flex from "@/style/Flex"
 import { useController, useFormContext } from "react-hook-form"
-import STextField from "../../atom/STextField"
-import Flex from "../../../../style/Flex"
 import styled from "styled-components"
-import Label from "../../atom/Label"
 
 interface FTextFieldProps {
   name: string

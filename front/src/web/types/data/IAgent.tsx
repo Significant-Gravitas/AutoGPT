@@ -1,5 +1,5 @@
 interface IAgent {
-  name: string
+  name: string // agent use name as id
   task: string
   prompt: string
 }

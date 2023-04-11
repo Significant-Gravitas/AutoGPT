@@ -1,5 +1,5 @@
+import colored from "@/style/colored"
 import styled from "styled-components"
-import colored from "../../../style/colored"
 
 const H2 = styled.h2`
   margin: 0;

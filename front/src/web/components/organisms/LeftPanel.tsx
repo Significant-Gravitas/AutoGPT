@@ -1,8 +1,8 @@
 import React from "react"
 import styled from "styled-components"
-import Flex from "../../../style/Flex"
-import { SIconButton } from "../../pages/MainPage/MainPage.styled"
 import DoorBackOutlinedIcon from "@mui/icons-material/DoorBackOutlined"
+import Flex from "@/style/Flex"
+import { SIconButton } from "@/pages/MainPage/MainPage.styled"
 
 const LeftPanelContainer = styled.div`
   width: 5rem;

@@ -1,13 +1,19 @@
-import { Archive, Delete, Pause, PlayArrow, Stop } from "@mui/icons-material"
+import useAgents from "@/hooks/data/useAgents"
+import useAiHistory from "@/hooks/data/useAiHistory"
+import { Archive, Delete, PlayArrow, Stop } from "@mui/icons-material"
 import CommentRoundedIcon from "@mui/icons-material/CommentRounded"
 import { Chip } from "@mui/material"
 import { useEffect, useRef, useState } from "react"
-import Flex from "../../../style/Flex"
-import SButton from "../../../style/SButton"
-import AgentCard from "../../UI/molecules/AgentCard"
-import SearchInput from "../../UI/molecules/SearchInput"
-import TaskCard from "../../UI/molecules/TaskCard"
-import Comments from "../../UI/organisms/Comments"
+import { useNavigate, useParams } from "react-router"
+import AutoGPTAPI from "../../api/AutoGPTAPI"
+import AgentCard from "../../components/molecules/AgentCard"
+import SearchInput from "../../components/molecules/SearchInput"
+import TaskCard from "../../components/molecules/TaskCard"
+import Answers from "../../components/organisms/Answers"
+import useAnswerInterceptor from "../../hooks/useAnswerInterceptor"
+import Flex from "../../style/Flex"
+import SButton from "../../style/SButton"
+import IAnswer from "../../types/data/IAnswer"
 import {
   ActionBar,
   CommentContainer,
@@ -19,28 +25,24 @@ import {
   RightTasks,
   SIconButton,
 } from "./MainPage.styled"
-import AutoGPTAPI from "../../../api/AutoGPTAPI"
-import IAnswer from "../../../types/data/IAnswer"
-import useAnswerInterceptor from "../../../hooks/useAnswerInterceptor"
 
 const MainPage = () => {
+  const { aiHistoryArray, aiHistory } = useAiHistory()
+  const { id } = useParams<{ id: string }>()
+  const { agentsArray } = useAgents()
   const [playing, setPlaying] = useState(false)
   const commentsEndRef = useRef(null)
   const [output, setOutput] = useState<IAnswer[]>([])
-  const { agents } = useAnswerInterceptor(output)
+  const navigate = useNavigate()
 
-  // This function will scroll to the bottom of the messages element
-  const scrollToBottom = () => {
-    if (!commentsEndRef.current) return
-    // @ts-ignore
-    commentsEndRef.current.scrollIntoView({ behavior: "smooth" })
-  }
+  const {} = useAutoGPTAPI()
+
+  useAnswerInterceptor(output)
 
   useEffect(() => {
     scrollToBottom()
   }, [output])
 
-  // AutoGpt.fetchData every 5 seconds if playing
   useEffect(() => {
     const interval = setInterval(async () => {
       if (playing) {
@@ -52,6 +54,21 @@ const MainPage = () => {
     return () => clearInterval(interval)
   }, [playing, output])
 
+  if (!id) {
+    navigate('/')
+    return null
+  }
+  const currentAi = aiHistory[id]
+
+  // This function will scroll to the bottom of the messages element
+  const scrollToBottom = () => {
+    if (!commentsEndRef.current) return
+    // @ts-ignore
+    commentsEndRef.current.scrollIntoView({ behavior: "smooth" })
+  }
+
+
+
   return (
     <Container>
       <Grid>
@@ -59,10 +76,9 @@ const MainPage = () => {
           <Flex direction="column" gap={1}>
             <h2>All your AI</h2>
             <SearchInput />
-            <TaskCard />
-            <TaskCard $active />
-            <TaskCard />
-            <TaskCard />
+            {aiHistoryArray.map((ai) => (
+              <TaskCard />
+            ))}
             <SButton $color="yellow300" variant="outlined">
               Create a new Ai
             </SButton>
@@ -94,7 +110,7 @@ const MainPage = () => {
               </div>
             </ActionBar>
             <CommentContainer>
-              <Comments comments={output} />
+              <Answers answers={currentAi.answers} />
               <div ref={commentsEndRef} />
             </CommentContainer>
             <InputContainer>
@@ -125,7 +141,7 @@ const MainPage = () => {
         <RightTasks>
           <Flex direction="column" gap={0.5}>
             <h2>Your agents</h2>
-            {agents.map((agent) => (
+            {agentsArray.map((agent) => (
               <AgentCard key={agent.name} agent={agent} />
             ))}
           </Flex>
