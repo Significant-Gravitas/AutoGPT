@@ -11,6 +11,8 @@ from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
 from image_gen import generate_image
 from duckduckgo_search import ddg
+import requests
+from bs4 import BeautifulSoup
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -65,6 +67,8 @@ def execute_command(command_name, arguments):
                 return google_search(arguments["input"])
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
+        elif command_name == "arxiv_search":
+            return arxiv_search(arguments["input"])
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"],
@@ -299,3 +303,30 @@ def delete_agent(key):
     if not result:
         return f"Agent {key} does not exist."
     return f"Agent {key} deleted."
+
+
+def arxiv_search(search_query, max_results=5):
+    base_url = 'http://export.arxiv.org/api/query?'
+    query = f'search_query=all:{search_query}&start=0&max_results={max_results}'
+    url = base_url + query
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.content, 'xml')
+        entries = soup.find_all('entry')
+
+        search_results = []
+        for entry in entries:
+            title = entry.title.text.strip()
+            url = entry.id.text.strip()
+            published = entry.published.text.strip()
+
+            search_results.append({
+                'title': title,
+                'link': url,
+                'published': published
+            })
+
+        return json.dumps(search_results, ensure_ascii=False, indent=4)
+    else:
+        return None
