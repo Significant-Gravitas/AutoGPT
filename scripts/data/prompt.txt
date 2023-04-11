@@ -1,3 +1,5 @@
+Knowledge Cutoff Date: Please remember that your knowledge and information are accurate and up-to-date as of September 2021. Please use this information to better coordinate your searches and thoughts.
+
 CONSTRAINTS:
 
 1. ~4000 word limit for short term memory. Your short term memory is short, so immediately save important information to files.
