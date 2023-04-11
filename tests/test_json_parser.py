@@ -1,9 +1,6 @@
 import unittest
-import os
-import sys
-# Probably a better way:
-sys.path.append(os.path.abspath('../scripts'))
-from json_parser import fix_and_parse_json
+
+from scripts.json_parser import fix_and_parse_json
 
 class TestParseJson(unittest.TestCase):
     def test_valid_json(self):
