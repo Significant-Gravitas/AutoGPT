@@ -1,5 +1,4 @@
 import yaml
-import data
 import os
 from prompt import get_prompt
 
