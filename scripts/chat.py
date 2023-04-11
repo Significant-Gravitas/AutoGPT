@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from config import Config
 import token_counter
 from api_manager import api_manager
+import openai
 
 cfg = Config()
 
@@ -27,10 +28,7 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
         create_chat_message(
             "system", f"The current time and date is {time.strftime('%c')}"),
         create_chat_message(
-            "system", f"Your current running cost is ${api_manager.get_total_cost():.3f}"),
-        create_chat_message(
             "system", f"This reminds you of these events from your past:\n{relevant_memory}\n\n")]
-
     # Add messages from the full message history until we reach the token limit
     next_message_to_add_index = len(full_message_history) - 1
     insertion_index = len(current_context)
@@ -46,6 +44,7 @@ def chat_with_ai(
         full_message_history,
         permanent_memory,
         token_limit,
+        api_budget,
         debug=False):
     while True:
         try:
@@ -122,6 +121,12 @@ def chat_with_ai(
                         f"{message['role'].capitalize()}: {message['content']}")
                     print()
                 print("----------- END OF CONTEXT ----------------")
+
+            if api_budget is not None:
+                remaining_budget = api_budget - api_manager.get_total_cost()
+                current_context.append(
+                    create_chat_message(
+                        "system", f"Your remaining API budget is ${remaining_budget:.2f}" + (" Budget nearly exceeded. Shut down gracefully!\n\n" if remaining_budget < 0.012 else " BUDGET EXCEEDED! SHUT DOWN.\n\n" if remaining_budget < 0  else "\n\n")))
 
             # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
             assistant_reply = api_manager.create_chat_completion(

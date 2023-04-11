@@ -3,10 +3,12 @@ import data
 import os
 
 class AIConfig:
-    def __init__(self, ai_name="", ai_role="", ai_goals=[]):
+    def __init__(self, ai_name="", ai_role="", ai_goals=[], api_budget=None):
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
+        self.api_budget = api_budget
+
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
     SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
@@ -23,11 +25,12 @@ class AIConfig:
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
+        api_budget = config_params.get("api_budget", None)
 
-        return cls(ai_name, ai_role, ai_goals)
+        return cls(ai_name, ai_role, ai_goals, api_budget)
 
     def save(self, config_file=SAVE_FILE):
-        config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
+        config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals, "api_budget": self.api_budget}
         with open(config_file, "w") as file:
             yaml.dump(config, file)
 
@@ -38,6 +41,7 @@ class AIConfig:
         full_prompt = f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
-
+        if self.api_budget is not None:
+            full_prompt += f"\nIt takes money to let you run. Your API budget is ${self.api_budget:.2f}"
         full_prompt += f"\n\n{data.load_prompt()}"
         return full_prompt

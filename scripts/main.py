@@ -112,10 +112,12 @@ def load_variables(config_file="config.yaml"):
         ai_name = config.get("ai_name")
         ai_role = config.get("ai_role")
         ai_goals = config.get("ai_goals")
+        api_budget = config.get("api_budget")
     except FileNotFoundError:
         ai_name = ""
         ai_role = ""
         ai_goals = []
+        api_budget = None
 
     # Prompt the user for input if config file is missing or empty values
     if not ai_name:
@@ -141,8 +143,22 @@ def load_variables(config_file="config.yaml"):
         if len(ai_goals) == 0:
             ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
          
+    if api_budget is None:
+        print("It can be expensive to run the AI.")
+        print("Enter your budget for API calls. For example: $1.50")
+        print("Enter nothing to let the AI run without monetary limit")
+        api_budget_input = input("Budget: $")
+        if api_budget_input == "":
+            api_budget = None
+        else:
+            try:
+                api_budget = float(api_budget_input.replace("$", ""))
+            except ValueError:
+                print("Invalid budget input. Setting budget to unlimited.")
+                api_budget = None
+
     # Save variables to yaml file
-    config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
+    config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals, "api_budget": api_budget}
     with open(config_file, "w") as file:
         documents = yaml.dump(config, file)
 
@@ -153,13 +169,14 @@ def load_variables(config_file="config.yaml"):
     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
     for i, goal in enumerate(ai_goals):
         full_prompt += f"{i+1}. {goal}\n"
-
+    full_prompt += f"\nIt takes money to let you run. Your API budget is ${self.api_budget:.2f}"
     full_prompt += f"\n\n{prompt}"
     return full_prompt
 
 
 def construct_prompt():
     config = AIConfig.load()
+    budget_text = "Infinite" if config.api_budget is None else f"${config.api_budget}"
     if config.ai_name:
         print_to_console(
             f"Welcome back! ",
@@ -169,7 +186,8 @@ def construct_prompt():
         should_continue = input(f"""Continue with the last settings? 
 Name:  {config.ai_name}
 Role:  {config.ai_role}
-Goals: {config.ai_goals}  
+Goals: {config.ai_goals}
+Budget: {budget_text}
 Continue (y/n): """)
         if should_continue.lower() == "n":
             config = AIConfig()
@@ -178,9 +196,11 @@ Continue (y/n): """)
         config = prompt_user()
         config.save()
 
-    # Get rid of this global:
+    # Get rid of these globals:
     global ai_name
     ai_name = config.ai_name
+    global api_budget
+    api_budget = config.api_budget
     
     full_prompt = config.construct_full_prompt()
     return full_prompt
@@ -235,7 +255,23 @@ def prompt_user():
         ai_goals = ["Increase net worth", "Grow Twitter Account",
                     "Develop and manage multiple businesses autonomously"]
 
-    config = AIConfig(ai_name, ai_role, ai_goals)
+    # Get AI Budget from User
+    print_to_console(
+        "Enter your budget for API calls: ",
+        Fore.GREEN,
+        "For example: $1.50")
+    print("Enter nothing to let the AI run without monetary limit", flush=True)
+    api_budget_input = input(f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $")
+    if api_budget_input == "":
+        api_budget = None
+    else:
+        try:
+            api_budget = float(api_budget_input.replace("$", ""))
+        except ValueError:
+            print("Invalid budget input. Setting budget to unlimited.")
+            api_budget = None
+
+    config = AIConfig(ai_name, ai_role, ai_goals, api_budget)
     return config
 
 def parse_arguments():
@@ -276,6 +312,7 @@ def parse_arguments():
 cfg = Config()
 parse_arguments()
 ai_name = ""
+api_budget = None
 prompt = construct_prompt()
 # print(prompt)
 # Initialize variables
@@ -299,7 +336,9 @@ while True:
             user_input,
             full_message_history,
             memory,
-            cfg.fast_token_limit, cfg.debug) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.fast_token_limit,
+            api_budget,
+            cfg.debug) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
