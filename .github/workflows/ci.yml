@@ -32,7 +32,7 @@ jobs:
 
     - name: Lint with flake8
       continue-on-error: false
-      run: flake8 scripts/ tests/ --select E303,W293,W291,W292,E305,E231
+      run: flake8 scripts/ tests/ --select E303,W293,W291,W292,E305,E231,E302
 
     - name: Run unittest tests with coverage
       run: |
