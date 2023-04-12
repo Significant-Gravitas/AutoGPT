@@ -42,9 +42,6 @@ def get_command(response):
         # Use an empty dictionary if 'args' field is not present in 'command' object
         arguments = command.get("args", {})
 
-        if not arguments:
-            arguments = {}
-
         return command_name, arguments
     except json.decoder.JSONDecodeError:
         return "Error:", "Invalid JSON"
@@ -113,7 +110,7 @@ def execute_command(command_name, arguments):
         elif command_name == "task_complete":
             shutdown()
         else:
-            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for availabe commands and only respond in the specified JSON format."
+            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for available commands and only respond in the specified JSON format."
     # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)
