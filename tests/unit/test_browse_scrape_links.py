@@ -11,7 +11,8 @@ from scripts.browse import scrape_links
 Code Analysis
 
 Objective:
-The objective of the 'scrape_links' function is to scrape hyperlinks from a given URL and return them in a formatted way.
+The objective of the 'scrape_links' function is to scrape hyperlinks from a 
+given URL and return them in a formatted way.
 
 Inputs:
 - url: a string representing the URL to be scraped.
@@ -29,17 +30,18 @@ Outputs:
 - A list of formatted hyperlinks.
 
 Additional aspects:
-- The function uses the 'requests' and 'BeautifulSoup' libraries to send HTTP requests and parse HTML content, respectively.
+- The function uses the 'requests' and 'BeautifulSoup' libraries to send HTTP 
+requests and parse HTML content, respectively.
 - The 'extract_hyperlinks' function is called to extract hyperlinks from the parsed HTML.
 - The 'format_hyperlinks' function is called to format the extracted hyperlinks.
 - The function checks for HTTP errors and returns "error" if any are found.
 """
 
 
-
 class TestScrapeLinks:
 
-    # Tests that the function returns a list of formatted hyperlinks when provided with a valid url that returns a webpage with hyperlinks. 
+    # Tests that the function returns a list of formatted hyperlinks when 
+    # provided with a valid url that returns a webpage with hyperlinks. 
     def test_valid_url_with_hyperlinks(self):
         url = "https://www.google.com"
         result = scrape_links(url)
