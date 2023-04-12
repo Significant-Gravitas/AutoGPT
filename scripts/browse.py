@@ -15,7 +15,7 @@ def scrape_text(url):
     # Most basic check if the URL is valid:
     if not url.startswith('http'):
         return "Error: Invalid URL"
-    
+
     # Restrict access to local files
     if check_local_file_access(url):
         return "Error: Access to local files is restricted"

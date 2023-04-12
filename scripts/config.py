@@ -33,7 +33,7 @@ class Config(metaclass=Singleton):
 
     def __init__(self):
         """Initialize the Config class"""
-        self.debug = False
+        self.debug_mode = False
         self.continuous_mode = False
         self.speak_mode = False
 
@@ -56,6 +56,8 @@ class Config(metaclass=Singleton):
             openai.api_version = self.openai_api_version
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+        self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
+        self.elevenlabs_voice_2_id = os.getenv("ELEVENLABS_VOICE_2_ID")
 
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
@@ -77,7 +79,7 @@ class Config(metaclass=Singleton):
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
         self.wipe_redis_on_start = os.getenv("WIPE_REDIS_ON_START", "True") == 'True'
         self.memory_index = os.getenv("MEMORY_INDEX", 'auto-gpt')
-        # Note that indexes must be created on db 0 in redis, this is not configureable.
+        # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
         # Initialize the OpenAI API client
@@ -90,9 +92,6 @@ class Config(metaclass=Singleton):
     def set_speak_mode(self, value: bool):
         """Set the speak mode value."""
         self.speak_mode = value
-
-    def set_debug_mode(self, value: bool):
-        self.debug_mode = value
 
     def set_fast_llm_model(self, value: str):
         """Set the fast LLM model value."""
@@ -118,6 +117,14 @@ class Config(metaclass=Singleton):
         """Set the ElevenLabs API key value."""
         self.elevenlabs_api_key = value
 
+    def set_elevenlabs_voice_1_id(self, value: str):
+        """Set the ElevenLabs Voice 1 ID value."""
+        self.elevenlabs_voice_1_id = value
+
+    def set_elevenlabs_voice_2_id(self, value: str):
+        """Set the ElevenLabs Voice 2 ID value."""
+        self.elevenlabs_voice_2_id = value
+
     def set_google_api_key(self, value: str):
         """Set the Google API key value."""
         self.google_api_key = value
@@ -136,4 +143,4 @@ class Config(metaclass=Singleton):
 
     def set_debug_mode(self, value: bool):
         """Set the debug mode value."""
-        self.debug = value
+        self.debug_mode = value
