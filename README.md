@@ -95,6 +95,11 @@ pip install -r requirements.txt
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_AZURE_API_BASE`, `OPENAI_AZURE_API_VERSION` and `OPENAI_AZURE_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
 
+5. Navigate to /front folder and install yarn dependencies:
+```sh
+cd front
+yarn install
+```
 ## 🔧 Usage
 
 1. Run the `main.py` Python script in your terminal:
@@ -104,6 +109,11 @@ python scripts/main.py
 ```
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
+4. To use web ui run in front folder :
+```sh
+cd front
+vite
+```
 
 ## 🗣️ Speech Mode
 Use this to use TTS for Auto-GPT
