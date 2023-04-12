@@ -8,7 +8,7 @@ import numpy as np
 
 from memory.base import MemoryProviderSingleton, get_ada_embedding
 from logger import logger
-from colorama import Fore, Style 
+from colorama import Fore, Style
 
 
 SCHEMA = [
