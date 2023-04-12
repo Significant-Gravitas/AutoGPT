@@ -323,3 +323,11 @@ To run tests and see coverage, run the following command:
 ```
 coverage run -m unittest discover tests
 ```
+
+## Run linter
+
+This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. To run the linter, run the following command:
+
+```
+flake8 scripts/ tests/
+```
