@@ -2,7 +2,7 @@ import argparse
 import logging
 from config import Config
 from memory import get_memory
-from file_operations import ingest_file, ingest_directory
+from file_operations import ingest_file, search_files
 
 cfg = Config()
 
@@ -15,6 +15,21 @@ def configure_logging():
     return logging.getLogger('AutoGPT-Ingestion')
 
 
+def ingest_directory(directory, memory, args):
+    """
+    Ingest all files in a directory by calling the ingest_file function for each file.
+
+    :param directory: The directory containing the files to ingest
+    :param memory: An object with an add() method to store the chunks in memory
+    """
+    try:
+        files = search_files(directory)
+        for file in files:
+            ingest_file(file, memory, args.max_length, args.overlap)
+    except Exception as e:
+        print(f"Error while ingesting directory '{directory}': {str(e)}")
+
+
 def main():
     logger = configure_logging()
 
@@ -22,7 +37,10 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--file", type=str, help="The file to ingest.")
     group.add_argument("--dir", type=str, help="The directory containing the files to ingest.")
-    parser.add_argument("--init", action='store_true', help="Init the memory and wipe its content", default=False)
+    parser.add_argument("--init", action='store_true', help="Init the memory and wipe its content (default: False)", default=False)
+    parser.add_argument("--overlap", type=int, help="The overlap size between chunks when ingesting files (default: 200)", default=200)
+    parser.add_argument("--max_length", type=int, help="The max_length of each chunk when ingesting files (default: 4000)", default=4000)
+
     args = parser.parse_args()
 
 
@@ -32,14 +50,14 @@ def main():
 
     if args.file:
         try:
-            ingest_file(args.file, memory)
+            ingest_file(args.file, memory, args.max_length, args.overlap)
             print(f"File '{args.file}' ingested successfully.")
         except Exception as e:
             logger.error(f"Error while ingesting file '{args.file}': {str(e)}")
             print(f"Error while ingesting file '{args.file}': {str(e)}")
     elif args.dir:
         try:
-            ingest_directory(args.dir, memory)
+            ingest_directory(args.dir, memory, args)
             print(f"Directory '{args.dir}' ingested successfully.")
         except Exception as e:
             logger.error(f"Error while ingesting directory '{args.dir}': {str(e)}")
