@@ -58,7 +58,7 @@ def print_to_console(
         speak.say_text(f"{title}. {content}")
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
-        logger.info(title + ": " + content)
+        logger.info(f"{title}: {content}")
         if isinstance(content, list):
             content = " ".join(content)
         words = content.split()
@@ -79,61 +79,64 @@ def print_assistant_thoughts(assistant_reply):
     global ai_name
     global cfg
     try:
-        # Parse and print Assistant response
-        assistant_reply_json = fix_and_parse_json(assistant_reply)
-
-        # Check if assistant_reply_json is a string and attempt to parse it into a JSON object
-        if isinstance(assistant_reply_json, str):
-            try:
-                assistant_reply_json = json.loads(assistant_reply_json)
-            except json.JSONDecodeError as e:
-                print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
-                assistant_reply_json = {}
-
-        assistant_thoughts_reasoning = None
-        assistant_thoughts_plan = None
-        assistant_thoughts_speak = None
-        assistant_thoughts_criticism = None
-        assistant_thoughts = assistant_reply_json.get("thoughts", {})
-        assistant_thoughts_text = assistant_thoughts.get("text")
-
-        if assistant_thoughts:
-            assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
-            assistant_thoughts_plan = assistant_thoughts.get("plan")
-            assistant_thoughts_criticism = assistant_thoughts.get("criticism")
-            assistant_thoughts_speak = assistant_thoughts.get("speak")
-
-        print_to_console(
-            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text
-        )
-        print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
-
-        if assistant_thoughts_plan:
-            print_to_console("PLAN:", Fore.YELLOW, "")
-            # If it's a list, join it into a string
-            if isinstance(assistant_thoughts_plan, list):
-                assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
-            elif isinstance(assistant_thoughts_plan, dict):
-                assistant_thoughts_plan = str(assistant_thoughts_plan)
-
-            # Split the input_string using the newline character and dashes
-            lines = assistant_thoughts_plan.split("\n")
-            for line in lines:
-                line = line.lstrip("- ")
-                print_to_console("- ", Fore.GREEN, line.strip())
-
-        print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
-        # Speak the assistant's thoughts
-        if cfg.speak_mode and assistant_thoughts_speak:
-            speak.say_text(assistant_thoughts_speak)
-
+        _extracted_from_print_assistant_thoughts_7(assistant_reply, ai_name, cfg)
     except json.decoder.JSONDecodeError:
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
 
-    # All other errors, return "Error: + error message"
     except Exception as e:
         call_stack = traceback.format_exc()
         print_to_console("Error: \n", Fore.RED, call_stack)
+
+
+# TODO Rename this here and in `print_assistant_thoughts`
+def _extracted_from_print_assistant_thoughts_7(assistant_reply, ai_name, cfg):
+    # Parse and print Assistant response
+    assistant_reply_json = fix_and_parse_json(assistant_reply)
+
+    # Check if assistant_reply_json is a string and attempt to parse it into a JSON object
+    if isinstance(assistant_reply_json, str):
+        try:
+            assistant_reply_json = json.loads(assistant_reply_json)
+        except json.JSONDecodeError as e:
+            print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
+            assistant_reply_json = {}
+
+    assistant_thoughts_reasoning = None
+    assistant_thoughts_plan = None
+    assistant_thoughts_speak = None
+    assistant_thoughts_criticism = None
+    assistant_thoughts = assistant_reply_json.get("thoughts", {})
+    assistant_thoughts_text = assistant_thoughts.get("text")
+
+    if assistant_thoughts:
+        assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
+        assistant_thoughts_plan = assistant_thoughts.get("plan")
+        assistant_thoughts_criticism = assistant_thoughts.get("criticism")
+        assistant_thoughts_speak = assistant_thoughts.get("speak")
+
+    print_to_console(
+        f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text
+    )
+    print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
+
+    if assistant_thoughts_plan:
+        print_to_console("PLAN:", Fore.YELLOW, "")
+        # If it's a list, join it into a string
+        if isinstance(assistant_thoughts_plan, list):
+            assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
+        elif isinstance(assistant_thoughts_plan, dict):
+            assistant_thoughts_plan = str(assistant_thoughts_plan)
+
+        # Split the input_string using the newline character and dashes
+        lines = assistant_thoughts_plan.split("\n")
+        for line in lines:
+            line = line.lstrip("- ")
+            print_to_console("- ", Fore.GREEN, line.strip())
+
+    print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
+    # Speak the assistant's thoughts
+    if cfg.speak_mode and assistant_thoughts_speak:
+        speak.say_text(assistant_thoughts_speak)
 
 
 def load_variables(config_file="config.yaml"):
@@ -172,12 +175,12 @@ def load_variables(config_file="config.yaml"):
             if ai_goal == "":
                 break
             ai_goals.append(ai_goal)
-        if len(ai_goals) == 0:
-            ai_goals = [
-                "Increase net worth",
-                "Grow Twitter Account",
-                "Develop and manage multiple businesses autonomously",
-            ]
+    if not ai_goals:
+        ai_goals = [
+            "Increase net worth",
+            "Grow Twitter Account",
+            "Develop and manage multiple businesses autonomously",
+        ]
 
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
@@ -201,7 +204,7 @@ def construct_prompt():
     config = AIConfig.load()
     if config.ai_name:
         print_to_console(
-            f"Welcome back! ",
+            "Welcome back! ",
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True,
@@ -224,8 +227,7 @@ Continue (y/n): """
     global ai_name
     ai_name = config.ai_name
 
-    full_prompt = config.construct_full_prompt()
-    return full_prompt
+    return config.construct_full_prompt()
 
 
 def prompt_user():
@@ -272,15 +274,14 @@ def prompt_user():
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)
-    if len(ai_goals) == 0:
+    if not ai_goals:
         ai_goals = [
             "Increase net worth",
             "Grow Twitter Account",
             "Develop and manage multiple businesses autonomously",
         ]
 
-    config = AIConfig(ai_name, ai_role, ai_goals)
-    return config
+    return AIConfig(ai_name, ai_role, ai_goals)
 
 
 def parse_arguments():
@@ -293,11 +294,11 @@ def parse_arguments():
     parser.add_argument(
         "--continuous", action="store_true", help="Enable Continuous Mode"
     )
-    parser.add_argument("--speak", action="store_true", help="Enable Speak Mode")
     parser.add_argument("--debug", action="store_true", help="Enable Debug Mode")
     parser.add_argument(
         "--gpt3only", action="store_true", help="Enable GPT3.5 Only Mode"
     )
+    parser.add_argument("--gpt4only", action="store_true", help="Enable GPT4 Only Mode")
     args = parser.parse_args()
 
     if args.continuous:
@@ -316,6 +317,10 @@ def parse_arguments():
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
+
+    if args.gpt4only:
+        print_to_console("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_fast_llm_model(cfg.smart_llm_model)
 
 
 # TODO: fill in llm values here
@@ -337,7 +342,7 @@ user_input = (
 
 # Initialize memory and make sure it is empty.
 memory = get_memory(cfg, init=True)
-print("Using memory of type: " + memory.__class__.__name__)
+print(f"Using memory of type: {memory.__class__.__name__}")
 
 # Interaction Loop
 while True:
@@ -371,10 +376,9 @@ while True:
             flush=True,
         )
         while True:
-            console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+            console_input = utils.clean_input(f"{Fore.MAGENTA}Input:{Style.RESET_ALL}")
             if console_input.lower() == "y":
                 user_input = "GENERATE NEXT COMMAND JSON"
-                break
             elif console_input.lower().startswith("y -"):
                 try:
                     next_action_count = abs(int(console_input.split(" ")[1]))
@@ -384,15 +388,12 @@ while True:
                         "Invalid input format. Please enter 'y -n' where n is the number of continuous tasks."
                     )
                     continue
-                break
             elif console_input.lower() == "n":
                 user_input = "EXIT"
-                break
             else:
                 user_input = console_input
                 command_name = "human_feedback"
-                break
-
+            break
         if user_input == "GENERATE NEXT COMMAND JSON":
             print_to_console(
                 "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
@@ -412,7 +413,7 @@ while True:
 
     # Execute command
     if command_name.lower().startswith("error"):
-        result = f"Command {command_name} threw the following error: " + arguments
+        result = f"Command {command_name} threw the following error: {arguments}"
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"
     else:
