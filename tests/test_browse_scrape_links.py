@@ -113,5 +113,3 @@ class TestScrapeLinks:
         assert result[0] == "Google (https://www.google.com)"
         assert result[1] == "GitHub (https://github.com)"
         assert result[2] == "CodiumAI (https://www.codium.ai)"
-
-
