@@ -9,6 +9,7 @@ auto_gpt_workspace/*
 .env
 venv/*
 outputs/*
+config/*
 ai_settings.yaml
 .vscode
 auto-gpt.json

@@ -16,6 +16,7 @@ import traceback
 import yaml
 import argparse
 import logging
+import os
 
 cfg = Config()
 
@@ -190,17 +191,56 @@ def construct_prompt():
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
-        should_continue = utils.clean_input(f"""Continue with the last settings?
+        should_continue = utils.clean_input(f"""Continue with the default settings?
 Name:  {config.ai_name}
 Role:  {config.ai_role}
 Goals: {config.ai_goals}
 Continue (y/n): """)
         if should_continue.lower() == "n":
-            config = AIConfig()
+            print_to_console(
+                "Welcome to Auto-GPT! ",
+                Fore.GREEN,
+                """Would you like to load an existing configuration or create a new one?
+                1.) Load an existing configuration.
+                2.) Create a new configuration.""",
+                speak_text=True)
+            
+            while True:
+                load_choice = utils.clean_input("Enter a choice: ")
+                if load_choice == '1':
+                    config_list = os.listdir('config')
+                    pretty_config_string = ", ".join([str(i)+": "+str(j)+"" for i,j in enumerate(config_list)])
+                    print_to_console(
+                        "Welcome to Auto-GPT! ",
+                        Fore.GREEN,
+                        "Existing configurations: [ "
+                        +str(pretty_config_string)+" ]",
+                        speak_text=True)
+                    while True:
+                        config_choice = utils.clean_input("Enter a choice: ")
+                        if config_choice.isdigit() and int(config_choice) < len(config_list):
+                            config = AIConfig.load(os.path.join('config',config_list[int(config_choice)]))
+                            break
+                        else:
+                            print_to_console(
+                        "Welcome to Auto-GPT! ",
+                        Fore.GREEN,
+                        "Invalid selection, retrying!",
+                        speak_text=True)
+                    break
+                elif load_choice == '2':
+                    config = AIConfig()
+                    break
+                else:
+                    print_to_console(
+                        "Welcome to Auto-GPT! ",
+                        Fore.GREEN,
+                        "Invalid selection, retrying!",
+                        speak_text=True)
 
     if not config.ai_name:
         config = prompt_user()
-        config.save()
+        config.save(os.path.join('config',config.ai_name+'.yaml'))
 
     # Get rid of this global:
     global ai_name
