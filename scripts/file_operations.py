@@ -1,5 +1,10 @@
 import os
 import os.path
+from config import Config
+from memory import get_memory
+
+cfg = Config()
+memory = get_memory(cfg)
 
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
@@ -20,6 +25,30 @@ def safe_join(base, *paths):
     return norm_new_path
 
 
+def split_file(content, max_length=4000, overlap=0):
+    """
+    Split text into chunks of a specified maximum length with a specified overlap
+    between chunks.
+
+    :param text: The input text to be split into chunks
+    :param max_length: The maximum length of each chunk, default is 4000 (about 1k token)
+    :param overlap: The number of overlapping characters between chunks, default is no overlap
+    :return: A generator yielding chunks of text
+    """
+    start = 0
+    content_length = len(content)
+
+    while start < content_length:
+        end = start + max_length
+        chunk = content[start:end]
+        yield chunk
+        start += max_length - overlap
+        if start + max_length - overlap >= content_length:
+            break
+        if end + overlap > content_length:
+            start = content_length - max_length
+
+
 def read_file(filename):
     """Read a file and return the contents"""
     try:
@@ -29,6 +58,52 @@ def read_file(filename):
         return content
     except Exception as e:
         return "Error: " + str(e)
+
+
+def ingest_file(filename, memory, max_length=4000, overlap=200):
+    """
+    Ingest a file by reading its content, splitting it into chunks with a specified
+    maximum length and overlap, and adding the chunks to the memory storage.
+
+    :param filename: The name of the file to ingest
+    :param memory: An object with an add() method to store the chunks in memory
+    :param max_length: The maximum length of each chunk, default is 4000
+    :param overlap: The number of overlapping characters between chunks, default is 200
+    """
+    try:
+        print(f"Working with file {filename}")
+        content = read_file(filename)
+        content_length = len(content)
+        print(f"File length: {content_length} characters")
+
+        chunks = list(split_file(content, max_length=max_length, overlap=overlap))
+
+        num_chunks = len(chunks)
+        for i, chunk in enumerate(chunks):
+            print(f"Ingesting chunk {i + 1} / {num_chunks} into memory")
+            memory_to_add = f"Filename: {filename}\n" \
+                            f"Content part#{i + 1}/{num_chunks}: {chunk}"
+
+            memory.add(memory_to_add)
+
+        print(f"Done ingesting {num_chunks} chunks from {filename}.")
+    except Exception as e:
+        print(f"Error while ingesting file '{filename}': {str(e)}")
+
+
+def ingest_directory(directory, memory):
+    """
+    Ingest all files in a directory by calling the ingest_file function for each file.
+
+    :param directory: The directory containing the files to ingest
+    :param memory: An object with an add() method to store the chunks in memory
+    """
+    try:
+        files = search_files(directory)
+        for file in files:
+            ingest_file(file, memory)
+    except Exception as e:
+        print(f"Error while ingesting directory '{directory}': {str(e)}")
 
 
 def write_to_file(filename, text):
