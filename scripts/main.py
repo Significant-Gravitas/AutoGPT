@@ -271,6 +271,7 @@ def parse_arguments():
 
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
+    parser.add_argument('--continuous-limit', '-l', type=int, default=0, dest="continuous_limit", help='Defines the number of times to run in continuous mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
@@ -289,6 +290,16 @@ def parse_arguments():
             Fore.RED,
             "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
         cfg.set_continuous_mode(True)
+
+        if args.continuous_limit and not args.continuous:
+            parser.error("--continuous-limit can only be used with --continuous")
+
+        if args.continuous_limit > 0:
+            logger.typewriter_log(
+                "Continuous Limit: ",
+                Fore.GREEN,
+                f"{args.continuous_limit}")
+            cfg.set_continuous_limit(args.continuous_limit)
 
     if args.speak:
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
@@ -337,7 +348,14 @@ memory = get_memory(cfg, init=True)
 print('Using memory of type: ' + memory.__class__.__name__)
 
 # Interaction Loop
+loop_count = 0
 while True:
+    # Discontinue if continuous limit is reached
+    loop_count += 1
+    if cfg.continuous_mode and cfg.continuous_limit > 0 and loop_count > cfg.continuous_limit:
+        logger.typewriter_log("Continuous Limit Reached: ", Fore.RED, f"{cfg.continuous_limit}")
+        break
+
     # Send message to AI, get response
     with Spinner("Thinking... "):
         assistant_reply = chat.chat_with_ai(
