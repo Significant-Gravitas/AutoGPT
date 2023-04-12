@@ -54,7 +54,6 @@ def execute_python_file(file):
 
 def exec_shell(command_line):
 
-    args = command_line.split()
     old_dir = os.getcwd()
 
     workdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', WORKSPACE_FOLDER))
@@ -63,7 +62,7 @@ def exec_shell(command_line):
 
     os.chdir(workdir)
 
-    result = subprocess.run(args, capture_output=True)
+    result = subprocess.run(command_line, capture_output=True, shell=True)
     output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}";
 
     os.chdir(old_dir)
