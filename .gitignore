@@ -6,9 +6,7 @@ package-lock.json
 *.pyc
 auto_gpt_workspace/*
 *.mpeg
-.env
 azure.yaml
-*venv/*
 outputs/*
 ai_settings.yaml
 last_run_ai_settings.yaml
@@ -16,6 +14,18 @@ last_run_ai_settings.yaml
 .idea/*
 auto-gpt.json
 log.txt
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.venv
+env/
+*venv/*
+ENV/
+env.bak/
+venv.bak/
 
 # Coverage reports
 .coverage
