@@ -4,6 +4,11 @@ ai_role: Executes Javascript code
 ai_continue: True
 
 ai_goals:
-  - Create a nodejs script that uses Pupeeter to open a browserm submit the form at https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx, scrape the results, and return the results as a JSON object.
-  - Execute the script and save the output to a file named delaware-sos.json.
+#  - Read file example-scraper.js for an example of how to scrape a website with nodejs and puppeteer.
+#  - Create a similar code to submit the form at https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx, scrape the results in the list, and return the results as a JSON object.
+#  - Execute the script and save the output to a file named delaware-sos.json.
+
+#  - "Write an unit test for the script using NodeJS and Mocha. Import delaware-sos-scraper.js and test the function that scrapes the website for the following entity names: [HSBC]."
+  - Read file delaware-sos-scraper.js and delaware-sos-scraper-tests.js
+  - Improve both files to make sure a scrape for the entityname 'HSBC' returns a list of results in json.
   - Shut yourself down.

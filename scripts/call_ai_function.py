@@ -3,6 +3,8 @@ from config import Config
 cfg = Config()
 
 from llm_utils import create_chat_completion
+
+
 # This is a magic function that can do anything with no-code. See
 # https://github.com/Torantulino/AI-Functions for more info.
 def call_ai_function(function, args, description, model=None):
@@ -13,10 +15,12 @@ def call_ai_function(function, args, description, model=None):
     args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma seperated string
     args = ", ".join(args)
+    # programming_language = "python"
+    programming_language = "NodeJS"  # TODO: Determine programming language dynamically
     messages = [
         {
             "role": "system",
-            "content": f"You are now the following python function: ```# {description}\n{function}```\n\nOnly respond with your `return` value.",
+            "content": f"You are now the following {programming_language} function: ```# {description}\n{function}```\n\nOnly respond with your `return` value.",
         },
         {"role": "user", "content": args},
     ]

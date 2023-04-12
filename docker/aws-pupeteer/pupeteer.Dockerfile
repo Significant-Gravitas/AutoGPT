@@ -23,22 +23,19 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_PRODUCT=chrome
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-SHELL ["/bin/bash", "-c"]
+#Force all commans to use bash - nedded for nvm
+SHELL ["/bin/bash", "-i", "-c"]
 
 ENV NODE_VERSION=16.13.0
-#RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
 RUN wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
 
 USER seluser
 
 WORKDIR /app
 
-#WTF? Why does it need bash as a prefix to be ableto find node and npm?
-RUN bash -i -c 'nvm ls-remote'
-
 COPY --chown=seluser package.json .
 #COPY --chown=seluser package-lock.json .
-RUN bash -i -c 'npm install'
+RUN npm install
 
 COPY --chown=seluser books-scraper.js .
 COPY --chown=seluser books-scraper-test.js .
