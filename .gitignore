@@ -14,3 +14,8 @@ ai_settings.yaml
 .idea/*
 auto-gpt.json
 log.txt
+
+# Coverage reports
+.coverage
+coverage.xml
+htmlcov/
