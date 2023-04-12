@@ -123,12 +123,13 @@ class Logger(metaclass=Singleton):
     def set_level(self, level):
         self.logger.setLevel(level)
         self.typing_logger.setLevel(level)
-    
+
     def double_check(self, additionalText=None):
         if not additionalText:
             additionalText = "Please ensure you've setup and configured everything correctly. Read https://github.com/Torantulino/Auto-GPT#readme to double check. You can also create a github issue or join the discord and ask there!"
 
         self.typewriter_log("DOUBLE CHECK CONFIGURATION", Fore.YELLOW, additionalText)
+
 
 '''
 Output stream to console using simulated typing

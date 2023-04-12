@@ -3,7 +3,7 @@ import pinecone
 
 from memory.base import MemoryProviderSingleton, get_ada_embedding
 from logger import logger
-from colorama import Fore, Style 
+from colorama import Fore, Style
 
 class PineconeMemory(MemoryProviderSingleton):
     def __init__(self, cfg):
@@ -17,7 +17,7 @@ class PineconeMemory(MemoryProviderSingleton):
         # this assumes we don't start with memory.
         # for now this works.
         # we'll need a more complicated and robust system if we want to start with memory.
-        self.vec_num = 0    
+        self.vec_num = 0
 
         try:
             pinecone.whoami()
