@@ -46,6 +46,8 @@ class WeaviateMemory(MemoryProviderSingleton):
     def _build_auth_credentials(self, cfg):
         if cfg.weaviate_username and cfg.weaviate_password:
             return weaviate_auth.AuthClientPassword(cfg.weaviate_username, cfg.weaviate_password)
+        if cfg.weaviate_api_key:
+            return weaviate.auth.AuthApiKey(api_key=cfg.weaviate_api_key)
         else:
             return None
 
