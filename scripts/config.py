@@ -41,6 +41,8 @@ class Config(metaclass=Singleton):
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8000))
+        self.browse_summary_max_token =  int(os.getenv("BROWSE_SUMMARY_MAX_TOKEN", 300))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.use_azure = False
@@ -71,7 +73,8 @@ class Config(metaclass=Singleton):
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
-        self.user_agent_header = {"User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
+        self.user_agent = os.getenv("USER_AGENT", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36")
+
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
         self.redis_port = os.getenv("REDIS_PORT", "6379")
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
@@ -80,6 +83,7 @@ class Config(metaclass=Singleton):
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
+
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
@@ -106,6 +110,14 @@ class Config(metaclass=Singleton):
     def set_smart_token_limit(self, value: int):
         """Set the smart token limit value."""
         self.smart_token_limit = value
+
+    def set_browse_chunk_max_length(self, value: int):
+        """Set the browse_website command chunk max length value."""
+        self.browse_chunk_max_length = value
+
+    def set_browse_summary_max_token(self, value: int):
+        """Set the browse_website command summary max token value."""
+        self.browse_summary_max_token = value
 
     def set_openai_api_key(self, value: str):
         """Set the OpenAI API key value."""
