@@ -32,7 +32,7 @@ def get_response(url, headers=cfg.user_agent_header, timeout=10):
         # Restrict access to local files
         if check_local_file_access(url):
             raise ValueError('Access to local files is restricted')
-       
+
         # Most basic check if the URL is valid:
         if not url.startswith('http://') and not url.startswith('https://'):
             raise ValueError('Invalid URL format')
@@ -44,7 +44,7 @@ def get_response(url, headers=cfg.user_agent_header, timeout=10):
         # Check if the response contains an HTTP error
         if response.status_code >= 400:
             return None, "Error: HTTP " + str(response.status_code) + " error"
-      
+
         return response, None
     except ValueError as ve:
         # Handle invalid URL format
