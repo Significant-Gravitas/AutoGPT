@@ -53,7 +53,7 @@ def fix_and_parse_json(
         last_brace_index = json_str.rindex("}")
         json_str = json_str[:last_brace_index+1]
         return json.loads(json_str)
-    except json.JSONDecodeError as e:  # noqa: F841
+    except (json.JSONDecodeError, ValueError) as e:  # noqa: F841
         if try_to_fix_with_gpt:
             print("Warning: Failed to parse AI output, attempting to fix."
                   "\n If you see this warning frequently, it's likely that"
@@ -67,22 +67,22 @@ def fix_and_parse_json(
             else:
                 # This allows the AI to react to the error message,
                 #   which usually results in it correcting its ways.
-                print("Failed to fix ai output, telling the AI.")
+                print("Failed to fix AI output, telling the AI.")
                 return json_str
         else:
             raise e
-            
-        
+
+
 def fix_json(json_str: str, schema: str) -> str:
-    """Fix the given JSON string to make it parseable and fully complient with the provided schema."""
-    
-    # Try to fix the JSON using gpt:
+    """Fix the given JSON string to make it parseable and fully compliant with the provided schema."""
+
+    # Try to fix the JSON using GPT:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
     description_string = "Fixes the provided JSON string to make it parseable"\
-        " and fully complient with the provided schema.\n If an object or"\
+        " and fully compliant with the provided schema.\n If an object or"\
         " field specified in the schema isn't contained within the correct"\
-        " JSON, it is ommited.\n This function is brilliant at guessing"\
+        " JSON, it is omitted.\n This function is brilliant at guessing"\
         " when the format is incorrect."
 
     # If it doesn't already start with a "`", add one:
@@ -91,7 +91,7 @@ def fix_json(json_str: str, schema: str) -> str:
     result_string = call_ai_function(
         function_string, args, description_string, model=cfg.fast_llm_model
     )
-    if cfg.debug:
+    if cfg.debug_mode:
         print("------------ JSON FIX ATTEMPT ---------------")
         print(f"Original JSON: {json_str}")
         print("-----------")
