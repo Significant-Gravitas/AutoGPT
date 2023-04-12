@@ -9,7 +9,7 @@ def create_chat_completion(messages, model=None, temperature=None, max_tokens=No
     """Create a chat completion using the OpenAI API"""
     if cfg.use_azure:
         response = openai.ChatCompletion.create(
-            deployment_id=cfg.openai_deployment_id,
+            deployment_id=cfg.azure_chat_deployment_id,
             model=model,
             messages=messages,
             temperature=temperature,
