@@ -18,6 +18,7 @@ except ImportError:
     print("Pinecone not installed. Skipping import.")
     PineconeMemory = None
 
+
 def get_memory(cfg, init=False):
     memory = None
     if cfg.memory_backend == "pinecone":
@@ -40,6 +41,7 @@ def get_memory(cfg, init=False):
         if init:
             memory.clear()
     return memory
+
 
 def get_supported_memory_backends():
     return supported_memory
