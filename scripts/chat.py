@@ -69,7 +69,7 @@ def chat_with_ai(
 
             send_token_limit = token_limit - 1000
 
-            relevant_memory = permanent_memory.get_relevant(str(full_message_history[-5:]), 10)
+            relevant_memory = permanent_memory.get_relevant(str(full_message_history[-9:]), 10)
 
             if cfg.debug_mode:
                 print('Memory Stats: ', permanent_memory.get_stats())
