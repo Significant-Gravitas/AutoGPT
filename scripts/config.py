@@ -74,7 +74,8 @@ class Config(metaclass=Singleton):
         self.weaviate_username = os.getenv("WEAVIATE_USERNAME", None)
         self.weaviate_password = os.getenv("WEAVIATE_PASSWORD", None)
         self.weaviate_scopes = os.getenv("WEAVIATE_SCOPES", None)
-        self.weaviate_embedded_path = os.getenv('WEAVIATE_EMBEDDED_PATH', '~/.local/share/weaviate')
+        self.weaviate_embedded_path = os.getenv("WEAVIATE_EMBEDDED_PATH", "~/.local/share/weaviate")
+        self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
         self.use_weaviate_embedded = os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
