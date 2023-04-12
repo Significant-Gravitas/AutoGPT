@@ -2,9 +2,33 @@ import requests
 from bs4 import BeautifulSoup
 from config import Config
 from llm_utils import create_chat_completion
+from urllib.parse import urlparse, urljoin
 
 cfg = Config()
 
+
+# Function to check if the URL is valid
+def is_valid_url(url):
+    try:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc])
+    except ValueError:
+        return False
+
+# Function to sanitize the URL
+def sanitize_url(url):
+    return urljoin(url, urlparse(url).path)
+
+# Function to make a request with a specified timeout and handle exceptions
+def make_request(url, timeout=10):
+    try:
+        response = requests.get(url, headers=cfg.user_agent_header, timeout=timeout)
+        response.raise_for_status()
+        return response
+    except requests.exceptions.RequestException as e:
+        return "Error: " + str(e)
+
+# Define and check for local file address prefixes
 def check_local_file_access(url):
     # Define and check for local file address prefixes
     local_prefixes = ['file:///', 'file://localhost', 'http://localhost', 'https://localhost']
@@ -34,13 +58,29 @@ def get_validated_response(url, headers=cfg.user_agent_header):
 
 def scrape_text(url):
     """Scrape text from a webpage"""
-    response, error_message = get_validated_response(url)
-    if error_message:
-        return error_message
+    # Basic check if the URL is valid
+    if not url.startswith('http'):
+        return "Error: Invalid URL"
 
-    # Check if the response contains an HTTP error
-    if response.status_code >= 400:
-        return "Error: HTTP " + str(response.status_code) + " error"
+    # Restrict access to local files
+    if check_local_file_access(url):
+        return "Error: Access to local files is restricted"
+    
+    # Validate the input URL
+    if not is_valid_url(url):
+        # Sanitize the input URL
+        sanitized_url = sanitize_url(url)
+
+        # Make the request with a timeout and handle exceptions
+        response = make_request(sanitized_url)
+
+        if isinstance(response, str):
+            return response
+    else:
+        # Sanitize the input URL
+        sanitized_url = sanitize_url(url)
+
+        response = requests.get(sanitized_url, headers=cfg.user_agent_header)
 
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -73,9 +113,7 @@ def format_hyperlinks(hyperlinks):
 
 def scrape_links(url):
     """Scrape links from a webpage"""
-    response, error_message = get_validated_response(url)
-    if error_message:
-        return error_message
+    response = requests.get(url, headers=cfg.user_agent_header)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
