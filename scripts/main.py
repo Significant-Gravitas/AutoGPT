@@ -315,7 +315,6 @@ def parse_arguments():
         else:
             cfg.memory_backend = chosen
 
-
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
 
@@ -326,6 +325,7 @@ def parse_arguments():
         print_to_console("Error: \n", Fore.RED, str(e))
 
     return command_name, arguments
+
 
 # TODO: Better argument parsing:
 # TODO: fill in llm values here
