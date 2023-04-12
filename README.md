@@ -216,6 +216,11 @@ You can specify the memory index for redis using the following:
 MEMORY_INDEX=whatever
 ```
 
+Finally to actually get Auto-GPT to use redis as it's memory backend set the following your `.env` file:
+```
+MEMORY_BACKEND=redis
+```
+
 ## 🌲 Pinecone API Key Setup
 
 Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
@@ -223,6 +228,7 @@ Pinecone enables the storage of vast amounts of vector-based memory, allowing fo
 1. Go to app.pinecone.io and make an account if you don't already have one.
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
+4. Set `MEMORY_BACKEND=pinecone` in your `.env` file.
 
 ### Setting up environment variables
 
