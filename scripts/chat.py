@@ -141,6 +141,6 @@ def chat_with_ai(
 
             return assistant_reply
         except openai.error.RateLimitError:
-            # TODO: WHen we switch to langchain, this is built in
+            # TODO: When we switch to langchain, this is built in
             print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)

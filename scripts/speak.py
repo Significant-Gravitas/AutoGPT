@@ -7,9 +7,21 @@ import gtts
 import threading
 from threading import Lock, Semaphore
 
+# Default voice IDs
+default_voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
 
-# TODO: Nicer names for these ids
-voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
+# Retrieve custom voice IDs from the Config class
+custom_voice_1 = cfg.elevenlabs_voice_1_id
+custom_voice_2 = cfg.elevenlabs_voice_2_id
+
+# Placeholder values that should be treated as empty
+placeholders = {"your-voice-id"}
+
+# Use custom voice IDs if provided and not placeholders, otherwise use default voice IDs
+voices = [
+    custom_voice_1 if custom_voice_1 and custom_voice_1 not in placeholders else default_voices[0],
+    custom_voice_2 if custom_voice_2 and custom_voice_2 not in placeholders else default_voices[1]
+]
 
 tts_headers = {
     "Content-Type": "application/json",
