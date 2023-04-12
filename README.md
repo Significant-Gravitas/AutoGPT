@@ -94,6 +94,7 @@ pip install -r requirements.txt
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_AZURE_API_BASE`, `OPENAI_AZURE_API_VERSION` and `OPENAI_AZURE_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
+  - Additionally you can also specify which memory backend you would like to use. Set `MEMORY_BACKEND` in your `.env` file to one of: `local`, `redis` or `pinecone`
 
 ## 🔧 Usage
 
