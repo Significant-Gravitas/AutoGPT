@@ -8,7 +8,7 @@ from autogpt.config import Config
 import autogpt.ai_functions as ai
 from autogpt.file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
 from autogpt.execute_code import execute_python_file, execute_shell
-from autogpt.json_parser import fix_and_parse_json
+from autogpt.json_parser import JsonParser
 from autogpt.image_gen import generate_image
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
@@ -28,7 +28,8 @@ def is_valid_int(value):
 def get_command(response):
     """Parse the response and return the command name and arguments"""
     try:
-        response_json = fix_and_parse_json(response)
+        json_parser = JsonParser(cfg)
+        response_json = json_parser.fix_and_parse_json(response)
 
         if "command" not in response_json:
             return "Error:" , "Missing 'command' object in JSON"

@@ -9,7 +9,7 @@ from autogpt.spinner import Spinner
 import time
 from autogpt import speak
 from autogpt.config import Config
-from autogpt.json_parser import fix_and_parse_json
+from autogpt.json_parser import JsonParser
 from autogpt.ai_config import AIConfig
 import traceback
 import yaml
@@ -19,6 +19,7 @@ import logging
 from autogpt.prompt import get_prompt
 
 cfg = Config()
+json_parser = JsonParser(cfg)
 
 
 def check_openai_api_key():
@@ -68,11 +69,11 @@ def print_assistant_thoughts(assistant_reply):
     try:
         try:
             # Parse and print Assistant response
-            assistant_reply_json = fix_and_parse_json(assistant_reply)
+            assistant_reply_json = json_parser.fix_and_parse_json(assistant_reply)
         except json.JSONDecodeError as e:
             logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
             assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
-            assistant_reply_json = fix_and_parse_json(assistant_reply_json)
+            assistant_reply_json = json_parser.fix_and_parse_json(assistant_reply_json)
 
         # Check if assistant_reply_json is a string and attempt to parse it into a JSON object
         if isinstance(assistant_reply_json, str):
