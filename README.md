@@ -59,7 +59,7 @@ Your support is greatly appreciated
 ## 📋 Requirements
 
 - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
-- OpenAI API key
+- [OpenAI API key](https://platform.openai.com/account/api-keys)
 - [PINECONE API key](https://www.pinecone.io/)
 
 Optional:
@@ -96,10 +96,9 @@ pip install -r requirements.txt
 ```
 
 4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
-
-- Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
-- Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
-- If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_AZURE_API_BASE`, `OPENAI_AZURE_API_VERSION` and `OPENAI_AZURE_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
+  - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_AZURE_API_BASE`, `OPENAI_AZURE_API_VERSION` and `OPENAI_AZURE_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section. Additionally you need separate deployments for both embeddings and chat. Add their ID values to `OPENAI_AZURE_CHAT_DEPLOYMENT_ID` and `OPENAI_AZURE_EMBEDDINGS_DEPLOYMENT_ID` respectively
 
 ## 🔧 Usage
 
