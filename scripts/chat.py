@@ -44,7 +44,7 @@ def chat_with_ai(
         user_input,
         full_message_history,
         permanent_memory,
-        token_limit):
+        ai_config):
     """Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory."""
     while True:
         try:
@@ -56,18 +56,19 @@ def chat_with_ai(
             user_input (str): The input from the user.
             full_message_history (list): The list of all messages sent between the user and the AI.
             permanent_memory (Obj): The memory object containing the permanent memory.
-            token_limit (int): The maximum number of tokens allowed in the API call.
+            ai_config (AIConfig): Information about the model used, containing model id, temperature, and max tokens.
 
             Returns:
             str: The AI's response.
             """
-            model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
+            model = ai_config.ai_model_id
+
             # Reserve 1000 tokens for the response
 
             if cfg.debug_mode:
-                print(f"Token limit: {token_limit}")
+                print(f"Token limit: {ai_config.ai_token_limit}")
 
-            send_token_limit = token_limit - 1000
+            send_token_limit = ai_config.ai_token_limit - 1000
 
             relevant_memory = permanent_memory.get_relevant(str(full_message_history[-5:]), 10)
 
@@ -106,12 +107,12 @@ def chat_with_ai(
             current_context.extend([create_chat_message("user", user_input)])
 
             # Calculate remaining tokens
-            tokens_remaining = token_limit - current_tokens_used
+            tokens_remaining = ai_config.ai_token_limit - current_tokens_used
             # assert tokens_remaining >= 0, "Tokens remaining is negative. This should never happen, please submit a bug report at https://www.github.com/Torantulino/Auto-GPT"
 
             # Debug print the current context
             if cfg.debug_mode:
-                print(f"Token limit: {token_limit}")
+                print(f"Token limit: {ai_config.ai_token_limit}")
                 print(f"Send Token Count: {current_tokens_used}")
                 print(f"Tokens remaining for response: {tokens_remaining}")
                 print("------------ CONTEXT SENT TO AI ---------------")
@@ -124,11 +125,11 @@ def chat_with_ai(
                     print()
                 print("----------- END OF CONTEXT ----------------")
 
-            # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
             assistant_reply = create_chat_completion(
                 model=model,
                 messages=current_context,
                 max_tokens=tokens_remaining,
+                temperature=ai_config.ai_temperature,
             )
 
             # Update full message history

@@ -126,62 +126,66 @@ def print_assistant_thoughts(assistant_reply):
         call_stack = traceback.format_exc()
         print_to_console("Error: \n", Fore.RED, call_stack)
 
+# TODO: This function is not used in the current version of AutoGPT, please verify that and remove if necessary
+# def load_variables(config_file="config.yaml"):
+#     """Load variables from yaml file if it exists, otherwise prompt the user for input"""
+#     try:
+#         with open(config_file) as file:
+#             config = yaml.load(file, Loader=yaml.FullLoader)
+#         ai_name = config.get("ai_name")
+#         ai_role = config.get("ai_role")
+#         ai_goals = config.get("ai_goals")
+#         ai_model_id = config.get("ai_model_id")
+#         ai_model_temperature = config.get("ai_model_temperature")
+#     except FileNotFoundError:
+#         ai_name = ""
+#         ai_role = ""
+#         ai_goals = []
+#         ai_model_id = ""
+#         ai_model_temperature = 0.7
 
-def load_variables(config_file="config.yaml"):
-    """Load variables from yaml file if it exists, otherwise prompt the user for input"""
-    try:
-        with open(config_file) as file:
-            config = yaml.load(file, Loader=yaml.FullLoader)
-        ai_name = config.get("ai_name")
-        ai_role = config.get("ai_role")
-        ai_goals = config.get("ai_goals")
-    except FileNotFoundError:
-        ai_name = ""
-        ai_role = ""
-        ai_goals = []
+#     # Prompt the user for input if config file is missing or empty values
+#     if not ai_name:
+#         ai_name = utils.clean_input("Name your AI: ")
+#         if ai_name == "":
+#             ai_name = "Entrepreneur-GPT"
 
-    # Prompt the user for input if config file is missing or empty values
-    if not ai_name:
-        ai_name = utils.clean_input("Name your AI: ")
-        if ai_name == "":
-            ai_name = "Entrepreneur-GPT"
+#     if not ai_role:
+#         ai_role = utils.clean_input(f"{ai_name} is: ")
+#         if ai_role == "":
+#             ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
-    if not ai_role:
-        ai_role = utils.clean_input(f"{ai_name} is: ")
-        if ai_role == "":
-            ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
+#     if not ai_goals:
+#         print("Enter up to 5 goals for your AI: ")
+#         print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+#         print("Enter nothing to load defaults, enter nothing when finished.")
+#         ai_goals = []
+#         for i in range(5):
+#             ai_goal = utils.clean_input(f"Goal {i+1}: ")
+#             if ai_goal == "":
+#                 break
+#             ai_goals.append(ai_goal)
+#         if len(ai_goals) == 0:
+#             ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
 
-    if not ai_goals:
-        print("Enter up to 5 goals for your AI: ")
-        print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
-        print("Enter nothing to load defaults, enter nothing when finished.")
-        ai_goals = []
-        for i in range(5):
-            ai_goal = utils.clean_input(f"Goal {i+1}: ")
-            if ai_goal == "":
-                break
-            ai_goals.append(ai_goal)
-        if len(ai_goals) == 0:
-            ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
+#     # Save variables to yaml file
+#     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
+#     with open(config_file, "w") as file:
+#         documents = yaml.dump(config, file)
 
-    # Save variables to yaml file
-    config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
-    with open(config_file, "w") as file:
-        documents = yaml.dump(config, file)
+#     prompt = data.load_prompt()
+#     prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."""
 
-    prompt = data.load_prompt()
-    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."""
+#     # Construct full prompt
+#     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+#     for i, goal in enumerate(ai_goals):
+#         full_prompt += f"{i+1}. {goal}\n"
 
-    # Construct full prompt
-    full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
-    for i, goal in enumerate(ai_goals):
-        full_prompt += f"{i+1}. {goal}\n"
-
-    full_prompt += f"\n\n{prompt}"
-    return full_prompt
+#     full_prompt += f"\n\n{prompt}"
+#     return full_prompt
 
 
-def construct_prompt():
+def load_model_config():
     """Construct the prompt for the AI to respond to"""
     config = AIConfig.load()
     if config.ai_name:
@@ -191,10 +195,15 @@ def construct_prompt():
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
         should_continue = utils.clean_input(f"""Continue with the last settings?
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}
-Continue (y/n): """)
+            -- AI --
+            Name:  {config.ai_name}
+            Role:  {config.ai_role}
+            Goals: {config.ai_goals}
+            -- Tuning --
+            Model ID: {config.ai_model_id}
+            Temperature: {config.ai_temperature}
+            Tokens limit: {config.ai_token_limit}
+            Continue ([y]/n): """)
         if should_continue.lower() == "n":
             config = AIConfig()
 
@@ -206,8 +215,7 @@ Continue (y/n): """)
     global ai_name
     ai_name = config.ai_name
 
-    full_prompt = config.construct_full_prompt()
-    return full_prompt
+    return config
 
 
 def prompt_user():
@@ -244,6 +252,33 @@ def prompt_user():
     if ai_role == "":
         ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
+    # Fine tune the model
+    print_to_console(
+        "Would you like to tune the model?",
+        Fore.GREEN,
+        "You will be prompted model id and temperature. Enter nothing to load defaults.")
+    should_fine_tune = utils.clean_input("Fine tune (y/[n]): ")
+    if should_fine_tune.lower() == "y":
+        model_id = utils.clean_input(f"OpenAI Model id [{AIConfig.DEFAULT_PARAMETERS.ai_model_id}]: ")
+        model_temperature = utils.clean_input(f"Temperature [{AIConfig.DEFAULT_PARAMETERS.ai_temperature}]: ")
+        model_token_limit = utils.clean_input(f"Token limit [{AIConfig.DEFAULT_PARAMETERS.ai_token_limit}]: ")
+
+        # Convert to float, -1 will be replaced with default in AIConfig constructor
+        if model_temperature == "":
+            model_temperature = -1
+        else:
+            model_temperature = float(model_temperature)
+        
+        # Convert to int, -1 will be replaced with default in AIConfig constructor
+        if model_token_limit == "":
+            model_token_limit = -1
+        else:
+            model_token_limit = int(model_token_limit)
+    else:
+        # will be replaced with defaults in AIConfig constructor
+        model_id = ""
+        model_temperature = -1
+
     # Enter up to 5 goals for the AI
     print_to_console(
         "Enter up to 5 goals for your AI: ",
@@ -260,7 +295,7 @@ def prompt_user():
         ai_goals = ["Increase net worth", "Grow Twitter Account",
                     "Develop and manage multiple businesses autonomously"]
 
-    config = AIConfig(ai_name, ai_role, ai_goals)
+    config = AIConfig(ai_name, ai_role, ai_goals, model_id, model_temperature)
     return config
 
 def parse_arguments():
@@ -293,6 +328,8 @@ def parse_arguments():
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
 
+# print("Do you want to turn on automated mode? All AI commands would be authorized automatically. POTENTIALLY DANGEROUS, USE CAREFULLY")
+# automated_mode = utils.clean_input("Automated Mode (y/[n]): ")
 
 # TODO: fill in llm values here
 check_openai_api_key()
@@ -300,7 +337,8 @@ cfg = Config()
 logger = configure_logging()
 parse_arguments()
 ai_name = ""
-prompt = construct_prompt()
+config = load_model_config()
+prompt = config.construct_full_prompt()
 # print(prompt)
 # Initialize variables
 full_message_history = []
@@ -308,6 +346,13 @@ result = None
 next_action_count = 0
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
+
+print_to_console("Fast authorization mode: ", Fore.RED, "Do you want to turn on fast authorization mode? All AI commands will be authorized with a single enter. POTENTIALLY DANGEROUS, USE CAREFULLY")
+fast_authorization_mode = utils.clean_input("Fast authorization mode (y/[n]): ").lower() == "y"
+if fast_authorization_mode:
+    print_to_console("Fast authorization mode:", Fore.RED, "ENABLED")
+
+print_to_console("Setup complete!", Fore.GREEN, "AI is configured and will now start running")
 
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
@@ -323,7 +368,7 @@ while True:
             user_input,
             full_message_history,
             memory,
-            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            config)
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
@@ -343,12 +388,17 @@ while True:
             "NEXT ACTION: ",
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
-        print(
-            f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
-            flush=True)
+        if fast_authorization_mode:
+            print(
+                f"Enter 'y' or leave empty to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+                flush=True)
+        else:
+            print(
+                f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+                flush=True)
         while True:
             console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-            if console_input.lower() == "y":
+            if console_input.lower() == "y" or fast_authorization_mode and console_input == "":
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break
             elif console_input.lower().startswith("y -"):

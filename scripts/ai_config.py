@@ -10,9 +10,13 @@ class AIConfig:
         ai_name (str): The name of the AI.
         ai_role (str): The description of the AI's role.
         ai_goals (list): The list of objectives the AI is supposed to complete.
+        ai_model_id (str): The model id of the AI.
+        ai_temperature (float): The temperature of the AI.
+        ai_token_limit (int): The token limit of the AI.
+
     """
 
-    def __init__(self, ai_name: str="", ai_role: str="", ai_goals: list=[]) -> None:
+    def __init__(self, ai_name: str="", ai_role: str="", ai_goals: list=[], ai_model_id: str="", ai_temperature: float=-1, ai_token_imit: int=-1) -> None:
         """
         Initialize a class instance
 
@@ -27,6 +31,27 @@ class AIConfig:
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
+        if ai_model_id == "":
+            self.ai_model_id = self.DEFAULT_PARAMETERS.ai_model_id
+        else:
+            self.ai_model_id = ai_model_id
+
+        if ai_temperature == -1:
+            self.ai_temperature = self.DEFAULT_PARAMETERS.ai_temperature
+        else:
+            self.ai_temperature = ai_temperature
+
+        if ai_token_imit == -1:
+            self.ai_token_limit = self.DEFAULT_PARAMETERS.ai_token_limit
+        else:
+            self.ai_token_limit = ai_token_imit
+
+    # Default parameters for the OpenAI model
+    DEFAULT_PARAMETERS = {
+        "ai_model_id": "gpt-3.5-turbo",
+        "ai_temperature": 0.7,
+        "ai_token_limit": 4000,
+    }
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
     SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
@@ -54,8 +79,11 @@ class AIConfig:
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
+        ai_model_id = config_params.get("ai_model_id", "")
+        ai_temperature = float(config_params.get("ai_temperature", 0.0))
+        ai_token_limit = int(config_params.get("ai_token_limit", 0))
 
-        return cls(ai_name, ai_role, ai_goals)
+        return cls(ai_name, ai_role, ai_goals, ai_model_id, ai_temperature, ai_token_limit)
 
     def save(self, config_file: str=SAVE_FILE) -> None:
         """
@@ -68,7 +96,7 @@ class AIConfig:
             None
         """
 
-        config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
+        config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals, "ai_model_id": self.ai_model_id, "ai_temperature": self.ai_temperature}
         with open(config_file, "w") as file:
             yaml.dump(config, file)
 
