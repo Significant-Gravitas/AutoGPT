@@ -1,0 +1,11 @@
+site_name: Auto-GPT
+site_description: The coolest thing you have seen this week
+site_url: https://example.com/
+theme:
+  name: readthedocs
+markdown_extensions:
+- pymdownx.details
+- toc:
+    permalink: true
+plugins:
+- search
