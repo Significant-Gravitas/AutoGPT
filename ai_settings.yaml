@@ -1,4 +1,4 @@
 ai_goals:
-- Install the htop program on my machine
-ai_name: Developer
-ai_role: an AI designed to install software
+- Try pinging google.com
+ai_name: Dev
+ai_role: an AI to run local commands

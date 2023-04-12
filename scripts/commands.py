@@ -58,69 +58,41 @@ def get_command(response):
         return "Error:", str(e)
 
 
+COMMAND_FUNCTIONS = {
+    "google": lambda args: ddg_search(args["input"]),
+    "memory_add": lambda args: get_memory(cfg).add(args["string"]),
+    "start_agent": lambda args: start_agent(args["name"], args["task"], args["prompt"]),
+    "message_agent": lambda args: message_agent(args["key"], args["message"]),
+    "list_agents": lambda: list_agents(),
+    "delete_agent": lambda args: delete_agent(args["key"]),
+    "get_text_summary": lambda args: get_text_summary(args["url"], args["question"]),
+    "get_hyperlinks": lambda args: get_hyperlinks(args["url"]),
+    "read_file": lambda args: read_file(args["file"]),
+    "write_to_file": lambda args: write_to_file(args["file"], args["text"]),
+    "append_to_file": lambda args: append_to_file(args["file"], args["text"]),
+    "delete_file": lambda args: delete_file(args["file"]),
+    "search_files": lambda args: search_files(args["directory"]),
+    "browse_website": lambda args: browse_website(args["url"], args["question"]),
+    "evaluate_code": lambda args: ai.evaluate_code(args["code"]),
+    "improve_code": lambda args: ai.improve_code(args["suggestions"], args["code"]),
+    "write_tests": lambda args: ai.write_tests(args["code"], args.get("focus")),
+    "execute_python_file": lambda args: execute_python_file(args["file"]),
+    "generate_image": lambda args: generate_image(args["prompt"]),
+    "do_nothing": lambda _: "No action performed.",
+    "execute_local_command": lambda args: execute_local_command(args["command"]),
+    "task_complete": lambda _: shutdown(),
+}
+
+
 def execute_command(command_name, arguments):
-    """Execute the command and return the result"""
-    memory = get_memory(cfg)
+    """Execute the command and return the result."""
+    command_function = COMMAND_FUNCTIONS.get(command_name)
+
+    if not command_function:
+        return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for available commands and only respond in the specified JSON format."
 
     try:
-        if command_name == "google":
-            # Check if the Google API key is set and use the official search method
-            # If the API key is not set or has only whitespaces, use the unofficial search method
-            if cfg.google_api_key and (
-                cfg.google_api_key.strip() if cfg.google_api_key else None
-            ):
-                return google_official_search(arguments["input"])
-            else:
-                return google_search(arguments["input"])
-        elif command_name == "memory_add":
-            return memory.add(arguments["string"])
-        elif command_name == "start_agent":
-            return start_agent(
-                arguments["name"], arguments["task"], arguments["prompt"]
-            )
-        elif command_name == "message_agent":
-            return message_agent(arguments["key"], arguments["message"])
-        elif command_name == "list_agents":
-            return list_agents()
-        elif command_name == "delete_agent":
-            return delete_agent(arguments["key"])
-        elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"], arguments["question"])
-        elif command_name == "get_hyperlinks":
-            return get_hyperlinks(arguments["url"])
-        elif command_name == "read_file":
-            return read_file(arguments["file"])
-        elif command_name == "write_to_file":
-            return write_to_file(arguments["file"], arguments["text"])
-        elif command_name == "append_to_file":
-            return append_to_file(arguments["file"], arguments["text"])
-        elif command_name == "delete_file":
-            return delete_file(arguments["file"])
-        elif command_name == "search_files":
-            return search_files(arguments["directory"])
-        elif command_name == "browse_website":
-            return browse_website(arguments["url"], arguments["question"])
-        # TODO: Change these to take in a file rather than pasted code, if
-        # non-file is given, return instructions "Input should be a python
-        # filepath, write your code to file and try again"
-        elif command_name == "evaluate_code":
-            return ai.evaluate_code(arguments["code"])
-        elif command_name == "improve_code":
-            return ai.improve_code(arguments["suggestions"], arguments["code"])
-        elif command_name == "write_tests":
-            return ai.write_tests(arguments["code"], arguments.get("focus"))
-        elif command_name == "execute_python_file":  # Add this command
-            return execute_python_file(arguments["file"])
-        elif command_name == "generate_image":
-            return generate_image(arguments["prompt"])
-        elif command_name == "do_nothing":
-            return "No action performed."
-        elif command_name == "execute_local_command":
-            return execute_local_command(arguments["command"])
-        elif command_name == "task_complete":
-            shutdown()
-        else:
-            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for available commands and only respond in the specified JSON format."
+        return command_function(arguments)
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -132,56 +104,10 @@ def get_datetime():
     )
 
 
-def google_search(query, num_results=8):
+def ddg_search(query, num_results=8):
     """Return the results of a google search"""
     search_results = list(ddg(query, max_results=num_results))
     return json.dumps(search_results, ensure_ascii=False, indent=4)
-
-
-def google_official_search(query, num_results=8):
-    """Return the results of a google search using the official Google API"""
-    import json
-
-    from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
-
-    try:
-        # Get the Google API key and Custom Search Engine ID from the config file
-        api_key = cfg.google_api_key
-        custom_search_engine_id = cfg.custom_search_engine_id
-
-        # Initialize the Custom Search API service
-        service = build("customsearch", "v1", developerKey=api_key)
-
-        # Send the search query and retrieve the results
-        result = (
-            service.cse()
-            .list(q=query, cx=custom_search_engine_id, num=num_results)
-            .execute()
-        )
-
-        # Extract the search result items from the response
-        search_results = result.get("items", [])
-
-        # Create a list of only the URLs from the search results
-        search_results_links = [item["link"] for item in search_results]
-
-    except HttpError as e:
-        # Handle errors in the API call
-        error_details = json.loads(e.content.decode())
-
-        # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get(
-            "code"
-        ) == 403 and "invalid API key" in error_details.get("error", {}).get(
-            "message", ""
-        ):
-            return "Error: The provided Google API key is invalid or missing."
-        else:
-            return f"Error: {e}"
-
-    # Return the list of search result URLs
-    return search_results_links
 
 
 def browse_website(url, question):
