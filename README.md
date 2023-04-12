@@ -58,7 +58,7 @@ Your support is greatly appreciated
 
 ## 📋 Requirements
 - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
-- OpenAI API key
+- [OpenAI API key](https://platform.openai.com/account/api-keys)
 - [PINECONE API key](https://www.pinecone.io/)
 
 Optional:
