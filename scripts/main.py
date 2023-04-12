@@ -411,14 +411,15 @@ while True:
         elif user_input == "EXIT":
             print("Exiting...", flush=True)
             break
+        elif user_input == "RETRY":
+            continue
     else:
         # Print command
         logger.typewriter_log(
             "NEXT ACTION: ",
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
-    if user_input == "RETRY":
-            continue
+
     # Execute command
     if command_name is not None and command_name.lower().startswith( "error" ):
         result = f"Command {command_name} threw the following error: " + arguments
