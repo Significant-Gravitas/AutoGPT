@@ -1,6 +1,6 @@
 site_name: Auto-GPT
 site_description: The coolest thing you have seen this week
-site_url: https://github.com/coleyr/Auto-GPT
+site_url: https://github.com/Torantulino/Auto-GPT
 theme:
   name: readthedocs
 markdown_extensions:
