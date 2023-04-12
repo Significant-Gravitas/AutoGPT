@@ -45,13 +45,16 @@ const dataReducer = createSlice<
         ...action.payload.answers,
       ]
     },
+    deleteAi: (state: IDataState, action: PayloadAction<IAi["id"]>) => {
+      delete state.aiHistory[action.payload]
+    },
     removeAgent: (state: IDataState, action: PayloadAction<IAgent["name"]>) => {
       delete state.agents[action.payload]
     },
   },
 })
 
-export const { addAiHistory, addAgent, removeAgent, addAnswersToAi } =
+export const { addAiHistory, addAgent, removeAgent, addAnswersToAi, deleteAi } =
   dataReducer.actions as {
     addAiHistory: ActionCreatorWithPayload<IAi>
     addAgent: ActionCreatorWithPayload<{
@@ -63,5 +66,6 @@ export const { addAiHistory, addAgent, removeAgent, addAnswersToAi } =
       aiId: string
       answers: Array<IAnswer>
     }>
+    deleteAi: ActionCreatorWithPayload<IAi["id"]>
   }
 export default dataReducer.reducer

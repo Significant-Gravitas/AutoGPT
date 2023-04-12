@@ -3,7 +3,8 @@ import styled from "styled-components"
 
 export const Grid = styled.div`
   display: grid;
-  grid-template-columns: 1fr 3fr 1fr;
+  grid-template-columns: var(--ai-list-width) 3fr 1fr;
+  width: 100%;
   grid-gap: 1rem;
 `
 
@@ -22,15 +23,10 @@ export const Container = styled.div`
   color: var(--grey100);
   height: 100vh;
   overflow: hidden;
+  width: 100%;
 `
-export const RightTasks = styled.div`
-  background-color: var(--grey900);
-  color: var(--grey100);
-  height: 100%;
-  border-radius: 0.5rem;
-  padding: 1rem;
-`
-export const CardTask = styled(Paper)<{ $active?: boolean }>`
+
+export const CardTask = styled(Paper) <{ $active?: boolean }>`
   color: var(--grey100) !important;
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
@@ -67,7 +63,13 @@ export const Search = styled.div`
     font-size: 1rem;
   }
 `
-
+export const LeftContent = styled.div`
+  background-color: var(--grey900);
+  color: var(--grey100);
+  height: 100%;
+  border-radius: 0.5rem;
+  padding: 1rem;
+`
 export const Discussion = styled.div`
   --action-bar-height: 9rem;
   --input-container-height: 6rem;

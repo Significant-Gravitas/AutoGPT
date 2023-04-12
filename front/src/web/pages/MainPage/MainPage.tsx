@@ -22,17 +22,21 @@ import {
   Grid,
   Input,
   InputContainer,
-  RightTasks,
+  LeftContent,
   SIconButton,
 } from "./MainPage.styled"
 import useAutoGPTAPI from "@/hooks/useAutoGPTAPI"
 import SChip from "@/components/atom/SChip"
+import AiList from "@/components/organisms/AiList/AiList"
+import { useDispatch } from "react-redux"
+import { deleteAi } from "@/redux/data/dataReducer"
 
 const MainPage = () => {
   const { aiHistoryArray, aiHistory } = useAiHistory()
   const { id } = useParams<{ id: string }>()
   const { agents } = useAgents()
   const [playing, setPlaying] = useState(false)
+  const dispatch = useDispatch()
   const commentsEndRef = useRef(null)
   const navigate = useNavigate()
 
@@ -67,22 +71,7 @@ const MainPage = () => {
   return (
     <Container>
       <Grid>
-        <RightTasks>
-          <Flex direction="column" gap={1}>
-            <h2>All your AI</h2>
-            <SearchInput />
-            {aiHistoryArray.map((ai) => (
-              <TaskCard ai={ai} key={ai.id} />
-            ))}
-            <SButton
-              $color="yellow300"
-              variant="outlined"
-              onClick={() => navigate("/")}
-            >
-              Create a new Ai
-            </SButton>
-          </Flex>
-        </RightTasks>
+        <AiList />
         <Discussion>
           <Flex direction="column" gap={0.5}>
             <ActionBar>
@@ -93,7 +82,16 @@ const MainPage = () => {
                   <Chip label="Continuous" color="primary" size="small" />
                 </Flex>
                 <Flex gap={0.5} align="center">
-                  <SIconButton>
+                  <SIconButton onClick={
+                    () => {
+                      if (playing) {
+                        setPlaying(!playing)
+                        AutoGPTAPI.killScript()
+                      }
+                      navigate("/")
+                      dispatch(deleteAi(id))
+                    }
+                  } >
                     <Delete fontSize="small" />
                   </SIconButton>
                   <SIconButton>
@@ -134,7 +132,7 @@ const MainPage = () => {
             </InputContainer>
           </Flex>
         </Discussion>
-        <RightTasks>
+        <LeftContent>
           <Flex direction="column" gap={0.5}>
             <h2>Your goals</h2>
             {(currentAi.goals ?? []).map((goal) => {
@@ -157,7 +155,7 @@ const MainPage = () => {
               return <AgentCard key={agent.name} agent={agent} />
             })}
           </Flex>
-        </RightTasks>
+        </LeftContent>
       </Grid>
     </Container>
   )

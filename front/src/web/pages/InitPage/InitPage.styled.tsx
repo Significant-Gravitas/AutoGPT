@@ -25,3 +25,8 @@ export const OnOff = styled.div`
   font-size: 1rem;
   font-weight: 500;
 `
+export const Grid = styled.div`
+  display: grid;
+  grid-template-columns: var(--ai-list-width) 1fr;
+  width: 100%;
+  `

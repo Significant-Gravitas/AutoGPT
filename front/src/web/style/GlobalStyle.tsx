@@ -43,7 +43,8 @@ const GlobalStyle = createGlobalStyle`
 
  :root {
     ${colors}
-}
+    --ai-list-width: 400px;
+  }
 body {
     margin: 0;
     padding: 0;
