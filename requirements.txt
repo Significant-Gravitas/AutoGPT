@@ -16,3 +16,4 @@ redis
 orjson
 Pillow
 weaviate-client==3.15.5
+coverage
