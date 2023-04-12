@@ -66,8 +66,6 @@ class WeaviateMemory(MemoryProviderSingleton):
                 vector=vector
             )
 
-            batch.flush()
-
         return f"Inserting data into memory at uuid: {doc_uuid}:\n data: {data}"
 
     def get(self, data):
