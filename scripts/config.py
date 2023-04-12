@@ -77,7 +77,7 @@ class Config(metaclass=Singleton):
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
         self.wipe_redis_on_start = os.getenv("WIPE_REDIS_ON_START", "True") == 'True'
         self.memory_index = os.getenv("MEMORY_INDEX", 'auto-gpt')
-        # Note that indexes must be created on db 0 in redis, this is not configureable.
+        # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
         # Initialize the OpenAI API client
