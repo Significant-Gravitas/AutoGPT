@@ -6,7 +6,6 @@ from urllib.parse import urlparse, urljoin
 
 cfg = Config()
 
-
 # Function to check if the URL is valid
 def is_valid_url(url):
     try:
@@ -21,7 +20,6 @@ def sanitize_url(url):
 
 # Define and check for local file address prefixes
 def check_local_file_access(url):
-    # Define and check for local file address prefixes
     local_prefixes = ['file:///', 'file://localhost', 'http://localhost', 'https://localhost']
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
