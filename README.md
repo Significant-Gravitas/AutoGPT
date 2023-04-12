@@ -112,13 +112,20 @@ python scripts/main.py
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
+### Logs
+You will find activity and error logs in the folder ```./logs```
+
+To output debug logs:
+```
+python scripts/main.py --debug
+```
+
 ## 🗣️ Speech Mode
 
 Use this to use TTS for Auto-GPT
 
 ```
 python scripts/main.py --speak
-
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -222,6 +229,17 @@ export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
+
+
+## Setting Your Cache Type
+
+By default Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+
+To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
+
+`local` (default) uses a local JSON cache file
+`pinecone` uses the Pinecone.io account you configured in your ENV settings
+`redis` will use the redis cache that you configured
 
 ## View Memory Usage
 
