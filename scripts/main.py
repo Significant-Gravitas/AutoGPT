@@ -200,7 +200,6 @@ def load_model_config():
             Role:  {config.ai_role}
             Goals: {config.ai_goals}
             -- Tuning --
-            Model ID: {config.ai_model_id}
             Temperature: {config.ai_temperature}
             Tokens limit: {config.ai_token_limit}
             Continue ([y]/n): """)
@@ -256,12 +255,13 @@ def prompt_user():
     print_to_console(
         "Would you like to tune the model?",
         Fore.GREEN,
-        "You will be prompted model id and temperature. Enter nothing to load defaults.")
+        "You will be prompted model temperature and token limit. Enter nothing to load defaults.")
     should_fine_tune = utils.clean_input("Fine tune (y/[n]): ")
     if should_fine_tune.lower() == "y":
-        model_id = utils.clean_input(f"OpenAI Model id [{AIConfig.DEFAULT_PARAMETERS.ai_model_id}]: ")
-        model_temperature = utils.clean_input(f"Temperature [{AIConfig.DEFAULT_PARAMETERS.ai_temperature}]: ")
-        model_token_limit = utils.clean_input(f"Token limit [{AIConfig.DEFAULT_PARAMETERS.ai_token_limit}]: ")
+        # Model ID customization is disabled and should be set through .env file
+        # model_id = utils.clean_input(f"OpenAI Model id [{AIConfig.DEFAULT_PARAMETERS.ai_model_id}]: ")
+        model_temperature = utils.clean_input(f"Temperature [{AIConfig.DEFAULT_PARAMETERS['ai_temperature']}]: ")
+        model_token_limit = utils.clean_input(f"Token limit [{AIConfig.DEFAULT_PARAMETERS['ai_token_limit']}]: ")
 
         # Convert to float, -1 will be replaced with default in AIConfig constructor
         if model_temperature == "":
@@ -276,8 +276,9 @@ def prompt_user():
             model_token_limit = int(model_token_limit)
     else:
         # will be replaced with defaults in AIConfig constructor
-        model_id = ""
+        # model_id = ""
         model_temperature = -1
+        model_token_limit = -1
 
     # Enter up to 5 goals for the AI
     print_to_console(
@@ -295,7 +296,7 @@ def prompt_user():
         ai_goals = ["Increase net worth", "Grow Twitter Account",
                     "Develop and manage multiple businesses autonomously"]
 
-    config = AIConfig(ai_name, ai_role, ai_goals, model_id, model_temperature)
+    config = AIConfig(ai_name, ai_role, ai_goals, model_temperature, model_token_limit)
     return config
 
 def parse_arguments():

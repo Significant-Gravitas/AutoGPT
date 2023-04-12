@@ -56,13 +56,12 @@ def chat_with_ai(
             user_input (str): The input from the user.
             full_message_history (list): The list of all messages sent between the user and the AI.
             permanent_memory (Obj): The memory object containing the permanent memory.
-            ai_config (AIConfig): Information about the model used, containing model id, temperature, and max tokens.
+            token_limit (int): The maximum number of tokens allowed in the API call.
 
             Returns:
             str: The AI's response.
             """
-            model = ai_config.ai_model_id
-
+            model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
 
             if cfg.debug_mode:
@@ -125,6 +124,7 @@ def chat_with_ai(
                     print()
                 print("----------- END OF CONTEXT ----------------")
 
+            # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
             assistant_reply = create_chat_completion(
                 model=model,
                 messages=current_context,
