@@ -6,6 +6,7 @@ from urllib.parse import urlparse, urljoin
 
 cfg = Config()
 
+
 # Function to check if the URL is valid
 def is_valid_url(url):
     try:
@@ -14,14 +15,17 @@ def is_valid_url(url):
     except ValueError:
         return False
 
+
 # Function to sanitize the URL
 def sanitize_url(url):
     return urljoin(url, urlparse(url).path)
+
 
 # Define and check for local file address prefixes
 def check_local_file_access(url):
     local_prefixes = ['file:///', 'file://localhost', 'http://localhost', 'https://localhost']
     return any(url.startswith(prefix) for prefix in local_prefixes)
+
 
 def get_response(url, headers=cfg.user_agent_header, timeout=10):
     try:
@@ -32,7 +36,6 @@ def get_response(url, headers=cfg.user_agent_header, timeout=10):
         # Most basic check if the URL is valid:
         if not url.startswith('http://') and not url.startswith('https://'):
             raise ValueError('Invalid URL format')
-
 
         sanitized_url = sanitize_url(url)
 
@@ -50,6 +53,7 @@ def get_response(url, headers=cfg.user_agent_header, timeout=10):
     except requests.exceptions.RequestException as re:
         # Handle exceptions related to the HTTP request (e.g., connection errors, timeouts, etc.)
         return None, "Error: " + str(re)
+
 
 def scrape_text(url):
     """Scrape text from a webpage"""
@@ -127,6 +131,7 @@ def create_message(chunk, question):
         "role": "user",
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
     }
+
 
 def summarize_text(text, question):
     """Summarize text using the LLM model"""
