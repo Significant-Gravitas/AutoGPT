@@ -1,49 +1,56 @@
+import argparse
 import json
+import logging
 import random
-import commands as cmd
-import utils
-from memory import get_memory
-import data
-import chat
-from colorama import Fore, Style
-from spinner import Spinner
 import time
+import traceback
+
+import chat
+import commands as cmd
+import data
 import speak
+import utils
+import yaml
+from ai_config import AIConfig
+from colorama import Fore, Style
 from config import Config
 from json_parser import fix_and_parse_json
-from ai_config import AIConfig
-import traceback
-import yaml
-import argparse
-import logging
+from memory import get_memory
+from spinner import Spinner
 
 cfg = Config()
 
+
 def configure_logging():
-    logging.basicConfig(filename='log.txt',
-                    filemode='a',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.DEBUG)
-    return logging.getLogger('AutoGPT')
+    logging.basicConfig(
+        filename="log.txt",
+        filemode="a",
+        format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+        level=logging.DEBUG,
+    )
+    return logging.getLogger("AutoGPT")
+
 
 def check_openai_api_key():
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     if not cfg.openai_api_key:
         print(
-            Fore.RED +
-            "Please set your OpenAI API key in config.py or as an environment variable."
+            Fore.RED
+            + "Please set your OpenAI API key in config.py or as an environment variable."
         )
         print("You can get your key from https://beta.openai.com/account/api-keys")
         exit(1)
 
+
 def print_to_console(
-        title,
-        title_color,
-        content,
-        speak_text=False,
-        min_typing_speed=0.05,
-        max_typing_speed=0.01):
+    title,
+    title_color,
+    content,
+    speak_text=False,
+    min_typing_speed=0.05,
+    max_typing_speed=0.01,
+):
     """Prints text to the console with a typing effect"""
     global cfg
     global logger
@@ -51,7 +58,7 @@ def print_to_console(
         speak.say_text(f"{title}. {content}")
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
-        logger.info(title + ': ' + content)
+        logger.info(title + ": " + content)
         if isinstance(content, list):
             content = " ".join(content)
         words = content.split()
@@ -96,7 +103,9 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_criticism = assistant_thoughts.get("criticism")
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
-        print_to_console(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
+        print_to_console(
+            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text
+        )
         print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
 
         if assistant_thoughts_plan:
@@ -108,7 +117,7 @@ def print_assistant_thoughts(assistant_reply):
                 assistant_thoughts_plan = str(assistant_thoughts_plan)
 
             # Split the input_string using the newline character and dashes
-            lines = assistant_thoughts_plan.split('\n')
+            lines = assistant_thoughts_plan.split("\n")
             for line in lines:
                 line = line.lstrip("- ")
                 print_to_console("- ", Fore.GREEN, line.strip())
@@ -153,7 +162,9 @@ def load_variables(config_file="config.yaml"):
 
     if not ai_goals:
         print("Enter up to 5 goals for your AI: ")
-        print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+        print(
+            "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'"
+        )
         print("Enter nothing to load defaults, enter nothing when finished.")
         ai_goals = []
         for i in range(5):
@@ -162,7 +173,11 @@ def load_variables(config_file="config.yaml"):
                 break
             ai_goals.append(ai_goal)
         if len(ai_goals) == 0:
-            ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
+            ai_goals = [
+                "Increase net worth",
+                "Grow Twitter Account",
+                "Develop and manage multiple businesses autonomously",
+            ]
 
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
@@ -189,12 +204,15 @@ def construct_prompt():
             f"Welcome back! ",
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
-            speak_text=True)
-        should_continue = utils.clean_input(f"""Continue with the last settings?
+            speak_text=True,
+        )
+        should_continue = utils.clean_input(
+            f"""Continue with the last settings?
 Name:  {config.ai_name}
 Role:  {config.ai_role}
 Goals: {config.ai_goals}
-Continue (y/n): """)
+Continue (y/n): """
+        )
         if should_continue.lower() == "n":
             config = AIConfig()
 
@@ -218,28 +236,25 @@ def prompt_user():
         "Welcome to Auto-GPT! ",
         Fore.GREEN,
         "Enter the name of your AI and its role below. Entering nothing will load defaults.",
-        speak_text=True)
+        speak_text=True,
+    )
 
     # Get AI Name from User
-    print_to_console(
-        "Name your AI: ",
-        Fore.GREEN,
-        "For example, 'Entrepreneur-GPT'")
+    print_to_console("Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'")
     ai_name = utils.clean_input("AI Name: ")
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
     print_to_console(
-        f"{ai_name} here!",
-        Fore.LIGHTBLUE_EX,
-        "I am at your service.",
-        speak_text=True)
+        f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
+    )
 
     # Get AI Role from User
     print_to_console(
         "Describe your AI's role: ",
         Fore.GREEN,
-        "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'")
+        "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'",
+    )
     ai_role = utils.clean_input(f"{ai_name} is: ")
     if ai_role == "":
         ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
@@ -248,7 +263,8 @@ def prompt_user():
     print_to_console(
         "Enter up to 5 goals for your AI: ",
         Fore.GREEN,
-        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'",
+    )
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
@@ -257,11 +273,15 @@ def prompt_user():
             break
         ai_goals.append(ai_goal)
     if len(ai_goals) == 0:
-        ai_goals = ["Increase net worth", "Grow Twitter Account",
-                    "Develop and manage multiple businesses autonomously"]
+        ai_goals = [
+            "Increase net worth",
+            "Grow Twitter Account",
+            "Develop and manage multiple businesses autonomously",
+        ]
 
     config = AIConfig(ai_name, ai_role, ai_goals)
     return config
+
 
 def parse_arguments():
     """Parses the arguments passed to the script"""
@@ -269,11 +289,15 @@ def parse_arguments():
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
 
-    parser = argparse.ArgumentParser(description='Process arguments.')
-    parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
-    parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
-    parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
-    parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser = argparse.ArgumentParser(description="Process arguments.")
+    parser.add_argument(
+        "--continuous", action="store_true", help="Enable Continuous Mode"
+    )
+    parser.add_argument("--speak", action="store_true", help="Enable Speak Mode")
+    parser.add_argument("--debug", action="store_true", help="Enable Debug Mode")
+    parser.add_argument(
+        "--gpt3only", action="store_true", help="Enable GPT3.5 Only Mode"
+    )
     args = parser.parse_args()
 
     if args.continuous:
@@ -281,7 +305,8 @@ def parse_arguments():
         print_to_console(
             "WARNING: ",
             Fore.RED,
-            "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
+            "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.",
+        )
         cfg.set_continuous_mode(True)
 
     if args.speak:
@@ -291,7 +316,6 @@ def parse_arguments():
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
-
 
 
 # TODO: fill in llm values here
@@ -307,23 +331,21 @@ full_message_history = []
 result = None
 next_action_count = 0
 # Make a constant:
-user_input = "Determine which next command to use, and respond using the format specified above:"
+user_input = (
+    "Determine which next command to use, and respond using the format specified above:"
+)
 
 # Initialize memory and make sure it is empty.
-# this is particularly important for indexing and referencing pinecone memory
 memory = get_memory(cfg, init=True)
-print('Using memory of type: ' + memory.__class__.__name__)
+print("Using memory of type: " + memory.__class__.__name__)
 
 # Interaction Loop
 while True:
     # Send message to AI, get response
     with Spinner("Thinking... "):
         assistant_reply = chat.chat_with_ai(
-            prompt,
-            user_input,
-            full_message_history,
-            memory,
-            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            prompt, user_input, full_message_history, memory, cfg.fast_token_limit
+        )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
@@ -342,10 +364,12 @@ while True:
         print_to_console(
             "NEXT ACTION: ",
             Fore.CYAN,
-            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
+            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+        )
         print(
             f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
-            flush=True)
+            flush=True,
+        )
         while True:
             console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
             if console_input.lower() == "y":
@@ -356,7 +380,9 @@ while True:
                     next_action_count = abs(int(console_input.split(" ")[1]))
                     user_input = "GENERATE NEXT COMMAND JSON"
                 except ValueError:
-                    print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
+                    print(
+                        "Invalid input format. Please enter 'y -n' where n is the number of continuous tasks."
+                    )
                     continue
                 break
             elif console_input.lower() == "n":
@@ -369,9 +395,10 @@ while True:
 
         if user_input == "GENERATE NEXT COMMAND JSON":
             print_to_console(
-            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-            Fore.MAGENTA,
-            "")
+                "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                Fore.MAGENTA,
+                "",
+            )
         elif user_input == "EXIT":
             print("Exiting...", flush=True)
             break
@@ -380,10 +407,11 @@ while True:
         print_to_console(
             "NEXT ACTION: ",
             Fore.CYAN,
-            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
+            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+        )
 
     # Execute command
-    if command_name.lower().startswith( "error" ):
+    if command_name.lower().startswith("error"):
         result = f"Command {command_name} threw the following error: " + arguments
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"
@@ -392,9 +420,11 @@ while True:
         if next_action_count > 0:
             next_action_count -= 1
 
-    memory_to_add = f"Assistant Reply: {assistant_reply} " \
-                    f"\nResult: {result} " \
-                    f"\nHuman Feedback: {user_input} "
+    memory_to_add = (
+        f"Assistant Reply: {assistant_reply} "
+        f"\nResult: {result} "
+        f"\nHuman Feedback: {user_input} "
+    )
 
     memory.add(memory_to_add)
 
@@ -405,6 +435,6 @@ while True:
         print_to_console("SYSTEM: ", Fore.YELLOW, result)
     else:
         full_message_history.append(
-            chat.create_chat_message(
-                "system", "Unable to execute command"))
+            chat.create_chat_message("system", "Unable to execute command")
+        )
         print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
