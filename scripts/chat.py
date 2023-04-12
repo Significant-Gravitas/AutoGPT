@@ -124,7 +124,6 @@ def chat_with_ai(
                     print()
                 print("----------- END OF CONTEXT ----------------")
 
-            # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
             assistant_reply = create_chat_completion(
                 model=model,
                 messages=current_context,

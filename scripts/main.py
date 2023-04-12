@@ -127,62 +127,62 @@ def print_assistant_thoughts(assistant_reply):
         print_to_console("Error: \n", Fore.RED, call_stack)
 
 # TODO: This function is not used in the current version of AutoGPT, please verify that and remove if necessary
-# def load_variables(config_file="config.yaml"):
-#     """Load variables from yaml file if it exists, otherwise prompt the user for input"""
-#     try:
-#         with open(config_file) as file:
-#             config = yaml.load(file, Loader=yaml.FullLoader)
-#         ai_name = config.get("ai_name")
-#         ai_role = config.get("ai_role")
-#         ai_goals = config.get("ai_goals")
-#         ai_model_id = config.get("ai_model_id")
-#         ai_model_temperature = config.get("ai_model_temperature")
-#     except FileNotFoundError:
-#         ai_name = ""
-#         ai_role = ""
-#         ai_goals = []
-#         ai_model_id = ""
-#         ai_model_temperature = 0.7
+def load_variables(config_file="config.yaml"):
+    """Load variables from yaml file if it exists, otherwise prompt the user for input"""
+    try:
+        with open(config_file) as file:
+            config = yaml.load(file, Loader=yaml.FullLoader)
+        ai_name = config.get("ai_name")
+        ai_role = config.get("ai_role")
+        ai_goals = config.get("ai_goals")
+        ai_model_id = config.get("ai_model_id")
+        ai_model_temperature = config.get("ai_model_temperature")
+    except FileNotFoundError:
+        ai_name = ""
+        ai_role = ""
+        ai_goals = []
+        ai_model_id = ""
+        ai_model_temperature = 0.7
 
-#     # Prompt the user for input if config file is missing or empty values
-#     if not ai_name:
-#         ai_name = utils.clean_input("Name your AI: ")
-#         if ai_name == "":
-#             ai_name = "Entrepreneur-GPT"
+    # Prompt the user for input if config file is missing or empty values
+    if not ai_name:
+        ai_name = utils.clean_input("Name your AI: ")
+        if ai_name == "":
+            ai_name = "Entrepreneur-GPT"
 
-#     if not ai_role:
-#         ai_role = utils.clean_input(f"{ai_name} is: ")
-#         if ai_role == "":
-#             ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
+    if not ai_role:
+        ai_role = utils.clean_input(f"{ai_name} is: ")
+        if ai_role == "":
+            ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
-#     if not ai_goals:
-#         print("Enter up to 5 goals for your AI: ")
-#         print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
-#         print("Enter nothing to load defaults, enter nothing when finished.")
-#         ai_goals = []
-#         for i in range(5):
-#             ai_goal = utils.clean_input(f"Goal {i+1}: ")
-#             if ai_goal == "":
-#                 break
-#             ai_goals.append(ai_goal)
-#         if len(ai_goals) == 0:
-#             ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
+    if not ai_goals:
+        print("Enter up to 5 goals for your AI: ")
+        print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+        print("Enter nothing to load defaults, enter nothing when finished.")
+        ai_goals = []
+        for i in range(5):
+            ai_goal = utils.clean_input(f"Goal {i+1}: ")
+            if ai_goal == "":
+                break
+            ai_goals.append(ai_goal)
+        if len(ai_goals) == 0:
+            ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
 
-#     # Save variables to yaml file
-#     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
-#     with open(config_file, "w") as file:
-#         documents = yaml.dump(config, file)
+    # Save variables to yaml file
+    config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
+    with open(config_file, "w") as file:
+        documents = yaml.dump(config, file)
 
-#     prompt = data.load_prompt()
-#     prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."""
+    prompt = data.load_prompt()
+    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."""
 
-#     # Construct full prompt
-#     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
-#     for i, goal in enumerate(ai_goals):
-#         full_prompt += f"{i+1}. {goal}\n"
+    # Construct full prompt
+    full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+    for i, goal in enumerate(ai_goals):
+        full_prompt += f"{i+1}. {goal}\n"
 
-#     full_prompt += f"\n\n{prompt}"
-#     return full_prompt
+    full_prompt += f"\n\n{prompt}"
+    return full_prompt
 
 
 def load_model_config():
@@ -258,8 +258,6 @@ def prompt_user():
         "You will be prompted model temperature and token limit. Enter nothing to load defaults.")
     should_fine_tune = utils.clean_input("Fine tune (y/[n]): ")
     if should_fine_tune.lower() == "y":
-        # Model ID customization is disabled and should be set through .env file
-        # model_id = utils.clean_input(f"OpenAI Model id [{AIConfig.DEFAULT_PARAMETERS.ai_model_id}]: ")
         model_temperature = utils.clean_input(f"Temperature [{AIConfig.DEFAULT_PARAMETERS['ai_temperature']}]: ")
         model_token_limit = utils.clean_input(f"Token limit [{AIConfig.DEFAULT_PARAMETERS['ai_token_limit']}]: ")
 
@@ -276,7 +274,6 @@ def prompt_user():
             model_token_limit = int(model_token_limit)
     else:
         # will be replaced with defaults in AIConfig constructor
-        # model_id = ""
         model_temperature = -1
         model_token_limit = -1
 

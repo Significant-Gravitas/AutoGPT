@@ -32,11 +32,6 @@ class AIConfig:
         self.ai_role = ai_role
         self.ai_goals = ai_goals
 
-        # if ai_model_id == "":
-        #     self.ai_model_id = self.DEFAULT_PARAMETERS.ai_model_id
-        # else:
-        #     self.ai_model_id = ai_model_id
-
         if ai_temperature == -1:
             self.ai_temperature = self.DEFAULT_PARAMETERS['ai_temperature']
         else:
@@ -49,8 +44,6 @@ class AIConfig:
 
     # Default parameters for the OpenAI model
     DEFAULT_PARAMETERS = {
-        # model id should be set through the .env file
-        # "ai_model_id": "gpt-3.5-turbo",
         "ai_temperature": 0.7,
         "ai_token_limit": 4000,
     }
@@ -81,7 +74,6 @@ class AIConfig:
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
-        # ai_model_id = config_params.get("ai_model_id", "")
         ai_temperature = float(config_params.get("ai_temperature", 0.0))
         ai_token_limit = int(config_params.get("ai_token_limit", 0))
 
