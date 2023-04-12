@@ -271,7 +271,7 @@ def parse_arguments():
 
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
-    parser.add_argument('--continuous-limit', '-l', type=int, default=0, dest="continuous_limit", help='Defines the number of times to run in continuous mode')
+    parser.add_argument('--continuous-limit', '-l', type=int, dest="continuous_limit", help='Defines the number of times to run in continuous mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
@@ -291,7 +291,7 @@ def parse_arguments():
             "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
         cfg.set_continuous_mode(True)
 
-        if args.continuous_limit > 0:
+        if args.continuous_limit:
             logger.typewriter_log(
                 "Continuous Limit: ",
                 Fore.GREEN,
