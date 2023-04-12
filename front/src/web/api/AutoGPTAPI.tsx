@@ -3,39 +3,60 @@ import IAnswer from "../types/data/IAnswer"
 import IInitData from "../types/data/IInitData"
 
 const startScript: () => Promise<void> = async () => {
-  await fetch("/api/start")
+	await fetch("/api/start")
 }
 
 const killScript: () => Promise<void> = async () => {
-  await fetch("/api/stop")
+	await fetch("/api/stop")
 }
 
 const fetchData: () => Promise<IAnswer[]> = async () => {
-  const res = await fetch("/api/data")
-  let data = await res.json()
-  // remove last char from data data is a string
-  // remove \n
-  data = data.output.replace("\n", "")
-  data = data.slice(0, -2)
-  console.log(data)
-  const json = JSON.parse(`[${data}]`)
-  return json
+	const res = await fetch("/api/data")
+	let data = await res.json()
+	// remove last char from data data is a string
+	// remove \n
+	data = data.output.replace("\n", "")
+	data = data.slice(0, -2)
+	console.log(data)
+	const json = JSON.parse(`[${data}]`)
+	return json
+}
+
+const downloadFile: (filename: string) => Promise<void> = async (
+	filename: string,
+) => {
+	const res = await fetch(`/api/download`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ filename }),
+	})
+	const blob = await res.blob()
+	const url = window.URL.createObjectURL(blob)
+	const a = document.createElement("a")
+	a.href = url
+	a.download = filename
+	document.body.appendChild(a)
+	a.click()
+	a.remove()
 }
 
 const createInitData = async (data: IInitData) => {
-  const res = await fetch("/api/init", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(data),
-  })
-  return res
+	const res = await fetch("/api/init", {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify(data),
+	})
+	return res
 }
 
 export default {
-  startScript: ErrorService.errorHandler(startScript),
-  killScript: ErrorService.errorHandler(killScript),
-  fetchData: ErrorService.errorHandler(fetchData),
-  createInitData: ErrorService.errorHandler(createInitData),
+	startScript: ErrorService.errorHandler(startScript),
+	killScript: ErrorService.errorHandler(killScript),
+	fetchData: ErrorService.errorHandler(fetchData),
+	createInitData: ErrorService.errorHandler(createInitData),
+	downloadFile: ErrorService.errorHandler(downloadFile),
 }

@@ -33,6 +33,13 @@ app.get("/api/start", (_, res) => {
   res.json({ output: "Python script started" })
 })
 
+
+app.post("/api/download", (req, res) => {
+  const file = `./auto_gpt_workspace/${req.body.filename}`;
+  res.download(file); // Set disposition and send it.
+});
+
+
 app.get("/api/data", (req, res) => {
   res.json({ output: dataToSend })
   dataToSend = ""

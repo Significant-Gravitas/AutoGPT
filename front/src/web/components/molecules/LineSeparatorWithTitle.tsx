@@ -14,7 +14,7 @@ const LineSeparatorWithTitle = styled.div<{ title: string }>`
     right: -50%;
     display: inline-block;
     font-weight: 500;
-    color: var(--yellow300);
+    color: var(--primary300);
     padding: 0 0.5rem;
     background-color: var(--grey800);
     transform: translateX(-50%);

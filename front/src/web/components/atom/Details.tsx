@@ -1,8 +1,9 @@
+import colored from "@/style/colored"
 import styled from "styled-components"
 
-const Details = styled.div`
+const Details = colored(styled.div`
   font-size: 0.8rem;
-  color: var(--grey300);
-`
+  color: var(--color);
+`)
 
 export default Details

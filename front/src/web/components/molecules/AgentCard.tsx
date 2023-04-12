@@ -17,21 +17,21 @@ const Prompt = styled.div`
 `
 
 const AgentCard = ({ agent }: { agent: IAgent }) => {
-  return (
-    <Card elevation={0}>
-      <Flex direction="column" gap={1}>
-        <Flex justify="space-between" align="center">
-          <Flex gap={0.5} align="center">
-            <SmartToy fontSize="small" />
-            <H3>{agent.name}</H3>
-          </Flex>
-          <ArrowForwardIos />
-        </Flex>
-        <Details>{agent.task}</Details>
-        <Prompt>{agent.prompt}</Prompt>
-      </Flex>
-    </Card>
-  )
+	return (
+		<Card elevation={0} $color="grey800" $textColor="primary">
+			<Flex direction="column" gap={1}>
+				<Flex justify="space-between" align="center">
+					<Flex gap={0.5} align="center">
+						<SmartToy fontSize="small" />
+						<H3>{agent.name}</H3>
+					</Flex>
+					<ArrowForwardIos />
+				</Flex>
+				<Details $color="grey300">{agent.task}</Details>
+				<Prompt>{agent.prompt}</Prompt>
+			</Flex>
+		</Card>
+	)
 }
 
 export default AgentCard

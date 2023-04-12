@@ -1,19 +1,25 @@
+import colored from "@/style/colored"
 import { Paper } from "@mui/material"
 import styled from "styled-components"
 
-export const Card = styled(Paper)<{ $active?: boolean }>`
-  color: var(--grey100) !important;
+export const Card = colored(styled(Paper)<{
+	$active?: boolean
+	$noPadding?: boolean
+}>`
   padding: 1rem;
   border-radius: 0.5rem;
-  background-color: var(--grey900) !important;
+  background-color: var(--color) !important;
+  border-color: var(--border-color) !important;
+  border: 1px solid;
   ${({ $active }) => $active && "background-color: var(--grey800) !important;"}
+  ${({ $noPadding }) => $noPadding && "padding: 0;"}
   &:hover {
     background-color: var(--grey700) !important;
     cursor: pointer;
   }
-  & > p {
+  & > * {
     margin: 0;
     font-size: 0.8rem;
-    color: var(--grey300);
+    color: var(--text-color);
   }
-`
+`)

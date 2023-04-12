@@ -1,4 +1,4 @@
-import styled from "styled-components";
+import styled from "styled-components"
 
 export const AiListContainer = styled.div`
   background-color: var(--grey900);
@@ -10,4 +10,7 @@ export const AiListContainer = styled.div`
 export const AiCardContainer = styled.div`
     max-height: 77vh;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 `

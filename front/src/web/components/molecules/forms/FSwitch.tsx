@@ -6,46 +6,46 @@ import Label from "../../atom/Label"
 
 export const StyledSwitch = styled(Switch)<{ $active?: boolean }>`
   & * {
-    color: var(--yellow) !important;
+    color: var(--primary) !important;
   }
   & .MuiSwitch-track {
-    background-color: var(--yellow100) !important;
+    background-color: var(--primary100) !important;
     opacity: 0.2 !important;
     ${({ $active }) =>
-      $active &&
-      css`
+			$active &&
+			css`
         opacity: 0.7 !important;
-        background-color: var(--yellow) !important;
+        background-color: var(--primary) !important;
       `}
 `
 
 interface IFSwitchProps {
-  name: string
-  label?: string
+	name: string
+	label?: string
 }
 
 const FSwitch = ({ name, label }: IFSwitchProps) => {
-  const { control } = useFormContext()
+	const { control } = useFormContext()
 
-  const {
-    field: { ref, ...inputProps },
-    fieldState: { error },
-  } = useController({
-    name,
-    control,
-    defaultValue: "",
-  })
-  return (
-    <Flex gap={0.5} align="center">
-      <Label>{label ?? name}</Label>
-      <StyledSwitch
-        disableRipple
-        $active={inputProps.value}
-        inputRef={ref}
-        {...inputProps}
-      />
-    </Flex>
-  )
+	const {
+		field: { ref, ...inputProps },
+		fieldState: { error },
+	} = useController({
+		name,
+		control,
+		defaultValue: "",
+	})
+	return (
+		<Flex gap={0.5} align="center">
+			<Label>{label ?? name}</Label>
+			<StyledSwitch
+				disableRipple
+				$active={inputProps.value}
+				inputRef={ref}
+				{...inputProps}
+			/>
+		</Flex>
+	)
 }
 
 export default FSwitch

@@ -1,10 +1,13 @@
 enum AnswerType {
 	TEXT = "text",
 }
-
-interface IAnswer {
-	type?: AnswerType;
-	content: string;
-	title: string;
+export enum InternalType {
+	WRITE_FILE = "write_file",
 }
-export default IAnswer;
+interface IAnswer {
+	type?: AnswerType
+	internalType?: InternalType
+	content: string
+	title: string
+}
+export default IAnswer
