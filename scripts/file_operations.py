@@ -38,11 +38,12 @@ def split_file(content, max_length=4000, overlap=0):
         chunk = content[start:end]
         yield chunk
         start += max_length - overlap
-        if start + max_length - overlap >= content_length:
-            break
-        if end + overlap > content_length:
+        if start + max_length > content_length:
             start = content_length - max_length
-
+            end = content_length
+            chunk = content[start:end]
+            yield chunk
+            break
 
 def read_file(filename):
     """Read a file and return the contents"""
