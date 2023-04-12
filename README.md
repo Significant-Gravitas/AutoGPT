@@ -92,7 +92,8 @@ cd 'Auto-GPT'
    _(Again, type this into your CMD window)_
 
 ```
-pip install -r requirements.txt
+pip install poetry
+poetry install
 ```
 
 4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
@@ -107,7 +108,7 @@ pip install -r requirements.txt
    _(Type this into your CMD window)_
 
 ```
-python scripts/main.py
+poetry run python scripts/main.py
 ```
 
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
@@ -128,7 +129,8 @@ python scripts/main.py --debug
 Use this to use TTS for Auto-GPT
 
 ```
-python scripts/main.py --speak
+poetry run python scripts/main.py --speak
+
 ```
 
 ## 🔍 Google API Keys Configuration
