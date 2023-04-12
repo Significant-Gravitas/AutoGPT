@@ -19,7 +19,6 @@ memory = get_memory(cfg, init=True)
 print('Using memory of type: ' + memory.__class__.__name__)
 
 
-
 def shutdown_chat(chat_id: str):
     if chat_id in chat_data:
         chat_data.pop(chat_id)

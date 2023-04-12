@@ -61,7 +61,7 @@ class LocalCache(MemoryProviderSingleton):
         """
         if 'Command Error:' in text:
             return ""
-        
+
         if namespace not in self.data.cache:
             self.data.cache[namespace] = NamespaceContent()
 

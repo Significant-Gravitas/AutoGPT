@@ -15,7 +15,7 @@ def generate_image(prompt, chat_id=None):
 
     filename = str(uuid.uuid4()) + ".jpg"
     filepath = safe_join(working_directory, filename, chat_id=chat_id)
-    
+
     # DALL-E
     if cfg.image_provider == 'dalle':
 

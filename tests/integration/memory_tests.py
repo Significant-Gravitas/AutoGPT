@@ -64,10 +64,10 @@ class TestLocalCacheNamespace(unittest.TestCase):
         self.ns2_strings = [
             self.string_base + 'cat',
         ]
-        
+
         for text in self.ns1_strings:
             self.cache.add(text, namespace=self.ns1)
-        
+
         for text in self.ns2_strings:
             self.cache.add(text, namespace=self.ns2)
 
@@ -106,7 +106,6 @@ class TestRedisMemory(unittest.TestCase):
         for _ in range(5):
             self.cache.add(self.random_string(10))
 
-
     def test_get_relevant(self):
         query = "I'm interested in artificial intelligence and NLP"
         k = 3
@@ -138,10 +137,10 @@ class TestRedisMemoryNamespace(unittest.TestCase):
         self.ns2_strings = [
             self.string_base + 'cat',
         ]
-        
+
         for text in self.ns1_strings:
             self.cache.add(text, namespace=self.ns1)
-        
+
         for text in self.ns2_strings:
             self.cache.add(text, namespace=self.ns2)
 
