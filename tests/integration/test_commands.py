@@ -19,15 +19,18 @@ env_vars = {
     'TEMPERATURE': "0"
 }
 
-# Set environment variables for the test.
 
 class TestCommands(unittest.TestCase):
+
     def test_write_file(self):
-        # Test case to check if the write_file command can successfully write 'Hello World' to a file named 'hello_world.txt'.
+        # Test case to check if the write_file command can successfully write 'Hello World' to a file
+        # named 'hello_world.txt'.
 
         # Read the current ai_settings.yaml file and store its content.
-        with open('ai_settings.yaml', 'r') as f:
-            ai_settings = f.read()
+        ai_settings = None
+        with contextlib.suppress(Exception):
+            with open('ai_settings.yaml', 'r') as f:
+                ai_settings = f.read()
 
         try:
             with contextlib.suppress(Exception):
@@ -56,12 +59,14 @@ EOF'''
             # Read the content of the 'hello_world.txt' file created during the test.
             content = read_file('hello_world.txt')
         finally:
-            # Restore the original ai_settings.yaml file.
-            with open('ai_settings.yaml', 'w') as f:
-                f.write(ai_settings)
+            if ai_settings:
+                # Restore the original ai_settings.yaml file.
+                with open('ai_settings.yaml', 'w') as f:
+                    f.write(ai_settings)
 
         # Check if the content of the 'hello_world.txt' file is equal to 'Hello World'.
         self.assertEqual(content, 'Hello World', f"Expected 'Hello World', got {content}")
+
 
 # Run the test case.
 if __name__ == '__main__':
