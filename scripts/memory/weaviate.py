@@ -54,7 +54,6 @@ class WeaviateMemory(MemoryProviderSingleton):
 
         doc_uuid = generate_uuid5(data, self.index)
         data_object = {
-            'class': self.index,
             'raw_text': data
         }
 
