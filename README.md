@@ -207,6 +207,7 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 ## Weaviate Setup
 
 [Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
+Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded) is supported which allows the Auto-GPT process itself to start a Weaviate instance. To enable it, set `USE_WEAVIATE_EMBEDDED` to `True`. 
 
 #### Setting up enviornment variables
 
@@ -214,10 +215,13 @@ In your `.env` file set the following:
 
 ```
 MEMORY_BACKEND=weaviate
-WEAVIATE_HOST="http://127.0.0.1" # the URL of the running Weaviate instance
+WEAVIATE_HOST="127.0.0.1" # the IP or domain of the running Weaviate instance
 WEAVIATE_PORT="8080" 
+WEAVIATE_PROTOCOL="http"
 WEAVIATE_USERNAME="your username"
 WEAVIATE_PASSWORD="your password"
+WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate" # this is optional and indicates where the data should be persisted when running an embedded instance
+USE_WEAVIATE_EMBEDDED=False
 MEMORY_INDEX="Autogpt" # name of the index to create for the application
 ```
 
