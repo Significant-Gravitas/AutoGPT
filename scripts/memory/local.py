@@ -1,10 +1,10 @@
 import dataclasses
-import orjson
-from typing import Any, List, Optional
-import numpy as np
 import os
-from memory.base import MemoryProviderSingleton, get_ada_embedding
+from typing import Any, List, Optional
 
+import numpy as np
+import orjson
+from memory.base import MemoryProviderSingleton, get_ada_embedding
 
 EMBED_DIM = 1536
 SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
@@ -23,12 +23,11 @@ class CacheContent:
 
 
 class LocalCache(MemoryProviderSingleton):
-
     # on load, load our database
     def __init__(self, cfg) -> None:
         self.filename = f"{cfg.memory_index}.json"
         if os.path.exists(self.filename):
-            with open(self.filename, 'rb') as f:
+            with open(self.filename, "rb") as f:
                 loaded = orjson.loads(f.read())
                 self.data = CacheContent(**loaded)
         else:
@@ -44,7 +43,7 @@ class LocalCache(MemoryProviderSingleton):
 
         Returns: None
         """
-        if 'Command Error:' in text:
+        if "Command Error:" in text:
             return ""
         self.data.texts.append(text)
 
@@ -60,11 +59,8 @@ class LocalCache(MemoryProviderSingleton):
             axis=0,
         )
 
-        with open(self.filename, 'wb') as f:
-            out = orjson.dumps(
-                self.data,
-                option=SAVE_OPTIONS
-            )
+        with open(self.filename, "wb") as f:
+            out = orjson.dumps(self.data, option=SAVE_OPTIONS)
             f.write(out)
         return text
 
@@ -89,7 +85,7 @@ class LocalCache(MemoryProviderSingleton):
         return self.get_relevant(data, 1)
 
     def get_relevant(self, text: str, k: int) -> List[Any]:
-        """"
+        """ "
         matrix-vector mult to find score-for-each-row-of-matrix
          get indices for top-k winning scores
          return texts for those indices
