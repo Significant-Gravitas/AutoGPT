@@ -54,18 +54,18 @@ def execute_python_file(file):
 
 def exec_shell(command_line):
 
-    print (f"Executing command '{command_line}' in workspace '{WORKSPACE_FOLDER}'")
-
     args = command_line.split()
-    base_path = os.getcwd()
+    old_dir = os.getcwd()
 
-    os.chdir(f"{base_path}/{WORKSPACE_FOLDER}")
+    workdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', WORKSPACE_FOLDER))
+
+    print (f"Executing command '{command_line}' in working directory '{workdir}'")
+
+    os.chdir(workdir)
 
     result = subprocess.run(args, capture_output=True)
     output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}";
 
-    os.chdir(base_path)
-
-    # print(f"Shell execution complete. Output: {output}")
+    os.chdir(old_dir)
 
     return output
