@@ -1,4 +1,4 @@
-name: Unit Tests
+name: Python CI
 
 on:
   push:
@@ -29,6 +29,10 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+
+    - name: Lint with flake8
+      continue-on-error: false
+      run: flake8 scripts/ tests/ --select E303,W293,W291,W292,E305
 
     - name: Run unittest tests with coverage
       run: |
