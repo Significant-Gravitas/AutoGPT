@@ -66,22 +66,54 @@ def print_to_console(
             max_typing_speed = max_typing_speed * 0.95
     print()
 
+def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
+    if cfg.speak_mode and cfg.debug_mode:
+      speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
+    print_to_console("Attempting to fix JSON by finding outermost brackets\n", Fore.RED, "")
+
+    try:
+        # Use regex to search for JSON objects
+        import regex
+        json_pattern = regex.compile(r"\{(?:[^{}]|(?R))*\}")
+        json_match = json_pattern.search(json_string)
+
+        if json_match:
+            # Extract the valid JSON object from the string
+            json_string = json_match.group(0)
+            print_to_console("Apparently json was fixed.", Fore.GREEN,"")
+            if cfg.speak_mode and cfg.debug_mode:
+               speak.say_text("Apparently json was fixed.")
+        else:
+            raise ValueError("No valid JSON object found")
+
+    except (json.JSONDecodeError, ValueError) as e:
+        if cfg.speak_mode:
+            speak.say_text("Didn't work. I will have to ignore this response then.")
+        print_to_console("Error: Invalid JSON, setting it to empty JSON now.\n", Fore.RED, "")
+        json_string = {}
+
+    return json_string
 
 def print_assistant_thoughts(assistant_reply):
     """Prints the assistant's thoughts to the console"""
     global ai_name
     global cfg
     try:
-        # Parse and print Assistant response
-        assistant_reply_json = fix_and_parse_json(assistant_reply)
+        try:
+            # Parse and print Assistant response
+            assistant_reply_json = fix_and_parse_json(assistant_reply)
+        except json.JSONDecodeError as e:
+            print_to_console("Error: Invalid JSON in assistant thoughts\n", Fore.RED, assistant_reply)
+            assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
+            assistant_reply_json = fix_and_parse_json(assistant_reply_json)
 
         # Check if assistant_reply_json is a string and attempt to parse it into a JSON object
         if isinstance(assistant_reply_json, str):
             try:
                 assistant_reply_json = json.loads(assistant_reply_json)
             except json.JSONDecodeError as e:
-                print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
-                assistant_reply_json = {}
+                print_to_console("Error: Invalid JSON in assistant thoughts\n", Fore.RED, assistant_reply)
+                assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply_json)
 
         assistant_thoughts_reasoning = None
         assistant_thoughts_plan = None
@@ -117,9 +149,12 @@ def print_assistant_thoughts(assistant_reply):
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
-
-    except json.decoder.JSONDecodeError:
+        
+        return assistant_reply_json
+    except json.decoder.JSONDecodeError as e:
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
+        if cfg.speak_mode:
+            speak.say_text("I have received an invalid JSON response from the OpenAI API. I cannot ignore this response.")
 
     # All other errors, return "Error: + error message"
     except Exception as e:
@@ -339,7 +374,9 @@ while True:
 
     # Get command name and arguments
     try:
-        command_name, arguments = cmd.get_command(assistant_reply)
+        command_name, arguments = cmd.get_command(attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply))
+        if cfg.speak_mode:
+            speak.say_text(f"I want to execute {command_name}")
     except Exception as e:
         print_to_console("Error: \n", Fore.RED, str(e))
 
