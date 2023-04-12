@@ -2,6 +2,7 @@ import yaml
 import data
 import os
 
+
 class AIConfig:
     """
     A class object that contains the configuration information for the AI
