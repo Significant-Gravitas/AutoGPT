@@ -1,5 +1,7 @@
 from memory.local import LocalCache
 
+# List of supported memory backends
+# Add a backend to this list if the import attempt is successful
 supported_memory = ['local']
 
 try:
