@@ -31,8 +31,8 @@ jobs:
         pip install -r requirements.txt
 
     - name: Lint with flake8
-      continue-on-error: true
-      run: flake8 scripts/ tests/
+      continue-on-error: false
+      run: flake8 scripts/ tests/ --select E303,W293,W291,W292,E305
 
     - name: Run unittest tests with coverage
       run: |
