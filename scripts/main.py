@@ -15,17 +15,10 @@ from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
+from logger import logger
 import logging
 
 cfg = Config()
-
-def configure_logging():
-    logging.basicConfig(filename='log.txt',
-                    filemode='a',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.DEBUG)
-    return logging.getLogger('AutoGPT')
 
 def check_openai_api_key():
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
@@ -37,39 +30,10 @@ def check_openai_api_key():
         print("You can get your key from https://beta.openai.com/account/api-keys")
         exit(1)
 
-def print_to_console(
-        title,
-        title_color,
-        content,
-        speak_text=False,
-        min_typing_speed=0.05,
-        max_typing_speed=0.01):
-    """Prints text to the console with a typing effect"""
-    global cfg
-    global logger
-    if speak_text and cfg.speak_mode:
-        speak.say_text(f"{title}. {content}")
-    print(title_color + title + " " + Style.RESET_ALL, end="")
-    if content:
-        logger.info(title + ': ' + content)
-        if isinstance(content, list):
-            content = " ".join(content)
-        words = content.split()
-        for i, word in enumerate(words):
-            print(word, end="", flush=True)
-            if i < len(words) - 1:
-                print(" ", end="", flush=True)
-            typing_speed = random.uniform(min_typing_speed, max_typing_speed)
-            time.sleep(typing_speed)
-            # type faster after each word
-            min_typing_speed = min_typing_speed * 0.95
-            max_typing_speed = max_typing_speed * 0.95
-    print()
-
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
     if cfg.speak_mode and cfg.debug_mode:
       speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
-    print_to_console("Attempting to fix JSON by finding outermost brackets\n", Fore.RED, "")
+    logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
 
     try:
         # Use regex to search for JSON objects
@@ -80,7 +44,7 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
         if json_match:
             # Extract the valid JSON object from the string
             json_string = json_match.group(0)
-            print_to_console("Apparently json was fixed.", Fore.GREEN,"")
+            logger.typewriter_log(title="Apparently json was fixed.", title_color=Fore.GREEN)
             if cfg.speak_mode and cfg.debug_mode:
                speak.say_text("Apparently json was fixed.")
         else:
@@ -89,7 +53,7 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
     except (json.JSONDecodeError, ValueError) as e:
         if cfg.speak_mode:
             speak.say_text("Didn't work. I will have to ignore this response then.")
-        print_to_console("Error: Invalid JSON, setting it to empty JSON now.\n", Fore.RED, "")
+        logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
         json_string = {}
 
     return json_string
@@ -103,7 +67,7 @@ def print_assistant_thoughts(assistant_reply):
             # Parse and print Assistant response
             assistant_reply_json = fix_and_parse_json(assistant_reply)
         except json.JSONDecodeError as e:
-            print_to_console("Error: Invalid JSON in assistant thoughts\n", Fore.RED, assistant_reply)
+            logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
             assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
             assistant_reply_json = fix_and_parse_json(assistant_reply_json)
 
@@ -112,7 +76,7 @@ def print_assistant_thoughts(assistant_reply):
             try:
                 assistant_reply_json = json.loads(assistant_reply_json)
             except json.JSONDecodeError as e:
-                print_to_console("Error: Invalid JSON in assistant thoughts\n", Fore.RED, assistant_reply)
+                logger.error("Error: Invalid JSON\n", assistant_reply)
                 assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply_json)
 
         assistant_thoughts_reasoning = None
@@ -128,11 +92,11 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_criticism = assistant_thoughts.get("criticism")
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
-        print_to_console(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
-        print_to_console("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
+        logger.typewriter_log(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
+        logger.typewriter_log("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
 
         if assistant_thoughts_plan:
-            print_to_console("PLAN:", Fore.YELLOW, "")
+            logger.typewriter_log("PLAN:", Fore.YELLOW, "")
             # If it's a list, join it into a string
             if isinstance(assistant_thoughts_plan, list):
                 assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
@@ -143,23 +107,23 @@ def print_assistant_thoughts(assistant_reply):
             lines = assistant_thoughts_plan.split('\n')
             for line in lines:
                 line = line.lstrip("- ")
-                print_to_console("- ", Fore.GREEN, line.strip())
+                logger.typewriter_log("- ", Fore.GREEN, line.strip())
 
-        print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
+        logger.typewriter_log("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
-        
+
         return assistant_reply_json
     except json.decoder.JSONDecodeError as e:
-        print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
+        logger.error("Error: Invalid JSON\n", assistant_reply)
         if cfg.speak_mode:
             speak.say_text("I have received an invalid JSON response from the OpenAI API. I cannot ignore this response.")
 
     # All other errors, return "Error: + error message"
     except Exception as e:
         call_stack = traceback.format_exc()
-        print_to_console("Error: \n", Fore.RED, call_stack)
+        logger.error("Error: \n", call_stack)
 
 
 def load_variables(config_file="config.yaml"):
@@ -220,7 +184,7 @@ def construct_prompt():
     """Construct the prompt for the AI to respond to"""
     config = AIConfig.load()
     if config.ai_name:
-        print_to_console(
+        logger.typewriter_log(
             f"Welcome back! ",
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
@@ -249,14 +213,14 @@ def prompt_user():
     """Prompt the user for input"""
     ai_name = ""
     # Construct the prompt
-    print_to_console(
+    logger.typewriter_log(
         "Welcome to Auto-GPT! ",
         Fore.GREEN,
         "Enter the name of your AI and its role below. Entering nothing will load defaults.",
         speak_text=True)
 
     # Get AI Name from User
-    print_to_console(
+    logger.typewriter_log(
         "Name your AI: ",
         Fore.GREEN,
         "For example, 'Entrepreneur-GPT'")
@@ -264,14 +228,14 @@ def prompt_user():
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
-    print_to_console(
+    logger.typewriter_log(
         f"{ai_name} here!",
         Fore.LIGHTBLUE_EX,
         "I am at your service.",
         speak_text=True)
 
     # Get AI Role from User
-    print_to_console(
+    logger.typewriter_log(
         "Describe your AI's role: ",
         Fore.GREEN,
         "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'")
@@ -280,7 +244,7 @@ def prompt_user():
         ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
     # Enter up to 5 goals for the AI
-    print_to_console(
+    logger.typewriter_log(
         "Enter up to 5 goals for your AI: ",
         Fore.GREEN,
         "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
@@ -313,36 +277,40 @@ def parse_arguments():
     parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
     args = parser.parse_args()
 
+    if args.debug:
+        logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_debug_mode(True)
+
     if args.continuous:
-        print_to_console("Continuous Mode: ", Fore.RED, "ENABLED")
-        print_to_console(
+        logger.typewriter_log("Continuous Mode: ", Fore.RED, "ENABLED")
+        logger.typewriter_log(
             "WARNING: ",
             Fore.RED,
             "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
         cfg.set_continuous_mode(True)
 
     if args.speak:
-        print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_speak_mode(True)
 
     if args.gpt3only:
-        print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
-    
+
     if args.gpt4only:
-        print_to_console("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_fast_llm_model(cfg.smart_llm_model)
 
     if args.debug:
-        print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_debug_mode(True)
 
 
 # TODO: fill in llm values here
 check_openai_api_key()
 cfg = Config()
-logger = configure_logging()
 parse_arguments()
+logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
 ai_name = ""
 prompt = construct_prompt()
 # print(prompt)
@@ -378,14 +346,14 @@ while True:
         if cfg.speak_mode:
             speak.say_text(f"I want to execute {command_name}")
     except Exception as e:
-        print_to_console("Error: \n", Fore.RED, str(e))
+        logger.error("Error: \n", str(e))
 
     if not cfg.continuous_mode and next_action_count == 0:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
         # Get key press: Prompt the user to press enter to continue or escape
         # to exit
         user_input = ""
-        print_to_console(
+        logger.typewriter_log(
             "NEXT ACTION: ",
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
@@ -414,7 +382,7 @@ while True:
                 break
 
         if user_input == "GENERATE NEXT COMMAND JSON":
-            print_to_console(
+            logger.typewriter_log(
             "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
             Fore.MAGENTA,
             "")
@@ -423,7 +391,7 @@ while True:
             break
     else:
         # Print command
-        print_to_console(
+        logger.typewriter_log(
             "NEXT ACTION: ",
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
@@ -448,9 +416,9 @@ while True:
     # history
     if result is not None:
         full_message_history.append(chat.create_chat_message("system", result))
-        print_to_console("SYSTEM: ", Fore.YELLOW, result)
+        logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
     else:
         full_message_history.append(
             chat.create_chat_message(
                 "system", "Unable to execute command"))
-        print_to_console("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+        logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
