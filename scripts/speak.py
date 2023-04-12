@@ -4,15 +4,32 @@ import requests
 from config import Config
 cfg = Config()
 import gtts
+import threading
+from threading import Lock, Semaphore
 
+# Default voice IDs
+default_voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
 
-# TODO: Nicer names for these ids
-voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
+# Retrieve custom voice IDs from the Config class
+custom_voice_1 = cfg.elevenlabs_voice_1_id
+custom_voice_2 = cfg.elevenlabs_voice_2_id
+
+# Placeholder values that should be treated as empty
+placeholders = {"your-voice-id"}
+
+# Use custom voice IDs if provided and not placeholders, otherwise use default voice IDs
+voices = [
+    custom_voice_1 if custom_voice_1 and custom_voice_1 not in placeholders else default_voices[0],
+    custom_voice_2 if custom_voice_2 and custom_voice_2 not in placeholders else default_voices[1]
+]
 
 tts_headers = {
     "Content-Type": "application/json",
     "xi-api-key": cfg.elevenlabs_api_key
 }
+
+mutex_lock = Lock() # Ensure only one sound is played at a time
+queue_semaphore = Semaphore(1) # The amount of sounds to queue before blocking the main thread
 
 def eleven_labs_speech(text, voice_index=0):
     """Speak text using elevenlabs.io's API"""
@@ -23,10 +40,11 @@ def eleven_labs_speech(text, voice_index=0):
         tts_url, headers=tts_headers, json=formatted_message)
 
     if response.status_code == 200:
-        with open("speech.mpeg", "wb") as f:
-            f.write(response.content)
-        playsound("speech.mpeg")
-        os.remove("speech.mpeg")
+        with mutex_lock:
+            with open("speech.mpeg", "wb") as f:
+                f.write(response.content)
+            playsound("speech.mpeg", True)
+            os.remove("speech.mpeg")
         return True
     else:
         print("Request failed with status code:", response.status_code)
@@ -35,21 +53,29 @@ def eleven_labs_speech(text, voice_index=0):
 
 def gtts_speech(text):
     tts = gtts.gTTS(text)
-    tts.save("speech.mp3")
-    playsound("speech.mp3")
-    os.remove("speech.mp3")
+    with mutex_lock:
+        tts.save("speech.mp3")
+        playsound("speech.mp3", True)
+        os.remove("speech.mp3")
 
 def macos_tts_speech(text):
     os.system(f'say "{text}"')
 
 def say_text(text, voice_index=0):
-    if not cfg.elevenlabs_api_key:
-        if cfg.use_mac_os_tts == 'True':
-            macos_tts_speech(text)
-        else:
-            gtts_speech(text)
-    else:
-        success = eleven_labs_speech(text, voice_index)
-        if not success:
-            gtts_speech(text)
 
+    def speak():
+        if not cfg.elevenlabs_api_key:
+            if cfg.use_mac_os_tts == 'True':
+                macos_tts_speech(text)
+            else:
+                gtts_speech(text)
+        else:
+            success = eleven_labs_speech(text, voice_index)
+            if not success:
+                gtts_speech(text)
+        
+        queue_semaphore.release()
+
+    queue_semaphore.acquire(True)
+    thread = threading.Thread(target=speak)
+    thread.start()
