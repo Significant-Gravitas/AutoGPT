@@ -34,6 +34,7 @@ class Config(metaclass=Singleton):
     def __init__(self):
         """Initialize the Config class"""
         self.debug_mode = False
+        self.debug = False
         self.continuous_mode = False
         self.speak_mode = False
 
