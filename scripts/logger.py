@@ -67,7 +67,7 @@ class Logger(metaclass=Singleton):
         self.logger.addHandler(error_handler)
         self.logger.setLevel(logging.DEBUG)
 
-    def log(
+    def typewriter_log(
             self,
             title='',
             title_color='',

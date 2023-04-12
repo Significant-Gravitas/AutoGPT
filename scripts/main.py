@@ -59,11 +59,11 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_criticism = assistant_thoughts.get("criticism")
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
-        logger.log(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
-        logger.log("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
+        logger.typewriter_log(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
+        logger.typewriter_log("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
 
         if assistant_thoughts_plan:
-            logger.log("PLAN:", Fore.YELLOW, "")
+            logger.typewriter_log("PLAN:", Fore.YELLOW, "")
             # If it's a list, join it into a string
             if isinstance(assistant_thoughts_plan, list):
                 assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
@@ -74,9 +74,9 @@ def print_assistant_thoughts(assistant_reply):
             lines = assistant_thoughts_plan.split('\n')
             for line in lines:
                 line = line.lstrip("- ")
-                logger.log("- ", Fore.GREEN, line.strip())
+                logger.typewriter_log("- ", Fore.GREEN, line.strip())
 
-        logger.log("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
+        logger.typewriter_log("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
@@ -148,7 +148,7 @@ def construct_prompt():
     """Construct the prompt for the AI to respond to"""
     config = AIConfig.load()
     if config.ai_name:
-        logger.log(
+        logger.typewriter_log(
             f"Welcome back! ",
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
@@ -177,14 +177,14 @@ def prompt_user():
     """Prompt the user for input"""
     ai_name = ""
     # Construct the prompt
-    logger.log(
+    logger.typewriter_log(
         "Welcome to Auto-GPT! ",
         Fore.GREEN,
         "Enter the name of your AI and its role below. Entering nothing will load defaults.",
         speak_text=True)
 
     # Get AI Name from User
-    logger.log(
+    logger.typewriter_log(
         "Name your AI: ",
         Fore.GREEN,
         "For example, 'Entrepreneur-GPT'")
@@ -192,14 +192,14 @@ def prompt_user():
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
-    logger.log(
+    logger.typewriter_log(
         f"{ai_name} here!",
         Fore.LIGHTBLUE_EX,
         "I am at your service.",
         speak_text=True)
 
     # Get AI Role from User
-    logger.log(
+    logger.typewriter_log(
         "Describe your AI's role: ",
         Fore.GREEN,
         "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'")
@@ -208,7 +208,7 @@ def prompt_user():
         ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
 
     # Enter up to 5 goals for the AI
-    logger.log(
+    logger.typewriter_log(
         "Enter up to 5 goals for your AI: ",
         Fore.GREEN,
         "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
@@ -242,31 +242,31 @@ def parse_arguments():
     args = parser.parse_args()
 
     if args.debug:
-        logger.log("Debug Mode: ", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_debug_mode(True)
 
     if args.continuous:
-        logger.log("Continuous Mode: ", Fore.RED, "ENABLED")
-        logger.log(
+        logger.typewriter_log("Continuous Mode: ", Fore.RED, "ENABLED")
+        logger.typewriter_log(
             "WARNING: ",
             Fore.RED,
             "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
         cfg.set_continuous_mode(True)
 
     if args.speak:
-        logger.log("Speak Mode: ", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_speak_mode(True)
 
     if args.gpt3only:
-        logger.log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
     if args.gpt4only:
-        logger.log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_fast_llm_model(cfg.smart_llm_model)
 
     if args.debug:
-        logger.log("Debug Mode: ", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_debug_mode(True)
 
 
@@ -315,7 +315,7 @@ while True:
         # Get key press: Prompt the user to press enter to continue or escape
         # to exit
         user_input = ""
-        logger.log(
+        logger.typewriter_log(
             "NEXT ACTION: ",
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
@@ -344,7 +344,7 @@ while True:
                 break
 
         if user_input == "GENERATE NEXT COMMAND JSON":
-            logger.log(
+            logger.typewriter_log(
             "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
             Fore.MAGENTA,
             "")
@@ -353,7 +353,7 @@ while True:
             break
     else:
         # Print command
-        logger.log(
+        logger.typewriter_log(
             "NEXT ACTION: ",
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
@@ -378,9 +378,9 @@ while True:
     # history
     if result is not None:
         full_message_history.append(chat.create_chat_message("system", result))
-        logger.log("SYSTEM: ", Fore.YELLOW, result)
+        logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
     else:
         full_message_history.append(
             chat.create_chat_message(
                 "system", "Unable to execute command"))
-        logger.log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+        logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
