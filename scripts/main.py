@@ -25,12 +25,10 @@ def update_env_from_template():
     env_file = Path(__file__).resolve().parent.parent / '.env'
     template_file = Path(__file__).resolve().parent.parent / '.env.template'
 
-    # Check if .env.template file exists
     if not template_file.is_file():
         print("\033[31m" + "Error: \".env.template\" not found!" + "\033[0m")
         return
 
-    # Check if .env file exists, otherwise create an empty file
     if not env_file.is_file():
         answer = input(f"File {env_file} not found. Create an empty file? (y/n) ")
         if answer.lower() == "y":
@@ -39,14 +37,12 @@ def update_env_from_template():
             print("\033[31m" + "Error: \".env\" not found!" + "\033[0m")
             return
 
-    # load values from .env and .env.template files
     load_dotenv(str(template_file), verbose=True)
     env_values = dotenv_values(str(env_file))
     template_values = dotenv_values(str(template_file))
 
     # find keys that were removed from .env.template
     removed_keys = [key for key in env_values if key not in template_values]
-
     # find values that need to be added from .env.template
     changes = {key: value for key, value in template_values.items()
                if env_values.get(key, '') == '' and value != ''}
@@ -63,16 +59,16 @@ def update_env_from_template():
             print(
                 "\033[93m" + "Warning: You may enter a confidential information.",
                              "Do not share this part of the log with third parties." + "\033[0m")
+            print("Enter new values for the following keys or leave empty to keep the current value:")
             for key, value in changes.items():
-                new_value = input(f"Enter value for {key} ({value}) or leave empty answer: ")
+                new_value = input(f"{key} ({value}): ")
                 if new_value.strip():
                     set_key(env_file, key, new_value, quote_mode="never")
-                    print(f"Added {key} = {new_value} to {env_file}")
+                    print(f"Updated {key} = {new_value} in {env_file}")
                 else:
                     set_key(env_file, key, value, quote_mode="never")
-                    print(f"Copied {key} = {value} from {template_file}")
+                    print(f"Kept {key} = {value} in {env_file}")
             for key in removed_keys:
-                # unset keys from .env file
                 unset_key(env_file, key)
                 print(f"Removed {key} from {env_file}")
         else:
