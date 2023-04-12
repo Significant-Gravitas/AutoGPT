@@ -291,15 +291,16 @@ def parse_arguments():
             "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
         cfg.set_continuous_mode(True)
 
-        if args.continuous_limit and not args.continuous:
-            parser.error("--continuous-limit can only be used with --continuous")
-
         if args.continuous_limit > 0:
             logger.typewriter_log(
                 "Continuous Limit: ",
                 Fore.GREEN,
                 f"{args.continuous_limit}")
             cfg.set_continuous_limit(args.continuous_limit)
+
+    # Check if continuous limit is used without continuous mode
+    if args.continuous_limit and not args.continuous:
+        parser.error("--continuous-limit can only be used with --continuous")
 
     if args.speak:
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
