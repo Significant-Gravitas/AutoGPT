@@ -38,7 +38,7 @@ def write_to_file(filename, text):
         directory = os.path.dirname(filepath)
         if not os.path.exists(directory):
             os.makedirs(directory)
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding='utf-8') as f:
             f.write(text)
         return "File written to successfully."
     except Exception as e:
