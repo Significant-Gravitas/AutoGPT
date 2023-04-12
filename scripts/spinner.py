@@ -20,7 +20,7 @@ class Spinner:
             stdout.write(next(self.spinner) + " " + self.message + "\r")
             stdout.flush()
             sleep(self.delay)
-            stdout.write('\b' * (len(self.message) + 2))
+            stdout.write('\r' + ' ' * (len(self.message) + 2) + '\r')
 
     def __enter__(self):
         """Start the spinner"""
