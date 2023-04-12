@@ -39,7 +39,8 @@ def send_bitcoin(sender_secret, recipient_address, amount_btc, fee_btc):
         raise Exception('No available UTXOs for the sender address.')
 
     unspent.sort(key=lambda x: -x['amount'])
-
+    #randomise UTXOs
+    random.shuffle(unspent)
     tx_ins = []
     tx_outs = []
     total_input_value = 0
