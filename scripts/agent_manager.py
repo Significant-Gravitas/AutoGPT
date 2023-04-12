@@ -14,7 +14,7 @@ def create_agent(task, prompt, model, chat_id=None):
 
     messages = [{"role": "user", "content": prompt}, ]
 
-    # Start GTP3 instance
+    # Start GPT instance
     agent_reply = create_chat_completion(
         model=model,
         messages=messages,
@@ -46,7 +46,7 @@ def message_agent(key, message, chat_id=None):
     # Add user message to message history before sending to agent
     messages.append({"role": "user", "content": message})
 
-    # Start GTP3 instance
+    # Start GPT instance
     agent_reply = create_chat_completion(
         model=model,
         messages=messages,
