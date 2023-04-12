@@ -3,6 +3,7 @@ from typing import Any, Dict, Union
 from call_ai_function import call_ai_function
 from config import Config
 from json_utils import correct_json
+from logger import logger
 
 cfg = Config()
 
@@ -56,7 +57,7 @@ def fix_and_parse_json(
     # Can throw a ValueError if there is no "{" or "}" in the json_str
     except (json.JSONDecodeError, ValueError) as e:  # noqa: F841
         if try_to_fix_with_gpt:
-            print("Warning: Failed to parse AI output, attempting to fix."
+            logger.warn("Warning: Failed to parse AI output, attempting to fix."
                   "\n If you see this warning frequently, it's likely that"
                   " your prompt is confusing the AI. Try changing it up"
                   " slightly.")
@@ -68,7 +69,7 @@ def fix_and_parse_json(
             else:
                 # This allows the AI to react to the error message,
                 #   which usually results in it correcting its ways.
-                print("Failed to fix AI output, telling the AI.")
+                logger.error("Failed to fix AI output, telling the AI.")
                 return json_str
         else:
             raise e
@@ -91,11 +92,11 @@ def fix_json(json_str: str, schema: str) -> str:
     result_string = call_ai_function(
         function_string, args, description_string, model=cfg.fast_llm_model
     )
-    logger.log(content="------------ JSON FIX ATTEMPT ---------------", level=logging.DEBUG)
-    logger.log(content=f"Original JSON: {json_str}", level=logging.DEBUG)
-    logger.log(content="-----------", level=logging.DEBUG)
-    logger.log(content=f"Fixed JSON: {result_string}", level=logging.DEBUG)
-    logger.log(content="----------- END OF FIX ATTEMPT ----------------", level=logging.DEBUG)
+    logger.debug("------------ JSON FIX ATTEMPT ---------------")
+    logger.debug(f"Original JSON: {json_str}")
+    logger.debug("-----------")
+    logger.debug(f"Fixed JSON: {result_string}")
+    logger.debug("----------- END OF FIX ATTEMPT ----------------")
 
     try:
         json.loads(result_string)  # just check the validity
