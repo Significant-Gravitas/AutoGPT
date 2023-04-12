@@ -41,7 +41,7 @@ def scrape_text(url):
     # Restrict access to local files
     if check_local_file_access(url):
         return "Error: Access to local files is restricted"
-    
+
     # Validate the input URL
     if not is_valid_url(url):
         # Sanitize the input URL

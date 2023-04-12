@@ -159,6 +159,7 @@ class ConsoleHandler(logging.StreamHandler):
         except Exception:
             self.handleError(record)
 
+
 '''
 Allows to handle custom placeholders 'title_color' and 'message_no_color'.
 To use this formatter, make sure to pass 'color', 'title' as log extras.
