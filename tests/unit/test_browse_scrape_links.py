@@ -11,7 +11,7 @@ from scripts.browse import scrape_links
 Code Analysis
 
 Objective:
-The objective of the 'scrape_links' function is to scrape hyperlinks from a 
+The objective of the 'scrape_links' function is to scrape hyperlinks from a
 given URL and return them in a formatted way.
 
 Inputs:
@@ -30,7 +30,7 @@ Outputs:
 - A list of formatted hyperlinks.
 
 Additional aspects:
-- The function uses the 'requests' and 'BeautifulSoup' libraries to send HTTP 
+- The function uses the 'requests' and 'BeautifulSoup' libraries to send HTTP
 requests and parse HTML content, respectively.
 - The 'extract_hyperlinks' function is called to extract hyperlinks from the parsed HTML.
 - The 'format_hyperlinks' function is called to format the extracted hyperlinks.
@@ -40,16 +40,16 @@ requests and parse HTML content, respectively.
 
 class TestScrapeLinks:
 
-    # Tests that the function returns a list of formatted hyperlinks when 
-    # provided with a valid url that returns a webpage with hyperlinks. 
+    # Tests that the function returns a list of formatted hyperlinks when
+    # provided with a valid url that returns a webpage with hyperlinks.
     def test_valid_url_with_hyperlinks(self):
         url = "https://www.google.com"
         result = scrape_links(url)
         assert len(result) > 0
         assert isinstance(result, list)
         assert isinstance(result[0], str)
-        
-    # Tests that the function returns correctly formatted hyperlinks when given a valid url. 
+      
+    # Tests that the function returns correctly formatted hyperlinks when given a valid url.
     def test_valid_url(self, mocker):
         # Mock the requests.get() function to return a response with sample HTML containing hyperlinks
         mock_response = mocker.Mock()
@@ -63,7 +63,7 @@ class TestScrapeLinks:
         # Assert that the function returns correctly formatted hyperlinks
         assert result == ["Google (https://www.google.com)"]
 
-    # Tests that the function returns "error" when given an invalid url. 
+    # Tests that the function returns "error" when given an invalid url.
     def test_invalid_url(self, mocker):
         # Mock the requests.get() function to return an HTTP error response
         mock_response = mocker.Mock()
@@ -76,7 +76,7 @@ class TestScrapeLinks:
         # Assert that the function returns "error"
         assert "Error:" in result
 
-    # Tests that the function returns an empty list when the html contains no hyperlinks. 
+    # Tests that the function returns an empty list when the html contains no hyperlinks.
     def test_no_hyperlinks(self, mocker):
         # Mock the requests.get() function to return a response with sample HTML containing no hyperlinks
         mock_response = mocker.Mock()
@@ -90,7 +90,8 @@ class TestScrapeLinks:
         # Assert that the function returns an empty list
         assert result == []
 
-    # Tests that scrape_links() correctly extracts and formats hyperlinks from a sample HTML containing a few hyperlinks. 
+    # Tests that scrape_links() correctly extracts and formats hyperlinks from 
+    # a sample HTML containing a few hyperlinks.
     def test_scrape_links_with_few_hyperlinks(self, mocker):
         # Mock the requests.get() function to return a response with a sample HTML containing hyperlinks
         mock_response = mocker.Mock()
