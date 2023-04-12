@@ -96,9 +96,10 @@ pip install -r requirements.txt
 ```
 
 4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
-  - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
-  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
-  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_AZURE_API_BASE`, `OPENAI_AZURE_API_VERSION` and `OPENAI_AZURE_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section. Additionally you need separate deployments for both embeddings and chat. Add their ID values to `OPENAI_AZURE_CHAT_DEPLOYMENT_ID` and `OPENAI_AZURE_EMBEDDINGS_DEPLOYMENT_ID` respectively
+
+- Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+- Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+- If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_AZURE_API_BASE`, `OPENAI_AZURE_API_VERSION` and `OPENAI_AZURE_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section. Additionally you need separate deployments for both embeddings and chat. Add their ID values to `OPENAI_AZURE_CHAT_DEPLOYMENT_ID` and `OPENAI_AZURE_EMBEDDINGS_DEPLOYMENT_ID` respectively
 
 ## 🔧 Usage
 
@@ -112,13 +113,22 @@ python scripts/main.py
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
+### Logs
+
+You will find activity and error logs in the folder `./logs`
+
+To output debug logs:
+
+```
+python scripts/main.py --debug
+```
+
 ## 🗣️ Speech Mode
 
 Use this to use TTS for Auto-GPT
 
 ```
 python scripts/main.py --speak
-
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -245,6 +255,16 @@ USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
 MEMORY_INDEX="Autogpt" # name of the index to create for the application
 ```
 
+## Setting Your Cache Type
+
+By default Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+
+To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
+
+`local` (default) uses a local JSON cache file
+`pinecone` uses the Pinecone.io account you configured in your ENV settings
+`redis` will use the redis cache that you configured
+
 ## View Memory Usage
 
 1. View memory usage by using the `--debug` flag :)
@@ -334,4 +354,12 @@ To run tests and see coverage, run the following command:
 
 ```
 coverage run -m unittest discover tests
+```
+
+## Run linter
+
+This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. To run the linter, run the following command:
+
+```
+flake8 scripts/ tests/
 ```
