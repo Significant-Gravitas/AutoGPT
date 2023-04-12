@@ -89,7 +89,6 @@ cd 'Auto-GPT'
 ```
 pip install poetry
 poetry install
-poetry shell
 ```
 
 4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
