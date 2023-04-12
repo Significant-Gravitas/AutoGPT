@@ -42,9 +42,9 @@ class Config(metaclass=Singleton):
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
 
-        self.chroma_db_directory = os.getenv("CHROMA-DB-DIRECTORY")
-        self.chroma_server_host = os.getenv("CHROMA-SERVER-HOST")
-        self.chroma_server_port = os.getenv("CHROMA-SERVER-PORT", 8000)
+        self.chroma_db_directory = os.getenv("CHROMA_DB_DIRECTORY")
+        self.chroma_server_host = os.getenv("CHROMA_SERVER_HOST")
+        self.chroma_server_port = os.getenv("CHROMA_SERVER_PORT", 8000)
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.use_azure = False
