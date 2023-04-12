@@ -1,12 +1,19 @@
 beautifulsoup4
 colorama==0.4.6
 openai==0.27.2
-playsound==1.3.0
+playsound==1.2.2
 python-dotenv==1.0.0
 pyyaml==6.0
 readability-lxml==0.8.1
 requests
 tiktoken==0.3.3
+gTTS==2.3.1
 docker
-googlesearch-python
-# Googlesearch python seems to be a bit cursed, anyone good at fixing thigns like this?
+duckduckgo-search
+google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
+pinecone-client==2.2.1
+redis
+orjson
+Pillow
+coverage
+flake8
