@@ -3,13 +3,13 @@
 ![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
 [![](https://dcbadge.vercel.app/api/server/PQ7VX6TY4t?style=flat)](https://discord.gg/PQ7VX6TY4t)
 
-Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, autonomously develops and manages businesses to increase net worth. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
+Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
 ### Demo (30/03/2023):
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
 
-<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2> 
+<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
 <p align="center">
 If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 A full day of development can easily cost as much as $20 in API costs, which for a free project is quite limiting.
@@ -59,7 +59,7 @@ Your support is greatly appreciated
 ## 📋 Requirements
 - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - OpenAI API key
-- PINECONE API key
+- [PINECONE API key](https://www.pinecone.io/)
 
 Optional:
 - ElevenLabs Key (If you want the AI to speak)
@@ -81,7 +81,7 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 2. Navigate to the project directory:
 *(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)*
 ```
-$ cd 'Auto-GPT'
+cd 'Auto-GPT'
 ```
 
 3. Install the required dependencies:
@@ -93,7 +93,7 @@ pip install -r requirements.txt
 4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
-  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_API_BASE`, `OPENAI_API_VERSION` and `OPENAI_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
+  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and provide the `OPENAI_AZURE_API_BASE`, `OPENAI_AZURE_API_VERSION` and `OPENAI_AZURE_DEPLOYMENT_ID` values as explained here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section
 
 ## 🔧 Usage
 
@@ -114,7 +114,7 @@ python scripts/main.py --speak
 
 ## 🔍 Google API Keys Configuration
 
-This section is optional, use the official google api if you are having issues with error 429 when running google search.
+This section is optional, use the official google api if you are having issues with error 429 when running a google search.
 To use the `google_official_search` command, you need to set up your Google API keys in your environment variables.
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
@@ -126,6 +126,8 @@ To use the `google_official_search` command, you need to set up your Google API 
 7. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page and click "Add".
 8. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
 9.  Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
+
+*Remember that your free daily custom search quota allows only up to 100 searches. To increase this limit, you need to assign a billing account to the project to profit from up to 10K daily searches.*
 
 ### Setting up environment variables
    For Windows Users:
@@ -177,18 +179,22 @@ MEMORY_INDEX=whatever
 
 ## 🌲 Pinecone API Key Setup
 
-Pinecone enable a vector based memory so a vast memory can be stored and only relevant memories
-are loaded for the agent at any given time.
+Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
 
 1. Go to app.pinecone.io and make an account if you don't already have one.
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
 
 ### Setting up environment variables
-   For Windows Users:
+
+Simply set them in the `.env` file. 
+
+Alternatively, you can set them from the command line (advanced):
+
+For Windows Users:
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
-export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
+setx PINECONE_ENV "Your pinecone region" # something like: us-east4-gcp
 
 ```
 For macOS and Linux users:
@@ -198,7 +204,6 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
 
-Or you can set them in the `.env` file.
 
 ## View Memory Usage
 
@@ -207,8 +212,8 @@ Or you can set them in the `.env` file.
 
 ## 💀 Continuous Mode ⚠️
 Run the AI **without** user authorisation, 100% automated.
-Continuous mode is not recommended. 
-It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. 
+Continuous mode is not recommended.
+It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
 1. Run the `main.py` Python script in your terminal:
 ```
@@ -222,6 +227,7 @@ If you don't have access to the GPT4 api, this mode will allow you to use Auto-G
 ```
 python scripts/main.py --gpt3only
 ```
+It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
 
 ## 🖼 Image Generation
 By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [HuggingFace API Token](https://huggingface.co/settings/tokens) is required.
@@ -252,7 +258,7 @@ As an autonomous experiment, Auto-GPT may generate content or take actions that 
 
 By using Auto-GPT, you agree to indemnify, defend, and hold harmless the developers, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software or your violation of these terms.
 
-## 🐦 Connect with Us on Twitter 
+## 🐦 Connect with Us on Twitter
 
 Stay up-to-date with the latest news, updates, and insights about Auto-GPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
 
