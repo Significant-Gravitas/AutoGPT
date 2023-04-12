@@ -54,11 +54,9 @@ RESPONSE FORMAT:
     },
     "command": {
         "name": "command name",
-        "args":[
-            {
+        "args":{
                 "arg name": "value"
-            }
-        ]
+        }
     }
 }
 

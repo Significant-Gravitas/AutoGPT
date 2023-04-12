@@ -44,11 +44,9 @@ class TestParseJson(unittest.TestCase):
 {
     "command": {
         "name": "browse_website",
-        "args":[
-            {
-                "url": "https://github.com/Torantulino/Auto-GPT"
-            }
-        ]
+        "args": {
+            "url": "https://github.com/Torantulino/Auto-GPT"
+        }
     },
     "thoughts":
     {
@@ -61,7 +59,7 @@ class TestParseJson(unittest.TestCase):
         good_obj = {
             "command": {
                 "name": "browse_website",
-                "args": [{"url": "https://github.com/Torantulino/Auto-GPT"}],
+                "args": {"url": "https://github.com/Torantulino/Auto-GPT"},
             },
             "thoughts": {
                 "text": "I suggest we start browsing the repository to find any issues that we can fix.",
@@ -82,11 +80,9 @@ class TestParseJson(unittest.TestCase):
 {
     "command": {
         "name": "browse_website",
-        "args":[
-            {
-                "url": "https://github.com/Torantulino/Auto-GPT"
-            }
-        ]
+        "args": {
+            "url": "https://github.com/Torantulino/Auto-GPT"
+        }
     },
     "thoughts":
     {
@@ -99,7 +95,7 @@ class TestParseJson(unittest.TestCase):
         good_obj = {
             "command": {
                 "name": "browse_website",
-                "args": [{"url": "https://github.com/Torantulino/Auto-GPT"}],
+                "args": {"url": "https://github.com/Torantulino/Auto-GPT"},
             },
             "thoughts": {
                 "text": "Browsing the repository to identify potential bugs",
