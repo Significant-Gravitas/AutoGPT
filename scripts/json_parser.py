@@ -49,7 +49,7 @@ def fix_and_parse_json(
     #  of the string
     try:
         brace_index = json_str.find("{")
-        if brace_index <= 0:
+        if brace_index >= 0:
             tmp_json_str = json_str[brace_index:]
             last_brace_index = tmp_json_str.rindex("}")
             if brace_index >= 0 and last_brace_index >= brace_index:
