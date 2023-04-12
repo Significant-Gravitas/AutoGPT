@@ -45,7 +45,7 @@ class Logger(metaclass=Singleton):
 
         # Info handler in activity.log
         self.file_handler = logging.FileHandler(os.path.join(log_dir, log_file))
-        self.file_handler.setLevel(logging.INFO)
+        self.file_handler.setLevel(logging.DEBUG)
         info_formatter = AutoGptFormatter('%(asctime)s %(levelname)s %(title)s %(message_no_color)s')
         self.file_handler.setFormatter(info_formatter)
 
