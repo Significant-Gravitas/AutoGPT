@@ -1,4 +1,8 @@
+from threading import Lock, Semaphore
+import threading
+import gtts
 import os
+import random
 from playsound import playsound
 import requests
 from config import Config
@@ -28,8 +32,10 @@ tts_headers = {
     "xi-api-key": cfg.elevenlabs_api_key
 }
 
-mutex_lock = Lock() # Ensure only one sound is played at a time
-queue_semaphore = Semaphore(1) # The amount of sounds to queue before blocking the main thread
+mutex_lock = Lock()  # Ensure only one sound is played at a time
+# The amount of sounds to queue before blocking the main thread
+queue_semaphore = Semaphore(1)
+
 
 def eleven_labs_speech(text, voice_index=0):
     """Speak text using elevenlabs.io's API"""
@@ -51,6 +57,7 @@ def eleven_labs_speech(text, voice_index=0):
         print("Response content:", response.content)
         return False
 
+
 def gtts_speech(text):
     tts = gtts.gTTS(text)
     with mutex_lock:
@@ -58,17 +65,32 @@ def gtts_speech(text):
         playsound("speech.mp3", True)
         os.remove("speech.mp3")
 
+
+macos_voice_names = [
+    "Zoe (Premium)",
+    "Ava (Premium)",
+    "com.apple.speech.synthesis.voice.custom.siri.aaron",
+    "Samantha",
+    "com.apple.speech.synthesis.voice.custom.siri.riya",
+    "com.apple.speech.synthesis.voice.custom.siri.gordon",
+    "com.apple.speech.synthesis.voice.custom.siri.arthur",
+    "com.apple.speech.synthesis.voice.custom.siri.aidan",
+    "com.apple.speech.synthesis.voice.custom.siri.akash",
+    "com.apple.speech.synthesis.voice.custom.siri.xander",
+]
+
+
 def macos_tts_speech(text, voice_index=0):
     if voice_index == 0:
-        os.system(f'say "{text}"')
-    else: 
-        if voice_index == 1:
-            os.system(f'say -v "Ava (Premium)" "{text}"')
-        else:
-            os.system(f'say -v Samantha "{text}"')
+        os.system(f'say -v "{macos_voice_names[0]}" "{text}"')
+    else:
+        random_voice_index = random.randint(0, len(macos_voice_names) - 1)
+        os.system(f'say -v "{macos_voice_names[random_voice_index]}" "{text}"')
+
 
 def say_text(text, voice_index=0):
 
+    
     def speak():
         if not cfg.elevenlabs_api_key:
             if cfg.use_mac_os_tts == 'True':
@@ -79,7 +101,7 @@ def say_text(text, voice_index=0):
             success = eleven_labs_speech(text, voice_index)
             if not success:
                 gtts_speech(text)
-        
+                
         queue_semaphore.release()
 
     queue_semaphore.acquire(True)

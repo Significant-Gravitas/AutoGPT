@@ -16,6 +16,7 @@ import traceback
 import yaml
 import argparse
 import logging
+import telegram_chat
 
 cfg = Config()
 
@@ -150,7 +151,10 @@ def print_assistant_thoughts(assistant_reply):
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
         
+        if cfg.telegram_api_key and cfg.telegram_chat_id:
+            telegram_chat.send_message(assistant_thoughts_text)
         return assistant_reply_json
+        
     except json.decoder.JSONDecodeError as e:
         print_to_console("Error: Invalid JSON\n", Fore.RED, assistant_reply)
         if cfg.speak_mode:
@@ -393,8 +397,15 @@ while True:
             f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
             flush=True)
         while True:
-            console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-            if console_input.lower() == "y":
+            if cfg.speak_mode:
+                if command_name != "do_nothing":
+                    console_input = utils.clean_input(f"I want to {command_name}, is that okay?", talk=True)
+                else:
+                    console_input = utils.clean_input("I decided to just continue thinking. Is that okay?", talk=True)
+            else:
+                console_input = utils.clean_input(Fore.MAGENTA+  "Input:" + Style.RESET_ALL)
+
+            if console_input.lower() == "y" or console_input.lower() == "yes" or console_input.lower() == "y -1" or console_input.lower() == "okay" or console_input.lower() == "ok":
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break
             elif console_input.lower().startswith("y -"):
