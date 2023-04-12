@@ -5,6 +5,7 @@ import subprocess
 import agent_manager as agents
 import ai_functions as ai
 import browse
+import requests
 from config import Config
 from duckduckgo_search import ddg
 from execute_code import execute_python_file
@@ -59,11 +60,11 @@ def get_command(response):
 
 
 COMMAND_FUNCTIONS = {
-    "google": lambda args: ddg_search(args["input"]),
+    "google": lambda args: ddg_search(args["query"]),
     "memory_add": lambda args: get_memory(cfg).add(args["string"]),
     "start_agent": lambda args: start_agent(args["name"], args["task"], args["prompt"]),
     "message_agent": lambda args: message_agent(args["key"], args["message"]),
-    "list_agents": lambda: list_agents(),
+    "list_agents": lambda _: list_agents(),
     "delete_agent": lambda args: delete_agent(args["key"]),
     "get_text_summary": lambda args: get_text_summary(args["url"], args["question"]),
     "get_hyperlinks": lambda args: get_hyperlinks(args["url"]),
@@ -76,11 +77,14 @@ COMMAND_FUNCTIONS = {
     "evaluate_code": lambda args: ai.evaluate_code(args["code"]),
     "improve_code": lambda args: ai.improve_code(args["suggestions"], args["code"]),
     "write_tests": lambda args: ai.write_tests(args["code"], args.get("focus")),
-    "execute_python_file": lambda args: execute_python_file(args["file"]),
     "generate_image": lambda args: generate_image(args["prompt"]),
-    "do_nothing": lambda _: "No action performed.",
+    "execute_python_file": lambda args: execute_python_file(args["file"]),
     "execute_local_command": lambda args: execute_local_command(args["command"]),
+    "do_nothing": lambda _: "No action performed.",
     "task_complete": lambda _: shutdown(),
+    "api_call": lambda args: api_call(
+        args["url"], args["method"], args["headers"], args["body"]
+    ),
 }
 
 
@@ -240,3 +244,8 @@ def execute_local_command(command):
         return subprocess.check_output(command, shell=True).decode("utf-8")
     else:
         return "Invalid command, must be a string."
+
+
+def api_call(url, method="GET", headers=None, body=None):
+    """Make an API call with a given URL, method, and body"""
+    return requests.request(method=method, url=url, headers=headers, data=body).text

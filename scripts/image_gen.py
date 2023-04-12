@@ -1,12 +1,8 @@
-import io
-import os.path
 import uuid
 from base64 import b64decode
 
 import openai
-import requests
 from config import Config
-from PIL import Image
 
 cfg = Config()
 
