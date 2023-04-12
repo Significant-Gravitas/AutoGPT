@@ -26,6 +26,7 @@ import {
   SIconButton,
 } from "./MainPage.styled"
 import useAutoGPTAPI from "@/hooks/useAutoGPTAPI"
+import SChip from "@/components/atom/SChip"
 
 const MainPage = () => {
   const { aiHistoryArray, aiHistory } = useAiHistory()
@@ -88,7 +89,7 @@ const MainPage = () => {
               <Flex justify="space-between" align="center" fullWidth>
                 <Flex gap={0.5} align="center">
                   <CommentRoundedIcon />
-                  <h2>Ai Name</h2>
+                  <h2>{currentAi.name}</h2>
                   <Chip label="Continuous" color="primary" size="small" />
                 </Flex>
                 <Flex gap={0.5} align="center">
@@ -101,10 +102,7 @@ const MainPage = () => {
                 </Flex>
               </Flex>
               <div>
-                Ai role is lorem ipsum dolor sit amet, consectetur adipiscing
-                elit. Aliquam at ipsum eu nunc commodo posuere et sit amet
-                ligula. Aenean quis rhoncus nunc, quis interdum justo. Duis quis
-                nisl
+                Role : {currentAi.role}
               </div>
             </ActionBar>
             <CommentContainer>
@@ -137,16 +135,20 @@ const MainPage = () => {
           </Flex>
         </Discussion>
         <RightTasks>
-          <Flex>
-            {(currentAi.goals ?? []).map((goal) => (
-              <Chip
-                key={goal}
-                label={goal}
-                color="primary"
-                size="small"
-                sx={{ mr: 0.5 }}
-              />
-            ))}
+          <Flex direction="column" gap={0.5}>
+            <h2>Your goals</h2>
+            {(currentAi.goals ?? []).map((goal) => {
+              if (goal === "") return null
+              return (
+                <SChip
+                  $color="yellow300"
+                  key={goal}
+                  label={goal}
+                  color="primary"
+                  variant="outlined"
+                  sx={{ mr: 0.5 }} />
+              )
+            })}
           </Flex>
           <Flex direction="column" gap={0.5}>
             <h2>Your agents</h2>

@@ -36,10 +36,11 @@ const InitPage = () => {
         agents: [],
         name: data.ai_name,
         role: data.ai_role,
-        goals: data.goals,
+        goals: data.ai_goals,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         answers: [],
+        continuous: data.continuous,
       }),
     )
     navigate(`/main/${newId}`)

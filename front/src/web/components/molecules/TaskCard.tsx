@@ -5,6 +5,7 @@ import Details from "../atom/Details"
 import H3 from "../atom/H3"
 import IAi from "@/types/data/IAi"
 import { useNavigate } from "react-router"
+import AutoGPTAPI from "@/api/AutoGPTAPI"
 
 interface ITaskCard {
   $active?: boolean
@@ -17,6 +18,12 @@ const TaskCard = ({ $active, ai }: ITaskCard) => {
       elevation={0}
       $active={$active}
       onClick={() => {
+        AutoGPTAPI.createInitData({
+          ai_role: ai.role,
+          ai_name: ai.name,
+          ai_goals: ai.goals,
+          continuous: ai.continuous,
+        })
         navigate(`/main/${ai.id}`)
       }}
     >

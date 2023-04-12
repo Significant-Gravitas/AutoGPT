@@ -6,6 +6,7 @@ interface IAi {
     name: string
     role: string
     goals: Array<string>
+    continuous: boolean
     createdAt: string
     updatedAt: string
     agents: Array<IAgent['name']> // agent use name as id
