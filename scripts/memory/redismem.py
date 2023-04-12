@@ -52,10 +52,8 @@ class RedisMemory(MemoryProviderSingleton):
             self.redis.ping()
         except redis.ConnectionError as e:
             logger.typewriter_log("FAILED TO CONNECT TO REDIS", Fore.RED, Style.BRIGHT + str(e) + Style.RESET_ALL)
-            logger.typewriter_log("DOUBLE CHECK CONFIGURATION", 
-                                  Fore.YELLOW, 
-                                    "Please ensure you have setup and configured Redis properly for use. " +
-                                   f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL} to ensure you've set up everything correctly.")
+            logger.double_check("Please ensure you have setup and configured Redis properly for use. " +
+                                f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL} to ensure you've set up everything correctly.")
             exit(1)
 
         if cfg.wipe_redis_on_start:
