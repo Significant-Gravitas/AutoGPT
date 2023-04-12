@@ -1,9 +1,14 @@
 import requests
 from bs4 import BeautifulSoup
+from memory import get_memory
 from config import Config
 from llm_utils import create_chat_completion
 
 cfg = Config()
+memory = get_memory(cfg)
+
+session = requests.Session()
+session.headers.update({'User-Agent': cfg.user_agent})
 
 # Define and check for local file address prefixes
 def check_local_file_access(url):
@@ -21,7 +26,7 @@ def scrape_text(url):
         return "Error: Access to local files is restricted"
     
     try:
-        response = requests.get(url, headers=cfg.user_agent_header)
+        response = session.get(url)
     except requests.exceptions.RequestException as e:
         return "Error: " + str(e)
 
@@ -60,7 +65,7 @@ def format_hyperlinks(hyperlinks):
 
 def scrape_links(url):
     """Scrape links from a webpage"""
-    response = requests.get(url, headers=cfg.user_agent_header)
+    response = session.get(url)
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
@@ -76,7 +81,7 @@ def scrape_links(url):
     return format_hyperlinks(hyperlinks)
 
 
-def split_text(text, max_length=8192):
+def split_text(text, max_length=cfg.browse_chunk_max_length):
     """Split text into chunks of a maximum length"""
     paragraphs = text.split("\n")
     current_length = 0
@@ -102,7 +107,7 @@ def create_message(chunk, question):
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
     }
 
-def summarize_text(text, question):
+def summarize_text(url, text, question):
     """Summarize text using the LLM model"""
     if not text:
         return "Error: No text to summarize"
@@ -114,15 +119,28 @@ def summarize_text(text, question):
     chunks = list(split_text(text))
 
     for i, chunk in enumerate(chunks):
+        print(f"Adding chunk {i + 1} / {len(chunks)} to memory")
+
+        memory_to_add = f"Source: {url}\n" \
+                        f"Raw content part#{i + 1}: {chunk}"
+
+        memory.add(memory_to_add)
+
         print(f"Summarizing chunk {i + 1} / {len(chunks)}")
         messages = [create_message(chunk, question)]
 
         summary = create_chat_completion(
             model=cfg.fast_llm_model,
             messages=messages,
-            max_tokens=300,
+            max_tokens=cfg.browse_summary_max_token,
         )
         summaries.append(summary)
+        print(f"Added chunk {i + 1} summary to memory")
+
+        memory_to_add = f"Source: {url}\n" \
+                        f"Content summary part#{i + 1}: {summary}"
+
+        memory.add(memory_to_add)
 
     print(f"Summarized {len(chunks)} chunks.")
 
@@ -132,7 +150,7 @@ def summarize_text(text, question):
     final_summary = create_chat_completion(
         model=cfg.fast_llm_model,
         messages=messages,
-        max_tokens=300,
+        max_tokens=cfg.browse_summary_max_token,
     )
 
     return final_summary
