@@ -48,7 +48,7 @@ class TestScrapeLinks:
         assert len(result) > 0
         assert isinstance(result, list)
         assert isinstance(result[0], str)
-      
+
     # Tests that the function returns correctly formatted hyperlinks when given a valid url.
     def test_valid_url(self, mocker):
         # Mock the requests.get() function to return a response with sample HTML containing hyperlinks
@@ -90,7 +90,7 @@ class TestScrapeLinks:
         # Assert that the function returns an empty list
         assert result == []
 
-    # Tests that scrape_links() correctly extracts and formats hyperlinks from 
+    # Tests that scrape_links() correctly extracts and formats hyperlinks from
     # a sample HTML containing a few hyperlinks.
     def test_scrape_links_with_few_hyperlinks(self, mocker):
         # Mock the requests.get() function to return a response with a sample HTML containing hyperlinks
