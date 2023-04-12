@@ -52,7 +52,7 @@ class TestParseJson(unittest.TestCase):
         good_obj = {
           "command": {
               "name": "browse_website",
-              "args":{
+              "args": {
                   "url": "https://github.com/Torantulino/Auto-GPT"
               }
           },
@@ -91,7 +91,7 @@ class TestParseJson(unittest.TestCase):
         good_obj = {
     "command": {
         "name": "browse_website",
-        "args":{
+        "args": {
             "url": "https://github.com/Torantulino/Auto-GPT"
         }
     },
