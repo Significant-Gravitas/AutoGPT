@@ -22,8 +22,6 @@ def create_chat_message(role, content):
     """
     return {"role": role, "content": content}
 
-
-
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
         prompt,
@@ -32,21 +30,21 @@ def chat_with_ai(
         permanent_memory,
         token_limit,
         debug=False):
+    """
+    Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory.
+
+    Args:
+    prompt (str): The prompt explaining the rules to the AI.
+    user_input (str): The input from the user.
+    full_message_history (list): The list of all messages sent between the user and the AI.
+    permanent_memory (list): The list of items in the AI's permanent memory.
+    token_limit (int): The maximum number of tokens allowed in the API call.
+
+    Returns:
+    str: The AI's response.
+    """
     while True:
         try:
-            """
-            Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory.
-
-            Args:
-            prompt (str): The prompt explaining the rules to the AI.
-            user_input (str): The input from the user.
-            full_message_history (list): The list of all messages sent between the user and the AI.
-            permanent_memory (list): The list of items in the AI's permanent memory.
-            token_limit (int): The maximum number of tokens allowed in the API call.
-
-            Returns:
-            str: The AI's response.
-            """
             model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
             if debug:

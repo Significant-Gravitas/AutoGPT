@@ -17,6 +17,15 @@ cfg = Config()
 
 
 def get_command(response):
+    '''
+    Attempts to extract the command name and arguments from the AI's response and returns it, if found.
+
+    Args:
+    response (str): A JSON string containing the command returned by the ChatAI.
+
+    Returns:
+    tuple: A tuple containg the command name and the arguments (<command_name>, <args_dict>), if found. Otherwise ('Error', <error_message>)
+    '''
     try:
         response_json = fix_and_parse_json(response)
         
@@ -45,6 +54,16 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
+    '''
+    Attempts to execute the specified command using the specified arguments.
+
+    Args:
+    command_name (str): The name of the command to be executed.
+    arguments (dict): A dictionary containing arguments for the command execution.
+
+    Returns:
+    str: A string that represents the performed command.
+    '''
     try:
         if command_name == "google":
             
