@@ -21,6 +21,7 @@ from pathlib import Path
 
 
 def update_env_from_template():
+    """Updates a configuration file `.env` from a template file `.env.template`."""
     # get paths to .env and .env.template files
     env_file = Path(__file__).resolve().parent.parent / '.env'
     template_file = Path(__file__).resolve().parent.parent / '.env.template'
