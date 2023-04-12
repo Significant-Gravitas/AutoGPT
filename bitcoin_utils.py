@@ -13,6 +13,19 @@ def create_wallet():
     address = P2PKHBitcoinAddress.from_pubkey(secret.pub)
     return str(address), str(secret)
 
+def get_address(secret):
+    """
+    Get the associated Bitcoin address from the secret key.
+    
+    Args:
+    secret (str): The secret key for the Bitcoin address.
+
+    Returns:
+    str: The associated Bitcoin address.
+    """
+    secret_key = CBitcoinSecret(secret)
+    address = P2PKHBitcoinAddress.from_pubkey(secret_key.pub)
+    return str(address)
 
 def get_balance(address):
     url = f'https://blockchain.info/q/addressbalance/{address}?confirmations=6'
