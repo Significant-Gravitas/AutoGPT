@@ -54,6 +54,8 @@ class Config(metaclass=Singleton):
             openai.api_version = self.openai_api_version
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+        self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
+        self.elevenlabs_voice_2_id = os.getenv("ELEVENLABS_VOICE_2_ID")
 
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
@@ -112,6 +114,14 @@ class Config(metaclass=Singleton):
     def set_elevenlabs_api_key(self, value: str):
         """Set the ElevenLabs API key value."""
         self.elevenlabs_api_key = value
+
+    def set_elevenlabs_voice_1_id(self, value: str):
+        """Set the ElevenLabs Voice 1 ID value."""
+        self.elevenlabs_voice_1_id = value
+
+    def set_elevenlabs_voice_2_id(self, value: str):
+        """Set the ElevenLabs Voice 2 ID value."""
+        self.elevenlabs_voice_2_id = value
 
     def set_google_api_key(self, value: str):
         """Set the Google API key value."""
