@@ -1,22 +1,22 @@
 import datetime
 import json
 
+from duckduckgo_search import ddg
+
 import agent_manager as agents
 import ai_functions as ai
 import browse
 import speak
 from config import Config
-from execute_code import execute_python_file
 from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
+from image_gen import generate_image
+from json_parser import fix_and_parse_json
 from memory import get_memory
 from nodejs_code_executor import NodeJsCodeExecutor
+from python_code_executor import PythonCodeExecutor
 
 nodejs_code_executor = NodeJsCodeExecutor()
-
-from json_parser import fix_and_parse_json
-from image_gen import generate_image
-from duckduckgo_search import ddg
-
+python_code_executor = PythonCodeExecutor()
 cfg = Config()
 
 
@@ -106,7 +106,7 @@ def execute_command(command_name, arguments):
         elif command_name == "write_tests":
             return ai.write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":
-            return execute_python_file(arguments["file"])
+            return python_code_executor.execute(arguments["file"])
         elif command_name == "execute_nodejs_file":
             return nodejs_code_executor.execute(arguments["file"])
         elif command_name == "generate_image":
@@ -167,7 +167,7 @@ def google_official_search(query, num_results=8):
         # Check if the error is related to an invalid or missing API key
         if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error",
                                                                                                         {}).get(
-                "message", ""):
+            "message", ""):
             return "Error: The provided Google API key is invalid or missing."
         else:
             return f"Error: {e}"
