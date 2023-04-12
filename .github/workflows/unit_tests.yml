@@ -30,6 +30,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    - name: Lint with flake8
+      run: flake8 scripts/ tests/
+
     - name: Run unittest tests with coverage
       run: |
         coverage run --source=scripts -m unittest discover tests
