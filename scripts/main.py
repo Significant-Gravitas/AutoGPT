@@ -170,7 +170,7 @@ def load_variables(config_file="config.yaml"):
         documents = yaml.dump(config, file)
 
     prompt = data.load_prompt()
-    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."""
 
     # Construct full prompt
     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
@@ -274,6 +274,7 @@ def parse_arguments():
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
     args = parser.parse_args()
 
     if args.continuous:
@@ -291,6 +292,10 @@ def parse_arguments():
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
+    
+    if args.gpt4only:
+        print_to_console("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_fast_llm_model(cfg.smart_llm_model)
 
 
 
