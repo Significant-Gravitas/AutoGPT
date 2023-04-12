@@ -1,16 +1,16 @@
 import logging
 import os
 import random
+import re
 import time
 from logging import LogRecord
+from colorama import Fore
 
 from colorama import Style
 
 import speak
 from config import Config
 from config import Singleton
-
-import re
 
 cfg = Config()
 
@@ -31,10 +31,16 @@ class Logger(metaclass=Singleton):
         log_file = "activity.log"
         error_file = "error.log"
 
-        # Create a handler for INFO level logs
-        self.console_handler = TypingConsoleHandler()
-        self.console_handler.setLevel(logging.INFO)
         console_formatter = AutoGptFormatter('%(title_color)s %(message)s')
+
+        # Create a handler for console which simulate typing
+        self.typing_console_handler = TypingConsoleHandler()
+        self.typing_console_handler.setLevel(logging.INFO)
+        self.typing_console_handler.setFormatter(console_formatter)
+
+        # Create a handler for console without typing simulation
+        self.console_handler = ConsoleHandler()
+        self.console_handler.setLevel(logging.DEBUG)
         self.console_handler.setFormatter(console_formatter)
 
         # Info handler in activity.log
@@ -50,10 +56,17 @@ class Logger(metaclass=Singleton):
             '%(asctime)s %(levelname)s %(module)s:%(funcName)s:%(lineno)d %(title)s %(message_no_color)s')
         error_handler.setFormatter(error_formatter)
 
-        self.logger = logging.getLogger(__name__)
+        self.typing_logger = logging.getLogger('TYPER')
+        self.typing_logger.addHandler(self.typing_console_handler)
+        self.typing_logger.addHandler(self.file_handler)
+        self.typing_logger.addHandler(error_handler)
+        self.typing_logger.setLevel(logging.DEBUG)
+
+        self.logger = logging.getLogger('LOGGER')
         self.logger.addHandler(self.console_handler)
         self.logger.addHandler(self.file_handler)
         self.logger.addHandler(error_handler)
+        self.logger.setLevel(logging.DEBUG)
 
     def log(
             self,
@@ -71,12 +84,45 @@ class Logger(metaclass=Singleton):
         else:
             content = ""
 
-        self.logger.log(level, content, extra={'title': title, 'color': title_color})
+        self.typing_logger.log(level, content, extra={'title': title, 'color': title_color})
+
+    def debug(
+            self,
+            message,
+            title='',
+            title_color='',
+    ):
+        self._logs(title, title_color, message, logging.DEBUG)
+
+    def warn(
+            self,
+            message,
+            title='',
+            title_color='',
+    ):
+        self._logs(title, title_color, message, logging.WARN)
+
+    def error(
+            self,
+            title,
+            message=''
+    ):
+        self._logs(title, Fore.RED, message, logging.ERROR)
+
+    def _logs(
+            self,
+            title='',
+            title_color='',
+            message='',
+            level=logging.INFO):
+        if message:
+            if isinstance(message, list):
+                message = " ".join(message)
+        self.logger.log(level, message, extra={'title': title, 'color': title_color})
 
     def set_level(self, level):
         self.logger.setLevel(level)
-        self.console_handler.setLevel(level)
-        self.file_handler.setLevel(level)
+        self.typing_logger.setLevel(level)
 
 
 '''
@@ -105,6 +151,13 @@ class TypingConsoleHandler(logging.StreamHandler):
         except Exception:
             self.handleError(record)
 
+class ConsoleHandler(logging.StreamHandler):
+    def emit(self, record):
+        msg = self.format(record)
+        try:
+            print(msg)
+        except Exception:
+            self.handleError(record)
 
 '''
 Allows to handle custom placeholders 'title_color' and 'message_no_color'.
@@ -114,7 +167,10 @@ To use this formatter, make sure to pass 'color', 'title' as log extras.
 
 class AutoGptFormatter(logging.Formatter):
     def format(self, record: LogRecord) -> str:
-        record.title_color = getattr(record, 'color') + getattr(record, 'title') + " " + Style.RESET_ALL
+        if (hasattr(record, 'color')):
+            record.title_color = getattr(record, 'color') + getattr(record, 'title') + " " + Style.RESET_ALL
+        else:
+            record.title_color = getattr(record, 'title')
         if hasattr(record, 'msg'):
             record.message_no_color = remove_color_codes(getattr(record, 'msg'))
         else:
