@@ -19,7 +19,65 @@ import logging
 from dotenv import load_dotenv, dotenv_values, set_key, unset_key
 from pathlib import Path
 
-cfg = Config()
+
+def update_env_from_template():
+    # get paths to .env and .env.template files
+    env_file = Path(__file__).resolve().parent.parent / '.env'
+    template_file = Path(__file__).resolve().parent.parent / '.env.template'
+
+    # Check if .env.template file exists
+    if not template_file.is_file():
+        print("\033[31m" + "Error: \".env.template\" not found!" + "\033[0m")
+        return
+
+    # Check if .env file exists, otherwise create an empty file
+    if not env_file.is_file():
+        answer = input(f"File {env_file} not found. Create an empty file? (y/n) ")
+        if answer.lower() == "y":
+            env_file.touch()
+        else:
+            print("\033[31m" + "Error: \".env\" not found!" + "\033[0m")
+            return
+
+    # load values from .env and .env.template files
+    load_dotenv(str(template_file), verbose=True)
+    env_values = dotenv_values(str(env_file))
+    template_values = dotenv_values(str(template_file))
+
+    # find keys that were removed from .env.template
+    removed_keys = [key for key in env_values if key not in template_values]
+
+    # find values that need to be added from .env.template
+    changes = {key: value for key, value in template_values.items()
+               if env_values.get(key, '') == '' and value != ''}
+
+    if changes or removed_keys:
+        print("Changes found in .env.template:")
+        if changes:
+            for key, value in changes.items():
+                print(f"{key} = {value}")
+        if removed_keys:
+            print("\033[33m" + f"Removed keys from .env.template: {', '.join(removed_keys)}" + "\033[0m")
+        answer = input("Do you want to apply changes to .env? (y/n) ")
+        if answer.lower() == "y":
+            print(
+                "\033[93m" + "Warning: You may enter a confidential information.",
+                             "Do not share this part of the log with third parties." + "\033[0m")
+            for key, value in changes.items():
+                new_value = input(f"Enter value for {key} ({value}) or leave empty answer: ")
+                if new_value.strip():
+                    set_key(env_file, key, new_value, quote_mode="never")
+                    print(f"Added {key} = {new_value} to {env_file}")
+                else:
+                    set_key(env_file, key, value, quote_mode="never")
+                    print(f"Copied {key} = {value} from {template_file}")
+            for key in removed_keys:
+                # unset keys from .env file
+                unset_key(env_file, key)
+                print(f"Removed {key} from {env_file}")
+        else:
+            print("No changes in .env.template")
+
 
 def configure_logging():
     logging.basicConfig(filename='log.txt',
@@ -295,59 +353,10 @@ def parse_arguments():
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
 
-def update_env_from_template():
-    # get paths to .env and .env.template files
-    env_file = Path(__file__).resolve().parent.parent / '.env'
-    template_file = Path(__file__).resolve().parent.parent / '.env.template'
-
-    try:
-        # load values from .env and .env.template files
-        load_dotenv(str(template_file), verbose=True)
-        env_values = dotenv_values(str(env_file))
-        template_values = dotenv_values(str(template_file))
-    except Exception as e:
-        print(f"Error occurred while reading {template_file}: {e}")
-        raise e
-
-    # find keys that were removed from .env.template
-    removed_keys = [key for key in env_values if key not in template_values]
-
-    # find values that need to be added from .env.template
-    changes = {key: value for key, value in template_values.items()
-               if env_values.get(key, '') == '' and value != ''}
-
-    if changes or removed_keys:
-        print("Changes found in .env.template:")
-        if changes:
-            for key, value in changes.items():
-                print(f"{key} = {value}")
-        if removed_keys:
-            print(f"Removed keys from .env.template: {', '.join(removed_keys)}")
-        answer = input("Do you want to apply changes to .env? (y/n) ")
-        if answer.lower() == "y":
-            for key, value in changes.items():
-                new_value = input(f"Enter value for {key} ({value}) or leave empty answer: ")
-                if new_value.strip():
-                    set_key(env_file, key, new_value, quote_mode="never")
-                    print(f"Added {key} = {new_value} to {env_file}")
-                else:
-                    set_key(env_file, key, value, quote_mode="never")
-                    print(f"Copied {key} = {value} from {template_file}")
-            for key in removed_keys:
-                # unset keys from .env file
-                unset_key(env_file, key)
-                print(f"Removed {key} from {env_file}")
-        else:
-            print("No changes in .env.template")
-
-
 # TODO: fill in llm values here
-try:
-    update_env_from_template()
-except Exception as e:
-    print(f"Error occurred while checking the \".env\" updates: {str(e)}")
-check_openai_api_key()
+update_env_from_template()
 cfg = Config()
+check_openai_api_key()
 logger = configure_logging()
 parse_arguments()
 ai_name = ""
