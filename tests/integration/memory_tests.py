@@ -45,5 +45,6 @@ class TestLocalCache(unittest.TestCase):
         self.assertEqual(len(relevant_texts), k)
         self.assertIn(self.example_texts[1], relevant_texts)
 
+
 if __name__ == '__main__':
     unittest.main()
