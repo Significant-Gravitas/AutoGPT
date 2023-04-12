@@ -135,14 +135,10 @@ def load_variables(config_file="config.yaml"):
         ai_name = config.get("ai_name")
         ai_role = config.get("ai_role")
         ai_goals = config.get("ai_goals")
-        ai_model_id = config.get("ai_model_id")
-        ai_model_temperature = config.get("ai_model_temperature")
     except FileNotFoundError:
         ai_name = ""
         ai_role = ""
         ai_goals = []
-        ai_model_id = ""
-        ai_model_temperature = 0.7
 
     # Prompt the user for input if config file is missing or empty values
     if not ai_name:
@@ -384,7 +380,7 @@ while True:
             flush=True)
         while True:
             console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-            if console_input.lower() == "y" or fast_authorization_mode and console_input == "":
+            if console_input.lower() == "y":
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break
             elif console_input.lower().startswith("y -"):

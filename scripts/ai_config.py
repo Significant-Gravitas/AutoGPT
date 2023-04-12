@@ -10,7 +10,6 @@ class AIConfig:
         ai_name (str): The name of the AI.
         ai_role (str): The description of the AI's role.
         ai_goals (list): The list of objectives the AI is supposed to complete.
-        ai_model_id (str): The model id of the AI.
         ai_temperature (float): The temperature of the AI.
         ai_token_limit (int): The token limit of the AI.
 
