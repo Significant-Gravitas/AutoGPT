@@ -372,7 +372,7 @@ while True:
             flush=True)
         while True:
             console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-            if console_input.lower() == "y":
+            if console_input.lower().rstrip() == "y":
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break
             elif console_input.lower().startswith("y -"):
