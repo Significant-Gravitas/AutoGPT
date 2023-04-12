@@ -297,7 +297,9 @@ def parse_arguments():
         print_to_console("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_fast_llm_model(cfg.smart_llm_model)
 
-
+    if args.debug:
+        print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_debug_mode(True)
 
 # TODO: fill in llm values here
 check_openai_api_key()
