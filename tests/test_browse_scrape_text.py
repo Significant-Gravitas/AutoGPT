@@ -33,8 +33,6 @@ Additional aspects:
 - The function uses a generator expression to split the text into lines and chunks, which can improve performance for large amounts of text.
 """
 
-
-
 class TestScrapeText:
 
     # Tests that scrape_text() returns the expected text when given a valid URL.
