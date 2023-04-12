@@ -342,7 +342,9 @@ coverage run -m unittest discover tests
 
 ## Run linter
 
-This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. To run the linter, run the following command:
+This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. We currently use the following rules: `E303,W293,W291,W292,E305`. See the [flake8 rules](https://www.flake8rules.com/) for more information.
+
+To run the linter, run the following command:
 
 ```
 flake8 scripts/ tests/
