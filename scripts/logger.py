@@ -67,7 +67,7 @@ class Logger(metaclass=Singleton):
         self.logger.addHandler(error_handler)
         self.logger.setLevel(logging.DEBUG)
 
-    def log(
+    def typewriter_log(
             self,
             title='',
             title_color='',
@@ -91,7 +91,7 @@ class Logger(metaclass=Singleton):
             title='',
             title_color='',
     ):
-        self._logs(title, title_color, message, logging.DEBUG)
+        self._log(title, title_color, message, logging.DEBUG)
 
     def warn(
             self,
@@ -99,7 +99,7 @@ class Logger(metaclass=Singleton):
             title='',
             title_color='',
     ):
-        self._logs(title, title_color, message, logging.WARN)
+        self._log(title, title_color, message, logging.WARN)
 
     def error(
             self,
@@ -107,9 +107,9 @@ class Logger(metaclass=Singleton):
             title='',
             title_color='',
     ):
-        self._logs(title, title_color, message, logging.ERROR)
+        self._log(title, title_color, message, logging.ERROR)
 
-    def _logs(
+    def _log(
             self,
             title='',
             title_color='',
