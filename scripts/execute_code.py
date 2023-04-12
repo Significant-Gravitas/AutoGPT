@@ -1,6 +1,7 @@
 import docker
 import os
-
+import uuid
+from file_operations import write_to_file, safe_join
 
 def execute_python_file(file):
     """Execute a Python file in a Docker container and return the output"""
@@ -11,7 +12,7 @@ def execute_python_file(file):
     if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    file_path = os.path.join(workspace_folder, file)
+    file_path = safe_join(workspace_folder, file)
 
     if not os.path.isfile(file_path):
         return f"Error: File '{file}' does not exist."
@@ -28,7 +29,7 @@ def execute_python_file(file):
             volumes={
                 os.path.abspath(workspace_folder): {
                     'bind': '/workspace',
-                    'mode': 'ro'}},
+                    'mode': 'rw'}},
             working_dir='/workspace',
             stderr=True,
             stdout=True,
@@ -46,3 +47,20 @@ def execute_python_file(file):
 
     except Exception as e:
         return f"Error: {str(e)}"
+    
+def execute_python_code(code):
+    """Execute Python code in a Docker container and return the output"""
+
+    # Generate a UUID
+    unique_id = str(uuid.uuid4())
+
+    # Create a filename with the UUID as the filename
+    filename = unique_id + ".py"
+
+    workspace_folder = "auto_gpt_workspace"
+    
+    write_to_file(filename, code)
+
+    print (f"Saving code to file for history. Filename:'{filename}' in Workspace Folder:'{workspace_folder}'.\nCode:\n'{code}'")
+    
+    return execute_python_file(filename);
