@@ -1,10 +1,5 @@
 import os
 import os.path
-from config import Config
-from memory import get_memory
-
-cfg = Config()
-memory = get_memory(cfg)
 
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
