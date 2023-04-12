@@ -237,9 +237,9 @@ By default Auto-GPT is going to use LocalCache instead of redis or Pinecone.
 
 To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
 
-`local` (default) uses a local JSON cache file
-`pinecone` uses the Pinecone.io account you configured in your ENV settings
-`redis` will use the redis cache that you configured
+* `local`: (default) uses a local JSON cache file
+* `pinecone`: uses the Pinecone.io account you configured in your ENV settings
+* `redis`: will use the redis cache that you configured
 
 ## View Memory Usage
 
