@@ -15,3 +15,5 @@ pinecone-client==2.2.1
 redis
 orjson
 Pillow
+coverage
+flake8
