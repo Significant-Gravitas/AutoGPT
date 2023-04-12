@@ -39,8 +39,9 @@ Your support is greatly appreciated
   - [💾 Installation](#-installation)
   - [🔧 Usage](#-usage)
   - [🗣️ Speech Mode](#️-speech-mode)
-  - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
-    - [Setting up environment variables](#setting-up-environment-variables)
+  - [🔍 Google API Keys Configuration](#🔍-google-api-keys-configuration)
+  - [🔴 Redis Setup](#🔴-redis-setup)
+  - [🌲 Pinecone Setup](#🌲-pinecone-api-key-setup)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#image-generation)
@@ -112,13 +113,24 @@ python scripts/main.py
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
-### Logs
+### 📒 Logs
 You will find activity and error logs in the folder ```./logs```
 
 To output debug logs:
 ```
 python scripts/main.py --debug
 ```
+
+### ⚙️ Setting Your Cache Type
+
+By default Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+
+To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
+
+* `local`: (default) uses a local JSON cache file
+* `pinecone`: uses the Pinecone.io account you configured in your ENV settings
+* `redis`: will use the redis cache that you configured
+
 
 ## 🗣️ Speech Mode
 
@@ -163,7 +175,7 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
-## Redis Setup
+## 🔴 Redis Setup
 
 Install docker desktop.
 
@@ -230,18 +242,7 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
 
-
-## Setting Your Cache Type
-
-By default Auto-GPT is going to use LocalCache instead of redis or Pinecone.
-
-To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
-
-* `local`: (default) uses a local JSON cache file
-* `pinecone`: uses the Pinecone.io account you configured in your ENV settings
-* `redis`: will use the redis cache that you configured
-
-## View Memory Usage
+##  View Memory Usage
 
 1. View memory usage by using the `--debug` flag :)
 
