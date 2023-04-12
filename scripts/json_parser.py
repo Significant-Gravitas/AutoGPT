@@ -71,11 +71,11 @@ def fix_and_parse_json(
                 return json_str
         else:
             raise e
-            
-        
+
+
 def fix_json(json_str: str, schema: str) -> str:
     """Fix the given JSON string to make it parseable and fully complient with the provided schema."""
-    
+
     # Try to fix the JSON using gpt:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
@@ -91,7 +91,7 @@ def fix_json(json_str: str, schema: str) -> str:
     result_string = call_ai_function(
         function_string, args, description_string, model=cfg.fast_llm_model
     )
-    if cfg.debug:
+    if cfg.debug_mode:
         print("------------ JSON FIX ATTEMPT ---------------")
         print(f"Original JSON: {json_str}")
         print("-----------")
