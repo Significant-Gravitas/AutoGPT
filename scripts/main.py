@@ -315,19 +315,7 @@ def parse_arguments():
         else:
             cfg.memory_backend = chosen
 
-    # Print Assistant thoughts
-    print_assistant_thoughts(assistant_reply)
 
-    # Get command name and arguments
-    try:
-        command_name, arguments = cmd.get_command(assistant_reply)
-    except Exception as e:
-        print_to_console("Error: \n", Fore.RED, str(e))
-
-    return command_name, arguments
-
-
-# TODO: Better argument parsing:
 # TODO: fill in llm values here
 check_openai_api_key()
 cfg = Config()
