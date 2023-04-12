@@ -288,10 +288,6 @@ def parse_arguments():
         print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_speak_mode(True)
 
-    if args.debug:
-        print_to_console("Debug Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_debug_mode(True)
-
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
