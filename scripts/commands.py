@@ -14,6 +14,8 @@ from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from search import google_official_search, google_search, get_text_summary, get_hyperlinks, browse_website
+
 cfg = Config()
 
 
@@ -50,7 +52,7 @@ def get_command(response):
         return "Error:", str(e)
 
 
-def execute_command(command_name, arguments):
+async def execute_command(command_name, arguments):
     """Execute the command and return the result"""
     memory = get_memory(cfg)
 
@@ -77,7 +79,7 @@ def execute_command(command_name, arguments):
         elif command_name == "delete_agent":
             return delete_agent(arguments["key"])
         elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"], arguments["question"])
+            return await get_text_summary(arguments["url"], arguments["question"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
         elif command_name == "read_file":
@@ -91,7 +93,7 @@ def execute_command(command_name, arguments):
         elif command_name == "search_files":
             return search_files(arguments["directory"])
         elif command_name == "browse_website":
-            return browse_website(arguments["url"], arguments["question"])
+            return await browse_website(arguments["url"], arguments["question"])
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
@@ -120,123 +122,6 @@ def get_datetime():
     """Return the current date and time"""
     return "Current date and time: " + \
         datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def google_search(query, num_results=8):
-    """Return the results of a google search"""
-    search_results = []
-    for j in ddg(query, max_results=num_results):
-        search_results.append(j)
-
-    return json.dumps(search_results, ensure_ascii=False, indent=4)
-
-def google_official_search(query, num_results=8):
-    """Return the results of a google search using the official Google API"""
-    from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
-    import json
-
-    try:
-        # Get the Google API key and Custom Search Engine ID from the config file
-        api_key = cfg.google_api_key
-        custom_search_engine_id = cfg.custom_search_engine_id
-
-        # Initialize the Custom Search API service
-        service = build("customsearch", "v1", developerKey=api_key)
-
-        # Send the search query and retrieve the results
-        result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
-
-        # Extract the search result items from the response
-        search_results = result.get("items", [])
-
-        # Create a list of only the URLs from the search results
-        search_results_links = [item["link"] for item in search_results]
-
-    except HttpError as e:
-        # Handle errors in the API call
-        error_details = json.loads(e.content.decode())
-
-        # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
-            return "Error: The provided Google API key is invalid or missing."
-        else:
-            return f"Error: {e}"
-
-    # Return the list of search result URLs
-    return search_results_links
-
-def browse_website(url, question):
-    """Browse a website and return the summary and links"""
-    summary = get_text_summary(url, question)
-    links = get_hyperlinks(url)
-
-    # Limit links to 5
-    if len(links) > 5:
-        links = links[:5]
-
-    result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
-
-    return result
-
-
-def get_text_summary(url, question):
-    """Return the results of a google search"""
-    text = browse.scrape_text(url)
-    summary = browse.summarize_text(text, question)
-    return """ "Result" : """ + summary
-
-
-def get_hyperlinks(url):
-    """Return the results of a google search"""
-    link_list = browse.scrape_links(url)
-    return link_list
-
-
-def commit_memory(string):
-    """Commit a string to memory"""
-    _text = f"""Committing memory with string "{string}" """
-    mem.permanent_memory.append(string)
-    return _text
-
-
-def delete_memory(key):
-    """Delete a memory with a given key"""
-    if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Deleting memory with key " + str(key)
-        del mem.permanent_memory[key]
-        print(_text)
-        return _text
-    else:
-        print("Invalid key, cannot delete memory.")
-        return None
-
-
-def overwrite_memory(key, string):
-    """Overwrite a memory with a given key and string"""
-    # Check if the key is a valid integer
-    if is_valid_int(key):
-        key_int = int(key)
-        # Check if the integer key is within the range of the permanent_memory list
-        if 0 <= key_int < len(mem.permanent_memory):
-            _text = "Overwriting memory with key " + str(key) + " and string " + string
-            # Overwrite the memory slot with the given integer key and string
-            mem.permanent_memory[key_int] = string
-            print(_text)
-            return _text
-        else:
-            print(f"Invalid key '{key}', out of range.")
-            return None
-    # Check if the key is a valid string
-    elif isinstance(key, str):
-        _text = "Overwriting memory with key " + key + " and string " + string
-        # Overwrite the memory slot with the given string key and string
-        mem.permanent_memory[key] = string
-        print(_text)
-        return _text
-    else:
-        print(f"Invalid key '{key}', must be an integer or a string.")
-        return None
 
 
 def shutdown():

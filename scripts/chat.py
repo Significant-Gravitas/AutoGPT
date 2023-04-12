@@ -1,9 +1,11 @@
+import logging
+import pprint
 import time
 import openai
 from dotenv import load_dotenv
 from config import Config
 import token_counter
-from llm_utils import create_chat_completion
+from llm_utils import async_chat_completion, ChatRequest
 
 cfg = Config()
 
@@ -39,7 +41,7 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
 
 
 # TODO: Change debug from hardcode to argument
-def chat_with_ai(
+async def chat_with_ai(
         prompt,
         user_input,
         full_message_history,
@@ -125,21 +127,20 @@ def chat_with_ai(
                 print("----------- END OF CONTEXT ----------------")
 
             # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
-            assistant_reply = create_chat_completion(
-                model=model,
-                messages=current_context,
-                max_tokens=tokens_remaining,
-            )
-
+            request = ChatRequest.from_messages(messages=current_context, max_tokens=tokens_remaining, model=model)
+            response = await async_chat_completion(request, return_exceptions=True)
+            if response.exception:
+                logging.error(f'completion failed for 6 retries, last exception: {response.exception}')
+                logging.debug(f'Last Messages:\n {pprint.pformat(request.message_list)}')
             # Update full message history
             full_message_history.append(
                 create_chat_message(
                     "user", user_input))
             full_message_history.append(
                 create_chat_message(
-                    "assistant", assistant_reply))
+                    "assistant", response.reply))
 
-            return assistant_reply
+            return response.reply
         except openai.error.RateLimitError:
             # TODO: When we switch to langchain, this is built in
             print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")

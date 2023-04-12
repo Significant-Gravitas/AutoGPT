@@ -15,3 +15,5 @@ pinecone-client==2.2.1
 redis
 orjson
 Pillow
+pydantic==1.10.7
+tenacity==8.2.1

@@ -1,8 +1,13 @@
+import asyncio
+import hashlib
+from dataclasses import dataclass
+from typing import Optional
+
 import requests
 from bs4 import BeautifulSoup
 from config import Config
-from llm_utils import create_chat_completion
-
+from llm_utils import async_chat_completion, create_chat_completion, ChatRequest
+import logging
 cfg = Config()
 
 # Define and check for local file address prefixes
@@ -10,7 +15,7 @@ def check_local_file_access(url):
     local_prefixes = ['file:///', 'file://localhost', 'http://localhost', 'https://localhost']
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
-def scrape_text(url):
+def scrape_text(url)->str|None:
     """Scrape text from a webpage"""
     # Most basic check if the URL is valid:
     if not url.startswith('http'):
@@ -19,7 +24,7 @@ def scrape_text(url):
     # Restrict access to local files
     if check_local_file_access(url):
         return "Error: Access to local files is restricted"
-    
+
     try:
         response = requests.get(url, headers=cfg.user_agent_header)
     except requests.exceptions.RequestException as e:
@@ -27,7 +32,8 @@ def scrape_text(url):
 
     # Check if the response contains an HTTP error
     if response.status_code >= 400:
-        return "Error: HTTP " + str(response.status_code) + " error"
+        logging.warning(f'response status: {response.status_code} = {response.text}')
+        return None
 
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -82,7 +88,7 @@ def split_text(text, max_length=8192):
     current_length = 0
     current_chunk = []
 
-    for paragraph in paragraphs:
+    for i, paragraph in enumerate(paragraphs):
         if current_length + len(paragraph) + 1 <= max_length:
             current_chunk.append(paragraph)
             current_length += len(paragraph) + 1
@@ -102,37 +108,48 @@ def create_message(chunk, question):
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
     }
 
-def summarize_text(text, question):
+
+@dataclass
+class TextSummary:
+    source: str
+    summary: str
+
+
+async def summarize_text(text, question, source: str | None = None, max_tokens=300) -> Optional[TextSummary]:
     """Summarize text using the LLM model"""
     if not text:
-        return "Error: No text to summarize"
+        logging.warning('No text to summarize')
+        return None
 
     text_length = len(text)
-    print(f"Text length: {text_length} characters")
+    logging.debug(f"Text length: {text_length} characters")
 
-    summaries = []
     chunks = list(split_text(text))
+    tasks = [
+        async_chat_completion(
+            request=ChatRequest.from_messages(messages=[create_message(chunk, question)], max_tokens=max_tokens, key=i))
+        for i, chunk in enumerate(chunks)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for i, chunk in enumerate(chunks):
-        print(f"Summarizing chunk {i + 1} / {len(chunks)}")
-        messages = [create_message(chunk, question)]
+    def filter_result(result) -> bool:
+        if isinstance(result, BaseException):
+            logging.error(result)
+            return False
+        if result.exception:
+            logging.error(f'{result.exception}')
+            return False
+        return True
 
-        summary = create_chat_completion(
-            model=cfg.fast_llm_model,
-            messages=messages,
-            max_tokens=300,
-        )
-        summaries.append(summary)
-
-    print(f"Summarized {len(chunks)} chunks.")
+    summaries = list(map(lambda c: c.reply, sorted(filter(lambda r: filter_result(r), results), key=lambda c: c.key())))
+    logging.info(f"Summarized {len(chunks)} chunks.")
 
     combined_summary = "\n".join(summaries)
     messages = [create_message(combined_summary, question)]
+    final_summary = await async_chat_completion(ChatRequest.from_messages(messages=messages,max_tokens=max_tokens))
+    if final_summary.reply:
+        source = source or hashlib.md5(text).hexdigest()
+        return TextSummary(source=source, summary=final_summary.reply)
+    else:
+        return None
 
-    final_summary = create_chat_completion(
-        model=cfg.fast_llm_model,
-        messages=messages,
-        max_tokens=300,
-    )
 
-    return final_summary
