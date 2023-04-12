@@ -63,10 +63,10 @@ def chat_with_ai(
             """
             model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
-            
+
             if cfg.debug:
                 print(f"Token limit: {token_limit}")
-                
+
             send_token_limit = token_limit - 1000
 
             relevant_memory = permanent_memory.get_relevant(str(full_message_history[-5:]), 10)

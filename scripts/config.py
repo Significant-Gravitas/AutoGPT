@@ -33,7 +33,7 @@ class Config(metaclass=Singleton):
 
     def __init__(self):
         """Initialize the Config class"""
-        self.debug = False
+        self.debug_mode = False
         self.continuous_mode = False
         self.speak_mode = False
 
@@ -46,15 +46,18 @@ class Config(metaclass=Singleton):
         self.use_azure = False
         self.use_azure = getenv("USE_AZURE") == 'True'
         if self.use_azure:
-            self.openai_api_base = getenv("OPENAI_API_BASE")
-            self.openai_api_version = getenv("OPENAI_API_VERSION")
-            self.openai_deployment_id = getenv("OPENAI_DEPLOYMENT_ID")
+            self.openai_api_base = getenv("OPENAI_AZURE_API_BASE")
+            self.openai_api_version = getenv("OPENAI_AZURE_API_VERSION")
+            self.openai_deployment_id = getenv("OPENAI_AZURE_DEPLOYMENT_ID")
             openai.api_type = "azure"
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
 
         self.elevenlabs_api_key = getenv("ELEVENLABS_API_KEY")
 
+        self.use_mac_os_tts = False
+        self.use_mac_os_tts = getenv("USE_MAC_OS_TTS")
+        
         self.google_api_key = getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = getenv("CUSTOM_SEARCH_ENGINE_ID")
 
@@ -85,9 +88,6 @@ class Config(metaclass=Singleton):
     def set_speak_mode(self, value: bool):
         """Set the speak mode value."""
         self.speak_mode = value
-
-    def set_debug_mode(self, value: bool):
-        self.debug_mode = value
 
     def set_fast_llm_model(self, value: str):
         """Set the fast LLM model value."""
@@ -131,4 +131,4 @@ class Config(metaclass=Singleton):
 
     def set_debug_mode(self, value: bool):
         """Set the debug mode value."""
-        self.debug = value
+        self.debug_mode = value
