@@ -6,5 +6,5 @@ ai_continue: True
 ai_goals:
   - Execute JavaScript File hello-world.js and remember the output.
   - Assert that the output is 'hello world'.
-  - Write an unit test for the function.
+#  - Write an unit test for the function.
   - Shut yourself down.
