@@ -9,7 +9,7 @@ from scripts.browse import scrape_text
 Code Analysis
 
 Objective:
-The objective of the "scrape_text" function is to scrape the text content from 
+The objective of the "scrape_text" function is to scrape the text content from
 a given URL and return it as a string, after removing any unwanted HTML tags and scripts.
 
 Inputs:
