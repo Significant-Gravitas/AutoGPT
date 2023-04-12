@@ -345,13 +345,6 @@ next_action_count = 0
 # Make a constant:
 user_input = "Determine which next command to use, and respond using the format specified above:"
 
-print_to_console("Fast authorization mode: ", Fore.RED, "Do you want to turn on fast authorization mode? All AI commands will be authorized with a single enter. POTENTIALLY DANGEROUS, USE CAREFULLY")
-fast_authorization_mode = utils.clean_input("Fast authorization mode (y/[n]): ").lower() == "y"
-if fast_authorization_mode:
-    print_to_console("Fast authorization mode:", Fore.RED, "ENABLED")
-
-print_to_console("Setup complete!", Fore.GREEN, "AI is configured and will now start running")
-
 # Initialize memory and make sure it is empty.
 # this is particularly important for indexing and referencing pinecone memory
 memory = get_memory(cfg, init=True)
@@ -386,14 +379,9 @@ while True:
             "NEXT ACTION: ",
             Fore.CYAN,
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
-        if fast_authorization_mode:
-            print(
-                f"Enter 'y' or leave empty to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
-                flush=True)
-        else:
-            print(
-                f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
-                flush=True)
+        print(
+            f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {ai_name}...",
+            flush=True)
         while True:
             console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
             if console_input.lower() == "y" or fast_authorization_mode and console_input == "":
