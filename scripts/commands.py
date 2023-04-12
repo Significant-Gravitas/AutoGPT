@@ -1,3 +1,4 @@
+import os
 import browse
 import json
 from memory import get_memory
@@ -6,7 +7,9 @@ import agent_manager as agents
 import speak
 from config import Config
 import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
+import outlook_mapi_functions
+from outlook_mapi_functions import search_sent_emails
+from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files, create_directory, create_directories, list_files, create_files, get_working_directory
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
 from image_gen import generate_image
@@ -84,6 +87,18 @@ def execute_command(command_name, arguments):
             return read_file(arguments["file"])
         elif command_name == "write_to_file":
             return write_to_file(arguments["file"], arguments["text"])
+        elif command_name == "create_directory":
+            return create_directory(arguments["directory"])
+        elif command_name == "create_directories":
+            return create_directories(arguments["directories"])
+        elif command_name == "list_files":
+            return list_files()
+        elif command_name == "create_file":
+            return create_files([arguments["filepath"]])
+        elif command_name == "create_files":
+            #get either filepaths or filenames
+            paths = arguments.get("filepaths", arguments.get("filenames"))
+            return create_files(paths)
         elif command_name == "append_to_file":
             return append_to_file(arguments["file"], arguments["text"])
         elif command_name == "delete_file":
@@ -92,6 +107,9 @@ def execute_command(command_name, arguments):
             return search_files(arguments["directory"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
+        elif command_name == "search_sent_emails":
+            print(arguments);
+            return outlook_mapi_functions.search_sent_emails(arguments["search_term"])
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
@@ -109,12 +127,20 @@ def execute_command(command_name, arguments):
             return "No action performed."
         elif command_name == "task_complete":
             shutdown()
+        elif command_name == "execute_command":
+            return execute_bash_command(arguments["command"])
         else:
             return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for availabe commands and only respond in the specified JSON format."
     # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)
 
+def execute_bash_command(command):
+    cur_dir = os.path.abspath(".")
+    os.chdir(get_working_directory())
+    response = os.system(command)
+    os.chdir(cur_dir)
+    return response
 
 def get_datetime():
     """Return the current date and time"""
@@ -179,7 +205,6 @@ def browse_website(url, question):
 
     return result
 
-
 def get_text_summary(url, question):
     """Return the results of a google search"""
     text = browse.scrape_text(url)
@@ -238,6 +263,14 @@ def overwrite_memory(key, string):
         print(f"Invalid key '{key}', must be an integer or a string.")
         return None
 
+def parse_bash(bash_command):
+    """Parse a bash command"""
+    # Run the bash command
+    process = subprocess.Popen(bash_command.split(), stdout=subprocess.PIPE)
+    output, error = process.communicate()
+
+    # Return the output of the bash command
+    return output.decode("utf-8")
 
 def shutdown():
     """Shut down the program"""

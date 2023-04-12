@@ -15,6 +15,9 @@ COMMANDS:
 9. Delete GPT Agent: "delete_agent", args: "key": "<key>"
 10. Write to file: "write_to_file", args: "file": "<file>", "text": "<text>"
 11. Read file: "read_file", args: "file": "<file>"
+12. List files "list_files"
+12. Create files "create_files", args: [filenames]
+12. Create Directory "create_directory", args: "directory": "<directory>"
 12. Append to file: "append_to_file", args: "file": "<file>", "text": "<text>"
 13. Delete file: "delete_file", args: "file": "<file>"
 14. Search Files: "search_files", args: "directory": "<directory>"
@@ -25,6 +28,8 @@ COMMANDS:
 19. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
 20. Generate Image: "generate_image", args: "prompt": "<prompt>"
 21. Do Nothing: "do_nothing", args: ""
+22. Search Sent Emails "search_sent_emails", args: "<search_term>"
+23. Execute os.system command "execute_command", args: "<command>"
 
 RESOURCES:
 

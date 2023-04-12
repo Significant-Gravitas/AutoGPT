@@ -30,6 +30,38 @@ def read_file(filename):
     except Exception as e:
         return "Error: " + str(e)
 
+def list_files():
+    """List files in the working directory"""
+    files = []
+    for root, _, filenames in os.walk(working_directory):
+        for filename in filenames:
+            if filename.startswith('.'):
+                continue
+            relative_path = os.path.relpath(os.path.join(root, filename), working_directory)
+            # Return the file and its filesize
+            # return an array with filepath and size as keys
+            files.append({'filepath': relative_path, 'size': os.path.getsize(os.path.join(root, filename))})
+
+    return files
+
+def create_files(filepaths):
+    """Create files in the working directory"""
+    for filename in filepaths:
+        if "." not in os.path.basename(filename) or filename.endswith('/'):
+            create_directory(filename)
+            continue
+        filepath = safe_join(working_directory, filename)
+        directory = os.path.dirname(filepath)
+        #check if filepath has an extension
+
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        if os.path.exists(filepath):
+            continue
+        #skip if file exists
+        with open(filepath, "w") as f:
+            f.write("")
+    return "Files created successfully."
 
 def write_to_file(filename, text):
     """Write text to a file"""
@@ -41,6 +73,27 @@ def write_to_file(filename, text):
         with open(filepath, "w") as f:
             f.write(text)
         return "File written to successfully."
+    except Exception as e:
+        return "Error: " + str(e)
+    
+def create_directory(path):
+    """Create a directory"""
+    try:
+        directory_path = safe_join(working_directory, path)
+        if not os.path.exists(directory_path):
+            os.makedirs(directory_path)
+        return "Directory created successfully."
+    except Exception as e:
+        return "Error: " + str(e)
+    
+def create_directories(paths):
+    """Create directories"""
+    try:
+        for path in paths:
+            directory_path = safe_join(working_directory, path)
+            if not os.path.exists(directory_path):
+                os.makedirs(directory_path)
+        return "Directories created successfully."
     except Exception as e:
         return "Error: " + str(e)
 
@@ -81,3 +134,6 @@ def search_files(directory):
             found_files.append(relative_path)
 
     return found_files
+
+def get_working_directory():
+    return working_directory
