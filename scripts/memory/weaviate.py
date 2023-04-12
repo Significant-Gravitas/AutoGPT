@@ -22,7 +22,7 @@ class WeaviateMemory(MemoryProviderSingleton):
     def __init__(self, cfg):
         auth_credentials = self._build_auth_credentials(cfg)
 
-        url = f'{cfg.weaviate_host}:{cfg.weaviate_port}'
+        url = f'{cfg.weaviate_protocol}://{cfg.weaviate_host}:{cfg.weaviate_port}'
 
         if cfg.use_weaviate_embedded:
             self.client = Client(embedded_options=EmbeddedOptions(

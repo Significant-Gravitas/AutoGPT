@@ -13,10 +13,11 @@ from memory.weaviate import WeaviateMemory
 from memory.base import get_ada_embedding
 
 @mock.patch.dict(os.environ, {
-    "WEAVIATE_HOST": "http://127.0.0.1",
+    "WEAVIATE_HOST": "127.0.0.1",
+    "WEAVIATE_PROTOCOL": "http",
     "WEAVIATE_PORT": "8080",
-    "WEAVIATE_USERNAME": '',
-    "WEAVIATE_PASSWORD": '',
+    "WEAVIATE_USERNAME": "",
+    "WEAVIATE_PASSWORD": "",
     "MEMORY_INDEX": "AutogptTests"
 })
 class TestWeaviateMemory(unittest.TestCase):
@@ -24,11 +25,24 @@ class TestWeaviateMemory(unittest.TestCase):
     In order to run these tests you will need a local instance of
     Weaviate running. Refer to https://weaviate.io/developers/weaviate/installation/docker-compose
     for creating local instances using docker.
+    Alternatively in your .env file set the following environmental variables to run Weaviate embedded (see: https://weaviate.io/developers/weaviate/installation/embedded):
+    
+        USE_WEAVIATE_EMBEDDED=True
+        WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate"
     """
     def setUp(self):
         self.cfg = Config()
 
-        self.client = Client('http://127.0.0.1:8080')
+        if self.cfg.use_weaviate_embedded:
+            from weaviate.embedded import EmbeddedOptions
+
+            self.client = Client(embedded_options=EmbeddedOptions(
+                hostname=self.cfg.weaviate_host,
+                port=int(self.cfg.weaviate_port),
+                persistence_data_path=self.cfg.weaviate_embedded_path
+            ))
+        else:
+            self.client = Client(f"{self.cfg.weaviate_protocol}://{self.cfg.weaviate_host}:{self.cfg.weaviate_port}")
 
         try:
             self.client.schema.delete_class(self.cfg.memory_index)
