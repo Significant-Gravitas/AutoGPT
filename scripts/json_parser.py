@@ -26,7 +26,7 @@ JSON_SCHEMA = """
 """
 
 
-def fix_and_parse_json(    
+def fix_and_parse_json(
     json_str: str,
     try_to_fix_with_gpt: bool = True
 ) -> Union[str, Dict[Any, Any]]:
@@ -35,8 +35,8 @@ def fix_and_parse_json(
         json_str = json_str.replace('\t', '')
         return json.loads(json_str)
     except json.JSONDecodeError as _:  # noqa: F841
-        json_str = correct_json(json_str)
         try:
+            json_str = correct_json(json_str)
             return json.loads(json_str)
         except json.JSONDecodeError as _:  # noqa: F841
             pass
@@ -53,6 +53,7 @@ def fix_and_parse_json(
         last_brace_index = json_str.rindex("}")
         json_str = json_str[:last_brace_index+1]
         return json.loads(json_str)
+    # Can throw a ValueError if there is no "{" or "}" in the json_str
     except (json.JSONDecodeError, ValueError) as e:  # noqa: F841
         if try_to_fix_with_gpt:
             print("Warning: Failed to parse AI output, attempting to fix."
