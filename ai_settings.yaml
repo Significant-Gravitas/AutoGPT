@@ -4,7 +4,6 @@ ai_role: Executes Javascript code
 ai_continue: True
 
 ai_goals:
-  - Execute JavaScript File hello-world.js and remember the output.
-  - Assert that the output is 'hello world'.
-#  - Write an unit test for the function.
+  - Create a nodejs script that uses Pupeeter to open a browserm submit the form at https://icis.corp.delaware.gov/Ecorp/EntitySearch/NameSearch.aspx, scrape the results, and return the results as a JSON object.
+  - Execute the script and save the output to a file named delaware-sos.json.
   - Shut yourself down.

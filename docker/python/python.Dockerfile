@@ -9,7 +9,7 @@ RUN playwright install --with-deps chromium
 
 WORKDIR /app
 #COPY scripts/ /app
-COPY docker-files/ /app/
+COPY requirements.txt /app/requirements.txt
 
 RUN pip install -r /app/requirements.txt
 

@@ -1,0 +1,18 @@
+{
+  "name": "Pupeteer for nodes",
+  "version": "1.0.0",
+  "description": "Pupeteer nodejs",
+  "scripts": {
+    "test": "node ./node_modules/mocha/bin/mocha **/*-test*.js --reporter spec",
+    "integration-test": "node ./node_modules/mocha/bin/mocha **/*integration-test*.js --reporter spec"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "puppeteer": "^19.8.5",
+    "mocha": "^10.2.0",
+    "should": "^13.2.3"
+  }
+}
