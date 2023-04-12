@@ -216,7 +216,7 @@ You can specify the memory index for redis using the following:
 MEMORY_INDEX=whatever
 ```
 
-Finally to actually get Auto-GPT to use redis as it's memory backend set the following your `.env` file:
+Finally to actually get Auto-GPT to use redis as its memory backend, set the following in your `.env` file:
 ```
 MEMORY_BACKEND=redis
 ```
