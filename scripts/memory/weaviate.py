@@ -3,6 +3,7 @@ from memory.base import MemoryProviderSingleton, get_ada_embedding
 import uuid
 import weaviate
 from weaviate import Client
+from weaviate.embedded import EmbeddedOptions
 from weaviate.util import generate_uuid5
 
 def default_schema(weaviate_index):
@@ -23,7 +24,17 @@ class WeaviateMemory(MemoryProviderSingleton):
 
         url = f'{cfg.weaviate_host}:{cfg.weaviate_port}'
 
-        self.client = Client(url, auth_client_secret=auth_credentials)
+        if cfg.use_weaviate_embedded:
+            self.client = Client(embedded_options=EmbeddedOptions(
+                hostname=cfg.weaviate_host,
+                port=int(cfg.weaviate_port),
+                persistence_data_path=cfg.weaviate_embedded_path
+            ))
+
+            print(f"Weaviate Embedded running on: {url} with persistence path: {cfg.weaviate_embedded_path}")
+        else:
+            self.client = Client(url, auth_client_secret=auth_credentials)
+
         self.index = cfg.memory_index
         self._create_schema()
 
@@ -58,7 +69,6 @@ class WeaviateMemory(MemoryProviderSingleton):
             batch.flush()
 
         return f"Inserting data into memory at uuid: {doc_uuid}:\n data: {data}"
-
 
     def get(self, data):
         return self.get_relevant(data, 1)
