@@ -7,9 +7,15 @@ package-lock.json
 auto_gpt_workspace/*
 *.mpeg
 .env
-venv/*
+*venv/*
 outputs/*
 ai_settings.yaml
 .vscode
+.idea/*
 auto-gpt.json
 log.txt
+
+# Coverage reports
+.coverage
+coverage.xml
+htmlcov/
