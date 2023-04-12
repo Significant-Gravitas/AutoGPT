@@ -43,7 +43,7 @@ def print_assistant_thoughts(assistant_reply):
             try:
                 assistant_reply_json = json.loads(assistant_reply_json)
             except json.JSONDecodeError as e:
-                logger.log("Error: Invalid JSON\n", Fore.RED, assistant_reply, level=logging.ERROR)
+                logger.error("Error: Invalid JSON\n", Fore.RED, assistant_reply)
                 assistant_reply_json = {}
 
         assistant_thoughts_reasoning = None
@@ -82,12 +82,12 @@ def print_assistant_thoughts(assistant_reply):
             speak.say_text(assistant_thoughts_speak)
 
     except json.decoder.JSONDecodeError:
-        logger.log("Error: Invalid JSON\n", Fore.RED, assistant_reply, level=logging.ERROR)
+        logger.error("Error: Invalid JSON\n", Fore.RED, assistant_reply)
 
     # All other errors, return "Error: + error message"
     except Exception as e:
         call_stack = traceback.format_exc()
-        logger.log("Error: \n", Fore.RED, call_stack, level=logging.ERROR)
+        logger.error("Error: \n", Fore.RED, call_stack)
 
 
 def load_variables(config_file="config.yaml"):
@@ -303,7 +303,7 @@ while True:
     try:
         command_name, arguments = cmd.get_command(assistant_reply)
     except Exception as e:
-        logger.log("Error: \n", Fore.RED, str(e), level=logging.ERROR)
+        logger.error("Error: \n", Fore.RED, str(e))
 
     if not cfg.continuous_mode and next_action_count == 0:
         ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
