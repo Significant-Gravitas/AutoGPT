@@ -1,3 +1,4 @@
+import contextlib
 import json
 from typing import Any, Dict, Union
 
@@ -35,10 +36,8 @@ def fix_and_parse_json(
         return json.loads(json_str)
     except json.JSONDecodeError as _:  # noqa: F841
         json_str = correct_json(json_str)
-        try:
+        with contextlib.suppress(json.JSONDecodeError):
             return json.loads(json_str)
-        except json.JSONDecodeError as _:  # noqa: F841
-            pass
     # Let's do something manually:
     # sometimes GPT responds with something BEFORE the braces:
     # "I'm sorry, I don't understand. Please try again."

@@ -1,6 +1,8 @@
-import yaml
-import data
 import os
+
+import data
+import yaml
+
 
 class AIConfig:
     """
@@ -12,7 +14,9 @@ class AIConfig:
         ai_goals (list): The list of objectives the AI is supposed to complete.
     """
 
-    def __init__(self, ai_name: str="", ai_role: str="", ai_goals: list=[]) -> None:
+    def __init__(
+        self, ai_name: str = "", ai_role: str = "", ai_goals: list = []
+    ) -> None:
         """
         Initialize a class instance
 
@@ -29,10 +33,10 @@ class AIConfig:
         self.ai_goals = ai_goals
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
+    SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "ai_settings.yaml")
 
     @classmethod
-    def load(cls: object, config_file: str=SAVE_FILE) -> object:
+    def load(cls: object, config_file: str = SAVE_FILE) -> object:
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from yaml file if yaml file exists,
         else returns class with no parameters.
@@ -57,7 +61,7 @@ class AIConfig:
 
         return cls(ai_name, ai_role, ai_goals)
 
-    def save(self, config_file: str=SAVE_FILE) -> None:
+    def save(self, config_file: str = SAVE_FILE) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
@@ -68,7 +72,11 @@ class AIConfig:
             None
         """
 
-        config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
+        config = {
+            "ai_name": self.ai_name,
+            "ai_role": self.ai_role,
+            "ai_goals": self.ai_goals,
+        }
         with open(config_file, "w") as file:
             yaml.dump(config, file)
 
@@ -86,7 +94,9 @@ class AIConfig:
         prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
         # Construct full prompt
-        full_prompt = f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+        full_prompt = (
+            f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+        )
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
