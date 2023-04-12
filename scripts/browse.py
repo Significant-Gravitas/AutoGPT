@@ -33,6 +33,7 @@ def get_response(url, headers=cfg.user_agent_header, timeout=10):
         if not url.startswith('http://') and not url.startswith('https://'):
             raise ValueError('Invalid URL format')
 
+
         sanitized_url = sanitize_url(url)
 
         response = requests.get(sanitized_url, headers=headers, timeout=timeout)
