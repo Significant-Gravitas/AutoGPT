@@ -19,3 +19,4 @@ log.txt
 .coverage
 coverage.xml
 htmlcov/
+log-ingestion.txt
