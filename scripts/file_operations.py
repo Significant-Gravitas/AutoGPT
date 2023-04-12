@@ -86,21 +86,6 @@ def ingest_file(filename, memory, max_length=4000, overlap=200):
         print(f"Error while ingesting file '{filename}': {str(e)}")
 
 
-def ingest_directory(directory, memory):
-    """
-    Ingest all files in a directory by calling the ingest_file function for each file.
-
-    :param directory: The directory containing the files to ingest
-    :param memory: An object with an add() method to store the chunks in memory
-    """
-    try:
-        files = search_files(directory)
-        for file in files:
-            ingest_file(file, memory)
-    except Exception as e:
-        print(f"Error while ingesting directory '{directory}': {str(e)}")
-
-
 def write_to_file(filename, text):
     """Write text to a file"""
     try:
