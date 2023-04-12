@@ -47,5 +47,6 @@ class TestLocalCache(unittest.TestCase):
         stats = self.cache.get_stats()
         self.assertEqual(stats, (1, self.cache.data.embeddings.shape))
 
+
 if __name__ == '__main__':
     unittest.main()
