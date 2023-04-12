@@ -12,23 +12,18 @@ if not os.path.exists(working_directory):
 def safe_join(base, *paths):
     """Join one or more path components intelligently."""
     new_path = os.path.join(base, *paths)
-    norm_new_path = os.path.normpath(new_path)
-
-    if os.path.commonprefix([base, norm_new_path]) != base:
-        raise ValueError("Attempted to access outside of working directory.")
-
-    return norm_new_path
+    return os.path.normpath(new_path)
 
 
 def read_file(filename):
     """Read a file and return the contents"""
     try:
         filepath = safe_join(working_directory, filename)
-        with open(filepath, "r", encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
         return content
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
 
 
 def write_to_file(filename, text):
@@ -42,7 +37,7 @@ def write_to_file(filename, text):
             f.write(text)
         return "File written to successfully."
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
 
 
 def append_to_file(filename, text):
@@ -53,7 +48,7 @@ def append_to_file(filename, text):
             f.write(text)
         return "Text appended successfully."
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
 
 
 def delete_file(filename):
@@ -63,19 +58,20 @@ def delete_file(filename):
         os.remove(filepath)
         return "File deleted successfully."
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
+
 
 def search_files(directory):
     found_files = []
 
-    if directory == "" or directory == "/":
+    if directory in ["", "/"]:
         search_directory = working_directory
     else:
         search_directory = safe_join(working_directory, directory)
 
     for root, _, files in os.walk(search_directory):
         for file in files:
-            if file.startswith('.'):
+            if file.startswith("."):
                 continue
             relative_path = os.path.relpath(os.path.join(root, file), working_directory)
             found_files.append(relative_path)

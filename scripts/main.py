@@ -8,7 +8,6 @@ import traceback
 import chat
 import commands as cmd
 import data
-import speak
 import utils
 import yaml
 from ai_config import AIConfig
@@ -47,15 +46,12 @@ def print_to_console(
     title,
     title_color,
     content,
-    speak_text=False,
     min_typing_speed=0.05,
     max_typing_speed=0.01,
 ):
     """Prints text to the console with a typing effect"""
     global cfg
     global logger
-    if speak_text and cfg.speak_mode:
-        speak.say_text(f"{title}. {content}")
     print(title_color + title + " " + Style.RESET_ALL, end="")
     if content:
         logger.info(f"{title}: {content}")
@@ -103,7 +99,6 @@ def _extracted_from_print_assistant_thoughts_7(assistant_reply, ai_name, cfg):
 
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
-    assistant_thoughts_speak = None
     assistant_thoughts_criticism = None
     assistant_thoughts = assistant_reply_json.get("thoughts", {})
     assistant_thoughts_text = assistant_thoughts.get("text")
@@ -112,7 +107,6 @@ def _extracted_from_print_assistant_thoughts_7(assistant_reply, ai_name, cfg):
         assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
         assistant_thoughts_plan = assistant_thoughts.get("plan")
         assistant_thoughts_criticism = assistant_thoughts.get("criticism")
-        assistant_thoughts_speak = assistant_thoughts.get("speak")
 
     print_to_console(
         f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text
@@ -134,9 +128,6 @@ def _extracted_from_print_assistant_thoughts_7(assistant_reply, ai_name, cfg):
             print_to_console("- ", Fore.GREEN, line.strip())
 
     print_to_console("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
-    # Speak the assistant's thoughts
-    if cfg.speak_mode and assistant_thoughts_speak:
-        speak.say_text(assistant_thoughts_speak)
 
 
 def load_variables(config_file="config.yaml"):
@@ -207,7 +198,6 @@ def construct_prompt():
             "Welcome back! ",
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
-            speak_text=True,
         )
         should_continue = utils.clean_input(
             f"""Continue with the last settings?
@@ -238,7 +228,6 @@ def prompt_user():
         "Welcome to Auto-GPT! ",
         Fore.GREEN,
         "Enter the name of your AI and its role below. Entering nothing will load defaults.",
-        speak_text=True,
     )
 
     # Get AI Name from User
@@ -247,9 +236,7 @@ def prompt_user():
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
-    print_to_console(
-        f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
-    )
+    print_to_console(f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.")
 
     # Get AI Role from User
     print_to_console(
@@ -288,7 +275,6 @@ def parse_arguments():
     """Parses the arguments passed to the script"""
     global cfg
     cfg.set_continuous_mode(False)
-    cfg.set_speak_mode(False)
 
     parser = argparse.ArgumentParser(description="Process arguments.")
     parser.add_argument(
@@ -309,10 +295,6 @@ def parse_arguments():
             "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.",
         )
         cfg.set_continuous_mode(True)
-
-    if args.speak:
-        print_to_console("Speak Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_speak_mode(True)
 
     if args.gpt3only:
         print_to_console("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")

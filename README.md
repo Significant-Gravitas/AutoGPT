@@ -60,10 +60,6 @@ Your support is greatly appreciated
 - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - OpenAI API key
 
-Optional:
-
-- ElevenLabs Key (If you want the AI to speak)
-
 ## 💾 Installation
 
 To install Auto-GPT, follow these steps:
@@ -108,15 +104,6 @@ python scripts/main.py
 
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
-
-## 🗣️ Speech Mode
-
-Use this to use TTS for Auto-GPT
-
-```
-python scripts/main.py --speak
-
-```
 
 ## 🔍 Google API Keys Configuration
 

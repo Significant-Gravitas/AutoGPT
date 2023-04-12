@@ -1,18 +1,25 @@
-import browse
-import json
-from memory import get_memory
 import datetime
+import json
+import subprocess
+
 import agent_manager as agents
-import speak
-from config import Config
 import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
-from execute_code import execute_python_file
-from json_parser import fix_and_parse_json
-from image_gen import generate_image
+import browse
+from config import Config
 from duckduckgo_search import ddg
+from execute_code import execute_python_file
+from file_operations import (
+    append_to_file,
+    delete_file,
+    read_file,
+    search_files,
+    write_to_file,
+)
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from image_gen import generate_image
+from json_parser import fix_and_parse_json
+from memory import get_memory
 
 cfg = Config()
 
@@ -24,13 +31,14 @@ def is_valid_int(value):
     except ValueError:
         return False
 
+
 def get_command(response):
     """Parse the response and return the command name and arguments"""
     try:
         response_json = fix_and_parse_json(response)
 
         if "command" not in response_json:
-            return "Error:" , "Missing 'command' object in JSON"
+            return "Error:", "Missing 'command' object in JSON"
 
         command = response_json["command"]
 
@@ -56,10 +64,11 @@ def execute_command(command_name, arguments):
 
     try:
         if command_name == "google":
-
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
-            if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
+            if cfg.google_api_key and (
+                cfg.google_api_key.strip() if cfg.google_api_key else None
+            ):
                 return google_official_search(arguments["input"])
             else:
                 return google_search(arguments["input"])
@@ -67,9 +76,8 @@ def execute_command(command_name, arguments):
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
             return start_agent(
-                arguments["name"],
-                arguments["task"],
-                arguments["prompt"])
+                arguments["name"], arguments["task"], arguments["prompt"]
+            )
         elif command_name == "message_agent":
             return message_agent(arguments["key"], arguments["message"])
         elif command_name == "list_agents":
@@ -107,34 +115,35 @@ def execute_command(command_name, arguments):
             return generate_image(arguments["prompt"])
         elif command_name == "do_nothing":
             return "No action performed."
+        elif command_name == "execute_local_command":
+            return execute_local_command(arguments["command"])
         elif command_name == "task_complete":
             shutdown()
         else:
             return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for available commands and only respond in the specified JSON format."
-    # All errors, return "Error: + error message"
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
 
 
 def get_datetime():
     """Return the current date and time"""
-    return "Current date and time: " + \
-        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return "Current date and time: " + datetime.datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
 
 def google_search(query, num_results=8):
     """Return the results of a google search"""
-    search_results = []
-    for j in ddg(query, max_results=num_results):
-        search_results.append(j)
-
+    search_results = list(ddg(query, max_results=num_results))
     return json.dumps(search_results, ensure_ascii=False, indent=4)
+
 
 def google_official_search(query, num_results=8):
     """Return the results of a google search using the official Google API"""
+    import json
+
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
-    import json
 
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
@@ -145,7 +154,11 @@ def google_official_search(query, num_results=8):
         service = build("customsearch", "v1", developerKey=api_key)
 
         # Send the search query and retrieve the results
-        result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
+        result = (
+            service.cse()
+            .list(q=query, cx=custom_search_engine_id, num=num_results)
+            .execute()
+        )
 
         # Extract the search result items from the response
         search_results = result.get("items", [])
@@ -158,13 +171,18 @@ def google_official_search(query, num_results=8):
         error_details = json.loads(e.content.decode())
 
         # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
+        if error_details.get("error", {}).get(
+            "code"
+        ) == 403 and "invalid API key" in error_details.get("error", {}).get(
+            "message", ""
+        ):
             return "Error: The provided Google API key is invalid or missing."
         else:
             return f"Error: {e}"
 
     # Return the list of search result URLs
     return search_results_links
+
 
 def browse_website(url, question):
     """Browse a website and return the summary and links"""
@@ -175,22 +193,19 @@ def browse_website(url, question):
     if len(links) > 5:
         links = links[:5]
 
-    result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
-
-    return result
+    return f"""Website Content Summary: {summary}\n\nLinks: {links}"""
 
 
 def get_text_summary(url, question):
     """Return the results of a google search"""
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text, question)
-    return """ "Result" : """ + summary
+    return f""" "Result" : {summary}"""
 
 
 def get_hyperlinks(url):
     """Return the results of a google search"""
-    link_list = browse.scrape_links(url)
-    return link_list
+    return browse.scrape_links(url)
 
 
 def commit_memory(string):
@@ -203,7 +218,7 @@ def commit_memory(string):
 def delete_memory(key):
     """Delete a memory with a given key"""
     if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Deleting memory with key " + str(key)
+        _text = f"Deleting memory with key {str(key)}"
         del mem.permanent_memory[key]
         print(_text)
         return _text
@@ -219,24 +234,25 @@ def overwrite_memory(key, string):
         key_int = int(key)
         # Check if the integer key is within the range of the permanent_memory list
         if 0 <= key_int < len(mem.permanent_memory):
-            _text = "Overwriting memory with key " + str(key) + " and string " + string
-            # Overwrite the memory slot with the given integer key and string
-            mem.permanent_memory[key_int] = string
-            print(_text)
-            return _text
+            _text = f"Overwriting memory with key {str(key)} and string {string}"
+            return _extracted_from_overwrite_memory_10(string, key_int, _text)
         else:
             print(f"Invalid key '{key}', out of range.")
             return None
-    # Check if the key is a valid string
     elif isinstance(key, str):
-        _text = "Overwriting memory with key " + key + " and string " + string
-        # Overwrite the memory slot with the given string key and string
-        mem.permanent_memory[key] = string
-        print(_text)
-        return _text
+        _text = f"Overwriting memory with key {key} and string {string}"
+        return _extracted_from_overwrite_memory_10(string, key, _text)
     else:
         print(f"Invalid key '{key}', must be an integer or a string.")
         return None
+
+
+# TODO Rename this here and in `overwrite_memory`
+def _extracted_from_overwrite_memory_10(string, arg1, _text):
+    # Overwrite the memory slot with the given integer key and string
+    mem.permanent_memory[arg1] = string
+    print(_text)
+    return _text
 
 
 def shutdown():
@@ -255,13 +271,7 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     first_message = f"""You are {name}.  Respond with: "Acknowledged"."""
     agent_intro = f"{voice_name} here, Reporting for duty!"
 
-    # Create agent
-    if cfg.speak_mode:
-        speak.say_text(agent_intro, 1)
     key, ack = agents.create_agent(task, first_message, model)
-
-    if cfg.speak_mode:
-        speak.say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
     # Assign task (prompt), get response
     agent_response = message_agent(key, prompt)
@@ -282,9 +292,6 @@ def message_agent(key, message):
     else:
         return "Invalid key, must be an integer or a string."
 
-    # Speak response
-    if cfg.speak_mode:
-        speak.say_text(agent_response, 1)
     return agent_response
 
 
@@ -296,6 +303,14 @@ def list_agents():
 def delete_agent(key):
     """Delete an agent with a given key"""
     result = agents.delete_agent(key)
-    if not result:
-        return f"Agent {key} does not exist."
-    return f"Agent {key} deleted."
+    return f"Agent {key} deleted." if result else f"Agent {key} does not exist."
+
+
+def execute_local_command(command):
+    """Execute a local command"""
+    # Check if the command is a valid string
+    if isinstance(command, str):
+        # Execute the command and return the output
+        return subprocess.check_output(command, shell=True).decode("utf-8")
+    else:
+        return "Invalid command, must be a string."
