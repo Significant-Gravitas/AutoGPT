@@ -120,7 +120,7 @@ def print_assistant_thoughts(assistant_reply):
             speak.say_text(assistant_thoughts_speak)
 
         if cfg.telegram_api_key and cfg.telegram_chat_id:
-            telegram_chat.send_message(assistant_thoughts_text)
+            telegram_chat.TelegramUtils.send_message(assistant_thoughts_text)
 
         return assistant_reply_json
     except json.decoder.JSONDecodeError as e:
