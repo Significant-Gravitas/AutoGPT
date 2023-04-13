@@ -39,13 +39,14 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
 
 
 # TODO: Change debug from hardcode to argument
-def chat_with_ai(
+async def chat_with_ai(
         prompt,
         user_input,
         full_message_history,
         permanent_memory,
         token_limit):
     """Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory."""
+    await cfg.bot.send_chat_action(cfg.chat_id, "typing")
     while True:
         try:
             """

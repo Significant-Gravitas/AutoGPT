@@ -84,6 +84,9 @@ class Config(metaclass=Singleton):
         self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
+        self.telegram_bot_token = os.getenv("TELEGRAM_BOT_API_TOKEN")
+        self.bot = None
+        self.chat_id = None
 
     def set_continuous_mode(self, value: bool):
         """Set the continuous mode value."""
