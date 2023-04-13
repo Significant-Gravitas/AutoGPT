@@ -124,6 +124,12 @@ class Logger(metaclass=Singleton):
         self.logger.setLevel(level)
         self.typing_logger.setLevel(level)
 
+    def double_check(self, additionalText=None):
+        if not additionalText:
+            additionalText = "Please ensure you've setup and configured everything correctly. Read https://github.com/Torantulino/Auto-GPT#readme to double check. You can also create a github issue or join the discord and ask there!"
+
+        self.typewriter_log("DOUBLE CHECK CONFIGURATION", Fore.YELLOW, additionalText)
+
 
 '''
 Output stream to console using simulated typing
@@ -164,8 +170,6 @@ class ConsoleHandler(logging.StreamHandler):
 Allows to handle custom placeholders 'title_color' and 'message_no_color'.
 To use this formatter, make sure to pass 'color', 'title' as log extras.
 '''
-
-
 class AutoGptFormatter(logging.Formatter):
     def format(self, record: LogRecord) -> str:
         if (hasattr(record, 'color')):
