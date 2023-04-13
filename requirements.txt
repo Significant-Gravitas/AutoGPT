@@ -16,3 +16,5 @@ redis
 orjson
 Pillow
 coverage
+flake8
+numpy
