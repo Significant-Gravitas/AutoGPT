@@ -41,6 +41,7 @@ Your support is greatly appreciated
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
+  - [🔷 Azure API Keys Configuration and Bing Search](#-azure-api-keys-configuration-and-bing-search)
   - [Redis Setup](#redis-setup)
   - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
     - [Setting up environment variables](#setting-up-environment-variables-1)
@@ -72,6 +73,7 @@ Your support is greatly appreciated
 Optional:
 
 - ElevenLabs Key (If you want the AI to speak)
+- Azure API key (If you want to use Bing as your search engine)
 
 ## 💾 Installation
 
@@ -176,6 +178,31 @@ For macOS and Linux users:
 export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
 export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
+```
+
+
+## Azure API Keys Configuration and Bing Search
+
+To use Bing Search, you need to set up your Microsoft Azure API keys in your environment variables.
+
+1. Go to the [Bing Web Search API](https://www.microsoft.com/en-us/bing/apis/bing-web-search-api) website.
+2. Sign into your Microsoft Azure account or create a new account if you don't have one.
+3. After setting up your account, go to the "Keys and Endpoint" section.
+4. Copy the key from there and add it to the `.env` file in your project directory.
+5. Name the environment variable `AZURE_API_KEY`.
+
+Example of the `.env` file:
+```
+AZURE_API_KEY=your_azure_api_key
+```
+
+Remember to replace `your_azure_api_key` with the actual API key you obtained from the Microsoft Azure portal.
+
+After setting up the Azure API key, you can use Bing Search by running the program with the `--bing` flag as shown in the Bing Search section above.
+
+
+```
+python scripts/main.py --bing
 ```
 
 ## Redis Setup

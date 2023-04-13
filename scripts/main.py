@@ -276,6 +276,7 @@ def parse_arguments():
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
     parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
     parser.add_argument('--use-memory', '-m', dest="memory_type", help='Defines which Memory backend to use')
+    parser.add_argument('--bing', action='store_true', help='Enable Bing Search')
     args = parser.parse_args()
 
     if args.debug:
@@ -310,10 +311,14 @@ def parse_arguments():
         supported_memory = get_supported_memory_backends()
         chosen = args.memory_type
         if not chosen in supported_memory:
-            logger.typewriter_log("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
-            logger.typewriter_log(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
+            print_to_console("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
+            print_to_console(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
         else:
             cfg.memory_backend = chosen
+
+    if args.bing:
+        logger.typewriter_log("Bing Search: ", Fore.GREEN, "ENABLED")
+        cfg.set_bing_search(True)
 
 
 # TODO: fill in llm values here
@@ -411,7 +416,9 @@ while True:
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"
     else:
-        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
+        search_engine = "bing" if cfg.bing_search else "google"
+
+        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments, search_engine)}"
         if next_action_count > 0:
             next_action_count -= 1
 

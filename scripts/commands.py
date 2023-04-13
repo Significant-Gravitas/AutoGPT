@@ -13,6 +13,8 @@ from image_gen import generate_image
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import requests
+import os
 
 cfg = Config()
 
@@ -50,19 +52,21 @@ def get_command(response):
         return "Error:", str(e)
 
 
-def execute_command(command_name, arguments):
+def execute_command(command_name, arguments, search_engine="google"):
     """Execute the command and return the result"""
     memory = get_memory(cfg)
 
     try:
-        if command_name == "google":
-
+        if command_name == "google" and search_engine == "google":
+            
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
             if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
                 return google_official_search(arguments["input"])
             else:
                 return google_search(arguments["input"])
+        elif command_name == "google" and search_engine == "bing" and os.getenv("AZURE_API_KEY") is not None:
+            return bing_search(arguments["input"])
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
@@ -134,6 +138,32 @@ def google_search(query, num_results=8):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
+
+def bing_search(query, num_results=8):
+    """
+    Perform a Bing search and return the results as a JSON string.
+    """
+    subscription_key = os.getenv("AZURE_API_KEY")
+
+    # Bing Search API endpoint
+    search_url = 'https://api.bing.microsoft.com/v7.0/search'
+
+    headers = {'Ocp-Apim-Subscription-Key': subscription_key}
+    params = {'q': query, 'count': num_results, 'textDecorations': True, 'textFormat': 'HTML'}
+    response = requests.get(search_url, headers=headers, params=params)
+    response.raise_for_status()
+    search_results = response.json()
+
+    # Extract the search result items from the response
+    web_pages = search_results.get('webPages', {})
+    search_results = web_pages.get('value', [])
+
+    # Create a list of search result dictionaries with 'title' and 'link' keys
+    search_results_list = [{'title': item['name'], 'link': item['url']} for item in search_results]
+
+    # Return the search results as a JSON string
+    return json.dumps(search_results_list, ensure_ascii=False, indent=4)
+
 
 def google_official_search(query, num_results=8):
     """Return the results of a google search using the official Google API"""
