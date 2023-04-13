@@ -61,7 +61,7 @@ def gtts_speech(text):
 def macos_tts_speech(text, voice_index=0):
     if voice_index == 0:
         os.system(f'say "{text}"')
-    else: 
+    else:
         if voice_index == 1:
             os.system(f'say -v "Ava (Premium)" "{text}"')
         else:
@@ -79,7 +79,7 @@ def say_text(text, voice_index=0):
             success = eleven_labs_speech(text, voice_index)
             if not success:
                 gtts_speech(text)
-        
+
         queue_semaphore.release()
 
     queue_semaphore.acquire(True)

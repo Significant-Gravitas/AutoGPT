@@ -56,6 +56,7 @@ def get_memory(cfg, init=False):
 def get_supported_memory_backends():
     return supported_memory
 
+
 __all__ = [
     "get_memory",
     "LocalCache",
