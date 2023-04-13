@@ -103,9 +103,10 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 
 4. Install the required dependencies
 
-    ```bash
-    pip install -r requirements.txt
-    ```
+```bash
+pip install poetry
+poetry install
+```
 
 5. Configure Auto-GPT
    1. Locate the file named `.env.template` in the main `/Auto-GPT` folder.
@@ -138,9 +139,9 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 
 1. Run `autogpt` Python module in your terminal
 
-    ```
-    python -m autogpt
-    ```
+```
+poetry run python -m autogpt
+```
 
 2. After each action, choose from options to authorize command(s),
 exit the program, or provide feedback to the AI.
@@ -156,7 +157,7 @@ Activity and error logs are located in the `./output/logs`
 To print out debug logs:
 
 ```
-python -m autogpt --debug
+poetry run python -m autogpt --debug
 ```
 
 ### Docker
@@ -204,8 +205,8 @@ Here are some common arguments you can use when running Auto-GPT:
 
 Use this to use TTS _(Text-to-Speech)_ for Auto-GPT
 
-```bash
-python -m autogpt --speak
+```
+poetry run python -m autogpt --speak
 ```
 
 ### List of IDs with names from eleven labs, you can use the name or ID:
