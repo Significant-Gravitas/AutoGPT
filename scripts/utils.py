@@ -5,11 +5,13 @@ import traceback
 from config import Config
 cfg = Config()
 
+
 def voice_input(prompt: str = "", voice_prompt_counter: int = 0):
     recognizer = sr.Recognizer()
 
     if voice_prompt_counter > 3:
-        speak.macos_tts_speech("I'm sorry, I didn't understand that. Please use the keyboard.")
+        speak.macos_tts_speech(
+            "I'm sorry, I didn't understand that. Please use the keyboard.")
         return clean_input(prompt, talk=False)
 
     voice_prompt_counter += 1
@@ -20,7 +22,7 @@ def voice_input(prompt: str = "", voice_prompt_counter: int = 0):
             audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
         try:
             user_input = recognizer.recognize_sphinx(audio)
-            
+
             if user_input in ["yes", "yeah", "yep", "yup", "y", "ok", "okay", "sure", "affirmative", "aye", "aye aye", "alright", "alrighty"]:
                 return "y"
             elif user_input in ["no", "nope", "n", "nah", "negative", "nay", "nay nay"]:
@@ -46,7 +48,8 @@ def voice_input(prompt: str = "", voice_prompt_counter: int = 0):
         print("Quitting...")
         exit(0)
 
-def clean_input(prompt: str='', talk = False):
+
+def clean_input(prompt: str = '', talk=False):
     try:
         if talk and cfg.use_mac_os_voice_input == 'True':
             try:

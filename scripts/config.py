@@ -59,7 +59,7 @@ class Config(metaclass=Singleton):
 
         self.use_mac_os_voice_input = False
         self.use_mac_os_voice_input = os.getenv("USE_MAC_OS_VOICE_INPUT")
-        
+
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
 
