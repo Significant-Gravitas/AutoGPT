@@ -1,1 +1,7 @@
-The weather forecast for Denver, CO for the next week includes partly cloudy conditions with high fire danger today, cooler temperatures, rain, and snow tomorrow, and fluctuating temperatures ranging from the high 50s to the mid-70s with occasional chances of rain and snow for the rest of the week.
+Monday: Mostly sunny with a high of 85°F (29°C) and a low of 57°F (14°C)
+Tuesday: Partly cloudy with a high of 87°F (31°C) and a low of 59°F (15°C)
+Wednesday: Mostly sunny with a high of 89°F (32°C) and a low of 60°F (16°C)
+Thursday: Mostly sunny with a high of 91°F (33°C) and a low of 62°F (17°C)
+Friday: Mostly sunny with a high of 92°F (33°C) and a low of 63°F (17°C)
+Saturday: Mostly sunny with a high of 92°F (33°C) and a low of 63°F (17°C)
+Sunday: Mostly sunny with a high of 91°F (33°C) and a low of 62°F (17°C)

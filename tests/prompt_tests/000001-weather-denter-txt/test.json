@@ -1,0 +1,20 @@
+{
+    "name": "Denver Weather Next Week",
+    "description": "Get the weather over the next week in Denver, CO",
+    "yaml_prompt": "weather-denver-txt.yaml",
+    "output_files": [
+        "weather-denver.txt"
+    ],
+    "exec": {
+        "command": "scripts/main.py",
+        "arguments": [
+            "--continuous",
+            "--continuous-limit",
+            "20",
+            "--use-yaml-file"
+        ],
+        "env": {
+            "TEMPERATURE": "0"
+        }
+    }
+}
