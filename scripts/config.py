@@ -2,6 +2,7 @@ import abc
 import os
 import openai
 import yaml
+import tools
 from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
@@ -82,6 +83,7 @@ class Config(metaclass=Singleton):
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
+        self.tools = [tools.get_tool(t) for t in os.getenv("AUTOGPT_TOOLS", "").split(",")]
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 

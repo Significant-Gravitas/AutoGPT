@@ -18,3 +18,5 @@ Pillow
 coverage
 flake8
 numpy
+Jinja2
+gradio_tools

@@ -1,6 +1,8 @@
 import yaml
 import data
 import os
+import tools
+from typing import List
 
 class AIConfig:
     """
@@ -72,7 +74,7 @@ class AIConfig:
         with open(config_file, "w") as file:
             yaml.dump(config, file)
 
-    def construct_full_prompt(self) -> str:
+    def construct_full_prompt(self, requested_tools: List[tools.Tool]) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
 
@@ -90,5 +92,5 @@ class AIConfig:
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
-        full_prompt += f"\n\n{data.load_prompt()}"
+        full_prompt += f"\n\n{data.load_prompt(requested_tools)}"
         return full_prompt

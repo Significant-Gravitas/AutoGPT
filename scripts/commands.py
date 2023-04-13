@@ -112,6 +112,9 @@ def execute_command(command_name, arguments):
             return generate_image(arguments["prompt"])
         elif command_name == "do_nothing":
             return "No action performed."
+        elif command_name in [t.name for t in cfg.tools]:
+            tool = next(t for t in cfg.tools if t.name == command_name)
+            return tool.run(arguments)
         elif command_name == "task_complete":
             shutdown()
         else:

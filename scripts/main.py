@@ -1,5 +1,6 @@
 import json
 import random
+from typing import List
 import commands as cmd
 import utils
 from memory import get_memory, get_supported_memory_backends
@@ -17,6 +18,7 @@ import yaml
 import argparse
 from logger import logger
 import logging
+import tools
 
 cfg = Config()
 
@@ -168,7 +170,7 @@ def load_variables(config_file="config.yaml"):
     with open(config_file, "w") as file:
         documents = yaml.dump(config, file)
 
-    prompt = data.load_prompt()
+    prompt = data.load_prompt(cfg.tools)
     prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."""
 
     # Construct full prompt
@@ -180,7 +182,7 @@ def load_variables(config_file="config.yaml"):
     return full_prompt
 
 
-def construct_prompt():
+def construct_prompt(requested_tools: List[tools.Tool]):
     """Construct the prompt for the AI to respond to"""
     config = AIConfig.load()
     if config.ai_name:
@@ -205,7 +207,7 @@ Continue (y/n): """)
     global ai_name
     ai_name = config.ai_name
 
-    full_prompt = config.construct_full_prompt()
+    full_prompt = config.construct_full_prompt(requested_tools)
     return full_prompt
 
 
@@ -321,7 +323,7 @@ check_openai_api_key()
 parse_arguments()
 logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
 ai_name = ""
-prompt = construct_prompt()
+prompt = construct_prompt(cfg.tools)
 # print(prompt)
 # Initialize variables
 full_message_history = []
