@@ -1,0 +1,6 @@
+ai_goals:
+- Select a movie theater in Denver, CO
+- Select a move currently playing in that theater
+- Output the movie title and a short description to 000002-movie-denver.txt
+ai_name: MovieGPT
+ai_role: an AI to find a movie playing in a theater in Denver, CO.
