@@ -318,7 +318,6 @@ def parse_arguments():
 
 # TODO: fill in llm values here
 check_openai_api_key()
-cfg = Config()
 parse_arguments()
 logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
 ai_name = ""
