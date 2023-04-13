@@ -164,8 +164,6 @@ class ConsoleHandler(logging.StreamHandler):
 Allows to handle custom placeholders 'title_color' and 'message_no_color'.
 To use this formatter, make sure to pass 'color', 'title' as log extras.
 '''
-
-
 class AutoGptFormatter(logging.Formatter):
     def format(self, record: LogRecord) -> str:
         if (hasattr(record, 'color')):
