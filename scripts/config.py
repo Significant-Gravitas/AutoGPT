@@ -36,6 +36,7 @@ class Config(metaclass=Singleton):
         """Initialize the Config class"""
         self.debug_mode = False
         self.continuous_mode = False
+        self.continuous_limit = 0
         self.speak_mode = False
 
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
@@ -128,6 +129,10 @@ class Config(metaclass=Singleton):
     def set_continuous_mode(self, value: bool):
         """Set the continuous mode value."""
         self.continuous_mode = value
+
+    def set_continuous_limit(self, value: int):
+        """Set the continuous limit value."""
+        self.continuous_limit = value
 
     def set_speak_mode(self, value: bool):
         """Set the speak mode value."""
