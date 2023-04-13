@@ -21,27 +21,11 @@ def sanitize_url(url):
     return urljoin(url, urlparse(url).path)
 
 
-# Function to make a request with a specified timeout and handle exceptions
-def make_request(url, timeout=10):
-    try:
-        response = requests.get(url, headers=cfg.user_agent_header, timeout=timeout)
-        response.raise_for_status()
-        return response
-    except requests.exceptions.RequestException as e:
-        return "Error: " + str(e)
-
-
 # Define and check for local file address prefixes
 def check_local_file_access(url):
     local_prefixes = ['file:///', 'file://localhost', 'http://localhost', 'https://localhost']
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
-
-def scrape_text(url):
-    """Scrape text from a webpage"""
-    # Basic check if the URL is valid
-    if not url.startswith('http'):
-        return "Error: Invalid URL"
 
 def get_response(url, headers=cfg.user_agent_header, timeout=10):
     try:
