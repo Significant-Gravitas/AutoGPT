@@ -9,7 +9,6 @@ auto_gpt_workspace/*
 .env
 azure.yaml
 *venv/*
-outputs/*
 ai_settings.yaml
 last_run_ai_settings.yaml
 .vscode
