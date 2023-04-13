@@ -22,9 +22,10 @@ COMMANDS:
 16. Get Improved Code: "improve_code", args: "suggestions": "<list_of_suggestions>", "code": "<full_code_string>"
 17. Write Tests: "write_tests", args: "code": "<full_code_string>", "focus": "<list_of_focus_areas>"
 18. Execute Python File: "execute_python_file", args: "file": "<file>"
-19. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
-20. Generate Image: "generate_image", args: "prompt": "<prompt>"
-21. Do Nothing: "do_nothing", args: ""
+19. Execute Shell Command, non-interactive commands only: "execute_shell", args: "command_line": "<command_line>".
+20. Task Complete (Shutdown): "task_complete", args: "reason": "<reason>"
+21. Generate Image: "generate_image", args: "prompt": "<prompt>"
+22. Do Nothing: "do_nothing", args: ""
 
 RESOURCES:
 
