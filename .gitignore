@@ -19,3 +19,6 @@ log.txt
 .coverage
 coverage.xml
 htmlcov/
+
+# For Macs Dev Environs: ignoring .Desktop Services_Store
+.DS_Store
