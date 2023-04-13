@@ -12,7 +12,7 @@ class TestParseJson(unittest.TestCase):
     def test_invalid_json_minor(self):
         # Test that an invalid JSON string can be fixed with gpt
         json_str = '{"name": "John", "age": 30, "city": "New York",}'
-        self.assertEqual(fix_and_parse_json(json_str, try_to_fix_with_gpt=False),
+        self.assertEqual(fix_and_parse_json(json_str, try_to_fix_with_gpt=True),
                          {"name": "John", "age": 30, "city": "New York"})
 
     def test_invalid_json_major_with_gpt(self):
