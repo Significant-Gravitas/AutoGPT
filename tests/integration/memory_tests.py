@@ -15,7 +15,7 @@ class TestLocalCache(unittest.TestCase):
         return ''.join(random.choice(string.ascii_letters) for _ in range(length))
 
     def setUp(self):
-        cfg = cfg = Config()
+        cfg = cfg = Config(run_env_setup=False)
         self.cache = LocalCache(cfg)
         self.cache.clear()
 
