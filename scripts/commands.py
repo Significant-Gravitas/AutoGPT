@@ -26,6 +26,7 @@ def is_valid_int(value):
     except ValueError:
         return False
 
+
 def get_command(response):
     """Parse the response and return the command name and arguments"""
     try:
@@ -164,7 +165,6 @@ def bing_search(query, num_results=8):
     # Return the search results as a JSON string
     return json.dumps(search_results_list, ensure_ascii=False, indent=4)
 
-
 def google_official_search(query, num_results=8):
     """Return the results of a google search using the official Google API"""
     from googleapiclient.discovery import build
@@ -200,6 +200,7 @@ def google_official_search(query, num_results=8):
 
     # Return the list of search result URLs
     return search_results_links
+
 
 def browse_website(url, question):
     """Browse a website and return the summary and links"""
