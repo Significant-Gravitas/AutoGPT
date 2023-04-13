@@ -7,6 +7,7 @@ import os
 sys.path.append(os.path.abspath("../scripts"))
 from promptgenerator import PromptGenerator
 
+
 # Create a test class for the PromptGenerator, subclassed from unittest.TestCase
 class promptgenerator_tests(unittest.TestCase):
 
@@ -81,7 +82,7 @@ class promptgenerator_tests(unittest.TestCase):
             self.assertIn(constraint, prompt_string)
         for command in commands:
             self.assertIn(command["name"], prompt_string)
-        
+
         # Check for each key-value pair in the command args dictionary
         for key, value in command["args"].items():
             self.assertIn(f'"{key}": "{value}"', prompt_string)
@@ -93,6 +94,7 @@ class promptgenerator_tests(unittest.TestCase):
         self.assertIn("commands", prompt_string.lower())
         self.assertIn("resources", prompt_string.lower())
         self.assertIn("performance evaluation", prompt_string.lower())
+
 
 # Run the tests when this script is executed
 if __name__ == '__main__':
