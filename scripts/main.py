@@ -1,23 +1,23 @@
-import argparse
 import json
-import logging
 import random
-import time
-import traceback
-
-import chat
 import commands as cmd
-import speak
-import telegram_chat
 import utils
-import yaml
-from ai_config import AIConfig
+from memory import get_memory, get_supported_memory_backends
+import chat
 from colorama import Fore, Style
+from spinner import Spinner
+import time
+import speak
 from config import Config
 from json_parser import fix_and_parse_json
+from ai_config import AIConfig
+import traceback
+import yaml
+import argparse
 from logger import logger
-from memory import get_memory, get_supported_memory_backends
+import logging
 from prompt import get_prompt
+import telegram_chat
 from telegram_chat import TelegramUtils
 
 cfg = Config()
@@ -36,10 +36,8 @@ def check_openai_api_key():
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
     if cfg.speak_mode and cfg.debug_mode:
-        speak.say_text(
-            "I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
-    logger.typewriter_log(
-        "Attempting to fix JSON by finding outermost brackets\n")
+      speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
+    logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
 
     try:
         # Use regex to search for JSON objects
@@ -50,17 +48,15 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
         if json_match:
             # Extract the valid JSON object from the string
             json_string = json_match.group(0)
-            logger.typewriter_log(
-                title="Apparently json was fixed.", title_color=Fore.GREEN)
+            logger.typewriter_log(title="Apparently json was fixed.", title_color=Fore.GREEN)
             if cfg.speak_mode and cfg.debug_mode:
-                speak.say_text("Apparently json was fixed.")
+               speak.say_text("Apparently json was fixed.")
         else:
             raise ValueError("No valid JSON object found")
 
     except (json.JSONDecodeError, ValueError) as e:
         if cfg.speak_mode:
-            speak.say_text(
-                "Didn't work. I will have to ignore this response then.")
+            speak.say_text("Didn't work. I will have to ignore this response then.")
         logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
         json_string = {}
 
@@ -76,10 +72,8 @@ def print_assistant_thoughts(assistant_reply):
             # Parse and print Assistant response
             assistant_reply_json = fix_and_parse_json(assistant_reply)
         except json.JSONDecodeError as e:
-            logger.error(
-                "Error: Invalid JSON in assistant thoughts\n", assistant_reply)
-            assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
-                assistant_reply)
+            logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
+            assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
             assistant_reply_json = fix_and_parse_json(assistant_reply_json)
 
         # Check if assistant_reply_json is a string and attempt to parse it into a JSON object
@@ -88,8 +82,7 @@ def print_assistant_thoughts(assistant_reply):
                 assistant_reply_json = json.loads(assistant_reply_json)
             except json.JSONDecodeError as e:
                 logger.error("Error: Invalid JSON\n", assistant_reply)
-                assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
-                    assistant_reply_json)
+                assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply_json)
 
         assistant_thoughts_reasoning = None
         assistant_thoughts_plan = None
@@ -104,10 +97,8 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_criticism = assistant_thoughts.get("criticism")
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
-        logger.typewriter_log(
-            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
-        logger.typewriter_log("REASONING:", Fore.YELLOW,
-                              assistant_thoughts_reasoning)
+        logger.typewriter_log(f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text)
+        logger.typewriter_log("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
 
         if assistant_thoughts_plan:
             logger.typewriter_log("PLAN:", Fore.YELLOW, "")
@@ -123,8 +114,7 @@ def print_assistant_thoughts(assistant_reply):
                 line = line.lstrip("- ")
                 logger.typewriter_log("- ", Fore.GREEN, line.strip())
 
-        logger.typewriter_log("CRITICISM:", Fore.YELLOW,
-                              assistant_thoughts_criticism)
+        logger.typewriter_log("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
@@ -133,12 +123,10 @@ def print_assistant_thoughts(assistant_reply):
             telegram_chat.send_message(assistant_thoughts_text)
 
         return assistant_reply_json
-
     except json.decoder.JSONDecodeError as e:
         logger.error("Error: Invalid JSON\n", assistant_reply)
         if cfg.speak_mode:
-            speak.say_text(
-                "I have received an invalid JSON response from the OpenAI API. I cannot ignore this response.")
+            speak.say_text("I have received an invalid JSON response from the OpenAI API. I cannot ignore this response.")
 
     # All other errors, return "Error: + error message"
     except Exception as e:
@@ -181,8 +169,7 @@ def load_variables(config_file="config.yaml"):
                 break
             ai_goals.append(ai_goal)
         if len(ai_goals) == 0:
-            ai_goals = ["Increase net worth", "Grow Twitter Account",
-                        "Develop and manage multiple businesses autonomously"]
+            ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
 
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
@@ -225,8 +212,6 @@ Continue (y/n): """)
     # Get rid of this global:
     global ai_name
     ai_name = config.ai_name
-
-    print("Loading prompt...")
 
     full_prompt = config.construct_full_prompt()
     return full_prompt
@@ -274,8 +259,7 @@ def prompt_user():
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
-        ai_goal = utils.clean_input(
-            f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
+        ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)
@@ -295,20 +279,13 @@ def parse_arguments():
     cfg.set_speak_mode(False)
 
     parser = argparse.ArgumentParser(description='Process arguments.')
-    parser.add_argument('--continuous', action='store_true',
-                        help='Enable Continuous Mode')
-    parser.add_argument('--continuous-limit', '-l', type=int, dest="continuous_limit",
-                        help='Defines the number of times to run in continuous mode')
-    parser.add_argument('--speak', action='store_true',
-                        help='Enable Speak Mode')
-    parser.add_argument('--debug', action='store_true',
-                        help='Enable Debug Mode')
-    parser.add_argument('--gpt3only', action='store_true',
-                        help='Enable GPT3.5 Only Mode')
-    parser.add_argument('--gpt4only', action='store_true',
-                        help='Enable GPT4 Only Mode')
-    parser.add_argument('--use-memory', '-m', dest="memory_type",
-                        help='Defines which Memory backend to use')
+    parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
+    parser.add_argument('--continuous-limit', '-l', type=int, dest="continuous_limit", help='Defines the number of times to run in continuous mode')
+    parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
+    parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
+    parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
+    parser.add_argument('--use-memory', '-m', dest="memory_type", help='Defines which Memory backend to use')
     args = parser.parse_args()
 
     if args.debug:
@@ -354,11 +331,8 @@ def parse_arguments():
         supported_memory = get_supported_memory_backends()
         chosen = args.memory_type
         if not chosen in supported_memory:
-
-            logger.typewriter_log(
-                "ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
-            logger.typewriter_log(f"Defaulting to: ",
-                                  Fore.YELLOW, cfg.memory_backend)
+            logger.typewriter_log("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
+            logger.typewriter_log(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
         else:
             cfg.memory_backend = chosen
 
@@ -385,11 +359,10 @@ def main():
     # Interaction Loop
     loop_count = 0
     while True:
-        # Discontinue if continuous limit is reached
+         # Discontinue if continuous limit is reached
         loop_count += 1
         if cfg.continuous_mode and cfg.continuous_limit > 0 and loop_count > cfg.continuous_limit:
-            logger.typewriter_log(
-                "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}")
+            logger.typewriter_log("Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}")
             break
 
         # Send message to AI, get response
@@ -446,12 +419,10 @@ def main():
                     break
                 elif console_input.lower().startswith("y -"):
                     try:
-                        next_action_count = abs(
-                            int(console_input.split(" ")[1]))
+                        next_action_count = abs(int(console_input.split(" ")[1]))
                         user_input = "GENERATE NEXT COMMAND JSON"
                     except ValueError:
-                        print(
-                            "Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
+                        print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
                         continue
                     break
                 elif console_input.lower() == "n":
@@ -496,15 +467,13 @@ def main():
         # Check if there's a result from the command append it to the message
         # history
         if result is not None:
-            full_message_history.append(
-                chat.create_chat_message("system", result))
+            full_message_history.append(chat.create_chat_message("system", result))
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
         else:
             full_message_history.append(
                 chat.create_chat_message(
                     "system", "Unable to execute command"))
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW,
-                                  "Unable to execute command")
+            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
 
 
 if __name__ == "__main__":
