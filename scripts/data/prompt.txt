@@ -45,8 +45,7 @@ You should only respond in JSON format as described below
 
 RESPONSE FORMAT:
 {
-    "thoughts":
-    {
+    "thoughts": {
         "text": "thought",
         "reasoning": "reasoning",
         "plan": "- short bulleted\n- list that conveys\n- long-term plan",
@@ -55,7 +54,7 @@ RESPONSE FORMAT:
     },
     "command": {
         "name": "command name",
-        "args":{
+        "args": {
             "arg name": "value"
         }
     }
