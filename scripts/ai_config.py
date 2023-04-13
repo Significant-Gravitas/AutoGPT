@@ -1,6 +1,7 @@
 import yaml
-import data
 import os
+from prompt import get_prompt
+
 
 class AIConfig:
     """
@@ -46,7 +47,7 @@ class AIConfig:
         """
 
         try:
-            with open(config_file) as file:
+            with open(config_file, encoding='utf-8') as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
         except FileNotFoundError:
             config_params = {}
@@ -90,5 +91,5 @@ class AIConfig:
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
-        full_prompt += f"\n\n{data.load_prompt()}"
+        full_prompt += f"\n\n{get_prompt()}"
         return full_prompt
