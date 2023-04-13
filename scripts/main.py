@@ -3,7 +3,6 @@ import random
 import commands as cmd
 import utils
 from memory import get_memory, get_supported_memory_backends
-import data
 import chat
 from colorama import Fore, Style
 from spinner import Spinner
@@ -17,6 +16,7 @@ import yaml
 import argparse
 from logger import logger
 import logging
+from prompt import get_prompt
 
 cfg = Config()
 
@@ -171,8 +171,8 @@ def load_variables(config_file="config.yaml"):
     with open(config_file, "w") as file:
         documents = yaml.dump(config, file)
 
-    prompt = data.load_prompt()
-    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."""
+    prompt = get_prompt()
+    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
     # Construct full prompt
     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
