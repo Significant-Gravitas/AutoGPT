@@ -18,7 +18,7 @@ from logger import logger
 import logging
 from prompt import get_prompt
 
-cfg = Config()
+
 
 def check_openai_api_key():
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
