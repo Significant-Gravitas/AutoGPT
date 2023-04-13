@@ -1,0 +1,8 @@
+ai_settings.yaml
+.DS_Store
+logs/*
+*.bak
+*.swp
+workspace/*
+cache/*
+.env
