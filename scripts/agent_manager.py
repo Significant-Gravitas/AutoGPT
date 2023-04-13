@@ -8,7 +8,13 @@ agents = {}  # key, (task, full_message_history, model)
 
 
 def create_agent(task, prompt, model):
-    """Create a new agent and return its key"""
+    """Create a new agent and return its key
+
+    Args:
+        task: The task the agent is performing
+        prompt: The prompt to give the agent
+        model: The model to use
+    """
     global next_key
     global agents
 
