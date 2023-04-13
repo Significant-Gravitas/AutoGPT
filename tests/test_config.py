@@ -1,6 +1,7 @@
 import unittest
 from scripts.config import Config
 
+
 class TestConfig(unittest.TestCase):
 
     def test_singleton(self):
