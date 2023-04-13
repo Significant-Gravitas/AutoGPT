@@ -71,7 +71,7 @@ Your support is greatly appreciated
 
 Optional:
 
-- ElevenLabs Key (If you want the AI to speak)
+- [ElevenLabs Key](https://elevenlabs.io/) (If you want the AI to speak)
 
 ## 💾 Installation
 
