@@ -21,6 +21,25 @@ from memory.base import get_ada_embedding
     "MEMORY_INDEX": "AutogptTests"
 })
 class TestWeaviateMemory(unittest.TestCase):
+    cfg = None
+    client = None
+
+    @classmethod
+    def setUpClass(cls):
+        # only create the connection to weaviate once
+        cls.cfg = Config()
+
+        if cls.cfg.use_weaviate_embedded:
+            from weaviate.embedded import EmbeddedOptions
+
+            cls.client = Client(embedded_options=EmbeddedOptions(
+                hostname=cls.cfg.weaviate_host,
+                port=int(cls.cfg.weaviate_port),
+                persistence_data_path=cls.cfg.weaviate_embedded_path
+            ))
+        else:
+            cls.client = Client(f"{cls.cfg.weaviate_protocol}://{cls.cfg.weaviate_host}:{self.cfg.weaviate_port}")
+    
     """
     In order to run these tests you will need a local instance of
     Weaviate running. Refer to https://weaviate.io/developers/weaviate/installation/docker-compose
@@ -31,19 +50,6 @@ class TestWeaviateMemory(unittest.TestCase):
         WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate"
     """
     def setUp(self):
-        self.cfg = Config()
-
-        if self.cfg.use_weaviate_embedded:
-            from weaviate.embedded import EmbeddedOptions
-
-            self.client = Client(embedded_options=EmbeddedOptions(
-                hostname=self.cfg.weaviate_host,
-                port=int(self.cfg.weaviate_port),
-                persistence_data_path=self.cfg.weaviate_embedded_path
-            ))
-        else:
-            self.client = Client(f"{self.cfg.weaviate_protocol}://{self.cfg.weaviate_host}:{self.cfg.weaviate_port}")
-
         try:
             self.client.schema.delete_class(self.cfg.memory_index)
         except:
