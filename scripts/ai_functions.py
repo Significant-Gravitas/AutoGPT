@@ -45,6 +45,7 @@ def improve_code(suggestions: List[str], code: str) -> str:
     result_string = call_ai_function(function_string, args, description_string)
     return result_string
 
+
 def write_tests(code: str, focus: List[str]) -> str:
     """
     A function that takes in code and focus topics and returns a response from create chat completion api call.
