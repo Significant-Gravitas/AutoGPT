@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "auto-gpt"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+packages = [{include = "auto_gpt"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+beautifulsoup4 = "^4.12.2"
+colorama = "0.4.6"
+openai = "0.27.2"
+playsound = "1.2.2"
+python-dotenv = "1.0.0"
+pyyaml = "6.0"
+readability-lxml = "0.8.1"
+requests = "^2.28.2"
+tiktoken = "0.3.3"
+gtts = "2.3.1"
+docker = "^6.0.1"
+duckduckgo-search = "^2.8.5"
+google-api-python-client = "^2.85.0"
+pinecone-client = "2.2.1"
+redis = "^4.5.4"
+orjson = "^3.8.10"
+pillow = "^9.5.0"
+coverage = "^7.2.3"
+flake8 = "^6.0.0"
+numpy = "^1.24.2"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

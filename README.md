@@ -70,7 +70,7 @@ Your support is greatly appreciated
 - [PINECONE API key](https://www.pinecone.io/)
 
 Optional:
-
+- [pyenv](https://github.com/pyenv/pyenv#installation)
 - [ElevenLabs Key](https://elevenlabs.io/) (If you want the AI to speak)
 
 ## 💾 Installation
@@ -94,15 +94,39 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 ```
 cd 'Auto-GPT'
 ```
-
-4. Install the required dependencies:
+4. Install desired python version:
    _(Again, type this into your CMD window)_
-
 ```
-pip install -r requirements.txt
+pyenv install 3.11.2
 ```
 
-5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+5. Create a new virtual environment for your project:
+  _(Again, type this into your CMD window)_
+```
+pyenv virtualenv 3.11.2 autogpt
+```
+
+6. Activate the virtualenv
+_(Again, type this into your CMD window)_
+```
+pyenv activate autogpt
+```
+
+6. Install Poetry globally or within the virtual environment (https://python-poetry.org/docs/#installation):
+  _(Again, type this into your CMD window)_
+``` 
+curl -sSL https://install.python-poetry.org | python3
+```
+
+7. Install the dependencies with:
+  _(Again, type this into your CMD window)_
+```
+poetry install
+```
+Your project is now set up with `pyenv` and `poetry` for dependency management. 
+This ensures all the dependencies the auto-gpt are now exactly the same as the devs are using.
+
+8. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then:
