@@ -357,7 +357,7 @@ def main():
          # Discontinue if continuous limit is reached
         loop_count += 1
         if cfg.continuous_mode and cfg.continuous_limit > 0 and loop_count > cfg.continuous_limit:
-            logger.typewriter_log("Continuous Limit Reached: ", Fore.RED, f"{cfg.continuous_limit}")
+            logger.typewriter_log("Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}")
             break
 
         # Send message to AI, get response
