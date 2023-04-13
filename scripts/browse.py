@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-from config import Config
+from scripts.config import Config
 from urllib.parse import urlparse, urljoin
 
 from scripts.llm_utils import create_chat_completion
