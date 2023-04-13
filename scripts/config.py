@@ -42,7 +42,7 @@ class Config(metaclass=Singleton):
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
 
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_api_key = os.getenv("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")
         self.temperature = int(os.getenv("TEMPERATURE", "1"))
         self.use_azure = False
         self.use_azure = os.getenv("USE_AZURE") == 'True'
@@ -68,8 +68,8 @@ class Config(metaclass=Singleton):
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
-        self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
-        self.pinecone_region = os.getenv("PINECONE_ENV")
+        self.pinecone_api_key = os.getenv("865d05d4-9226-45bc-9f22-2ebe31b822d2")
+        self.pinecone_region = os.getenv("northamerica-northeast1-gcp")
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
