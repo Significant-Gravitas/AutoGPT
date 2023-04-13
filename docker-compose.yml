@@ -14,3 +14,4 @@ services:
 
   redis:
     image: "redis/redis-stack-server:latest"
+    container_name: "redis-stack-server"

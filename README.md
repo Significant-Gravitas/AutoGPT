@@ -256,6 +256,30 @@ You can specify the memory index for redis using the following:
 MEMORY_INDEX=whatever
 ```
 
+## Docker Compose + Redis Setup
+
+You can also run Auto-GPT + Redis in one command with docker compose.
+Install docker desktop.
+
+Run:
+
+```
+docker-compose run auto-gpt
+```
+
+See https://hub.docker.com/r/redis/redis-stack-server for setting a password and additional configuration.
+
+Set the following environment variables:
+
+```
+MEMORY_BACKEND=redis
+REDIS_HOST=redis-stack-server
+REDIS_PORT=6379
+REDIS_PASSWORD=
+```
+
+Follow the Redis guide above.
+
 ### 🌲 Pinecone API Key Setup
 
 Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
