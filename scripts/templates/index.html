@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot</title>
+    <link rel="stylesheet" href="static/styles.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-image: url('static/chatbot_droids.jpg');
+            background-size: cover;
+            background-position: center;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #chat-container {
+            max-width: 768px;
+            margin: 50px auto;
+            background-color: 255, 255, 255, 0.9;
+            color:rgb(131, 110, 110);
+            border-radius: 5px;
+            box-shadow: 0 3px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+        }
+
+        #messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            border-bottom: 1px solid #dddddd;
+        }
+
+        #messages p {
+            margin: 10px 0;
+        }
+
+        #chat-form {
+            display: flex;
+            align-items: center;
+            padding: 20px;
+        }
+
+        #user-input {
+            flex-grow: 1;
+            padding: 10px 15px;
+            border: 1px solid #dddddd;
+            border-radius: 5px;
+            outline: none;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+
+        #chat-form button {
+            background-color: #2196F3;
+            border: none;
+            color: white;
+            padding: 10px 15px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="chat-container">
+        <div id="messages"></div>
+        <form id="chat-form">
+            <input type="text" id="user-input" placeholder="Type your message..." autocomplete="off">
+            <button type="submit">Send</button>
+        </form>
+    </div>
+    <script>
+        document.getElementById('chat-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const userInput = document.getElementById('user-input');
+            const message = userInput.value;
+            userInput.value = '';
+
+            addMessage('User', message);
+
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message})
+            });
+
+            const data = await response.json();
+            addMessage('OpenAI', data.response);
+        });
+
+        function addMessage(sender, message) {
+            const messages = document.getElementById('messages');
+            messages.innerHTML += `<p><strong>${sender}:</strong> ${message}</p>`;
+        }
+    </script>
+</body>
+</html>

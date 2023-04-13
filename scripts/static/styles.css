@@ -1,9 +1,9 @@
 <style>
     body {
         font-size: large;
-        color: white; /* set font color to white */
+        color: rgb(233, 17, 17); /* set font color to white */
         text-decoration: #faf6f6;
-        text-shadow: burlywood 1px 1px 1px;
+        text-shadow: rgb(226, 156, 65) 1px 1px 1px;
         font-weight: bold; /* increase font weight to make it clearer */
     }
 </style>
