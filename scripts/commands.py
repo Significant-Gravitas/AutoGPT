@@ -26,7 +26,11 @@ def is_valid_int(value):
 
 
 def get_command(response):
-    """Parse the response and return the command name and arguments"""
+    """Parse the response and return the command name and arguments
+
+    Args:
+        response: The response to parse
+    """
     try:
         response_json = fix_and_parse_json(response)
 
@@ -52,7 +56,12 @@ def get_command(response):
 
 
 def execute_command(command_name, arguments):
-    """Execute the command and return the result"""
+    """Execute the command and return the result
+
+    Args:
+        command_name: The name of the command to execute
+        arguments: The arguments to pass to the command
+    """
     memory = get_memory(cfg)
 
     try:
@@ -129,7 +138,12 @@ def get_datetime():
 
 
 def google_search(query, num_results=8):
-    """Return the results of a google search"""
+    """Return the results of a google search
+
+    Args:
+        query: The search query
+        num_results: The number of results to return. Default is 8.
+    """
     search_results = []
     for j in ddg(query, max_results=num_results):
         search_results.append(j)
@@ -138,7 +152,13 @@ def google_search(query, num_results=8):
 
 
 def google_official_search(query, num_results=8):
-    """Return the results of a google search using the official Google API"""
+    """Return the results of a google search using the official Google API
+
+    Args:
+        query: The search query
+        num_results: The number of results to return. Default is 8.
+
+    """
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     import json
@@ -175,7 +195,12 @@ def google_official_search(query, num_results=8):
 
 
 def browse_website(url, question):
-    """Browse a website and return the summary and links"""
+    """Browse a website and return the summary and links
+
+    Args:
+        url: The URL of the website to browse
+        question: The question to summarize the website content for
+    """
     summary = get_text_summary(url, question)
     links = get_hyperlinks(url)
 
@@ -189,27 +214,44 @@ def browse_website(url, question):
 
 
 def get_text_summary(url, question):
-    """Return the results of a google search"""
+    """Return the results of a google search
+
+    Args:
+        url: The URL of the website to browse
+        question: The question to summarize the website content for
+    """
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text, question)
     return """ "Result" : """ + summary
 
 
 def get_hyperlinks(url):
-    """Return the results of a google search"""
+    """Return the results of a google search
+
+    Args:
+        url: The URL of the website to browse
+    """
     link_list = browse.scrape_links(url)
     return link_list
 
 
 def commit_memory(string):
-    """Commit a string to memory"""
+    """Commit a string to memory
+
+    Args:
+        string: The string to commit to memory
+    """
     _text = f"""Committing memory with string "{string}" """
     mem.permanent_memory.append(string)
     return _text
 
 
 def delete_memory(key):
-    """Delete a memory with a given key"""
+    """Delete a memory with a given key
+
+    Args:
+        key: The key of the memory to delete
+    """
     if key >= 0 and key < len(mem.permanent_memory):
         _text = "Deleting memory with key " + str(key)
         del mem.permanent_memory[key]
@@ -221,7 +263,12 @@ def delete_memory(key):
 
 
 def overwrite_memory(key, string):
-    """Overwrite a memory with a given key and string"""
+    """Overwrite a memory with a given key and string
+
+    Args:
+        key: The key of the memory to overwrite
+        string: The string to overwrite the memory with
+    """
     # Check if the key is a valid integer
     if is_valid_int(key):
         key_int = int(key)
@@ -254,7 +301,14 @@ def shutdown():
 
 
 def start_agent(name, task, prompt, model=cfg.fast_llm_model):
-    """Start an agent with a given name, task, and prompt"""
+    """Start an agent with a given name, task, and prompt
+
+    Args:
+        name: The name of the agent
+        task: The task of the agent
+        prompt: The prompt to give the agent
+        model: The model to use for the agent. Default is the fast LLM model.
+    """
     global cfg
 
     # Remove underscores from name
@@ -278,7 +332,12 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
 
 
 def message_agent(key, message):
-    """Message an agent with a given key and message"""
+    """Message an agent with a given key and message
+
+    Args:
+        key: The key of the agent to message
+        message: The message to send to the agent
+    """
     global cfg
 
     # Check if the key is a valid integer
@@ -302,7 +361,11 @@ def list_agents():
 
 
 def delete_agent(key):
-    """Delete an agent with a given key"""
+    """Delete an agent with a given key
+
+    Args:
+        key: The key of the agent to delete
+    """
     result = agents.delete_agent(key)
     if not result:
         return f"Agent {key} does not exist."
