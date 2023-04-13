@@ -157,6 +157,7 @@ class TypingConsoleHandler(logging.StreamHandler):
         except Exception:
             self.handleError(record)
 
+
 class ConsoleHandler(logging.StreamHandler):
     def emit(self, record):
         msg = self.format(record)
@@ -166,11 +167,11 @@ class ConsoleHandler(logging.StreamHandler):
             self.handleError(record)
 
 
-'''
-Allows to handle custom placeholders 'title_color' and 'message_no_color'.
-To use this formatter, make sure to pass 'color', 'title' as log extras.
-'''
 class AutoGptFormatter(logging.Formatter):
+    """
+    Allows to handle custom placeholders 'title_color' and 'message_no_color'.
+    To use this formatter, make sure to pass 'color', 'title' as log extras.
+    """
     def format(self, record: LogRecord) -> str:
         if (hasattr(record, 'color')):
             record.title_color = getattr(record, 'color') + getattr(record, 'title') + " " + Style.RESET_ALL
