@@ -17,8 +17,10 @@ import argparse
 from logger import logger
 import logging
 from prompt import get_prompt
+import click
+from typing import Optional
 
-cfg = Config()
+cfg: Config = Config()
 
 
 def check_openai_api_key():
@@ -212,28 +214,18 @@ def prompt_user():
     return config
 
 
-def parse_arguments():
+def create_config(continuous: bool, continuous_limit: int, speak: bool, debug: bool, gpt3only: bool, gpt4only: bool, memory_type: Optional[str]):
     """Parses the arguments passed to the script"""
     global cfg
     cfg.set_debug_mode(False)
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
 
-    parser = argparse.ArgumentParser(description='Process arguments.')
-    parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
-    parser.add_argument('--continuous-limit', '-l', type=int, dest="continuous_limit", help='Defines the number of times to run in continuous mode')
-    parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
-    parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
-    parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
-    parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
-    parser.add_argument('--use-memory', '-m', dest="memory_type", help='Defines which Memory backend to use')
-    args = parser.parse_args()
-
-    if args.debug:
+    if debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_debug_mode(True)
 
-    if args.continuous:
+    if continuous:
         logger.typewriter_log("Continuous Mode: ", Fore.RED, "ENABLED")
         logger.typewriter_log(
             "WARNING: ",
@@ -241,32 +233,37 @@ def parse_arguments():
             "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
         cfg.set_continuous_mode(True)
 
-        if args.continuous_limit:
-            logger.typewriter_log(
-                "Continuous Limit: ",
-                Fore.GREEN,
-                f"{args.continuous_limit}")
-            cfg.set_continuous_limit(args.continuous_limit)
+    if continuous_limit:
+        logger.typewriter_log(
+            "Continuous Limit: ",
+            Fore.GREEN,
+            f"{continuous_limit}")
+        cfg.set_continuous_limit(continuous_limit)
 
     # Check if continuous limit is used without continuous mode
-    if args.continuous_limit and not args.continuous:
-        parser.error("--continuous-limit can only be used with --continuous")
+    if continuous_limit and not continuous:
+        raise Exception("--continuous-limit can only be used with --continuous")
 
-    if args.speak:
+
+    if speak:
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_speak_mode(True)
 
-    if args.gpt3only:
+    if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_smart_llm_model(cfg.fast_llm_model)
 
-    if args.gpt4only:
+    if gpt4only:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_fast_llm_model(cfg.smart_llm_model)
 
-    if args.memory_type:
+    if debug:
+        logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_debug_mode(True)
+
+    if memory_type:
         supported_memory = get_supported_memory_backends()
-        chosen = args.memory_type
+        chosen = memory_type
         if not chosen in supported_memory:
             logger.typewriter_log("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
             logger.typewriter_log(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
@@ -274,11 +271,20 @@ def parse_arguments():
             cfg.memory_backend = chosen
 
 
-def main():
+@click.command()
+@click.option('--continuous', is_flag=True, help='Enable Continuous Mode')
+@click.option('-l','--continuous-limit', type=int, help='Defines the number of times to run in continuous mode')
+@click.option('--speak', is_flag=True, help='Enable Speak Mode')
+@click.option('--debug', is_flag=True, help='Enable Debug Mode')
+@click.option('--gpt3only', is_flag=True, help='Enable GPT3.5 Only Mode')
+@click.option('--gpt4only', is_flag=True, help='Enable GPT4 Only Mode')
+@click.option('--use-memory', '-m', 'memory_type', type=str, help='Defines which Memory backend to use')
+def main(continuous: bool, continuous_limit: int, speak: bool, debug: bool, gpt3only: bool, gpt4only: bool, memory_type: Optional[str]):
+
     global ai_name, memory
     # TODO: fill in llm values here
     check_openai_api_key()
-    parse_arguments()
+    create_config(continuous, continuous_limit, speak, debug, gpt3only, gpt4only, memory_type)
     logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
     ai_name = ""
     prompt = construct_prompt()
