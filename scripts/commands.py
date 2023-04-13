@@ -1,16 +1,19 @@
-import browse
 import json
-from memory import get_memory
 import datetime
-import agent_manager as agents
-import speak
-from config import Config
-import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
-from execute_code import execute_python_file, execute_shell
-from json_parser import fix_and_parse_json
-from image_gen import generate_image
+
 from duckduckgo_search import ddg
+
+from scripts.memory import get_memory
+
+import scripts.agent_manager as agents
+from scripts.config import Config
+import scripts.ai_functions as ai
+from scripts import browse, speak
+from scripts.file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
+from scripts.execute_code import execute_python_file, execute_shell
+from scripts.json_parser import fix_and_parse_json
+from scripts.image_gen import generate_image
+
 
 cfg = Config()
 
@@ -29,7 +32,7 @@ def get_command(response):
         response_json = fix_and_parse_json(response)
 
         if "command" not in response_json:
-            return "Error:", "Missing 'command' object in JSON"
+            return "Error: Missing 'command' object in JSON"
 
         command = response_json["command"]
 
@@ -57,7 +60,7 @@ def execute_command(command_name, arguments):
         if command_name == "google":
 
             # Check if the Google API key is set and use the official search method
-            # If the API key is not set or has only whitespaces, use the unofficial search method
+            # If the API key is not set or has only white spaces, use the unofficial search method
             if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
                 return google_official_search(arguments["input"])
             else:
@@ -127,7 +130,7 @@ def get_datetime():
 
 
 def google_search(query, num_results=8):
-    """Return the results of a google search"""
+    """Return the results of a Google search"""
     search_results = []
     for j in ddg(query, max_results=num_results):
         search_results.append(j)
@@ -136,7 +139,7 @@ def google_search(query, num_results=8):
 
 
 def google_official_search(query, num_results=8):
-    """Return the results of a google search using the official Google API"""
+    """Return the results of a Google search using the official Google API"""
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     import json
@@ -189,14 +192,14 @@ def browse_website(url, question):
 
 
 def get_text_summary(url, question):
-    """Return the results of a google search"""
+    """Return the results of a Google search"""
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text, question)
     return """ "Result" : """ + summary
 
 
 def get_hyperlinks(url):
-    """Return the results of a google search"""
+    """Return the results of a Google search"""
     link_list = browse.scrape_links(url)
     return link_list
 

@@ -2,10 +2,11 @@ import requests
 import io
 import os.path
 from PIL import Image
-from config import Config
 import uuid
 import openai
 from base64 import b64decode
+
+from scripts.config import Config
 
 cfg = Config()
 

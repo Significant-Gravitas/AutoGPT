@@ -1,7 +1,8 @@
 import os
 from playsound import playsound
 import requests
-from config import Config
+
+from scripts.config import Config
 
 import gtts
 import threading

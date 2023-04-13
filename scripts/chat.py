@@ -2,10 +2,10 @@ import openai
 
 import time
 
-from config import Config
-import token_counter
-from llm_utils import create_chat_completion
-from logger import logger
+from scripts.config import Config
+from scripts import token_counter
+from scripts.llm_utils import create_chat_completion
+from scripts.logger import logger
 
 cfg = Config()
 

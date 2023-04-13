@@ -1,20 +1,21 @@
-import json
-import commands as cmd
-import utils
-from memory import get_memory, get_supported_memory_backends
-import data
-import chat
-from colorama import Fore, Style
-from spinner import Spinner
-import speak
-from config import Config
-from json_parser import fix_and_parse_json
-from ai_config import AIConfig
 import traceback
 import yaml
 import argparse
-from logger import logger
+import json
 import logging
+
+import scripts.commands as cmd
+from scripts import utils
+from scripts.memory import get_memory, get_supported_memory_backends
+from scripts import data
+from scripts import chat
+from colorama import Fore, Style
+from scripts.spinner import Spinner
+from scripts import speak
+from scripts.config import Config
+from scripts.json_parser import fix_and_parse_json
+from scripts.ai_config import AIConfig
+from scripts.logger import logger
 
 cfg = Config()
 

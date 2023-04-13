@@ -28,7 +28,7 @@ def read_file(filename):
             content = f.read()
         return content
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {e}"
 
 
 def write_to_file(filename, text):
@@ -42,7 +42,7 @@ def write_to_file(filename, text):
             f.write(text)
         return "File written to successfully."
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {e}"
 
 
 def append_to_file(filename, text):

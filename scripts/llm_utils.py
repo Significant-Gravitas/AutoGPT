@@ -1,5 +1,5 @@
 import openai
-from config import Config
+from scripts.config import Config
 
 cfg = Config()
 

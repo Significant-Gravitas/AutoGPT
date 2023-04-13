@@ -8,9 +8,9 @@ from colorama import Fore
 
 from colorama import Style
 
-import speak
-from config import Config
-from config import Singleton
+from scripts import speak
+from scripts.config import Config
+from scripts.config import Singleton
 
 cfg = Config()
 
