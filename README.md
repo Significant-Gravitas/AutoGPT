@@ -32,21 +32,28 @@ Your support is greatly appreciated
 
 - [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
   - [Demo (30/03/2023):](#demo-30032023)
-  - [💖 Help Fund Auto-GPT's Development](#-help-fund-auto-gpts-development)
   - [Table of Contents](#table-of-contents)
   - [🚀 Features](#-features)
   - [📋 Requirements](#-requirements)
   - [💾 Installation](#-installation)
   - [🔧 Usage](#-usage)
+    - [Logs](#logs)
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
+  - [Redis Setup](#redis-setup)
+  - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+    - [Setting up environment variables](#setting-up-environment-variables-1)
+  - [Setting Your Cache Type](#setting-your-cache-type)
+  - [View Memory Usage](#view-memory-usage)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
-  - [🖼 Image Generation](#image-generation)
+  - [🖼 Image Generation](#-image-generation)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
+  - [Run tests](#run-tests)
+  - [Run linter](#run-linter)
 
 ## 🚀 Features
 
@@ -232,7 +239,6 @@ export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
-
 
 ## Setting Your Cache Type
 
