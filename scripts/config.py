@@ -37,6 +37,7 @@ class Config(metaclass=Singleton):
         self.debug_mode = False
         self.continuous_mode = False
         self.speak_mode = False
+        self.use_yaml_prompt = False
 
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -132,6 +133,10 @@ class Config(metaclass=Singleton):
     def set_speak_mode(self, value: bool):
         """Set the speak mode value."""
         self.speak_mode = value
+
+    def set_use_yaml_prompt(self, value: bool):
+        """Set the use yaml prompt value."""
+        self.use_yaml_prompt = value
 
     def set_fast_llm_model(self, value: str):
         """Set the fast LLM model value."""

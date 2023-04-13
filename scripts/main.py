@@ -180,7 +180,7 @@ def load_variables(config_file="config.yaml"):
     return full_prompt
 
 
-def construct_prompt():
+def construct_prompt(non_interactive=False):
     """Construct the prompt for the AI to respond to"""
     config = AIConfig.load()
     if config.ai_name:
@@ -189,6 +189,10 @@ def construct_prompt():
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
+
+        if non_interactive:
+            return config.construct_full_prompt()
+
         should_continue = utils.clean_input(f"""Continue with the last settings?
 Name:  {config.ai_name}
 Role:  {config.ai_role}
@@ -276,6 +280,7 @@ def parse_arguments():
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
     parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
     parser.add_argument('--use-memory', '-m', dest="memory_type", help='Defines which Memory backend to use')
+    parser.add_argument('--use-yaml-prompt', action='store_true', dest="use_yaml_prompt", help='Use the yaml prompt without requiring the user to confirm')
     args = parser.parse_args()
 
     if args.debug:
@@ -293,6 +298,10 @@ def parse_arguments():
     if args.speak:
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_speak_mode(True)
+
+    if args.use_yaml_prompt:
+        logger.typewriter_log("YAML Prompt Mode: ", Fore.GREEN, "ENABLED")
+        cfg.set_use_yaml_prompt(True)
 
     if args.gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
@@ -321,7 +330,7 @@ check_openai_api_key()
 parse_arguments()
 logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
 ai_name = ""
-prompt = construct_prompt()
+prompt = construct_prompt(cfg.use_yaml_prompt)
 # print(prompt)
 # Initialize variables
 full_message_history = []
