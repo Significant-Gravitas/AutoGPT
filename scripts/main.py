@@ -20,6 +20,7 @@ import logging
 
 cfg = Config()
 
+
 def check_openai_api_key():
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     if not cfg.openai_api_key:
@@ -29,6 +30,7 @@ def check_openai_api_key():
         )
         print("You can get your key from https://beta.openai.com/account/api-keys")
         exit(1)
+
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
     if cfg.speak_mode and cfg.debug_mode:
@@ -57,6 +59,7 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
         json_string = {}
 
     return json_string
+
 
 def print_assistant_thoughts(assistant_reply):
     """Prints the assistant's thoughts to the console"""
@@ -261,6 +264,7 @@ def prompt_user():
 
     config = AIConfig(ai_name, ai_role, ai_goals)
     return config
+
 
 def parse_arguments():
     """Parses the arguments passed to the script"""
