@@ -45,6 +45,11 @@ class Config(metaclass=Singleton):
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = int(os.getenv("TEMPERATURE", "1"))
+        self.top_p = int(os.getenv("TOP_P", "1"))
+        self.presence_penalty = float(os.getenv("PRESENCE_PENALTY", "0"))
+        self.frequency_penalty = float(os.getenv("FREQUENCY_PENALTY", "0"))
+        self.end_user = os.getenv("END_USER", "")
+
         self.use_azure = False
         self.use_azure = os.getenv("USE_AZURE") == 'True'
         self.execute_local_commands = os.getenv('EXECUTE_LOCAL_COMMANDS', 'False') == 'True'
