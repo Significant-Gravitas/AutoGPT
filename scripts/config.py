@@ -49,6 +49,8 @@ class Config(metaclass=Singleton):
             self.openai_api_base = os.getenv("OPENAI_AZURE_API_BASE")
             self.openai_api_version = os.getenv("OPENAI_AZURE_API_VERSION")
             self.openai_deployment_id = os.getenv("OPENAI_AZURE_DEPLOYMENT_ID")
+            self.azure_chat_deployment_id = os.getenv("OPENAI_AZURE_CHAT_DEPLOYMENT_ID")
+            self.azure_embeddigs_deployment_id = os.getenv("OPENAI_AZURE_EMBEDDINGS_DEPLOYMENT_ID")
             openai.api_type = "azure"
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
@@ -59,7 +61,7 @@ class Config(metaclass=Singleton):
 
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
-        
+
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
