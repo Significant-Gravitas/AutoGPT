@@ -310,8 +310,8 @@ def parse_arguments():
         supported_memory = get_supported_memory_backends()
         chosen = args.memory_type
         if not chosen in supported_memory:
-            print_to_console("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
-            print_to_console(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
+            logger.typewriter_log("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
+            logger.typewriter_log(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
         else:
             cfg.memory_backend = chosen
 
