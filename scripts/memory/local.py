@@ -4,22 +4,22 @@ import uuid
 import datetime
 import chromadb
 from memory.base import MemoryProviderSingleton, get_embedding
+from chromadb.errors import NoIndexException
 
 class LocalCache(MemoryProviderSingleton):
 
     # on load, load our database
     def __init__(self, cfg) -> None:
         self.persistence = cfg.memory_directory
-        if os.path.exists(self.persistence):
+        if self.persistence is not None and os.path.exists(self.persistence):
             self.chromaClient = chromadb.Client(Settings(
                 chroma_db_impl="duckdb+parquet", # duckdb+parquet = persisted, duckdb = in-memory
                 persist_directory=self.persistence
             ))
         else:
             # in memory
-            print(f"Warning: The directory '{self.persistence}' does not exist. Chroma memory would not be saved to a file.")
             self.chromaClient = chromadb.Client()
-        self.chromaCollection = self.chromaClient.create_collection(name="autoGPT_collection")
+        self.chromaCollection = self.chromaClient.create_collection(name="autogpt")
         # we will key off of cfg.openai_embeddings_model to determine if using sentence transformers or openai embeddings
         self.useOpenAIEmbeddings = True if (cfg.openai_embeddings_model) else False
 
@@ -50,7 +50,7 @@ class LocalCache(MemoryProviderSingleton):
         
         chroma_client = self.chromaClient
         chroma_client.reset()
-        self.chromaCollection = chroma_client.create_collection(name="autoGPT_collection")
+        self.chromaCollection = chroma_client.create_collection(name="autogpt")
         return "Obliviated"
 
     def get(self, data: str) -> Optional[List[Any]]:
@@ -65,12 +65,12 @@ class LocalCache(MemoryProviderSingleton):
         results = None
         if self.useOpenAIEmbeddings:
             embeddings = get_embedding(data)
-            results = self.collection.query(
+            results = self.chromaCollection.query(
                 query_embeddings=[data],
                 n_results=1
             )
         else:
-            results = self.collection.query(
+            results = self.chromaCollection.query(
                 query_texts=[data],
                 n_results=1
             )
@@ -78,17 +78,21 @@ class LocalCache(MemoryProviderSingleton):
 
     def get_relevant(self, text: str, k: int) -> List[Any]:
         results = None
-        if self.useOpenAIEmbeddings:
-            embeddings = get_embedding(data)
-            results = self.collection.query(
-                query_embeddings=[data],
-                n_results=k
-            )
-        else:
-            results = self.collection.query(
-                query_texts=[data],
-                n_results=k
-            )
+        try: 
+            if self.useOpenAIEmbeddings:
+                embeddings = get_embedding(text)
+                results = self.chromaCollection.query(
+                    query_embeddings=[text],
+                    n_results=min(k, self.chromaCollection.count())
+                )
+            else:
+                results = self.chromaCollection.query(
+                    query_texts=[text],
+                    n_results=min(k, self.chromaCollection.count())
+                )
+        except NoIndexException:
+            # print("No index found - suppressed because this is a common issue for first-run users")
+            pass
         return results
 
     def get_stats(self):
