@@ -37,7 +37,7 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
     Attempts to fix invalid JSON by finding the outermost brackets.
     This is a workaround for the OpenAI API sometimes returning invalid JSON.
 
-    Parameters:
+    Args:
         json_string (str): The JSON string to fix.
 
     Returns:
@@ -75,7 +75,7 @@ def print_assistant_thoughts(assistant_reply):
     """
     Prints the assistant's thoughts to the console
 
-    Parameters:
+    Args:
         assistant_reply (str): The assistant's reply.
     """
     global ai_name
@@ -148,7 +148,7 @@ def load_variables(config_file="config.yaml"):
     """
     Load variables from yaml file if it exists, otherwise prompt the user for input.
 
-    Parameters:
+    Args:
         config_file (str): The name of the config file.
 
     Returns:
