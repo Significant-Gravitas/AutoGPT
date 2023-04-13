@@ -1,0 +1,21 @@
+{
+    "name": "Denver Movies Playing",
+    "description": "Get the movies and their respective rating playing at a theater and save to a text file.",
+    "yaml_prompt": "movies-denver.yaml",
+    "output_files": [
+        "000005-movie-denver.txt"
+    ],
+    "exec": {
+        "command": "scripts/main.py",
+        "arguments": [
+            "--continuous",
+            "--continuous-limit",
+            "30",
+            "--use-yaml-file"
+        ],
+        "env": {
+            "TEMPERATURE": "0",
+            "EXECUTE_LOCAL_COMMANDS": "True"
+        }
+    }
+}
