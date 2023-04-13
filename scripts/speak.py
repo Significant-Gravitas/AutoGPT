@@ -31,9 +31,8 @@ tts_headers = {
     "xi-api-key": cfg.elevenlabs_api_key
 }
 
-mutex_lock = Lock()  # Ensure only one sound is played at a time
-# The amount of sounds to queue before blocking the main thread
-queue_semaphore = Semaphore(1)
+mutex_lock = Lock() # Ensure only one sound is played at a time
+queue_semaphore = Semaphore(1) # The amount of sounds to queue before blocking the main thread
 
 
 def eleven_labs_speech(text, voice_index=0):
@@ -85,6 +84,8 @@ def macos_tts_speech(text, voice_index=0):
     else:
         random_voice_index = random.randint(0, len(macos_voice_names) - 1)
         os.system(f'say -v "{macos_voice_names[random_voice_index]}" "{text}"')
+
+
 
 
 def say_text(text, voice_index=0):
