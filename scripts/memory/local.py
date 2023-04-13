@@ -19,9 +19,9 @@ class LocalCache(MemoryProviderSingleton):
             # in memory
             print(f"Warning: The directory '{self.persistence}' does not exist. Chroma memory would not be saved to a file.")
             self.chromaClient = chromadb.Client()
-    self.chromaCollection = chroma_client.create_collection(name="autoGPT_collection")
-    # we will key off of cfg.openai_embeddings_model to determine if using sentence transformers or openai embeddings
-    self.useOpenAIEmbeddings = True if (cfg.openai_embeddings_model) else False
+        self.chromaCollection = self.chromaClient.create_collection(name="autoGPT_collection")
+        # we will key off of cfg.openai_embeddings_model to determine if using sentence transformers or openai embeddings
+        self.useOpenAIEmbeddings = True if (cfg.openai_embeddings_model) else False
 
     def add(self, text: str):
         current_time = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")
