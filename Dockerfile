@@ -4,4 +4,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY scripts/ .
+COPY ai_settings.yaml .
+COPY auto-gpt.json .
 ENTRYPOINT ["python", "main.py"]
