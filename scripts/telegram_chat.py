@@ -4,6 +4,7 @@ from telegram.ext import filters
 from config import Config
 import threading
 import asyncio
+from functools import wraps
 
 from threading import Lock, Semaphore
 
@@ -52,9 +53,6 @@ class TelegramUtils:
         response_received.wait()
         return response_text
 
-# Add a handler for incoming messages
-
-from functools import wraps
 
 class SignalSafeEventLoop(asyncio.SelectorEventLoop):
     def add_signal_handler(self, sig, callback, *args):
@@ -63,6 +61,7 @@ class SignalSafeEventLoop(asyncio.SelectorEventLoop):
     def remove_signal_handler(self, sig):
         pass
 
+
 def run_in_signal_safe_loop(coro):
     @wraps(coro)
     def wrapper(*args, **kwargs):
@@ -70,6 +69,7 @@ def run_in_signal_safe_loop(coro):
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(coro(*args, **kwargs))
     return wrapper
+
 
 def main():
     application.add_handler(MessageHandler(filters.TEXT, handle_response))
