@@ -3,5 +3,5 @@ ENV PIP_NO_CACHE_DIR=yes
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
-COPY scripts/ .
+COPY autogpt/ .
 ENTRYPOINT ["python", "main.py"]

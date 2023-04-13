@@ -1,7 +1,7 @@
 import os
 import sys
 # Probably a better way:
-sys.path.append(os.path.abspath('../scripts'))
+sys.path.append(os.path.abspath('../autogpt'))
 from memory.local import LocalCache
 
 
