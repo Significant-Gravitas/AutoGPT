@@ -182,7 +182,7 @@ def load_variables(config_file="config.yaml"):
 
 def construct_prompt():
     """Construct the prompt for the AI to respond to"""
-    config = AIConfig.load()
+    config = AIConfig.load(cfg.ai_settings_file)
     if cfg.skip_reprompt and config.ai_name:
         logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
         logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
@@ -324,7 +324,21 @@ def parse_arguments():
     if args.skip_reprompt:
         logger.typewriter_log("Skip Re-prompt: ", Fore.GREEN, "ENABLED")
         cfg.skip_reprompt = True
+
+    if args.ai_settings_file:
+        file = args.ai_settings_file
         
+        # Validate file
+        (validated, message) = utils.validate_yaml_file(file)
+        if not validated:
+            logger.typewriter_log("FAILED FILE VALIDATION", Fore.RED, message)
+            exit(1)
+        
+        logger.typewriter_log("Using AI Settings File:", Fore.GREEN, file)
+        cfg.ai_settings_file = file
+        cfg.skip_reprompt = True
+
+
 
 # TODO: fill in llm values here
 check_openai_api_key()
