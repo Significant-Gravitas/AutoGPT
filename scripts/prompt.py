@@ -1,9 +1,10 @@
 from promptgenerator import PromptGenerator
 
+
 def get_prompt():
     """
     This function generates a prompt string that includes various constraints, commands, resources, and performance evaluations.
-    
+
     Returns:
         str: The generated prompt string.
     """
@@ -58,5 +59,5 @@ def get_prompt():
 
     # Generate the prompt string
     prompt_string = prompt_generator.generate_prompt_string()
-    
+
     return prompt_string
