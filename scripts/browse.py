@@ -9,6 +9,11 @@ cfg = Config()
 
 # Function to check if the URL is valid
 def is_valid_url(url):
+    """Check if the URL is valid
+
+    Args:
+        url: The URL to check
+    """
     try:
         result = urlparse(url)
         return all([result.scheme, result.netloc])
@@ -18,16 +23,33 @@ def is_valid_url(url):
 
 # Function to sanitize the URL
 def sanitize_url(url):
+    """Sanitize the URL
+
+    Args:
+        url: The URL to sanitize
+    """
     return urljoin(url, urlparse(url).path)
 
 
 # Define and check for local file address prefixes
 def check_local_file_access(url):
+    """Check if the URL is a local file
+
+    Args:
+        url: The URL to check
+    """
     local_prefixes = ['file:///', 'file://localhost', 'http://localhost', 'https://localhost']
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
 
 def get_response(url, headers=cfg.user_agent_header, timeout=10):
+    """Get the response from a URL
+
+    Args:
+        url: The URL to get the response from
+        headers: The headers to use. Defaults to the user agent header in config
+        timeout: The timeout to use. Defaults to 10 seconds
+    """
     try:
         # Restrict access to local files
         if check_local_file_access(url):
@@ -56,7 +78,11 @@ def get_response(url, headers=cfg.user_agent_header, timeout=10):
 
 
 def scrape_text(url):
-    """Scrape text from a webpage"""
+    """Scrape text from a webpage
+
+    Args:
+        url: The URL to scrape text from
+    """
     response, error_message = get_response(url)
     if error_message:
         return error_message
@@ -75,7 +101,11 @@ def scrape_text(url):
 
 
 def extract_hyperlinks(soup):
-    """Extract hyperlinks from a BeautifulSoup object"""
+    """Extract hyperlinks from a BeautifulSoup object
+
+    Args:
+        soup: The BeautifulSoup object to extract hyperlinks from
+    """
     hyperlinks = []
     for link in soup.find_all('a', href=True):
         hyperlinks.append((link.text, link['href']))
@@ -83,7 +113,11 @@ def extract_hyperlinks(soup):
 
 
 def format_hyperlinks(hyperlinks):
-    """Format hyperlinks into a list of strings"""
+    """Format hyperlinks into a list of strings
+
+    Args:
+        hyperlinks: The hyperlinks to format
+    """
     formatted_links = []
     for link_text, link_url in hyperlinks:
         formatted_links.append(f"{link_text} ({link_url})")
@@ -91,7 +125,11 @@ def format_hyperlinks(hyperlinks):
 
 
 def scrape_links(url):
-    """Scrape links from a webpage"""
+    """Scrape links from a webpage
+
+    Args:
+        url: The URL to scrape links from
+    """
     response, error_message = get_response(url)
     if error_message:
         return error_message
@@ -107,7 +145,12 @@ def scrape_links(url):
 
 
 def split_text(text, max_length=8192):
-    """Split text into chunks of a maximum length"""
+    """Split text into chunks of a maximum length
+
+    Args:
+        text: The text to split
+        max_length: The maximum length of each chunk. Defaults to 8192 characters
+    """
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
@@ -126,7 +169,12 @@ def split_text(text, max_length=8192):
 
 
 def create_message(chunk, question):
-    """Create a message for the user to summarize a chunk of text"""
+    """Create a message for the user to summarize a chunk of text
+
+    Args:
+        chunk: The chunk of text to summarize
+        question: The question to answer using the text
+    """
     return {
         "role": "user",
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
@@ -134,7 +182,12 @@ def create_message(chunk, question):
 
 
 def summarize_text(text, question):
-    """Summarize text using the LLM model"""
+    """Summarize text using the LLM model
+
+    Args:
+        text: The text to summarize
+        question: The question to answer using the text
+    """
     if not text:
         return "Error: No text to summarize"
 
