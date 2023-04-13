@@ -199,10 +199,11 @@ def get_hyperlinks(url):
     return link_list
 
 def execute_command_list(commands, cwd="./auto_gpt_workspace"):
+    """Execute a list of shell commands"""
     working_directory = "./auto_gpt_workspace"
-    full_command = ' && '.join(commands)
     if cwd == "/":
         cwd = working_directory
+    full_command = ' && '.join(commands)
     command_result = subprocess.run(full_command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
     result = f"""Executed commands with """
     if command_result.returncode == 0:
