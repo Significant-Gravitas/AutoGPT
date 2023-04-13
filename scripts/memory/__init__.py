@@ -57,6 +57,7 @@ def get_memory(cfg, init=False):
             memory.clear()
     return memory
 
+
 def get_supported_memory_backends():
     return supported_memory
 
