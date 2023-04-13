@@ -207,7 +207,7 @@ MEMORY_INDEX=whatever
 
 Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
 
-1. Go to app.pinecone.io and make an account if you don't already have one.
+1. Go to [pinecone](https://app.pinecone.io/) and make an account if you don't already have one.
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
 
