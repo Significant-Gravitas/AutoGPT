@@ -59,10 +59,11 @@ Your support is greatly appreciated
 
 - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - [OpenAI API key](https://platform.openai.com/account/api-keys)
-- [PINECONE API key](https://www.pinecone.io/)
+
 
 Optional:
 
+- [PINECONE API key](https://www.pinecone.io/) (If you want Pinecone backed memory)
 - ElevenLabs Key (If you want the AI to speak)
 
 ## 💾 Installation
@@ -114,8 +115,8 @@ pip install -r requirements.txt
 python scripts/main.py
 ```
 
-2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
-3. To exit the program, type "exit" and press Enter.
+2. After each of action, enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter additional feedback for the AI.
+
 
 ### Logs
 
@@ -217,7 +218,10 @@ Pinecone enables the storage of vast amounts of vector-based memory, allowing fo
 
 ### Setting up environment variables
 
-Simply set them in the `.env` file.
+In the `.env` file set:
+- `PINECONE_API_KEY`
+- `PINECONE_ENV` (something like: us-east4-gcp)
+- `MEMORY_BACKEND=pinecone`
 
 Alternatively, you can set them from the command line (advanced):
 
@@ -226,7 +230,7 @@ For Windows Users:
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
 setx PINECONE_ENV "Your pinecone region" # something like: us-east4-gcp
-
+setx MEMORY_BACKEND "pinecone"
 ```
 
 For macOS and Linux users:
@@ -234,7 +238,7 @@ For macOS and Linux users:
 ```
 export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
-
+export MEMORY_BACKEND="pinecone"
 ```
 
 
