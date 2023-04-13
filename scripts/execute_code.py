@@ -52,7 +52,7 @@ def execute_python_file(file):
     
 
 
-def exec_shell(command_line):
+def execute_shell(command_line):
 
     old_dir = os.getcwd()
 
