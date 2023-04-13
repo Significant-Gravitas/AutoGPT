@@ -158,8 +158,8 @@ def bing_search(query, num_results=8):
     web_pages = search_results.get('webPages', {})
     search_results = web_pages.get('value', [])
 
-    # Create a list of search result dictionaries with 'title' and 'link' keys
-    search_results_list = [{'title': item['name'], 'link': item['url']} for item in search_results]
+    # Create a list of search result dictionaries with 'title', 'href', and 'body' keys
+    search_results_list = [{'title': item['name'], 'href': item['url'], 'body': item['snippet']} for item in search_results]
 
     # Return the search results as a JSON string
     return json.dumps(search_results_list, ensure_ascii=False, indent=4)
