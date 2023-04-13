@@ -2,9 +2,9 @@
 import abc
 from config import AbstractSingleton, Config
 import openai
-cfg = Config()
 
 cfg = Config()
+
 
 def get_ada_embedding(text):
     text = text.replace("\n", " ")

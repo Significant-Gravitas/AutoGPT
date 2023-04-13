@@ -4,6 +4,7 @@ import sys
 sys.path.append(os.path.abspath('../scripts'))
 from memory.local import LocalCache
 
+
 def MockConfig():
     return type('MockConfig', (object,), {
         'debug_mode': False,
@@ -11,6 +12,7 @@ def MockConfig():
         'speak_mode': False,
         'memory_index': 'auto-gpt',
     })
+
 
 class TestLocalCache(unittest.TestCase):
 

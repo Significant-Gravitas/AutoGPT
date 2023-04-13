@@ -1,9 +1,9 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
-![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
-[![](https://dcbadge.vercel.app/api/server/PQ7VX6TY4t?style=flat)](https://discord.gg/PQ7VX6TY4t)
-[![Unit Tests](https://github.com/Torantulino/Auto-GPT/actions/workflows/unit_tests.yml/badge.svg)](https://github.com/Torantulino/Auto-GPT/actions/workflows/unit_tests.yml)
+[![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)
+[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
+[![Unit Tests](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml)
 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
@@ -32,21 +32,28 @@ Your support is greatly appreciated
 
 - [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
   - [Demo (30/03/2023):](#demo-30032023)
-  - [💖 Help Fund Auto-GPT's Development](#-help-fund-auto-gpts-development)
   - [Table of Contents](#table-of-contents)
   - [🚀 Features](#-features)
   - [📋 Requirements](#-requirements)
   - [💾 Installation](#-installation)
   - [🔧 Usage](#-usage)
+    - [Logs](#logs)
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
+  - [Redis Setup](#redis-setup)
+  - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+    - [Setting up environment variables](#setting-up-environment-variables-1)
+  - [Setting Your Cache Type](#setting-your-cache-type)
+  - [View Memory Usage](#view-memory-usage)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
-  - [🖼 Image Generation](#image-generation)
+  - [🖼 Image Generation](#-image-generation)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
+  - [Run tests](#run-tests)
+  - [Run linter](#run-linter)
 
 ## 🚀 Features
 
@@ -64,38 +71,38 @@ Your support is greatly appreciated
 
 Optional:
 
-- ElevenLabs Key (If you want the AI to speak)
+- [ElevenLabs Key](https://elevenlabs.io/) (If you want the AI to speak)
 
 ## 💾 Installation
 
 To install Auto-GPT, follow these steps:
 
-0. Make sure you have all the **requirements** above, if not, install/get them.
+1. Make sure you have all the **requirements** above, if not, install/get them.
 
 _The following commands should be executed in a CMD, Bash or Powershell window. To do this, go to a folder on your computer, click in the folder path at the top and type CMD, then press enter._
 
-1. Clone the repository:
+2. Clone the repository:
    For this step you need Git installed, but you can just download the zip file instead by clicking the button at the top of this page ☝️
 
 ```
 git clone https://github.com/Torantulino/Auto-GPT.git
 ```
 
-2. Navigate to the project directory:
+3. Navigate to the project directory:
    _(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)_
 
 ```
 cd 'Auto-GPT'
 ```
 
-3. Install the required dependencies:
+4. Install the required dependencies:
    _(Again, type this into your CMD window)_
 
 ```
 pip install -r requirements.txt
 ```
 
-4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then:
@@ -120,7 +127,7 @@ python scripts/main.py
 
 ### Logs
 
-You will find activity and error logs in the folder `./logs`
+You will find activity and error logs in the folder `./output/logs`
 
 To output debug logs:
 
@@ -238,7 +245,6 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
 
-
 ## Setting Your Cache Type
 
 By default Auto-GPT is going to use LocalCache instead of redis or Pinecone.
@@ -342,11 +348,13 @@ coverage run -m unittest discover tests
 
 ## Run linter
 
-This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. To run the linter, run the following command:
+This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. We currently use the following rules: `E303,W293,W291,W292,E305,E231,E302`. See the [flake8 rules](https://www.flake8rules.com/) for more information.
+
+To run the linter, run the following command:
 
 ```
 flake8 scripts/ tests/
 
 # Or, if you want to run flake8 with the same configuration as the CI:
-flake8 scripts/ tests/ --select E303,W293,W291,W292,E305
+flake8 scripts/ tests/ --select E303,W293,W291,W292,E305,E231,E302
 ```
