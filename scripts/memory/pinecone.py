@@ -5,6 +5,7 @@ from memory.base import MemoryProviderSingleton, get_ada_embedding
 from logger import logger
 from colorama import Fore, Style
 
+
 class PineconeMemory(MemoryProviderSingleton):
     def __init__(self, cfg):
         pinecone_api_key = cfg.pinecone_api_key
