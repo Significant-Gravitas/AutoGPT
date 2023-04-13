@@ -88,6 +88,9 @@ class Config(metaclass=Singleton):
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
+        #Adding support for specifying a DNS server. 
+        self.dns_server = os.getenv("DNS_SERVER", None)
+
     def set_continuous_mode(self, value: bool):
         """Set the continuous mode value."""
         self.continuous_mode = value
@@ -147,3 +150,7 @@ class Config(metaclass=Singleton):
     def set_debug_mode(self, value: bool):
         """Set the debug mode value."""
         self.debug_mode = value
+
+    def set_dns_server(self, value: str):
+        """Set a specific DNS server to use"""
+        self.dns_server = value

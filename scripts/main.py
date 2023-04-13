@@ -1,5 +1,7 @@
 import json
 import random
+
+import dns.resolver
 import commands as cmd
 import utils
 from memory import get_memory, get_supported_memory_backends
@@ -305,6 +307,14 @@ def parse_arguments():
     if args.debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_debug_mode(True)
+    
+    #Detect if a specific DNS server is specified and use if it is.
+    if cfg.dns_server is not None:
+        dns_servers = [ cfg.dns_server ]
+        resolver = dns.resolver.Resolver()
+        resolver.nameservers = dns_servers
+            
+        
 
     if args.memory_type:
         supported_memory = get_supported_memory_backends()
