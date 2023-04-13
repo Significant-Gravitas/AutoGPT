@@ -113,6 +113,32 @@ python scripts/main.py
 2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
 3. To exit the program, type "exit" and press Enter.
 
+For macOS and Linux users:
+
+Alternatively you can run the command
+
+```sh
+source start.sh
+```
+
+which will run the command
+
+```python
+python scripts/main.py --gpt3only
+```
+
+alternatively if you want to run in [continuous mode](#continuous-mode) run this instead:
+
+```sh
+source continuous.sh
+```
+
+which will run the command
+
+```python
+python scripts/main.py --gpt3only
+```
+
 ### Logs
 
 You will find activity and error logs in the folder `./logs`
@@ -232,7 +258,6 @@ export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 
 ```
-
 
 ## Setting Your Cache Type
 
