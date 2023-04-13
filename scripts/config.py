@@ -36,6 +36,7 @@ class Config(metaclass=Singleton):
         """Initialize the Config class"""
         self.debug_mode = False
         self.continuous_mode = False
+        self.continuous_limit = 0
         self.speak_mode = False
 
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
@@ -44,11 +45,11 @@ class Config(metaclass=Singleton):
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.temperature = float(os.getenv("TEMPERATURE", "1"))
-        self.top_p = float(os.getenv("TOP_P", "1"))
-        self.presence_penalty = float(os.getenv("PRESENCE_PENALTY", "0"))
-        self.frequency_penalty = float(os.getenv("FREQUENCY_PENALTY", "0"))
-        self.end_user = os.getenv("END_USER", "")
+        self.openai_temperature = float(os.getenv("OPENAI_TEMPERATURE", "1"))
+        self.openai_top_p = float(os.getenv("OPENAI_TOP_P", "1"))
+        self.openai_presence_penalty = float(os.getenv("OPENAI_PRESENCE_PENALTY", "0"))
+        self.openai_frequency_penalty = float(os.getenv("OPENAI_FREQUENCY_PENALTY", "0"))
+        self.openai_end_user = os.getenv("OPENAI_END_USER", "")
 
         self.use_azure = False
         self.use_azure = os.getenv("USE_AZURE") == 'True'
@@ -134,6 +135,10 @@ class Config(metaclass=Singleton):
     def set_continuous_mode(self, value: bool):
         """Set the continuous mode value."""
         self.continuous_mode = value
+
+    def set_continuous_limit(self, value: int):
+        """Set the continuous limit value."""
+        self.continuous_limit = value
 
     def set_speak_mode(self, value: bool):
         """Set the speak mode value."""

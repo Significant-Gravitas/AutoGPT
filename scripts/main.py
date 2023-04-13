@@ -3,7 +3,6 @@ import random
 import commands as cmd
 import utils
 from memory import get_memory, get_supported_memory_backends
-import data
 import chat
 from colorama import Fore, Style
 from spinner import Spinner
@@ -17,6 +16,7 @@ import yaml
 import argparse
 from logger import logger
 import logging
+from prompt import get_prompt
 
 cfg = Config()
 
@@ -171,8 +171,8 @@ def load_variables(config_file="config.yaml"):
     with open(config_file, "w") as file:
         documents = yaml.dump(config, file)
 
-    prompt = data.load_prompt()
-    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."""
+    prompt = get_prompt()
+    prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
 
     # Construct full prompt
     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
@@ -275,6 +275,7 @@ def parse_arguments():
 
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
+    parser.add_argument('--continuous-limit', '-l', type=int, dest="continuous_limit", help='Defines the number of times to run in continuous mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
@@ -293,6 +294,17 @@ def parse_arguments():
             Fore.RED,
             "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.")
         cfg.set_continuous_mode(True)
+
+        if args.continuous_limit:
+            logger.typewriter_log(
+                "Continuous Limit: ",
+                Fore.GREEN,
+                f"{args.continuous_limit}")
+            cfg.set_continuous_limit(args.continuous_limit)
+
+    # Check if continuous limit is used without continuous mode
+    if args.continuous_limit and not args.continuous:
+        parser.error("--continuous-limit can only be used with --continuous")
 
     if args.speak:
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
@@ -340,7 +352,14 @@ def main():
     memory = get_memory(cfg, init=True)
     print('Using memory of type: ' + memory.__class__.__name__)
     # Interaction Loop
+    loop_count = 0
     while True:
+         # Discontinue if continuous limit is reached
+        loop_count += 1
+        if cfg.continuous_mode and cfg.continuous_limit > 0 and loop_count > cfg.continuous_limit:
+            logger.typewriter_log("Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}")
+            break
+
         # Send message to AI, get response
         with Spinner("Thinking... "):
             assistant_reply = chat.chat_with_ai(

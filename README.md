@@ -1,7 +1,7 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
-![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)
+[![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)
 [![Discord Follow](https://dcbadge.vercel.app/api/server/PQ7VX6TY4t?style=flat)](https://discord.gg/PQ7VX6TY4t)
 [![Unit Tests](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/Torantulino/Auto-GPT/actions/workflows/unit_tests.yml)
 
@@ -71,7 +71,7 @@ Your support is greatly appreciated
 
 Optional:
 
-- ElevenLabs Key (If you want the AI to speak)
+- [ElevenLabs Key](https://elevenlabs.io/) (If you want the AI to speak)
 
 ## 💾 Installation
 
