@@ -9,6 +9,7 @@ import logging
 
 cfg = Config()
 
+
 def create_chat_message(role, content):
     """
     Create a chat message with the given role and content.
