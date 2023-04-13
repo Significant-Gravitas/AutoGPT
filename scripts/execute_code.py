@@ -22,11 +22,28 @@ def execute_python_file(file):
     try:
         client = docker.from_env()
 
+        image_name = 'python:3.10'
+        try:
+            client.images.get(image_name)
+            print(f"Image '{image_name}' found locally")
+        except docker.errors.ImageNotFound:
+            print(f"Image '{image_name}' not found locally, pulling from Docker Hub")
+            # Use the low-level API to stream the pull response
+            low_level_client = docker.APIClient()
+            for line in low_level_client.pull(image_name, stream=True, decode=True):
+                # Print the status and progress, if available
+                status = line.get('status')
+                progress = line.get('progress')
+                if status and progress:
+                    print(f"{status}: {progress}")
+                elif status:
+                    print(status)
+
         # You can replace 'python:3.8' with the desired Python image/version
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
         container = client.containers.run(
-            'python:3.10',
+            image_name,
             f'python {file}',
             volumes={
                 os.path.abspath(WORKSPACE_FOLDER): {
