@@ -44,8 +44,8 @@ class Config(metaclass=Singleton):
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.temperature = int(os.getenv("TEMPERATURE", "1"))
-        self.top_p = int(os.getenv("TOP_P", "1"))
+        self.temperature = float(os.getenv("TEMPERATURE", "1"))
+        self.top_p = float(os.getenv("TOP_P", "1"))
         self.presence_penalty = float(os.getenv("PRESENCE_PENALTY", "0"))
         self.frequency_penalty = float(os.getenv("FREQUENCY_PENALTY", "0"))
         self.end_user = os.getenv("END_USER", "")
