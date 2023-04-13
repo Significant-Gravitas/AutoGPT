@@ -1,6 +1,6 @@
 import yaml
-import data
 import os
+from prompt import get_prompt
 
 
 class AIConfig:
@@ -91,5 +91,5 @@ class AIConfig:
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
-        full_prompt += f"\n\n{data.load_prompt()}"
+        full_prompt += f"\n\n{get_prompt()}"
         return full_prompt
