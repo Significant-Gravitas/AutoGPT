@@ -102,7 +102,7 @@ class Config(metaclass=Singleton):
         elif model == "text-embedding-ada-002":
             return self.azure_model_to_deployment_id_map["embedding_model_deployment_id"]
         else:
-            return ""            
+            return ""
 
     AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), '..', 'azure.yaml')
 
