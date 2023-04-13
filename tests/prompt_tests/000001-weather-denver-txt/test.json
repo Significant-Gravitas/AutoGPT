@@ -1,6 +1,6 @@
 {
     "name": "Denver Weather Next Week",
-    "description": "Get the weather over the next week in Denver, CO",
+    "description": "Get the weather over the next week in Denver, CO. The information returned is not likely to be accurate, however, the task is completed.",
     "yaml_prompt": "weather-denver-txt.yaml",
     "output_files": [
         "weather-denver.txt"
