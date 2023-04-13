@@ -183,7 +183,11 @@ def load_variables(config_file="config.yaml"):
 def construct_prompt():
     """Construct the prompt for the AI to respond to"""
     config = AIConfig.load()
-    if config.ai_name:
+    if cfg.skip_reprompt and config.ai_name:
+        logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
+        logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
+        logger.typewriter_log("Goals:", Fore.GREEN, config.ai_goals)
+    elif config.ai_name:
         logger.typewriter_log(
             f"Welcome back! ",
             Fore.GREEN,
@@ -270,12 +274,14 @@ def parse_arguments():
     cfg.set_speak_mode(False)
 
     parser = argparse.ArgumentParser(description='Process arguments.')
-    parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
+    parser.add_argument('--continuous', '-c', action='store_true', help='Enable Continuous Mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
     parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
     parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
     parser.add_argument('--use-memory', '-m', dest="memory_type", help='Defines which Memory backend to use')
+    parser.add_argument('--skip-reprompt', '-y', dest='skip_reprompt', action='store_true', help='Skips the re-prompting messages at the beginning of the script')
+    parser.add_argument('--ai-settings', '-C', dest='ai_settings_file', help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.")
     args = parser.parse_args()
 
     if args.debug:
@@ -315,6 +321,10 @@ def parse_arguments():
         else:
             cfg.memory_backend = chosen
 
+    if args.skip_reprompt:
+        logger.typewriter_log("Skip Re-prompt: ", Fore.GREEN, "ENABLED")
+        cfg.skip_reprompt = True
+        
 
 # TODO: fill in llm values here
 check_openai_api_key()
