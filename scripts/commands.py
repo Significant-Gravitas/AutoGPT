@@ -7,11 +7,12 @@ import agent_manager as agents
 import speak
 from config import Config
 import ai_functions as ai
-from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
+from file_operations import read_file, write_to_file, append_to_file, delete_file, safe_join, search_files
 from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
 from image_gen import generate_image
 from duckduckgo_search import ddg
+from git_operations import clone_repository
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
@@ -95,6 +96,8 @@ def execute_command(command_name, arguments):
             return search_files(arguments["directory"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
+        elif command_name == "clone_repository":
+            return clone_repository(arguments["repo_url"], arguments["clone_path"])
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
@@ -195,8 +198,11 @@ def get_hyperlinks(url):
     link_list = browse.scrape_links(url)
     return link_list
 
-def execute_command_list(commands, cwd):
+def execute_command_list(commands, cwd="./auto_gpt_workspace"):
+    working_directory = "./auto_gpt_workspace"
     full_command = ' && '.join(commands)
+    if cwd == "/":
+        cwd = working_directory
     command_result = subprocess.run(full_command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
     result = f"""Executed commands with """
     if command_result.returncode == 0:
