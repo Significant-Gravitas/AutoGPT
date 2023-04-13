@@ -119,7 +119,7 @@ python scripts/main.py
 
 ### Logs
 
-You will find activity and error logs in the folder `./logs`
+You will find activity and error logs in the folder `./output/logs`
 
 To output debug logs:
 
