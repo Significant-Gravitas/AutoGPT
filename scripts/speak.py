@@ -7,9 +7,6 @@ from playsound import playsound
 import requests
 from config import Config
 cfg = Config()
-import gtts
-import threading
-from threading import Lock, Semaphore
 
 # Default voice IDs
 default_voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
@@ -23,8 +20,10 @@ placeholders = {"your-voice-id"}
 
 # Use custom voice IDs if provided and not placeholders, otherwise use default voice IDs
 voices = [
-    custom_voice_1 if custom_voice_1 and custom_voice_1 not in placeholders else default_voices[0],
-    custom_voice_2 if custom_voice_2 and custom_voice_2 not in placeholders else default_voices[1]
+    custom_voice_1 if custom_voice_1 and custom_voice_1 not in placeholders else default_voices[
+        0],
+    custom_voice_2 if custom_voice_2 and custom_voice_2 not in placeholders else default_voices[
+        1]
 ]
 
 tts_headers = {
