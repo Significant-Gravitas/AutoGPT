@@ -30,6 +30,19 @@ class AbstractSingleton(abc.ABC, metaclass=Singleton):
 class Config(metaclass=Singleton):
     """
     Configuration class to store the state of bools for different scripts access.
+
+    Attributes:
+        debug_mode (bool): Whether to run in debug mode.
+        continuous_mode (bool): Whether to run in continuous mode.
+        speak_mode (bool): Whether to run in speak mode.
+        fast_llm_model: The model to use for fast LLM.
+        smart_llm_model: The model to use for smart LLM.
+        fast_token_limit: The token limit for fast LLM.
+        smart_token_limit: The token limit for smart LLM.
+        openai_api_key: The OpenAI API key.
+        temperature: The temperature to use for LLM.
+        use_azure: Whether to use Azure.
+        execute_local_commands: Whether to execute local commands.
     """
 
     def __init__(self):
