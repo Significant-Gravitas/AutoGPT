@@ -13,7 +13,6 @@ from json_parser import fix_and_parse_json
 from ai_config import AIConfig
 import traceback
 import yaml
-import argparse
 from logger import logger
 import logging
 from prompt import get_prompt
