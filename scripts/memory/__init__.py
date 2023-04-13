@@ -1,4 +1,5 @@
 from memory.local import LocalCache
+from memory.no_memory import NoMemory
 
 # List of supported memory backends
 # Add a backend to this list if the import attempt is successful
@@ -18,6 +19,7 @@ except ImportError:
     print("Pinecone not installed. Skipping import.")
     PineconeMemory = None
 
+
 def get_memory(cfg, init=False):
     memory = None
     if cfg.memory_backend == "pinecone":
@@ -34,12 +36,15 @@ def get_memory(cfg, init=False):
                   " use Redis as a memory backend.")
         else:
             memory = RedisMemory(cfg)
+    elif cfg.memory_backend == "no_memory":
+        memory = NoMemory(cfg)
 
     if memory is None:
         memory = LocalCache(cfg)
         if init:
             memory.clear()
     return memory
+
 
 def get_supported_memory_backends():
     return supported_memory
@@ -50,4 +55,5 @@ __all__ = [
     "LocalCache",
     "RedisMemory",
     "PineconeMemory",
+    "NoMemory"
 ]
