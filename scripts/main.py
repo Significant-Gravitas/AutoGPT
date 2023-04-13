@@ -33,6 +33,16 @@ def check_openai_api_key():
 
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
+    """
+    Attempts to fix invalid JSON by finding the outermost brackets.
+    This is a workaround for the OpenAI API sometimes returning invalid JSON.
+
+    Parameters:
+        json_string (str): The JSON string to fix.
+
+    Returns:
+        json_string (str): The fixed JSON string.
+    """
     if cfg.speak_mode and cfg.debug_mode:
       speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
     logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
@@ -62,7 +72,12 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
 
 
 def print_assistant_thoughts(assistant_reply):
-    """Prints the assistant's thoughts to the console"""
+    """
+    Prints the assistant's thoughts to the console
+
+    Parameters:
+        assistant_reply (str): The assistant's reply.
+    """
     global ai_name
     global cfg
     try:
@@ -130,7 +145,15 @@ def print_assistant_thoughts(assistant_reply):
 
 
 def load_variables(config_file="config.yaml"):
-    """Load variables from yaml file if it exists, otherwise prompt the user for input"""
+    """
+    Load variables from yaml file if it exists, otherwise prompt the user for input.
+
+    Parameters:
+        config_file (str): The name of the config file.
+
+    Returns:
+        ai_name (str): The name of the AI.
+    """
     try:
         with open(config_file) as file:
             config = yaml.load(file, Loader=yaml.FullLoader)
@@ -184,7 +207,12 @@ def load_variables(config_file="config.yaml"):
 
 
 def construct_prompt():
-    """Construct the prompt for the AI to respond to"""
+    """
+    Construct the prompt for the AI to respond to.
+
+    Returns:
+        str: The full prompt.
+    """
     config = AIConfig.load()
     if config.ai_name:
         logger.typewriter_log(
@@ -213,7 +241,12 @@ Continue (y/n): """)
 
 
 def prompt_user():
-    """Prompt the user for input"""
+    """
+    Prompt the user for input.
+
+    Returns:
+        config (AIConfig): The AIConfig object with the user's input.
+    """
     ai_name = ""
     # Construct the prompt
     logger.typewriter_log(
@@ -321,6 +354,7 @@ def parse_arguments():
 
 
 def main():
+    """Main function for running Auto-GPT."""
     global ai_name, memory
     # TODO: fill in llm values here
     check_openai_api_key()
