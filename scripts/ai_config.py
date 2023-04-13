@@ -2,6 +2,7 @@ import yaml
 import os
 from prompt import get_prompt
 
+
 class AIConfig:
     """
     A class object that contains the configuration information for the AI

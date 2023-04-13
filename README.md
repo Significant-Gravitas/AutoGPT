@@ -77,32 +77,32 @@ Optional:
 
 To install Auto-GPT, follow these steps:
 
-0. Make sure you have all the **requirements** above, if not, install/get them.
+1. Make sure you have all the **requirements** above, if not, install/get them.
 
 _The following commands should be executed in a CMD, Bash or Powershell window. To do this, go to a folder on your computer, click in the folder path at the top and type CMD, then press enter._
 
-1. Clone the repository:
+2. Clone the repository:
    For this step you need Git installed, but you can just download the zip file instead by clicking the button at the top of this page ☝️
 
 ```
 git clone https://github.com/Torantulino/Auto-GPT.git
 ```
 
-2. Navigate to the project directory:
+3. Navigate to the project directory:
    _(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)_
 
 ```
 cd 'Auto-GPT'
 ```
 
-3. Install the required dependencies:
+4. Install the required dependencies:
    _(Again, type this into your CMD window)_
 
 ```
 pip install -r requirements.txt
 ```
 
-4. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then:
@@ -348,11 +348,13 @@ coverage run -m unittest discover tests
 
 ## Run linter
 
-This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. To run the linter, run the following command:
+This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. We currently use the following rules: `E303,W293,W291,W292,E305,E231,E302`. See the [flake8 rules](https://www.flake8rules.com/) for more information.
+
+To run the linter, run the following command:
 
 ```
 flake8 scripts/ tests/
 
 # Or, if you want to run flake8 with the same configuration as the CI:
-flake8 scripts/ tests/ --select E303,W293,W291,W292,E305
+flake8 scripts/ tests/ --select E303,W293,W291,W292,E305,E231,E302
 ```
