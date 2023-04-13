@@ -17,7 +17,7 @@ import argparse
 from logger import logger
 import logging
 from prompt import get_prompt
-import telegram_chat
+
 from telegram_chat import TelegramUtils
 
 cfg = Config()
@@ -120,7 +120,7 @@ def print_assistant_thoughts(assistant_reply):
             speak.say_text(assistant_thoughts_speak)
 
         if cfg.telegram_api_key and cfg.telegram_chat_id:
-            telegram_chat.TelegramUtils.send_message(assistant_thoughts_text)
+            TelegramUtils.send_message(assistant_thoughts_text)
 
         return assistant_reply_json
     except json.decoder.JSONDecodeError as e:
