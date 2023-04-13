@@ -4,12 +4,12 @@ from scripts.config import Config
 class TestConfig(unittest.TestCase):
 
     def test_singleton(self):
-        config1 = Config()
-        config2 = Config()
+        config1 = Config(run_env_setup=False)
+        config2 = Config(run_env_setup=False)
         self.assertIs(config1, config2)
 
     def test_initial_values(self):
-        config = Config()
+        config = Config(run_env_setup=False)
         self.assertFalse(config.debug_mode)
         self.assertFalse(config.continuous_mode)
         self.assertFalse(config.speak_mode)
@@ -19,37 +19,37 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.smart_token_limit, 8000)
 
     def test_set_continuous_mode(self):
-        config = Config()
+        config = Config(run_env_setup=False)
         config.set_continuous_mode(True)
         self.assertTrue(config.continuous_mode)
 
     def test_set_speak_mode(self):
-        config = Config()
+        config = Config(run_env_setup=False)
         config.set_speak_mode(True)
         self.assertTrue(config.speak_mode)
 
     def test_set_fast_llm_model(self):
-        config = Config()
+        config = Config(run_env_setup=False)
         config.set_fast_llm_model("gpt-3.5-turbo-test")
         self.assertEqual(config.fast_llm_model, "gpt-3.5-turbo-test")
 
     def test_set_smart_llm_model(self):
-        config = Config()
+        config = Config(run_env_setup=False)
         config.set_smart_llm_model("gpt-4-test")
         self.assertEqual(config.smart_llm_model, "gpt-4-test")
 
     def test_set_fast_token_limit(self):
-        config = Config()
+        config = Config(run_env_setup=False)
         config.set_fast_token_limit(5000)
         self.assertEqual(config.fast_token_limit, 5000)
 
     def test_set_smart_token_limit(self):
-        config = Config()
+        config = Config(run_env_setup=False)
         config.set_smart_token_limit(9000)
         self.assertEqual(config.smart_token_limit, 9000)
 
     def test_set_debug_mode(self):
-        config = Config()
+        config = Config(run_env_setup=False)
         config.set_debug_mode(True)
         self.assertTrue(config.debug_mode)
 
