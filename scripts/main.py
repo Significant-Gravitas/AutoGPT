@@ -186,7 +186,7 @@ def construct_prompt():
     if config.ai_name:
         logger.typewriter_log(
             f"Welcome back! ",
-            Fore.GREEN,
+            Fore.YELLOW,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
         should_continue = utils.clean_input(f"""Continue with the last settings?
