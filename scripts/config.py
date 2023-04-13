@@ -43,6 +43,7 @@ class Config(metaclass=Singleton):
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_embeddings_model = os.getenv("OPENAI_EMBEDDINGS_MODEL")
         self.use_azure = False
         self.use_azure = os.getenv("USE_AZURE") == 'True'
         if self.use_azure:
@@ -64,6 +65,8 @@ class Config(metaclass=Singleton):
 
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
+
+        self.memory_directory = os.getenv("MEMORY_DIRECTORY")
 
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
