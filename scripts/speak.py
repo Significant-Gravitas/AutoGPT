@@ -58,22 +58,28 @@ def gtts_speech(text):
         playsound("speech.mp3", True)
         os.remove("speech.mp3")
 
-def macos_tts_speech(text):
-    os.system(f'say "{text}"')
+def macos_tts_speech(text, voice_index=0):
+    if voice_index == 0:
+        os.system(f'say "{text}"')
+    else:
+        if voice_index == 1:
+            os.system(f'say -v "Ava (Premium)" "{text}"')
+        else:
+            os.system(f'say -v Samantha "{text}"')
 
 def say_text(text, voice_index=0):
 
     def speak():
         if not cfg.elevenlabs_api_key:
             if cfg.use_mac_os_tts == 'True':
-                macos_tts_speech(text)
+                macos_tts_speech(text, voice_index)
             else:
                 gtts_speech(text)
         else:
             success = eleven_labs_speech(text, voice_index)
             if not success:
                 gtts_speech(text)
-        
+
         queue_semaphore.release()
 
     queue_semaphore.acquire(True)
