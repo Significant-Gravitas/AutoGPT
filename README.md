@@ -111,8 +111,10 @@ cd Auto-GPT
 
 4. Install the required dependencies
 
-```bash
-pip install -r requirements.txt
+
+```
+pip install poetry
+poetry install
 ```
 
 5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVENLABS_API_KEY` as well.
@@ -137,7 +139,7 @@ pip install -r requirements.txt
 1. Run `autogpt` Python module in your terminal
 
 ```
-python -m autogpt
+poetry run python -m autogpt
 ```
 
 2. After each action, choose from options to authorize command(s),
@@ -154,7 +156,7 @@ Activity and error logs are located in the `./output/logs`
 To print out debug logs:
 
 ```
-python -m autogpt --debug
+poetry run python -m autogpt --debug
 ```
 
 ### Docker
@@ -193,7 +195,7 @@ python scripts/main.py --use-memory  <memory-backend>
 Use this to use TTS _(Text-to-Speech)_ for Auto-GPT
 
 ```bash
-python -m autogpt --speak
+poetry run python -m autogpt --speak
 ```
 
 ## OpenAI API Keys Configuration
