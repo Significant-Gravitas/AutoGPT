@@ -20,6 +20,8 @@ gTTS = "2.3.1"
 docker = "^6.0.1"
 duckduckgo-search = "^2.8.5"
 google-api-python-client = "^2.84.0"
+orjson = "^3.8.10"
+Pillow = "^9.5.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
