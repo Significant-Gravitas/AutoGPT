@@ -49,8 +49,6 @@ def execute_python_file(file):
 
     except Exception as e:
         return f"Error: {str(e)}"
-    
-
 
 def execute_shell(command_line):
 
