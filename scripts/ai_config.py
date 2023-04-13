@@ -2,6 +2,7 @@ import yaml
 import data
 import os
 
+
 class AIConfig:
     """
     A class object that contains the configuration information for the AI
@@ -42,7 +43,7 @@ class AIConfig:
            config_file (int): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
 
         Returns:
-            cls (object): A instance of given cls object
+            cls (object): An instance of given cls object
         """
 
         try:
@@ -80,7 +81,7 @@ class AIConfig:
             None
 
         Returns:
-            full_prompt (str): A string containing the intitial prompt for the user including the ai_name, ai_role and ai_goals.
+            full_prompt (str): A string containing the initial prompt for the user including the ai_name, ai_role and ai_goals.
         """
 
         prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
