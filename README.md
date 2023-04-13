@@ -166,7 +166,27 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
-## Redis Setup
+## Types of Memory
+
+AutoGPT comes with pluggable memory systems. By default it stores things in memory ("LocalCache") or disk (if a `memory_directory` is specified), but can be persisted to Pinecone (cloud hosted) or Redis (open source).
+
+### Local Setup
+
+By default, AutoGPT uses Chroma, which runs in-memory, with no setup needed.
+
+If you would like to persist Chroma to disk, you can specify your path to a memory directory (from root).
+
+```
+MEMORY_DIRECTORY=/path/to/persistence/directory
+```
+
+By default, AutoGPT also uses [Sentence Transformers](https://docs.trychroma.com/embeddings#default-sentence-transformers) to embed your data and queries (which doesn't cost anything), but you can also specify your choice of [OpenAI embedding model](https://platform.openai.com/docs/guides/embeddings/what-are-embeddings) (will use Azure's version instead if you set `USE_AZURE` env variable):
+
+```
+OPENAI_EMBEDDINGS_MODEL=text-embedding-ada-002
+```
+
+### Redis Setup
 
 Install docker desktop.
 
@@ -203,7 +223,7 @@ You can specify the memory index for redis using the following:
 MEMORY_INDEX=whatever
 ```
 
-## 🌲 Pinecone API Key Setup
+### Pinecone API Key Setup
 
 Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
 

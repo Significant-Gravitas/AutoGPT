@@ -4,14 +4,12 @@ from config import AbstractSingleton, Config
 import openai
 cfg = Config()
 
-
-def get_ada_embedding(text):
+def get_embedding(text, model_name="text-embedding-ada-002"):
     text = text.replace("\n", " ")
     if cfg.use_azure:
-        return openai.Embedding.create(input=[text], engine=cfg.azure_embeddigs_deployment_id, model="text-embedding-ada-002")["data"][0]["embedding"]
+        return openai.Embedding.create(input=[text], engine=cfg.azure_embeddigs_deployment_id, model=model_name)["data"][0]["embedding"]
     else:
-        return openai.Embedding.create(input=[text], model="text-embedding-ada-002")["data"][0]["embedding"]
-
+        return openai.Embedding.create(input=[text], model=model_name)["data"][0]["embedding"]
 
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod

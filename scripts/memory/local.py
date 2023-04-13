@@ -1,90 +1,56 @@
-import dataclasses
-import orjson
 from typing import Any, List, Optional
-import numpy as np
 import os
-from memory.base import MemoryProviderSingleton, get_ada_embedding
-
-
-EMBED_DIM = 1536
-SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
-
-
-def create_default_embeddings():
-    return np.zeros((0, EMBED_DIM)).astype(np.float32)
-
-
-@dataclasses.dataclass
-class CacheContent:
-    texts: List[str] = dataclasses.field(default_factory=list)
-    embeddings: np.ndarray = dataclasses.field(
-        default_factory=create_default_embeddings
-    )
-
+import uuid
+import datetime
+import chromadb
+from memory.base import MemoryProviderSingleton, get_embedding
 
 class LocalCache(MemoryProviderSingleton):
 
     # on load, load our database
     def __init__(self, cfg) -> None:
-        self.filename = f"{cfg.memory_index}.json"
-        if os.path.exists(self.filename):
-            try:
-                with open(self.filename, 'w+b') as f:
-                    file_content = f.read()
-                    if not file_content.strip():
-                        file_content = b'{}'
-                        f.write(file_content)
-
-                    loaded = orjson.loads(file_content)
-                    self.data = CacheContent(**loaded)
-            except orjson.JSONDecodeError:
-                print(f"Error: The file '{self.filename}' is not in JSON format.")
-                self.data = CacheContent()
+        self.persistence = cfg.memory_directory
+        if os.path.exists(self.persistence):
+            self.chromaClient = chromadb.Client(Settings(
+                chroma_db_impl="duckdb+parquet", # duckdb+parquet = persisted, duckdb = in-memory
+                persist_directory=self.persistence
+            ))
         else:
-            print(f"Warning: The file '{self.filename}' does not exist. Local memory would not be saved to a file.")
-            self.data = CacheContent()
+            # in memory
+            print(f"Warning: The directory '{self.persistence}' does not exist. Chroma memory would not be saved to a file.")
+            self.chromaClient = chromadb.Client()
+    self.chromaCollection = chroma_client.create_collection(name="autoGPT_collection")
+    # we will key off of cfg.openai_embeddings_model to determine if using sentence transformers or openai embeddings
+    self.useOpenAIEmbeddings = True if (cfg.openai_embeddings_model) else False
 
     def add(self, text: str):
-        """
-        Add text to our list of texts, add embedding as row to our
-            embeddings-matrix
-
-        Args:
-            text: str
-
-        Returns: None
-        """
-        if 'Command Error:' in text:
-            return ""
-        self.data.texts.append(text)
-
-        embedding = get_ada_embedding(text)
-
-        vector = np.array(embedding).astype(np.float32)
-        vector = vector[np.newaxis, :]
-        self.data.embeddings = np.concatenate(
-            [
-                self.data.embeddings,
-                vector,
-            ],
-            axis=0,
-        )
-
-        with open(self.filename, 'wb') as f:
-            out = orjson.dumps(
-                self.data,
-                option=SAVE_OPTIONS
+        current_time = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")
+        metadata = {"time_added": current_time}
+        if self.useOpenAIEmbeddings:
+            embeddings = get_embedding(text)
+            self.chromaCollection.add(
+                embeddings=[embeddings],
+                ids=[str(uuid.uuid4())],
+                metadatas=[metadata]
             )
-            f.write(out)
+        else:
+            self.chromaCollection.add(
+                documents=[text],
+                ids=[str(uuid.uuid4())],
+                metadatas=[metadata]
+            )
         return text
 
     def clear(self) -> str:
         """
-        Clears the redis server.
+        Resets the Chroma database.
 
-        Returns: A message indicating that the memory has been cleared.
+        Returns: A message indicating that the db has been cleared.
         """
-        self.data = CacheContent()
+        
+        chroma_client = self.chromaClient
+        chroma_client.reset()
+        self.chromaCollection = chroma_client.create_collection(name="autoGPT_collection")
         return "Obliviated"
 
     def get(self, data: str) -> Optional[List[Any]]:
@@ -96,29 +62,37 @@ class LocalCache(MemoryProviderSingleton):
 
         Returns: The most relevant data.
         """
-        return self.get_relevant(data, 1)
+        results = None
+        if self.useOpenAIEmbeddings:
+            embeddings = get_embedding(data)
+            results = self.collection.query(
+                query_embeddings=[data],
+                n_results=1
+            )
+        else:
+            results = self.collection.query(
+                query_texts=[data],
+                n_results=1
+            )
+        return results
 
     def get_relevant(self, text: str, k: int) -> List[Any]:
-        """"
-        matrix-vector mult to find score-for-each-row-of-matrix
-         get indices for top-k winning scores
-         return texts for those indices
-        Args:
-            text: str
-            k: int
-
-        Returns: List[str]
-        """
-        embedding = get_ada_embedding(text)
-
-        scores = np.dot(self.data.embeddings, embedding)
-
-        top_k_indices = np.argsort(scores)[-k:][::-1]
-
-        return [self.data.texts[i] for i in top_k_indices]
+        results = None
+        if self.useOpenAIEmbeddings:
+            embeddings = get_embedding(data)
+            results = self.collection.query(
+                query_embeddings=[data],
+                n_results=k
+            )
+        else:
+            results = self.collection.query(
+                query_texts=[data],
+                n_results=k
+            )
+        return results
 
     def get_stats(self):
         """
-        Returns: The stats of the local cache.
+        Returns: The number of items that have been added to the Chroma collection
         """
-        return len(self.data.texts), self.data.embeddings.shape
+        return self.chromaCollection.count()
