@@ -1,17 +1,20 @@
 import docker
 import os
+import subprocess
+
+
+WORKSPACE_FOLDER = "auto_gpt_workspace"
 
 
 def execute_python_file(file):
     """Execute a Python file in a Docker container and return the output"""
-    workspace_folder = "auto_gpt_workspace"
 
-    print (f"Executing file '{file}' in workspace '{workspace_folder}'")
+    print (f"Executing file '{file}' in workspace '{WORKSPACE_FOLDER}'")
 
     if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    file_path = os.path.join(workspace_folder, file)
+    file_path = os.path.join(WORKSPACE_FOLDER, file)
 
     if not os.path.isfile(file_path):
         return f"Error: File '{file}' does not exist."
@@ -26,7 +29,7 @@ def execute_python_file(file):
             'python:3.10',
             f'python {file}',
             volumes={
-                os.path.abspath(workspace_folder): {
+                os.path.abspath(WORKSPACE_FOLDER): {
                     'bind': '/workspace',
                     'mode': 'ro'}},
             working_dir='/workspace',
@@ -46,3 +49,22 @@ def execute_python_file(file):
 
     except Exception as e:
         return f"Error: {str(e)}"
+
+def execute_shell(command_line):
+
+    current_dir = os.getcwd()
+
+    if not WORKSPACE_FOLDER in current_dir: # Change dir into workspace if necessary
+        work_dir = os.path.join(os.getcwd(), WORKSPACE_FOLDER)
+        os.chdir(work_dir)
+
+    print (f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
+
+    result = subprocess.run(command_line, capture_output=True, shell=True)
+    output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+
+    # Change back to whatever the prior working dir was
+
+    os.chdir(current_dir)
+
+    return output
