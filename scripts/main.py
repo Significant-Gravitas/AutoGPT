@@ -18,9 +18,9 @@ from logger import logger
 import logging
 from prompt import get_prompt
 
-from telegram_chat import TelegramUtils
-
 cfg = Config()
+if cfg.speak_mode and not cfg.telegram_api_key:
+    from telegram_chat import TelegramUtils
 
 
 def check_openai_api_key():
