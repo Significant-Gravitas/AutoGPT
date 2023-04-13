@@ -6,6 +6,7 @@ Runs auto-gpt in a docker container
 # Install/Run
 
 ```
+cp ai_settings.sample ai_settings.yaml
 docker-compose up -d --build
 ```
 
@@ -25,3 +26,4 @@ You can use `docker logs autogpt` if you're not sure of the IP to connect to.
 * make sure that elevenlabs works (should be ok, I just haven't tried it yet)
 
 
+![Obligatory Screenshot](screenshot.png)
