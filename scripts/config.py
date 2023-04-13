@@ -51,7 +51,8 @@ class Config(metaclass=Singleton):
             self.openai_deployment_id = os.getenv("OPENAI_AZURE_DEPLOYMENT_ID")
             self.azure_chat_deployment_id = os.getenv("OPENAI_AZURE_CHAT_DEPLOYMENT_ID")
             self.azure_embeddigs_deployment_id = os.getenv("OPENAI_AZURE_EMBEDDINGS_DEPLOYMENT_ID")
-            openai.api_type = "azure"
+            openai.api_type = os.getenv("OPENAI_API_TYPE", "azure")
+
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
 
