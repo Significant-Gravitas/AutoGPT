@@ -1,0 +1,12 @@
+{
+    "method": "POST",
+    "url": "http://localhost:6060/api/v1/agents",
+    "headers": {},
+    "body": {
+        "ai_name": "suspended-GPT",
+        "ai_role": "an AI designed to be suspended immediately after it starts",
+        "ai_goals": [
+            "Being suspended immediately after it starts."
+        ]
+    }
+}
