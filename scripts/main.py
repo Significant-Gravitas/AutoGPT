@@ -348,6 +348,7 @@ def parse_arguments():
         (validated, message) = utils.validate_yaml_file(file)
         if not validated:
             logger.typewriter_log("FAILED FILE VALIDATION", Fore.RED, message)
+            logger.double_check()
             exit(1)
 
         logger.typewriter_log("Using AI Settings File:", Fore.GREEN, file)
