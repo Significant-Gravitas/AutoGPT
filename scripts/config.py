@@ -56,11 +56,18 @@ class Config(metaclass=Singleton):
             openai.api_version = self.openai_api_version
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
-        self.elevenlabs_voice_2_id = os.getenv("ELEVENLABS_VOICE_2_ID")
+
+        self.use_mac_os_voice_input = False
+        self.use_mac_os_voice_input = os.getenv("USE_MAC_OS_VOICE_INPUT")
 
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
+
+        self.telegram_api_key = os.getenv("TELEGRAM_API_KEY")
+        self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+        self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
+        self.elevenlabs_voice_2_id = os.getenv("ELEVENLABS_VOICE_2_ID")
 
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
