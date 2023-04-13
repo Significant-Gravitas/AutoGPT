@@ -7,7 +7,7 @@ import speak
 from config import Config
 import ai_functions as ai
 from file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
-from execute_code import execute_python_file
+from execute_code import execute_python_file, execute_shell
 from json_parser import fix_and_parse_json
 from image_gen import generate_image
 from duckduckgo_search import ddg
@@ -23,6 +23,7 @@ def is_valid_int(value):
         return True
     except ValueError:
         return False
+
 
 def get_command(response):
     """Parse the response and return the command name and arguments"""
@@ -103,6 +104,11 @@ def execute_command(command_name, arguments):
             return ai.write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
+        elif command_name == "execute_shell":
+            if cfg.execute_local_commands:
+                return execute_shell(arguments["command_line"])
+            else:
+                return "You are not allowed to run local shell commands. To execute shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' in your config. Do not attempt to bypass the restriction."
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
         elif command_name == "do_nothing":
@@ -129,6 +135,7 @@ def google_search(query, num_results=8):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
+
 
 def google_official_search(query, num_results=8):
     """Return the results of a google search using the official Google API"""
@@ -165,6 +172,7 @@ def google_official_search(query, num_results=8):
 
     # Return the list of search result URLs
     return search_results_links
+
 
 def browse_website(url, question):
     """Browse a website and return the summary and links"""
