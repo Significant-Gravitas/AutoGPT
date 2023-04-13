@@ -7,9 +7,11 @@ package-lock.json
 auto_gpt_workspace/*
 *.mpeg
 .env
+azure.yaml
 *venv/*
 outputs/*
 ai_settings.yaml
+last_run_ai_settings.yaml
 .vscode
 .idea/*
 auto-gpt.json
@@ -19,3 +21,6 @@ log.txt
 .coverage
 coverage.xml
 htmlcov/
+
+# For Macs Dev Environs: ignoring .Desktop Services_Store
+.DS_Store
