@@ -1,9 +1,8 @@
+from typing import List, Optional
 import json
-from typing import List
-
-from call_ai_function import call_ai_function
 from config import Config
-
+from call_ai_function import call_ai_function
+from json_parser import fix_and_parse_json
 cfg = Config()
 
 
@@ -49,7 +48,6 @@ def improve_code(suggestions: List[str], code: str) -> str:
 
     result_string = call_ai_function(function_string, args, description_string)
     return result_string
-
 
 def write_tests(code: str, focus: List[str]) -> str:
     """
