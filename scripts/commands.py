@@ -1,5 +1,6 @@
 import browse
 import json
+import subprocess
 from memory import get_memory
 import datetime
 import agent_manager as agents
@@ -63,6 +64,8 @@ def execute_command(command_name, arguments):
                 return google_official_search(arguments["input"])
             else:
                 return google_search(arguments["input"])
+        elif command_name == "execute_command_list":
+            return execute_command_list(arguments["commands"], arguments["cwd"])
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
@@ -192,6 +195,16 @@ def get_hyperlinks(url):
     link_list = browse.scrape_links(url)
     return link_list
 
+def execute_command_list(commands, cwd):
+    full_command = ' && '.join(commands)
+    command_result = subprocess.run(full_command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True)
+    result = f"""Executed commands with """
+    if command_result.returncode == 0:
+        result += f"""Output: {command_result.stdout}"""
+    else:
+        result += f"""Error: {command_result.stderr}"""
+    
+    return result
 
 def commit_memory(string):
     """Commit a string to memory"""
