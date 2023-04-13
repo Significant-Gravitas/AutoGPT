@@ -1,7 +1,10 @@
 """Base class for memory providers."""
-import abc
-from config import AbstractSingleton, Config
 import openai
+
+import abc
+
+from scripts.config import AbstractSingleton, Config
+
 
 cfg = Config()
 
@@ -31,7 +34,7 @@ class MemoryProviderSingleton(AbstractSingleton):
         pass
 
     @abc.abstractmethod
-    def get_relevant(self, data, num_relevant=5):
+    def get_relevant(self, data: str, num_relevant: int = 5):
         pass
 
     @abc.abstractmethod

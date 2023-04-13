@@ -19,3 +19,4 @@ coverage
 flake8
 numpy~=1.24.2
 pytest~=7.3.0
+pytest-mock~=3.10.0

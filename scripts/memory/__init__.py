@@ -1,12 +1,12 @@
-from memory.local import LocalCache
-from memory.no_memory import NoMemory
+from scripts.memory.local import LocalCache
+from scripts.memory.no_memory import NoMemory
 
 # List of supported memory backends
 # Add a backend to this list if the import attempt is successful
 supported_memory = ['local']
 
 try:
-    from memory.redismem import RedisMemory
+    from scripts.memory.redismem import RedisMemory
 
     supported_memory.append('redis')
 except ImportError:
@@ -14,7 +14,7 @@ except ImportError:
     RedisMemory = None
 
 try:
-    from memory.pinecone import PineconeMemory
+    from scripts.memory.pinecone import PineconeMemory
 
     supported_memory.append('pinecone')
 except ImportError:

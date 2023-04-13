@@ -1,9 +1,6 @@
-import os
-import sys
+import unittest
 
-# Probably a better way:
-sys.path.append(os.path.abspath('../scripts'))
-from memory.local import LocalCache
+from scripts.memory.local import LocalCache
 
 
 def mock_config():

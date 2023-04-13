@@ -1,6 +1,8 @@
 import tiktoken
 from typing import List, Dict
 
+import warnings
+
 
 def count_message_tokens(messages: List[Dict[str, str]], model: str = "gpt-3.5-turbo-0301") -> int:
     """
@@ -16,7 +18,7 @@ def count_message_tokens(messages: List[Dict[str, str]], model: str = "gpt-3.5-t
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
-        logger.warn("Warning: model not found. Using cl100k_base encoding.")
+        warnings.warn("Warning: model not found. Using cl100k_base encoding.")
         encoding = tiktoken.get_encoding("cl100k_base")
     if model == "gpt-3.5-turbo":
         # !Node: gpt-3.5-turbo may change over time. Returning num tokens assuming gpt-3.5-turbo-0301.")

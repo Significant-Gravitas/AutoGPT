@@ -11,8 +11,6 @@ from execute_code import execute_python_file, execute_shell
 from json_parser import fix_and_parse_json
 from image_gen import generate_image
 from duckduckgo_search import ddg
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
 cfg = Config()
 
@@ -165,9 +163,9 @@ def google_official_search(query, num_results=8):
         error_details = json.loads(e.content.decode())
 
         # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error",
-                                                                                                        {}).get(
-            "message", ""):
+        error_message = error_details.get("error", {}).get("message", "")
+        error_code = error_details.get("error", {}).get("code")
+        if error_code == 403 and "invalid API key" in error_message:
             return "Error: The provided Google API key is invalid or missing."
         else:
             return f"Error: {e}"

@@ -33,9 +33,9 @@ class AIConfig:
     SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
 
     @classmethod
-    def load(cls: object, config_file: str = SAVE_FILE) -> object:
+    def load(cls: object, config_file: str = SAVE_FILE) -> "AIConfig":
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from yaml file if yaml file exists,
+        Returns an AIConfig with parameters (ai_name, ai_role, ai_goals) loaded from yaml file if yaml file exists,
         else returns class with no parameters.
 
         Parameters:

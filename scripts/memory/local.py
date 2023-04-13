@@ -1,9 +1,11 @@
 import dataclasses
-import orjson
 from typing import Any, List, Optional
-import numpy as np
 import os
-from memory.base import MemoryProviderSingleton, get_ada_embedding
+
+import orjson
+import numpy as np
+
+from scripts.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 
 EMBED_DIM = 1536
@@ -98,22 +100,22 @@ class LocalCache(MemoryProviderSingleton):
         """
         return self.get_relevant(data, 1)
 
-    def get_relevant(self, text: str, k: int) -> List[Any]:
+    def get_relevant(self, data: str, num_relevant: int = 5) -> List[Any]:
         """"
         matrix-vector mult to find score-for-each-row-of-matrix
          get indices for top-k winning scores
          return texts for those indices
         Args:
-            text: str
-            k: int
+            data: str
+            num_relevant: int
 
         Returns: List[str]
         """
-        embedding = get_ada_embedding(text)
+        embedding = get_ada_embedding(data)
 
         scores = np.dot(self.data.embeddings, embedding)
 
-        top_k_indices = np.argsort(scores)[-k:][::-1]
+        top_k_indices = np.argsort(scores)[-num_relevant:][::-1]
 
         return [self.data.texts[i] for i in top_k_indices]
 

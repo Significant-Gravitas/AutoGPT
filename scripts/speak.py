@@ -3,10 +3,11 @@ from playsound import playsound
 import requests
 from config import Config
 
-cfg = Config()
 import gtts
 import threading
 from threading import Lock, Semaphore
+
+cfg = Config()
 
 # Default voice IDs
 default_voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
