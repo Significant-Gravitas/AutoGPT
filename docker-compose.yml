@@ -10,9 +10,8 @@ services:
     env_file:
       - .env
     volumes:
-      - "./autogpt:/app"
-      - ".env:/app/.env"
-    profiles: ["exclude-from-up"]
+      - "./:/app"
+    profiles: ["exclude-from-up"] # Run and attach to container instead with: `docker-compose run auto-gpt`
 
   redis:
     image: "redis/redis-stack-server:latest"
