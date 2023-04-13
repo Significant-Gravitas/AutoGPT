@@ -7,9 +7,6 @@ import traceback
 
 import chat
 import commands as cmd
-import utils
-from memory import get_memory, get_supported_memory_backends
-import data
 import speak
 import telegram_chat
 import utils
@@ -18,18 +15,12 @@ from ai_config import AIConfig
 from colorama import Fore, Style
 from config import Config
 from json_parser import fix_and_parse_json
+from logger import logger
+from memory import get_memory, get_supported_memory_backends
+from prompt import get_prompt
 from telegram_chat import TelegramUtils
 
-from ai_config import AIConfig
-import traceback
-import yaml
-import argparse
-from logger import logger
-import logging
-from prompt import get_prompt
-
 cfg = Config()
-
 
 
 def check_openai_api_key():
@@ -41,7 +32,6 @@ def check_openai_api_key():
         )
         print("You can get your key from https://beta.openai.com/account/api-keys")
         exit(1)
-
 
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
@@ -75,7 +65,6 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
         json_string = {}
 
     return json_string
-
 
 
 def print_assistant_thoughts(assistant_reply):
@@ -306,13 +295,20 @@ def parse_arguments():
     cfg.set_speak_mode(False)
 
     parser = argparse.ArgumentParser(description='Process arguments.')
-    parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
-    parser.add_argument('--continuous-limit', '-l', type=int, dest="continuous_limit", help='Defines the number of times to run in continuous mode')
-    parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
-    parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
-    parser.add_argument('--gpt3only', action='store_true', help='Enable GPT3.5 Only Mode')
-    parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
-    parser.add_argument('--use-memory', '-m', dest="memory_type", help='Defines which Memory backend to use')
+    parser.add_argument('--continuous', action='store_true',
+                        help='Enable Continuous Mode')
+    parser.add_argument('--continuous-limit', '-l', type=int, dest="continuous_limit",
+                        help='Defines the number of times to run in continuous mode')
+    parser.add_argument('--speak', action='store_true',
+                        help='Enable Speak Mode')
+    parser.add_argument('--debug', action='store_true',
+                        help='Enable Debug Mode')
+    parser.add_argument('--gpt3only', action='store_true',
+                        help='Enable GPT3.5 Only Mode')
+    parser.add_argument('--gpt4only', action='store_true',
+                        help='Enable GPT4 Only Mode')
+    parser.add_argument('--use-memory', '-m', dest="memory_type",
+                        help='Defines which Memory backend to use')
     args = parser.parse_args()
 
     if args.debug:
@@ -359,8 +355,10 @@ def parse_arguments():
         chosen = args.memory_type
         if not chosen in supported_memory:
 
-            logger.typewriter_log("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
-            logger.typewriter_log(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
+            logger.typewriter_log(
+                "ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
+            logger.typewriter_log(f"Defaulting to: ",
+                                  Fore.YELLOW, cfg.memory_backend)
         else:
             cfg.memory_backend = chosen
 
@@ -387,10 +385,11 @@ def main():
     # Interaction Loop
     loop_count = 0
     while True:
-         # Discontinue if continuous limit is reached
+        # Discontinue if continuous limit is reached
         loop_count += 1
         if cfg.continuous_mode and cfg.continuous_limit > 0 and loop_count > cfg.continuous_limit:
-            logger.typewriter_log("Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}")
+            logger.typewriter_log(
+                "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}")
             break
 
         # Send message to AI, get response
@@ -447,10 +446,12 @@ def main():
                     break
                 elif console_input.lower().startswith("y -"):
                     try:
-                        next_action_count = abs(int(console_input.split(" ")[1]))
+                        next_action_count = abs(
+                            int(console_input.split(" ")[1]))
                         user_input = "GENERATE NEXT COMMAND JSON"
                     except ValueError:
-                        print("Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
+                        print(
+                            "Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
                         continue
                     break
                 elif console_input.lower() == "n":
@@ -495,13 +496,15 @@ def main():
         # Check if there's a result from the command append it to the message
         # history
         if result is not None:
-            full_message_history.append(chat.create_chat_message("system", result))
+            full_message_history.append(
+                chat.create_chat_message("system", result))
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
         else:
             full_message_history.append(
                 chat.create_chat_message(
                     "system", "Unable to execute command"))
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+            logger.typewriter_log("SYSTEM: ", Fore.YELLOW,
+                                  "Unable to execute command")
 
 
 if __name__ == "__main__":
