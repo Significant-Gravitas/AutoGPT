@@ -2,7 +2,6 @@
 import abc
 from config import AbstractSingleton, Config
 import openai
-cfg = Config()
 
 cfg = Config()
 
