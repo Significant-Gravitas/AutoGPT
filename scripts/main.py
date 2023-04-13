@@ -310,15 +310,14 @@ def parse_arguments():
         supported_memory = get_supported_memory_backends()
         chosen = args.memory_type
         if not chosen in supported_memory:
-            print_to_console("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
-            print_to_console(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
+            logger.typewriter_log("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
+            logger.typewriter_log(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
         else:
             cfg.memory_backend = chosen
 
 
 # TODO: fill in llm values here
 check_openai_api_key()
-cfg = Config()
 parse_arguments()
 logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
 ai_name = ""
@@ -372,7 +371,7 @@ while True:
             flush=True)
         while True:
             console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-            if console_input.lower() == "y":
+            if console_input.lower().rstrip() == "y":
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break
             elif console_input.lower().startswith("y -"):
