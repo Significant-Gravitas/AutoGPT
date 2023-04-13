@@ -18,3 +18,4 @@ Pillow
 weaviate-client==3.15.5
 coverage
 flake8
+numpy
