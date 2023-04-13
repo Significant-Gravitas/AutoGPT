@@ -1,6 +1,7 @@
 import yaml
 from colorama import Fore
 
+
 def clean_input(prompt: str=''):
     try:
         return input(prompt)
