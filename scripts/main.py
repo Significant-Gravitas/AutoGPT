@@ -214,7 +214,7 @@ def prompt_user():
 
 
 def create_config(continuous: bool, continuous_limit: int, speak: bool, debug: bool, gpt3only: bool, gpt4only: bool, memory_type: Optional[str]):
-    """Parses the arguments passed to the script"""
+    """Create the config file"""
     global cfg
     cfg.set_debug_mode(False)
     cfg.set_continuous_mode(False)
