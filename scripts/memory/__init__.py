@@ -1,16 +1,22 @@
 from memory.local import LocalCache
+
+# List of supported memory backends
+# Add a backend to this list if the import attempt is successful
+supported_memory = ['local']
+
 try:
     from memory.redismem import RedisMemory
+    supported_memory.append('redis')
 except ImportError:
     print("Redis not installed. Skipping import.")
     RedisMemory = None
 
 try:
     from memory.pinecone import PineconeMemory
+    supported_memory.append('pinecone')
 except ImportError:
     print("Pinecone not installed. Skipping import.")
     PineconeMemory = None
-
 
 def get_memory(cfg, init=False):
     memory = None
@@ -34,6 +40,9 @@ def get_memory(cfg, init=False):
         if init:
             memory.clear()
     return memory
+
+def get_supported_memory_backends():
+    return supported_memory
 
 
 __all__ = [

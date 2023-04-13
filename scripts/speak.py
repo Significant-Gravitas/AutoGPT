@@ -90,7 +90,6 @@ def macos_tts_speech(text, voice_index=0):
 
 def say_text(text, voice_index=0):
 
-    
     def speak():
         if not cfg.elevenlabs_api_key:
             if cfg.use_mac_os_tts == 'True':
@@ -101,7 +100,7 @@ def say_text(text, voice_index=0):
             success = eleven_labs_speech(text, voice_index)
             if not success:
                 gtts_speech(text)
-                
+
         queue_semaphore.release()
 
     queue_semaphore.acquire(True)
