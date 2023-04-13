@@ -54,17 +54,19 @@ def execute_python_file(file):
 
 def execute_shell(command_line):
 
-    old_dir = os.getcwd()
+    current_dir = os.getcwd()
 
-    workdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', WORKSPACE_FOLDER))
+    if not WORKSPACE_FOLDER in current_dir: # Change dir into workspace if necessary
+        work_dir = os.path.join(os.getcwd(), WORKSPACE_FOLDER)
+        os.chdir(work_dir)
 
-    print (f"Executing command '{command_line}' in working directory '{workdir}'")
-
-    os.chdir(workdir)
+    print (f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
     result = subprocess.run(command_line, capture_output=True, shell=True)
-    output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}";
+    output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
 
-    os.chdir(old_dir)
+    # Change back to whatever the prior working dir was
+
+    os.chdir(current_dir)
 
     return output
