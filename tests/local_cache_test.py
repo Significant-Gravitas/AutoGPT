@@ -1,10 +1,12 @@
 import os
 import sys
+
 # Probably a better way:
 sys.path.append(os.path.abspath('../scripts'))
 from memory.local import LocalCache
 
-def MockConfig():
+
+def mock_config():
     return type('MockConfig', (object,), {
         'debug_mode': False,
         'continuous_mode': False,
@@ -12,10 +14,11 @@ def MockConfig():
         'memory_index': 'auto-gpt',
     })
 
+
 class TestLocalCache(unittest.TestCase):
 
-    def setUp(self):
-        self.cfg = MockConfig()
+    def set_up(self):
+        self.cfg = mock_config()
         self.cache = LocalCache(self.cfg)
 
     def test_add(self):

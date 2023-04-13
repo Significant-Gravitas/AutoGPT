@@ -2,6 +2,7 @@ import os
 from playsound import playsound
 import requests
 from config import Config
+
 cfg = Config()
 import gtts
 import threading
@@ -28,8 +29,9 @@ tts_headers = {
     "xi-api-key": cfg.elevenlabs_api_key
 }
 
-mutex_lock = Lock() # Ensure only one sound is played at a time
-queue_semaphore = Semaphore(1) # The amount of sounds to queue before blocking the main thread
+mutex_lock = Lock()  # Ensure only one sound is played at a time
+queue_semaphore = Semaphore(1)  # The amount of sounds to queue before blocking the main thread
+
 
 def eleven_labs_speech(text, voice_index=0):
     """Speak text using elevenlabs.io's API"""
@@ -51,12 +53,14 @@ def eleven_labs_speech(text, voice_index=0):
         print("Response content:", response.content)
         return False
 
+
 def gtts_speech(text):
     tts = gtts.gTTS(text)
     with mutex_lock:
         tts.save("speech.mp3")
         playsound("speech.mp3", True)
         os.remove("speech.mp3")
+
 
 def macos_tts_speech(text, voice_index=0):
     if voice_index == 0:
@@ -67,8 +71,8 @@ def macos_tts_speech(text, voice_index=0):
         else:
             os.system(f'say -v Samantha "{text}"')
 
-def say_text(text, voice_index=0):
 
+def say_text(text, voice_index=0):
     def speak():
         if not cfg.elevenlabs_api_key:
             if cfg.use_mac_os_tts == 'True':

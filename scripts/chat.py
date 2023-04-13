@@ -9,6 +9,7 @@ import logging
 
 cfg = Config()
 
+
 def create_chat_message(role, content):
     """
     Create a chat message with the given role and content.
@@ -63,7 +64,7 @@ def chat_with_ai(
             Returns:
             str: The AI's response.
             """
-            model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
+            model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
 
             logger.debug(f"Token limit: {token_limit}")
@@ -82,7 +83,8 @@ def chat_with_ai(
                 next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
                     prompt, relevant_memory, full_message_history, model)
 
-            current_tokens_used += token_counter.count_message_tokens([create_chat_message("user", user_input)], model) # Account for user input (appended later)
+            current_tokens_used += token_counter.count_message_tokens([create_chat_message("user", user_input)],
+                                                                      model)  # Account for user input (appended later)
 
             while next_message_to_add_index >= 0:
                 # print (f"CURRENT TOKENS USED: {current_tokens_used}")

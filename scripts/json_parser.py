@@ -28,8 +28,8 @@ JSON_SCHEMA = """
 
 
 def fix_and_parse_json(
-    json_str: str,
-    try_to_fix_with_gpt: bool = True
+        json_str: str,
+        try_to_fix_with_gpt: bool = True
 ) -> Union[str, Dict[Any, Any]]:
     """Fix and parse JSON string"""
     try:
@@ -52,15 +52,15 @@ def fix_and_parse_json(
         brace_index = json_str.index("{")
         json_str = json_str[brace_index:]
         last_brace_index = json_str.rindex("}")
-        json_str = json_str[:last_brace_index+1]
+        json_str = json_str[:last_brace_index + 1]
         return json.loads(json_str)
     # Can throw a ValueError if there is no "{" or "}" in the json_str
     except (json.JSONDecodeError, ValueError) as e:  # noqa: F841
         if try_to_fix_with_gpt:
             logger.warn("Warning: Failed to parse AI output, attempting to fix."
-                  "\n If you see this warning frequently, it's likely that"
-                  " your prompt is confusing the AI. Try changing it up"
-                  " slightly.")
+                        "\n If you see this warning frequently, it's likely that"
+                        " your prompt is confusing the AI. Try changing it up"
+                        " slightly.")
             # Now try to fix this up using the ai_functions
             ai_fixed_json = fix_json(json_str, JSON_SCHEMA)
 
@@ -80,11 +80,11 @@ def fix_json(json_str: str, schema: str) -> str:
     # Try to fix the JSON using GPT:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
-    description_string = "Fixes the provided JSON string to make it parseable"\
-        " and fully compliant with the provided schema.\n If an object or"\
-        " field specified in the schema isn't contained within the correct"\
-        " JSON, it is omitted.\n This function is brilliant at guessing"\
-        " when the format is incorrect."
+    description_string = "Fixes the provided JSON string to make it parseable" \
+                         " and fully compliant with the provided schema.\n If an object or" \
+                         " field specified in the schema isn't contained within the correct" \
+                         " JSON, it is omitted.\n This function is brilliant at guessing" \
+                         " when the format is incorrect."
 
     # If it doesn't already start with a "`", add one:
     if not json_str.startswith("`"):

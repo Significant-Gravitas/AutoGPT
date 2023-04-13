@@ -1,8 +1,9 @@
 from config import Config
+from llm_utils import create_chat_completion
 
 cfg = Config()
 
-from llm_utils import create_chat_completion
+
 # This is a magic function that can do anything with no-code. See
 # https://github.com/Torantulino/AI-Functions for more info.
 def call_ai_function(function, args, description, model=None):
@@ -16,7 +17,8 @@ def call_ai_function(function, args, description, model=None):
     messages = [
         {
             "role": "system",
-            "content": f"You are now the following python function: ```# {description}\n{function}```\n\nOnly respond with your `return` value.",
+            "content": f"You are now the following python function: ```# {description}\n{function}```\n\nOnly respond "
+                       f"with your `return` value.",
         },
         {"role": "user", "content": args},
     ]

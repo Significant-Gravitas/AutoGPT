@@ -11,8 +11,8 @@ cfg = Config()
 
 working_directory = "auto_gpt_workspace"
 
-def generate_image(prompt):
 
+def generate_image(prompt):
     filename = str(uuid.uuid4()) + ".jpg"
 
     # DALL-E
@@ -39,10 +39,10 @@ def generate_image(prompt):
     # STABLE DIFFUSION
     elif cfg.image_provider == 'sd':
 
-        API_URL = "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
+        api_url = "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
         headers = {"Authorization": "Bearer " + cfg.huggingface_api_token}
 
-        response = requests.post(API_URL, headers=headers, json={
+        response = requests.post(api_url, headers=headers, json={
             "inputs": prompt,
         })
 

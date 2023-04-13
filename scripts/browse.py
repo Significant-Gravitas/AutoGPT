@@ -129,7 +129,8 @@ def create_message(chunk, question):
     """Create a message for the user to summarize a chunk of text"""
     return {
         "role": "user",
-        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
+        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" "
+                   f"-- if the question cannot be answered using the text, please summarize the text."
     }
 
 

@@ -75,7 +75,7 @@ def balance_braces(json_string: str) -> str:
     try:
         json.loads(json_string)
         return json_string
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         pass
 
 
@@ -121,7 +121,6 @@ def correct_json(json_str: str) -> str:
             except json.JSONDecodeError as e:
                 if cfg.debug_mode:
                     print('json loads error - add quotes', e)
-                error_message = str(e)
         if balanced_str := balance_braces(json_str):
             return balanced_str
     return json_str

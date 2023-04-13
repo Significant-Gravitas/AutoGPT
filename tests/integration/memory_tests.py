@@ -1,20 +1,20 @@
 import unittest
 import random
 import string
-import sys
-from pathlib import Path
+
 # Add the parent directory of the 'scripts' folder to the Python path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent / 'scripts'))
-from config import Config
-from memory.local import LocalCache
+from scripts.config import Config
+from scripts.memory.local import LocalCache
+
+
+def random_string(length):
+    return ''.join(random.choice(string.ascii_letters) for _ in range(length))
+
 
 class TestLocalCache(unittest.TestCase):
 
-    def random_string(self, length):
-        return ''.join(random.choice(string.ascii_letters) for _ in range(length))
-
     def setUp(self):
-        cfg = cfg = Config()
+        cfg = Config()
         self.cache = LocalCache(cfg)
         self.cache.clear()
 
@@ -31,7 +31,7 @@ class TestLocalCache(unittest.TestCase):
 
         # Add some random strings to test noise
         for _ in range(5):
-            self.cache.add(self.random_string(10))
+            self.cache.add(random_string(10))
 
     def test_get_relevant(self):
         query = "I'm interested in artificial intelligence and NLP"

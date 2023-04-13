@@ -2,6 +2,7 @@ import yaml
 import data
 import os
 
+
 class AIConfig:
     """
     A class object that contains the configuration information for the AI
@@ -12,7 +13,7 @@ class AIConfig:
         ai_goals (list): The list of objectives the AI is supposed to complete.
     """
 
-    def __init__(self, ai_name: str="", ai_role: str="", ai_goals: list=[]) -> None:
+    def __init__(self, ai_name: str = "", ai_role: str = "", ai_goals: list = []) -> None:
         """
         Initialize a class instance
 
@@ -32,7 +33,7 @@ class AIConfig:
     SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
 
     @classmethod
-    def load(cls: object, config_file: str=SAVE_FILE) -> object:
+    def load(cls: object, config_file: str = SAVE_FILE) -> object:
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from yaml file if yaml file exists,
         else returns class with no parameters.
@@ -57,7 +58,7 @@ class AIConfig:
 
         return cls(ai_name, ai_role, ai_goals)
 
-    def save(self, config_file: str=SAVE_FILE) -> None:
+    def save(self, config_file: str = SAVE_FILE) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
@@ -77,18 +78,19 @@ class AIConfig:
         Returns a prompt to the user with the class information in an organized fashion.
 
         Parameters:
-            None
+            self: AIConfig
 
-        Returns:
-            full_prompt (str): A string containing the initial prompt for the user including the ai_name, ai_role and ai_goals.
+        Returns: full_prompt (str): A string containing the initial prompt for the user including the ai_name,
+        ai_role and ai_goals.
         """
 
-        prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+        prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to 
+        your strengths as an LLM and pursue simple strategies with no legal complications."""
 
         # Construct full prompt
         full_prompt = f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
-            full_prompt += f"{i+1}. {goal}\n"
+            full_prompt += f"{i + 1}. {goal}\n"
 
         full_prompt += f"\n\n{data.load_prompt()}"
         return full_prompt

@@ -3,7 +3,7 @@ from typing import Optional, List, Any
 from memory.base import MemoryProviderSingleton
 
 class NoMemory(MemoryProviderSingleton):
-    def __init__(self, cfg):
+    def __init__(self):
         """
         Initializes the NoMemory provider.
 
@@ -14,18 +14,17 @@ class NoMemory(MemoryProviderSingleton):
         """
         pass
 
-    def add(self, data: str) -> str:
+    @staticmethod
+    def add() -> str:
         """
         Adds a data point to the memory. No action is taken in NoMemory.
-
-        Args:
-            data: The data to add.
 
         Returns: An empty string.
         """
         return ""
 
-    def get(self, data: str) -> Optional[List[Any]]:
+    @staticmethod
+    def get() -> Optional[List[Any]]:
         """
         Gets the data from the memory that is most relevant to the given data.
         NoMemory always returns None.
@@ -37,7 +36,8 @@ class NoMemory(MemoryProviderSingleton):
         """
         return None
 
-    def clear(self) -> str:
+    @staticmethod
+    def clear() -> str:
         """
         Clears the memory. No action is taken in NoMemory.
 
@@ -45,7 +45,8 @@ class NoMemory(MemoryProviderSingleton):
         """
         return ""
 
-    def get_relevant(self, data: str, num_relevant: int = 5) -> Optional[List[Any]]:
+    @staticmethod
+    def get_relevant() -> Optional[List[Any]]:
         """
         Returns all the data in the memory that is relevant to the given data.
         NoMemory always returns None.
@@ -58,7 +59,8 @@ class NoMemory(MemoryProviderSingleton):
         """
         return None
 
-    def get_stats(self):
+    @staticmethod
+    def get_stats():
         """
         Returns: An empty dictionary as there are no stats in NoMemory.
         """

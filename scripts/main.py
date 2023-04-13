@@ -1,5 +1,4 @@
 import json
-import random
 import commands as cmd
 import utils
 from memory import get_memory, get_supported_memory_backends
@@ -7,7 +6,6 @@ import data
 import chat
 from colorama import Fore, Style
 from spinner import Spinner
-import time
 import speak
 from config import Config
 from json_parser import fix_and_parse_json
@@ -20,6 +18,7 @@ import logging
 
 cfg = Config()
 
+
 def check_openai_api_key():
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     if not cfg.openai_api_key:
@@ -30,9 +29,10 @@ def check_openai_api_key():
         print("You can get your key from https://beta.openai.com/account/api-keys")
         exit(1)
 
+
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
     if cfg.speak_mode and cfg.debug_mode:
-      speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
+        speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
     logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
 
     try:
@@ -46,17 +46,18 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
             json_string = json_match.group(0)
             logger.typewriter_log(title="Apparently json was fixed.", title_color=Fore.GREEN)
             if cfg.speak_mode and cfg.debug_mode:
-               speak.say_text("Apparently json was fixed.")
+                speak.say_text("Apparently json was fixed.")
         else:
             raise ValueError("No valid JSON object found")
 
-    except (json.JSONDecodeError, ValueError) as e:
+    except (json.JSONDecodeError, ValueError):
         if cfg.speak_mode:
             speak.say_text("Didn't work. I will have to ignore this response then.")
         logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
         json_string = {}
 
     return json_string
+
 
 def print_assistant_thoughts(assistant_reply):
     """Prints the assistant's thoughts to the console"""
@@ -66,7 +67,7 @@ def print_assistant_thoughts(assistant_reply):
         try:
             # Parse and print Assistant response
             assistant_reply_json = fix_and_parse_json(assistant_reply)
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
             assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
             assistant_reply_json = fix_and_parse_json(assistant_reply_json)
@@ -75,7 +76,7 @@ def print_assistant_thoughts(assistant_reply):
         if isinstance(assistant_reply_json, str):
             try:
                 assistant_reply_json = json.loads(assistant_reply_json)
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 logger.error("Error: Invalid JSON\n", assistant_reply)
                 assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply_json)
 
@@ -115,13 +116,14 @@ def print_assistant_thoughts(assistant_reply):
             speak.say_text(assistant_thoughts_speak)
 
         return assistant_reply_json
-    except json.decoder.JSONDecodeError as e:
+    except json.decoder.JSONDecodeError:
         logger.error("Error: Invalid JSON\n", assistant_reply)
         if cfg.speak_mode:
-            speak.say_text("I have received an invalid JSON response from the OpenAI API. I cannot ignore this response.")
+            speak.say_text(
+                "I have received an invalid JSON response from the OpenAI API. I cannot ignore this response.")
 
     # All other errors, return "Error: + error message"
-    except Exception as e:
+    except Exception:
         call_stack = traceback.format_exc()
         logger.error("Error: \n", call_stack)
 
@@ -152,21 +154,23 @@ def load_variables(config_file="config.yaml"):
 
     if not ai_goals:
         print("Enter up to 5 goals for your AI: ")
-        print("For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
+        print(
+            "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'")
         print("Enter nothing to load defaults, enter nothing when finished.")
         ai_goals = []
         for i in range(5):
-            ai_goal = utils.clean_input(f"Goal {i+1}: ")
+            ai_goal = utils.clean_input(f"Goal {i + 1}: ")
             if ai_goal == "":
                 break
             ai_goals.append(ai_goal)
         if len(ai_goals) == 0:
-            ai_goals = ["Increase net worth", "Grow Twitter Account", "Develop and manage multiple businesses autonomously"]
+            ai_goals = ["Increase net worth", "Grow Twitter Account",
+                        "Develop and manage multiple businesses autonomously"]
 
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
     with open(config_file, "w") as file:
-        documents = yaml.dump(config, file)
+        yaml.dump(config, file)
 
     prompt = data.load_prompt()
     prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."""
@@ -174,7 +178,7 @@ def load_variables(config_file="config.yaml"):
     # Construct full prompt
     full_prompt = f"You are {ai_name}, {ai_role}\n{prompt_start}\n\nGOALS:\n\n"
     for i, goal in enumerate(ai_goals):
-        full_prompt += f"{i+1}. {goal}\n"
+        full_prompt += f"{i + 1}. {goal}\n"
 
     full_prompt += f"\n\n{prompt}"
     return full_prompt
@@ -211,7 +215,6 @@ Continue (y/n): """)
 
 def prompt_user():
     """Prompt the user for input"""
-    ai_name = ""
     # Construct the prompt
     logger.typewriter_log(
         "Welcome to Auto-GPT! ",
@@ -251,7 +254,7 @@ def prompt_user():
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
-        ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
+        ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i + 1}: ")
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)
@@ -261,6 +264,7 @@ def prompt_user():
 
     config = AIConfig(ai_name, ai_role, ai_goals)
     return config
+
 
 def parse_arguments():
     """Parses the arguments passed to the script"""
@@ -309,7 +313,7 @@ def parse_arguments():
     if args.memory_type:
         supported_memory = get_supported_memory_backends()
         chosen = args.memory_type
-        if not chosen in supported_memory:
+        if chosen not in supported_memory:
             logger.typewriter_log("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
             logger.typewriter_log(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
         else:
@@ -344,7 +348,7 @@ while True:
             user_input,
             full_message_history,
             memory,
-            cfg.fast_token_limit) # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+            cfg.fast_token_limit)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
     # Print Assistant thoughts
     print_assistant_thoughts(assistant_reply)
@@ -358,7 +362,7 @@ while True:
         logger.error("Error: \n", str(e))
 
     if not cfg.continuous_mode and next_action_count == 0:
-        ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+        # GET USER AUTHORIZATION TO EXECUTE COMMAND
         # Get key press: Prompt the user to press enter to continue or escape
         # to exit
         user_input = ""
@@ -392,9 +396,9 @@ while True:
 
         if user_input == "GENERATE NEXT COMMAND JSON":
             logger.typewriter_log(
-            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-            Fore.MAGENTA,
-            "")
+                "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                Fore.MAGENTA,
+                "")
         elif user_input == "EXIT":
             print("Exiting...", flush=True)
             break
@@ -406,7 +410,7 @@ while True:
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}")
 
     # Execute command
-    if command_name is not None and command_name.lower().startswith( "error" ):
+    if command_name is not None and command_name.lower().startswith("error"):
         result = f"Command {command_name} threw the following error: " + arguments
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"

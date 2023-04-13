@@ -3,6 +3,7 @@ import os
 import openai
 import yaml
 from dotenv import load_dotenv
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -73,7 +74,8 @@ class Config(metaclass=Singleton):
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
-        self.user_agent_header = {"User-Agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
+        self.user_agent_header = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
         self.redis_port = os.getenv("REDIS_PORT", "6379")
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
@@ -106,7 +108,7 @@ class Config(metaclass=Singleton):
 
     AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), '..', 'azure.yaml')
 
-    def load_azure_config(self, config_file: str=AZURE_CONFIG_FILE) -> None:
+    def load_azure_config(self, config_file: str = AZURE_CONFIG_FILE) -> None:
         """
         Loads the configuration parameters for Azure hosting from the specified file path as a yaml file.
 
