@@ -3,12 +3,13 @@ from unittest.mock import patch, call
 from scripts.config import Config
 import os
 import tempfile
+from _pytest import pathlib
 
 
 class TestConfig(unittest.TestCase):
     @patch('config.load_dotenv', autospec=True)
     @patch('config.dotenv_values', autospec=True)
-    @patch('builtins.input', autospec=True, side_effect=['y', 'new_val'])
+    @patch('builtins.input', autospec=True, side_effect=['y', '8192'])
     @patch('config.set_key', autospec=True)
     @patch('config.unset_key', autospec=True)
     @patch('config.Path', autospec=True)
@@ -24,7 +25,7 @@ class TestConfig(unittest.TestCase):
         template_file.close()
 
         # patch Path object to return temporary file paths
-        with patch("pathlib.Path", spec=True) as mock_path:
+        with patch("pathlib.Path", wraps=pathlib.Path) as mock_path:
             mock_env_file = mock_path.return_value
             mock_template_file = mock_path.return_value
             mock_env_file.is_file.return_value = True
@@ -37,7 +38,7 @@ class TestConfig(unittest.TestCase):
             # patch dotenv functions
             with patch("dotenv.load_dotenv", spec=True) as mock_load_dotenv, \
                     patch("dotenv.dotenv_values", spec=True) as mock_dotenv_values, \
-                    patch("builtins.input", side_effect=["y", "new_value"]):
+                    patch("builtins.input", side_effect=["y", "8192"]):
                 # set up mock return values for dotenv_values
                 mock_env_values = {"ENV_VAR": "env_value"}
                 mock_template_values = {"ENV_VAR": "template_value", "NEW_VAR": ""}
@@ -55,6 +56,15 @@ class TestConfig(unittest.TestCase):
                 mock_dotenv_values.assert_has_calls(calls)
 
                 # assert that the expected changes were made to the .env file
+                with open(env_file.name, mode="r") as f:
+                    content = f.read()
+                expected_content = "ENV_VAR=env_value\nNEW_VAR=\n"
+                self.assertEqual(content, expected_content)
+
+                # set the value of the NEW_VAR key in the .env file
+                config.set_key("NEW_VAR", "new_value")
+
+                # assert that the value of the NEW_VAR key in the .env file was updated
                 with open(env_file.name, mode="r") as f:
                     content = f.read()
                 expected_content = "ENV_VAR=env_value\nNEW_VAR=new_value\n"
