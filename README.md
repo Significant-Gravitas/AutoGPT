@@ -55,6 +55,8 @@ AgentGPT在接到这项任务之后，便开始了他的展示：
 
 [![Alt text for your video](zhDemo视频)](https://raw.githubusercontent.com/kaqijiang/Auto-GPT-ZH/master/demo.mp4)
 
+[![Demo video](https://github.com/kaqijiang/Auto-GPT-ZH/raw/master/demo.mp4)](https://github.com/kaqijiang/Auto-GPT-ZH/raw/master/demo.mp4)
+
 ## 📋 Requirements
 
 - 环境(选择一个就行)
