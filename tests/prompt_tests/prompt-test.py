@@ -42,6 +42,8 @@ def run_test(test_subdirectory):
     with open(config_path, "r") as config_file:
         config = json.load(config_file)
     command = ["python3", config["exec"]["command"]] + config["exec"]["arguments"]
+    print(f"Running test: {config['name']}")
+    print(f"Command: {' '.join(command)}")
     env = os.environ.copy()
     env.update(config["exec"].get("env", {}))
     subprocess.run(command, cwd=test_path, env=env)
