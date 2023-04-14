@@ -1,5 +1,5 @@
 {
-    "name": "Denver Movies Playing",
+    "name": "List Movies in Denver Theater with Ratings",
     "description": "Get the movies and their respective rating playing at a theater in Denver and save to a text file.",
     "yaml_prompt": "movies-denver.yaml",
     "output_files": [

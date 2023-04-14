@@ -1,5 +1,5 @@
 {
-    "name": "Denver Movies Playing",
+    "name": "List Movies and Theater Name in Denver with Multiple Actions in One Goal",
     "description": "Get the movies playing at a theater and save to a text file. Include multiple instructions in a single goal.",
     "yaml_prompt": "movies-denver.yaml",
     "output_files": [

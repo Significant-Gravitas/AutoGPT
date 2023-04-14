@@ -1,5 +1,5 @@
 {
-    "name": "Denver Movies Playing",
+    "name": "List Movies and Theater Name in Denver",
     "description": "Get a list of movies playing at a theater and save to a text file along with the name of the theater.",
     "yaml_prompt": "movies-denver.yaml",
     "output_files": [
