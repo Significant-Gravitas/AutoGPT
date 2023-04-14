@@ -1,6 +1,6 @@
 {
     "name": "Denver Movies Playing",
-    "description": "Get the movies, times, and ratings playing at a theater in Denver and save to a text file.",
+    "description": "Get the movies, times, and ratings playing at a theater in Denver on Friday and save to a text file.",
     "yaml_prompt": "movies-denver.yaml",
     "output_files": [
         "000005-movie-denver.txt"
