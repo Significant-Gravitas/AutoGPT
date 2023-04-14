@@ -1,3 +1,4 @@
+from autogpt.config import Config, Singleton
 
 import pinecone
 
