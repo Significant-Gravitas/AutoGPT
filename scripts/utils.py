@@ -60,7 +60,11 @@ def clean_input(prompt: str = '', talk=False):
                 speak.macos_tts_speech("I didn't understand that. Sorry.")
                 return input(prompt)
         else:
-            return input(prompt)
+            ## ask for input, default when just pressing Enter is y
+            answer = input(prompt + ' [y/n] or press Enter for default (y): ')
+            if answer == '':
+                answer = 'y'
+            return answer
     except KeyboardInterrupt:
         print("You interrupted Auto-GPT")
         print("Quitting...")

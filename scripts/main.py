@@ -402,10 +402,10 @@ def main():
                 if cfg.speak_mode and not cfg.telegram_api_key:
                     if command_name != "do_nothing":
                         console_input = utils.clean_input(
-                            f"I want to {command_name}, is that okay?", talk=True)
+                            f"I want to {command_name}, is that okay? \n Input:", talk=True)
                     else:
                         console_input = utils.clean_input(
-                            "I decided to just continue thinking. Is that okay?", talk=True)
+                            "I decided to just continue thinking. Is that okay? \n Input:", talk=True)
                 else:
                     if cfg.telegram_api_key and cfg.telegram_chat_id:
                         console_input = TelegramUtils.ask_user(
