@@ -148,12 +148,41 @@ Here are some common arguments you can use when running Auto-GPT:
 > **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python scripts/main.py --help` for more information
 
 ## 🗣️ Speech Mode
+Auto-GPT offers multiple Text-to-Speech (TTS) options: macOS TTS, StreamElements TTS (Brian's voice), and ElevenLabs TTS (with a choice of voices).
 
-Use this to use TTS for Auto-GPT
+To configure and enable TTS for Auto-GPT, follow these steps:
 
-```
-python scripts/main.py --speak
-```
+1. Open the .env file and configure the TTS options according to your preference:
+
+    ##### Mac OS
+    - To use macOS TTS, set `USE_MAC_OS_TTS=True`
+    Default: `USE_MAC_OS_TTS=False`
+
+    ##### StreamElements (Brian)
+    - To use Brian's voice with StreamElements API, set `USE_BRIAN_TTS=True`
+    Default: `USE_BRIAN_TTS=False`
+    
+   ##### ElevenLabs
+   - To use ElevenLabs TTS, provide your `ELEVEN_LABS_API_KEY`, and set your preferred voices using the appropriate environment variables:
+        ```
+        ELEVENLABS_API_KEY=your-elevenlabs-api-key
+        ELEVENLABS_VOICE_1_ID=your-voice-id-1
+        ELEVENLABS_VOICE_2_ID=your-voice-id-2
+        ```
+   - Refer to the ElevenLabs API documentation or API reference to find a list of supported voices and their identifiers.
+      Example voice ID's: 
+      ```
+      Rachel: 21m00Tcm4TlvDq8ikWAM, 
+      Antoni: ErXwobaYiN019PkySvjV, 
+      Bella: EXAVITQu4vr4xnSDxMaL,
+      Josh: TxGEqnHWrfWFTfGW9XjX
+      ```
+
+2. Save the ```.env``` file and run the ```main.py``` Python script with the --speak flag:
+    ```
+    python scripts/main.py --speak
+    ```
+Auto-GPT will now use the selected TTS option and voice for speech output.
 
 ## 🔍 Google API Keys Configuration
 
