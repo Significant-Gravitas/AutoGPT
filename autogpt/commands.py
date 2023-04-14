@@ -82,7 +82,7 @@ def execute_command(command_name, arguments):
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
         elif command_name == "clone_repository":
-            return clone_repository(arguments["repo_url"], arguments["clone_path"])
+            return clone_repository(arguments["repository_url"], arguments["clone_path"])
         elif command_name == "read_file":
             return read_file(arguments["file"])
         elif command_name == "write_to_file":
