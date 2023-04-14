@@ -63,6 +63,7 @@ Your support is greatly appreciated
 - 🧠 GPT-4 instances for text generation
 - 🔗 Access to popular websites and platforms
 - 🗃️ File storage and summarization with GPT-3.5
+- 🧰 Add your own tools to enhance the agent's ability. Powered by [Gradio](https://github.com/gradio-app/gradio) and [gradio-tools](https://github.com/freddyaboulton/gradio-tools)
 
 ## 📋 Requirements
 

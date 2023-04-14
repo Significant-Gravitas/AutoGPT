@@ -6,6 +6,7 @@ from pathlib import Path
 
 WORKSPACE_DIR = (".." / Path(__file__) / "auto_gpt_workspace").resolve()
 
+
 @dataclass
 class Tool:
     name: str
