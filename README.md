@@ -8,7 +8,7 @@
 
 ### 中文版Demo :
 
-![Demo video](https://kaqijiang-1303126728.cos.ap-beijing.myqcloud.com/demo.mp4)
+![Demo video](demo.gif)
 
 Auto-GPT 是一个实验性开源应用程序，展示了 GPT-4 语言模型的功能。该程序由 GPT-4 驱动，将 LLM 的“思想”链接在一起，以自主实现您设定的任何目标。作为 GPT-4 完全自主运行的首批示例之一，Auto-GPT 突破了 AI 的可能性界限。
 
