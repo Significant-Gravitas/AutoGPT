@@ -33,11 +33,14 @@ Example test.json:
     }
 }
 """
+
+
 import argparse
 import os
 import shutil
 import json
 import subprocess
+
 
 def run_test(test_subdirectory):
     test_path = os.path.join("tests", "prompt_tests", test_subdirectory)
@@ -53,12 +56,28 @@ def run_test(test_subdirectory):
     print(f"Command: {' '.join(command)}")
     subprocess.run(command, env=env)
 
+    check_output_files(config["output_files"])
+
+
+def check_output_files(output_files_list):
+    missing_files = []
+    for filename in output_files_list:
+        file_path = os.path.join("auto_gpt_workspace", filename)
+        if not os.path.exists(file_path):
+            missing_files.append(filename)
+    if missing_files:
+        print("Error: The following output files are missing:")
+        for filename in missing_files:
+            print(f"- {filename}")
+
+
 def list_tests():
     for test_subdirectory in os.listdir(os.path.join("tests", "prompt_tests")):
         config_path = os.path.join("tests", "prompt_tests", test_subdirectory, "test.json")
         with open(config_path, "r") as config_file:
             config = json.load(config_file)
         print(f"{test_subdirectory}: {config['name']}")
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -78,6 +97,7 @@ def main():
             run_test(test_subdirectory)
     else:
         run_test(args.test)
+
 
 if __name__ == "__main__":
     main()
