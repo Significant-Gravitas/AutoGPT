@@ -63,18 +63,22 @@ def clean_input(prompt: str = '', talk=False):
                 return input(prompt)
         else:
             if cfg.telegram_enabled:
+                print("Asking user via Telegram...")
                 chat_answer = asyncio.run(TelegramUtils.ask_user(prompt))
+                print("Telegram answer: " + chat_answer)
                 if chat_answer in ["yes", "yeah", "yep", "yup", "y", "ok", "okay", "sure", "affirmative", "aye", "aye aye", "alright", "alrighty"]:
                     return "y"
                 elif chat_answer in ["no", "nope", "n", "nah", "negative", "nay", "nay nay"]:
                     return "n"
                       
             ## ask for input, default when just pressing Enter is y
+            print("Asking user via keyboard...")
             answer = input(prompt + ' [y/n] or press Enter for default (y): ')
             if answer == '':
                 answer = 'y'
             return answer
     except KeyboardInterrupt:
-        print("You interrupted Auto-GPT")
+        print("You interrupted Auto-GPT from utils.py")
         print("Quitting...")
+        print(traceback.format_exc())
         exit(0)

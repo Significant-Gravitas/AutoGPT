@@ -2,14 +2,18 @@ import asyncio
 import threading
 from functools import wraps
 from threading import Lock, Semaphore
+import time
+from queue import Queue
 
 from config import Config
 from telegram import Bot, Update
-from telegram.ext import (CallbackContext)
+from telegram.ext import (Application, CommandHandler,
+                          CallbackContext, MessageHandler, filters)
 
 cfg = Config()
-response_received = threading.Event()
+response_received = False
 response_text = ""
+response_queue = Queue()
 
 mutex_lock = Lock()  # Ensure only one sound is played at a time
 # The amount of sounds to queue before blocking the main thread
@@ -20,78 +24,57 @@ def is_authorized_user(update: Update):
     return update.effective_user.id == int(cfg.telegram_chat_id)
 
 
-async def handle_response(update: Update, context: CallbackContext):
-    global response_received, response_text
+def handle_response(update: Update, context: CallbackContext):
     try:
-        mutex_lock.acquire()
         print("Received response: " + update.message.text)
-        print("response_received: " + str(response_received))
+        print("response_queue: " + str(response_queue))
 
         if is_authorized_user(update):
-            response_text = update.message.text
-            response_received.set()
+            response_queue.put(update.message.text)
+            response_received = True
     except Exception as e:
         print(e)
 
 
-async def stop(update: Update, context: CallbackContext):
-    if is_authorized_user(update):
-        await update.message.reply_text("Stopping Auto-GPT now!")
-        exit(0)
-
-# async def start_listening():
-#     print("Listening to Telegram...")
-#     try:
-#         application.add_handler(CommandHandler("stop", stop))
-#         application.add_handler(MessageHandler(filters.TEXT, handle_response))
-#         await application.run_polling()
-#     except KeyboardInterrupt:
-#         pass
-
-
 class TelegramUtils:
     @staticmethod
-    async def send_message(message):
+    def get_bot():
         bot_token = cfg.telegram_api_key
+        return Bot(bot_token)
+
+    @staticmethod
+    def send_message(message):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # 'RuntimeError: There is no current event loop...'
+            loop = None
+        if loop and loop.is_running():
+            loop.create_task(TelegramUtils._send_message(message))
+        else:
+            asyncio.run(TelegramUtils._send_message(message))
+
+    @staticmethod
+    async def _send_message(message):
         recipient_chat_id = cfg.telegram_chat_id
-        await Bot(bot_token).send_message(chat_id=recipient_chat_id, text=message)
+        bot = TelegramUtils.get_bot()
+        await bot.send_message(chat_id=recipient_chat_id, text=message)
 
     @staticmethod
     async def ask_user(question):
-        global response_received, response_text
+        global response_queue
 
-        response_received.clear()
-        response_text = ""
-
-        await TelegramUtils().send_message(question)
+        await TelegramUtils._send_message(question)
 
         print("Waiting for response...")
-        response_received.wait()
+        while (response_queue.empty()):
+            await asyncio.sleep(0.5)
+        response_text = await response_queue.get()
         print("Response received: " + response_text)
         return response_text
 
 
-class SignalSafeEventLoop(asyncio.SelectorEventLoop):
-    def add_signal_handler(self, sig, callback, *args):
-        pass
-
-    def remove_signal_handler(self, sig):
-        pass
-
-
-def run_in_signal_safe_loop(coro):
-    @wraps(coro)
-    def wrapper(*args, **kwargs):
-        loop = SignalSafeEventLoop()
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro(*args, **kwargs))
-    return wrapper
-
-
-async def main():
-    prompt = await TelegramUtils.ask_user("Hello! I need you to confirm with /start to start me. <3")
-    print(prompt)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+async def wait_for_response():
+    global response_received, response_text
+    while not response_received:
+        await asyncio.sleep(0.1)
+    return response_text

@@ -1,17 +1,25 @@
 import asyncio
-import main
-
-from telegram import Bot
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackContext, filters
-from telegram_chat import TelegramUtils, is_authorized_user, handle_response, Update
 import os
+import threading
+import sys
+import traceback
+from threading import Lock, Semaphore
+
+from telegram import Update
+from telegram.ext import Application, CallbackContext, CommandHandler, filters, MessageHandler
+
 from config import Config
+from telegram_chat import TelegramUtils, handle_response, is_authorized_user
 
 cfg = Config()
 
 main_started = False
 
 application = Application.builder().token(cfg.telegram_api_key).build()
+
+mutex_lock = Lock()  # Ensure only one sound is played at a time
+# The amount of sounds to queue before blocking the main thread
+queue_semaphore = Semaphore(1)
 
 
 async def stop(update: Update, context: CallbackContext):
@@ -21,54 +29,74 @@ async def stop(update: Update, context: CallbackContext):
 
 
 async def delete_old_messages():
-    async with Bot(cfg.telegram_api_key) as bot:
-        updates = await bot.get_updates()
-        for update in updates:
-            await bot.delete_message(chat_id=cfg.telegram_chat_id, message_id=update.message.message_id)
-    print("Cleaned up old messages.")
+    bot = TelegramUtils.get_bot()
+    updates = await bot.get_updates(offset=0)
+    count = 0
+    for update in updates:
+        print("Deleting message: " + update.message.text)
+        await bot.delete_message(chat_id=cfg.telegram_chat_id, message_id=update.message.message_id)
+        count += 1
+    if(count > 0):
+        print("Cleaned up old messages.")
 
 
 async def start(update: Update, context: CallbackContext):
     global main_started
     print("Starting Auto-GPT...")
     if is_authorized_user(update):
-        if (main_started):
-            await update.message.reply_text("Already started!")
-
+        if main_started :
+            TelegramUtils.send_message("Already started!")
         else:
             main_started = True
-            await TelegramUtils.send_message("Auto-GPT is starting now!")
-            application.add_handler(CommandHandler("stop", stop))
-            os.system("python3 ./main.py --gpt3only --speak ")
+            TelegramUtils.send_message("Auto-GPT is starting now!")
+            os.system("python3 ./main.py {}".format(" ".join(sys.argv[1:])))
 
 
-async def catch_all(update: Update, context: CallbackContext):
-    print("Received message: " + update.message.text)
-    if is_authorized_user(update):
-        await TelegramUtils.send_message("I'm sorry, I was offline and missed your message. Please try again.")
+
+
+def get_or_create_eventloop():
+    print("___.  Creating new event loop...")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    return asyncio.get_event_loop()
 
 
 def main():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    print("Starting up...")
 
     # Delete old messages
-    loop.run_until_complete(delete_old_messages())
+    asyncio.run(delete_old_messages())
 
-    loop.run_until_complete(TelegramUtils().send_message(
-        "Hello! I need you to start Auto-GPT for me. \n Please type /start."))
+    TelegramUtils().send_message(
+        "Hello! I need you to confirm with /start to start me. <3")
 
+    application.add_handler(CommandHandler("stop", stop))
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT, handle_response))
-    application.add_handler(MessageHandler(filters.ALL, catch_all))
 
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        print("Listening to Telegram...")
+        print("Check your Telegram chat to start Auto-GPT! ;-)")
         loop.run_until_complete(application.run_polling())
     except KeyboardInterrupt:
         pass
 
-
-
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        # queue_semaphore.acquire(True)
+        # thread = threading.Thread(target=main)
+        # thread.start()
+    except KeyboardInterrupt:
+        print("Exiting...")
+        TelegramUtils.send_message(
+            "I hope I could help! :) \n \n Bye bye! <3")
+       
+        exit(0)
+    except Exception as e:
+        print(e)
+        print(traceback.format_exc())
+        TelegramUtils.send_message(
+            "Sorry, I have to stop. \n \n An error occurred: " + str(e))
+        exit(1)

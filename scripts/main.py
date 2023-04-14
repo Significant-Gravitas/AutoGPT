@@ -389,7 +389,7 @@ class Agent:
                                 "I decided to just continue thinking. Is that okay? \n Input:", talk=True)
                     else:
                         if cfg.telegram_enabled:
-                            console_input = asyncio.run(TelegramUtils.ask_user(
+                            console_input = asyncio.run_coroutine_threadsafe(TelegramUtils.ask_user(
                                 f"I want to execute {command_name} and {arguments}. Is that okay?"))
                         else:
                             console_input = utils.clean_input(
