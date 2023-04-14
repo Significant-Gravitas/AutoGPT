@@ -194,7 +194,7 @@ def browse_website(url, question):
 def get_text_summary(url, question):
     """Return the results of a google search"""
     text = browse.scrape_text(url)
-    summary = browse.summarize_text(text, question)
+    summary = browse.summarize_text(url, text, question)
     return """ "Result" : """ + summary
 
 
