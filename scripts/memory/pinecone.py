@@ -1,6 +1,6 @@
 
 import pinecone
-
+from pinecone.core.client.configuration import Configuration as OpenApiConfiguration
 from memory.base import MemoryProviderSingleton, get_ada_embedding
 from logger import logger
 from colorama import Fore, Style
@@ -10,7 +10,12 @@ class PineconeMemory(MemoryProviderSingleton):
     def __init__(self, cfg):
         pinecone_api_key = cfg.pinecone_api_key
         pinecone_region = cfg.pinecone_region
-        pinecone.init(api_key=pinecone_api_key, environment=pinecone_region)
+        pinecone_proxy = cfg.pinecone_proxy
+        pinecone_headers = cfg.pinecone_proxy_headers
+        openapi_config = OpenApiConfiguration()
+        openapi_config.proxy = pinecone_proxy
+        openapi_config.proxy_headers = pinecone_headers
+        pinecone.init(api_key=pinecone_api_key, environment=pinecone_region, openapi_config=openapi_config)
         dimension = 1536
         metric = "cosine"
         pod_type = "p1"

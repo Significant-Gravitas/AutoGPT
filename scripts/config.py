@@ -3,6 +3,9 @@ import os
 import openai
 import yaml
 from dotenv import load_dotenv
+import json
+from urllib3.util import make_headers
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -26,6 +29,16 @@ class Singleton(abc.ABCMeta, type):
 class AbstractSingleton(abc.ABC, metaclass=Singleton):
     pass
 
+def load_proxy_from_env_as_str_or_dict(proxy_env_name):
+    proxy = os.getenv(proxy_env_name)
+    try:
+        return json.loads(proxy)
+    except ValueError:
+        return proxy
+    except NameError:
+        return proxy
+    except TypeError:
+        return proxy
 
 class Config(metaclass=Singleton):
     """
@@ -45,6 +58,7 @@ class Config(metaclass=Singleton):
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_api_proxy = load_proxy_from_env_as_str_or_dict(os.getenv("OPENAI_API_PROXY"))
         self.temperature = float(os.getenv("TEMPERATURE", "1"))
         self.use_azure = os.getenv("USE_AZURE") == 'True'
         self.execute_local_commands = os.getenv('EXECUTE_LOCAL_COMMANDS', 'False') == 'True'
@@ -56,6 +70,7 @@ class Config(metaclass=Singleton):
             openai.api_version = self.openai_api_version
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+        self.elevenlabs_api_proxy = load_proxy_from_env_as_str_or_dict(os.getenv("ELEVENLABS_API_PROXY"))
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
         self.elevenlabs_voice_2_id = os.getenv("ELEVENLABS_VOICE_2_ID")
 
@@ -63,13 +78,17 @@ class Config(metaclass=Singleton):
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
 
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
+        self.google_api_proxy = os.getenv("GOOGLE_API_PROXY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
+        self.pinecone_proxy = os.getenv("PINECONE_PROXY")
+        self.pinecone_proxy_headers = make_headers(proxy_basic_auth=os.getenv("PINECONE_PROXY_HEADERS")) if os.getenv("PINECONE_PROXY_HEADERS") is not None else None
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
+        self.huggingface_api_proxy = os.getenv("HUGGINGFACE_API_PROXY")
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
@@ -84,6 +103,7 @@ class Config(metaclass=Singleton):
         self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
+        openai.proxy = self.openai_api_proxy
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """

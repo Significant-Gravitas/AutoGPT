@@ -13,6 +13,9 @@ from image_gen import generate_image
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import httplib2
+import socks
+from urllib.parse import urlparse
 
 cfg = Config()
 
@@ -136,6 +139,34 @@ def google_search(query, num_results=8):
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
+def get_google_http_proxy(api_proxy = cfg.google_api_proxy):
+    if api_proxy is None:
+        return None
+
+    parsed_proxy = urlparse(api_proxy)
+    proxy_protocol = parsed_proxy.scheme
+    if proxy_protocol.lower() == 'http':
+        proxy_type = socks.PROXY_TYPE_HTTP
+    elif proxy_protocol.lower() == 'socks4':
+        proxy_type = socks.PROXY_TYPE_SOCKS4
+    elif proxy_protocol.lower() == 'socks5':
+        proxy_type = socks.PROXY_TYPE_SOCKS5
+    else:
+        proxy_type = socks.PROXY_TYPE_HTTP
+    proxy_host = parsed_proxy.hostname
+    proxy_port = parsed_proxy.port
+    proxy_username = parsed_proxy.username
+    proxy_password = parsed_proxy.password
+
+    proxy_info = httplib2.ProxyInfo(
+        proxy_type=proxy_type,
+        proxy_host=proxy_host,
+        proxy_port=proxy_port,
+        proxy_user=proxy_username,
+        proxy_pass=proxy_password
+    )
+
+    http = httplib2.Http(proxy_info=proxy_info)
 
 def google_official_search(query, num_results=8):
     """Return the results of a google search using the official Google API"""
@@ -143,13 +174,15 @@ def google_official_search(query, num_results=8):
     from googleapiclient.errors import HttpError
     import json
 
+    http = get_google_http_proxy(cfg.google_api_proxy)
+
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
         api_key = cfg.google_api_key
         custom_search_engine_id = cfg.custom_search_engine_id
 
         # Initialize the Custom Search API service
-        service = build("customsearch", "v1", developerKey=api_key)
+        service = build("customsearch", "v1", developerKey=api_key, http=http)
 
         # Send the search query and retrieve the results
         result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()

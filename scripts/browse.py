@@ -5,7 +5,7 @@ from llm_utils import create_chat_completion
 from urllib.parse import urlparse, urljoin
 
 cfg = Config()
-
+proxies = {"http": cfg.google_api_proxy, "https": cfg.google_api_proxy}
 
 # Function to check if the URL is valid
 def is_valid_url(url):
@@ -39,7 +39,7 @@ def get_response(url, headers=cfg.user_agent_header, timeout=10):
 
         sanitized_url = sanitize_url(url)
 
-        response = requests.get(sanitized_url, headers=headers, timeout=timeout)
+        response = requests.get(sanitized_url, headers=headers, timeout=timeout, proxies=proxies)
 
         # Check if the response contains an HTTP error
         if response.status_code >= 400:
