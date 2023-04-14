@@ -11,8 +11,10 @@ from logger import logger
 from colorama import Fore, Style
 from config import Config 
 
+# TODO: get the embeddings dimension without importing config
 cfg = Config()
 
+# set the embedding dimension based on the embeder
 EMBED_DIM = 1536 if cfg.memory_embeder == "ada" else 768
 
 SCHEMA = [

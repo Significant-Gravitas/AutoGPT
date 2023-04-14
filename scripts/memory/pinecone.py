@@ -10,6 +10,7 @@ class PineconeMemory(MemoryProviderSingleton):
         pinecone_api_key = cfg.pinecone_api_key
         pinecone_region = cfg.pinecone_region
         pinecone.init(api_key=pinecone_api_key, environment=pinecone_region)
+        # set the embedding dimension based on the embeder
         dimension = 1536 if cfg.memory_embeder == "ada" else 768
         metric = "cosine"
         pod_type = "p1"
