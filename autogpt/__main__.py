@@ -304,6 +304,7 @@ def parse_arguments():
                               f"{Back.LIGHTYELLOW_EX}Auto-GPT will now be able to download and save files to your machine.{Back.RESET} " + 
                               "It is recommended that you monitor any files it downloads carefully.")
         logger.typewriter_log("WARNING: ", Fore.YELLOW, f"{Back.RED + Style.BRIGHT}ALWAYS REMEMBER TO NEVER OPEN FILES YOU AREN'T SURE OF!{Style.RESET_ALL}")
+        cfg.allow_downloads = True
 
 
 def main():

@@ -1,5 +1,6 @@
 from autogpt.promptgenerator import PromptGenerator
-
+from autogpt.config import Config
+cfg = Config()
 
 def get_prompt():
     """
@@ -30,7 +31,6 @@ def get_prompt():
         ("Read file", "read_file", {"file": "<file>"}),
         ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
         ("Delete file", "delete_file", {"file": "<file>"}),
-        ("Download file", "download_file", {"url": "<file_url>", "file": "<saved_filename>"}),
         ("Search Files", "search_files", {"directory": "<directory>"}),
         ("Evaluate Code", "evaluate_code", {"code": "<full_code_string>"}),
         ("Get Improved Code", "improve_code", {"suggestions": "<list_of_suggestions>", "code": "<full_code_string>"}),
@@ -41,6 +41,9 @@ def get_prompt():
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
         ("Do Nothing", "do_nothing", {}),
     ]
+
+    if cfg.allow_downloads:
+        commands.insert(12, ("Download file", "download_file", {"url": "<file_url>", "file": "<saved_filename>"}))
 
     # Add commands to the PromptGenerator object
     for command_label, command_name, args in commands:
