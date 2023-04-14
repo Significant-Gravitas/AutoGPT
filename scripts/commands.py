@@ -166,7 +166,7 @@ def get_google_http_proxy(api_proxy = cfg.google_api_proxy):
         proxy_pass=proxy_password
     )
 
-    http = httplib2.Http(proxy_info=proxy_info)
+    return httplib2.Http(proxy_info=proxy_info)
 
 def google_official_search(query, num_results=8):
     """Return the results of a google search using the official Google API"""
