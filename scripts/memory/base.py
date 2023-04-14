@@ -8,25 +8,25 @@ try:
     from sentence_transformers import SentenceTransformer
 except ImportError:
     SentenceTransformer = None
-    if cfg.memory_embeder == "sbert":
+    if cfg.memory_embedder == "sbert":
         print("Error: Sentence Transformers is not installed. Please install sentence_transformers"
-            " to use BERT as an embeder. Defaulting to Ada.")
-        cfg.memory_embeder = "ada"
+            " to use sBERT as an embedder. Defaulting to Ada.")
+        cfg.memory_embedder = "ada"
 
 
 cfg = Config()
-# Dimension of embeddings encoded by models
+# Dimension of embeddings encoded by embedders
 EMBED_DIM = {
     "ada": 1536,
     "sbert": 768
-}.get(cfg.memory_embeder, default=1536)
+}.get(cfg.memory_embedder, default=1536)
 
 
 def get_embedding(text):
     text = text.replace("\n", " ")
 
-    # use the embeder specified in the config
-    if cfg.memory_embeder == "sbert":
+    # use the embedder specified in the config
+    if cfg.memory_embedder == "sbert":
         embedding = SentenceTransformer("sentence-transformers/all-mpnet-base-v2", device="cpu").encode(text, show_progress_bar=False)
     else:
         embedding = openai.Embedding.create(input=[text], model="text-embedding-ada-002")["data"][0]["embedding"]
