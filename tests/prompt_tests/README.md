@@ -59,3 +59,7 @@ To create your own tests, follow these steps:
 3. Create the YAML prompt file for the test and save it in the test directory.
 4. Create the expected output files for the test and save them in the test directory.
 5. Run the test using the test runner script to ensure it is working as expected.
+
+## TODO
+- Create robust method to test PASS/FAIL for tests
+- Generate a test report
