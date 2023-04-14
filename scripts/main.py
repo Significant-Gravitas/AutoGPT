@@ -1,22 +1,19 @@
+import argparse
 import json
-import random
-import commands as cmd
-import utils
-from memory import get_memory, get_supported_memory_backends
+import logging
+import traceback
+
 import chat
-from colorama import Fore, Style
-from spinner import Spinner
-import time
+import commands as cmd
 import speak
+import utils
+from ai_config import AIConfig
+from colorama import Fore, Style
 from config import Config
 from json_parser import fix_and_parse_json
-from ai_config import AIConfig
-import traceback
-import yaml
-import argparse
 from logger import logger
-import logging
-from prompt import get_prompt
+from memory import get_memory, get_supported_memory_backends
+from spinner import Spinner
 
 cfg = Config()
 
