@@ -25,12 +25,14 @@ def read_file(filename):
     """Read a file and return the contents"""
     try:
         filepath = safe_join(working_directory, filename)
+        # Check if the file is a PDF and extract text if so
         if filename.lower().endswith('.pdf'):
             text = extract_text(filepath)
             if not text:
                 return "Error: Could not extract text from PDF"
             else:
                 return text
+        # Otherwise, treat the file as plaintext
         else:
             with open(filepath, "r", encoding='utf-8') as f:
                 content = f.read()
