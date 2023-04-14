@@ -1,7 +1,8 @@
 version: "3.7"
 services:
   app:
-    container_name: autogpt
+    container_name: autogpt-gotty
+    image: cdukes/autogpt-gotty:latest
     hostname: autogpt
     restart: on-failure
     init: true
@@ -9,12 +10,6 @@ services:
     tty: true
     networks:
       - autogpt
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        UID: ${UID:-1000}
-        GID: ${GID:-1000}
     user: "${UID}:${GID}"
     volumes:
       - ${PWD}/workspace/:/app/auto_gpt_workspace/
