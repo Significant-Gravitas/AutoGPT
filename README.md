@@ -66,13 +66,16 @@ Your support is greatly appreciated
 
 ## 📋 Requirements
 
-- [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
+- environments(just choose one)
+  - [vscode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): It has been configured in the .devcontainer folder and can be used directly
+  - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - [OpenAI API key](https://platform.openai.com/account/api-keys)
-- [PINECONE API key](https://www.pinecone.io/)
+
 
 Optional:
 
-- [ElevenLabs Key](https://elevenlabs.io/) (If you want the AI to speak)
+- [PINECONE API key](https://www.pinecone.io/) (If you want Pinecone backed memory)
+- ElevenLabs Key (If you want the AI to speak)
 
 ## 💾 Installation
 
@@ -123,8 +126,8 @@ pip install -r requirements.txt
 python scripts/main.py
 ```
 
-2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
-3. To exit the program, type "exit" and press Enter.
+2. After each of action, enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter additional feedback for the AI.
+
 
 ### Logs
 
@@ -155,9 +158,10 @@ To use the `google_official_search` command, you need to set up your Google API 
 4. Go to the [APIs & Services Dashboard](https://console.cloud.google.com/apis/dashboard) and click "Enable APIs and Services". Search for "Custom Search API" and click on it, then click "Enable".
 5. Go to the [Credentials](https://console.cloud.google.com/apis/credentials) page and click "Create Credentials". Choose "API Key".
 6. Copy the API key and set it as an environment variable named `GOOGLE_API_KEY` on your machine. See setting up environment variables below.
-7. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page and click "Add".
-8. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
-9. Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
+7. [Enable](https://console.developers.google.com/apis/api/customsearch.googleapis.com) the Custom Search API on your project. (Might need to wait few minutes to propagate)
+8. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page and click "Add".
+9. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
+10. Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
 
 _Remember that your free daily custom search quota allows only up to 100 searches. To increase this limit, you need to assign a billing account to the project to profit from up to 10K daily searches._
 
@@ -226,7 +230,10 @@ Pinecone enables the storage of vast amounts of vector-based memory, allowing fo
 
 ### Setting up environment variables
 
-Simply set them in the `.env` file.
+In the `.env` file set:
+- `PINECONE_API_KEY`
+- `PINECONE_ENV` (something like: us-east4-gcp)
+- `MEMORY_BACKEND=pinecone`
 
 Alternatively, you can set them from the command line (advanced):
 
@@ -235,7 +242,7 @@ For Windows Users:
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
 setx PINECONE_ENV "Your pinecone region" # something like: us-east4-gcp
-
+setx MEMORY_BACKEND "pinecone"
 ```
 
 For macOS and Linux users:
@@ -243,7 +250,7 @@ For macOS and Linux users:
 ```
 export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
-
+export MEMORY_BACKEND="pinecone"
 ```
 
 ## Setting Your Cache Type
