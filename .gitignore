@@ -22,5 +22,8 @@ log.txt
 coverage.xml
 htmlcov/
 
+logs/
+startgpt.sh
+
 # For Macs Dev Environs: ignoring .Desktop Services_Store
 .DS_Store

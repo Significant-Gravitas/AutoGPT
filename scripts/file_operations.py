@@ -1,3 +1,4 @@
+import importlib
 import os
 import os.path
 
@@ -24,9 +25,17 @@ def read_file(filename):
     """Read a file and return the contents"""
     try:
         filepath = safe_join(working_directory, filename)
-        with open(filepath, "r", encoding='utf-8') as f:
-            content = f.read()
-        return content
+        _, file_extension = os.path.splitext(filepath)
+        file_extension = file_extension.lower()[1:]
+
+        try:
+            processor_module = importlib.import_module(f'file.{file_extension}_file')
+            text = processor_module.read_file(filepath)
+        except ImportError:
+            print(f"Unsupported file type: '{file_extension}'. Use default txt reader.")
+            processor_module = importlib.import_module(f'file.txt_file.py')
+            text = processor_module.read_file(filepath)
+        return text
     except Exception as e:
         return "Error: " + str(e)
 

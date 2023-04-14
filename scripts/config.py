@@ -84,6 +84,8 @@ class Config(metaclass=Singleton):
         self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
+        # Set the API max tokens
+        self.max_tokens = int(os.getenv("MAX_TOKENS", 4000))
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """

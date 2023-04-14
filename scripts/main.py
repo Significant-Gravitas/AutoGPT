@@ -411,7 +411,10 @@ while True:
     elif command_name == "human_feedback":
         result = f"Human feedback: {user_input}"
     else:
-        result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
+        command_result =  cmd.execute_command(command_name, arguments)
+        if command_result is not None and len(command_result) > cfg.max_tokens:
+            command_result = command_result[0: cfg.max_tokens]
+        result = f"Command {command_name} returned: {command_result}"
         if next_action_count > 0:
             next_action_count -= 1
 
