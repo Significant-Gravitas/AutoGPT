@@ -1,5 +1,6 @@
 import tiktoken
 from typing import List, Dict
+from logger import logger
 
 
 def count_message_tokens(messages : List[Dict[str, str]], model : str = "gpt-3.5-turbo-0301") -> int:
