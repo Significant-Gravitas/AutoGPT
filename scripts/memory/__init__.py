@@ -36,6 +36,8 @@ def get_memory(cfg, init=False):
                   " use Redis as a memory backend.")
         else:
             memory = RedisMemory(cfg)
+            if init:
+                memory.clear()
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
