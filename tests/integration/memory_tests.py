@@ -3,16 +3,15 @@ import random
 import string
 import sys
 from pathlib import Path
-# Add the parent directory of the 'scripts' folder to the Python path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent / 'scripts'))
-from config import Config
-from memory.local import LocalCache
+from autogpt.config import Config
+from autogpt.memory.local import LocalCache
 
 
 class TestLocalCache(unittest.TestCase):
 
     def random_string(self, length):
-        return ''.join(random.choice(string.ascii_letters) for _ in range(length))
+        return ''.join(
+            random.choice(string.ascii_letters) for _ in range(length))
 
     def setUp(self):
         cfg = cfg = Config()

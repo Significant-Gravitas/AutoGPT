@@ -1,16 +1,16 @@
 import json
 import random
-import commands as cmd
-import utils
-from memory import get_memory, get_supported_memory_backends
-import chat
+from autogpt import commands as cmd
+from autogpt import utils
+from autogpt.memory import get_memory, get_supported_memory_backends
+from autogpt import chat
 from colorama import Fore, Style
-from spinner import Spinner
+from autogpt.spinner import Spinner
 import time
-import speak
-from config import Config
-from json_parser import fix_and_parse_json
-from ai_config import AIConfig
+from autogpt import speak
+from autogpt.config import Config
+from autogpt.json_parser import fix_and_parse_json
+from autogpt.ai_config import AIConfig
 import traceback
 import yaml
 import argparse
