@@ -1,4 +1,6 @@
 """
+ChatGPT Prompt
+==============
 Write a python script that executes tests.
 - Each test is in a subdirectory in tests/prompt_tests
 - The script accepts the arguments: "--test", "--list"
@@ -42,35 +44,50 @@ import json
 import subprocess
 
 
+# Run a single test
 def run_test(test_subdirectory):
     test_path = os.path.join("tests", "prompt_tests", test_subdirectory)
     config_path = os.path.join(test_path, "test.json")
     with open(config_path, "r") as config_file:
         config = json.load(config_file)
     prompt_path = os.path.join(test_path, config["yaml_prompt"])
+
+    # Copy the yaml prompt to the current directory and rename it to ai_settings.yaml
     shutil.copy(prompt_path, "ai_settings.yaml")
     command = ["python3", config["exec"]["command"]] + config["exec"]["arguments"]
+
+    # Start with our environment and update with any environment variables from the config
     env = os.environ.copy()
     env.update(config["exec"].get("env", {}))
+
+    # Run the command
     print(f"Running test: {config['name']}")
     print(f"Command: {' '.join(command)}")
     subprocess.run(command, env=env)
 
+    # Check the output files
     check_output_files(config["output_files"])
 
 
+# Check that the output files exist and are not empty
 def check_output_files(output_files_list):
     missing_files = []
     for filename in output_files_list:
         file_path = os.path.join("auto_gpt_workspace", filename)
+
         if not os.path.exists(file_path):
             missing_files.append(filename)
+        elif os.stat(file_path).st_size == 0:
+            # File exists but is empty
+            missing_files.append(filename)
+
     if missing_files:
-        print("Error: The following output files are missing:")
+        print("Error: The following output files are missing or empty:")
         for filename in missing_files:
             print(f"- {filename}")
 
 
+# List the available tests
 def list_tests():
     for test_subdirectory in os.listdir(os.path.join("tests", "prompt_tests")):
         config_path = os.path.join("tests", "prompt_tests", test_subdirectory, "test.json")
@@ -85,6 +102,7 @@ def main():
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
 
+    # Check the arguments
     if not args.test and not args.list:
         parser.error("--test TEST_NAME is required")
 
@@ -92,6 +110,7 @@ def main():
         list_tests()
         return
 
+    # Run the tests
     if args.test == "all":
         for test_subdirectory in os.listdir(os.path.join("tests", "prompt_tests")):
             run_test(test_subdirectory)
