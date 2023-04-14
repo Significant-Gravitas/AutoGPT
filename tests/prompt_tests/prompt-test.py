@@ -62,9 +62,12 @@ def list_tests():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test", required=True, choices=["all"] + os.listdir(os.path.join("tests", "prompt_tests")))
+    parser.add_argument("--test", choices=["all"] + os.listdir(os.path.join("tests", "prompt_tests")))
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
+
+    if not args.test and not args.list:
+        parser.error("--test TEST_NAME is required")
 
     if args.list:
         list_tests()
