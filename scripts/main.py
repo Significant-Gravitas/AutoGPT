@@ -308,20 +308,20 @@ def create_config(continuous: bool, continuous_limit: int, ai_settings_file: str
 
 @click.command()
 @click.option('-c', '--continuous', is_flag=True, help='Enable Continuous Mode')
-@click.option('--skip-reprompt', '-y', dest='skip_reprompt', is_flag=True, help='Skips the re-prompting messages at the beginning of the script')
-@click.option('--ai-settings', '-C', dest='ai_settings_file', help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.")
+@click.option('--skip-reprompt', '-y', is_flag=True, help='Skips the re-prompting messages at the beginning of the script')
+@click.option('--ai-settings', '-C', help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.")
 @click.option('-l', '--continuous-limit', type=int, help='Defines the number of times to run in continuous mode')
 @click.option('--speak', is_flag=True, help='Enable Speak Mode')
 @click.option('--debug', is_flag=True, help='Enable Debug Mode')
 @click.option('--gpt3only', is_flag=True, help='Enable GPT3.5 Only Mode')
 @click.option('--gpt4only', is_flag=True, help='Enable GPT4 Only Mode')
 @click.option('--use-memory', '-m', 'memory_type', type=str, help='Defines which Memory backend to use')
-def main(continuous: bool, continuous_limit: int, ai_settings_file: str, skip_reprompt: bool, speak: bool, debug: bool, gpt3only: bool, gpt4only: bool, memory_type: Optional[str]):
+def main(continuous: bool, continuous_limit: int, ai_settings: str, skip_reprompt: bool, speak: bool, debug: bool, gpt3only: bool, gpt4only: bool, memory_type: Optional[str]):
 
     global ai_name, memory
     # TODO: fill in llm values here
     check_openai_api_key()
-    create_config(continuous, continuous_limit, ai_settings_file,
+    create_config(continuous, continuous_limit, ai_settings,
                   skip_reprompt, speak, debug, gpt3only, gpt4only, memory_type)
     logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
     ai_name = ""
