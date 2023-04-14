@@ -107,6 +107,7 @@ pip install -r requirements.txt
 5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
   - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+  - [Optional] Configure the proxy via `OPENAI_API_PROXY`(str, dict) and `ELEVENLABS_API_PROXY`(str)
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then:
     - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all of the deployment ids for the relevant models in the `azure_model_map` section:
       - `fast_llm_model_deployment_id` - your gpt-3.5-turbo or gpt-4 deployment id
@@ -160,6 +161,7 @@ To use the `google_official_search` command, you need to set up your Google API 
 8. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page and click "Add".
 9. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
 10. Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
+11. [Optional] Configure proxy via `GOOGLE_API_PROXY`([http, socks5, socks4]) in `.env`
 
 _Remember that your free daily custom search quota allows only up to 100 searches. To increase this limit, you need to assign a billing account to the project to profit from up to 10K daily searches._
 
@@ -225,6 +227,7 @@ Pinecone enables the storage of vast amounts of vector-based memory, allowing fo
 1. Go to [pinecone](https://app.pinecone.io/) and make an account if you don't already have one.
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
+4. [Optional] Configure the proxy with `PINECONE_PROXY`(HOST:PORT) and `PINECONE_PROXY_HEADERS`(USER:PASS) in `.env`
 
 ### Setting up environment variables
 
@@ -297,6 +300,7 @@ Once you have a token, set these variables in your `.env`:
 ```
 IMAGE_PROVIDER=sd
 HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
+HUGGINGFACE_API_PROXY="[http, socks5, socks4]://USER:PASS@HOST:PORT"#optional
 ```
 
 ## ⚠️ Limitations
