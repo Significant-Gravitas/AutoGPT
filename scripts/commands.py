@@ -260,6 +260,9 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     # Remove underscores from name
     voice_name = name.replace("_", " ")
 
+    intro = f"""You are an agent helping to assist a central AI program with a given task. 
+                The central AI may not understand your limitations and capabilities, so you must be explicit and clear in your response to the central AI.
+                If you do not have enough context to assist, let the central AI know the specific information that you need to assist properly."""
     first_message = f"""You are {name}.  Respond with: "Acknowledged"."""
     agent_intro = f"{voice_name} here, Reporting for duty!"
 
@@ -271,6 +274,8 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     if cfg.speak_mode:
         speak.say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
+    # Message the agent the intro message
+    message_agent(key, intro)
     # Assign task (prompt), get response
     agent_response = message_agent(key, prompt)
 
