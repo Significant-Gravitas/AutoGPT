@@ -56,7 +56,7 @@ def get_response(url, headers=cfg.user_agent_header, timeout=10):
 
 
 def scrape_text(url):
-    """Scrape text from a webpage"""
+    """从网页中抓取文本"""
     response, error_message = get_response(url)
     if error_message:
         return error_message
@@ -75,7 +75,7 @@ def scrape_text(url):
 
 
 def extract_hyperlinks(soup):
-    """Extract hyperlinks from a BeautifulSoup object"""
+    """从 BeautifulSoup 对象中提取超链接"""
     hyperlinks = []
     for link in soup.find_all('a', href=True):
         hyperlinks.append((link.text, link['href']))
@@ -83,7 +83,7 @@ def extract_hyperlinks(soup):
 
 
 def format_hyperlinks(hyperlinks):
-    """Format hyperlinks into a list of strings"""
+    """将超链接格式化为字符串列表"""
     formatted_links = []
     for link_text, link_url in hyperlinks:
         formatted_links.append(f"{link_text} ({link_url})")
@@ -91,7 +91,7 @@ def format_hyperlinks(hyperlinks):
 
 
 def scrape_links(url):
-    """Scrape links from a webpage"""
+    """从网页中抓取链接"""
     response, error_message = get_response(url)
     if error_message:
         return error_message
@@ -107,7 +107,7 @@ def scrape_links(url):
 
 
 def split_text(text, max_length=8192):
-    """Split text into chunks of a maximum length"""
+    """将文本拆分为最大长度的块"""
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
@@ -126,17 +126,17 @@ def split_text(text, max_length=8192):
 
 
 def create_message(chunk, question):
-    """Create a message for the user to summarize a chunk of text"""
+    """为用户创建一条消息来总结一段文本"""
     return {
         "role": "user",
-        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
+        "content": f"\"\"\"{chunk}\"\"\" 使用以上文本，请以中文回答以下问题: \"{question}\" -- 如果问题无法使用文本回答 ，请总结文本。"
     }
 
 
 def summarize_text(text, question):
-    """Summarize text using the LLM model"""
+    """使用 LLM 模型总结文本"""
     if not text:
-        return "Error: No text to summarize"
+        return "Error: 没有文字可以总结"
 
     text_length = len(text)
     print(f"Text length: {text_length} characters")

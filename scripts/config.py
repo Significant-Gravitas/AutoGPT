@@ -9,13 +9,13 @@ load_dotenv()
 
 class Singleton(abc.ABCMeta, type):
     """
-    Singleton metaclass for ensuring only one instance of a class.
+    单例元类，用于确保一个类只有一个实例。
     """
 
     _instances = {}
 
     def __call__(cls, *args, **kwargs):
-        """Call method for the singleton metaclass."""
+        """单例元类的调用方法."""
         if cls not in cls._instances:
             cls._instances[cls] = super(
                 Singleton, cls).__call__(
@@ -29,7 +29,7 @@ class AbstractSingleton(abc.ABC, metaclass=Singleton):
 
 class Config(metaclass=Singleton):
     """
-    Configuration class to store the state of bools for different scripts access.
+    用于存储不同脚本访问的 bool 状态的配置类。
     """
 
     def __init__(self):
@@ -127,7 +127,7 @@ class Config(metaclass=Singleton):
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", [])
 
     def set_continuous_mode(self, value: bool):
-        """Set the continuous mode value."""
+        """设置连续模式状态。"""
         self.continuous_mode = value
 
     def set_continuous_limit(self, value: int):
@@ -135,57 +135,57 @@ class Config(metaclass=Singleton):
         self.continuous_limit = value
 
     def set_speak_mode(self, value: bool):
-        """Set the speak mode value."""
+        """设置说话模式状态。"""
         self.speak_mode = value
 
     def set_fast_llm_model(self, value: str):
-        """Set the fast LLM model value."""
+        """设置快速 LLM 模型值。"""
         self.fast_llm_model = value
 
     def set_smart_llm_model(self, value: str):
-        """Set the smart LLM model value."""
+        """设置smart LLM模型值。"""
         self.smart_llm_model = value
 
     def set_fast_token_limit(self, value: int):
-        """Set the fast token limit value."""
+        """设置fast token快速令牌限制值。"""
         self.fast_token_limit = value
 
     def set_smart_token_limit(self, value: int):
-        """Set the smart token limit value."""
+        """设置smart token令牌限值。"""
         self.smart_token_limit = value
 
     def set_openai_api_key(self, value: str):
-        """Set the OpenAI API key value."""
+        """设置OpenAI API密钥值。."""
         self.openai_api_key = value
 
     def set_elevenlabs_api_key(self, value: str):
-        """Set the ElevenLabs API key value."""
+        """设置ElevenLabs API密钥值。"""
         self.elevenlabs_api_key = value
 
     def set_elevenlabs_voice_1_id(self, value: str):
-        """Set the ElevenLabs Voice 1 ID value."""
+        """设置ElevenLabs Voice 1 ID值"""
         self.elevenlabs_voice_1_id = value
 
     def set_elevenlabs_voice_2_id(self, value: str):
-        """Set the ElevenLabs Voice 2 ID value."""
+        """设置ElevenLabs Voice 2 ID值"""
         self.elevenlabs_voice_2_id = value
 
     def set_google_api_key(self, value: str):
-        """Set the Google API key value."""
+        """设置Google API密钥值."""
         self.google_api_key = value
 
     def set_custom_search_engine_id(self, value: str):
-        """Set the custom search engine id value."""
+        """设置自定义搜索引擎ID值。."""
         self.custom_search_engine_id = value
 
     def set_pinecone_api_key(self, value: str):
-        """Set the Pinecone API key value."""
+        """设置Pinecone API密钥值."""
         self.pinecone_api_key = value
 
     def set_pinecone_region(self, value: str):
-        """Set the Pinecone region value."""
+        """设置Pinecone地区值."""
         self.pinecone_region = value
 
     def set_debug_mode(self, value: bool):
-        """Set the debug mode value."""
+        """设置调试模式值."""
         self.debug_mode = value

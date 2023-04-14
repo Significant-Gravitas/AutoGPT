@@ -5,9 +5,9 @@ import time
 
 
 class Spinner:
-    """A simple spinner class"""
+    """一个简单的旋转图标类"""
     def __init__(self, message="Loading...", delay=0.1):
-        """Initialize the spinner class"""
+        """初始化旋转图标类"""
         self.spinner = itertools.cycle(['-', '/', '|', '\\'])
         self.delay = delay
         self.message = message
@@ -15,7 +15,7 @@ class Spinner:
         self.spinner_thread = None
 
     def spin(self):
-        """Spin the spinner"""
+        """旋转图标"""
         while self.running:
             sys.stdout.write(next(self.spinner) + " " + self.message + "\r")
             sys.stdout.flush()
@@ -23,13 +23,13 @@ class Spinner:
             sys.stdout.write('\r' + ' ' * (len(self.message) + 2) + '\r')
 
     def __enter__(self):
-        """Start the spinner"""
+        """开始旋转图标"""
         self.running = True
         self.spinner_thread = threading.Thread(target=self.spin)
         self.spinner_thread.start()
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        """Stop the spinner"""
+        """停止旋转图标"""
         self.running = False
         self.spinner_thread.join()
         sys.stdout.write('\r' + ' ' * (len(self.message) + 2) + '\r')

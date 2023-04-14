@@ -23,9 +23,9 @@ class PineconeMemory(MemoryProviderSingleton):
         try:
             pinecone.whoami()
         except Exception as e:
-            logger.typewriter_log("FAILED TO CONNECT TO PINECONE", Fore.RED, Style.BRIGHT + str(e) + Style.RESET_ALL)
-            logger.double_check("Please ensure you have setup and configured Pinecone properly for use. " +
-                               f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#-pinecone-api-key-setup{Style.RESET_ALL} to ensure you've set up everything correctly.")
+            logger.typewriter_log("连接Pinecone失败", Fore.RED, Style.BRIGHT + str(e) + Style.RESET_ALL)
+            logger.double_check("请确保您已正确设置和配置 Pinecone 以供使用. " +
+                               f"您可以查看 {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#-pinecone-api-key-setup{Style.RESET_ALL} 以确保您已正确设置所有内容.")
             exit(1)
 
         if table_name not in pinecone.list_indexes():

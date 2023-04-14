@@ -14,11 +14,11 @@ from config import Singleton
 
 cfg = Config()
 
-'''
-Logger that handle titles in different colors.
-Outputs logs in console, activity.log, and errors.log
-For console handler: simulates typing
-'''
+"""
+处理不同颜色标题的记录器。
+在控制台、activity.log 和 errors.log 中输出日志
+对于控制台处理程序：模拟打字
+"""
 
 
 class Logger(metaclass=Singleton):
@@ -132,7 +132,7 @@ class Logger(metaclass=Singleton):
 
 
 '''
-Output stream to console using simulated typing
+使用模拟输入将流输出到控制台
 '''
 
 

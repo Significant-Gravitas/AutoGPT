@@ -26,17 +26,17 @@ def is_valid_int(value):
 
 
 def get_command(response):
-    """Parse the response and return the command name and arguments"""
+    """解析响应并返回命令名称和参数"""
     try:
         response_json = fix_and_parse_json(response)
 
         if "command" not in response_json:
-            return "Error:" , "Missing 'command' object in JSON"
+            return "Error:","JSON 中缺少'命令'对象"
 
         command = response_json["command"]
 
         if "name" not in command:
-            return "Error:", "Missing 'name' field in 'command' object"
+            return "Error:", "'command'对象中缺少'name'字段 "
 
         command_name = command["name"]
 
@@ -45,14 +45,14 @@ def get_command(response):
 
         return command_name, arguments
     except json.decoder.JSONDecodeError:
-        return "Error:", "Invalid JSON"
+        return "Error:", "无效的 JSON"
     # All other errors, return "Error: + error message"
     except Exception as e:
         return "Error:", str(e)
 
 
 def execute_command(command_name, arguments):
-    """Execute the command and return the result"""
+    """执行命令并返回结果"""
     memory = get_memory(cfg)
 
     try:
@@ -108,7 +108,7 @@ def execute_command(command_name, arguments):
             if cfg.execute_local_commands:
                 return execute_shell(arguments["command_line"])
             else:
-                return "You are not allowed to run local shell commands. To execute shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' in your config. Do not attempt to bypass the restriction."
+                return "不允许运行本地 shell 命令。 要执行 shell 命令，必须在您的配置中将 EXECUTE_LOCAL_COMMANDS 设置为“True”。 不要试图绕过限制"
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
         elif command_name == "do_nothing":
@@ -116,20 +116,20 @@ def execute_command(command_name, arguments):
         elif command_name == "task_complete":
             shutdown()
         else:
-            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for available commands and only respond in the specified JSON format."
+            return f"未知的命令 '{command_name}'. 请参阅“COMMANDS”列表以获取可用命令,并仅以指定的 JSON 格式响应。"
     # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)
 
 
 def get_datetime():
-    """Return the current date and time"""
-    return "Current date and time: " + \
+    """返回当前日期和时间"""
+    return "当前日期和时间: " + \
         datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def google_search(query, num_results=8):
-    """Return the results of a google search"""
+    """Return谷歌搜索的结果"""
     search_results = []
     for j in ddg(query, max_results=num_results):
         search_results.append(j)
@@ -138,7 +138,7 @@ def google_search(query, num_results=8):
 
 
 def google_official_search(query, num_results=8):
-    """Return the results of a google search using the official Google API"""
+    """Return 使用官方 Google API 的谷歌搜索结果"""
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     import json
@@ -166,7 +166,7 @@ def google_official_search(query, num_results=8):
 
         # Check if the error is related to an invalid or missing API key
         if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
-            return "Error: The provided Google API key is invalid or missing."
+            return "Error: 提供的 Google API Key无效或丢失。"
         else:
             return f"Error: {e}"
 
@@ -175,7 +175,7 @@ def google_official_search(query, num_results=8):
 
 
 def browse_website(url, question):
-    """Browse a website and return the summary and links"""
+    """浏览网站并返回摘要和链接"""
     summary = get_text_summary(url, question)
     links = get_hyperlinks(url)
 
@@ -183,84 +183,84 @@ def browse_website(url, question):
     if len(links) > 5:
         links = links[:5]
 
-    result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
+    result = f"""网站内容概要: {summary}\n\nLinks: {links}"""
 
     return result
 
 
 def get_text_summary(url, question):
-    """Return the results of a google search"""
+    """谷歌搜索的结果"""
     text = browse.scrape_text(url)
     summary = browse.summarize_text(text, question)
     return """ "Result" : """ + summary
 
 
 def get_hyperlinks(url):
-    """Return the results of a google search"""
+    """返回谷歌搜索的结果"""
     link_list = browse.scrape_links(url)
     return link_list
 
 
 def commit_memory(string):
-    """Commit a string to memory"""
-    _text = f"""Committing memory with string "{string}" """
+    """将字符串提交到内存"""
+    _text = f"""用字符串提交内存 "{string}" """
     mem.permanent_memory.append(string)
     return _text
 
 
 def delete_memory(key):
-    """Delete a memory with a given key"""
+    """使用指定的key删除内存"""
     if key >= 0 and key < len(mem.permanent_memory):
         _text = "Deleting memory with key " + str(key)
         del mem.permanent_memory[key]
         print(_text)
         return _text
     else:
-        print("Invalid key, cannot delete memory.")
+        print("无效Key，无法删除内存。")
         return None
 
 
 def overwrite_memory(key, string):
-    """Overwrite a memory with a given key and string"""
+    """用指定的键和字符串覆盖内存"""
     # Check if the key is a valid integer
     if is_valid_int(key):
         key_int = int(key)
         # Check if the integer key is within the range of the permanent_memory list
         if 0 <= key_int < len(mem.permanent_memory):
-            _text = "Overwriting memory with key " + str(key) + " and string " + string
+            _text = "覆盖 memory with key " + str(key) + " and string " + string
             # Overwrite the memory slot with the given integer key and string
             mem.permanent_memory[key_int] = string
             print(_text)
             return _text
         else:
-            print(f"Invalid key '{key}', out of range.")
+            print(f"无效的Key '{key}', out of range.")
             return None
     # Check if the key is a valid string
     elif isinstance(key, str):
-        _text = "Overwriting memory with key " + key + " and string " + string
+        _text = "覆盖 memory with key " + key + " and string " + string
         # Overwrite the memory slot with the given string key and string
         mem.permanent_memory[key] = string
         print(_text)
         return _text
     else:
-        print(f"Invalid key '{key}', must be an integer or a string.")
+        print(f"无效的Key '{key}', 必须是整数或字符串.")
         return None
 
 
 def shutdown():
-    """Shut down the program"""
-    print("Shutting down...")
+    """关闭程序"""
+    print("关闭...")
     quit()
 
 
 def start_agent(name, task, prompt, model=cfg.fast_llm_model):
-    """Start an agent with a given name, task, and prompt"""
+    """使用name、task和prompt来启动机器人"""
     global cfg
 
     # Remove underscores from name
     voice_name = name.replace("_", " ")
 
-    first_message = f"""You are {name}.  Respond with: "Acknowledged"."""
+    first_message = f"""你是 {name}.  回应: "Acknowledged". 中文版来自自阿杰，公众号内获取最新代码《阿杰的人生路》"""
     agent_intro = f"{voice_name} here, Reporting for duty!"
 
     # Create agent
@@ -269,7 +269,7 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     key, ack = agents.create_agent(task, first_message, model)
 
     if cfg.speak_mode:
-        speak.say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
+        speak.say_text(f"Hello {voice_name}. 你的任务如下： {task}.")
 
     # Assign task (prompt), get response
     agent_response = message_agent(key, prompt)
@@ -278,7 +278,7 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
 
 
 def message_agent(key, message):
-    """Message an agent with a given key and message"""
+    """使用指定的密钥和消息向机器人发送消息"""
     global cfg
 
     # Check if the key is a valid integer
@@ -288,7 +288,7 @@ def message_agent(key, message):
     elif isinstance(key, str):
         agent_response = agents.message_agent(key, message)
     else:
-        return "Invalid key, must be an integer or a string."
+        return "无效的Key, 必须是整数或字符串."
 
     # Speak response
     if cfg.speak_mode:
@@ -297,13 +297,13 @@ def message_agent(key, message):
 
 
 def list_agents():
-    """List all agents"""
+    """列出所有机器人"""
     return agents.list_agents()
 
 
 def delete_agent(key):
-    """Delete an agent with a given key"""
+    """删除具有指定Key的机器人"""
     result = agents.delete_agent(key)
     if not result:
-        return f"Agent {key} does not exist."
-    return f"Agent {key} deleted."
+        return f"机器人 {key} 不存在."
+    return f"机器人 {key} 已经删除啦，放心了吧."

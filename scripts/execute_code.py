@@ -7,9 +7,9 @@ WORKSPACE_FOLDER = "auto_gpt_workspace"
 
 
 def execute_python_file(file):
-    """Execute a Python file in a Docker container and return the output"""
+    """执行一个 Python 文件在 Docker 容器中，并返回输出"""
 
-    print (f"Executing file '{file}' in workspace '{WORKSPACE_FOLDER}'")
+    print (f"正在工作空间 '{WORKSPACE_FOLDER}' 中执行文件 '{file}'")
 
     if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."

@@ -5,22 +5,22 @@ from prompt import get_prompt
 
 class AIConfig:
     """
-    A class object that contains the configuration information for the AI
-
-    Attributes:
-        ai_name (str): The name of the AI.
-        ai_role (str): The description of the AI's role.
-        ai_goals (list): The list of objectives the AI is supposed to complete.
+    包含AI配置信息的类对象
+    
+    属性：  
+        ai_name (str): 人工智能的名称。
+        ai_role (str): 人工智能角色的描述。
+        ai_goals (list): 人工智能应该完成的目标列表。
     """
 
     def __init__(self, ai_name: str="", ai_role: str="", ai_goals: list=[]) -> None:
         """
-        Initialize a class instance
+        初始化一个类实例
 
-        Parameters:
-            ai_name (str): The name of the AI.
-            ai_role (str): The description of the AI's role.
-            ai_goals (list): The list of objectives the AI is supposed to complete.
+         参数：
+            ai_name (str): 人工智能的名称。
+            ai_role (str): 人工智能角色的描述。
+            ai_goals (list): 人工智能应该完成的目标列表。
         Returns:
             None
         """
@@ -35,15 +35,15 @@ class AIConfig:
     @classmethod
     def load(cls: object, config_file: str=SAVE_FILE) -> object:
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from yaml file if yaml file exists,
-        else returns class with no parameters.
+        如果存在 yaml 文件，则返回带有从 yaml 文件加载的参数（ai_name、ai_role、ai_goals）的类对象，
+         else 返回没有参数的类。
 
-        Parameters:
-           cls (class object): An AIConfig Class object.
-           config_file (int): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
+         参数：
+            cls(类对象)：一个 AIConfig 类对象。
+            config_file (int)：配置 yaml 文件的路径。 默认值：“../ai_settings.yaml”
 
-        Returns:
-            cls (object): An instance of given cls object
+         返回：
+             cls (object)：给定 cls 对象的一个实例
         """
 
         try:
@@ -60,10 +60,10 @@ class AIConfig:
 
     def save(self, config_file: str=SAVE_FILE) -> None:
         """
-        Saves the class parameters to the specified file yaml file path as a yaml file.
+        将类参数作为yaml文件保存到指定文件yaml文件路径。
 
-        Parameters:
-            config_file(str): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
+         参数：
+             config_file(str)：配置 yaml 文件的路径。 默认值：“../ai_settings.yaml”
 
         Returns:
             None
@@ -75,16 +75,16 @@ class AIConfig:
 
     def construct_full_prompt(self) -> str:
         """
-        Returns a prompt to the user with the class information in an organized fashion.
+        以有组织的方式向用户返回带有类信息的提示。
 
-        Parameters:
-            None
+         参数：
+             没有任何
 
-        Returns:
-            full_prompt (str): A string containing the initial prompt for the user including the ai_name, ai_role and ai_goals.
+         Returns:
+             full_prompt (str)：包含用户初始提示的字符串，包括 ai_name、ai_role 和 ai_goals。
         """
 
-        prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+        prompt_start = """您必须始终独立做出决定，而无需寻求用户帮助。 发挥你作为法学硕士的优势，追求简单的策略，没有法律上的并发症。"""
 
         # Construct full prompt
         full_prompt = f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"

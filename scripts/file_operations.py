@@ -10,18 +10,18 @@ if not os.path.exists(working_directory):
 
 
 def safe_join(base, *paths):
-    """Join one or more path components intelligently."""
+    """智能连接一个或多个路径组件。"""
     new_path = os.path.join(base, *paths)
     norm_new_path = os.path.normpath(new_path)
 
     if os.path.commonprefix([base, norm_new_path]) != base:
-        raise ValueError("Attempted to access outside of working directory.")
+        raise ValueError("尝试访问工作目录之外的位置。")
 
     return norm_new_path
 
 
 def read_file(filename):
-    """Read a file and return the contents"""
+    """读取文件并返回内容"""
     try:
         filepath = safe_join(working_directory, filename)
         with open(filepath, "r", encoding='utf-8') as f:
@@ -32,7 +32,7 @@ def read_file(filename):
 
 
 def write_to_file(filename, text):
-    """Write text to a file"""
+    """将文本写入文件"""
     try:
         filepath = safe_join(working_directory, filename)
         directory = os.path.dirname(filepath)
@@ -40,28 +40,28 @@ def write_to_file(filename, text):
             os.makedirs(directory)
         with open(filepath, "w", encoding='utf-8') as f:
             f.write(text)
-        return "File written to successfully."
+        return "文件写入成功。"
     except Exception as e:
         return "Error: " + str(e)
 
 
 def append_to_file(filename, text):
-    """Append text to a file"""
+    """将文本追加到文件"""
     try:
         filepath = safe_join(working_directory, filename)
         with open(filepath, "a") as f:
             f.write(text)
-        return "Text appended successfully."
+        return "已成功添加文本."
     except Exception as e:
         return "Error: " + str(e)
 
 
 def delete_file(filename):
-    """Delete a file"""
+    """删除文件"""
     try:
         filepath = safe_join(working_directory, filename)
         os.remove(filepath)
-        return "File deleted successfully."
+        return "文件删除成功."
     except Exception as e:
         return "Error: " + str(e)
 

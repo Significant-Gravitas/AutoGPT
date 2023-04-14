@@ -3,10 +3,9 @@ from promptgenerator import PromptGenerator
 
 def get_prompt():
     """
-    This function generates a prompt string that includes various constraints, commands, resources, and performance evaluations.
-
-    Returns:
-        str: The generated prompt string.
+    此函数生成包含各种约束、命令、资源和性能评估的提示字符串。
+    返回：
+    str: 生成的提示字符串。
     """
 
     # Initialize the PromptGenerator object
@@ -16,7 +15,9 @@ def get_prompt():
     prompt_generator.add_constraint("~4000 word limit for short term memory. Your short term memory is short, so immediately save important information to files.")
     prompt_generator.add_constraint("If you are unsure how you previously did something or want to recall past events, thinking about similar events will help you remember.")
     prompt_generator.add_constraint("No user assistance")
+    prompt_generator.add_constraint("Reply in Chinese")#增加使用中文回复
     prompt_generator.add_constraint('Exclusively use the commands listed in double quotes e.g. "command name"')
+    
 
     # Define the command list
     commands = [

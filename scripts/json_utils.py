@@ -6,14 +6,13 @@ cfg = Config()
 
 
 def extract_char_position(error_message: str) -> int:
-    """Extract the character position from the JSONDecodeError message.
+    """从 JSONDecodeError 消息中提取字符位置。
 
-    Args:
-        error_message (str): The error message from the JSONDecodeError
-          exception.
+    参数：
+    error_message（str）：来自 JSONDecodeError 异常的错误消息。
 
-    Returns:
-        int: The character position.
+    返回值：
+    int：字符位置。
     """
     import re
 
@@ -21,7 +20,7 @@ def extract_char_position(error_message: str) -> int:
     if match := char_pattern.search(error_message):
         return int(match[1])
     else:
-        raise ValueError("Character position not found in the error message.")
+        raise ValueError("在错误消息中未找到字符位置。")
 
 
 def add_quotes_to_property_names(json_string: str) -> str:
@@ -89,7 +88,7 @@ def fix_invalid_escape(json_str: str, error_message: str) -> str:
             return json_str
         except json.JSONDecodeError as e:
             if cfg.debug_mode:
-                print('json loads error - fix invalid escape', e)
+                print('JSON 加载错误 - 修复无效的转义字符', e)
             error_message = str(e)
     return json_str
 
@@ -120,7 +119,7 @@ def correct_json(json_str: str) -> str:
                 return json_str
             except json.JSONDecodeError as e:
                 if cfg.debug_mode:
-                    print('json loads error - add quotes', e)
+                    print('JSON 加载错误 - 添加引号', e)
                 error_message = str(e)
         if balanced_str := balance_braces(json_str):
             return balanced_str

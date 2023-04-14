@@ -57,10 +57,9 @@ def fix_and_parse_json(
     # Can throw a ValueError if there is no "{" or "}" in the json_str
     except (json.JSONDecodeError, ValueError) as e:  # noqa: F841
         if try_to_fix_with_gpt:
-            logger.warn("Warning: Failed to parse AI output, attempting to fix."
-                  "\n If you see this warning frequently, it's likely that"
-                  " your prompt is confusing the AI. Try changing it up"
-                  " slightly.")
+            logger.warn("警告：解析人工智能输出失败，正在尝试修复。"
+                    "\n 如果您经常看到此警告，则可能是您的提示混淆了人工智能。"
+                    "尝试稍微更改提示。")
             # Now try to fix this up using the ai_functions
             ai_fixed_json = fix_json(json_str, JSON_SCHEMA)
 
@@ -69,22 +68,22 @@ def fix_and_parse_json(
             else:
                 # This allows the AI to react to the error message,
                 #   which usually results in it correcting its ways.
-                logger.error("Failed to fix AI output, telling the AI.")
+                logger.error("无法修复 AI 输出，告诉 AI 让它修复。")
                 return json_str
         else:
             raise e
 
 
 def fix_json(json_str: str, schema: str) -> str:
-    """Fix the given JSON string to make it parseable and fully compliant with the provided schema."""
+    """修复给定的 JSON 字符串，使其可解析并完全符合提供的模式。"""
     # Try to fix the JSON using GPT:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
-    description_string = "Fixes the provided JSON string to make it parseable"\
-        " and fully compliant with the provided schema.\n If an object or"\
-        " field specified in the schema isn't contained within the correct"\
-        " JSON, it is omitted.\n This function is brilliant at guessing"\
-        " when the format is incorrect."
+    description_string = "修复提供的 JSON 字符串以使其可解析"\
+         " 并完全符合提供的架构。\n 如果一个对象或"\
+         "架构中指定的字段未包含在正确的"\
+         " JSON, 省略了。\n 这个函数很擅长猜测"\
+         "当格式不正确时。"
 
     # If it doesn't already start with a "`", add one:
     if not json_str.startswith("`"):
@@ -92,11 +91,11 @@ def fix_json(json_str: str, schema: str) -> str:
     result_string = call_ai_function(
         function_string, args, description_string, model=cfg.fast_llm_model
     )
-    logger.debug("------------ JSON FIX ATTEMPT ---------------")
-    logger.debug(f"Original JSON: {json_str}")
+    logger.debug("------------ 尝试修复JSON ---------------")
+    logger.debug(f"原始 JSON: {json_str}")
     logger.debug("-----------")
-    logger.debug(f"Fixed JSON: {result_string}")
-    logger.debug("----------- END OF FIX ATTEMPT ----------------")
+    logger.debug(f"修复后 JSON: {result_string}")
+    logger.debug("----------- 尝试修复结束 ----------------")
 
     try:
         json.loads(result_string)  # just check the validity

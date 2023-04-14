@@ -4,19 +4,19 @@ from typing import List, Dict
 
 def count_message_tokens(messages : List[Dict[str, str]], model : str = "gpt-3.5-turbo-0301") -> int:
     """
-    Returns the number of tokens used by a list of messages.
+    返回由消息列表使用的标记数量。
 
-    Args:
-    messages (list): A list of messages, each of which is a dictionary containing the role and content of the message.
-    model (str): The name of the model to use for tokenization. Defaults to "gpt-3.5-turbo-0301".
+    参数：
+    messages（list）：消息列表，每个消息都是包含消息角色和内容的字典。
+    model（str）：用于标记化的模型名称。默认为"gpt-3.5-turbo-0301"。
 
-    Returns:
-    int: The number of tokens used by the list of messages.
+    返回：
+    int：消息列表使用的标记数量。
     """
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
-        logger.warn("Warning: model not found. Using cl100k_base encoding.")
+        logger.warn("Warning：未找到模型。使用 cl100k_base 编码。")
         encoding = tiktoken.get_encoding("cl100k_base")
     if model == "gpt-3.5-turbo":
         # !Node: gpt-3.5-turbo may change over time. Returning num tokens assuming gpt-3.5-turbo-0301.")
@@ -45,14 +45,14 @@ def count_message_tokens(messages : List[Dict[str, str]], model : str = "gpt-3.5
 
 def count_string_tokens(string: str, model_name: str) -> int:
     """
-    Returns the number of tokens in a text string.
+    返回文本字符串中的标记数量。
 
-    Args:
-    string (str): The text string.
-    model_name (str): The name of the encoding to use. (e.g., "gpt-3.5-turbo")
+    参数：
+    string（str）：文本字符串。
+    model_name（str）：要使用的编码名称（例如，“gpt-3.5-turbo”）。
 
-    Returns:
-    int: The number of tokens in the text string.
+    返回：
+    int：文本字符串中的标记数量。
     """
     encoding = tiktoken.encoding_for_model(model_name)
     num_tokens = len(encoding.encode(string))

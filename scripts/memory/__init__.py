@@ -9,14 +9,14 @@ try:
     from memory.redismem import RedisMemory
     supported_memory.append('redis')
 except ImportError:
-    print("Redis not installed. Skipping import.")
+    print("Redis 未安装。跳过导入。")
     RedisMemory = None
 
 try:
     from memory.pinecone import PineconeMemory
     supported_memory.append('pinecone')
 except ImportError:
-    print("Pinecone not installed. Skipping import.")
+    print("Pinecone 未安装。跳过导入。")
     PineconeMemory = None
 
 
@@ -24,16 +24,16 @@ def get_memory(cfg, init=False):
     memory = None
     if cfg.memory_backend == "pinecone":
         if not PineconeMemory:
-            print("Error: Pinecone is not installed. Please install pinecone"
-                  " to use Pinecone as a memory backend.")
+            print("错误: Pinecone 未安装。请安装 pinecone"
+                   " 使用 Pinecone 作为内存后端。")
         else:
             memory = PineconeMemory(cfg)
             if init:
                 memory.clear()
     elif cfg.memory_backend == "redis":
         if not RedisMemory:
-            print("Error: Redis is not installed. Please install redis-py to"
-                  " use Redis as a memory backend.")
+            print("错误: Redis 未安装。请安装 redis-py"
+                   " 使用 Redis 作为内存后端。")
         else:
             memory = RedisMemory(cfg)
     elif cfg.memory_backend == "no_memory":
