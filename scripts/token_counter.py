@@ -1,4 +1,5 @@
 import tiktoken
+from logger import logger
 from typing import List, Dict
 
 
