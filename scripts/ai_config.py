@@ -1,6 +1,7 @@
 import yaml
-import data
 import os
+from prompt import get_prompt
+
 
 class AIConfig:
     """
@@ -42,11 +43,11 @@ class AIConfig:
            config_file (int): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
 
         Returns:
-            cls (object): A instance of given cls object
+            cls (object): An instance of given cls object
         """
 
         try:
-            with open(config_file) as file:
+            with open(config_file, encoding='utf-8') as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
         except FileNotFoundError:
             config_params = {}
@@ -80,7 +81,7 @@ class AIConfig:
             None
 
         Returns:
-            full_prompt (str): A string containing the intitial prompt for the user including the ai_name, ai_role and ai_goals.
+            full_prompt (str): A string containing the initial prompt for the user including the ai_name, ai_role and ai_goals.
         """
 
         prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
@@ -90,5 +91,5 @@ class AIConfig:
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
-        full_prompt += f"\n\n{data.load_prompt()}"
+        full_prompt += f"\n\n{get_prompt()}"
         return full_prompt
