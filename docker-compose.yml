@@ -7,9 +7,10 @@ services:
     depends_on:
       - redis
     build: ./
+    env_file: .env
     volumes:
       - "./scripts:/app"
-      - ".env:/app/.env"
+      - "./logs:/logs"
     profiles: ["exclude-from-up"]
 
   redis:
