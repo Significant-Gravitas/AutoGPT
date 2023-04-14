@@ -44,6 +44,10 @@ class PineconeMemory(MemoryProviderSingleton):
         return self.get_relevant(data, 1)
 
     def clear(self):
+        """
+        Clears the pinecone server memory.
+        Returns: Message indicating that the memory has been cleared.
+        """
         self.index.delete(deleteAll=True)
         return "Obliviated"
 
