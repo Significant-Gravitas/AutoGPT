@@ -1,17 +1,16 @@
-import unittest
 import random
 import string
 import sys
+import unittest
 from pathlib import Path
+
 from autogpt.config import Config
 from autogpt.memory.local import LocalCache
 
 
 class TestLocalCache(unittest.TestCase):
-
     def random_string(self, length):
-        return ''.join(
-            random.choice(string.ascii_letters) for _ in range(length))
+        return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
     def setUp(self):
         cfg = cfg = Config()
@@ -20,10 +19,10 @@ class TestLocalCache(unittest.TestCase):
 
         # Add example texts to the cache
         self.example_texts = [
-            'The quick brown fox jumps over the lazy dog',
-            'I love machine learning and natural language processing',
-            'The cake is a lie, but the pie is always true',
-            'ChatGPT is an advanced AI model for conversation'
+            "The quick brown fox jumps over the lazy dog",
+            "I love machine learning and natural language processing",
+            "The cake is a lie, but the pie is always true",
+            "ChatGPT is an advanced AI model for conversation",
         ]
 
         for text in self.example_texts:
@@ -46,5 +45,5 @@ class TestLocalCache(unittest.TestCase):
         self.assertIn(self.example_texts[1], relevant_texts)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

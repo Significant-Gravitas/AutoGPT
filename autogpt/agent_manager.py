@@ -12,7 +12,9 @@ def create_agent(task, prompt, model):
     global next_key
     global agents
 
-    messages = [{"role": "user", "content": prompt}, ]
+    messages = [
+        {"role": "user", "content": prompt},
+    ]
 
     # Start GPT instance
     agent_reply = create_chat_completion(

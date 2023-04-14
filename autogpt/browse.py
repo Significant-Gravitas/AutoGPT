@@ -1,15 +1,17 @@
+from urllib.parse import urljoin, urlparse
+
 import requests
 from bs4 import BeautifulSoup
-from autogpt.memory import get_memory
+
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
-from urllib.parse import urlparse, urljoin
+from autogpt.memory import get_memory
 
 cfg = Config()
 memory = get_memory(cfg)
 
 session = requests.Session()
-session.headers.update({'User-Agent': cfg.user_agent})
+session.headers.update({"User-Agent": cfg.user_agent})
 
 
 # Function to check if the URL is valid
@@ -28,7 +30,12 @@ def sanitize_url(url):
 
 # Define and check for local file address prefixes
 def check_local_file_access(url):
-    local_prefixes = ['file:///', 'file://localhost', 'http://localhost', 'https://localhost']
+    local_prefixes = [
+        "file:///",
+        "file://localhost",
+        "http://localhost",
+        "https://localhost",
+    ]
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
 
@@ -36,11 +43,11 @@ def get_response(url, timeout=10):
     try:
         # Restrict access to local files
         if check_local_file_access(url):
-            raise ValueError('Access to local files is restricted')
+            raise ValueError("Access to local files is restricted")
 
         # Most basic check if the URL is valid:
-        if not url.startswith('http://') and not url.startswith('https://'):
-            raise ValueError('Invalid URL format')
+        if not url.startswith("http://") and not url.startswith("https://"):
+            raise ValueError("Invalid URL format")
 
         sanitized_url = sanitize_url(url)
 
@@ -74,7 +81,7 @@ def scrape_text(url):
     text = soup.get_text()
     lines = (line.strip() for line in text.splitlines())
     chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-    text = '\n'.join(chunk for chunk in chunks if chunk)
+    text = "\n".join(chunk for chunk in chunks if chunk)
 
     return text
 
@@ -82,8 +89,8 @@ def scrape_text(url):
 def extract_hyperlinks(soup):
     """Extract hyperlinks from a BeautifulSoup object"""
     hyperlinks = []
-    for link in soup.find_all('a', href=True):
-        hyperlinks.append((link.text, link['href']))
+    for link in soup.find_all("a", href=True):
+        hyperlinks.append((link.text, link["href"]))
     return hyperlinks
 
 
@@ -134,7 +141,7 @@ def create_message(chunk, question):
     """Create a message for the user to summarize a chunk of text"""
     return {
         "role": "user",
-        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
+        "content": f'"""{chunk}""" Using the above text, please answer the following question: "{question}" -- if the question cannot be answered using the text, please summarize the text.',
     }
 
 
@@ -152,8 +159,7 @@ def summarize_text(url, text, question):
     for i, chunk in enumerate(chunks):
         print(f"Adding chunk {i + 1} / {len(chunks)} to memory")
 
-        memory_to_add = f"Source: {url}\n" \
-                        f"Raw content part#{i + 1}: {chunk}"
+        memory_to_add = f"Source: {url}\n" f"Raw content part#{i + 1}: {chunk}"
 
         memory.add(memory_to_add)
 
@@ -168,8 +174,7 @@ def summarize_text(url, text, question):
         summaries.append(summary)
         print(f"Added chunk {i + 1} summary to memory")
 
-        memory_to_add = f"Source: {url}\n" \
-                        f"Content summary part#{i + 1}: {summary}"
+        memory_to_add = f"Source: {url}\n" f"Content summary part#{i + 1}: {summary}"
 
         memory.add(memory_to_add)
 
