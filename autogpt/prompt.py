@@ -1,4 +1,4 @@
-from promptgenerator import PromptGenerator
+from autogpt.promptgenerator import PromptGenerator
 
 
 def get_prompt():
