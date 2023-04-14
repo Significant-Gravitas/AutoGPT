@@ -6,6 +6,7 @@ from file_operations import ingest_file, search_files
 
 cfg = Config()
 
+
 def configure_logging():
     logging.basicConfig(filename='log-ingestion.txt',
                     filemode='a',
@@ -42,7 +43,6 @@ def main():
     parser.add_argument("--max_length", type=int, help="The max_length of each chunk when ingesting files (default: 4000)", default=4000)
 
     args = parser.parse_args()
-
 
     # Initialize memory
     memory = get_memory(cfg, init=args.init)
