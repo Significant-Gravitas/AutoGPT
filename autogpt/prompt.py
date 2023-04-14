@@ -3,7 +3,7 @@ from autogpt.promptgenerator import PromptGenerator
 
 def get_prompt() -> str:
     """
-    This function generates a prompt string that includes various constraints, 
+    This function generates a prompt string that includes various constraints,
         commands, resources, and performance evaluations.
 
     Returns:

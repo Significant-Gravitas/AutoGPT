@@ -15,14 +15,15 @@ def evaluate_code(code: str) -> List[str]:
     Parameters:
         code (str): Code to be evaluated.
     Returns:
-        A result string from create chat completion. A list of suggestions to 
+        A result string from create chat completion. A list of suggestions to
             improve the code.
     """
 
     function_string = "def analyze_code(code: str) -> List[str]:"
     args = [code]
-    description_string = "Analyzes the given code and returns a list of suggestions"\
-        " for improvements."
+    description_string = (
+        "Analyzes the given code and returns a list of suggestions" " for improvements."
+    )
 
     return call_ai_function(function_string, args, description_string)
 
@@ -43,8 +44,10 @@ def improve_code(suggestions: List[str], code: str) -> str:
         "def generate_improved_code(suggestions: List[str], code: str) -> str:"
     )
     args = [json.dumps(suggestions), code]
-    description_string = "Improves the provided code based on the suggestions"\
+    description_string = (
+        "Improves the provided code based on the suggestions"
         " provided, making no other changes."
+    )
 
     return call_ai_function(function_string, args, description_string)
 
@@ -66,7 +69,9 @@ def write_tests(code: str, focus: List[str]) -> str:
         "def create_test_cases(code: str, focus: Optional[str] = None) -> str:"
     )
     args = [code, json.dumps(focus)]
-    description_string = "Generates test cases for the existing code, focusing on"\
+    description_string = (
+        "Generates test cases for the existing code, focusing on"
         " specific areas if required."
+    )
 
     return call_ai_function(function_string, args, description_string)

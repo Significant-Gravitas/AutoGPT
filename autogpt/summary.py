@@ -59,7 +59,7 @@ def create_message(chunk, question):
         "role": "user",
         "content": f'"""{chunk}""" Using the above text, please answer the following'
         f' question: "{question}" -- if the question cannot be answered using the text,'
-        ' please summarize the text.',
+        " please summarize the text.",
     }
 
 

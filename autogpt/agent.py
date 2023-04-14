@@ -156,8 +156,10 @@ class Agent:
             elif command_name == "human_feedback":
                 result = f"Human feedback: {self.user_input}"
             else:
-                result = f"Command {command_name} returned: " \
+                result = (
+                    f"Command {command_name} returned: "
                     f"{cmd.execute_command(command_name, arguments)}"
+                )
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
 
@@ -172,9 +174,7 @@ class Agent:
             # Check if there's a result from the command append it to the message
             # history
             if result is not None:
-                self.full_message_history.append(
-                    create_chat_message("system", result)
-                )
+                self.full_message_history.append(create_chat_message("system", result))
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
             else:
                 self.full_message_history.append(
@@ -262,11 +262,11 @@ def print_assistant_thoughts(ai_name, assistant_reply):
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
         logger.typewriter_log(
-            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW,
-            f"{assistant_thoughts_text}"
+            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
         )
-        logger.typewriter_log("REASONING:", Fore.YELLOW,
-                              f"{assistant_thoughts_reasoning}")
+        logger.typewriter_log(
+            "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
+        )
 
         if assistant_thoughts_plan:
             logger.typewriter_log("PLAN:", Fore.YELLOW, "")
@@ -282,8 +282,9 @@ def print_assistant_thoughts(ai_name, assistant_reply):
                 line = line.lstrip("- ")
                 logger.typewriter_log("- ", Fore.GREEN, line.strip())
 
-        logger.typewriter_log("CRITICISM:", Fore.YELLOW,
-                              f"{assistant_thoughts_criticism}")
+        logger.typewriter_log(
+            "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
+        )
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             say_text(assistant_thoughts_speak)

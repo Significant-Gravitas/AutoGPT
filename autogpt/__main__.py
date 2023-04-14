@@ -18,6 +18,7 @@ from autogpt.spinner import Spinner
 cfg = Config()
 config = None
 
+
 def check_openai_api_key():
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     if not cfg.openai_api_key:
@@ -110,8 +111,9 @@ def print_assistant_thoughts(assistant_reply):
         logger.typewriter_log(
             f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
         )
-        logger.typewriter_log("REASONING:", Fore.YELLOW,
-                              f"{assistant_thoughts_reasoning}")
+        logger.typewriter_log(
+            "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
+        )
 
         if assistant_thoughts_plan:
             logger.typewriter_log("PLAN:", Fore.YELLOW, "")
@@ -127,8 +129,9 @@ def print_assistant_thoughts(assistant_reply):
                 line = line.lstrip("- ")
                 logger.typewriter_log("- ", Fore.GREEN, line.strip())
 
-        logger.typewriter_log("CRITICISM:", Fore.YELLOW,
-                              f"{assistant_thoughts_criticism}")
+        logger.typewriter_log(
+            "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
+        )
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
@@ -374,8 +377,10 @@ def main():
     full_message_history = []
     next_action_count = 0
     # Make a constant:
-    user_input = "Determine which next command to use, and respond using the"\
+    user_input = (
+        "Determine which next command to use, and respond using the"
         " format specified above:"
+    )
     # Initialize memory and make sure it is empty.
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(cfg, init=True)
@@ -532,8 +537,10 @@ class Agent:
             elif command_name == "human_feedback":
                 result = f"Human feedback: {self.user_input}"
             else:
-                result = f"Command {command_name} " \
+                result = (
+                    f"Command {command_name} "
                     f"returned: {cmd.execute_command(command_name, arguments)}"
+                )
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
 

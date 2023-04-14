@@ -54,11 +54,11 @@ def chat_with_ai(
     prompt, user_input, full_message_history, permanent_memory, token_limit
 ):
     """Interact with the OpenAI API, sending the prompt, user input, message history,
-      and permanent memory."""
+    and permanent memory."""
     while True:
         try:
             """
-            Interact with the OpenAI API, sending the prompt, user input, 
+            Interact with the OpenAI API, sending the prompt, user input,
                 message history, and permanent memory.
 
             Args:

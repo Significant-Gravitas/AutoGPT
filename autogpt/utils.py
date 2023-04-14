@@ -13,7 +13,7 @@ def clean_input(prompt: str = ""):
 
 def validate_yaml_file(file: str):
     try:
-        with open(file, encoding='utf-8') as fp:
+        with open(file, encoding="utf-8") as fp:
             yaml.load(fp.read(), Loader=yaml.FullLoader)
     except FileNotFoundError:
         return (False, f"The file {Fore.CYAN}`{file}`{Fore.RESET} wasn't found")

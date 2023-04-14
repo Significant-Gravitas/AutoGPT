@@ -62,7 +62,7 @@ class AIConfig:
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
         # type: Type[AIConfig]
-        return cls(ai_name, ai_role, ai_goals)  
+        return cls(ai_name, ai_role, ai_goals)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
@@ -96,9 +96,12 @@ class AIConfig:
               including the ai_name, ai_role and ai_goals.
         """
 
-        prompt_start = "Your decisions must always be made independently without"\
-            "seeking user assistance. Play to your strengths as an LLM and pursue"\
-            " simple strategies with no legal complications."""
+        prompt_start = (
+            "Your decisions must always be made independently without"
+            "seeking user assistance. Play to your strengths as an LLM and pursue"
+            " simple strategies with no legal complications."
+            ""
+        )
 
         # Construct full prompt
         full_prompt = (

@@ -8,7 +8,13 @@ from duckduckgo_search import ddg
 from autogpt.ai_functions import evaluate_code, improve_code, write_tests
 from autogpt.browse import scrape_links, scrape_text, summarize_text
 from autogpt.execute_code import execute_python_file, execute_shell
-from autogpt.file_operations import append_to_file, delete_file, read_file, search_files, write_to_file
+from autogpt.file_operations import (
+    append_to_file,
+    delete_file,
+    read_file,
+    search_files,
+    write_to_file,
+)
 from autogpt.memory import get_memory
 from autogpt.speak import say_text
 from autogpt.web import browse_website
@@ -63,7 +69,7 @@ def execute_command(command_name, arguments):
     try:
         if command_name == "google":
             # Check if the Google API key is set and use the official search method
-            # If the API key is not set or has only whitespaces, use the unofficial 
+            # If the API key is not set or has only whitespaces, use the unofficial
             # search method
             key = cfg.google_api_key
             if key and key.strip() and key != "your-google-api-key":
@@ -113,9 +119,11 @@ def execute_command(command_name, arguments):
             if cfg.execute_local_commands:
                 return execute_shell(arguments["command_line"])
             else:
-                return "You are not allowed to run local shell commands. To execute"\
-                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "\
+                return (
+                    "You are not allowed to run local shell commands. To execute"
+                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
                     "in your config. Do not attempt to bypass the restriction."
+                )
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
         elif command_name == "do_nothing":
@@ -123,9 +131,11 @@ def execute_command(command_name, arguments):
         elif command_name == "task_complete":
             shutdown()
         else:
-            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"\
-                " list for available commands and only respond in the specified JSON"\
+            return (
+                f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
+                " list for available commands and only respond in the specified JSON"
                 " format."
+            )
     # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)

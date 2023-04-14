@@ -21,10 +21,9 @@ def create_chat_completion(
     num_retries = 5
     if cfg.debug_mode:
         print(
-            Fore.GREEN +
-            f"Creating chat completion with model {model}, temperature {temperature},"
-            f" max_tokens {max_tokens}"
-            + Fore.RESET
+            Fore.GREEN
+            + f"Creating chat completion with model {model}, temperature {temperature},"
+            f" max_tokens {max_tokens}" + Fore.RESET
         )
     for attempt in range(num_retries):
         try:
