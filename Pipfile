@@ -1,0 +1,30 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+beautifulsoup4 = "*"
+colorama = "==0.4.6"
+openai = "==0.27.4"
+playsound = "==1.2.2"
+python-dotenv = "==1.0.0"
+pyyaml = "==6.0"
+readability-lxml = "==0.8.1"
+requests = "*"
+tiktoken = "==0.3.3"
+gtts = "==2.3.1"
+docker = "*"
+duckduckgo-search = "*"
+google-api-python-client = "*"
+pinecone-client = "==2.2.1"
+redis = "*"
+orjson = "*"
+pillow = "*"
+coverage = "*"
+flake8 = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.9"

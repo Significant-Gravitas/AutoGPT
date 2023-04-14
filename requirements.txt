@@ -1,6 +1,6 @@
 beautifulsoup4
 colorama==0.4.6
-openai==0.27.2
+openai==0.27.4
 playsound==1.2.2
 python-dotenv==1.0.0
 pyyaml==6.0
