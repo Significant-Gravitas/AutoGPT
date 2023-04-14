@@ -9,21 +9,21 @@ def MockConfig():
         'debug_mode': False,
         'continuous_mode': False,
         'speak_mode': False,
-        'memory_embeder': 'sbert'
+        'memory_embedder': 'sbert'
     })
 
-class TestMemoryEmbeder(unittest.TestCase):
-    def setUp(self):
+class TestMemoryEmbedder(unittest.TestCase):
+    def setUp(self): 
         self.cfg = MockConfig()
 
     def test_ada(self):
-        self.cfg.memory_embeder = "ada"
+        self.cfg.memory_embedder = "ada"
         text = "Sample text"
         result = get_embedding(text)
         self.assertEqual(result.shape, (1536,))
 
     def test_sbert(self):
-        self.cfg.memory_embeder = "sbert"
+        self.cfg.memory_embedder = "sbert"
         text = "Sample text"
         result = get_embedding(text)
         self.assertEqual(result.shape, (768,))
@@ -31,3 +31,4 @@ class TestMemoryEmbeder(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+ 
