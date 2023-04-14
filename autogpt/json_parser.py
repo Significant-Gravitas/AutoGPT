@@ -1,9 +1,9 @@
 import json
 from typing import Any, Dict, Union
-from call_ai_function import call_ai_function
-from config import Config
-from json_utils import correct_json
-from logger import logger
+from autogpt.call_ai_function import call_ai_function
+from autogpt.config import Config
+from autogpt.json_utils import correct_json
+from autogpt.logger import logger
 
 cfg = Config()
 

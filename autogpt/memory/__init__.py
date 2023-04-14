@@ -1,5 +1,5 @@
-from memory.local import LocalCache
-from memory.no_memory import NoMemory
+from autogpt.memory.local import localcache
+from autogpt.memory.no_memory import NoMemory
 
 # List of supported memory backends
 # Add a backend to this list if the import attempt is successful
