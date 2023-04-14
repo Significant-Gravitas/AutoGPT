@@ -1,8 +1,7 @@
-from config import Config
-
+from autogpt.config import Config
 cfg = Config()
 
-from llm_utils import create_chat_completion
+from autogpt.llm_utils import create_chat_completion
 
 
 # This is a magic function that can do anything with no-code. See
