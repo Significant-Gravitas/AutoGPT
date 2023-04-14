@@ -52,6 +52,7 @@ def eleven_labs_speech(text, voice_index=0):
         print("Response content:", response.content)
         return False
 
+
 def brian_speech(text):
     """Speak text using Brian with the streamelements API"""
     tts_url = f"https://api.streamelements.com/kappa/v2/speech?voice=Brian&text={text}"
@@ -68,6 +69,7 @@ def brian_speech(text):
         print("Request failed with status code:", response.status_code)
         print("Response content:", response.content)
         return False
+
 
 def gtts_speech(text):
     tts = gtts.gTTS(text)
