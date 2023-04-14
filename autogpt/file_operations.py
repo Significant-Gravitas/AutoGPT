@@ -1,5 +1,6 @@
 import os
 import os.path
+import requests
 
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
@@ -136,3 +137,18 @@ def search_files(directory):
             found_files.append(relative_path)
 
     return found_files
+
+
+def download_file(url, filename):
+    """Downloads a file"""
+    try:
+        with requests.get(url, allow_redirects=True, stream=True) as r:
+            r.raise_for_status()
+            with open(filename, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        return f"Successfully created file: {filename}!"
+    except requests.HTTPError as e:
+        return f"Got an HTTP Error whilst trying to download file: {e}"
+    except Exception as e:
+        return "Error: " + str(e)
