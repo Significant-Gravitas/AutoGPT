@@ -16,6 +16,8 @@ last_run_ai_settings.yaml
 .idea/*
 auto-gpt.json
 log.txt
+log-ingestion.txt
+logs
 
 # Coverage reports
 .coverage
