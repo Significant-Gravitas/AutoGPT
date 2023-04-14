@@ -22,15 +22,22 @@ def is_authorized_user(update: Update):
     return update.effective_user.id == int(cfg.telegram_chat_id)
 
 
-def handle_response(update: Update, context: CallbackContext):
+async def handle_response(update: Update, context: CallbackContext):
     global response_received, response_text
+    try:
+        mutex_lock.acquire()
+        print("Received response: " + update.message.text)
+        print("response_received: " + str(response_received))
 
-    if is_authorized_user(update):
-        response_text = update.message.text
-        response_received.set()
+        if is_authorized_user(update):
+            response_text = update.message.text
+            response_received.set()
+    except Exception as e:
+        print(e)
+
 
 def start_listening():
-    print("listeing to telegram")
+    print("Listening to Telegram...")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -38,6 +45,7 @@ def start_listening():
         loop.run_until_complete(application.run_polling())
     except KeyboardInterrupt:
         pass
+
 
 class TelegramUtils:
     @staticmethod
@@ -53,13 +61,13 @@ class TelegramUtils:
         response_received.clear()
         response_text = ""
 
-        asyncio.run(TelegramUtils.send_message(question))
+        asyncio.run(TelegramUtils().send_message(question))
         start_listening()
 
         print("Waiting for response...")
         response_received.wait()
+        print("Response received: " + response_text)
         return response_text
-
 
 
 class SignalSafeEventLoop(asyncio.SelectorEventLoop):
@@ -77,3 +85,12 @@ def run_in_signal_safe_loop(coro):
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(coro(*args, **kwargs))
     return wrapper
+
+
+async def main():
+    prompt = TelegramUtils.ask_user("Hello! I need you to confirm with /start to start me. <3")
+    print(prompt)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
