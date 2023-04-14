@@ -53,7 +53,7 @@ AgentGPT在接到这项任务之后，便开始了他的展示：
 
 ### Demo :
 
-[![Alt text for your video](https://raw.githubusercontent.com/kaqijiang/Auto-GPT-ZH/gh-pages/demo.mp4)](https://raw.githubusercontent.com/USERNAME/REPOSITORY/gh-pages/myvideo.mp4)
+[![Alt text for your video](zhDemo视频)](https://raw.githubusercontent.com/kaqijiang/Auto-GPT-ZH/master/demo.mp4)
 
 ## 📋 Requirements
 
