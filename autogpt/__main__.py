@@ -14,9 +14,9 @@ from autogpt.ai_config import AIConfig
 import traceback
 import yaml
 import argparse
-from logger import logger
+from autogpt.logger import logger
 import logging
-from prompt import get_prompt
+from autogpt.prompt import get_prompt
 
 cfg = Config()
 
