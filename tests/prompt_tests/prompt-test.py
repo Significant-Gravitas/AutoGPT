@@ -7,7 +7,9 @@ Write a python script that executes tests.
 - When "--test all" is specified, the script executes all tests, e.g. loading the test from each subdirectory.
 - Each test has a config file in the subdirectory called test.json
 - A function called run_test(test_subdirectory) is called for each test
-- The run_test() function loads "{test_subdirectory}/test.json" and executes the test
+- The run_test() function loads "{test_subdirectory}/test.json" and executes the test without changing the current directory
+- The run_test() function first copies the "yaml_prompt" file from the test subdirectory to the current directory and renames it to "ai_settings.yaml"
+- The run_test() function outputs the name of the test and the command it is about to execute before running.
 - The "exec" field in the test.json file specifies the command to execute and the arguments to pass to the command. The command is called with the python3 interpreter.
 Example test.json:
 {
@@ -33,6 +35,7 @@ Example test.json:
 """
 import argparse
 import os
+import shutil
 import json
 import subprocess
 
@@ -41,12 +44,13 @@ def run_test(test_subdirectory):
     config_path = os.path.join(test_path, "test.json")
     with open(config_path, "r") as config_file:
         config = json.load(config_file)
+    prompt_path = os.path.join(test_path, config["yaml_prompt"])
+    shutil.copy(prompt_path, "ai_settings.yaml")
     command = ["python3", config["exec"]["command"]] + config["exec"]["arguments"]
-    print(f"Running test: {config['name']}")
-    print(f"Command: {' '.join(command)}")
     env = os.environ.copy()
     env.update(config["exec"].get("env", {}))
-    #subprocess.run(command, cwd=test_path, env=env)
+    print(f"Running test: {config['name']}")
+    print(f"Command: {' '.join(command)}")
     subprocess.run(command, env=env)
 
 def list_tests():
