@@ -69,10 +69,11 @@ Your support is greatly appreciated
   - [vscode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): It has been configured in the .devcontainer folder and can be used directly
   - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - [OpenAI API key](https://platform.openai.com/account/api-keys)
-- [PINECONE API key](https://www.pinecone.io/)
+
 
 Optional:
-
+- [Google API Key](https://google.com)
+- [PINECONE API key](https://www.pinecone.io/) 
 - [ElevenLabs Key](https://elevenlabs.io/) (If you want the AI to speak)
 
 ## 💾 Installation
@@ -114,6 +115,7 @@ pip install -r requirements.txt
       - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment id
     - Please specify all of these values as double quoted strings
     - details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
+    - If you want to use DDG search instead of google, comment out the GOOGLE_API_KEY & CUSTOM_SEARCH_ENGINE_ID
 
 ## 🔧 Usage
 
