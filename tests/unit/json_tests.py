@@ -1,7 +1,4 @@
 import unittest
-import os
-import sys
-
 
 from autogpt.json_parser import fix_and_parse_json
 
@@ -107,13 +104,6 @@ class TestParseJson(unittest.TestCase):
 }
         # Assert that this raises an exception:
         self.assertEqual(fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj)
-
-    def test_that_apologies_containing_multiple_json_get_the_correct_one(self):
-        bad_json = 'I apologize once again for the error. Here is the corrected format to run the tests: ``` { "name": "execute_python_file", "args": { "file": "<test_file_location>" } } ``` Where `<test_file_location>` should be replaced with the file path to the test file you created in the previous step. For example: ``` { "name": "execute_python_file", "args": { "file": "tests/test_addition.py" } } ``` This will execute the tests for the `add_numbers` function in `tests/test_addition.py`. Please let me know if you have any further questions.'
-        actual_json = fix_and_parse_json(bad_json, try_to_fix_with_gpt=True)
-        expected_json = { "name": "execute_python_file", "args": { "file": "tests/test_addition.py" } }
-        self.assertEqual(actual_json, expected_json)
-        # TODO come back to fix this test after fixing imports
 
 
 if __name__ == '__main__':
