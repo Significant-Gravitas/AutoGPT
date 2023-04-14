@@ -65,7 +65,9 @@ Your support is greatly appreciated
 
 ## 📋 Requirements
 
-- [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
+- environments(just choose one)
+  - [vscode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): It has been configured in the .devcontainer folder and can be used directly
+  - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - [OpenAI API key](https://platform.openai.com/account/api-keys)
 - [PINECONE API key](https://www.pinecone.io/)
 
@@ -154,9 +156,10 @@ To use the `google_official_search` command, you need to set up your Google API 
 4. Go to the [APIs & Services Dashboard](https://console.cloud.google.com/apis/dashboard) and click "Enable APIs and Services". Search for "Custom Search API" and click on it, then click "Enable".
 5. Go to the [Credentials](https://console.cloud.google.com/apis/credentials) page and click "Create Credentials". Choose "API Key".
 6. Copy the API key and set it as an environment variable named `GOOGLE_API_KEY` on your machine. See setting up environment variables below.
-7. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page and click "Add".
-8. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
-9. Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
+7. [Enable](https://console.developers.google.com/apis/api/customsearch.googleapis.com) the Custom Search API on your project. (Might need to wait few minutes to propagate)
+8. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page and click "Add".
+9. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
+10. Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
 
 _Remember that your free daily custom search quota allows only up to 100 searches. To increase this limit, you need to assign a billing account to the project to profit from up to 10K daily searches._
 

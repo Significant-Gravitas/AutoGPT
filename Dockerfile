@@ -1,9 +1,27 @@
+# Use an official Python base image from the Docker Hub
 FROM python:3.11-slim
-ENV PIP_NO_CACHE_DIR=yes
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY scripts/ .
-COPY ai_settings.yaml .
-COPY auto-gpt.json .
+
+
+
+# Set environment variables
+ENV PIP_NO_CACHE_DIR=yes \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Create a non-root user and set permissions
+RUN useradd --create-home appuser
+WORKDIR /home/appuser
+RUN chown appuser:appuser /home/appuser
+USER appuser
+
+# Copy the requirements.txt file and install the requirements
+COPY --chown=appuser:appuser requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+COPY --chown=appuser:appuser auto-gpt.json .
+COPY --chown=appuser:appuser ai_settings.yaml .
+# Copy the application files
+COPY --chown=appuser:appuser scripts/ .
+
+# Set the entrypoint
 ENTRYPOINT ["python", "main.py"]
