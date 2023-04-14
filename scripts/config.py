@@ -39,6 +39,9 @@ class Config(metaclass=Singleton):
         self.continuous_limit = 0
         self.speak_mode = False
 
+        self.lang = "en"
+        self.search_region = "wt-wt"
+
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
@@ -85,6 +88,22 @@ class Config(metaclass=Singleton):
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
+    def get_initial_prompt_by_lang(self,slug):
+        prompt = {}
+        if self.lang == "en":
+            prompt['lang'] = "English"
+            prompt['you_are'] = "You are"
+            prompt['goals'] = "GOALS:"
+            prompt['prompt_start'] = "Your decisions must always be made independently without seeking user assistance. Play to your strengths as a LLM and pursue simple strategies with no legal complications."
+            prompt['user_input'] = "Determine which next command to use, and respond using the format specified above:"
+        elif self.lang == "fr":
+            prompt['lang'] = "Français"
+            prompt['you_are'] = "Tu es"
+            prompt['goals'] = "OBJECTIFS:"
+            prompt['prompt_start'] = "Tes décisions doivent toujours être prises de manière indépendante sans demander d'aide à l'utilisateur. Jouesa avec tes compétences en tant que LLM et construit des stratégies simples sans complications juridiques."
+            prompt['user_input'] = "Détermine quelle sera la prochaine commande à utiliser et répond en utilisant le format spécifié ci-dessus:"
+        return prompt[slug]
+
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
         Returns the relevant deployment id for the model specified.
@@ -125,6 +144,14 @@ class Config(metaclass=Singleton):
         self.openai_api_base = os.getenv("OPENAI_AZURE_API_BASE", config_params.get("azure_api_base", ""))
         self.openai_api_version = os.getenv("OPENAI_AZURE_API_VERSION", config_params.get("azure_api_version", ""))
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", [])
+
+    def set_language(self, value: str):
+        """Set the language value."""
+        self.lang = value
+
+    def set_search_region(self, value: str):
+        """Set the search region value."""
+        self.search_region = value
 
     def set_continuous_mode(self, value: bool):
         """Set the continuous mode value."""

@@ -1,13 +1,15 @@
 from promptgenerator import PromptGenerator
 
 
-def get_prompt():
+def get_prompt(cfg):
     """
     This function generates a prompt string that includes various constraints, commands, resources, and performance evaluations.
 
     Returns:
         str: The generated prompt string.
     """
+
+    lang = cfg.get_initial_prompt_by_lang("lang")
 
     # Initialize the PromptGenerator object
     prompt_generator = PromptGenerator()
@@ -17,7 +19,7 @@ def get_prompt():
     prompt_generator.add_constraint("If you are unsure how you previously did something or want to recall past events, thinking about similar events will help you remember.")
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint('Exclusively use the commands listed in double quotes e.g. "command name"')
-
+    prompt_generator.add_constraint(f'Your "question",  "text", "reasoning", "plan", "criticism", "speak", "Result" of Summarizing must be in : {lang}')
     # Define the command list
     commands = [
         ("Google Search", "google", {"input": "<search>"}),

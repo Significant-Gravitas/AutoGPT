@@ -73,7 +73,7 @@ class AIConfig:
         with open(config_file, "w",  encoding='utf-8') as file:
             yaml.dump(config, file, allow_unicode=True)
 
-    def construct_full_prompt(self) -> str:
+    def construct_full_prompt(self,cfg) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
 
@@ -91,5 +91,7 @@ class AIConfig:
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
-        full_prompt += f"\n\n{get_prompt()}"
+        full_prompt += f"\n\n{get_prompt(cfg)}"
+
+
         return full_prompt

@@ -131,7 +131,7 @@ def get_datetime():
 def google_search(query, num_results=8):
     """Return the results of a google search"""
     search_results = []
-    for j in ddg(query, max_results=num_results):
+    for j in ddg(query, max_results=num_results, region=cfg.search_region):
         search_results.append(j)
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)

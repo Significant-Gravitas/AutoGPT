@@ -154,7 +154,7 @@ Continue (y/n): """)
     global ai_name
     ai_name = config.ai_name
 
-    full_prompt = config.construct_full_prompt()
+    full_prompt = config.construct_full_prompt(cfg)
     return full_prompt
 
 
@@ -221,6 +221,8 @@ def parse_arguments():
 
     parser = argparse.ArgumentParser(description='Process arguments.')
     parser.add_argument('--continuous', action='store_true', help='Enable Continuous Mode')
+    parser.add_argument('--lang', action='store', type=str, help='Language Mode')
+    parser.add_argument('--searchregion', action='store', type=str, help='Search region Mode')
     parser.add_argument('--continuous-limit', '-l', type=int, dest="continuous_limit", help='Defines the number of times to run in continuous mode')
     parser.add_argument('--speak', action='store_true', help='Enable Speak Mode')
     parser.add_argument('--debug', action='store_true', help='Enable Debug Mode')
@@ -228,6 +230,16 @@ def parse_arguments():
     parser.add_argument('--gpt4only', action='store_true', help='Enable GPT4 Only Mode')
     parser.add_argument('--use-memory', '-m', dest="memory_type", help='Defines which Memory backend to use')
     args = parser.parse_args()
+
+    if args.lang:
+        logger.typewriter_log("Lang : ", Fore.GREEN, args.lang)
+        # récupération de la valeur de la langue
+        cfg.set_language(args.lang)
+
+    if args.searchregion:
+        logger.typewriter_log("Région : ", Fore.GREEN, args.searchregion)
+        # récupération de la valeur de la langue
+        cfg.set_search_region(args.searchregion)
 
     if args.debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
