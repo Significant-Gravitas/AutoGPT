@@ -31,7 +31,7 @@ def get_prompt():
         ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
         ("Delete file", "delete_file", {"file": "<file>"}),
         ("Search Files", "search_files", {"directory": "<directory>"}),
-        ("Evaluate Code", "evaluate_code", {"code": "<full_code_string>"}),
+        ("Analyze Code", "analyze_code", {"code": "<full_code_string>"}),
         ("Get Improved Code", "improve_code", {"suggestions": "<list_of_suggestions>", "code": "<full_code_string>"}),
         ("Write Tests", "write_tests", {"code": "<full_code_string>", "focus": "<list_of_focus_areas>"}),
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),

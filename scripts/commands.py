@@ -96,8 +96,8 @@ def execute_command(command_name, arguments):
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
-        elif command_name == "evaluate_code":
-            return ai.evaluate_code(arguments["code"])
+        elif command_name == "analyze_code":
+            return ai.analyze_code(arguments["code"])
         elif command_name == "improve_code":
             return ai.improve_code(arguments["suggestions"], arguments["code"])
         elif command_name == "write_tests":
