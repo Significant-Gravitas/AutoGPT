@@ -273,7 +273,6 @@ Use at your own risk.
 
 ```
 python scripts/main.py --continuous
-
 ```
 
 2. To exit the program, press Ctrl + C
