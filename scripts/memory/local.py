@@ -3,14 +3,9 @@ import orjson
 from typing import Any, List, Optional
 import numpy as np
 import os
-from memory.base import MemoryProviderSingleton, get_embedding
-from config import Config 
+from memory.base import MemoryProviderSingleton, get_embedding, EMBED_DIM
 
-# TODO: get the embeddings dimension without importing config
-cfg = Config()
 
-# set the embedding dimension based on the embeder
-EMBED_DIM = 1536 if cfg.memory_embeder == "ada" else 768
 SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
 
 
