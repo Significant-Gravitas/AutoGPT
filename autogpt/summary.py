@@ -1,5 +1,6 @@
 from autogpt.llm_utils import create_chat_completion
 
+
 def summarize_text(driver, text, question):
     if not text:
         return "Error: No text to summarize"
@@ -10,9 +11,9 @@ def summarize_text(driver, text, question):
     summaries = []
     chunks = list(split_text(text))
 
-    scroll_ratio = 1/len(chunks)
+    scroll_ratio = 1 / len(chunks)
     for i, chunk in enumerate(chunks):
-        scroll_to_percentage(driver,scroll_ratio * i)
+        scroll_to_percentage(driver , scroll_ratio * i)
         print(f"Summarizing chunk {i + 1} / {len(chunks)}")
         messages = [create_message(chunk, question)]
 
@@ -34,6 +35,7 @@ def summarize_text(driver, text, question):
         max_tokens=300,
     )
 
+
 def split_text(text, max_length=8192):
     paragraphs = text.split("\n")
     current_length = 0
@@ -50,13 +52,15 @@ def split_text(text, max_length=8192):
 
     if current_chunk:
         yield "\n".join(current_chunk)
-        
+
+
 def create_message(chunk, question):
     return {
         "role": "user",
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
     }
-    
+
+
 def scroll_to_percentage(driver, ratio):
     if ratio < 0 or ratio > 1:
         raise ValueError("Percentage should be between 0 and 1")

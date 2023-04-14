@@ -174,6 +174,7 @@ def google_official_search(query, num_results=8):
     # Return the list of search result URLs
     return search_results_links
 
+
 def get_text_summary(url, question):
     """Return the results of a google search"""
     text = browse.scrape_text(url)
