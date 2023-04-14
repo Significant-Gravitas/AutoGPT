@@ -64,7 +64,7 @@ def clean_input(prompt: str = '', talk=False):
         else:
             if cfg.telegram_enabled:
                 print("Asking user via Telegram...")
-                chat_answer = asyncio.run(TelegramUtils.ask_user(prompt))
+                chat_answer = TelegramUtils.ask_user(prompt)
                 print("Telegram answer: " + chat_answer)
                 if chat_answer in ["yes", "yeah", "yep", "yup", "y", "ok", "okay", "sure", "affirmative", "aye", "aye aye", "alright", "alrighty"]:
                     return "y"

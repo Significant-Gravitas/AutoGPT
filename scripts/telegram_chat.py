@@ -11,7 +11,7 @@ from telegram.ext import (Application, CommandHandler,
                           CallbackContext, MessageHandler, filters)
 
 cfg = Config()
-response_received = False
+response_received = asyncio.Event()
 response_text = ""
 response_queue = Queue()
 
@@ -27,14 +27,13 @@ def is_authorized_user(update: Update):
 def handle_response(update: Update, context: CallbackContext):
     try:
         print("Received response: " + update.message.text)
-        print("response_queue: " + str(response_queue))
 
         if is_authorized_user(update):
-            response_queue.put(update.message.text)
-            response_received = True
+            global response_text
+            response_text = update.message.text
+            response_received.set()
     except Exception as e:
         print(e)
-
 
 class TelegramUtils:
     @staticmethod
@@ -60,17 +59,32 @@ class TelegramUtils:
         await bot.send_message(chat_id=recipient_chat_id, text=message)
 
     @staticmethod
-    async def ask_user(question):
+    async def _ask_user(question):
         global response_queue
 
         await TelegramUtils._send_message(question)
 
         print("Waiting for response...")
-        while (response_queue.empty()):
-            await asyncio.sleep(0.5)
-        response_text = await response_queue.get()
+        response_text = await (response_received.wait())
+
         print("Response received: " + response_text)
         return response_text
+
+    @staticmethod
+    def ask_user(question):
+        print("Asking user: " + question)
+        try:
+            loop = asyncio.get_running_loop()
+            print("Asking user: " + question)
+        except RuntimeError:
+            loop = None
+            print("No running loop")
+        if loop and loop.is_running():
+            print("loop is running")
+            return loop.create_task(TelegramUtils._ask_user(question))
+        else:
+            print("loop is not running")
+            return asyncio.run(TelegramUtils._ask_user(question))
 
 
 async def wait_for_response():
