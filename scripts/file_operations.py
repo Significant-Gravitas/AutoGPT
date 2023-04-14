@@ -1,5 +1,6 @@
 import os
 import os.path
+from pdfminer.high_level import extract_text
 
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
@@ -24,9 +25,16 @@ def read_file(filename):
     """Read a file and return the contents"""
     try:
         filepath = safe_join(working_directory, filename)
-        with open(filepath, "r", encoding='utf-8') as f:
-            content = f.read()
-        return content
+        if filename.lower().endswith('.pdf'):
+            text = extract_text(filepath)
+            if not text:
+                return "Error: Could not extract text from PDF"
+            else:
+                return text
+        else:
+            with open(filepath, "r", encoding='utf-8') as f:
+                content = f.read()
+            return content
     except Exception as e:
         return "Error: " + str(e)
 
