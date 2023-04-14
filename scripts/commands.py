@@ -61,9 +61,12 @@ def execute_command(command_name, arguments):
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
             if cfg.google_api_key and (cfg.google_api_key.strip() if cfg.google_api_key else None):
-                return google_official_search(arguments["input"])
+                google_result = google_official_search(arguments["input"])
             else:
-                return google_search(arguments["input"])
+                google_result = google_search(arguments["input"])
+
+            safe_message = google_result.encode('utf-8', 'ignore')
+            return str(safe_message)
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
