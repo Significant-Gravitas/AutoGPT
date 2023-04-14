@@ -32,11 +32,11 @@ jobs:
 
     - name: Lint with flake8
       continue-on-error: false
-      run: flake8 scripts/ tests/ --select E303,W293,W291,W292,E305
+      run: flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
 
     - name: Run unittest tests with coverage
       run: |
-        coverage run --source=scripts -m unittest discover tests
+        coverage run --source=autogpt -m unittest discover tests
 
     - name: Generate coverage report
       run: |

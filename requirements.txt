@@ -17,3 +17,8 @@ orjson
 Pillow
 coverage
 flake8
+numpy
+pre-commit
+black
+sourcery
+isort
