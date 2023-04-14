@@ -52,7 +52,7 @@ class Config(metaclass=Singleton):
                 print("\033[31m" + "Error: \".env\" not found!" + "\033[0m")
                 return
 
-        load_dotenv(str(template_file), verbose=True)
+        load_dotenv(dotenv_path=str(template_file), verbose=True)
         env_values = dotenv_values(str(env_file))
         template_values = dotenv_values(str(template_file))
 
@@ -89,7 +89,7 @@ class Config(metaclass=Singleton):
             else:
                 print("No changes in .env.template")
 
-    def __init__(self, run_env_setup=True):
+    def __init__(self):
         """Initialize the Config class"""
         self.debug_mode = False
         self.continuous_mode = False
@@ -97,8 +97,7 @@ class Config(metaclass=Singleton):
         self.speak_mode = False
         self.skip_reprompt = False
 
-        if run_env_setup:
-            self.update_env_from_template()
+        self.update_env_from_template()
 
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
@@ -138,7 +137,8 @@ class Config(metaclass=Singleton):
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
-        self.user_agent_header = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
+        self.user_agent_header = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
         self.redis_port = os.getenv("REDIS_PORT", "6379")
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
