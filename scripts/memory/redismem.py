@@ -6,16 +6,9 @@ from redis.commands.search.query import Query
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 import numpy as np
 
-from memory.base import MemoryProviderSingleton, get_embedding
+from memory.base import MemoryProviderSingleton, get_embedding, EMBED_DIM
 from logger import logger
 from colorama import Fore, Style
-from config import Config 
-
-# TODO: get the embeddings dimension without importing config
-cfg = Config()
-
-# set the embedding dimension based on the embeder
-EMBED_DIM = 1536 if cfg.memory_embeder == "ada" else 768
 
 SCHEMA = [
     TextField("data"),
