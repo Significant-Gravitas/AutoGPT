@@ -8,8 +8,7 @@ services:
       - redis
     build: ./
     volumes:
-      - "./scripts:/app"
-      - ".env:/app/.env"
+      - ./.env:/home/appuser/scripts/.env
     profiles: ["exclude-from-up"]
 
   redis:

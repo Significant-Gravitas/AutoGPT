@@ -17,7 +17,8 @@ COPY --chown=appuser:appuser requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Copy the application files
-COPY --chown=appuser:appuser scripts/ .
+COPY --chown=appuser:appuser scripts/ scripts/
+
 
 # Set the entrypoint
 ENTRYPOINT ["python", "main.py"]
