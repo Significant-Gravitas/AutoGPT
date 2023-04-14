@@ -42,6 +42,7 @@ def split_file(content, max_length=4000, overlap=0):
         yield chunk
         start += max_length - overlap
 
+
 def read_file(filename):
     """Read a file and return the contents"""
     try:
