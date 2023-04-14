@@ -154,9 +154,6 @@ def download_file(url, filename):
     except Exception as e:
         return "Error: " + str(e)
     
-<<<<<<< HEAD
-    
-=======
 
 def download_file(url, filename):
     """Downloads a file"""
@@ -172,4 +169,3 @@ def download_file(url, filename):
         return f"Got an HTTP Error whilst trying to download file: {e}"
     except Exception as e:
         return "Error: " + str(e)
->>>>>>> 97c9ac1ff3c22e7b0371743041c674b0d9a963e4
