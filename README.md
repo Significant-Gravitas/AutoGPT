@@ -137,6 +137,14 @@ To output debug logs:
 ```
 python scripts/main.py --debug
 ```
+### Command Line Arguments
+Here are some common arguments you can use when running Auto-GPT:
+> Replace anything in angled brackets (<>) to a value you want to specify
+* `python scripts/main.py --help` to see a list of all available command line arguments.
+* `python scripts/main.py --ai-settings <filename>` to run Auto-GPT with a different AI Settings file.
+* `python scripts/main.py --use-memory  <memory-backend>` to specify one of 3 memory backends: `local`, `redis`, `pinecone` or 'no_memory'.
+
+> **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python scripts/main.py --help` for more information
 
 ## 🗣️ Speech Mode
 
