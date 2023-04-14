@@ -22,6 +22,12 @@ For console handler: simulates typing
 
 
 class Logger(metaclass=Singleton):
+    """Logger Class to handle below functionalities
+       1. File handling
+       2. Console handling
+    Args:
+        metaclass: Defaults to Singleton class.
+    """
     def __init__(self):
         # create log directory if it doesn't exist
         log_dir = os.path.join('..', 'logs')
@@ -75,6 +81,21 @@ class Logger(metaclass=Singleton):
             content='',
             speak_text=False,
             level=logging.INFO):
+        """Typewriter function does few sanity check
+            below before calling the log method
+            1. Speak Text
+            2. Content
+        Args:
+            title (str, optional): Defaults to Empty string
+                                otherwise custom string set.
+            title_color (str, optional): Defaults to terminal color
+                                otherwise title color is set based on AnsiFore
+            content (str, optional): Defaults to empty string,
+                                otherwise if its a list, it concatinates all the words.
+            speak_text (bool, optional): Defaults to False.
+            level (_type_, optional): Defaults to logging.INFO,
+                                otherwise set based on the level of logging required.
+        """
         if speak_text and cfg.speak_mode:
             speak.say_text(f"{title}. {content}")
 
@@ -159,6 +180,11 @@ class TypingConsoleHandler(logging.StreamHandler):
 
 
 class ConsoleHandler(logging.StreamHandler):
+    """
+    The ConsoleHandler class inherits from the logging.StreamHandler class
+    and overrides its emit method.This class provides a handler for
+    sending log messages to the console.
+    """
     def emit(self, record):
         msg = self.format(record)
         try:
@@ -185,6 +211,11 @@ class AutoGptFormatter(logging.Formatter):
 
 
 def remove_color_codes(s: str) -> str:
+    """
+    The remove_color_codes function takes a string input and
+    removes any ANSI color codes present in it.
+    It returns the modified string with the color codes removed.
+    """
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     return ansi_escape.sub('', s)
 
