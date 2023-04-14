@@ -3,7 +3,7 @@ import orjson
 from typing import Any, List, Optional
 import numpy as np
 import os
-from memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 
 EMBED_DIM = 1536

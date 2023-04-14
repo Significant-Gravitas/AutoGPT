@@ -119,11 +119,11 @@ pip install -r requirements.txt
 
 ## 🔧 Usage
 
-1. Run the `main.py` Python script in your terminal:
+1. Run the `autogpt` Python module in your terminal:
    _(Type this into your CMD window)_
 
 ```
-python scripts/main.py
+python -m autogpt
 ```
 
 2. After each of action, enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter additional feedback for the AI.
@@ -136,7 +136,21 @@ You will find activity and error logs in the folder `./output/logs`
 To output debug logs:
 
 ```
-python scripts/main.py --debug
+python -m autogpt --debug
+```
+
+### Docker
+
+You can also build this into a docker image and run it:
+
+```
+docker build -t autogpt .
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt
+```
+
+You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
+```
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt --gpt3only --continuous
 ```
 ### Command Line Arguments
 Here are some common arguments you can use when running Auto-GPT:
@@ -152,7 +166,7 @@ Here are some common arguments you can use when running Auto-GPT:
 Use this to use TTS for Auto-GPT
 
 ```
-python scripts/main.py --speak
+python -m autogpt --speak
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -328,10 +342,10 @@ Continuous mode is not recommended.
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
 
-1. Run the `main.py` Python script in your terminal:
+1. Run the `autogpt` python module in your terminal:
 
 ```
-python scripts/main.py --continuous
+python -m autogpt --speak --continuous
 
 ```
 
@@ -342,7 +356,7 @@ python scripts/main.py --continuous
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 
 ```
-python scripts/main.py --gpt3only
+python -m autogpt --speak --gpt3only
 ```
 
 It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
@@ -415,8 +429,8 @@ This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. We 
 To run the linter, run the following command:
 
 ```
-flake8 scripts/ tests/
+flake8 autogpt/ tests/
 
 # Or, if you want to run flake8 with the same configuration as the CI:
-flake8 scripts/ tests/ --select E303,W293,W291,W292,E305,E231,E302
+flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
 ```
