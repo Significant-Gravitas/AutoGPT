@@ -113,7 +113,8 @@ def main():
     # Run the tests
     if args.test == "all":
         for test_subdirectory in os.listdir(os.path.join("tests", "prompt_tests")):
-            run_test(test_subdirectory)
+            if os.path.isdir(test_subdirectory):
+                run_test(test_subdirectory)
     else:
         run_test(args.test)
 
