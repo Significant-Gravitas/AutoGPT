@@ -1,4 +1,8 @@
 repos:
+  - repo: https://github.com/sourcery-ai/sourcery
+    rev: v1.1.0 # Get the latest tag from https://github.com/sourcery-ai/sourcery/tags
+    hooks:
+      - id: sourcery
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v0.9.2
