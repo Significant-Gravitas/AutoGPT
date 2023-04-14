@@ -60,7 +60,7 @@ services:
       - GID=${GID}
     ports:
       - 8080:8080
-    command: ["gotty", "--port", "8080", "--permit-write", "--title-format", "AutoGPT Terminal", "bash", "-c", "python scripts/main.py"]
+    command: ["gotty", "--port", "8080", "--permit-write", "--title-format", "AutoGPT Terminal", "bash", "-c", "python scripts/main.py ${COMMAND_LINE_PARAMS}"]
       # [--continuous] [--speak] [--debug] [--gpt3only] [--gpt4only] [--use-memory MEMORY_TYPE]
   cache:
     image: redis/redis-stack-server:latest

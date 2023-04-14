@@ -24,7 +24,10 @@ WORKDIR /app
 
 COPY --from=builder /build/Auto-GPT/ /app
 
-RUN apt-get update && apt-get install git vim curl pkg-config libcairo2-dev build-essential libgirepository1.0-dev  gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-plugins-base gir1.2-gst-plugins-base-1.0 -y
+RUN apt-get update && apt-get install git vim curl pkg-config \
+libcairo2-dev build-essential libgirepository1.0-dev \
+gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-plugins-base \
+gir1.2-gst-plugins-base-1.0 sudo wget curl -y
 
 ARG UID=1000
 ARG GID=1000
