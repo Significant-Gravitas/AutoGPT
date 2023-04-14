@@ -6,7 +6,9 @@
 
 ### 公众号内回复"Auto-GPT"加入群聊，共同探讨更多玩法
 
+### 中文版Demo :
 
+![Demo video](https://kaqijiang-1303126728.cos.ap-beijing.myqcloud.com/demo.mp4)
 
 Auto-GPT 是一个实验性开源应用程序，展示了 GPT-4 语言模型的功能。该程序由 GPT-4 驱动，将 LLM 的“思想”链接在一起，以自主实现您设定的任何目标。作为 GPT-4 完全自主运行的首批示例之一，Auto-GPT 突破了 AI 的可能性界限。
 
@@ -52,12 +54,6 @@ AgentGPT在接到这项任务之后，便开始了他的展示：
 - 添加任务：选择最有希望的想法，并开发精益MVP，用于目标市场的测试。
 
 而后便是继续地再思考、执行。
-
-### Demo :
-
-[![Alt text for your video](zhDemo视频)](https://raw.githubusercontent.com/kaqijiang/Auto-GPT-ZH/master/demo.mp4)
-
-[![Demo video](https://github.com/kaqijiang/Auto-GPT-ZH/raw/master/demo.mp4)](https://github.com/kaqijiang/Auto-GPT-ZH/raw/master/demo.mp4)
 
 ## 📋 Requirements
 
