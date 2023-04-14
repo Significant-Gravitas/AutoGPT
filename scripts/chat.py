@@ -23,23 +23,28 @@ def create_chat_message(role, content):
     """
     return {"role": role, "content": content}
 
+def reduce_dataset(dataset, limit=2500, f=len, *args, **kwargs):
+    retval = []
+    current_length = 0
 
-def generate_context(prompt, relevant_memory, full_message_history, model):
+    for i in dataset:
+        if current_length + (x := f(i, *args, **kwargs)) <= limit:
+            retval.append(i)
+            current_length += x
+        else:
+            break
+
+    return list(retval)
+
+def generate_context(prompt, user_input, relevant_memory, full_message_history):
     current_context = [
-        create_chat_message(
-            "system", prompt),
-        create_chat_message(
-            "system", f"The current time and date is {time.strftime('%c')}"),
-        create_chat_message(
-            "system", f"This reminds you of these events from your past:\n{relevant_memory}\n\n")]
-
-    # Add messages from the full message history until we reach the token limit
-    next_message_to_add_index = len(full_message_history) - 1
-    insertion_index = len(current_context)
-    # Count the currently used tokens
-    current_tokens_used = token_counter.count_message_tokens(current_context, model)
-    return next_message_to_add_index, current_tokens_used, insertion_index, current_context
-
+        create_chat_message( "system", prompt),
+        create_chat_message( "system", f"The current time and date is {time.strftime('%c')}"),
+        create_chat_message( "system", f"This reminds you of these events from your past:\n{relevant_memory}\n\n"),
+        *full_message_history,
+        create_chat_message( "user", user_input)
+        ]
+    return current_context
 
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
@@ -74,40 +79,32 @@ def chat_with_ai(
 
             logger.debug(f'Memory Stats: {permanent_memory.get_stats()}')
 
-            next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
-                prompt, relevant_memory, full_message_history, model)
+            # How much space is left in the token limit for memories?
+            empty_context = generate_context(prompt, user_input, [], [])
+            empty_context_tokens = token_counter.count_message_tokens(empty_context, model)
+            memories_token_limit = 2500 - empty_context_tokens
+            msg_history_token_limit = send_token_limit - empty_context_tokens - memories_token_limit
 
-            while current_tokens_used > 2500:
-                # remove memories until we are under 2500 tokens
-                relevant_memory = relevant_memory[1:]
-                next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
-                    prompt, relevant_memory, full_message_history, model)
+            # Reduce the memories to fit in the token limit
+            reduced_memories = reduce_dataset(relevant_memory,
+                                              limit=memories_token_limit,
+                                              f=token_counter.count_string_tokens,
+                                              model=model
+                                              )
 
-            current_tokens_used += token_counter.count_message_tokens([create_chat_message("user", user_input)], model) # Account for user input (appended later)
+            # Reduce the message history to fit in the token limit
+            reduced_message_history = reduce_dataset(full_message_history[::-1],
+                                                     limit=msg_history_token_limit,
+                                                     f=token_counter.count_message_tokens,
+                                                     model=model
+                                                     )[::-1]
 
-            while next_message_to_add_index >= 0:
-                # print (f"CURRENT TOKENS USED: {current_tokens_used}")
-                message_to_add = full_message_history[next_message_to_add_index]
+            # Generate the context
+            current_context = generate_context(prompt, user_input, reduced_memories, reduced_message_history)
+            context_tokens = token_counter.count_message_tokens(current_context, model)
 
-                tokens_to_add = token_counter.count_message_tokens([message_to_add], model)
-                if current_tokens_used + tokens_to_add > send_token_limit:
-                    break
+            tokens_remaining = token_limit - context_tokens
 
-                # Add the most recent message to the start of the current context, after the two system prompts.
-                current_context.insert(insertion_index, full_message_history[next_message_to_add_index])
-
-                # Count the currently used tokens
-                current_tokens_used += tokens_to_add
-
-                # Move to the next most recent message in the full message history
-                next_message_to_add_index -= 1
-
-            # Append user input, the length of this is accounted for above
-            current_context.extend([create_chat_message("user", user_input)])
-
-            # Calculate remaining tokens
-            tokens_remaining = token_limit - current_tokens_used
-            # assert tokens_remaining >= 0, "Tokens remaining is negative. This should never happen, please submit a bug report at https://www.github.com/Torantulino/Auto-GPT"
 
             # Debug print the current context
             logger.debug(f"Token limit: {token_limit}")
@@ -130,12 +127,8 @@ def chat_with_ai(
             )
 
             # Update full message history
-            full_message_history.append(
-                create_chat_message(
-                    "user", user_input))
-            full_message_history.append(
-                create_chat_message(
-                    "assistant", assistant_reply))
+            full_message_history.append( create_chat_message( "user", user_input))
+            full_message_history.append( create_chat_message( "assistant", assistant_reply))
 
             return assistant_reply
         except openai.error.RateLimitError:

@@ -14,6 +14,8 @@ def count_message_tokens(messages : List[Dict[str, str]], model : str = "gpt-3.5
     int: The number of tokens used by the list of messages.
     """
     try:
+        if not isinstance(messages, list):
+            messages = [messages]
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
         logger.warn("Warning: model not found. Using cl100k_base encoding.")
@@ -39,21 +41,21 @@ def count_message_tokens(messages : List[Dict[str, str]], model : str = "gpt-3.5
             num_tokens += len(encoding.encode(value))
             if key == "name":
                 num_tokens += tokens_per_name
+
     num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
     return num_tokens
 
-
-def count_string_tokens(string: str, model_name: str) -> int:
+def count_string_tokens(string: str, model: str) -> int:
     """
     Returns the number of tokens in a text string.
 
     Args:
     string (str): The text string.
-    model_name (str): The name of the encoding to use. (e.g., "gpt-3.5-turbo")
+    model (str): The name of the encoding to use. (e.g., "gpt-3.5-turbo")
 
     Returns:
     int: The number of tokens in the text string.
     """
-    encoding = tiktoken.encoding_for_model(model_name)
+    encoding = tiktoken.encoding_for_model(model)
     num_tokens = len(encoding.encode(string))
     return num_tokens
