@@ -19,7 +19,7 @@ import logging
 from prompt import get_prompt
 
 cfg = Config()
-if cfg.speak_mode and not cfg.telegram_api_key:
+if cfg.telegram_enabled:
     from telegram_chat import TelegramUtils
 
 
@@ -119,7 +119,7 @@ def print_assistant_thoughts(assistant_reply):
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
 
-        if cfg.telegram_api_key and cfg.telegram_chat_id:
+        if cfg.telegram_enabled:
             TelegramUtils.send_message(assistant_thoughts_text)
 
         return assistant_reply_json
@@ -379,7 +379,7 @@ class Agent:
                     f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {self.ai_name}...",
                     flush=True)
                 while True:
-                    if cfg.speak_mode and not cfg.telegram_api_key:
+                    if cfg.speak_mode and not cfg.telegram_enabled:
                         if command_name != "do_nothing":
                             console_input = utils.clean_input(
                                 f"I want to {command_name}, is that okay? \n Input:", talk=True)
@@ -387,7 +387,7 @@ class Agent:
                             console_input = utils.clean_input(
                                 "I decided to just continue thinking. Is that okay? \n Input:", talk=True)
                     else:
-                        if cfg.telegram_api_key and cfg.telegram_chat_id:
+                        if cfg.telegram_enabled:
                             console_input = TelegramUtils.ask_user(
                                 f"I want to execute {command_name} and {arguments}. Is that okay?")
                         else:
