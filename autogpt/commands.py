@@ -10,6 +10,7 @@ from autogpt.file_operations import read_file, write_to_file, append_to_file, de
 from autogpt.execute_code import execute_python_file, execute_shell
 from autogpt.json_parser import fix_and_parse_json
 from autogpt.image_gen import generate_image
+from autogpt.git_operations import clone_repository
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
