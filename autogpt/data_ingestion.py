@@ -34,11 +34,12 @@ def ingest_directory(directory, memory, args):
         print(f"Error while ingesting directory '{directory}': {str(e)}")
 
 
-def main():
+def main() -> None:
     logger = configure_logging()
 
     parser = argparse.ArgumentParser(
-        description="Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script."
+        description="Ingest a file or a directory with multiple files into memory. "
+        "Make sure to set your .env before running this script."
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--file", type=str, help="The file to ingest.")
