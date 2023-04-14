@@ -1,6 +1,6 @@
 import yaml
 import os
-from prompt import get_prompt
+from autogpt.prompt import get_prompt
 
 
 class AIConfig:
