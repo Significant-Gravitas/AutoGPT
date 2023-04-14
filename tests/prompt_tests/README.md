@@ -1,6 +1,6 @@
-# Test Runner Script
+# Prompt Test Script
 
-The test runner script is a Python script that executes tests for a command line application. Each test is defined in a separate directory in the `tests/prompt_tests` directory, and is defined by a `test.json` configuration file.
+The prompt test script is a Python script that executes tests for a command line application. Each test is defined in a separate directory in the `tests/prompt_tests` directory, and is defined by a `test.json` configuration file.
 
 ## Usage
 
@@ -12,7 +12,7 @@ The script accepts the following arguments:
 To run the script, use the following command in the root directory:
 
 ```
-python test_runner.py --test [test_name|all] [--list]
+python tests/prompt_tests/prompt-test.py --test [test_name|all] [--list]
 ```
 
 ## Creating Tests
