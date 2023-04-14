@@ -32,9 +32,13 @@ def create_chat_completion(messages, model=None, temperature=cfg.temperature, ma
                     max_tokens=max_tokens
                 )
             break
-        except openai.error.RateLimitError:
+        except openai.error.RateLimitError as e:
             if cfg.debug_mode:
-                print(Fore.RED + "Error: ", "API Rate Limit Reached. Waiting 20 seconds..." + Fore.RESET)
+                if str(e) == "You exceeded your current quota, please check your plan and billing details.":
+                    print(Fore.RED + f"Billing Error: {e}" + Fore.RESET)
+                    exit(1)
+                else:
+                    print(Fore.RED + "Error: ", "API Rate Limit Reached. Waiting 20 seconds..." + Fore.RESET)
             time.sleep(20)
         except openai.error.APIError as e:
             if e.http_status == 502:
