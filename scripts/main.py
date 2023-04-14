@@ -318,10 +318,6 @@ def parse_arguments():
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         cfg.set_fast_llm_model(cfg.smart_llm_model)
 
-    if args.debug:
-        logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_debug_mode(True)
-
     if args.memory_type:
         supported_memory = get_supported_memory_backends()
         chosen = args.memory_type
