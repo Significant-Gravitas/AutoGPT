@@ -9,7 +9,7 @@ ENV PIP_NO_CACHE_DIR=yes \
 # Create a non-root user and set permissions
 RUN useradd --create-home appuser
 WORKDIR /home/appuser
-RUN chown appuser:appuser /home/appuser
+RUN chown appuser:appuser /home
 USER appuser
 
 # Copy the requirements.txt file and install the requirements
