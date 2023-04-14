@@ -94,8 +94,6 @@ def execute_command(command_name, arguments):
             return search_files(arguments["directory"])
         elif command_name == "download_file":
             return download_file(arguments["url"], arguments["file"])
-        elif command_name == "download_file":
-            return download_file(arguments["url"], arguments["file"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
         # TODO: Change these to take in a file rather than pasted code, if
