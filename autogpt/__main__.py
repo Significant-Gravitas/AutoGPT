@@ -33,9 +33,14 @@ def check_openai_api_key():
 
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
-    if cfg.speak_mode and cfg.debug_mode:
-      speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
-    logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
+    if cfg.debug_mode:
+        message = "I have received an invalid JSON response from the OpenAI API. Trying to fix it now."
+        log_message = "Attempting to fix JSON by finding outermost brackets\n"
+
+        if cfg.speak_mode:
+            speak.say_text(message)
+
+        logger.typewriter_log(log_message)
 
     try:
         # Use regex to search for JSON objects
@@ -46,9 +51,13 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
         if json_match:
             # Extract the valid JSON object from the string
             json_string = json_match.group(0)
-            logger.typewriter_log(title="Apparently json was fixed.", title_color=Fore.GREEN)
-            if cfg.speak_mode and cfg.debug_mode:
-               speak.say_text("Apparently json was fixed.")
+            if cfg.debug_mode:
+                log_message = "Apparently json was fixed."
+
+                if cfg.speak_mode:
+                    speak.say_text(log_message)
+
+                logger.typewriter_log(title=log_message, title_color=Fore.GREEN)
         else:
             raise ValueError("No valid JSON object found")
 
