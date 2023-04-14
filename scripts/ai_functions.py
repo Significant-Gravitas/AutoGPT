@@ -5,7 +5,7 @@ from call_ai_function import call_ai_function
 cfg = Config()
 
 
-def analyze_code(code: str) -> List[str]:
+def evaluate_code(code: str) -> List[str]:
     """
     A function that takes in a string and returns a response from create chat completion api call.
 
