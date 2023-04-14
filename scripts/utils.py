@@ -1,3 +1,4 @@
+from telegram_chat import TelegramUtils
 import speech_recognition as sr
 import speak
 import traceback
@@ -60,6 +61,13 @@ def clean_input(prompt: str = '', talk=False):
                 speak.macos_tts_speech("I didn't understand that. Sorry.")
                 return input(prompt)
         else:
+            if cfg.telegram_enabled:
+                chat_answer = TelegramUtils.ask_user(prompt)
+                if chat_answer in ["yes", "yeah", "yep", "yup", "y", "ok", "okay", "sure", "affirmative", "aye", "aye aye", "alright", "alrighty"]:
+                    return "y"
+                elif chat_answer in ["no", "nope", "n", "nah", "negative", "nay", "nay nay"]:
+                    return "n"
+                      
             ## ask for input, default when just pressing Enter is y
             answer = input(prompt + ' [y/n] or press Enter for default (y): ')
             if answer == '':

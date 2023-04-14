@@ -1,12 +1,11 @@
-from telegram import Update, Bot
-from telegram.ext import CommandHandler, MessageHandler, CallbackContext, Application
-from telegram.ext import filters
-from config import Config
-import threading
 import asyncio
+import threading
 from functools import wraps
-
 from threading import Lock, Semaphore
+
+from config import Config
+from telegram import Bot, Update
+from telegram.ext import (Application, CallbackContext, MessageHandler, filters)
 
 cfg = Config()
 response_received = threading.Event()
@@ -30,15 +29,22 @@ def handle_response(update: Update, context: CallbackContext):
         response_text = update.message.text
         response_received.set()
 
+def start_listening():
+    print("listeing to telegram")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        application.add_handler(MessageHandler(filters.TEXT, handle_response))
+        loop.run_until_complete(application.run_polling())
+    except KeyboardInterrupt:
+        pass
 
 class TelegramUtils:
     @staticmethod
-    def send_message(message):
-        async def _send_message_async():
-            bot_token = cfg.telegram_api_key
-            recipient_chat_id = cfg.telegram_chat_id
-            await Bot(bot_token).send_message(chat_id=recipient_chat_id, text=message)
-        asyncio.run(_send_message_async())
+    async def send_message(message):
+        bot_token = cfg.telegram_api_key
+        recipient_chat_id = cfg.telegram_chat_id
+        await Bot(bot_token).send_message(chat_id=recipient_chat_id, text=message)
 
     @staticmethod
     def ask_user(question):
@@ -47,11 +53,13 @@ class TelegramUtils:
         response_received.clear()
         response_text = ""
 
-        TelegramUtils.send_message(question)
+        asyncio.run(TelegramUtils.send_message(question))
+        start_listening()
 
         print("Waiting for response...")
         response_received.wait()
         return response_text
+
 
 
 class SignalSafeEventLoop(asyncio.SelectorEventLoop):
@@ -69,8 +77,3 @@ def run_in_signal_safe_loop(coro):
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(coro(*args, **kwargs))
     return wrapper
-
-
-def main():
-    application.add_handler(MessageHandler(filters.TEXT, handle_response))
-    application.run_polling()

@@ -17,10 +17,11 @@ import argparse
 from logger import logger
 import logging
 from prompt import get_prompt
+import threading
 
 cfg = Config()
 if cfg.telegram_enabled:
-    from telegram_chat import TelegramUtils
+    from telegram_chat import TelegramUtils, application
 
 
 def check_openai_api_key():
@@ -454,7 +455,6 @@ class Agent:
                     chat.create_chat_message(
                         "system", "Unable to execute command"))
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
-
 
 if __name__ == "__main__":
     main()
