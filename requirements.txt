@@ -18,3 +18,4 @@ Pillow
 coverage
 flake8
 numpy
+pre-commit
