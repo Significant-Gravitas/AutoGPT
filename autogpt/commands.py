@@ -5,6 +5,14 @@ from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from autogpt.web import browse_website
+from autogpt.config import Config
+from autogpt.json_parser import fix_and_parse_json
+from autogpt.memory import get_memory
+from autogpt.file_operations import *
+from autogpt.execute_code import execute_python_file
+from autogpt import browse
+import autogpt.ai_functions as ai
+cfg = Config()
 
 cfg = Config()
 
