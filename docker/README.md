@@ -7,6 +7,10 @@ Runs auto-gpt in a docker container
 
 ```
 cp ai_settings.sample ai_settings.yaml
+# Edit ai_settings.yaml to suit your needs
+touch auto-gpt.json
+chmod 644 auto-gpt.json
+chmod 777 logs cache workspace
 docker-compose up -d --build
 ```
 
