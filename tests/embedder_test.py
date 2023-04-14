@@ -1,11 +1,8 @@
 import os
 import sys
-# Probably a better way:
-sys.path.append(os.path.abspath('../scripts'))
-from memory.base import get_embedding
-from config import Config
-import unittest
 
+from autogpt.config import Config
+from autogpt.memory.base import get_embedding
 
 # Required, because the get_embedding function uses it
 cfg = Config()
