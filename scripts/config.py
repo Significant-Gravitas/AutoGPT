@@ -36,12 +36,17 @@ class Config(metaclass=Singleton):
         """Initialize the Config class"""
         self.debug_mode = False
         self.continuous_mode = False
+        self.continuous_limit = 0
         self.speak_mode = False
+        self.skip_reprompt = False
 
+        self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
+        self.browse_summary_max_token =  int(os.getenv("BROWSE_SUMMARY_MAX_TOKEN", 300))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "1"))
@@ -61,6 +66,9 @@ class Config(metaclass=Singleton):
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
 
+        self.use_brian_tts = False
+        self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
+
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
@@ -72,7 +80,7 @@ class Config(metaclass=Singleton):
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if no user agent was found.
-        self.user_agent_header = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36"}
+        self.user_agent = os.getenv("USER_AGENT", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36")
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
         self.redis_port = os.getenv("REDIS_PORT", "6379")
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
@@ -129,6 +137,10 @@ class Config(metaclass=Singleton):
         """Set the continuous mode value."""
         self.continuous_mode = value
 
+    def set_continuous_limit(self, value: int):
+        """Set the continuous limit value."""
+        self.continuous_limit = value
+
     def set_speak_mode(self, value: bool):
         """Set the speak mode value."""
         self.speak_mode = value
@@ -148,6 +160,14 @@ class Config(metaclass=Singleton):
     def set_smart_token_limit(self, value: int):
         """Set the smart token limit value."""
         self.smart_token_limit = value
+
+    def set_browse_chunk_max_length(self, value: int):
+        """Set the browse_website command chunk max length value."""
+        self.browse_chunk_max_length = value
+
+    def set_browse_summary_max_token(self, value: int):
+        """Set the browse_website command summary max token value."""
+        self.browse_summary_max_token = value
 
     def set_openai_api_key(self, value: str):
         """Set the OpenAI API key value."""
