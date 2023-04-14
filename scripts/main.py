@@ -375,9 +375,12 @@ class Agent:
                     flush=True)
                 while True:
                     console_input = utils.clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-                    if console_input.lower().rstrip() == "y":
+                    if console_input.lower().strip() == "y":
                         self.user_input = "GENERATE NEXT COMMAND JSON"
                         break
+                    elif console_input.lower().strip() == "":
+                        print("Invalid input format.")
+                        continue
                     elif console_input.lower().startswith("y -"):
                         try:
                             self.next_action_count = abs(int(console_input.split(" ")[1]))
