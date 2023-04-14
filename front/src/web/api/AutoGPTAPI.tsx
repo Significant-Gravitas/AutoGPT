@@ -18,7 +18,8 @@ const fetchData: () => Promise<IAnswer[]> = async () => {
   }
   // remove last char from data data is a string
   // remove \n
-  data = data.output.replace("\n", "")
+  data = data.output.replaceAll("\n", "")
+  data = data.replaceAll("\u001b", "")
   // remove last comma
   data = data
     .split("")

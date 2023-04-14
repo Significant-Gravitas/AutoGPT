@@ -1,9 +1,23 @@
-FROM python:3.11
+# Use an official Python base image from the Docker Hub
+FROM python:3.11-slim
 
-WORKDIR /app
-COPY scripts/ /app
-COPY requirements.txt /app
+# Set environment variables
+ENV PIP_NO_CACHE_DIR=yes \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
-RUN pip install -r requirements.txt
+# Create a non-root user and set permissions
+RUN useradd --create-home appuser
+WORKDIR /home/appuser
+RUN chown appuser:appuser /home/appuser
+USER appuser
 
-CMD ["python", "main.py"]
+# Copy the requirements.txt file and install the requirements
+COPY --chown=appuser:appuser requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Copy the application files
+COPY --chown=appuser:appuser scripts/ .
+
+# Set the entrypoint
+ENTRYPOINT ["python", "main.py"]

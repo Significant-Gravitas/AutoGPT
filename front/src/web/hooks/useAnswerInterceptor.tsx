@@ -6,12 +6,12 @@ import { addAgent, removeAgent } from "@/redux/data/dataReducer"
 import useAgents from "./data/useAgents"
 import { useParams } from "react-router"
 
-const AGENT_CREATED = "COMMAND = start_agent  ARGUMENTS = "
-const DELETE_AGENT = "COMMAND = delete_agent  ARGUMENTS = "
-const WRITE_FILE = "COMMAND = write_to_file  ARGUMENTS = "
-const BROWSE_WEBSITE = "COMMAND = browse_website  ARGUMENTS = "
+const AGENT_CREATED = "COMMAND = start_agent ARGUMENTS = "
+const DELETE_AGENT = "COMMAND = delete_agent ARGUMENTS = "
+const WRITE_FILE = "COMMAND = write_to_file ARGUMENTS = "
+const BROWSE_WEBSITE = "COMMAND = browse_website ARGUMENTS = "
 const GOOGLE_RETURN = "Command google returned: "
-const APPEND_FILE = "COMMAND = append_to_file  ARGUMENTS = "
+const APPEND_FILE = "COMMAND = append_to_file ARGUMENTS = "
 const useAnswerInterceptor = () => {
   const dispatch = useDispatch()
   const { id } = useParams<{ id: string }>()
