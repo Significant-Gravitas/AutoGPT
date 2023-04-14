@@ -93,7 +93,7 @@ _The following commands should be executed in a CMD, Bash or Powershell window. 
    For this step you need Git installed, but you can just download the zip file instead by clicking the button at the top of this page ☝️
 
 ```
-git clone https://github.com/Torantulino/Auto-GPT.git
+git clone -b stable https://github.com/Torantulino/Auto-GPT.git
 ```
 
 3. Navigate to the project directory:
