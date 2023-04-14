@@ -4,10 +4,34 @@ import os.path
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
 
+log_file = "file_logger.txt"
+
+
 # Create the directory if it doesn't exist
 if not os.path.exists(working_directory):
     os.makedirs(working_directory)
 
+
+
+def log_operation(operation, filename):
+    """Log the file operation to the file_logger.txt"""
+    log_entry = f"{operation}: {filename}\n"
+
+    log_filepath = safe_join(working_directory, log_file)
+    
+    # Create the log file if it doesn't exist
+    if not os.path.exists(log_filepath):
+        with open(log_filepath, "w", encoding="utf-8") as f:
+            f.write("File Operation Logger ")
+
+    append_to_file(log_file, log_entry)
+
+
+def check_duplicate_operation(operation, filename):
+    """Check if the operation has already been performed on the given file"""
+    log_content = read_file(log_file)
+    log_entry = f"{operation}: {filename}\n"
+    return log_entry in log_content
 
 def safe_join(base, *paths):
     """Join one or more path components intelligently."""
@@ -87,7 +111,10 @@ def ingest_file(filename, memory, max_length=4000, overlap=200):
 
 
 def write_to_file(filename, text):
-    """Write text to a file"""
+    """Write text to a file and log the operation"""
+    if check_duplicate_operation("write", filename):
+        return "Error: File has already been updated."
+
     try:
         filepath = safe_join(working_directory, filename)
         directory = os.path.dirname(filepath)
@@ -95,6 +122,7 @@ def write_to_file(filename, text):
             os.makedirs(directory)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(text)
+        log_operation("write", filename)
         return "File written to successfully."
     except Exception as e:
         return "Error: " + str(e)
@@ -112,10 +140,14 @@ def append_to_file(filename, text):
 
 
 def delete_file(filename):
-    """Delete a file"""
+    """Delete a file and log the operation"""
+    if check_duplicate_operation("delete", filename):
+        return "Error: File has already been deleted."
+
     try:
         filepath = safe_join(working_directory, filename)
         os.remove(filepath)
+        log_operation("delete", filename)
         return "File deleted successfully."
     except Exception as e:
         return "Error: " + str(e)
