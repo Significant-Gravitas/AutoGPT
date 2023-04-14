@@ -5,6 +5,7 @@ import sys
 sys.path.append(os.path.abspath('../scripts'))
 from json_parser import fix_and_parse_json
 
+
 class TestParseJson(unittest.TestCase):
     def test_valid_json(self):
         # Test that a valid JSON string is parsed correctly
@@ -52,7 +53,7 @@ class TestParseJson(unittest.TestCase):
         good_obj = {
           "command": {
               "name": "browse_website",
-              "args":{
+              "args": {
                   "url": "https://github.com/Torantulino/Auto-GPT"
               }
           },
@@ -67,8 +68,6 @@ class TestParseJson(unittest.TestCase):
       }
         # Assert that this raises an exception:
         self.assertEqual(fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj)
-
-
 
     def test_invalid_json_leading_sentence_with_gpt(self):
         # Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False
@@ -93,7 +92,7 @@ class TestParseJson(unittest.TestCase):
         good_obj = {
     "command": {
         "name": "browse_website",
-        "args":{
+        "args": {
             "url": "https://github.com/Torantulino/Auto-GPT"
         }
     },
@@ -108,7 +107,6 @@ class TestParseJson(unittest.TestCase):
 }
         # Assert that this raises an exception:
         self.assertEqual(fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj)
-
 
 
 if __name__ == '__main__':

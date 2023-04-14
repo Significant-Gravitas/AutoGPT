@@ -28,10 +28,20 @@ class LocalCache(MemoryProviderSingleton):
     def __init__(self, cfg) -> None:
         self.filename = f"{cfg.memory_index}.json"
         if os.path.exists(self.filename):
-            with open(self.filename, 'rb') as f:
-                loaded = orjson.loads(f.read())
-                self.data = CacheContent(**loaded)
+            try:
+                with open(self.filename, 'w+b') as f:
+                    file_content = f.read()
+                    if not file_content.strip():
+                        file_content = b'{}'
+                        f.write(file_content)
+
+                    loaded = orjson.loads(file_content)
+                    self.data = CacheContent(**loaded)
+            except orjson.JSONDecodeError:
+                print(f"Error: The file '{self.filename}' is not in JSON format.")
+                self.data = CacheContent()
         else:
+            print(f"Warning: The file '{self.filename}' does not exist. Local memory would not be saved to a file.")
             self.data = CacheContent()
 
     def add(self, text: str):
@@ -54,8 +64,8 @@ class LocalCache(MemoryProviderSingleton):
         vector = vector[np.newaxis, :]
         self.data.embeddings = np.concatenate(
             [
-                vector,
                 self.data.embeddings,
+                vector,
             ],
             axis=0,
         )
