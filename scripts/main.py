@@ -1,12 +1,10 @@
 import json
-import random
 import commands as cmd
 import utils
 from memory import get_memory, get_supported_memory_backends
 import chat
 from colorama import Fore, Style
 from spinner import Spinner
-import time
 import speak
 from config import Config
 from json_parser import fix_and_parse_json
@@ -34,7 +32,7 @@ def check_openai_api_key():
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
     if cfg.speak_mode and cfg.debug_mode:
-      speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
+        speak.say_text("I have received an invalid JSON response from the OpenAI API. Trying to fix it now.")
     logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
 
     try:
@@ -48,11 +46,11 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
             json_string = json_match.group(0)
             logger.typewriter_log(title="Apparently json was fixed.", title_color=Fore.GREEN)
             if cfg.speak_mode and cfg.debug_mode:
-               speak.say_text("Apparently json was fixed.")
+                speak.say_text("Apparently json was fixed.")
         else:
             raise ValueError("No valid JSON object found")
 
-    except (json.JSONDecodeError, ValueError) as e:
+    except (json.JSONDecodeError, ValueError):
         if cfg.speak_mode:
             speak.say_text("Didn't work. I will have to ignore this response then.")
         logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
@@ -62,14 +60,14 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
 
 
 def print_assistant_thoughts(assistant_reply):
-    """Prints the assistant's thoughts to the console"""
+    """Print the assistant's thoughts to the console"""
     global ai_name
     global cfg
     try:
         try:
             # Parse and print Assistant response
             assistant_reply_json = fix_and_parse_json(assistant_reply)
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
             assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
             assistant_reply_json = fix_and_parse_json(assistant_reply_json)
@@ -78,7 +76,7 @@ def print_assistant_thoughts(assistant_reply):
         if isinstance(assistant_reply_json, str):
             try:
                 assistant_reply_json = json.loads(assistant_reply_json)
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 logger.error("Error: Invalid JSON\n", assistant_reply)
                 assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply_json)
 
@@ -118,13 +116,13 @@ def print_assistant_thoughts(assistant_reply):
             speak.say_text(assistant_thoughts_speak)
 
         return assistant_reply_json
-    except json.decoder.JSONDecodeError as e:
+    except json.decoder.JSONDecodeError:
         logger.error("Error: Invalid JSON\n", assistant_reply)
         if cfg.speak_mode:
             speak.say_text("I have received an invalid JSON response from the OpenAI API. I cannot ignore this response.")
 
     # All other errors, return "Error: + error message"
-    except Exception as e:
+    except Exception:
         call_stack = traceback.format_exc()
         logger.error("Error: \n", call_stack)
 
@@ -169,7 +167,7 @@ def load_variables(config_file="config.yaml"):
     # Save variables to yaml file
     config = {"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals}
     with open(config_file, "w") as file:
-        documents = yaml.dump(config, file)
+        yaml.dump(config, file)
 
     prompt = get_prompt()
     prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
@@ -325,7 +323,7 @@ def parse_arguments():
     if args.memory_type:
         supported_memory = get_supported_memory_backends()
         chosen = args.memory_type
-        if not chosen in supported_memory:
+        if chosen not in supported_memory:
             logger.typewriter_log("ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ", Fore.RED, f'{supported_memory}')
             logger.typewriter_log(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
         else:
@@ -343,20 +341,19 @@ def main():
     # print(prompt)
     # Initialize variables
     full_message_history = []
-    result = None
     next_action_count = 0
     # Make a constant:
     user_input = "Determine which next command to use, and respond using the format specified above:"
     # Initialize memory and make sure it is empty.
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(cfg, init=True)
-    print('Using memory of type: ' + memory.__class__.__name__)
+    print(f'Using memory of type: {memory.__class__.__name__}')
     # Interaction Loop
     loop_count = 0
     while True:
-         # Discontinue if continuous limit is reached
+        # Discontinue if continuous limit is reached
         loop_count += 1
-        if cfg.continuous_mode and cfg.continuous_limit > 0 and loop_count > cfg.continuous_limit:
+        if cfg.continuous_mode and 0 < cfg.continuous_limit < loop_count:
             logger.typewriter_log("Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}")
             break
 
@@ -431,7 +428,7 @@ def main():
 
         # Execute command
         if command_name is not None and command_name.lower().startswith("error"):
-            result = f"Command {command_name} threw the following error: " + arguments
+            result = f"Command {command_name} threw the following error: {arguments}"
         elif command_name == "human_feedback":
             result = f"Human feedback: {user_input}"
         else:
@@ -445,16 +442,9 @@ def main():
 
         memory.add(memory_to_add)
 
-        # Check if there's a result from the command append it to the message
-        # history
-        if result is not None:
-            full_message_history.append(chat.create_chat_message("system", result))
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
-        else:
-            full_message_history.append(
-                chat.create_chat_message(
-                    "system", "Unable to execute command"))
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+        # Append the result to the message history
+        full_message_history.append(chat.create_chat_message("system", result))
+        logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
 
 
 if __name__ == "__main__":
