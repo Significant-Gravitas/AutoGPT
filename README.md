@@ -1,4 +1,8 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
+### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
+We've improved our workflow. `master` will often be **in a broken state**.
+Download the latest `stable` release here: https://github.com/Torantulino/Auto-GPT/releases/latest
+This information SUPERCEDES any following information. Takes precedence. Do this not that.
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
 [![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)
@@ -46,6 +50,7 @@ Your support is greatly appreciated
     - [Setting up environment variables](#setting-up-environment-variables-1)
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
+  - [🧠 Memory pre-seeding](#memory-pre-seeding)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#-image-generation)
@@ -69,11 +74,12 @@ Your support is greatly appreciated
   - [vscode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): It has been configured in the .devcontainer folder and can be used directly
   - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - [OpenAI API key](https://platform.openai.com/account/api-keys)
-- [PINECONE API key](https://www.pinecone.io/)
+
 
 Optional:
 
-- [ElevenLabs Key](https://elevenlabs.io/) (If you want the AI to speak)
+- [PINECONE API key](https://www.pinecone.io/) (If you want Pinecone backed memory)
+- ElevenLabs Key (If you want the AI to speak)
 
 ## 💾 Installation
 
@@ -117,15 +123,15 @@ pip install -r requirements.txt
 
 ## 🔧 Usage
 
-1. Run the `main.py` Python script in your terminal:
+1. Run the `autogpt` Python module in your terminal:
    _(Type this into your CMD window)_
 
 ```
-python scripts/main.py
+python -m autogpt
 ```
 
-2. After each of AUTO-GPT's actions, type "NEXT COMMAND" to authorise them to continue.
-3. To exit the program, type "exit" and press Enter.
+2. After each of action, enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter additional feedback for the AI.
+
 
 ### Logs
 
@@ -134,15 +140,37 @@ You will find activity and error logs in the folder `./output/logs`
 To output debug logs:
 
 ```
-python scripts/main.py --debug
+python -m autogpt --debug
 ```
+
+### Docker
+
+You can also build this into a docker image and run it:
+
+```
+docker build -t autogpt .
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt
+```
+
+You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
+```
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt --gpt3only --continuous
+```
+### Command Line Arguments
+Here are some common arguments you can use when running Auto-GPT:
+> Replace anything in angled brackets (<>) to a value you want to specify
+* `python scripts/main.py --help` to see a list of all available command line arguments.
+* `python scripts/main.py --ai-settings <filename>` to run Auto-GPT with a different AI Settings file.
+* `python scripts/main.py --use-memory  <memory-backend>` to specify one of 3 memory backends: `local`, `redis`, `pinecone` or 'no_memory'.
+
+> **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python scripts/main.py --help` for more information
 
 ## 🗣️ Speech Mode
 
 Use this to use TTS for Auto-GPT
 
 ```
-python scripts/main.py --speak
+python -m autogpt --speak
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -228,7 +256,10 @@ Pinecone enables the storage of vast amounts of vector-based memory, allowing fo
 
 ### Setting up environment variables
 
-Simply set them in the `.env` file.
+In the `.env` file set:
+- `PINECONE_API_KEY`
+- `PINECONE_ENV` (something like: us-east4-gcp)
+- `MEMORY_BACKEND=pinecone`
 
 Alternatively, you can set them from the command line (advanced):
 
@@ -237,7 +268,7 @@ For Windows Users:
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
 setx PINECONE_ENV "Your pinecone region" # something like: us-east4-gcp
-
+setx MEMORY_BACKEND "pinecone"
 ```
 
 For macOS and Linux users:
@@ -245,7 +276,7 @@ For macOS and Linux users:
 ```
 export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
-
+export MEMORY_BACKEND="pinecone"
 ```
 
 ## Setting Your Cache Type
@@ -262,6 +293,52 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 
 1. View memory usage by using the `--debug` flag :)
 
+
+## 🧠 Memory pre-seeding
+
+```
+# python scripts/data_ingestion.py -h 
+usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
+
+Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
+
+options:
+  -h, --help               show this help message and exit
+  --file FILE              The file to ingest.
+  --dir DIR                The directory containing the files to ingest.
+  --init                   Init the memory and wipe its content (default: False)
+  --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
+  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000
+
+# python scripts/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
+```
+
+This script located at scripts/data_ingestion.py, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
+
+Memory pre-seeding is a technique that involves ingesting relevant documents or data into the AI's memory so that it can use this information to generate more informed and accurate responses.
+
+To pre-seed the memory, the content of each document is split into chunks of a specified maximum length with a specified overlap between chunks, and then each chunk is added to the memory backend set in the .env file. When the AI is prompted to recall information, it can then access those pre-seeded memories to generate more informed and accurate responses.
+
+This technique is particularly useful when working with large amounts of data or when there is specific information that the AI needs to be able to access quickly. 
+By pre-seeding the memory, the AI can retrieve and use this information more efficiently, saving time, API call and improving the accuracy of its responses. 
+
+You could for example download the documentation of an API, a Github repository, etc. and ingest it into memory before running Auto-GPT. 
+
+⚠️ If you use Redis as your memory, make sure to run Auto-GPT with the WIPE_REDIS_ON_START set to False in your .env file.
+
+⚠️For other memory backend, we currently forcefully wipe the memory when starting Auto-GPT. To ingest data with those memory backend, you can call the data_ingestion.py script anytime during an Auto-GPT run. 
+
+Memories will be available to the AI immediately as they are ingested, even if ingested while Auto-GPT is running.
+
+In the example above, the script initializes the memory, ingests all files within the seed_data directory into memory with an overlap between chunks of 200 and a maximum length of each chunk of 4000.
+Note that you can also use the --file argument to ingest a single file into memory and that the script will only ingest files within the auto_gpt_workspace directory.
+
+You can adjust the max_length and overlap parameters to fine-tune the way the docuents are presented to the AI when it "recall" that memory:
+
+- Adjusting the overlap value allows the AI to access more contextual information from each chunk when recalling information, but will result in more chunks being created and therefore increase memory backend usage and OpenAI API requests.
+- Reducing the max_length value will create more chunks, which can save prompt tokens by allowing for more message history in the context, but will also increase the number of chunks.
+- Increasing the max_length value will provide the AI with more contextual information from each chunk, reducing the number of chunks created and saving on OpenAI API requests. However, this may also use more prompt tokens and decrease the overall context available to the AI.
+
 ## 💀 Continuous Mode ⚠️
 
 Run the AI **without** user authorisation, 100% automated.
@@ -269,10 +346,10 @@ Continuous mode is not recommended.
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
 
-1. Run the `main.py` Python script in your terminal:
+1. Run the `autogpt` python module in your terminal:
 
 ```
-python scripts/main.py --continuous
+python -m autogpt --speak --continuous
 
 ```
 
@@ -283,7 +360,7 @@ python scripts/main.py --continuous
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 
 ```
-python scripts/main.py --gpt3only
+python -m autogpt --speak --gpt3only
 ```
 
 It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
@@ -356,8 +433,8 @@ This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. We 
 To run the linter, run the following command:
 
 ```
-flake8 scripts/ tests/
+flake8 autogpt/ tests/
 
 # Or, if you want to run flake8 with the same configuration as the CI:
-flake8 scripts/ tests/ --select E303,W293,W291,W292,E305,E231,E302
+flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
 ```
