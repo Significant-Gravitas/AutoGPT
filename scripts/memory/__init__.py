@@ -3,7 +3,7 @@ from memory.no_memory import NoMemory
 
 # List of supported memory backends
 # Add a backend to this list if the import attempt is successful
-supported_memory = ['local']
+supported_memory = ['local', 'no_memory']
 
 try:
     from memory.redismem import RedisMemory

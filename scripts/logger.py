@@ -24,7 +24,8 @@ For console handler: simulates typing
 class Logger(metaclass=Singleton):
     def __init__(self):
         # create log directory if it doesn't exist
-        log_dir = os.path.join('..', 'logs')
+        this_files_dir_path = os.path.dirname(__file__)
+        log_dir = os.path.join(this_files_dir_path, '../logs')
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
