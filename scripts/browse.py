@@ -137,6 +137,7 @@ def create_message(chunk, question):
         "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
     }
 
+
 def summarize_text(url, text, question):
     """Summarize text using the LLM model"""
     if not text:
