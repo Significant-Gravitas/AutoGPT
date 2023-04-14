@@ -9,6 +9,7 @@ ENV PIP_NO_CACHE_DIR=yes \
 # Create a non-root user and set permissions
 RUN useradd --create-home appuser
 WORKDIR /home/appuser
+# Some files are created in this path, so we need to change the owner
 RUN chown appuser:appuser /home
 USER appuser
 
