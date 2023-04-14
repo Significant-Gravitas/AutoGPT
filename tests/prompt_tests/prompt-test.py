@@ -46,7 +46,8 @@ def run_test(test_subdirectory):
     print(f"Command: {' '.join(command)}")
     env = os.environ.copy()
     env.update(config["exec"].get("env", {}))
-    subprocess.run(command, cwd=test_path, env=env)
+    #subprocess.run(command, cwd=test_path, env=env)
+    subprocess.run(command, env=env)
 
 def list_tests():
     for test_subdirectory in os.listdir(os.path.join("tests", "prompt_tests")):
