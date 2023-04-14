@@ -19,7 +19,7 @@ cfg = Config()
 EMBED_DIM = {
     "ada": 1536,
     "sbert": 768
-}.get(cfg.memory_embedder, default=1536)
+}.get(cfg.memory_embedder, 1536)
 
 
 def get_embedding(text):
