@@ -4,22 +4,7 @@ import json
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-
-import autogpt.agent_manager as agents
-import autogpt.ai_functions as ai
-from autogpt import browse, speak
-from autogpt.config import Config
-from autogpt.execute_code import execute_python_file, execute_shell
-from autogpt.file_operations import (
-    append_to_file,
-    delete_file,
-    read_file,
-    search_files,
-    write_to_file,
-)
-from autogpt.image_gen import generate_image
-from autogpt.json_parser import fix_and_parse_json
-from autogpt.memory import get_memory
+from autogpt.web import browse_website
 
 cfg = Config()
 
@@ -66,9 +51,8 @@ def execute_command(command_name, arguments):
         if command_name == "google":
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial search method
-            if cfg.google_api_key and (
-                cfg.google_api_key.strip() if cfg.google_api_key else None
-            ):
+            key = cfg.google_api_key
+            if key and key.strip() and key != "your-google-api-key":
                 return google_official_search(arguments["input"])
             else:
                 return google_search(arguments["input"])
@@ -189,20 +173,6 @@ def google_official_search(query, num_results=8):
 
     # Return the list of search result URLs
     return search_results_links
-
-
-def browse_website(url, question):
-    """Browse a website and return the summary and links"""
-    summary = get_text_summary(url, question)
-    links = get_hyperlinks(url)
-
-    # Limit links to 5
-    if len(links) > 5:
-        links = links[:5]
-
-    result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
-
-    return result
 
 
 def get_text_summary(url, question):
