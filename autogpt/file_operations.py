@@ -179,4 +179,3 @@ def download_file(url, filename):
         return f"Got an HTTP Error whilst trying to download file: {e}"
     except Exception as e:
         return "Error: " + str(e)
-    

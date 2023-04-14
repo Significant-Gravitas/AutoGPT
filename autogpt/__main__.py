@@ -250,7 +250,7 @@ def parse_arguments():
     cfg.set_debug_mode(False)
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
-    
+
     parser = argparse.ArgumentParser(description="Process arguments.")
     parser.add_argument(
         "--continuous", "-c", action="store_true", help="Enable Continuous Mode"
@@ -288,9 +288,9 @@ def parse_arguments():
         help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
     )
     parser.add_argument(
-        '--allow-downloads', 
-        action='store_true', 
-        dest='allow_downloads', 
+        '--allow-downloads',
+        action='store_true',
+        dest='allow_downloads',
         help='Dangerous: Allows Auto-GPT to download files natively.'
     )
 
