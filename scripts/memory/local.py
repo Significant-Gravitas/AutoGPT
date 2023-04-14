@@ -10,21 +10,17 @@ EMBED_DIM = 1536
 SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
 
 
-def create_default_embeddings():
-    return np.zeros((0, EMBED_DIM)).astype(np.float32)
-
-
 @dataclasses.dataclass
 class CacheContent:
     texts: List[str] = dataclasses.field(default_factory=list)
     embeddings: np.ndarray = dataclasses.field(
-        default_factory=create_default_embeddings
+        default_factory=lambda: np.zeros((0, EMBED_DIM)).astype(np.float32)
     )
 
 
 class LocalCache(MemoryProviderSingleton):
+    """A local cache implementation of the memory provider."""
 
-    # on load, load our database
     def __init__(self, cfg) -> None:
         self.filename = f"{cfg.memory_index}.json"
         if os.path.exists(self.filename):
@@ -44,15 +40,15 @@ class LocalCache(MemoryProviderSingleton):
             print(f"Warning: The file '{self.filename}' does not exist. Local memory would not be saved to a file.")
             self.data = CacheContent()
 
-    def add(self, text: str):
+    def add(self, text: str) -> str:
         """
         Add text to our list of texts, add embedding as row to our
-            embeddings-matrix
+        embeddings-matrix.
 
         Args:
             text: str
 
-        Returns: None
+        Returns: The added text.
         """
         if 'Command Error:' in text:
             return ""
@@ -80,7 +76,7 @@ class LocalCache(MemoryProviderSingleton):
 
     def clear(self) -> str:
         """
-        Clears the redis server.
+        Clears the local cache.
 
         Returns: A message indicating that the memory has been cleared.
         """
@@ -99,10 +95,11 @@ class LocalCache(MemoryProviderSingleton):
         return self.get_relevant(data, 1)
 
     def get_relevant(self, text: str, k: int) -> List[Any]:
-        """"
+        """
         matrix-vector mult to find score-for-each-row-of-matrix
-         get indices for top-k winning scores
-         return texts for those indices
+        get indices for top-k winning scores
+        return texts for those indices
+
         Args:
             text: str
             k: int
@@ -115,10 +112,4 @@ class LocalCache(MemoryProviderSingleton):
 
         top_k_indices = np.argsort(scores)[-k:][::-1]
 
-        return [self.data.texts[i] for i in top_k_indices]
-
-    def get_stats(self):
-        """
-        Returns: The stats of the local cache.
-        """
-        return len(self.data.texts), self.data.embeddings.shape
+    return [self.data.texts[i] for i in top_k_indices]

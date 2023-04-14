@@ -1,3 +1,8 @@
+"""
+This module provides helper functions to manage memory backends, such as LocalCache,
+RedisMemory, PineconeMemory, and NoMemory. It also lists the supported memory backends.
+"""
+
 from memory.local import LocalCache
 from memory.no_memory import NoMemory
 
@@ -20,30 +25,23 @@ except ImportError:
     PineconeMemory = None
 
 
-def get_memory(cfg, init=False):
-    memory = None
+def get_memory(cfg):
     if cfg.memory_backend == "pinecone":
         if not PineconeMemory:
             print("Error: Pinecone is not installed. Please install pinecone"
                   " to use Pinecone as a memory backend.")
         else:
-            memory = PineconeMemory(cfg)
-            if init:
-                memory.clear()
+            return PineconeMemory(cfg)
     elif cfg.memory_backend == "redis":
         if not RedisMemory:
             print("Error: Redis is not installed. Please install redis-py to"
                   " use Redis as a memory backend.")
         else:
-            memory = RedisMemory(cfg)
+            return RedisMemory(cfg)
     elif cfg.memory_backend == "no_memory":
-        memory = NoMemory(cfg)
-
-    if memory is None:
-        memory = LocalCache(cfg)
-        if init:
-            memory.clear()
-    return memory
+        return NoMemory(cfg)
+    else:
+        return LocalCache(cfg)
 
 
 def get_supported_memory_backends():
