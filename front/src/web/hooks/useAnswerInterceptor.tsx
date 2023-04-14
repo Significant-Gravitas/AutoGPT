@@ -9,6 +9,8 @@ import { useParams } from "react-router"
 const AGENT_CREATED = "COMMAND = start_agent ARGUMENTS = "
 const DELETE_AGENT = "COMMAND = delete_agent ARGUMENTS = "
 const WRITE_FILE = "COMMAND = write_to_file ARGUMENTS = "
+const PLAN = "PLAN"
+const THINKING = "Thinking"
 const BROWSE_WEBSITE = "COMMAND = browse_website ARGUMENTS = "
 const GOOGLE_RETURN = "Command google returned: "
 const APPEND_FILE = "COMMAND = append_to_file ARGUMENTS = "
@@ -21,7 +23,22 @@ const useAnswerInterceptor = () => {
     if (!id) return data
     const newData = [] as Array<IAnswer>
     data.forEach((answer) => {
-      if (!answer.content) return newData.push(answer)
+      if (answer.title.includes(THINKING)) {
+        newData.push({
+          title: "Thinking",
+          content: answer.content,
+          internalType: InternalType.THINKING,
+        })
+        return
+      }
+      if (answer.title.includes(PLAN)) {
+        newData.push({
+          title: "Plan",
+          content: answer.content,
+          internalType: InternalType.PLAN,
+        })
+        return
+      }
 
       if (answer.content.includes(AGENT_CREATED)) {
         const agentSystemReturn = answer.content.split(AGENT_CREATED)[1]

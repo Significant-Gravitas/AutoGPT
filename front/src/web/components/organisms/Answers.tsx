@@ -9,16 +9,24 @@ export const AnswerContainer = styled.div`
   gap: 0.5rem;
 `
 
-const Answers = ({ answers }: { answers: IAnswer[] }) => {
+const Answers = ({
+  answers,
+  playing,
+}: {
+  answers: IAnswer[]
+  playing: boolean
+}) => {
   if (!answers) return null
   if (!Array.isArray(answers)) return null
   return (
     <AnswerContainer>
-      {answers.map((answer) => (
-        <>
-          <LineSeparatorWithTitle title={answer.title} />
-          <Answer answer={answer} />
-        </>
+      {answers.map((answer, index) => (
+        <Answer
+          answer={answer}
+          key={answer.title}
+          isAnswerLast={index === answers.length - 1}
+          playing={playing}
+        />
       ))}
     </AnswerContainer>
   )

@@ -100,7 +100,7 @@ def print_assistant_thoughts(assistant_reply):
         logger.typewriter_log("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
 
         if assistant_thoughts_plan:
-            logger.typewriter_log("PLAN:", Fore.YELLOW, "")
+            logger.typewriter_log("PLAN:", Fore.YELLOW, assistant_thoughts_plan)
             # If it's a list, join it into a string
             if isinstance(assistant_thoughts_plan, list):
                 assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
@@ -111,7 +111,7 @@ def print_assistant_thoughts(assistant_reply):
             lines = assistant_thoughts_plan.split('\n')
             for line in lines:
                 line = line.lstrip("- ")
-                logger.typewriter_log("- ", Fore.GREEN, line.strip())
+                #logger.typewriter_log("- ", Fore.GREEN, line.strip())
 
         logger.typewriter_log("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
         # Speak the assistant's thoughts
@@ -383,10 +383,10 @@ class Agent:
                         break
 
                 if self.user_input == "GENERATE NEXT COMMAND JSON":
-                    logger.typewriter_log(
-                        "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-                        Fore.MAGENTA,
-                        "")
+                    # logger.typewriter_log(
+                    #     "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                    #     Fore.MAGENTA,
+                    #     "")
                 elif self.user_input == "EXIT":
                     print("Exiting...", flush=True)
                     break
