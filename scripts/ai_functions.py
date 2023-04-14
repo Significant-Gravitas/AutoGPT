@@ -1,8 +1,7 @@
-from typing import List, Optional
+from typing import List
 import json
 from config import Config
 from call_ai_function import call_ai_function
-from json_parser import fix_and_parse_json
 cfg = Config()
 
 
