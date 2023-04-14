@@ -20,14 +20,9 @@ class PromptGenerator:
                 "reasoning": "reasoning",
                 "plan": "- short bulleted\n- list that conveys\n- long-term plan",
                 "criticism": "constructive self-criticism",
-                "speak": "thoughts summary to say to user"
+                "speak": "thoughts summary to say to user",
             },
-            "command": {
-                "name": "command name",
-                "args": {
-                    "arg name": "value"
-                }
-            }
+            "command": {"name": "command name", "args": {"arg name": "value"}},
         }
 
     def add_constraint(self, constraint):
@@ -51,8 +46,7 @@ class PromptGenerator:
         if args is None:
             args = {}
 
-        command_args = {arg_key: arg_value for arg_key,
-                        arg_value in args.items()}
+        command_args = {arg_key: arg_value for arg_key, arg_value in args.items()}
 
         command = {
             "label": command_label,
@@ -72,8 +66,9 @@ class PromptGenerator:
         Returns:
             str: The formatted command string.
         """
-        args_string = ', '.join(
-            f'"{key}": "{value}"' for key, value in command['args'].items())
+        args_string = ", ".join(
+            f'"{key}": "{value}"' for key, value in command["args"].items()
+        )
         return f'{command["label"]}: "{command["name"]}", args: {args_string}'
 
     def add_resource(self, resource):
@@ -94,7 +89,7 @@ class PromptGenerator:
         """
         self.performance_evaluation.append(evaluation)
 
-    def _generate_numbered_list(self, items, item_type='list'):
+    def _generate_numbered_list(self, items, item_type="list"):
         """
         Generate a numbered list from given items based on the item_type.
 
@@ -105,8 +100,11 @@ class PromptGenerator:
         Returns:
             str: The formatted numbered list.
         """
-        if item_type == 'command':
-            return "\n".join(f"{i+1}. {self._generate_command_string(item)}" for i, item in enumerate(items))
+        if item_type == "command":
+            return "\n".join(
+                f"{i+1}. {self._generate_command_string(item)}"
+                for i, item in enumerate(items)
+            )
         else:
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
 

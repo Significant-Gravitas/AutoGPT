@@ -1,11 +1,15 @@
 import os
-from playsound import playsound
+
 import requests
+from playsound import playsound
+
 from autogpt.config import Config
+
 cfg = Config()
-import gtts
 import threading
 from threading import Lock, Semaphore
+
+import gtts
 
 # Default voice IDs
 default_voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
@@ -19,26 +23,29 @@ placeholders = {"your-voice-id"}
 
 # Use custom voice IDs if provided and not placeholders, otherwise use default voice IDs
 voices = [
-    custom_voice_1 if custom_voice_1 and custom_voice_1 not in placeholders else default_voices[0],
-    custom_voice_2 if custom_voice_2 and custom_voice_2 not in placeholders else default_voices[1]
+    custom_voice_1
+    if custom_voice_1 and custom_voice_1 not in placeholders
+    else default_voices[0],
+    custom_voice_2
+    if custom_voice_2 and custom_voice_2 not in placeholders
+    else default_voices[1],
 ]
 
-tts_headers = {
-    "Content-Type": "application/json",
-    "xi-api-key": cfg.elevenlabs_api_key
-}
+tts_headers = {"Content-Type": "application/json", "xi-api-key": cfg.elevenlabs_api_key}
 
-mutex_lock = Lock() # Ensure only one sound is played at a time
-queue_semaphore = Semaphore(1) # The amount of sounds to queue before blocking the main thread
+mutex_lock = Lock()  # Ensure only one sound is played at a time
+queue_semaphore = Semaphore(
+    1
+)  # The amount of sounds to queue before blocking the main thread
 
 
 def eleven_labs_speech(text, voice_index=0):
     """Speak text using elevenlabs.io's API"""
     tts_url = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}".format(
-        voice_id=voices[voice_index])
+        voice_id=voices[voice_index]
+    )
     formatted_message = {"text": text}
-    response = requests.post(
-        tts_url, headers=tts_headers, json=formatted_message)
+    response = requests.post(tts_url, headers=tts_headers, json=formatted_message)
 
     if response.status_code == 200:
         with mutex_lock:
@@ -90,12 +97,11 @@ def macos_tts_speech(text, voice_index=0):
 
 
 def say_text(text, voice_index=0):
-
     def speak():
         if not cfg.elevenlabs_api_key:
-            if cfg.use_mac_os_tts == 'True':
+            if cfg.use_mac_os_tts == "True":
                 macos_tts_speech(text)
-            elif cfg.use_brian_tts == 'True':
+            elif cfg.use_brian_tts == "True":
                 success = brian_speech(text)
                 if not success:
                     gtts_speech(text)
