@@ -65,7 +65,9 @@ Your support is greatly appreciated
 
 ## 📋 Requirements
 
-- [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
+- environments(just choose one)
+  - [vscode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): It has been configured in the .devcontainer folder and can be used directly
+  - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - [OpenAI API key](https://platform.openai.com/account/api-keys)
 - [PINECONE API key](https://www.pinecone.io/)
 
