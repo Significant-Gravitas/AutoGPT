@@ -1,7 +1,7 @@
-import docker
 import os
 import subprocess
 
+import docker
 
 WORKSPACE_FOLDER = "auto_gpt_workspace"
 
@@ -9,7 +9,7 @@ WORKSPACE_FOLDER = "auto_gpt_workspace"
 def execute_python_file(file):
     """Execute a Python file in a Docker container and return the output"""
 
-    print (f"Executing file '{file}' in workspace '{WORKSPACE_FOLDER}'")
+    print(f"Executing file '{file}' in workspace '{WORKSPACE_FOLDER}'")
 
     if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
@@ -20,7 +20,9 @@ def execute_python_file(file):
         return f"Error: File '{file}' does not exist."
 
     if we_are_running_in_a_docker_container():
-        result = subprocess.run(f'python {file_path}', capture_output=True, encoding="utf8", shell=True)
+        result = subprocess.run(
+            f"python {file_path}", capture_output=True, encoding="utf8", shell=True
+        )
         if result.returncode == 0:
             return result.stdout
         else:
@@ -29,18 +31,20 @@ def execute_python_file(file):
         try:
             client = docker.from_env()
 
-            image_name = 'python:3.10'
+            image_name = "python:3.10"
             try:
                 client.images.get(image_name)
                 print(f"Image '{image_name}' found locally")
             except docker.errors.ImageNotFound:
-                print(f"Image '{image_name}' not found locally, pulling from Docker Hub")
+                print(
+                    f"Image '{image_name}' not found locally, pulling from Docker Hub"
+                )
                 # Use the low-level API to stream the pull response
                 low_level_client = docker.APIClient()
                 for line in low_level_client.pull(image_name, stream=True, decode=True):
                     # Print the status and progress, if available
-                    status = line.get('status')
-                    progress = line.get('progress')
+                    status = line.get("status")
+                    progress = line.get("progress")
                     if status and progress:
                         print(f"{status}: {progress}")
                     elif status:
@@ -51,19 +55,21 @@ def execute_python_file(file):
             # https://hub.docker.com/_/python
             container = client.containers.run(
                 image_name,
-                f'python {file}',
+                f"python {file}",
                 volumes={
                     os.path.abspath(WORKSPACE_FOLDER): {
-                        'bind': '/workspace',
-                        'mode': 'ro'}},
-                working_dir='/workspace',
+                        "bind": "/workspace",
+                        "mode": "ro",
+                    }
+                },
+                working_dir="/workspace",
                 stderr=True,
                 stdout=True,
                 detach=True,
             )
 
             output = container.wait()
-            logs = container.logs().decode('utf-8')
+            logs = container.logs().decode("utf-8")
             container.remove()
 
             # print(f"Execution complete. Output: {output}")
@@ -76,14 +82,13 @@ def execute_python_file(file):
 
 
 def execute_shell(command_line):
-
     current_dir = os.getcwd()
 
-    if not WORKSPACE_FOLDER in current_dir: # Change dir into workspace if necessary
+    if not WORKSPACE_FOLDER in current_dir:  # Change dir into workspace if necessary
         work_dir = os.path.join(os.getcwd(), WORKSPACE_FOLDER)
         os.chdir(work_dir)
 
-    print (f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
+    print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
     result = subprocess.run(command_line, capture_output=True, shell=True)
     output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
@@ -96,4 +101,4 @@ def execute_shell(command_line):
 
 
 def we_are_running_in_a_docker_container():
-    os.path.exists('/.dockerenv')
+    os.path.exists("/.dockerenv")

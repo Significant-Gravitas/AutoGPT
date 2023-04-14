@@ -15,6 +15,7 @@ import os
 import logging
 from pathlib import Path
 from autogpt.config import Config
+
 file_dir = Path(__file__).parent
 cfg = Config()
 
@@ -33,15 +34,19 @@ def browse_website(url, question):
 
 
 def scrape_text_with_selenium(url):
-    logging.getLogger('selenium').setLevel(logging.CRITICAL)
+    logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
     options = Options()
-    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36')
-    driver = webdriver.Chrome(executable_path=ChromeDriverManager().install(), options=options)
+    options.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
+    )
+    driver = webdriver.Chrome(
+        executable_path=ChromeDriverManager().install(), options=options
+    )
     driver.get(url)
 
     WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.TAG_NAME, 'body'))
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
     )
 
     # Get the HTML content directly from the browser's DOM
@@ -54,7 +59,7 @@ def scrape_text_with_selenium(url):
     text = soup.get_text()
     lines = (line.strip() for line in text.splitlines())
     chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-    text = '\n'.join(chunk for chunk in chunks if chunk)
+    text = "\n".join(chunk for chunk in chunks if chunk)
     return driver, text
 
 
@@ -75,7 +80,7 @@ def close_browser(driver):
 
 
 def extract_hyperlinks(soup):
-    return [(link.text, link['href']) for link in soup.find_all('a', href=True)]
+    return [(link.text, link["href"]) for link in soup.find_all("a", href=True)]
 
 
 def format_hyperlinks(hyperlinks):

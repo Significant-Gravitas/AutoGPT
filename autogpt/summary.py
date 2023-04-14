@@ -13,7 +13,7 @@ def summarize_text(driver, text, question):
 
     scroll_ratio = 1 / len(chunks)
     for i, chunk in enumerate(chunks):
-        scroll_to_percentage(driver , scroll_ratio * i)
+        scroll_to_percentage(driver, scroll_ratio * i)
         print(f"Summarizing chunk {i + 1} / {len(chunks)}")
         messages = [create_message(chunk, question)]
 
@@ -57,7 +57,7 @@ def split_text(text, max_length=8192):
 def create_message(chunk, question):
     return {
         "role": "user",
-        "content": f"\"\"\"{chunk}\"\"\" Using the above text, please answer the following question: \"{question}\" -- if the question cannot be answered using the text, please summarize the text."
+        "content": f'"""{chunk}""" Using the above text, please answer the following question: "{question}" -- if the question cannot be answered using the text, please summarize the text.',
     }
 
 

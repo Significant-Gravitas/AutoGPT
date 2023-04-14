@@ -1,10 +1,9 @@
-from autogpt.config import Config, Singleton
-
 import pinecone
-
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
-from autogpt.logger import logger
 from colorama import Fore, Style
+
+from autogpt.config import Config, Singleton
+from autogpt.logger import logger
+from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 
 class PineconeMemory(MemoryProviderSingleton):
@@ -24,13 +23,21 @@ class PineconeMemory(MemoryProviderSingleton):
         try:
             pinecone.whoami()
         except Exception as e:
-            logger.typewriter_log("FAILED TO CONNECT TO PINECONE", Fore.RED, Style.BRIGHT + str(e) + Style.RESET_ALL)
-            logger.double_check("Please ensure you have setup and configured Pinecone properly for use. " +
-                               f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#-pinecone-api-key-setup{Style.RESET_ALL} to ensure you've set up everything correctly.")
+            logger.typewriter_log(
+                "FAILED TO CONNECT TO PINECONE",
+                Fore.RED,
+                Style.BRIGHT + str(e) + Style.RESET_ALL,
+            )
+            logger.double_check(
+                "Please ensure you have setup and configured Pinecone properly for use. "
+                + f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#-pinecone-api-key-setup{Style.RESET_ALL} to ensure you've set up everything correctly."
+            )
             exit(1)
 
         if table_name not in pinecone.list_indexes():
-            pinecone.create_index(table_name, dimension=dimension, metric=metric, pod_type=pod_type)
+            pinecone.create_index(
+                table_name, dimension=dimension, metric=metric, pod_type=pod_type
+            )
         self.index = pinecone.Index(table_name)
 
     def add(self, data):
@@ -55,9 +62,11 @@ class PineconeMemory(MemoryProviderSingleton):
         :param num_relevant: The number of relevant data to return. Defaults to 5
         """
         query_embedding = get_ada_embedding(data)
-        results = self.index.query(query_embedding, top_k=num_relevant, include_metadata=True)
+        results = self.index.query(
+            query_embedding, top_k=num_relevant, include_metadata=True
+        )
         sorted_results = sorted(results.matches, key=lambda x: x.score)
-        return [str(item['metadata']["raw_text"]) for item in sorted_results]
+        return [str(item["metadata"]["raw_text"]) for item in sorted_results]
 
     def get_stats(self):
         return self.index.describe_index_stats()
