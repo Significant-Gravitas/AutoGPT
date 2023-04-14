@@ -18,3 +18,4 @@ Pillow
 coverage
 flake8
 sentence_transformers
+numpy
