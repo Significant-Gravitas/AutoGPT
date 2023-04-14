@@ -4,5 +4,5 @@ def clean_input(prompt: str=''):
     except KeyboardInterrupt:
         print("You interrupted Auto-GPT")
         print("Quitting...")
-        exit(0)
+        exit(1)
 

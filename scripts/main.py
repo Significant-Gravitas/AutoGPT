@@ -438,4 +438,9 @@ class Agent:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("You interrupted Auto-GPT")
+        print("Quitting...")
+        exit(1)
