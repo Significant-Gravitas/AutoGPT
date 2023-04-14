@@ -2,6 +2,8 @@
 import pinecone
 
 from memory.base import MemoryProviderSingleton, get_ada_embedding
+from logger import logger
+from colorama import Fore, Style
 
 
 class PineconeMemory(MemoryProviderSingleton):
@@ -17,6 +19,15 @@ class PineconeMemory(MemoryProviderSingleton):
         # for now this works.
         # we'll need a more complicated and robust system if we want to start with memory.
         self.vec_num = 0
+
+        try:
+            pinecone.whoami()
+        except Exception as e:
+            logger.typewriter_log("FAILED TO CONNECT TO PINECONE", Fore.RED, Style.BRIGHT + str(e) + Style.RESET_ALL)
+            logger.double_check("Please ensure you have setup and configured Pinecone properly for use. " +
+                               f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#-pinecone-api-key-setup{Style.RESET_ALL} to ensure you've set up everything correctly.")
+            exit(1)
+
         if table_name not in pinecone.list_indexes():
             pinecone.create_index(table_name, dimension=dimension, metric=metric, pod_type=pod_type)
         self.index = pinecone.Index(table_name)

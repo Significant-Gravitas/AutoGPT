@@ -8,6 +8,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent / 'scripts'))
 from config import Config
 from memory.local import LocalCache
 
+
 class TestLocalCache(unittest.TestCase):
 
     def random_string(self, length):
