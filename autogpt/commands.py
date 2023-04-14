@@ -5,6 +5,8 @@ from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from autogpt.web import browse_website
+from autogpt.config import Config
+
 
 cfg = Config()
 
