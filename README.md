@@ -51,9 +51,9 @@ AgentGPT在接到这项任务之后，便开始了他的展示：
 
 而后便是继续地再思考、执行。
 
-### Demo (30/03/2023):
+### Demo :
 
-<video src="/Users/houweijie/Desktop/未命名文件夹/Auto-GPT-ZH/demo.mp4"></video>
+[![Alt text for your video](https://raw.githubusercontent.com/kaqijiang/Auto-GPT-ZH/gh-pages/demo.mp4)](https://raw.githubusercontent.com/USERNAME/REPOSITORY/gh-pages/myvideo.mp4)
 
 ## 📋 Requirements
 
