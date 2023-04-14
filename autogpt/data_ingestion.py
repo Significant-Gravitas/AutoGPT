@@ -1,19 +1,22 @@
 import argparse
 import logging
+
 from autogpt.config import Config
-from autogpt.memory import get_memory
 from autogpt.file_operations import ingest_file, search_files
+from autogpt.memory import get_memory
 
 cfg = Config()
 
 
 def configure_logging():
-    logging.basicConfig(filename='log-ingestion.txt',
-                    filemode='a',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.DEBUG)
-    return logging.getLogger('AutoGPT-Ingestion')
+    logging.basicConfig(
+        filename="log-ingestion.txt",
+        filemode="a",
+        format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+        level=logging.DEBUG,
+    )
+    return logging.getLogger("AutoGPT-Ingestion")
 
 
 def ingest_directory(directory, memory, args):
@@ -34,19 +37,38 @@ def ingest_directory(directory, memory, args):
 def main():
     logger = configure_logging()
 
-    parser = argparse.ArgumentParser(description="Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.")
+    parser = argparse.ArgumentParser(
+        description="Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script."
+    )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--file", type=str, help="The file to ingest.")
-    group.add_argument("--dir", type=str, help="The directory containing the files to ingest.")
-    parser.add_argument("--init", action='store_true', help="Init the memory and wipe its content (default: False)", default=False)
-    parser.add_argument("--overlap", type=int, help="The overlap size between chunks when ingesting files (default: 200)", default=200)
-    parser.add_argument("--max_length", type=int, help="The max_length of each chunk when ingesting files (default: 4000)", default=4000)
+    group.add_argument(
+        "--dir", type=str, help="The directory containing the files to ingest."
+    )
+    parser.add_argument(
+        "--init",
+        action="store_true",
+        help="Init the memory and wipe its content (default: False)",
+        default=False,
+    )
+    parser.add_argument(
+        "--overlap",
+        type=int,
+        help="The overlap size between chunks when ingesting files (default: 200)",
+        default=200,
+    )
+    parser.add_argument(
+        "--max_length",
+        type=int,
+        help="The max_length of each chunk when ingesting files (default: 4000)",
+        default=4000,
+    )
 
     args = parser.parse_args()
 
     # Initialize memory
     memory = get_memory(cfg, init=args.init)
-    print('Using memory of type: ' + memory.__class__.__name__)
+    print("Using memory of type: " + memory.__class__.__name__)
 
     if args.file:
         try:
@@ -63,7 +85,9 @@ def main():
             logger.error(f"Error while ingesting directory '{args.dir}': {str(e)}")
             print(f"Error while ingesting directory '{args.dir}': {str(e)}")
     else:
-        print("Please provide either a file path (--file) or a directory name (--dir) inside the auto_gpt_workspace directory as input.")
+        print(
+            "Please provide either a file path (--file) or a directory name (--dir) inside the auto_gpt_workspace directory as input."
+        )
 
 
 if __name__ == "__main__":
