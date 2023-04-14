@@ -53,6 +53,24 @@ def eleven_labs_speech(text, voice_index=0):
         return False
 
 
+def brian_speech(text):
+    """Speak text using Brian with the streamelements API"""
+    tts_url = f"https://api.streamelements.com/kappa/v2/speech?voice=Brian&text={text}"
+    response = requests.get(tts_url)
+
+    if response.status_code == 200:
+        with mutex_lock:
+            with open("speech.mp3", "wb") as f:
+                f.write(response.content)
+            playsound("speech.mp3")
+            os.remove("speech.mp3")
+        return True
+    else:
+        print("Request failed with status code:", response.status_code)
+        print("Response content:", response.content)
+        return False
+
+
 def gtts_speech(text):
     tts = gtts.gTTS(text)
     with mutex_lock:
@@ -76,7 +94,11 @@ def say_text(text, voice_index=0):
     def speak():
         if not cfg.elevenlabs_api_key:
             if cfg.use_mac_os_tts == 'True':
-                macos_tts_speech(text, voice_index)
+                macos_tts_speech(text)
+            elif cfg.use_brian_tts == 'True':
+                success = brian_speech(text)
+                if not success:
+                    gtts_speech(text)
             else:
                 gtts_speech(text)
         else:
