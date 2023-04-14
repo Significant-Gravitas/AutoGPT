@@ -128,6 +128,7 @@ def print_assistant_thoughts(assistant_reply):
         call_stack = traceback.format_exc()
         logger.error("Error: \n", call_stack)
 
+
 def construct_prompt(non_interactive=False):
     """Construct the prompt for the AI to respond to"""
     config = AIConfig.load()
