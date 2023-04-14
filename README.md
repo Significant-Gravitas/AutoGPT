@@ -78,7 +78,7 @@ Optional:
 2. 克隆存储库：对于此步骤，您需要安装 Git，但您可以通过单击此页面顶部的按钮来下载 zip 文件☝️
 
 ```
-git clone https://github.com/Torantulino/Auto-GPT.git
+git clone git@github.com:kaqijiang/Auto-GPT-ZH.git
 ```
 
 3. 终端中 cd到项目目录
