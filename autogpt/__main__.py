@@ -1,11 +1,8 @@
 import argparse
 import json
 import logging
-import random
-import time
 import traceback
 
-import yaml
 from colorama import Fore, Style
 
 from autogpt import chat
@@ -16,7 +13,6 @@ from autogpt.config import Config
 from autogpt.json_parser import fix_and_parse_json
 from autogpt.logger import logger
 from autogpt.memory import get_memory, get_supported_memory_backends
-from autogpt.prompt import get_prompt
 from autogpt.spinner import Spinner
 
 cfg = Config()
@@ -58,7 +54,7 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
         else:
             raise ValueError("No valid JSON object found")
 
-    except (json.JSONDecodeError, ValueError) as e:
+    except (json.JSONDecodeError, ValueError):
         if cfg.speak_mode:
             speak.say_text("Didn't work. I will have to ignore this response then.")
         logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
@@ -75,7 +71,7 @@ def print_assistant_thoughts(assistant_reply):
         try:
             # Parse and print Assistant response
             assistant_reply_json = fix_and_parse_json(assistant_reply)
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
             assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
                 assistant_reply
@@ -86,7 +82,7 @@ def print_assistant_thoughts(assistant_reply):
         if isinstance(assistant_reply_json, str):
             try:
                 assistant_reply_json = json.loads(assistant_reply_json)
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 logger.error("Error: Invalid JSON\n", assistant_reply)
                 assistant_reply_json = (
                     attempt_to_fix_json_by_finding_outermost_brackets(
@@ -132,7 +128,7 @@ def print_assistant_thoughts(assistant_reply):
             speak.say_text(assistant_thoughts_speak)
 
         return assistant_reply_json
-    except json.decoder.JSONDecodeError as e:
+    except json.decoder.JSONDecodeError:
         logger.error("Error: Invalid JSON\n", assistant_reply)
         if cfg.speak_mode:
             speak.say_text(
@@ -140,7 +136,7 @@ def print_assistant_thoughts(assistant_reply):
             )
 
     # All other errors, return "Error: + error message"
-    except Exception as e:
+    except Exception:
         call_stack = traceback.format_exc()
         logger.error("Error: \n", call_stack)
 
@@ -361,7 +357,6 @@ def main():
     # print(prompt)
     # Initialize variables
     full_message_history = []
-    result = None
     next_action_count = 0
     # Make a constant:
     user_input = "Determine which next command to use, and respond using the format specified above:"
