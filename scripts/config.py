@@ -29,8 +29,8 @@ class Singleton(abc.ABCMeta, type):
 class AbstractSingleton(abc.ABC, metaclass=Singleton):
     pass
 
-def load_proxy_from_env_as_str_or_dict(proxy_env_name):
-    proxy = os.getenv(proxy_env_name)
+def load_proxy_as_str_or_dict(proxy_value):
+    proxy = proxy_value
     try:
         return json.loads(proxy)
     except ValueError:
@@ -58,7 +58,7 @@ class Config(metaclass=Singleton):
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.openai_api_proxy = load_proxy_from_env_as_str_or_dict(os.getenv("OPENAI_API_PROXY"))
+        self.openai_api_proxy = load_proxy_as_str_or_dict(os.getenv("OPENAI_API_PROXY"))
         self.temperature = float(os.getenv("TEMPERATURE", "1"))
         self.use_azure = os.getenv("USE_AZURE") == 'True'
         self.execute_local_commands = os.getenv('EXECUTE_LOCAL_COMMANDS', 'False') == 'True'
@@ -70,7 +70,7 @@ class Config(metaclass=Singleton):
             openai.api_version = self.openai_api_version
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-        self.elevenlabs_api_proxy = load_proxy_from_env_as_str_or_dict(os.getenv("ELEVENLABS_API_PROXY"))
+        self.elevenlabs_api_proxy = load_proxy_as_str_or_dict(os.getenv("ELEVENLABS_API_PROXY"))
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
         self.elevenlabs_voice_2_id = os.getenv("ELEVENLABS_VOICE_2_ID")
 
