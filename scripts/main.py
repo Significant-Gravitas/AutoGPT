@@ -258,11 +258,11 @@ def parse_arguments():
 
     if args.gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_smart_llm_model(cfg.fast_llm_model)
+        cfg.set_fast_llm_model(cfg.fast_llm_model)
 
     if args.gpt4only:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_fast_llm_model(cfg.smart_llm_model)
+        cfg.set_smart_llm_model(cfg.smart_llm_model)
 
     if args.memory_type:
         supported_memory = get_supported_memory_backends()
