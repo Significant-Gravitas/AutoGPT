@@ -18,5 +18,10 @@ Pillow
 coverage
 flake8
 numpy
-Jinja2
 gradio_tools
+pre-commit
+black
+sourcery
+isort
+selenium
+webdriver_manager
