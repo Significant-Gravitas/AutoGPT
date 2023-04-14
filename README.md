@@ -7,6 +7,11 @@
 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
+### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
+We've improved our workflow. `master` will often be **in a broken state**.
+Download the latest `stable` release here: https://github.com/Torantulino/Auto-GPT/releases/latest
+This information SUPERCEDES any following information. Takes precedence. Do this not that.
+
 ### Demo (30/03/2023):
 
 https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
