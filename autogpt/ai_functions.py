@@ -1,7 +1,9 @@
-from typing import List
 import json
-from autogpt.config import Config
+from typing import List
+
 from autogpt.call_ai_function import call_ai_function
+from autogpt.config import Config
+
 cfg = Config()
 
 
