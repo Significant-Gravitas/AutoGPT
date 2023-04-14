@@ -11,7 +11,7 @@
             "--continuous",
             "--continuous-limit",
             "20",
-            "--use-yaml-file"
+            "--use-yaml-prompt"
         ],
         "env": {
             "TEMPERATURE": "0"
