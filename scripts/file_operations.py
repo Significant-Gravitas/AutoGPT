@@ -40,7 +40,7 @@ def write_to_file(filename, text):
             os.makedirs(directory)
         with open(filepath, "w", encoding='utf-8') as f:
             f.write(text)
-        return "File written to successfully."
+        return "File " + filename + " written to successfully."
     except Exception as e:
         return "Error: " + str(e)
 
@@ -51,7 +51,7 @@ def append_to_file(filename, text):
         filepath = safe_join(working_directory, filename)
         with open(filepath, "a") as f:
             f.write(text)
-        return "Text appended successfully."
+        return "Text appended to " + filename + " successfully."
     except Exception as e:
         return "Error: " + str(e)
 
@@ -61,7 +61,7 @@ def delete_file(filename):
     try:
         filepath = safe_join(working_directory, filename)
         os.remove(filepath)
-        return "File deleted successfully."
+        return "File "  + filename + " deleted successfully."
     except Exception as e:
         return "Error: " + str(e)
 
@@ -72,6 +72,9 @@ def search_files(directory):
         search_directory = working_directory
     else:
         search_directory = safe_join(working_directory, directory)
+
+    if not os.path.isdir(search_directory):
+        return "Error: directory does not exist"
 
     for root, _, files in os.walk(search_directory):
         for file in files:
