@@ -1,8 +1,11 @@
 import os
 import os.path
 import requests
+from requests.adapters import HTTPAdapter
+from requests.adapters import Retry
 from autogpt.spinner import Spinner
 from colorama import Fore, Back
+from autogpt.utils import readable_file_size
 
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
@@ -143,15 +146,34 @@ def search_files(directory):
 
 def download_file(url, filename):
     """Downloads a file"""
-    filename = safe_join(working_directory, filename)
+    safe_filename = safe_join(working_directory, filename)
     try:
-        with Spinner(f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}") as spinner:
-            with requests.get(url, allow_redirects=True, stream=True) as r:
+        message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
+        with Spinner(message) as spinner:
+            session = requests.Session()
+            retry = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+
+            total_size = 0
+            downloaded_size = 0
+
+            with session.get(url, allow_redirects=True, stream=True) as r:
                 r.raise_for_status()
-                with open(filename, 'wb') as f:
+                total_size = int(r.headers.get('Content-Length', 0))
+                downloaded_size = 0
+
+                with open(safe_filename, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
-            return f"Successfully downloaded file: {filename}!"
+                        downloaded_size += len(chunk)
+
+                         # Update the progress message
+                        progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
+                        spinner.update_message(f"{message} {progress}")
+
+            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(total_size)})'
     except requests.HTTPError as e:
         return f"Got an HTTP Error whilst trying to download file: {e}"
     except Exception as e:

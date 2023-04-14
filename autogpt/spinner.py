@@ -27,6 +27,7 @@ class Spinner:
         self.running = True
         self.spinner_thread = threading.Thread(target=self.spin)
         self.spinner_thread.start()
+        return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         """Stop the spinner"""
@@ -34,3 +35,10 @@ class Spinner:
         self.spinner_thread.join()
         sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
         sys.stdout.flush()
+
+    def update_message(self, new_message, delay=0.1):
+        """Update the spinner message"""
+        time.sleep(delay)
+        sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")  # Clear the current message
+        sys.stdout.flush()
+        self.message = new_message

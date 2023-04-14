@@ -2,6 +2,7 @@ from autogpt.promptgenerator import PromptGenerator
 from autogpt.config import Config
 cfg = Config()
 
+
 def get_prompt():
     """
     This function generates a prompt string that includes various constraints, commands, resources, and performance evaluations.

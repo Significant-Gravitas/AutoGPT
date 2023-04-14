@@ -21,3 +21,12 @@ def validate_yaml_file(file: str):
         return (False, f"There was an issue while trying to read with your AI Settings file: {e}")
 
     return (True, f"Successfully validated {Fore.CYAN}`{file}`{Fore.RESET}!")
+
+
+def readable_file_size(size, decimal_places=2):
+    """Converts the given size in bytes to a readable format."""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024.0:
+            break
+        size /= 1024.0
+    return f"{size:.{decimal_places}f} {unit}"
