@@ -8,9 +8,9 @@ from colorama import Fore
 
 from colorama import Style
 
-import speak
-from config import Config
-from config import Singleton
+from autogpt import speak
+from autogpt.config import Config
+from autogpt.config import Singleton
 
 cfg = Config()
 
@@ -24,7 +24,8 @@ For console handler: simulates typing
 class Logger(metaclass=Singleton):
     def __init__(self):
         # create log directory if it doesn't exist
-        log_dir = os.path.join('..', 'logs')
+        this_files_dir_path = os.path.dirname(__file__)
+        log_dir = os.path.join(this_files_dir_path, '../logs')
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 

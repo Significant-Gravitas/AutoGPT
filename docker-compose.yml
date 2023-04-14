@@ -8,7 +8,7 @@ services:
       - redis
     build: ./
     volumes:
-      - "./scripts:/app"
+      - "./autogpt:/app"
       - ".env:/app/.env"
     profiles: ["exclude-from-up"]
 
