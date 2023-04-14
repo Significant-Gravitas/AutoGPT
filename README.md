@@ -2,7 +2,7 @@
 
 > 这里是Auto-GPT中文项目- 同步fork Auto-GPT
 
-![gzh](/Users/houweijie/Desktop/MKB/images/README/gzh.png)
+![gzh](gzh.png)
 
 ### 公众号内回复"Auto-GPT"加入群聊，共同探讨更多玩法
 
