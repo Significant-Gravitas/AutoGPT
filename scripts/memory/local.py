@@ -3,10 +3,12 @@ import orjson
 from typing import Any, List, Optional
 import numpy as np
 import os
-from memory.base import MemoryProviderSingleton, get_ada_embedding
+from memory.base import MemoryProviderSingleton, get_embedding
+from config import Config 
 
+cfg = Config()
 
-EMBED_DIM = 1536
+EMBED_DIM = 1536 if cfg.memory_embeder == "ada" else 768
 SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
 
 
@@ -58,7 +60,7 @@ class LocalCache(MemoryProviderSingleton):
             return ""
         self.data.texts.append(text)
 
-        embedding = get_ada_embedding(text)
+        embedding = get_embedding(text)
 
         vector = np.array(embedding).astype(np.float32)
         vector = vector[np.newaxis, :]
@@ -109,7 +111,7 @@ class LocalCache(MemoryProviderSingleton):
 
         Returns: List[str]
         """
-        embedding = get_ada_embedding(text)
+        embedding = get_embedding(text)
 
         scores = np.dot(self.data.embeddings, embedding)
 
