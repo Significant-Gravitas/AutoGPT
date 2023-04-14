@@ -88,7 +88,7 @@ def main() -> None:
     else:
         print(
             "Please provide either a file path (--file) or a directory name (--dir)"
-            " inside the auto_gpt_workspace directory as input."
+            f" inside the {cfg.workspace_path} directory as input."
         )
 
 

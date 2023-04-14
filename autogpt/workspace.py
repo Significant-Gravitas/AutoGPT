@@ -8,7 +8,7 @@ from autogpt.config import Config
 CFG = Config()
 
 # Set a dedicated folder for file I/O
-WORKSPACE_PATH = Path(os.getcwd()) / "auto_gpt_workspace"
+WORKSPACE_PATH = Path(os.getcwd()) / CFG.workspace_path
 
 # Create the directory if it doesn't exist
 if not os.path.exists(WORKSPACE_PATH):

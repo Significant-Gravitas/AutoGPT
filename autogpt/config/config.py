@@ -117,6 +117,9 @@ class Config(metaclass=Singleton):
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
+
+        self.workspace_path = os.getenv("WORKSPACE_PATH", "auto_gpt_workspace")
+
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
