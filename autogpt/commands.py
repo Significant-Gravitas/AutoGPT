@@ -4,7 +4,21 @@ import json
 from duckduckgo_search import ddg
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from autogpt.config import Config
 from autogpt.web import browse_website
+from autogpt.memory import get_memory
+from autogpt.json_parser import fix_and_parse_json
+from autogpt.image_gen import generate_image
+from autogpt.execute_code import execute_shell, execute_python_file
+from autogpt.ai_functions import evaluate_code, improve_code, write_tests
+from autogpt.browse import scrape_text, summarize_text, scrape_links
+from autogpt.file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
+import autogpt.agent as agents
+import autogpt.memory as mem
+import autogpt.speak as speak
+
+
+
 
 cfg = Config()
 
@@ -88,11 +102,11 @@ def execute_command(command_name, arguments):
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
         elif command_name == "evaluate_code":
-            return ai.evaluate_code(arguments["code"])
+            return evaluate_code(arguments["code"])
         elif command_name == "improve_code":
-            return ai.improve_code(arguments["suggestions"], arguments["code"])
+            return improve_code(arguments["suggestions"], arguments["code"])
         elif command_name == "write_tests":
-            return ai.write_tests(arguments["code"], arguments.get("focus"))
+            return write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
         elif command_name == "execute_shell":
@@ -177,14 +191,14 @@ def google_official_search(query, num_results=8):
 
 def get_text_summary(url, question):
     """Return the results of a google search"""
-    text = browse.scrape_text(url)
-    summary = browse.summarize_text(url, text, question)
+    text = scrape_text(url)
+    summary = summarize_text(url, text, question)
     return """ "Result" : """ + summary
 
 
 def get_hyperlinks(url):
     """Return the results of a google search"""
-    link_list = browse.scrape_links(url)
+    link_list = scrape_links(url)
     return link_list
 
 
