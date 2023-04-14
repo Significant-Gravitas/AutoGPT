@@ -1,16 +1,6 @@
 import unittest
-<<<<<<< HEAD
 
 from autogpt.json_parser import fix_and_parse_json
-=======
-import os
-import sys
-from pathlib import Path
-
-# Probably a better way:
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent / 'scripts'))
-from json_parser import fix_and_parse_json
->>>>>>> 27e0703d (Update sys.path to use pathlib in json_tests.py)
 
 
 class TestParseJson(unittest.TestCase):

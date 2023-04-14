@@ -1,18 +1,9 @@
-import contextlib
 import os
 import subprocess
 import sys
-import time
-from pathlib import Path
 import unittest
-import platform
 
-# Import necessary modules for testing, file operations, and handling system paths.
-
-root_path = Path(__file__).resolve().parent.parent.parent
-sys.path.append(str(root_path / 'scripts'))
-from file_operations import read_file
-from file_operations import delete_file
+from autogpt.file_operations import delete_file, read_file
 
 env_vars = {
     'MEMORY_BACKEND': 'no_memory',
@@ -28,18 +19,15 @@ class TestCommands(unittest.TestCase):
 
         # Read the current ai_settings.yaml file and store its content.
         ai_settings = None
-        with contextlib.suppress(Exception):
+        if os.path.exists('ai_settings.yaml'):
             with open('ai_settings.yaml', 'r') as f:
                 ai_settings = f.read()
+            os.remove('ai_settings.yaml')
 
         try:
-            with contextlib.suppress(Exception):
+            if os.path.exists('hello_world.txt'):
                 # Clean up any existing 'hello_world.txt' file before testing.
                 delete_file('hello_world.txt')
-
-                # Remove ai_settings.yaml file to avoid continuing from the previous session.
-                os.remove('ai_settings.yaml')
-
             # Prepare input data for the test.
             input_data = '''write_file-GPT
 an AI designed to use the write_file command to write 'Hello World' into a file named "hello_world.txt" and then use the task_complete command to complete the task.
@@ -49,8 +37,7 @@ Do not use any other commands.
 
 y -5
 EOF'''
-            script_path = root_path / 'scripts' / 'main.py'
-            command = f'{sys.executable} {script_path}'
+            command = f'{sys.executable} -m autogpt'
 
             # Execute the script with the input data.
             process = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True, env={**os.environ, **env_vars})
