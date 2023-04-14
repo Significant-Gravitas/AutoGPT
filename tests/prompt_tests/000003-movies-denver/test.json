@@ -10,8 +10,8 @@
         "arguments": [
             "--continuous",
             "--continuous-limit",
-            "20",
-            "--use-yaml-prompt"
+            "30",
+            "--skip-reprompt"
         ],
         "env": {
             "TEMPERATURE": "0",
