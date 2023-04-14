@@ -20,6 +20,29 @@ def safe_join(base, *paths):
     return norm_new_path
 
 
+def split_file(content, max_length=4000, overlap=0):
+    """
+    Split text into chunks of a specified maximum length with a specified overlap
+    between chunks.
+
+    :param text: The input text to be split into chunks
+    :param max_length: The maximum length of each chunk, default is 4000 (about 1k token)
+    :param overlap: The number of overlapping characters between chunks, default is no overlap
+    :return: A generator yielding chunks of text
+    """
+    start = 0
+    content_length = len(content)
+
+    while start < content_length:
+        end = start + max_length
+        if end + overlap < content_length:
+            chunk = content[start:end+overlap]
+        else:
+            chunk = content[start:content_length]
+        yield chunk
+        start += max_length - overlap
+
+
 def read_file(filename):
     """Read a file and return the contents"""
     try:
@@ -29,6 +52,37 @@ def read_file(filename):
         return content
     except Exception as e:
         return "Error: " + str(e)
+
+
+def ingest_file(filename, memory, max_length=4000, overlap=200):
+    """
+    Ingest a file by reading its content, splitting it into chunks with a specified
+    maximum length and overlap, and adding the chunks to the memory storage.
+
+    :param filename: The name of the file to ingest
+    :param memory: An object with an add() method to store the chunks in memory
+    :param max_length: The maximum length of each chunk, default is 4000
+    :param overlap: The number of overlapping characters between chunks, default is 200
+    """
+    try:
+        print(f"Working with file {filename}")
+        content = read_file(filename)
+        content_length = len(content)
+        print(f"File length: {content_length} characters")
+
+        chunks = list(split_file(content, max_length=max_length, overlap=overlap))
+
+        num_chunks = len(chunks)
+        for i, chunk in enumerate(chunks):
+            print(f"Ingesting chunk {i + 1} / {num_chunks} into memory")
+            memory_to_add = f"Filename: {filename}\n" \
+                            f"Content part#{i + 1}/{num_chunks}: {chunk}"
+
+            memory.add(memory_to_add)
+
+        print(f"Done ingesting {num_chunks} chunks from {filename}.")
+    except Exception as e:
+        print(f"Error while ingesting file '{filename}': {str(e)}")
 
 
 def write_to_file(filename, text):
