@@ -3,7 +3,7 @@ import os
 import uuid
 import datetime
 import chromadb
-from memory.base import MemoryProviderSingleton, get_embedding
+from autogpt.memory.base import MemoryProviderSingleton, get_embedding
 from chromadb.errors import NoIndexException
 
 class LocalCache(MemoryProviderSingleton):
