@@ -1,7 +1,7 @@
 {
     "name": "Denver Movies Playing",
     "description": "Get a movie playing at a theater and save to a text file.",
-    "yaml_prompt": "movies-denver.yaml",
+    "yaml_prompt": "movie-denver.yaml",
     "output_files": [
         "000002-movie-denver.txt"
     ],
