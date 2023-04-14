@@ -90,10 +90,11 @@ def check_output_files(output_files_list):
 # List the available tests
 def list_tests():
     for test_subdirectory in os.listdir(os.path.join("tests", "prompt_tests")):
-        config_path = os.path.join("tests", "prompt_tests", test_subdirectory, "test.json")
-        with open(config_path, "r") as config_file:
-            config = json.load(config_file)
-        print(f"{test_subdirectory}: {config['name']}")
+        if os.path.isdir(os.path.join("tests", "prompt_tests", test_subdirectory)):
+            config_path = os.path.join("tests", "prompt_tests", test_subdirectory, "test.json")
+            with open(config_path, "r") as config_file:
+                config = json.load(config_file)
+            print(f"{test_subdirectory}: {config['name']}")
 
 
 def main():
