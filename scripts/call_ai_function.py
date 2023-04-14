@@ -13,7 +13,7 @@ def call_ai_function(function, args, description, model=None):
         model = cfg.smart_llm_model
     # For each arg, if any are None, convert to "None":
     args = [str(arg) if arg is not None else "None" for arg in args]
-    # parse args to comma seperated string
+    # parse args to comma separated string
     args = ", ".join(args)
     messages = [
         {
