@@ -7,7 +7,7 @@ from autogpt import speak
 from autogpt.config import Config
 import autogpt.ai_functions as ai
 from autogpt.file_operations import read_file, write_to_file, append_to_file, delete_file, search_files, download_file
-from execute_code import execute_python_file, execute_shell
+from autogpt.execute_code import execute_python_file, execute_shell
 from autogpt.execute_code import execute_python_file, execute_shell
 from autogpt.json_parser import fix_and_parse_json
 from autogpt.image_gen import generate_image

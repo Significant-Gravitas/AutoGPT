@@ -1,6 +1,8 @@
 import os
 import os.path
 import requests
+from autogpt.spinner import Spinner
+from colorama import Fore, Back
 
 # Set a dedicated folder for file I/O
 working_directory = "auto_gpt_workspace"
@@ -143,15 +145,15 @@ def download_file(url, filename):
     """Downloads a file"""
     filename = safe_join(working_directory, filename)
     try:
-        with requests.get(url, allow_redirects=True, stream=True) as r:
-            r.raise_for_status()
-            with open(filename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        return f"Successfully downloaded file: {filename}!"
+        with Spinner(f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}") as spinner:
+            with requests.get(url, allow_redirects=True, stream=True) as r:
+                r.raise_for_status()
+                with open(filename, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            return f"Successfully downloaded file: {filename}!"
     except requests.HTTPError as e:
         return f"Got an HTTP Error whilst trying to download file: {e}"
     except Exception as e:
         return "Error: " + str(e)
-    
     

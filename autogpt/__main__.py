@@ -4,7 +4,7 @@ from autogpt import commands as cmd
 from autogpt import utils
 from autogpt.memory import get_memory, get_supported_memory_backends
 from autogpt import chat
-from colorama import Fore, Style
+from colorama import Fore, Style, Back
 from autogpt.spinner import Spinner
 import time
 from autogpt import speak
