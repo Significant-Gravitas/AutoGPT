@@ -1,4 +1,5 @@
 import datetime
+from autogpt.config import Config
 import json
 
 from duckduckgo_search import ddg
