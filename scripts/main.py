@@ -18,9 +18,11 @@ from logger import logger
 import logging
 import os
 from prompt import get_prompt
+from colorama import Style, init
 
-cfg = Config()
 
+# Initialize colorama
+init(autoreset=True)
 
 def check_openai_api_key():
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
@@ -194,10 +196,10 @@ def construct_prompt():
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True)
         should_continue = utils.clean_input(f"""Continue with the default settings?
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}
-Continue (y/n): """)
+                                            Name:  {config.ai_name}
+                                            Role:  {config.ai_role}
+                                            Goals: {config.ai_goals}
+                                            Continue (y/n): """)
         if should_continue.lower() == "n":
             print_to_console(
                 "Welcome to Auto-GPT! ",
@@ -480,3 +482,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+# Use the bold ANSI style
+print(
+    f"""{Style.BRIGHT}Please run:
+python -m autogpt
+"""
+)
