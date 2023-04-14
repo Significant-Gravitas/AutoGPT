@@ -3,6 +3,7 @@ import tests.context
 
 from scripts.json_parser import fix_and_parse_json
 
+
 class TestParseJson(unittest.TestCase):
     def test_valid_json(self):
         # Test that a valid JSON string is parsed correctly
@@ -52,7 +53,7 @@ class TestParseJson(unittest.TestCase):
         good_obj = {
           "command": {
               "name": "browse_website",
-              "args":{
+              "args": {
                   "url": "https://github.com/Torantulino/Auto-GPT"
               }
           },
@@ -91,7 +92,7 @@ class TestParseJson(unittest.TestCase):
         good_obj = {
     "command": {
         "name": "browse_website",
-        "args":{
+        "args": {
             "url": "https://github.com/Torantulino/Auto-GPT"
         }
     },
