@@ -5,7 +5,7 @@ from threading import Lock, Semaphore
 
 from config import Config
 from telegram import Bot, Update
-from telegram.ext import (Application, CallbackContext, MessageHandler, filters)
+from telegram.ext import (Application, CommandHandler, CallbackContext, MessageHandler, filters)
 
 cfg = Config()
 response_received = threading.Event()
@@ -35,14 +35,17 @@ async def handle_response(update: Update, context: CallbackContext):
     except Exception as e:
         print(e)
 
+async def stop(update: Update, context: CallbackContext):
+    if is_authorized_user(update):
+        await update.message.reply_text("Stopping Auto-GPT now!")
+        exit(0)
 
-def start_listening():
+async def start_listening():
     print("Listening to Telegram...")
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
+        application.add_handler(CommandHandler("stop", stop))
         application.add_handler(MessageHandler(filters.TEXT, handle_response))
-        loop.run_until_complete(application.run_polling())
+        await application.run_polling()
     except KeyboardInterrupt:
         pass
 
@@ -55,14 +58,14 @@ class TelegramUtils:
         await Bot(bot_token).send_message(chat_id=recipient_chat_id, text=message)
 
     @staticmethod
-    def ask_user(question):
+    async def ask_user(question):
         global response_received, response_text
 
         response_received.clear()
         response_text = ""
 
-        asyncio.run(TelegramUtils().send_message(question))
-        start_listening()
+        await TelegramUtils().send_message(question)
+        asyncio.create_task(start_listening())
 
         print("Waiting for response...")
         response_received.wait()
@@ -88,7 +91,7 @@ def run_in_signal_safe_loop(coro):
 
 
 async def main():
-    prompt = TelegramUtils.ask_user("Hello! I need you to confirm with /start to start me. <3")
+    prompt = await TelegramUtils.ask_user("Hello! I need you to confirm with /start to start me. <3")
     print(prompt)
 
 

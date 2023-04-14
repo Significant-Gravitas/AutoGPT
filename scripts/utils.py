@@ -2,6 +2,7 @@ from telegram_chat import TelegramUtils
 import speech_recognition as sr
 import speak
 import traceback
+import asyncio
 
 from config import Config
 cfg = Config()
@@ -62,7 +63,7 @@ def clean_input(prompt: str = '', talk=False):
                 return input(prompt)
         else:
             if cfg.telegram_enabled:
-                chat_answer = TelegramUtils.ask_user(prompt)
+                chat_answer = asyncio.run(TelegramUtils.ask_user(prompt))
                 if chat_answer in ["yes", "yeah", "yep", "yup", "y", "ok", "okay", "sure", "affirmative", "aye", "aye aye", "alright", "alrighty"]:
                     return "y"
                 elif chat_answer in ["no", "nope", "n", "nah", "negative", "nay", "nay nay"]:

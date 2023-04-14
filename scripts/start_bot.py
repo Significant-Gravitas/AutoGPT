@@ -22,6 +22,7 @@ async def start(update: Update, context: CallbackContext):
 def main():
     print("Starting up...")
     asyncio.run(TelegramUtils().send_message("Hello! I need you to confirm with /start to start me. <3"))
+    
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT, handle_response))
 
