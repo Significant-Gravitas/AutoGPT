@@ -48,7 +48,7 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
             json_string = json_match.group(0)
             logger.typewriter_log(title="Apparently json was fixed.", title_color=Fore.GREEN)
             if cfg.speak_mode and cfg.debug_mode:
-               speak.say_text("Apparently json was fixed.")
+                speak.say_text("Apparently json was fixed.")
         else:
             raise ValueError("No valid JSON object found")
 
