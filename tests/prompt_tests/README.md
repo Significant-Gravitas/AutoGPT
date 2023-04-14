@@ -34,26 +34,26 @@ To create your own tests, follow these steps:
 
      Example full `test.json` file:
      ```
-{
-    "name": "Denver Weather Next Week",
-    "description": "Get the weather over the next week in Denver, CO. The information returned is not likely to be accurate, however, the task is completed.",
-    "yaml_prompt": "weather-denver-txt.yaml",
-    "output_files": [
-        "weather-denver.txt"
-    ],
-    "exec": {
-        "command": "scripts/main.py",
-        "arguments": [
-            "--continuous",
-            "--continuous-limit",
-            "20",
-            "--use-yaml-file"
+     {
+        "name": "Denver Weather Next Week",
+        "description": "Get the weather over the next week in Denver, CO. The information returned is not likely to be accurate, however, the task is completed.",
+        "yaml_prompt": "weather-denver-txt.yaml",
+        "output_files": [
+            "weather-denver.txt"
         ],
-        "env": {
-            "TEMPERATURE": "0"
+        "exec": {
+            "command": "scripts/main.py",
+            "arguments": [
+                "--continuous",
+                "--continuous-limit",
+                "20",
+                "--use-yaml-file"
+            ],
+            "env": {
+                "TEMPERATURE": "0"
+            }
         }
-    }
-}
+     }
      ```
 
 3. Create the YAML prompt file for the test and save it in the test directory.
