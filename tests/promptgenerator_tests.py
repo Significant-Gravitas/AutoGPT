@@ -3,9 +3,7 @@ import unittest
 import sys
 import os
 
-# Add the path to the "scripts" directory to import the PromptGenerator module
-sys.path.append(os.path.abspath("../scripts"))
-from promptgenerator import PromptGenerator
+from autogpt.promptgenerator import PromptGenerator
 
 
 # Create a test class for the PromptGenerator, subclassed from unittest.TestCase
