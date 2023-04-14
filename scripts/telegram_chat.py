@@ -5,7 +5,7 @@ from threading import Lock, Semaphore
 
 from config import Config
 from telegram import Bot, Update
-from telegram.ext import (Application, CommandHandler, CallbackContext, MessageHandler, filters)
+from telegram.ext import (CallbackContext)
 
 cfg = Config()
 response_received = threading.Event()
@@ -14,8 +14,6 @@ response_text = ""
 mutex_lock = Lock()  # Ensure only one sound is played at a time
 # The amount of sounds to queue before blocking the main thread
 queue_semaphore = Semaphore(1)
-
-application = Application.builder().token(cfg.telegram_api_key).build()
 
 
 def is_authorized_user(update: Update):
@@ -35,19 +33,20 @@ async def handle_response(update: Update, context: CallbackContext):
     except Exception as e:
         print(e)
 
+
 async def stop(update: Update, context: CallbackContext):
     if is_authorized_user(update):
         await update.message.reply_text("Stopping Auto-GPT now!")
         exit(0)
 
-async def start_listening():
-    print("Listening to Telegram...")
-    try:
-        application.add_handler(CommandHandler("stop", stop))
-        application.add_handler(MessageHandler(filters.TEXT, handle_response))
-        await application.run_polling()
-    except KeyboardInterrupt:
-        pass
+# async def start_listening():
+#     print("Listening to Telegram...")
+#     try:
+#         application.add_handler(CommandHandler("stop", stop))
+#         application.add_handler(MessageHandler(filters.TEXT, handle_response))
+#         await application.run_polling()
+#     except KeyboardInterrupt:
+#         pass
 
 
 class TelegramUtils:
@@ -65,7 +64,6 @@ class TelegramUtils:
         response_text = ""
 
         await TelegramUtils().send_message(question)
-        asyncio.create_task(start_listening())
 
         print("Waiting for response...")
         response_received.wait()

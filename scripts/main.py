@@ -21,7 +21,7 @@ import asyncio
 
 cfg = Config()
 if cfg.telegram_enabled:
-    from telegram_chat import TelegramUtils, application
+    from telegram_chat import TelegramUtils
 
 
 def check_openai_api_key():
@@ -121,7 +121,7 @@ def print_assistant_thoughts(assistant_reply):
             speak.say_text(assistant_thoughts_speak)
 
         if cfg.telegram_enabled:
-            TelegramUtils.send_message(assistant_thoughts_text)
+            asyncio.run(TelegramUtils.send_message(assistant_thoughts_text))
 
         return assistant_reply_json
     except json.decoder.JSONDecodeError as e:
