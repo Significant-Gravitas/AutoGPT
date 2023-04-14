@@ -70,3 +70,7 @@ class PineconeMemory(MemoryProviderSingleton):
 
     def get_stats(self):
         return self.index.describe_index_stats()
+
+    def shutdown(self):
+        self.index.close()
+        return "Turned off index"

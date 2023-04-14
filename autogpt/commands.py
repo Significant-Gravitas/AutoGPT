@@ -237,7 +237,13 @@ def overwrite_memory(key, string):
 def shutdown():
     """Shut down the program"""
     print("Shutting down...")
-    quit()
+
+    # Perform any additional tasks required
+    if cfg.memory_backend == 'pinecone':
+        mem = get_memory(cfg)
+        mem.shutdown()
+
+    quit(0)
 
 
 def start_agent(name, task, prompt, model=cfg.fast_llm_model):
