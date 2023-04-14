@@ -10,8 +10,9 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
-from autogpt.llm_utils import create_chat_completion
+from selenium.webdriver.common.keys import Keys
 import os
+import logging
 from pathlib import Path
 from autogpt.config import Config
 file_dir = Path(__file__).parent
@@ -32,7 +33,7 @@ def browse_website(url, question):
 
 
 def scrape_text_with_selenium(url):
-    import logging
+    
     logging.getLogger('selenium').setLevel(logging.CRITICAL)
     
     options = Options()
@@ -73,8 +74,6 @@ def scrape_links_with_selenium(driver):
 def close_browser(driver):
     driver.quit()
 
-from selenium.webdriver.common.keys import Keys
-
 
 def extract_hyperlinks(soup):
     return [(link.text, link['href']) for link in soup.find_all('a', href=True)]
@@ -85,4 +84,4 @@ def format_hyperlinks(hyperlinks):
 
 
 def add_header(driver):
-    driver.execute_script(open(f"{file_dir}/js/overlay.js","r").read())
+    driver.execute_script(open(f"{file_dir}/js/overlay.js", "r").read())
