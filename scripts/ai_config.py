@@ -70,8 +70,8 @@ class AIConfig:
         """
 
         config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
-        with open(config_file, "w") as file:
-            yaml.dump(config, file)
+        with open(config_file, "w",  encoding='utf-8') as file:
+            yaml.dump(config, file, allow_unicode=True)
 
     def construct_full_prompt(self) -> str:
         """
