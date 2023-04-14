@@ -15,6 +15,12 @@ except ImportError:
 
 
 cfg = Config()
+# Dimension of embeddings encoded by models
+EMBED_DIM = {
+    "ada": 1536,
+    "sbert": 768
+}.get(cfg.memory_embeder, default=1536)
+
 
 def get_embedding(text):
     text = text.replace("\n", " ")
