@@ -22,3 +22,4 @@ pre-commit
 black
 sourcery
 isort
+selenium
