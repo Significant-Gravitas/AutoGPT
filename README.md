@@ -2,11 +2,9 @@
 
 > 这里是Auto-GPT中文项目- 同步fork Auto-GPT
 
+![gzh](/Users/houweijie/Desktop/MKB/images/README/gzh.png)
 
-
-**公众号《阿杰的人生路》**
-
-**回复"Auto-GPT"加入群聊，共同探讨更多玩法**
+### 公众号内回复"Auto-GPT"加入群聊，共同探讨更多玩法
 
 
 
