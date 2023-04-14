@@ -22,8 +22,8 @@ def get_prompt():
     commands = [
         ("Google Search", "google", {"input": "<search>"}),
         ("Browse Website", "browse_website", {"url": "<url>", "question": "<what_you_want_to_find_on_website>"}),
-        ("Start GPT Agent", "start_agent", {"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"}),
-        ("Message GPT Agent", "message_agent", {"key": "<key>", "message": "<message>"}),
+        ("Start GPT Agent", "start_agent", {"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt_for_agent>"}),
+        ("Message GPT Agent", "message_agent", {"key": "<key>", "message": "<message_for_agent>"}),
         ("List GPT Agents", "list_agents", {}),
         ("Delete GPT Agent", "delete_agent", {"key": "<key>"}),
         ("Write to file", "write_to_file", {"file": "<file>", "text": "<text>"}),
@@ -37,8 +37,8 @@ def get_prompt():
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
         ("Execute Shell Command, non-interactive commands only", "execute_shell", { "command_line": "<command_line>"}),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
-        ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
-        ("Do Nothing", "do_nothing", {}),
+#       ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
+#       ("Do Nothing", "do_nothing", {}),
     ]
 
     # Add commands to the PromptGenerator object
@@ -49,7 +49,7 @@ def get_prompt():
     prompt_generator.add_resource("Internet access for searches and information gathering.")
     prompt_generator.add_resource("Long Term memory management.")
     prompt_generator.add_resource("GPT-3.5 powered Agents for delegation of simple tasks.")
-    prompt_generator.add_resource("File output.")
+    prompt_generator.add_resource("File input and output.")
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation("Continuously review and analyze your actions to ensure you are performing to the best of your abilities.")
