@@ -21,6 +21,20 @@ except ImportError:
 
 
 def get_memory(cfg, init=False):
+    """
+    get_memory returns a memory object based on the specified memory backend in
+    the configuration.
+    
+    :param cfg: a configuration object that contains information about the memory
+    backend to be used and other relevant parameters
+    :param init: A boolean parameter that indicates whether to initialize the memory
+    or not. If set to True, the memory will be cleared, defaults to False (optional)
+    :return: an instance of a memory object based on the configuration provided. The
+    type of memory object returned depends on the value of the `memory_backend`
+    attribute in the configuration. If `memory_backend` is set to "pinecone", a
+    `PineconeMemory` object is returned. If it is set to "redis", a `RedisMemory`
+    object is returned. By default, a `LocalCache` object is returned.
+    """
     memory = None
     if cfg.memory_backend == "pinecone":
         if not PineconeMemory:
