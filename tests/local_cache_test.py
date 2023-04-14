@@ -1,8 +1,7 @@
 import os
 import sys
-# Probably a better way:
-sys.path.append(os.path.abspath('../scripts'))
-from memory.local import LocalCache
+
+from autogpt.memory.local import LocalCache
 
 
 def MockConfig():

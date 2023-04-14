@@ -2,7 +2,7 @@ import requests
 import io
 import os.path
 from PIL import Image
-from config import Config
+from autogpt.config import Config
 import uuid
 import openai
 from base64 import b64decode
