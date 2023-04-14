@@ -233,6 +233,7 @@ def parse_arguments():
     parser.add_argument('--use-memory', '-m', dest="memory_type", help='Defines which Memory backend to use')
     parser.add_argument('--skip-reprompt', '-y', dest='skip_reprompt', action='store_true', help='Skips the re-prompting messages at the beginning of the script')
     parser.add_argument('--ai-settings', '-C', dest='ai_settings_file', help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.")
+    parser.add_argument('--allow-downloads', action='store_true', dest='allow_downloads', help='Dangerous: Allows Auto-GPT to download files natively.')
     args = parser.parse_args()
 
     if args.debug:
@@ -296,6 +297,13 @@ def parse_arguments():
         logger.typewriter_log("Using AI Settings File:", Fore.GREEN, file)
         cfg.ai_settings_file = file
         cfg.skip_reprompt = True
+    
+    if args.allow_downloads:
+        logger.typewriter_log("Native Downloading:", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("WARNING: ", Fore.YELLOW,
+                              f"{Back.LIGHTYELLOW_EX}Auto-GPT will now be able to download and save files to your machine.{Back.RESET} " + 
+                              "It is recommended that you monitor any files it downloads carefully.")
+        logger.typewriter_log("WARNING: ", Fore.YELLOW, f"{Back.RED + Style.BRIGHT}ALWAYS REMEMBER TO NEVER OPEN FILES YOU AREN'T SURE OF!{Style.RESET_ALL}")
 
 
 def main():
