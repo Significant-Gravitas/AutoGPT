@@ -1,3 +1,4 @@
+Dockerfile
 ai_settings.yaml*
 .DS_Store
 *.bak
