@@ -3,6 +3,7 @@ import abc
 from config import AbstractSingleton, Config
 import openai
 
+# try to import sentence transformers, if it fails, default to ada
 try:
     from sentence_transformers import SentenceTransformer
 except ImportError:
@@ -18,6 +19,7 @@ cfg = Config()
 def get_embedding(text):
     text = text.replace("\n", " ")
 
+    # use the embeder specified in the config
     if cfg.memory_embeder == "sbert":
         embedding = SentenceTransformer("sentence-transformers/all-mpnet-base-v2", device="cpu").encode(text, show_progress_bar=False)
     else:
