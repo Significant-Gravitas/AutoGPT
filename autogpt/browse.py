@@ -63,7 +63,8 @@ def get_response(url, timeout=10):
         return None, "Error: " + str(ve)
 
     except requests.exceptions.RequestException as re:
-        # Handle exceptions related to the HTTP request (e.g., connection errors, timeouts, etc.)
+        # Handle exceptions related to the HTTP request
+        #  (e.g., connection errors, timeouts, etc.)
         return None, "Error: " + str(re)
 
 
@@ -72,6 +73,8 @@ def scrape_text(url):
     response, error_message = get_response(url)
     if error_message:
         return error_message
+    if not response:
+        return "Error: Could not get response"
 
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -107,7 +110,8 @@ def scrape_links(url):
     response, error_message = get_response(url)
     if error_message:
         return error_message
-
+    if not response:
+        return "Error: Could not get response"
     soup = BeautifulSoup(response.text, "html.parser")
 
     for script in soup(["script", "style"]):
@@ -141,7 +145,9 @@ def create_message(chunk, question):
     """Create a message for the user to summarize a chunk of text"""
     return {
         "role": "user",
-        "content": f'"""{chunk}""" Using the above text, please answer the following question: "{question}" -- if the question cannot be answered using the text, please summarize the text.',
+        "content": f'"""{chunk}""" Using the above text, please answer the following'
+        f' question: "{question}" -- if the question cannot be answered using the'
+        " text, please summarize the text.",
     }
 
 
