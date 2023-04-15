@@ -1,7 +1,7 @@
 import asyncio
 from queue import Queue
 
-from config import Config
+from autogpt.config.config import Config
 from telegram import Bot, Update
 from telegram.ext import CallbackContext, MessageHandler, filters
 import asyncio

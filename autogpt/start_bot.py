@@ -7,9 +7,10 @@ from threading import Lock, Semaphore
 
 from telegram import Update
 from telegram.ext import Application, CallbackContext, CommandHandler, filters, MessageHandler
+from autogpt.config.config import Config
 
-from config import Config
-from telegram_chat import TelegramUtils, handle_response, is_authorized_user
+
+from autogpt.telegram_chat import TelegramUtils, handle_response, is_authorized_user
 
 cfg = Config()
 
@@ -49,7 +50,7 @@ async def start(update: Update, context: CallbackContext):
         else:
             main_started = True
             TelegramUtils.send_message("Auto-GPT is starting now!")
-            os.system("python3 ./autogpt/__main__.py {}".format(" ".join(sys.argv[1:])))
+            os.system("python -m autogpt {}".format(" ".join(sys.argv[1:])))
 
 
 
