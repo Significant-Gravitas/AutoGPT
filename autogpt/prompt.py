@@ -34,6 +34,7 @@ def get_prompt() -> str:
     prompt_generator.add_constraint(
         'Exclusively use the commands listed in double quotes e.g. "command name"'
     )
+    prompt_generator.add_constraint("Use subprocesses for commands that will not terminate within a few minutes")
 
     # Define the command list
     commands = [
@@ -76,6 +77,11 @@ def get_prompt() -> str:
             "Execute Shell Command, non-interactive commands only",
             "execute_shell",
             {"command_line": "<command_line>"},
+        ),
+        (
+            "Execute Shell Command Popen, non-interactive commands only", 
+            "execute_shell_popen",
+            { "command_line": "<command_line>"}
         ),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
