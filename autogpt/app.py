@@ -1,29 +1,42 @@
+""" Command and Control """
 import json
-import datetime
-import autogpt.agent_manager as agents
+from typing import List, NoReturn, Union
+from autogpt.agent.agent_manager import AgentManager
+from autogpt.commands.evaluate_code import evaluate_code
+from autogpt.commands.google_search import google_official_search, google_search
+from autogpt.commands.improve_code import improve_code
+from autogpt.commands.write_tests import write_tests
 from autogpt.config import Config
-from autogpt.json_parser import fix_and_parse_json
-from autogpt.image_gen import generate_image
-from duckduckgo_search import ddg
-from autogpt.ai_functions import evaluate_code, improve_code, write_tests
-from autogpt.browse import scrape_links, scrape_text, summarize_text
-from autogpt.execute_code import execute_python_file, execute_shell
-from autogpt.file_operations import (
+from autogpt.commands.image_gen import generate_image
+from autogpt.commands.web_requests import scrape_links, scrape_text
+from autogpt.commands.execute_code import execute_python_file, execute_shell
+from autogpt.commands.file_operations import (
     append_to_file,
     delete_file,
     read_file,
     search_files,
     write_to_file,
 )
+from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
-from autogpt.speak import say_text
-from autogpt.web import browse_website
+from autogpt.processing.text import summarize_text
+from autogpt.speech import say_text
+from autogpt.commands.web_selenium import browse_website
 
 
-cfg = Config()
+CFG = Config()
+AGENT_MANAGER = AgentManager()
 
 
-def is_valid_int(value) -> bool:
+def is_valid_int(value: str) -> bool:
+    """Check if the value is a valid integer
+
+    Args:
+        value (str): The value to check
+
+    Returns:
+        bool: True if the value is a valid integer, False otherwise
+    """
     try:
         int(value)
         return True
@@ -31,8 +44,20 @@ def is_valid_int(value) -> bool:
         return False
 
 
-def get_command(response):
-    """Parse the response and return the command name and arguments"""
+def get_command(response: str):
+    """Parse the response and return the command name and arguments
+
+    Args:
+        response (str): The response from the user
+
+    Returns:
+        tuple: The command name and arguments
+
+    Raises:
+        json.decoder.JSONDecodeError: If the response is not valid JSON
+
+        Exception: If any other error occurs
+    """
     try:
         response_json = fix_and_parse_json(response)
 
@@ -62,20 +87,29 @@ def get_command(response):
         return "Error:", str(e)
 
 
-def execute_command(command_name, arguments):
-    """Execute the command and return the result"""
-    memory = get_memory(cfg)
+def execute_command(command_name: str, arguments):
+    """Execute the command and return the result
+
+    Args:
+        command_name (str): The name of the command to execute
+        arguments (dict): The arguments for the command
+
+    Returns:
+        str: The result of the command"""
+    memory = get_memory(CFG)
 
     try:
         if command_name == "google":
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial
             # search method
-            key = cfg.google_api_key
+            key = CFG.google_api_key
             if key and key.strip() and key != "your-google-api-key":
-                return google_official_search(arguments["input"])
+                google_result = google_official_search(arguments["input"])
             else:
-                return google_search(arguments["input"])
+                google_result = google_search(arguments["input"])
+            safe_message = google_result.encode('utf-8', 'ignore')
+            return str(safe_message)
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
@@ -116,7 +150,7 @@ def execute_command(command_name, arguments):
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
         elif command_name == "execute_shell":
-            if cfg.execute_local_commands:
+            if CFG.execute_local_commands:
                 return execute_shell(arguments["command_line"])
             else:
                 return (
@@ -136,96 +170,55 @@ def execute_command(command_name, arguments):
                 " list for available commands and only respond in the specified JSON"
                 " format."
             )
-    # All errors, return "Error: + error message"
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
 
 
-def get_datetime():
-    """Return the current date and time"""
-    return "Current date and time: " + datetime.datetime.now().strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
+def get_text_summary(url: str, question: str) -> str:
+    """Return the results of a google search
 
+    Args:
+        url (str): The url to scrape
+        question (str): The question to summarize the text for
 
-def google_search(query, num_results=8):
-    """Return the results of a google search"""
-    search_results = []
-    if not query:
-        return json.dumps(search_results)
-
-    for j in ddg(query, max_results=num_results):
-        search_results.append(j)
-
-    return json.dumps(search_results, ensure_ascii=False, indent=4)
-
-
-def google_official_search(query, num_results=8):
-    """Return the results of a google search using the official Google API"""
-    import json
-
-    from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
-
-    try:
-        # Get the Google API key and Custom Search Engine ID from the config file
-        api_key = cfg.google_api_key
-        custom_search_engine_id = cfg.custom_search_engine_id
-
-        # Initialize the Custom Search API service
-        service = build("customsearch", "v1", developerKey=api_key)
-
-        # Send the search query and retrieve the results
-        result = (
-            service.cse()
-            .list(q=query, cx=custom_search_engine_id, num=num_results)
-            .execute()
-        )
-
-        # Extract the search result items from the response
-        search_results = result.get("items", [])
-
-        # Create a list of only the URLs from the search results
-        search_results_links = [item["link"] for item in search_results]
-
-    except HttpError as e:
-        # Handle errors in the API call
-        error_details = json.loads(e.content.decode())
-
-        # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get(
-            "code"
-        ) == 403 and "invalid API key" in error_details.get("error", {}).get(
-            "message", ""
-        ):
-            return "Error: The provided Google API key is invalid or missing."
-        else:
-            return f"Error: {e}"
-
-    # Return the list of search result URLs
-    return search_results_links
-
-
-def get_text_summary(url, question):
-    """Return the results of a google search"""
+    Returns:
+        str: The summary of the text
+    """
     text = scrape_text(url)
     summary = summarize_text(url, text, question)
-    return """ "Result" : """ + summary
+    return f""" "Result" : {summary}"""
 
 
-def get_hyperlinks(url):
-    """Return the results of a google search"""
+def get_hyperlinks(url: str) -> Union[str, List[str]]:
+    """Return the results of a google search
+
+    Args:
+        url (str): The url to scrape
+
+    Returns:
+        str or list: The hyperlinks on the page
+    """
     return scrape_links(url)
 
 
-def shutdown():
+def shutdown() -> NoReturn:
     """Shut down the program"""
     print("Shutting down...")
     quit()
 
 
-def start_agent(name, task, prompt, model=cfg.fast_llm_model):
-    """Start an agent with a given name, task, and prompt"""
+def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
+    """Start an agent with a given name, task, and prompt
+
+    Args:
+        name (str): The name of the agent
+        task (str): The task of the agent
+        prompt (str): The prompt for the agent
+        model (str): The model to use for the agent
+
+    Returns:
+        str: The response of the agent
+    """
     # Remove underscores from name
     voice_name = name.replace("_", " ")
 
@@ -233,39 +226,50 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     agent_intro = f"{voice_name} here, Reporting for duty!"
 
     # Create agent
-    if cfg.speak_mode:
+    if CFG.speak_mode:
         say_text(agent_intro, 1)
-    key, ack = agents.create_agent(task, first_message, model)
+    key, ack = AGENT_MANAGER.create_agent(task, first_message, model)
 
-    if cfg.speak_mode:
+    if CFG.speak_mode:
         say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
     # Assign task (prompt), get response
-    agent_response = agents.message_agent(key, prompt)
+    agent_response = AGENT_MANAGER.message_agent(key, prompt)
 
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
 
-def message_agent(key, message):
+def message_agent(key: str, message: str) -> str:
     """Message an agent with a given key and message"""
     # Check if the key is a valid integer
     if is_valid_int(key):
-        agent_response = agents.message_agent(int(key), message)
+        agent_response = AGENT_MANAGER.message_agent(int(key), message)
     else:
         return "Invalid key, must be an integer."
 
     # Speak response
-    if cfg.speak_mode:
+    if CFG.speak_mode:
         say_text(agent_response, 1)
     return agent_response
 
 
 def list_agents():
-    """List all agents"""
-    return list_agents()
+    """List all agents
+
+    Returns:
+        list: A list of all agents
+    """
+    return AGENT_MANAGER.list_agents()
 
 
-def delete_agent(key):
-    """Delete an agent with a given key"""
-    result = agents.delete_agent(key)
+def delete_agent(key: str) -> str:
+    """Delete an agent with a given key
+
+    Args:
+        key (str): The key of the agent to delete
+
+    Returns:
+        str: A message indicating whether the agent was deleted or not
+    """
+    result = AGENT_MANAGER.delete_agent(key)
     return f"Agent {key} deleted." if result else f"Agent {key} does not exist."
