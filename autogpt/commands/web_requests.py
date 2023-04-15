@@ -72,7 +72,7 @@ def get_response(
         timeout (int): The timeout for the HTTP request
 
     Returns:
-        tuple[None, str] | tuple[Response, None]: The response and error message
+        Tuple[None, str] | Tuple[Response, None]: The response and error message
 
     Raises:
         ValueError: If the URL is invalid
