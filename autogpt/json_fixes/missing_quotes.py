@@ -17,7 +17,8 @@ def add_quotes_to_property_names(json_string: str) -> str:
     def replace_func(match: re.Match) -> str:
         return f'"{match[1]}":'
 
-    property_name_pattern = re.compile(r"(\w+):")
+    # (?=(?:(?:[^"]*"){2})*[^"]*$) is a positive lookahead that ensures that the word is not enclosed by double quotes.
+    property_name_pattern = re.compile(r"(?=(?:(?:[^\"]*\"){2})*[^\"]*$)(\b\w+\b)")
     corrected_json_string = property_name_pattern.sub(replace_func, json_string)
 
     try:
