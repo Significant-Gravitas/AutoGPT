@@ -9,7 +9,8 @@ from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
 from autogpt.logs import logger
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton
+from autogpt.llm_utils import create_embedding_with_ada
 
 SCHEMA = [
     TextField("data"),
@@ -85,7 +86,7 @@ class RedisMemory(MemoryProviderSingleton):
         """
         if "Command Error:" in data:
             return ""
-        vector = get_ada_embedding(data)
+        vector = create_embedding_with_ada(data)
         vector = np.array(vector).astype(np.float32).tobytes()
         data_dict = {b"data": data, "embedding": vector}
         pipe = self.redis.pipeline()
@@ -127,7 +128,7 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: A list of the most relevant data.
         """
-        query_embedding = get_ada_embedding(data)
+        query_embedding = create_embedding_with_ada(data)
         base_query = f"*=>[KNN {num_relevant} @embedding $vector AS vector_score]"
         query = (
             Query(base_query)

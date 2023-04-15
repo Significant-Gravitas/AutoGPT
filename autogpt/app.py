@@ -89,13 +89,13 @@ def get_command(response: str):
 
 
 def map_command_synonyms(command_name: str):
-    """ Takes the original command name given by the AI, and checks if the
-        string matches a list of common/known hallucinations
+    """Takes the original command name given by the AI, and checks if the
+    string matches a list of common/known hallucinations
     """
     synonyms = [
-        ('write_file', 'write_to_file'),
-        ('create_file', 'write_to_file'),
-        ('search', 'google')
+        ("write_file", "write_to_file"),
+        ("create_file", "write_to_file"),
+        ("search", "google"),
     ]
     for seen_command, actual_command_name in synonyms:
         if command_name == seen_command:
@@ -125,7 +125,7 @@ def execute_command(command_name: str, arguments):
                 google_result = google_official_search(arguments["input"])
             else:
                 google_result = google_search(arguments["input"])
-            safe_message = google_result.encode('utf-8', 'ignore')
+            safe_message = google_result.encode("utf-8", "ignore")
             return str(safe_message)
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
@@ -144,7 +144,9 @@ def execute_command(command_name: str, arguments):
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
         elif command_name == "clone_repository":
-            return clone_repository(arguments["repository_url"], arguments["clone_path"])
+            return clone_repository(
+                arguments["repository_url"], arguments["clone_path"]
+            )
         elif command_name == "read_file":
             return read_file(arguments["file"])
         elif command_name == "write_to_file":
@@ -278,7 +280,9 @@ def list_agents():
     Returns:
         str: A list of all agents
     """
-    return "List of agents:\n" + "\n".join([str(x[0]) + ": " + x[1] for x in AGENT_MANAGER.list_agents()])
+    return "List of agents:\n" + "\n".join(
+        [str(x[0]) + ": " + x[1] for x in AGENT_MANAGER.list_agents()]
+    )
 
 
 def delete_agent(key: str) -> str:
