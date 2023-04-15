@@ -152,22 +152,38 @@ def fix_and_parse_json(
     with contextlib.suppress(json.JSONDecodeError):
         json_to_load = correct_json(json_to_load)
         return json.loads(json_to_load)
-    # Let's do something manually:
-    # sometimes GPT responds with something BEFORE the braces:
-    # "I'm sorry, I don't understand. Please try again."
-    # {"text": "I'm sorry, I don't understand. Please try again.",
-    #  "confidence": 0.0}
-    # So let's try to find the first brace and then parse the rest
-    #  of the string
     try:
-        brace_index = json_to_load.index("{")
-        maybe_fixed_json = json_to_load[brace_index:]
-        last_brace_index = maybe_fixed_json.rindex("}")
-        maybe_fixed_json = maybe_fixed_json[: last_brace_index + 1]
+        maybe_fixed_json = extract_longest_curly_braces_content(json_to_load)
         return json.loads(maybe_fixed_json)
     except (json.JSONDecodeError, ValueError) as e:
         return try_ai_fix(try_to_fix_with_gpt, e, json_to_load)
 
+def extract_longest_curly_braces_content(string):
+    """
+    :param string: The string to extract the longest content from.
+    Extract the longest content between valid curly braces in a string.
+    This is useful when the return contain multiple JSON objects or texts.
+    """
+    stack = []
+    start = -1
+    result = ''
+    longest_len = 0
+    longest_content = ''
+    for i in range(len(string)):
+        if string[i] == '{':
+            stack.append(i)
+        elif string[i] == '}':
+            if len(stack) == 0:
+                start = i
+            else:
+                start = stack.pop()
+                if len(stack) == 0:
+                    content = string[start + 1:i]
+                    content_len = len(content)
+                    if content_len > longest_len:
+                        longest_len = content_len
+                        longest_content = content
+    return f"{{{longest_content}}}"
 
 def try_ai_fix(
     try_to_fix_with_gpt: bool, exception: Exception, json_to_load: str
