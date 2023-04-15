@@ -1,7 +1,10 @@
 """This module contains the function to fix JSON strings using GPT-3."""
 import json
+from autogpt.config import Config
 from autogpt.llm_utils import call_ai_function
 from autogpt.logs import logger
+
+CFG = Config()
 
 
 def fix_json(json_str: str, schema: str) -> str:
@@ -21,7 +24,7 @@ def fix_json(json_str: str, schema: str) -> str:
     if not json_str.startswith("`"):
         json_str = "```json\n" + json_str + "\n```"
     result_string = call_ai_function(
-        function_string, args, description_string, model=cfg.fast_llm_model
+        function_string, args, description_string, model=CFG.fast_llm_model
     )
     logger.debug("------------ JSON FIX ATTEMPT ---------------")
     logger.debug(f"Original JSON: {json_str}")
