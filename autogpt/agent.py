@@ -53,7 +53,7 @@ class Agent:
 
             self.loop_count += 1
 
-            response = self.start_argent()
+            response = self.start_agent()
 
             if response == 'continue':
                 continue
