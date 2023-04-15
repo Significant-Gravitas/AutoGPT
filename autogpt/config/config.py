@@ -57,6 +57,9 @@ class Config(metaclass=Singleton):
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
 
+        self.github_api_key = os.getenv("GITHUB_API_KEY")
+        self.github_username = os.getenv("GITHUB_USERNAME")
+
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
@@ -85,7 +88,9 @@ class Config(metaclass=Singleton):
         self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
-        self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
+        self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
+        self.memory_embedder = os.getenv("MEMORY_EMBEDDER", 'ada')
+
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
