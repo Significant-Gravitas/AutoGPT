@@ -1,21 +1,25 @@
 """SQLite memory provider."""
-from typing import Any, List, Optional
+import shutil
 import sqlite3
 from pathlib import Path
-import shutil
-import zarr
+from typing import Any, List, Optional
+
 import numpy as np
+import zarr
 from colorama import Fore, Style
 from sklearn.neighbors import NearestNeighbors
+
 from autogpt.logger import logger
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 CHUNK_SIZE = 1000
 EMBED_DIM = 1536
 
+
 # Based on: https://github.com/wawawario2/long_term_memory
 class SqliteMemory(MemoryProviderSingleton):
     """SQLite memory provider."""
+
     def __init__(self, cfg):
         """
         Initializes the SQLite memory provider.
@@ -29,7 +33,7 @@ class SqliteMemory(MemoryProviderSingleton):
         self.index = cfg.memory_index
         self.embeder_name = "ada"
 
-        # Set database and embeddings to None 
+        # Set database and embeddings to None
         self.sql_conn = None
         self.embeddings = None
 
@@ -44,7 +48,9 @@ class SqliteMemory(MemoryProviderSingleton):
         # Construct the paths to the database file and embeddings directory
         parent_dir = Path("memory")
         self.database_path = parent_dir / "memory.db"
-        self.embeddings_path = parent_dir / f"embeddings_{self.index}_{self.embeder_name}.zarr"
+        self.embeddings_path = (
+            parent_dir / f"embeddings_{self.index}_{self.embeder_name}.zarr"
+        )
 
         # If parent directory doesn't exist, create it
         parent_dir.mkdir(parents=True, exist_ok=True)
@@ -76,7 +82,9 @@ class SqliteMemory(MemoryProviderSingleton):
             # Embeddings don't exist, check if a table for this index exists and is empty
             conn = sqlite3.connect(self.database_path)
             with conn:
-                res = conn.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.index}';")
+                res = conn.execute(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{self.index}';"
+                )
                 if res.fetchone():
                     # Table exists, but embeddings don't
                     logger.error(
@@ -84,7 +92,7 @@ class SqliteMemory(MemoryProviderSingleton):
                         f"{self.database_path} exists but {self.embeddings_path!r} does not. "
                         f"Delete {Fore.CYAN + Style.BRIGHT}{self.database_path!r}{Style.RESET_ALL} and try again."
                     )
-                    
+
                     # If user wants to regenerate embeddings, do so
                     print("Would you like to regenerate the embeddings? [Y/n] ", end="")
                     if input().lower() != "n":
@@ -92,7 +100,7 @@ class SqliteMemory(MemoryProviderSingleton):
                     # Otherwise, wipe the memory
                     else:
                         self.clear()
-            
+
             # Close the connection
             conn.close()
 
@@ -140,14 +148,16 @@ class SqliteMemory(MemoryProviderSingleton):
             conn = sqlite3.connect(self.database_path)
 
         with conn:
-            conn.execute(f"""
+            conn.execute(
+                f"""
             CREATE TABLE IF NOT EXISTS {self.index} (
                 id INTEGER PRIMARY KEY,
                 data TEXT NOT NULL UNIQUE,
                 timestamp TEXT NOT NULL
             );
-            """)
-        
+            """
+            )
+
         if self.sql_conn is None:
             conn.close()
 
@@ -192,7 +202,9 @@ class SqliteMemory(MemoryProviderSingleton):
                 # Store the embedding
                 self.embeddings[index] = embedding
 
-    def _convert_embeddings(self, old_embeddings: Path, prev_embeder: str, soft_delete: bool = True) -> None:
+    def _convert_embeddings(
+        self, old_embeddings: Path, prev_embeder: str, soft_delete: bool = True
+    ) -> None:
         """
         Converts the embeddings from a different embeder to the current one.
 
@@ -209,7 +221,7 @@ class SqliteMemory(MemoryProviderSingleton):
             f"with a different embeder ({prev_embeder}) than the current one ({self.embeder_name}). "
             "Regenerating embeddings (may come with additional costs if using embeders like 'ada'), "
             "do you want to regenerate them [y/N]?",
-            end=""
+            end="",
         )
         if input().lower() != "y":
             logger.error(
@@ -228,7 +240,7 @@ class SqliteMemory(MemoryProviderSingleton):
 
         # For each data point, get the embedding and add it to the new embeddings array
         for index, data, timestamp in rows:
-            #embedding = get_embedding(data)
+            # embedding = get_embedding(data)
             embedding = get_ada_embedding(data)
             embedding = np.expand_dims(embedding, axis=0)
             self.embeddings[index] = embedding
@@ -254,13 +266,13 @@ class SqliteMemory(MemoryProviderSingleton):
 
         # Get the embedding index (index of the next vector is the same as the number of vectors)
         embedding_index = self.embeddings.shape[0]
-        
+
         # Add data to the database
         with self.sql_conn as conn:
             try:
                 conn.execute(
                     f"INSERT INTO {self.index} (id, data, timestamp) VALUES(?, ?, CURRENT_TIMESTAMP);",
-                    (embedding_index, data)
+                    (embedding_index, data),
                 )
             except sqlite3.IntegrityError as err:
                 if "UNIQUE constraint failed:" in str(err):
@@ -334,7 +346,9 @@ class SqliteMemory(MemoryProviderSingleton):
         results = []
         with self.sql_conn as conn:
             for index in indices[0]:
-                res = conn.execute(f"SELECT data FROM {self.index} WHERE id = ?;", (int(index),))
+                res = conn.execute(
+                    f"SELECT data FROM {self.index} WHERE id = ?;", (int(index),)
+                )
                 memory = res.fetchone()
                 if memory:
                     results.append(memory)
@@ -345,4 +359,8 @@ class SqliteMemory(MemoryProviderSingleton):
         """
         Returns: The stats of the memory index.
         """
-        return { "num_memories": self.embeddings.shape[0], "index": self.index, "embeder": self.embeder_name }
+        return {
+            "num_memories": self.embeddings.shape[0],
+            "index": self.index,
+            "embeder": self.embeder_name,
+        }

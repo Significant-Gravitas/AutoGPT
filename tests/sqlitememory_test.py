@@ -5,13 +5,17 @@ from autogpt.memory.sqlitemem import SqliteMemory
 
 
 def MockConfig():
-    return type('MockConfig', (object,), {
-        'debug_mode': False,
-        'continuous_mode': False,
-        'speak_mode': False,
-        'memory_index': 'test',
-        'memory_backend': 'sqlite'
-    })
+    return type(
+        "MockConfig",
+        (object,),
+        {
+            "debug_mode": False,
+            "continuous_mode": False,
+            "speak_mode": False,
+            "memory_index": "test",
+            "memory_backend": "sqlite",
+        },
+    )
 
 
 class TestSqliteMemory(unittest.TestCase):
@@ -62,12 +66,10 @@ class TestSqliteMemory(unittest.TestCase):
         self.memory.add(text)
 
         stats = self.memory.get_stats()
-        self.assertEqual(stats, {
-            "num_memories": 1, 
-            "index": self.cfg.memory_index,
-            "embeder": "ada"
-        })
+        self.assertEqual(
+            stats, {"num_memories": 1, "index": self.cfg.memory_index, "embeder": "ada"}
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -7,20 +7,23 @@ supported_memory = ["local", "no_memory"]
 
 try:
     from autogpt.memory.sqlitemem import SqliteMemory
-    supported_memory.append('sqlite')
+
+    supported_memory.append("sqlite")
 except ImportError:
     print("SQLite not installed. Skipping import.")
     SqliteMemory = None
 
 try:
     from autogpt.memory.redismem import RedisMemory
-    supported_memory.append('redis')
+
+    supported_memory.append("redis")
 except ImportError:
     print("Redis not installed. Skipping import.")
     RedisMemory = None
 
 try:
     from autogpt.memory.pinecone import PineconeMemory
+
     supported_memory.append("pinecone")
 except ImportError:
     print("Pinecone not installed. Skipping import.")
@@ -49,8 +52,10 @@ def get_memory(cfg, init=False):
             memory = RedisMemory(cfg)
     elif cfg.memory_backend == "sqlite":
         if not SqliteMemory:
-            print("Error: SQLite is not installed. Please install zarr and sklearn to"
-                  " use SQLite as a memory backend.")
+            print(
+                "Error: SQLite is not installed. Please install zarr and sklearn to"
+                " use SQLite as a memory backend."
+            )
         else:
             memory = SqliteMemory(cfg)
     elif cfg.memory_backend == "no_memory":
@@ -73,5 +78,5 @@ __all__ = [
     "SqliteMemory",
     "RedisMemory",
     "PineconeMemory",
-    "NoMemory"
+    "NoMemory",
 ]
