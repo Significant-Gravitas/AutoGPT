@@ -47,7 +47,7 @@ class Agent:
         self.loop_count = 0
 
     def start_interaction_loop(self):
-
+    
         self.loop_count = 0
         while not self.exit_loop:
 
