@@ -41,7 +41,7 @@ def execute_python_file(file: str):
     try:
         client = docker.from_env()
 
-        image_name = "python:3.10"
+        image_name = "python:3-alpine"
         try:
             client.images.get(image_name)
             print(f"Image '{image_name}' found locally")
