@@ -1,9 +1,14 @@
+"""A class that does not store any data. This is the default memory provider."""
 from typing import Optional, List, Any
 
 from autogpt.memory.base import MemoryProviderSingleton
 
 
 class NoMemory(MemoryProviderSingleton):
+    """
+    A class that does not store any data. This is the default memory provider.
+    """
+
     def __init__(self, cfg):
         """
         Initializes the NoMemory provider.
