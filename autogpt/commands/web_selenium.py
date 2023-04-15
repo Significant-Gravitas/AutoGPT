@@ -53,7 +53,11 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
     """
     logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
-    options_available = {'chrome': ChromeOptions, 'safari': SafariOptions, 'firefox': FirefoxOptions}
+    options_available = {
+        "chrome": ChromeOptions,
+        "safari": SafariOptions,
+        "firefox": FirefoxOptions,
+    }
 
     options = options_available[CFG.selenium_web_browser]()
     options.add_argument(

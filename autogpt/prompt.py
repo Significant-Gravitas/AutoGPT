@@ -59,7 +59,11 @@ def get_prompt() -> str:
         ),
         ("List GPT Agents", "list_agents", {}),
         ("Delete GPT Agent", "delete_agent", {"key": "<key>"}),
-        ("Clone Repository", "clone_repository", {"repository_url": "<url>", "clone_path": "<directory>"}),
+        (
+            "Clone Repository",
+            "clone_repository",
+            {"repository_url": "<url>", "clone_path": "<directory>"},
+        ),
         ("Write to file", "write_to_file", {"file": "<file>", "text": "<text>"}),
         ("Read file", "read_file", {"file": "<file>"}),
         ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
