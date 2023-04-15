@@ -1,156 +1,199 @@
-# Auto-GPT：自主 GPT-4 实验
+# Auto-GPT: An Autonomous GPT-4 Experiment
+### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
+We've improved our workflow. `master` will often be **in a broken state**.
+Download the latest `stable` release here: https://github.com/Torantulino/Auto-GPT/releases/latest
+This information SUPERCEDES any following information. Takes precedence. Do this not that.
 
-> 这里是Auto-GPT中文项目- 同步fork Auto-GPT
+![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
+[![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)
+[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
+[![Unit Tests](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml)
 
-![gzh](gzh.png)
+Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
-### 公众号内回复"Auto-GPT"加入群聊，共同探讨更多玩法
+### Demo (30/03/2023):
 
-### 中文版Demo :
+https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
 
-![Demo video](https://raw.githubusercontent.com/kaqijiang/Auto-GPT-ZH/master/demo.gif)
+<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
+<p align="center">
+If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
+A full day of development can easily cost as much as $20 in API costs, which for a free project is quite limiting.
+Your support is greatly appreciated
+</p>
 
-Auto-GPT 是一个实验性开源应用程序，展示了 GPT-4 语言模型的功能。该程序由 GPT-4 驱动，将 LLM 的“思想”链接在一起，以自主实现您设定的任何目标。作为 GPT-4 完全自主运行的首批示例之一，Auto-GPT 突破了 AI 的可能性界限。
+<p align="center">
+ Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
 
-## 可以做什么？
+<h3 align="center">Individual Sponsors</h3>
+<p align="center">
+<a href="https://github.com/robinicus"><img src="https://github.com/robinicus.png" width="50px" alt="robinicus" /></a>&nbsp;&nbsp;<a href="https://github.com/prompthero"><img src="https://github.com/prompthero.png" width="50px" alt="prompthero" /></a>&nbsp;&nbsp;<a href="https://github.com/crizzler"><img src="https://github.com/crizzler.png" width="50px" alt="crizzler" /></a>&nbsp;&nbsp;<a href="https://github.com/tob-le-rone"><img src="https://github.com/tob-le-rone.png" width="50px" alt="tob-le-rone" /></a>&nbsp;&nbsp;<a href="https://github.com/FSTatSBS"><img src="https://github.com/FSTatSBS.png" width="50px" alt="FSTatSBS" /></a>&nbsp;&nbsp;<a href="https://github.com/toverly1"><img src="https://github.com/toverly1.png" width="50px" alt="toverly1" /></a>&nbsp;&nbsp;<a href="https://github.com/ddtarazona"><img src="https://github.com/ddtarazona.png" width="50px" alt="ddtarazona" /></a>&nbsp;&nbsp;<a href="https://github.com/Nalhos"><img src="https://github.com/Nalhos.png" width="50px" alt="Nalhos" /></a>&nbsp;&nbsp;<a href="https://github.com/Kazamario"><img src="https://github.com/Kazamario.png" width="50px" alt="Kazamario" /></a>&nbsp;&nbsp;<a href="https://github.com/pingbotan"><img src="https://github.com/pingbotan.png" width="50px" alt="pingbotan" /></a>&nbsp;&nbsp;<a href="https://github.com/indoor47"><img src="https://github.com/indoor47.png" width="50px" alt="indoor47" /></a>&nbsp;&nbsp;<a href="https://github.com/AuroraHolding"><img src="https://github.com/AuroraHolding.png" width="50px" alt="AuroraHolding" /></a>&nbsp;&nbsp;<a href="https://github.com/kreativai"><img src="https://github.com/kreativai.png" width="50px" alt="kreativai" /></a>&nbsp;&nbsp;<a href="https://github.com/hunteraraujo"><img src="https://github.com/hunteraraujo.png" width="50px" alt="hunteraraujo" /></a>&nbsp;&nbsp;<a href="https://github.com/Explorergt92"><img src="https://github.com/Explorergt92.png" width="50px" alt="Explorergt92" /></a>&nbsp;&nbsp;<a href="https://github.com/judegomila"><img src="https://github.com/judegomila.png" width="50px" alt="judegomila" /></a>&nbsp;&nbsp;
+<a href="https://github.com/thepok"><img src="https://github.com/thepok.png" width="50px" alt="thepok" /></a>
+&nbsp;&nbsp;<a href="https://github.com/SpacingLily"><img src="https://github.com/SpacingLily.png" width="50px" alt="SpacingLily" /></a>&nbsp;&nbsp;<a href="https://github.com/merwanehamadi"><img src="https://github.com/merwanehamadi.png" width="50px" alt="merwanehamadi" /></a>&nbsp;&nbsp;<a href="https://github.com/m"><img src="https://github.com/m.png" width="50px" alt="m" /></a>&nbsp;&nbsp;<a href="https://github.com/zkonduit"><img src="https://github.com/zkonduit.png" width="50px" alt="zkonduit" /></a>&nbsp;&nbsp;<a href="https://github.com/maxxflyer"><img src="https://github.com/maxxflyer.png" width="50px" alt="maxxflyer" /></a>&nbsp;&nbsp;<a href="https://github.com/tekelsey"><img src="https://github.com/tekelsey.png" width="50px" alt="tekelsey" /></a>&nbsp;&nbsp;<a href="https://github.com/digisomni"><img src="https://github.com/digisomni.png" width="50px" alt="digisomni" /></a>&nbsp;&nbsp;<a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="tjarmain" /></a>
+</p>
 
-> 这里引用量子位的介绍
+## Table of Contents
 
-**自主人工智能**：它所具备的能力主打的就是一个“自主”，**完全不用人类插手**的那种！
+- [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
+  - [Demo (30/03/2023):](#demo-30032023)
+  - [Table of Contents](#table-of-contents)
+  - [🚀 Features](#-features)
+  - [📋 Requirements](#-requirements)
+  - [💾 Installation](#-installation)
+  - [🔧 Usage](#-usage)
+    - [Logs](#logs)
+  - [🗣️ Speech Mode](#️-speech-mode)
+  - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
+    - [Setting up environment variables](#setting-up-environment-variables)
+  - [Redis Setup](#redis-setup)
+  - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+    - [Setting up environment variables](#setting-up-environment-variables-1)
+  - [Setting Your Cache Type](#setting-your-cache-type)
+  - [View Memory Usage](#view-memory-usage)
+  - [🧠 Memory pre-seeding](#memory-pre-seeding)
+  - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
+  - [GPT3.5 ONLY Mode](#gpt35-only-mode)
+  - [🖼 Image Generation](#-image-generation)
+  - [⚠️ Limitations](#️-limitations)
+  - [🛡 Disclaimer](#-disclaimer)
+  - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
+  - [Run tests](#run-tests)
+  - [Run linter](#run-linter)
 
-**例如：**一位网友就要求AutoGPT开发一个网站，结果不到3分钟，AI自己就用React和Tailwind CSS“唰唰唰”地搞定了。
+## 🚀 Features
 
-AI自己上网、自己使用第三方工具、自己思考、自己操作你的电脑。
-
-**例如：**给他下达一个任务，用100美元的资金创建一个新的创业公司。
-
-AgentGPT在接到这项任务之后，便开始了他的展示：
-
-- 思考中……
-- 添加任务：研究需要最少资金的低成本商业模式。
-- 添加任务：确定潜在的目标市场及其需求。
-- 添加任务：开发一个精简的MVP（最小可行产品），并在目标市场进行测试以验证需求。
-- 思考中……
-
-然后AgentGPT先是输出执行“研究需要最少资金的低成本商业模式”的结果：
-
-> 根据我的研究，一些需要最少资金的低成本商业模式包括：
->
-> 1、Dropshipping：通过Dropshipping，你可以在网上销售产品而无需持有库存。您只需通过第三方供应商完成订单，第三方供应商将产品直接运送给您的客户。你可以从50美元开始支付网站托管和域名注册费。
->
-> 2、 社交媒体营销：如果你有社交媒体营销的天赋，你可以通过帮助企业接触他们的目标受众来创办自己的代理公司。你所需要的只是一台电脑，互联网连接，以及一些社交媒体营销的经验和技能，而你的起价只有50美元或更少。
->
-> 3、活动策划：如果你对组织活动有热情，你可以开始自己的活动策划业务。你可以从策划一些小活动开始，比如生日派对、婚礼等等。你可以从100美元开始，创建一个简单的网站，名片，并通过社交媒体营销自己。
->
-> 4、自由写作：如果你有写作天赋，你可以开始自己的自由写作事业。你可以通过在线平台，如Upwork、Fiver和其他求职网站找到客户。只需50美元，你就可以创建一个投资组合网站，并通过社交媒体营销自己。
->
-> 这些只是一些低成本的商业模式，你只需要100美元的资金就可以考虑。选择一个符合你的技能和兴趣的商业模式是很重要的。
-
-到这还没有完，AgentGPT会继续开始它的工作：
-
-- 思考中……
-- 添加任务：针对每种已确定的低成本商业模式，对潜在的产品或服务想法进行头脑风暴。
-- 添加任务：评估每个想法的潜在盈利能力和可扩展性。
-- 添加任务：选择最有希望的想法，并开发精益MVP，用于目标市场的测试。
-
-而后便是继续地再思考、执行。
+- 🌐 Internet access for searches and information gathering
+- 💾 Long-Term and Short-Term memory management
+- 🧠 GPT-4 instances for text generation
+- 🔗 Access to popular websites and platforms
+- 🗃️ File storage and summarization with GPT-3.5
 
 ## 📋 Requirements
 
-- 环境(选择一个就行)
-  - [vscode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): 已经配置在.devcontainer文件夹下，可以直接使用
-  - [Python 3.8 或者更高](https://www.tutorialspoint.com/how-to-install-python-in-windows)
+- environments(just choose one)
+  - [vscode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): It has been configured in the .devcontainer folder and can be used directly
+  - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - [OpenAI API key](https://platform.openai.com/account/api-keys)
-- [PINECONE API key](https://www.pinecone.io/)
+
 
 Optional:
 
-- [ElevenLabs Key](https://elevenlabs.io/) (如果你想让人工智能说话)
+- [PINECONE API key](https://www.pinecone.io/) (If you want Pinecone backed memory)
+- ElevenLabs Key (If you want the AI to speak)
 
-## 💾 安装方法
+## 💾 Installation
 
-要安装 Auto-GPT，请按照下列步骤操作：
+To install Auto-GPT, follow these steps:
 
-1. 确保满足上述所有**要求**，如果没有，请安装/获取它们。
+1. Make sure you have all the **requirements** above, if not, install/get them.
 
-以下命令需要在终端执行
+_The following commands should be executed in a CMD, Bash or Powershell window. To do this, go to a folder on your computer, click in the folder path at the top and type CMD, then press enter._
 
-2. 克隆存储库：对于此步骤，您需要安装 Git，但您可以通过单击此页面顶部的按钮来下载 zip 文件☝️
+2. Clone the repository:
+   For this step you need Git installed, but you can just download the zip file instead by clicking the button at the top of this page ☝️
 
 ```
-git clone git@github.com:kaqijiang/Auto-GPT-ZH.git
+git clone https://github.com/Torantulino/Auto-GPT.git
 ```
 
-3. 终端中 cd到项目目录
+3. Navigate to the project directory:
+   _(Type this into your CMD window, you're aiming to navigate the CMD window to the repository you just downloaded)_
 
 ```
 cd 'Auto-GPT'
 ```
 
-4. 终端中安装所需的依赖项
+4. Install the required dependencies:
+   _(Again, type this into your CMD window)_
 
 ```
 pip install -r requirements.txt
 ```
 
-5. 重命名`.env.template`为`.env`并填写您的`OPENAI_API_KEY`. 如果您打算使用语音模式，请`ELEVEN_LABS_API_KEY`也填写您的。
-  - 从以下网址获取您的 OpenAI API 密钥： https: [//platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys)。
-  - 从[https://elevenlabs.io](https://elevenlabs.io/)获取您的 ElevenLabs API 密钥。您可以使用网站上的“个人资料”选项卡查看您的 xi-api-key。
+5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+  - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then:
+    - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all of the deployment ids for the relevant models in the `azure_model_map` section:
+      - `fast_llm_model_deployment_id` - your gpt-3.5-turbo or gpt-4 deployment id
+      - `smart_llm_model_deployment_id` - your gpt-4 deployment id
+      - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment id
+    - Please specify all of these values as double quoted strings
+    - details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
 
-## 🔧 用法
+## 🔧 Usage
 
-1. 在终端中运行 `main.py` 
-
-```
-python scripts/main.py
-```
-
-2. 在 AUTO-GPT 的每个操作之后，键入“NEXT COMMAND”以授权它们继续。
-3. 要退出程序，请键入“exit”并按 Enter。
-
-4. 或者指定方式运行
-
-```
-python scripts/main.py --gpt3only #使用GPT3 API方式运行
-```
-
-### 日志
-
-您将在文件夹中找到活动和错误日志`./output/logs`
-
-输出调试日志：
+1. Run the `autogpt` Python module in your terminal:
+   _(Type this into your CMD window)_
 
 ```
-python scripts/main.py --debug
+python -m autogpt
 ```
 
-## 🗣️ 语音模式
+2. After each of action, enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter additional feedback for the AI.
 
-使用它来将 TTS 用于 Auto-GPT
+
+### Logs
+
+You will find activity and error logs in the folder `./output/logs`
+
+To output debug logs:
 
 ```
-python scripts/main.py --speak
+python -m autogpt --debug
 ```
 
-## 🔍 谷歌 API 密钥配置
+### Docker
 
-此部分是可选的，如果您在运行谷歌搜索时遇到错误 429 问题，请使用官方谷歌 API。要使用该`google_official_search`命令，您需要在环境变量中设置 Google API 密钥。
+You can also build this into a docker image and run it:
 
-1. 转到[谷歌云控制台](https://console.cloud.google.com/)。
-2. 如果您还没有帐户，请创建一个并登录。
-3. 通过单击页面顶部的“选择项目”下拉菜单并单击“新建项目”来创建一个新项目。给它起个名字，然后单击“创建”。
-4. 转到[API 和服务仪表板](https://console.cloud.google.com/apis/dashboard)并单击“启用 API 和服务”。搜索“自定义搜索 API”并单击它，然后单击“启用”。
-5. 转到[凭据](https://console.cloud.google.com/apis/credentials)页面并单击“创建凭据”。选择“API 密钥”。
-6. 复制 API 密钥并将其设置为在您的计算机上命名的环境变量`GOOGLE_API_KEY`。请参阅下面的设置环境变量。
-7. 转到[自定义搜索引擎](https://cse.google.com/cse/all)页面并单击“添加”。
-8. 按照提示设置搜索引擎。您可以选择搜索整个网络或特定站点。
-9. 创建搜索引擎后，单击“控制面板”，然后单击“基本”。复制“搜索引擎 ID”并将其设置为`CUSTOM_SEARCH_ENGINE_ID`在您的计算机上命名的环境变量。请参阅下面的设置环境变量。
+```
+docker build -t autogpt .
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt
+```
 
-*请记住，您的每日免费自定义搜索配额最多只允许 100 次搜索。要增加此限制，您需要为项目分配一个计费帐户，以从每天多达 10,000 次搜索中获利。*
+You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
+```
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt --gpt3only --continuous
+```
+### Command Line Arguments
+Here are some common arguments you can use when running Auto-GPT:
+> Replace anything in angled brackets (<>) to a value you want to specify
+* `python scripts/main.py --help` to see a list of all available command line arguments.
+* `python scripts/main.py --ai-settings <filename>` to run Auto-GPT with a different AI Settings file.
+* `python scripts/main.py --use-memory  <memory-backend>` to specify one of 3 memory backends: `local`, `redis`, `pinecone` or 'no_memory'.
 
-### 设置环境变量
+> **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python scripts/main.py --help` for more information
 
-对于 Windows 用户：
+## 🗣️ Speech Mode
+
+Use this to use TTS for Auto-GPT
+
+```
+python -m autogpt --speak
+```
+
+## 🔍 Google API Keys Configuration
+
+This section is optional, use the official google api if you are having issues with error 429 when running a google search.
+To use the `google_official_search` command, you need to set up your Google API keys in your environment variables.
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. If you don't already have an account, create one and log in.
+3. Create a new project by clicking on the "Select a Project" dropdown at the top of the page and clicking "New Project". Give it a name and click "Create".
+4. Go to the [APIs & Services Dashboard](https://console.cloud.google.com/apis/dashboard) and click "Enable APIs and Services". Search for "Custom Search API" and click on it, then click "Enable".
+5. Go to the [Credentials](https://console.cloud.google.com/apis/credentials) page and click "Create Credentials". Choose "API Key".
+6. Copy the API key and set it as an environment variable named `GOOGLE_API_KEY` on your machine. See setting up environment variables below.
+7. [Enable](https://console.developers.google.com/apis/api/customsearch.googleapis.com) the Custom Search API on your project. (Might need to wait few minutes to propagate)
+8. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page and click "Add".
+9. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
+10. Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
+
+_Remember that your free daily custom search quota allows only up to 100 searches. To increase this limit, you need to assign a billing account to the project to profit from up to 10K daily searches._
+
+### Setting up environment variables
+
+For Windows Users:
 
 ```
 setx GOOGLE_API_KEY "YOUR_GOOGLE_API_KEY"
@@ -158,7 +201,7 @@ setx CUSTOM_SEARCH_ENGINE_ID "YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
-对于 macOS 和 Linux 用户：
+For macOS and Linux users:
 
 ```
 export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
@@ -166,93 +209,232 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
-## 🌲 Pinecone API 密钥设置
+## Redis Setup
 
-Pinecone 支持存储大量基于向量的内存，允许在任何给定时间只为代理加载相关内存。
+Install docker desktop.
 
-1. 如果您还没有帐户，请前往[pinecone并创建一个帐户。](https://app.pinecone.io/)
-2. 选择`Starter`计划以避免被收费。
-3. 在左侧边栏的默认项目下找到您的 API 密钥和区域。
+Run:
 
-### 设置环境变量
+```
+docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+```
 
-只需在文件中设置它们`.env`。
+See https://hub.docker.com/r/redis/redis-stack-server for setting a password and additional configuration.
 
-或者，您可以从命令行设置它们（高级）：
+Set the following environment variables:
 
-对于 Windows 用户：
+```
+MEMORY_BACKEND=redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+```
+
+Note that this is not intended to be run facing the internet and is not secure, do not expose redis to the internet without a password or at all really.
+
+You can optionally set
+
+```
+WIPE_REDIS_ON_START=False
+```
+
+To persist memory stored in Redis.
+
+You can specify the memory index for redis using the following:
+
+```
+MEMORY_INDEX=whatever
+```
+
+## 🌲 Pinecone API Key Setup
+
+Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
+
+1. Go to [pinecone](https://app.pinecone.io/) and make an account if you don't already have one.
+2. Choose the `Starter` plan to avoid being charged.
+3. Find your API key and region under the default project in the left sidebar.
+
+### Setting up environment variables
+
+In the `.env` file set:
+- `PINECONE_API_KEY`
+- `PINECONE_ENV` (something like: us-east4-gcp)
+- `MEMORY_BACKEND=pinecone`
+
+Alternatively, you can set them from the command line (advanced):
+
+For Windows Users:
 
 ```
 setx PINECONE_API_KEY "YOUR_PINECONE_API_KEY"
 setx PINECONE_ENV "Your pinecone region" # something like: us-east4-gcp
+setx MEMORY_BACKEND "pinecone"
 ```
 
-对于 macOS 和 Linux 用户：
+For macOS and Linux users:
 
 ```
 export PINECONE_API_KEY="YOUR_PINECONE_API_KEY"
 export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
+export MEMORY_BACKEND="pinecone"
 ```
 
-## 设置缓存类型
+## Setting Your Cache Type
 
-默认情况下，Auto-GPT 将使用 LocalCache 而不是 Redis 或 Pinecone。
+By default Auto-GPT is going to use LocalCache instead of redis or Pinecone.
 
-要切换到任何一个，请将`MEMORY_BACKEND`env 变量更改为您想要的值：
+To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
 
-`local`（默认）使用本地 JSON 缓存文件 `pinecone`使用您在 ENV 设置中配置的 Pinecone.io 帐户 `redis`将使用您配置的 redis 缓存
+`local` (default) uses a local JSON cache file
+`pinecone` uses the Pinecone.io account you configured in your ENV settings
+`redis` will use the redis cache that you configured
 
-## 查看内存使用情况
+## View Memory Usage
 
-1. ## 连续模式⚠️
+1. View memory usage by using the `--debug` flag :)
 
-   **无需**用户授权即可 100% 自动化地运行 AI 。不推荐连续模式。它具有潜在危险，可能会导致您的 AI 永远运行或执行您通常不会授权的操作。使用风险自负。
 
-   1. `main.py`在终端中运行Python 脚本：
-
-   ```
-   python scripts/main.py --continuous
-   ```
-
-   2.要退出程序，请按 Ctrl + C
-
-## GPT3.5 ONLY 模式
-
-如果您无权访问 GPT4 api，此模式将允许您使用 Auto-GPT！
+## 🧠 Memory pre-seeding
 
 ```
-python scripts/main.py --gpt3only
+# python scripts/data_ingestion.py -h 
+usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
+
+Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
+
+options:
+  -h, --help               show this help message and exit
+  --file FILE              The file to ingest.
+  --dir DIR                The directory containing the files to ingest.
+  --init                   Init the memory and wipe its content (default: False)
+  --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
+  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000
+
+# python scripts/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
 ```
 
-建议将虚拟机用于需要高度安全措施的任务，以防止对主计算机的系统和数据造成任何潜在危害。
+This script located at scripts/data_ingestion.py, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
 
-## 🖼 图像生成
+Memory pre-seeding is a technique that involves ingesting relevant documents or data into the AI's memory so that it can use this information to generate more informed and accurate responses.
 
-默认情况下，Auto-GPT 使用 DALL-e 进行图像生成。要使用 Stable Diffusion，需要一个[HuggingFace API 令牌。](https://huggingface.co/settings/tokens)
+To pre-seed the memory, the content of each document is split into chunks of a specified maximum length with a specified overlap between chunks, and then each chunk is added to the memory backend set in the .env file. When the AI is prompted to recall information, it can then access those pre-seeded memories to generate more informed and accurate responses.
 
-获得令牌后，将这些变量设置为`.env`：
+This technique is particularly useful when working with large amounts of data or when there is specific information that the AI needs to be able to access quickly. 
+By pre-seeding the memory, the AI can retrieve and use this information more efficiently, saving time, API call and improving the accuracy of its responses. 
+
+You could for example download the documentation of an API, a Github repository, etc. and ingest it into memory before running Auto-GPT. 
+
+⚠️ If you use Redis as your memory, make sure to run Auto-GPT with the WIPE_REDIS_ON_START set to False in your .env file.
+
+⚠️For other memory backend, we currently forcefully wipe the memory when starting Auto-GPT. To ingest data with those memory backend, you can call the data_ingestion.py script anytime during an Auto-GPT run. 
+
+Memories will be available to the AI immediately as they are ingested, even if ingested while Auto-GPT is running.
+
+In the example above, the script initializes the memory, ingests all files within the seed_data directory into memory with an overlap between chunks of 200 and a maximum length of each chunk of 4000.
+Note that you can also use the --file argument to ingest a single file into memory and that the script will only ingest files within the auto_gpt_workspace directory.
+
+You can adjust the max_length and overlap parameters to fine-tune the way the docuents are presented to the AI when it "recall" that memory:
+
+- Adjusting the overlap value allows the AI to access more contextual information from each chunk when recalling information, but will result in more chunks being created and therefore increase memory backend usage and OpenAI API requests.
+- Reducing the max_length value will create more chunks, which can save prompt tokens by allowing for more message history in the context, but will also increase the number of chunks.
+- Increasing the max_length value will provide the AI with more contextual information from each chunk, reducing the number of chunks created and saving on OpenAI API requests. However, this may also use more prompt tokens and decrease the overall context available to the AI.
+
+## 💀 Continuous Mode ⚠️
+
+Run the AI **without** user authorisation, 100% automated.
+Continuous mode is not recommended.
+It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
+Use at your own risk.
+
+1. Run the `autogpt` python module in your terminal:
+
+```
+python -m autogpt --speak --continuous
+
+```
+
+2. To exit the program, press Ctrl + C
+
+## GPT3.5 ONLY Mode
+
+If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
+
+```
+python -m autogpt --speak --gpt3only
+```
+
+It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
+
+## 🖼 Image Generation
+
+By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [HuggingFace API Token](https://huggingface.co/settings/tokens) is required.
+
+Once you have a token, set these variables in your `.env`:
 
 ```
 IMAGE_PROVIDER=sd
 HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 ```
 
-## ⚠️ 限制
+## ⚠️ Limitations
 
-该实验旨在展示 GPT-4 的潜力，但存在一些局限性：
+This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
 
-1. 不是完善的应用程序或产品，只是一个实验
-2. 在复杂的真实业务场景中可能表现不佳。事实上，如果确实如此，请分享您的结果！
-3. 运行成本非常高，因此请使用 OpenAI 设置和监控您的 API 密钥限制！
+1. Not a polished application or product, just an experiment
+2. May not perform well in complex, real-world business scenarios. In fact, if it actually does, please share your results!
+3. Quite expensive to run, so set and monitor your API key limits with OpenAI!
 
-## 🛡 免责声明
+## 🛡 Disclaimer
 
-免责声明 Auto-GPT 这个项目是一个实验性应用程序，按“原样”提供，没有任何明示或暗示的保证。使用本软件，即表示您同意承担与其使用相关的所有风险，包括但不限于数据丢失、系统故障或可能出现的任何其他问题。
+Disclaimer
+This project, Auto-GPT, is an experimental application and is provided "as-is" without any warranty, express or implied. By using this software, you agree to assume all risks associated with its use, including but not limited to data loss, system failure, or any other issues that may arise.
 
-本项目的开发者和贡献者对因使用本软件而可能发生的任何损失、损害或其他后果不承担任何责任或义务。您对基于 Auto-GPT 提供的信息做出的任何决定和行动承担全部责任。
+The developers and contributors of this project do not accept any responsibility or liability for any losses, damages, or other consequences that may occur as a result of using this software. You are solely responsible for any decisions and actions taken based on the information provided by Auto-GPT.
 
-**请注意，由于使用代币，使用 GPT-4 语言模型可能会很昂贵。**通过使用此项目，您承认您有责任监控和管理您自己的代币使用情况和相关费用。强烈建议定期检查您的 OpenAI API 使用情况并设置任何必要的限制或警报以防止意外收费。
+**Please note that the use of the GPT-4 language model can be expensive due to its token usage.** By utilizing this project, you acknowledge that you are responsible for monitoring and managing your own token usage and the associated costs. It is highly recommended to check your OpenAI API usage regularly and set up any necessary limits or alerts to prevent unexpected charges.
 
-作为一项自主实验，Auto-GPT 可能会生成不符合现实世界商业惯例或法律要求的内容或采取的行动。您有责任确保基于此软件的输出做出的任何行动或决定符合所有适用的法律、法规和道德标准。本项目的开发者和贡献者对因使用本软件而产生的任何后果不承担任何责任。
+As an autonomous experiment, Auto-GPT may generate content or take actions that are not in line with real-world business practices or legal requirements. It is your responsibility to ensure that any actions or decisions made based on the output of this software comply with all applicable laws, regulations, and ethical standards. The developers and contributors of this project shall not be held responsible for any consequences arising from the use of this software.
 
-通过使用 Auto-GPT，您同意就任何和所有索赔、损害、损失、责任、成本和费用（包括合理的律师费）对开发人员、贡献者和任何关联方进行赔偿、辩护并使其免受损害因您使用本软件或您违反这些条款而引起的。
+By using Auto-GPT, you agree to indemnify, defend, and hold harmless the developers, contributors, and any affiliated parties from and against any and all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising from your use of this software or your violation of these terms.
+
+## 🐦 Connect with Us on Twitter
+
+Stay up-to-date with the latest news, updates, and insights about Auto-GPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
+
+- **Developer**: Follow [@siggravitas](https://twitter.com/siggravitas) for insights into the development process, project updates, and related topics from the creator of Entrepreneur-GPT.
+- **Entrepreneur-GPT**: Join the conversation with the AI itself by following [@En_GPT](https://twitter.com/En_GPT). Share your experiences, discuss the AI's outputs, and engage with the growing community of users.
+
+We look forward to connecting with you and hearing your thoughts, ideas, and experiences with Auto-GPT. Join us on Twitter and let's explore the future of AI together!
+
+<p align="center">
+  <a href="https://star-history.com/#Torantulino/auto-gpt&Date">
+    <img src="https://api.star-history.com/svg?repos=Torantulino/auto-gpt&type=Date" alt="Star History Chart">
+  </a>
+</p>
+
+## Run tests
+
+To run tests, run the following command:
+
+```
+python -m unittest discover tests
+```
+
+To run tests and see coverage, run the following command:
+
+```
+coverage run -m unittest discover tests
+```
+
+## Run linter
+
+This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. We currently use the following rules: `E303,W293,W291,W292,E305,E231,E302`. See the [flake8 rules](https://www.flake8rules.com/) for more information.
+
+To run the linter, run the following command:
+
+```
+flake8 autogpt/ tests/
+
+# Or, if you want to run flake8 with the same configuration as the CI:
+flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
+```
