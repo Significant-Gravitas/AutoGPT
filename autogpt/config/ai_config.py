@@ -1,8 +1,10 @@
+# sourcery skip: do-not-use-staticmethod
+"""
+A module that contains the AIConfig class object that contains the configuration
+"""
 import os
-
+from typing import List, Optional, Type
 import yaml
-
-from autogpt.prompt import get_prompt
 
 
 class AIConfig:
@@ -16,7 +18,7 @@ class AIConfig:
     """
 
     def __init__(
-        self, ai_name: str = "", ai_role: str = "", ai_goals: list = []
+        self, ai_name: str = "", ai_role: str = "", ai_goals: Optional[List] = None
     ) -> None:
         """
         Initialize a class instance
@@ -28,7 +30,8 @@ class AIConfig:
         Returns:
             None
         """
-
+        if ai_goals is None:
+            ai_goals = []
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
@@ -36,15 +39,16 @@ class AIConfig:
     # Soon this will go in a folder where it remembers more stuff about the run(s)
     SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "ai_settings.yaml")
 
-    @classmethod
-    def load(cls: object, config_file: str = SAVE_FILE) -> object:
+    @staticmethod
+    def load(config_file: str = SAVE_FILE) -> "AIConfig":
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from yaml file if yaml file exists,
+        Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from
+          yaml file if yaml file exists,
         else returns class with no parameters.
 
         Parameters:
-           cls (class object): An AIConfig Class object.
-           config_file (int): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
+           config_file (int): The path to the config yaml file.
+             DEFAULT: "../ai_settings.yaml"
 
         Returns:
             cls (object): An instance of given cls object
@@ -59,15 +63,16 @@ class AIConfig:
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
-
-        return cls(ai_name, ai_role, ai_goals)
+        # type: Type[AIConfig]
+        return AIConfig(ai_name, ai_role, ai_goals)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
         Parameters:
-            config_file(str): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
+            config_file(str): The path to the config yaml file.
+              DEFAULT: "../ai_settings.yaml"
 
         Returns:
             None
@@ -89,10 +94,18 @@ class AIConfig:
             None
 
         Returns:
-            full_prompt (str): A string containing the initial prompt for the user including the ai_name, ai_role and ai_goals.
+            full_prompt (str): A string containing the initial prompt for the user
+              including the ai_name, ai_role and ai_goals.
         """
 
-        prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+        prompt_start = (
+            "Your decisions must always be made independently without"
+            "seeking user assistance. Play to your strengths as an LLM and pursue"
+            " simple strategies with no legal complications."
+            ""
+        )
+
+        from autogpt.prompt import get_prompt
 
         # Construct full prompt
         full_prompt = (
