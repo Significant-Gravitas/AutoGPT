@@ -335,7 +335,7 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 ## 🧠 Memory pre-seeding
 
 ```bash
-# python scripts/data_ingestion.py -h 
+# python data_ingestion.py -h 
 usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
 
 Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
@@ -348,10 +348,10 @@ options:
   --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
   --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000
 
-# python scripts/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
+# python data_ingestion.py --dir <seed_data> --init --overlap 200 --max_length 1000
 ```
 
-This script located at `scripts/data_ingestion.py`, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
+This script located at `data_ingestion.py`, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
 
 Memory pre-seeding is a technique that involves ingesting relevant documents or data into the AI's memory so that it can use this information to generate more informed and accurate responses.
 
@@ -368,7 +368,7 @@ You could for example download the documentation of an API, a GitHub repository,
 
 Memories will be available to the AI immediately as they are ingested, even if ingested while Auto-GPT is running.
 
-In the example above, the script initializes the memory, ingests all files within the `/seed_data` directory into memory with an overlap between chunks of 200 and a maximum length of each chunk of 4000.
+In the example above, the script initializes the memory, ingests all files within the `<seed_data>` directory into memory with an overlap between chunks of 200 and a maximum length of each chunk of 4000.
 Note that you can also use the `--file` argument to ingest a single file into memory and that the script will only ingest files within the `/auto_gpt_workspace` directory.
 
 You can adjust the `max_length` and overlap parameters to fine-tune the way the docuents are presented to the AI when it "recall" that memory:
