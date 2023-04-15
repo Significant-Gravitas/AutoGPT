@@ -263,11 +263,8 @@ def message_agent(key: str, message: str) -> str:
     # Check if the key is a valid integer
     if is_valid_int(key):
         agent_response = AGENT_MANAGER.message_agent(int(key), message)
-    # Check if the key is a valid string
-    elif isinstance(key, str):
-        agent_response = AGENT_MANAGER.message_agent(key, message)
     else:
-        return "Invalid key, must be an integer or a string."
+        return "Invalid key, must be an integer."
 
     # Speak response
     if CFG.speak_mode:
@@ -279,9 +276,9 @@ def list_agents():
     """List all agents
 
     Returns:
-        list: A list of all agents
+        str: A list of all agents
     """
-    return AGENT_MANAGER.list_agents()
+    return "List of agents:\n" + "\n".join([str(x[0]) + ": " + x[1] for x in AGENT_MANAGER.list_agents()])
 
 
 def delete_agent(key: str) -> str:
