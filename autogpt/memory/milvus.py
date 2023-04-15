@@ -6,7 +6,7 @@ from pymilvus import (
     Collection,
 )
 
-from memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 
 class MilvusMemory(MemoryProviderSingleton):
@@ -28,15 +28,16 @@ class MilvusMemory(MemoryProviderSingleton):
         ]
 
         # create collection if not exist and load it.
-        schema = CollectionSchema(fields, "auto-gpt memory storage")
-        self.collection = Collection(cfg.milvus_collection, schema)
+        self.milvus_collection = cfg.milvus_collection
+        self.schema = CollectionSchema(fields, "auto-gpt memory storage")
+        self.collection = Collection(self.milvus_collection, self.schema)
         # create index if not exist.
-        if not self.collection.has_index(index_name="embeddings"):
+        if not self.collection.has_index():
             self.collection.release()
             self.collection.create_index("embeddings", {
-                "index_type": "IVF_FLAT",
                 "metric_type": "IP",
-                "params": {"nlist": 128},
+                "index_type": "HNSW",
+                "params": {"M": 8, "efConstruction": 64},
             }, index_name="embeddings")
         self.collection.load()
 
@@ -65,6 +66,13 @@ class MilvusMemory(MemoryProviderSingleton):
         """ Drop the index in memory.
         """
         self.collection.drop()
+        self.collection = Collection(self.milvus_collection, self.schema)
+        self.collection.create_index("embeddings", {
+            "metric_type": "IP",
+            "index_type": "HNSW",
+            "params": {"M": 8, "efConstruction": 64},
+        }, index_name="embeddings")
+        self.collection.load()
         return "Obliviated"
 
     def get_relevant(self, data, num_relevant=5):
