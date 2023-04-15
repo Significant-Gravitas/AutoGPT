@@ -1,0 +1,11 @@
+[project]
+name = "auto-gpt"
+version = "0.1.0"
+description = "A GPT based ai agent"
+readme = "README.md"
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = ""
