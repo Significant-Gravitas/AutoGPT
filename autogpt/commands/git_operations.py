@@ -1,5 +1,5 @@
 import git
-from autogpt.config import Config
+from config import Config
 
 cfg = Config()
 
