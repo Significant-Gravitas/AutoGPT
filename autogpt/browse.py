@@ -1,7 +1,16 @@
+import logging
+from abc import ABC, abstractmethod
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
 
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
@@ -9,10 +18,7 @@ from autogpt.memory import get_memory
 
 cfg = Config()
 memory = get_memory(cfg)
-
-session = requests.Session()
-session.headers.update({"User-Agent": cfg.user_agent})
-
+_browser_instance = None
 
 # Function to check if the URL is valid
 def is_valid_url(url):
@@ -39,44 +45,28 @@ def check_local_file_access(url):
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
 
-def get_response(url, timeout=10):
-    try:
-        # Restrict access to local files
-        if check_local_file_access(url):
-            raise ValueError("Access to local files is restricted")
+def check_and_sanitize_url(url):
+    # Restrict access to local files
+    if check_local_file_access(url):
+        raise ValueError("Access to local files is restricted")
 
-        # Most basic check if the URL is valid:
-        if not url.startswith("http://") and not url.startswith("https://"):
-            raise ValueError("Invalid URL format")
+    # Most basic check if the URL is valid:
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise ValueError("Invalid URL format")
 
-        sanitized_url = sanitize_url(url)
-
-        response = session.get(sanitized_url, timeout=timeout)
-
-        # Check if the response contains an HTTP error
-        if response.status_code >= 400:
-            return None, "Error: HTTP " + str(response.status_code) + " error"
-
-        return response, None
-    except ValueError as ve:
-        # Handle invalid URL format
-        return None, "Error: " + str(ve)
-
-    except requests.exceptions.RequestException as re:
-        # Handle exceptions related to the HTTP request
-        #  (e.g., connection errors, timeouts, etc.)
-        return None, "Error: " + str(re)
+    sanitized_url = sanitize_url(url)
+    return sanitized_url
 
 
 def scrape_text(url):
     """Scrape text from a webpage"""
-    response, error_message = get_response(url)
-    if error_message:
-        return error_message
-    if not response:
-        return "Error: Could not get response"
+    browser = get_browser_instance()
+    try:
+        page_source = browser.get_page_source(url)
+    except ValueError as ve:
+        return str(ve)
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    soup = BeautifulSoup(page_source, "html.parser")
 
     for script in soup(["script", "style"]):
         script.extract()
@@ -107,12 +97,13 @@ def format_hyperlinks(hyperlinks):
 
 def scrape_links(url):
     """Scrape links from a webpage"""
-    response, error_message = get_response(url)
-    if error_message:
-        return error_message
-    if not response:
-        return "Error: Could not get response"
-    soup = BeautifulSoup(response.text, "html.parser")
+    browser = get_browser_instance()
+    try:
+        page_source = browser.get_page_source(url)
+    except ValueError as ve:
+        return str(ve)
+
+    soup = BeautifulSoup(page_source, "html.parser")
 
     for script in soup(["script", "style"]):
         script.extract()
@@ -196,3 +187,113 @@ def summarize_text(url, text, question):
     )
 
     return final_summary
+
+
+def _initialize_requests_session():
+    session = requests.Session()
+    session.headers.update({"User-Agent": cfg.user_agent})
+    return session
+
+
+def get_browser_instance():
+    # Singleton derived from "BrowserBase" class
+    global _browser_instance
+
+    if _browser_instance is not None:
+        return _browser_instance
+    else:
+        browser_cls = {'HeadlessBarebones': BrowserBareBonesHeadless,
+                       'SeleniumChrome': BrowserSeleniumChrome,
+                       }
+        assert cfg.browser_automation in list(browser_cls.keys()), \
+            'ERROR: Unknown browser setting for BROWSER_AUTOMATION in .env config file.'
+        cls = browser_cls[cfg.browser_automation]
+        _browser_instance = cls()
+        return _browser_instance
+
+
+class BrowserBase(ABC):
+
+    @abstractmethod
+    def get_page_source(self, url):
+        # Return the body of the HTML page, in a format that can be digested by BeautifulSoup's html.parser
+        # If an error was encountered, then raise an ValueError exception for simplicity.
+        pass
+
+
+class BrowserBareBonesHeadless(BrowserBase):
+    """
+    Advantage: headless, so runs on servers too. Does not need Chrome installed. Faster
+    Disadvantage: May miss some content, because the Javascript parts of the website are not executed.
+    """
+    session = _initialize_requests_session()
+
+    def __init__(self):
+        pass
+
+    def get_page_source(self, url):
+        """Scrape text from a webpage"""
+        response, error_message = self.get_response(url)
+        if error_message:
+            raise ValueError(error_message)
+
+        if not response:
+            raise ValueError("Error: Could not get response")
+
+        return response.text
+
+    def get_response(self, url, timeout=10):
+        try:
+
+            sanitized_url = check_and_sanitize_url(url)
+            response = BrowserBareBonesHeadless.session.get(sanitized_url, timeout=timeout)
+
+            # Check if the response contains an HTTP error
+            if response.status_code >= 400:
+                return None, "Error: HTTP " + str(response.status_code) + " error"
+
+            return response, None
+        except ValueError as ve:
+            # Handle invalid URL format
+            return None, "Error: " + str(ve)
+
+        except requests.exceptions.RequestException as re:
+            # Handle exceptions related to the HTTP request
+            #  (e.g., connection errors, timeouts, etc.)
+            return None, "Error: " + str(re)
+
+
+class BrowserSeleniumChrome(BrowserBase):
+    """
+    Advantage: will load a website with Javascript running, as many modern websites need this for proper content
+    Disadvantage: can be slower than the BrowserBareBonesHeadless
+    """
+    file_dir = Path(__file__).parent
+
+    def __init__(self):
+        logging.getLogger("selenium").setLevel(logging.CRITICAL)
+        self.options = Options()
+        self.options.add_argument(f"user-agent={cfg.user_agent}")
+
+    def get_page_source(self, url):
+        # TODO: re-use a session in Selenium, instead of starting a new one every time
+        sanitized_url = check_and_sanitize_url(url)
+        with webdriver.Chrome(executable_path=ChromeDriverManager().install(),
+                              options=self.options) as driver:
+            driver.get(sanitized_url)
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            # Get the HTML content directly from the browser's DOM
+            page_source = driver.execute_script("return document.body.outerHTML;")
+
+            # Add graphical overlay
+            self.add_header(driver)
+
+            # Close browser
+            driver.quit()
+
+        return page_source
+
+    def add_header(self, driver):
+        driver.execute_script(open(f"{self.file_dir}/js/overlay.js", "r").read())

@@ -17,8 +17,6 @@ from autogpt.file_operations import (
 )
 from autogpt.memory import get_memory
 from autogpt.speak import say_text
-from autogpt.web import browse_website
-
 
 cfg = Config()
 
@@ -204,6 +202,21 @@ def google_official_search(query, num_results=8):
 
     # Return the list of search result URLs
     return search_results_links
+
+
+def browse_website(url, question):
+    """Browse a website and return the summary and links"""
+
+    summary = get_text_summary(url, question)
+    links = get_hyperlinks(url)
+
+    # Limit links to 5
+    if len(links) > 5:
+        links = links[:5]
+
+    result = f"""Website Content Summary: {summary}\n\nLinks: {links}"""
+
+    return result
 
 
 def get_text_summary(url, question):
