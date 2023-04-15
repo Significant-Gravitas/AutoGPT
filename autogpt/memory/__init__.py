@@ -6,14 +6,6 @@ from autogpt.memory.no_memory import NoMemory
 supported_memory = ["local", "no_memory"]
 
 try:
-    from autogpt.memory.sqlitemem import SqliteMemory
-
-    supported_memory.append("sqlite")
-except ImportError:
-    print("SQLite not installed. Skipping import.")
-    SqliteMemory = None
-
-try:
     from autogpt.memory.redismem import RedisMemory
 
     supported_memory.append("redis")
@@ -34,6 +26,14 @@ try:
 except ImportError:
     print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
+
+try:
+    from autogpt.memory.sqlitemem import SqliteMemory
+
+    supported_memory.append("sqlite")
+except ImportError:
+    print("SQLite not installed. Skipping import.")
+    SqliteMemory = None
 
 
 def get_memory(cfg, init=False):
@@ -86,4 +86,4 @@ def get_supported_memory_backends():
     return supported_memory
 
 
-__all__ = ["get_memory", "LocalCache", "RedisMemory", "PineconeMemory", "NoMemory"]
+__all__ = ["get_memory", "LocalCache", "SqliteMemory", "MilvusMemory", "RedisMemory", "PineconeMemory", "NoMemory"]
