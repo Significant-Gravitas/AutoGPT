@@ -19,6 +19,34 @@ from typing import List, Tuple, Union
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
 
+browser = None
+
+def get_browser_instance() -> WebDriver:
+    """Create or retrieve the browser instance."""
+    global browser
+    if not browser:
+        logging.getLogger("selenium").setLevel(logging.CRITICAL)
+
+        options_available = {'chrome': ChromeOptions, 'safari': SafariOptions, 'firefox': FirefoxOptions}
+        options = options_available[CFG.selenium_web_browser]()
+        options.add_argument(
+            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
+        )
+        options.add_argument("--headless")  # Add headless argument to hide the browser
+
+        if CFG.selenium_web_browser == "firefox":
+            browser = webdriver.Firefox(
+                executable_path=GeckoDriverManager().install(), options=options
+            )
+        elif CFG.selenium_web_browser == "safari":
+            browser = webdriver.Safari(options=options)
+        else:
+            browser = webdriver.Chrome(
+                executable_path=ChromeDriverManager().install(), options=options
+            )
+
+    return browser
+
 
 def browse_website(url: str, question: str) -> Tuple[str, WebDriver]:
     """Browse a website and return the answer and links to the user
@@ -38,7 +66,7 @@ def browse_website(url: str, question: str) -> Tuple[str, WebDriver]:
     # Limit links to 5
     if len(links) > 5:
         links = links[:5]
-    close_browser(driver)
+
     return f"Answer gathered from website: {summary_text} \n \n Links: {links}", driver
 
 
@@ -51,27 +79,7 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
     Returns:
         Tuple[WebDriver, str]: The webdriver and the text scraped from the website
     """
-    logging.getLogger("selenium").setLevel(logging.CRITICAL)
-
-    options_available = {'chrome': ChromeOptions, 'safari': SafariOptions, 'firefox': FirefoxOptions}
-
-    options = options_available[CFG.selenium_web_browser]()
-    options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
-    )
-
-    if CFG.selenium_web_browser == "firefox":
-        driver = webdriver.Firefox(
-            executable_path=GeckoDriverManager().install(), options=options
-        )
-    elif CFG.selenium_web_browser == "safari":
-        # Requires a bit more setup on the users end
-        # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
-        driver = webdriver.Safari(options=options)
-    else:
-        driver = webdriver.Chrome(
-            executable_path=ChromeDriverManager().install(), options=options
-        )
+    driver = get_browser_instance()
     driver.get(url)
 
     WebDriverWait(driver, 10).until(
@@ -158,3 +166,18 @@ def add_header(driver: WebDriver) -> None:
         None
     """
     driver.execute_script(open(f"{FILE_DIR}/js/overlay.js", "r").read())
+
+
+def close_browser(driver: WebDriver) -> None:
+    """Close the browser
+
+    Args:
+        driver (WebDriver): The webdriver to close
+
+    Returns:
+        None
+    """
+    global browser
+    if browser:
+        browser.quit()
+        browser = None
