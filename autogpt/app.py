@@ -276,9 +276,9 @@ def list_agents():
     """List all agents
 
     Returns:
-        list: A list of all agents
+        str: A list of all agents
     """
-    return AGENT_MANAGER.list_agents()
+    return "List of agents:\n" + "\n".join([str(x[0]) + ": " + x[1] for x in AGENT_MANAGER.list_agents()])
 
 
 def delete_agent(key: str) -> str:
