@@ -88,6 +88,7 @@ class Agent:
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 self.user_input = ""
+                logger.typewriter_log("\n") # First log new-line so user can differentiate sections better in console
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
@@ -138,6 +139,7 @@ class Agent:
                     print("Exiting...", flush=True)
                     break
             else:
+                logger.typewriter_log("\n") # First log new-line so user can differentiate sections better in console
                 # Print command
                 logger.typewriter_log(
                     "NEXT ACTION: ",
