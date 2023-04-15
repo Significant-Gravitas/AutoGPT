@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def send_tweet(tweet_text):
- 
     consumer_key = os.environ.get("TW_CONSUMER_KEY")
     consumer_secret= os.environ.get("TW_CONSUMER_SECRET")
     access_token= os.environ.get("TW_ACCESS_TOKEN")
@@ -21,5 +20,5 @@ def send_tweet(tweet_text):
     try:
         api.update_status(tweet_text)
         print("Tweet sent successfully!")
-    except tweepy.TweepError as e:
+    except tweepy.TweepyException as e:
         print("Error sending tweet: {}".format(e.reason))
