@@ -136,6 +136,8 @@ def execute_command(command_name: str, arguments):
         elif command_name == "search_files":
             return search_files(arguments["directory"])
         elif command_name == "download_file":
+            if not CFG.allow_downloads:
+                return "Error: You do not have user authorization to download files locally."
             return download_file(arguments["url"], arguments["file"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
