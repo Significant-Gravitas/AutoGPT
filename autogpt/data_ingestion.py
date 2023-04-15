@@ -1,6 +1,8 @@
 import argparse
 import logging
-
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from autogpt.config import Config
 from autogpt.commands.file_operations import ingest_file, search_files
 from autogpt.memory import get_memory
