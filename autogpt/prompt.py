@@ -3,6 +3,7 @@ from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.logs import logger
 from autogpt.promptgenerator import PromptGenerator
+from autogpt.config import Config
 from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
@@ -17,6 +18,9 @@ def get_prompt() -> str:
     Returns:
         str: The generated prompt string.
     """
+
+    # Initialize the Config object
+    cfg = Config()
 
     # Initialize the PromptGenerator object
     prompt_generator = PromptGenerator()
@@ -73,15 +77,26 @@ def get_prompt() -> str:
             {"code": "<full_code_string>", "focus": "<list_of_focus_areas>"},
         ),
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
-        (
-            "Execute Shell Command, non-interactive commands only",
-            "execute_shell",
-            {"command_line": "<command_line>"},
-        ),
-        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
-        ("Do Nothing", "do_nothing", {}),
     ]
+
+    # Only add shell command to the prompt if the AI is allowed to execute it
+    if cfg.execute_local_commands:
+        commands.append(
+            (
+                "Execute Shell Command, non-interactive commands only",
+                "execute_shell",
+                {"command_line": "<command_line>"},
+            ),
+        )
+
+    # Add these command last.
+    commands.append(
+        ("Do Nothing", "do_nothing", {}),
+    )
+    commands.append(
+        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
+    )
 
     # Add commands to the PromptGenerator object
     for command_label, command_name, args in commands:
