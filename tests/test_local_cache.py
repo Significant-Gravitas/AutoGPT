@@ -1,6 +1,5 @@
 # sourcery skip: snake-case-functions
 """Tests for LocalCache class"""
-import unittest
 
 import orjson
 import pytest
