@@ -124,8 +124,8 @@ pip install -r requirements.txt
       - `smart_llm_model_deployment_id` - your gpt-4 deployment ID
       - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID
     - Please specify all of these values as double-quoted strings
-    > Replace string in angled brackets (<>) to your own ID
     ```yaml
+    # Replace string in angled brackets (<>) to your own ID
     azure_model_map:
       fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
       ...
@@ -323,9 +323,9 @@ By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
 
 To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
 
-`local` (default) uses a local JSON cache file
-`pinecone` uses the Pinecone.io account you configured in your ENV settings
-`redis` will use the redis cache that you configured
+* `local` (default) uses a local JSON cache file
+* `pinecone` uses the Pinecone.io account you configured in your ENV settings
+* `redis` will use the redis cache that you configured
 
 ## View Memory Usage
 
