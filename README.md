@@ -35,13 +35,16 @@ Your support is greatly appreciated
 ## Table of Contents
 
 - [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
-  - [Demo (30/03/2023):](#demo-30032023)
+    - [🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴](#----urgent-use-stable-not-master----)
+    - [Demo (30/03/2023):](#demo-30032023)
   - [Table of Contents](#table-of-contents)
   - [🚀 Features](#-features)
   - [📋 Requirements](#-requirements)
   - [💾 Installation](#-installation)
   - [🔧 Usage](#-usage)
     - [Logs](#logs)
+    - [Docker](#docker)
+    - [Command Line Arguments](#command-line-arguments)
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
@@ -50,7 +53,7 @@ Your support is greatly appreciated
     - [Setting up environment variables](#setting-up-environment-variables-1)
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
-  - [🧠 Memory pre-seeding](#memory-pre-seeding)
+  - [🧠 Memory pre-seeding](#-memory-pre-seeding)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#-image-generation)
@@ -333,7 +336,7 @@ Memories will be available to the AI immediately as they are ingested, even if i
 In the example above, the script initializes the memory, ingests all files within the seed_data directory into memory with an overlap between chunks of 200 and a maximum length of each chunk of 4000.
 Note that you can also use the --file argument to ingest a single file into memory and that the script will only ingest files within the auto_gpt_workspace directory.
 
-You can adjust the max_length and overlap parameters to fine-tune the way the docuents are presented to the AI when it "recall" that memory:
+You can adjust the max_length and overlap parameters to fine-tune the way the documents are presented to the AI when it "recall" that memory:
 
 - Adjusting the overlap value allows the AI to access more contextual information from each chunk when recalling information, but will result in more chunks being created and therefore increase memory backend usage and OpenAI API requests.
 - Reducing the max_length value will create more chunks, which can save prompt tokens by allowing for more message history in the context, but will also increase the number of chunks.
