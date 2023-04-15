@@ -22,7 +22,6 @@ class AzureCogServicesSpeech(VoiceBase):
         """
         cfg = Config()
         self._region = cfg.azure_cs_tts_region
-        self._url = cfg.azure_cs_tts_endpoint 
         default_voices = [ "en-US-JennyMultilingualNeural", "en-US-DavisNeural" ]
         default_style = [ "Default", "Default" ]
         self._headers = {
@@ -73,7 +72,7 @@ class AzureCogServicesSpeech(VoiceBase):
 
         if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
             audio_data = result.audio_data
-            with open("speech.mp3", "wb") as f:
+            with open("speech.mpeg", "wb") as f:
                 f.write(audio_data)
             playsound("speech.mpeg", True)
             os.remove("speech.mpeg")
