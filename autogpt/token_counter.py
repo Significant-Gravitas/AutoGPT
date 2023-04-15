@@ -24,7 +24,7 @@ def count_message_tokens(
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
-        warn("Warning: model not found. Using cl100k_base encoding.")
+        logger.warn("Warning: model not found. Using cl100k_base encoding.")
         encoding = get_encoding("cl100k_base")
     if model == "gpt-3.5-turbo":
         # !Note: gpt-3.5-turbo may change over time.
