@@ -49,8 +49,7 @@ async def start(update: Update, context: CallbackContext):
         else:
             main_started = True
             TelegramUtils.send_message("Auto-GPT is starting now!")
-            os.system("python3 ./main.py {}".format(" ".join(sys.argv[1:])))
-
+            os.system("python3 ./autogpt/__main__.py {}".format(" ".join(sys.argv[1:])))
 
 
 
