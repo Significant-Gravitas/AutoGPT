@@ -3,6 +3,7 @@ from config import Config
 
 cfg = Config()
 
+
 def clone_repository(repo_url, clone_path):
     """Clone a github repository locally"""
     split_url = repo_url.split("//")
