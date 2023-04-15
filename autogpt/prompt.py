@@ -79,7 +79,7 @@ def get_prompt() -> str:
             {"command_line": "<command_line>"},
         ),
         (
-            "Execute Shell Command Popen, non-interactive commands only", 
+            "Execute Shell Command Popen, non-interactive commands only",
             "execute_shell_popen",
             { "command_line": "<command_line>"}
         ),
