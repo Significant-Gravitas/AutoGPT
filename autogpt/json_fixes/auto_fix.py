@@ -2,6 +2,8 @@
 import json
 from autogpt.llm_utils import call_ai_function
 from autogpt.logs import logger
+from autogpt.config import Config
+cfg = Config()
 
 
 def fix_json(json_str: str, schema: str) -> str:
