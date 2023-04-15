@@ -1,7 +1,6 @@
 import pinecone
 from colorama import Fore, Style
 
-from autogpt.config import Config, Singleton
 from autogpt.logger import logger
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 

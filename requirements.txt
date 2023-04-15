@@ -16,6 +16,8 @@ redis
 chromadb
 orjson
 Pillow
+selenium
+webdriver-manager
 coverage
 flake8
 numpy
