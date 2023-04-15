@@ -15,8 +15,14 @@ pinecone-client==2.2.1
 redis
 orjson
 Pillow
+selenium
+webdriver-manager
 coverage
 flake8
 numpy
+pre-commit
+black
+sourcery
+isort
 SpeechRecognition
 python-telegram-bot
