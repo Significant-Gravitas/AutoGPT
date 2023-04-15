@@ -1,8 +1,9 @@
+"""Functions for counting the number of tokens in a message or string."""
 from typing import Dict, List
 
 import tiktoken
 
-from autogpt.logger import logger
+from autogpt.logs import logger
 
 
 def count_message_tokens(
@@ -12,13 +13,13 @@ def count_message_tokens(
     Returns the number of tokens used by a list of messages.
 
     Args:
-    messages (list): A list of messages, each of which is a dictionary
-        containing the role and content of the message.
-    model (str): The name of the model to use for tokenization.
-        Defaults to "gpt-3.5-turbo-0301".
+        messages (list): A list of messages, each of which is a dictionary
+            containing the role and content of the message.
+        model (str): The name of the model to use for tokenization.
+            Defaults to "gpt-3.5-turbo-0301".
 
     Returns:
-    int: The number of tokens used by the list of messages.
+        int: The number of tokens used by the list of messages.
     """
     try:
         encoding = tiktoken.encoding_for_model(model)
@@ -62,11 +63,11 @@ def count_string_tokens(string: str, model_name: str) -> int:
     Returns the number of tokens in a text string.
 
     Args:
-    string (str): The text string.
-    model_name (str): The name of the encoding to use. (e.g., "gpt-3.5-turbo")
+        string (str): The text string.
+        model_name (str): The name of the encoding to use. (e.g., "gpt-3.5-turbo")
 
     Returns:
-    int: The number of tokens in the text string.
+        int: The number of tokens in the text string.
     """
     encoding = tiktoken.encoding_for_model(model_name)
     return len(encoding.encode(string))
