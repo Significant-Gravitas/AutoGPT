@@ -161,6 +161,8 @@ We look forward to connecting with you and hearing your thoughts, ideas, and exp
 
 ## Run tests
 
+The tests are located in the `tests` directory. The tests should written using the [pytest](https://docs.pytest.org/en/7.2.x/index.html) module. Please use the [naming convention](https://docs.pytest.org/en/7.2.x/explanation/goodpractices.html#conventions-for-python-test-discovery) `test_*.py` for test files.
+
 To run all tests, run the following command:
 
 ```bash
