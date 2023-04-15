@@ -13,11 +13,11 @@ RUN chown appuser:appuser /home/appuser
 USER appuser
 
 # Copy the requirements.txt file and install the requirements
-COPY --chown=appuser:appuser requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+COPY --chown=appuser:appuser requirements-docker.txt .
+RUN pip install --no-cache-dir --user -r requirements-docker.txt
 
 # Copy the application files
-COPY --chown=appuser:appuser autogpt/ .
+COPY --chown=appuser:appuser autogpt/ ./autogpt
 
 # Set the entrypoint
 ENTRYPOINT ["python", "-m", "autogpt"]
