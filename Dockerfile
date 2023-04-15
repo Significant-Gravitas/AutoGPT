@@ -33,7 +33,6 @@ RUN poetry install --no-dev --no-interaction --no-ansi
 
 # Copy the application files
 COPY --chown=appuser:appuser autogpt/ ./autogpt/
->>>>>>> 3effaceb (Update poetry migration)
 
 # Switch to the non-root user
 USER appuser
