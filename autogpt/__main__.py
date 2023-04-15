@@ -459,7 +459,7 @@ class Agent:
             # Get command name and arguments
             try:
                 command_name, arguments = cmd.get_command(
-                    attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
+                    fix_and_parse_json(assistant_reply)
                 )
                 if cfg.speak_mode:
                     speak.say_text(f"I want to execute {command_name}")
