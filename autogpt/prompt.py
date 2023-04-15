@@ -84,16 +84,6 @@ def get_prompt() -> str:
             {"code": "<full_code_string>", "focus": "<list_of_focus_areas>"},
         ),
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
-        (
-            "Execute Shell Command, non-interactive commands only",
-            "execute_shell",
-            {"command_line": "<command_line>"},
-        ),
-        (
-            "Execute Shell Command Popen, non-interactive commands only",
-            "execute_shell_popen",
-            {"command_line": "<command_line>"}
-        ),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
     ]
@@ -105,6 +95,11 @@ def get_prompt() -> str:
                 "Execute Shell Command, non-interactive commands only",
                 "execute_shell",
                 {"command_line": "<command_line>"},
+            ),
+            (
+                "Execute Shell Command Popen, non-interactive commands only",
+                "execute_shell_popen",
+                {"command_line": "<command_line>"}
             ),
         )
 
