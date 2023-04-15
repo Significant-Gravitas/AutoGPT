@@ -117,7 +117,7 @@ pip install -r requirements.txt
 ```
 
 5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
-  - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+  - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then:
     - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all of the deployment ids for the relevant models in the `azure_model_map` section:
@@ -178,6 +178,17 @@ Use this to use TTS for Auto-GPT
 ```
 python -m autogpt --speak
 ```
+
+## OpenAI API Keys Configuration
+
+Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+
+To use OpenAI API key for Auto-GPT, you NEED to have billing set up (AKA paid account).
+
+You can set up paid account at https://platform.openai.com/account/billing/overview.
+
+![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./docs/imgs/openai-api-key-billing-paid-account.png)
+
 
 ## 🔍 Google API Keys Configuration
 
@@ -355,7 +366,7 @@ Memories will be available to the AI immediately as they are ingested, even if i
 In the example above, the script initializes the memory, ingests all files within the seed_data directory into memory with an overlap between chunks of 200 and a maximum length of each chunk of 4000.
 Note that you can also use the --file argument to ingest a single file into memory and that the script will only ingest files within the auto_gpt_workspace directory.
 
-You can adjust the max_length and overlap parameters to fine-tune the way the docuents are presented to the AI when it "recall" that memory:
+You can adjust the max_length and overlap parameters to fine-tune the way the documents are presented to the AI when it "recall" that memory:
 
 - Adjusting the overlap value allows the AI to access more contextual information from each chunk when recalling information, but will result in more chunks being created and therefore increase memory backend usage and OpenAI API requests.
 - Reducing the max_length value will create more chunks, which can save prompt tokens by allowing for more message history in the context, but will also increase the number of chunks.
@@ -389,7 +400,7 @@ It is recommended to use a virtual machine for tasks that require high security 
 
 ## 🖼 Image Generation
 
-By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [HuggingFace API Token](https://huggingface.co/settings/tokens) is required.
+By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [Hugging Face API Token](https://huggingface.co/settings/tokens) is required.
 
 Once you have a token, set these variables in your `.env`:
 

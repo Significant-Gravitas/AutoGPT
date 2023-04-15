@@ -25,6 +25,7 @@ class Config(metaclass=Singleton):
         self.speak_mode = False
         self.skip_reprompt = False
 
+        self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -84,7 +85,9 @@ class Config(metaclass=Singleton):
         self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
-        self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
+        self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
+        self.memory_embedder = os.getenv("MEMORY_EMBEDDER", 'ada')
+
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
