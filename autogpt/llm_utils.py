@@ -95,22 +95,19 @@ def create_chat_completion(
                 )
             break
         except RateLimitError:
-            if CFG.debug_mode:
-                print(
-                    Fore.RED + "Error: ",
-                    "API Rate Limit Reached. Waiting 20 seconds..." + Fore.RESET,
-                )
+            pass
         except APIError as e:
             if e.http_status == 502:
-                if CFG.debug_mode:
-                    print(
-                        Fore.RED + "Error: ",
-                        "API Bad gateway. Waiting 20 seconds..." + Fore.RESET,
-                    )
+                pass
             else:
                 raise
             if attempt == num_retries - 1:
                 raise
+        if CFG.debug_mode:
+            print(
+                Fore.RED + "Error: ",
+                f"API Bad gateway. Waiting {backoff} seconds..." + Fore.RESET,
+            )
         time.sleep(backoff)
     if response is None:
         raise RuntimeError("Failed to get response after 5 retries")
