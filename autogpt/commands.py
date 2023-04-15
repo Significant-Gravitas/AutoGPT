@@ -265,7 +265,7 @@ def message_agent(key, message):
 
 def list_agents():
     """List all agents"""
-    return list_agents()
+    return agents.list_agents()
 
 
 def delete_agent(key):
