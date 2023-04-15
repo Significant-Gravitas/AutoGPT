@@ -24,6 +24,7 @@ class Config(metaclass=Singleton):
         self.continuous_limit = 0
         self.speak_mode = False
         self.skip_reprompt = False
+        self.allow_downloads = False
 
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")

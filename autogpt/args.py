@@ -63,6 +63,12 @@ def parse_arguments() -> None:
         help="Specifies which ai_settings.yaml file to use, will also automatically"
         " skip the re-prompt.",
     )
+    parser.add_argument(
+        '--allow-downloads',
+        action='store_true',
+        dest='allow_downloads',
+        help='Dangerous: Allows Auto-GPT to download files natively.'
+    )
     args = parser.parse_args()
 
     if args.debug:
@@ -135,3 +141,12 @@ def parse_arguments() -> None:
 
     if args.browser_name:
         CFG.selenium_web_browser = args.browser_name
+
+    if args.allow_downloads:
+        logger.typewriter_log("Native Downloading:", Fore.GREEN, "ENABLED")
+        logger.typewriter_log("WARNING: ", Fore.YELLOW,
+                              f"{Back.LIGHTYELLOW_EX}Auto-GPT will now be able to download and save files to your machine.{Back.RESET} " +
+                              "It is recommended that you monitor any files it downloads carefully.")
+        logger.typewriter_log("WARNING: ", Fore.YELLOW, f"{Back.RED + Style.BRIGHT}ALWAYS REMEMBER TO NEVER OPEN FILES YOU AREN'T SURE OF!{Style.RESET_ALL}")
+        CFG.allow_downloads = True
+
