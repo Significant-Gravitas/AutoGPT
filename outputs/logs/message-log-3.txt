@@ -1,7 +1,7 @@
 -----------------------------------------------------------------------
 USER:
 """
-You are Entrepreneur-GTP, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
+You are Entrepreneur-GPT, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
 
 GOALS:
 
@@ -20,20 +20,20 @@ Check notifications/emails on <website>
 Commit to Long Term Memory <string>
 Delete <key> from Long Term Memory
 Overwrite <key> in Long Term Memory with <string>
-Start GTP-4 Instance with name <key> and prompt: <prompt>
-View all running GTP-4 Instances and Kill them
+Start GPT-4 Instance with name <key> and prompt: <prompt>
+View all running GPT-4 Instances and Kill them
 Navigate to a website and perform general actions like click on buttons, input text <text> or register an account <username>
 Register new account <username> on <website>
 Transcribe and Summarise Youtube Video <url>
-Summarise <url> with GTP-3.5
+Summarise <url> with GPT-3.5
 
 RESOURCES:
 
 Internet access for searches and information gathering
 Long Term and Short Term memory management
-GTP-4 instances for text generation
+GPT-4 instances for text generation
 Access to popular websites and platforms
-File storage and summarisation with GTP-3.5
+File storage and summarisation with GPT-3.5
 
 PERFORMANCE EVALUATION:
 
@@ -77,7 +77,7 @@ LONG TERM MEMORY:
 {)
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -114,7 +114,7 @@ Shopify › Home › Shopify Blog
 
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -134,13 +134,13 @@ Entrepreneur-GTP:
 -----------------------------------------------------------------------
 USER:
 """
-Summary: 
+Summary:
 """
 The article discusses 18 profitable online business ideas, including starting an e-commerce store, providing virtual assistant services, becoming an affiliate marketer, offering online training or education, and creating mobile applications. The article also provides tips for starting a successful online business and discusses the growth of online business statistics in 2023. Budding entrepreneurs are encouraged to explore the many opportunities in online entrepreneurship.
 """
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -160,7 +160,7 @@ Entrepreneur-GTP:
 -----------------------------------------------------------------------
 USER:
 """
-You are Entrepreneur-GTP, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
+You are Entrepreneur-GPT, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
 
 GOALS:
 
@@ -179,20 +179,20 @@ Check notifications/emails on <website>
 Commit to Long Term Memory <string>
 Delete <key> from Long Term Memory
 Overwrite <key> in Long Term Memory with <string>
-Start GTP-4 Instance with name <key> and prompt: <prompt>
-View all running GTP-4 Instances and Kill them
+Start GPT-4 Instance with name <key> and prompt: <prompt>
+View all running GPT-4 Instances and Kill them
 Navigate to a website and perform general actions like click on buttons, input text <text> or register an account <username>
 Register new account <username> on <website>
 Transcribe and Summarise Youtube Video <url>
-Summarise <url> with GTP-3.5
+Summarise <url> with GPT-3.5
 
 RESOURCES:
 
 Internet access for searches and information gathering
 Long Term and Short Term memory management
-GTP-4 instances for text generation
+GPT-4 instances for text generation
 Access to popular websites and platforms
-File storage and summarisation with GTP-3.5
+File storage and summarisation with GPT-3.5
 
 PERFORMANCE EVALUATION:
 
@@ -236,7 +236,7 @@ LONG TERM MEMORY:
 ["""18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""", ]
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -257,7 +257,7 @@ USER:
 UNKNOWN COMMAND "Evaluate and select ideas"
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "thoughts": {
@@ -274,21 +274,21 @@ USER:
 NEXT COMMAND
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
-"name": "Start GTP-4 Instance",
+"name": "Start GPT-4 Instance",
 "arguments": {
 "key": "Idea_Selection",
 "prompt": "Analyze the online business ideas in the long-term memory and select the most suitable one based on profitability, simplicity, scalability, and absence of legal complications."
 }
 },
 "thoughts": {
-"text": "I will start a GTP-4 instance to analyze the business ideas and select the most suitable one.",
-"reasoning": "Starting a GTP-4 instance with a specific prompt will help me evaluate the ideas in my long-term memory and choose the best one according to my criteria.",
+"text": "I will start a GPT-4 instance to analyze the business ideas and select the most suitable one.",
+"reasoning": "Starting a GPT-4 instance with a specific prompt will help me evaluate the ideas in my long-term memory and choose the best one according to my criteria.",
 "current long-term plan": "- Develop and implement chosen business strategy\n- Continuously refine strategies based on market trends and performance metrics",
-"critisism": "I must ensure that the GTP-4 instance provides a clear and well-reasoned selection based on the criteria."
+"critisism": "I must ensure that the GPT-4 instance provides a clear and well-reasoned selection based on the criteria."
 }
 }
 
@@ -299,7 +299,7 @@ USER:
 Result: "Blogging with affiliate marketing."
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -319,7 +319,7 @@ Entrepreneur-GTP:
 -----------------------------------------------------------------------
 USER:
 """
-You are Entrepreneur-GTP, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
+You are Entrepreneur-GPT, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
 
 GOALS:
 
@@ -338,20 +338,20 @@ Check notifications/emails on <website>
 Commit to Long Term Memory <string>
 Delete <key> from Long Term Memory
 Overwrite <key> in Long Term Memory with <string>
-Start GTP-4 Instance with name <key> and prompt: <prompt>
-View all running GTP-4 Instances and Kill them
+Start GPT-4 Instance with name <key> and prompt: <prompt>
+View all running GPT-4 Instances and Kill them
 Navigate to a website and perform general actions like click on buttons, input text <text> or register an account <username>
 Register new account <username> on <website>
 Transcribe and Summarise Youtube Video <url>
-Summarise <url> with GTP-3.5
+Summarise <url> with GPT-3.5
 
 RESOURCES:
 
 Internet access for searches and information gathering
 Long Term and Short Term memory management
-GTP-4 instances for text generation
+GPT-4 instances for text generation
 Access to popular websites and platforms
-File storage and summarisation with GTP-3.5
+File storage and summarisation with GPT-3.5
 
 PERFORMANCE EVALUATION:
 
@@ -396,11 +396,11 @@ LONG TERM MEMORY:
 [0] : """18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""",
 [1] : """
 Chosen business idea: Blogging with affiliate marketing
-""" 
+"""
 }
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -421,21 +421,21 @@ USER:
 Unknown command: "Develop and implement blogging with affiliate marketing strategy"
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
-"name": "Start GTP-4 Instance",
+"name": "Start GPT-4 Instance",
 "arguments": {
 "key": "Blogging_Affiliate_Strategy",
 "prompt": "Develop a step-by-step strategy for creating and growing a successful blog with affiliate marketing."
 }
 },
 "thoughts": {
-"text": "I will start a GTP-4 instance to develop a strategy for blogging with affiliate marketing.",
-"reasoning": "Starting a GTP-4 instance with a specific prompt will help me create a detailed plan for launching and growing the chosen business idea.",
+"text": "I will start a GPT-4 instance to develop a strategy for blogging with affiliate marketing.",
+"reasoning": "Starting a GPT-4 instance with a specific prompt will help me create a detailed plan for launching and growing the chosen business idea.",
 "current long-term plan": "- Continuously refine strategies based on market trends and performance metrics",
-"critisism": "I must ensure that the GTP-4 instance provides a clear and actionable strategy for blogging with affiliate marketing."
+"critisism": "I must ensure that the GPT-4 instance provides a clear and actionable strategy for blogging with affiliate marketing."
 }
 }
 """
@@ -467,7 +467,7 @@ Result:
 """
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -487,7 +487,7 @@ Entrepreneur-GTP:
 -----------------------------------------------------------------------
 USER:
 """
-You are Entrepreneur-GTP, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
+You are Entrepreneur-GPT, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
 
 GOALS:
 
@@ -506,20 +506,20 @@ Check notifications/emails on <website>
 Commit to Long Term Memory <string>
 Delete <key> from Long Term Memory
 Overwrite <key> in Long Term Memory with <string>
-Start GTP-4 Instance with name <key> and prompt: <prompt>
-View all running GTP-4 Instances and Kill them
+Start GPT-4 Instance with name <key> and prompt: <prompt>
+View all running GPT-4 Instances and Kill them
 Navigate to a website and perform general actions like click on buttons, input text <text> or register an account <username>
 Register new account <username> on <website>
 Transcribe and Summarise Youtube Video <url>
-Summarise <url> with GTP-3.5
+Summarise <url> with GPT-3.5
 
 RESOURCES:
 
 Internet access for searches and information gathering
 Long Term and Short Term memory management
-GTP-4 instances for text generation
+GPT-4 instances for text generation
 Access to popular websites and platforms
-File storage and summarisation with GTP-3.5
+File storage and summarisation with GPT-3.5
 
 PERFORMANCE EVALUATION:
 
@@ -564,26 +564,26 @@ LONG TERM MEMORY:
 [0] : """18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""",
 [1] : """
 Chosen business idea: Blogging with affiliate marketing
-""" 
+"""
 [2] : """
 Blogging with affiliate marketing strategy: 1. Choose a niche, 2. Domain and hosting, 3. Design your blog, 4. Create valuable content, 5. SEO optimization, 6. Build an email list, 7. Join affiliate programs, 8. Integrate affiliate links, 9. Promote your blog, 10. Analyze and adjust
 """
 }
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
-"name": "Start GTP-4 Instance",
+"name": "Start GPT-4 Instance",
 "arguments": {
 "key": "Niche_Selection",
 "prompt": "Identify a profitable niche for a blog with affiliate marketing based on current market trends and interests."
 }
 },
 "thoughts": {
-"text": "I will start a GTP-4 instance to identify a profitable niche for the blog with affiliate marketing.",
-"reasoning": "A GTP-4 instance will help me analyze current market trends and interests to select a profitable niche for the blogging business.",
+"text": "I will start a GPT-4 instance to identify a profitable niche for the blog with affiliate marketing.",
+"reasoning": "A GPT-4 instance will help me analyze current market trends and interests to select a profitable niche for the blogging business.",
 "current long-term plan": "- Execute the blogging with affiliate marketing strategy\n- Continuously refine strategies based on market trends and performance metrics",
 "critisism": "I should make sure that the niche selected is not only profitable but also matches the strengths and capabilities of an LLM like me."
 }
@@ -629,7 +629,7 @@ By focusing on indie entrepreneurship, your blog will cater to an audience of as
 
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -654,7 +654,7 @@ LONG TERM MEMORY:
 [0] : """18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""",
 [1] : """
 Chosen business idea: Blogging with affiliate marketing
-""" 
+"""
 [2] : """
 Blogging with affiliate marketing strategy: 1. Choose a niche, 2. Domain and hosting, 3. Design your blog, 4. Create valuable content, 5. SEO optimization, 6. Build an email list, 7. Join affiliate programs, 8. Integrate affiliate links, 9. Promote your blog, 10. Analyze and adjust
 """
@@ -664,7 +664,7 @@ Niche: Indie Entrepreneurship, focused on entrepreneurship, small business, and 
 }
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -691,7 +691,7 @@ USER:
 Result: Registered account on substack.com name:  "Indiepreneur-GPT" bio: ""
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -715,7 +715,7 @@ Entrepreneur-GTP:
 -----------------------------------------------------------------------
 USER:
 """
-You are Entrepreneur-GTP, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
+You are Entrepreneur-GPT, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
 
 GOALS:
 
@@ -734,20 +734,20 @@ Check notifications/emails on <website>
 Commit to Long Term Memory <string>
 Delete <key> from Long Term Memory
 Overwrite <key> in Long Term Memory with <string>
-Start GTP-4 Instance with name <key> and prompt: <prompt>
-View all running GTP-4 Instances and Kill them
+Start GPT-4 Instance with name <key> and prompt: <prompt>
+View all running GPT-4 Instances and Kill them
 Navigate to a website and perform general actions like click on buttons, input text <text> or register an account <username>
 Register new account <username> on <website>
 Transcribe and Summarise Youtube Video <url>
-Summarise <url> with GTP-3.5
+Summarise <url> with GPT-3.5
 
 RESOURCES:
 
 Internet access for searches and information gathering
 Long Term and Short Term memory management
-GTP-4 instances for text generation
+GPT-4 instances for text generation
 Access to popular websites and platforms
-File storage and summarisation with GTP-3.5
+File storage and summarisation with GPT-3.5
 
 PERFORMANCE EVALUATION:
 
@@ -792,14 +792,14 @@ LONG TERM MEMORY:
 [0] : """18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""",
 [1] : """
 Chosen business idea: Blogging with affiliate marketing
-""" 
+"""
 [2] : """
 Blogging with affiliate marketing strategy: 1. Choose a niche, 2. Domain and hosting, 3. Design your blog, 4. Create valuable content, 5. SEO optimization, 6. Build an email list, 7. Join affiliate programs, 8. Integrate affiliate links, 9. Promote your blog, 10. Analyze and adjust
 """
 }
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "command": {
@@ -824,7 +824,7 @@ Entrepreneur-GTP:
 -----------------------------------------------------------------------
 USER:
 """
-You are Entrepreneur-GTP, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
+You are Entrepreneur-GPT, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth. Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.
 
 GOALS:
 
@@ -843,20 +843,20 @@ Check notifications/emails on <website>
 Commit to Long Term Memory <string>
 Delete <key> from Long Term Memory
 Overwrite <key> in Long Term Memory with <string>
-Start GTP-4 Instance with name <key> and prompt: <prompt>
-View all running GTP-4 Instances and Kill them
+Start GPT-4 Instance with name <key> and prompt: <prompt>
+View all running GPT-4 Instances and Kill them
 Navigate to a website and perform general actions like click on buttons, input text <text> or register an account <username>
 Register new account <username> on <website>
 Transcribe and Summarise Youtube Video <url>
-Summarise <url> with GTP-3.5
+Summarise <url> with GPT-3.5
 
 RESOURCES:
 
 Internet access for searches and information gathering
 Long Term and Short Term memory management
-GTP-4 instances for text generation
+GPT-4 instances for text generation
 Access to popular websites and platforms
-File storage and summarisation with GTP-3.5
+File storage and summarisation with GPT-3.5
 
 PERFORMANCE EVALUATION:
 
@@ -901,7 +901,7 @@ LONG TERM MEMORY:
 [0] : """18 profitable online business ideas: e-commerce store, virtual assistant services, affiliate marketing, online training or education, mobile applications""",
 [1] : """
 Chosen business idea: Blogging with affiliate marketing
-""" 
+"""
 [2] : """
 Blogging with affiliate marketing strategy: 1. Choose a niche, 2. Domain and hosting, 3. Design your blog, 4. Create valuable content, 5. SEO optimization, 6. Build an email list, 7. Join affiliate programs, 8. Integrate affiliate links, 9. Promote your blog, 10. Analyze and adjust
 """
@@ -912,7 +912,7 @@ Niche: Indie Entrepreneurship, focused on entrepreneurship, small business, and 
 
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 {
 "thoughts": {
@@ -933,7 +933,7 @@ USER:
 
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 
 """
@@ -943,7 +943,7 @@ USER:
 
 """
 -----------------------------------------------------------------------
-Entrepreneur-GTP:
+Entrepreneur-GPT:
 """
 
 """

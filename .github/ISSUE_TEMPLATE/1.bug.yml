@@ -1,0 +1,51 @@
+name: Bug report 🐛
+description: Create a bug report for Auto-GPT.
+labels: ['status: needs triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please provide a searchable summary of the issue in the title above ⬆️.
+
+        ⚠️ SUPER-busy repo, please help the volunteer maintainers.
+        The less time we spend here, the more time we spend building AutoGPT.
+        
+        Please help us help you:
+        - Does it work on `stable` branch (https://github.com/Torantulino/Auto-GPT/tree/stable)?
+        - Does it work on current `master` (https://github.com/Torantulino/Auto-GPT/tree/master)?
+        - Search for existing issues, "add comment" is tidier than "new issue"
+        - Ask on our Discord (https://discord.gg/autogpt)
+        - Provide relevant info:
+          - Provide commit-hash (`git rev-parse HEAD` gets it)
+          - If it's a pip/packages issue, provide pip version, python version
+          - If it's a crash, provide traceback.
+        
+  - type: checkboxes
+    attributes:
+      label: Duplicates
+      description: Please [search the history](https://github.com/Torantulino/Auto-GPT/issues) to see if an issue already exists for the same problem.
+      options:
+        - label: I have searched the existing issues
+          required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce 🕹
+      description: |
+        **⚠️ Issues that we can't reproduce will be closed.**
+  - type: textarea
+    attributes:
+      label: Current behavior 😯
+      description: Describe what happens instead of the expected behavior.
+  - type: textarea
+    attributes:
+      label: Expected behavior 🤔
+      description: Describe what should happen.
+  - type: textarea
+    attributes:
+      label: Your prompt 📝
+      description: |
+        If applicable please provide the prompt you are using. You can find your last-used prompt in last_run_ai_settings.yaml.
+      value: |
+        ```yaml
+        # Paste your prompt here
+        ```
