@@ -1,5 +1,6 @@
 """Main script for the autogpt package."""
 import logging
+from colorama import Fore
 from autogpt.agent.agent import Agent
 from autogpt.args import parse_arguments
 
@@ -33,7 +34,8 @@ def main() -> None:
     # Initialize memory and make sure it is empty.
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(cfg, init=True)
-    print(f"Using memory of type: {memory.__class__.__name__}")
+    logger.typewriter_log(f"Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}")
+    logger.typewriter_log(f"Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
     agent = Agent(
         ai_name=ai_name,
         memory=memory,
