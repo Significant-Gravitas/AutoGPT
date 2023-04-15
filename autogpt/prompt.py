@@ -64,7 +64,7 @@ def get_prompt() -> str:
             "Downloads a file from the internet, and stores it locally", 
             "download_file", 
             {"url": "<file_url>", "file": "<saved_filename>"}
-        )
+        ),
         ("Evaluate Code", "evaluate_code", {"code": "<full_code_string>"}),
         (
             "Get Improved Code",

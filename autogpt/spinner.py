@@ -29,7 +29,7 @@ class Spinner:
             time.sleep(self.delay)
             sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
 
-    def __enter__(self) -> None:
+    def __enter__(self):
         """Start the spinner"""
         self.running = True
         self.spinner_thread = threading.Thread(target=self.spin)
