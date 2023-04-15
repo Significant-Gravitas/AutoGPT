@@ -42,7 +42,7 @@ class Agent:
         self.user_input = user_input
 
     def start_interaction_loop(self):
-        # Interaction Loop
+        """Start the interaction loop."""
         cfg = Config()
         loop_count = 0
         command_name = None

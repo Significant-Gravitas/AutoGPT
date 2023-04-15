@@ -5,7 +5,12 @@ from autogpt.config.config import Singleton
 
 
 class AgentManager(metaclass=Singleton):
-    """Agent manager for managing GPT agents"""
+    """Agent manager for managing GPT agents
+
+    Attributes:
+        next_key: The next key to use for an agent
+        agents: Dictionary of agents
+    """
 
     def __init__(self):
         self.next_key = 0
