@@ -2,7 +2,7 @@ import argparse
 import logging
 
 from autogpt.config import Config
-from autogpt.file_operations import ingest_file, search_files
+from autogpt.commands.file_operations import ingest_file, search_files
 from autogpt.memory import get_memory
 
 cfg = Config()
@@ -87,7 +87,8 @@ def main() -> None:
             print(f"Error while ingesting directory '{args.dir}': {str(e)}")
     else:
         print(
-            "Please provide either a file path (--file) or a directory name (--dir) inside the auto_gpt_workspace directory as input."
+            "Please provide either a file path (--file) or a directory name (--dir)"
+            " inside the auto_gpt_workspace directory as input."
         )
 
 

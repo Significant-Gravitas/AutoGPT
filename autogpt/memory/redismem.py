@@ -8,7 +8,7 @@ from redis.commands.search.field import TextField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
-from autogpt.logger import logger
+from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 SCHEMA = [
@@ -54,7 +54,9 @@ class RedisMemory(MemoryProviderSingleton):
             )
             logger.double_check(
                 "Please ensure you have setup and configured Redis properly for use. "
-                + f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL} to ensure you've set up everything correctly."
+                + f"You can check out {Fore.CYAN + Style.BRIGHT}"
+                f"https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL}"
+                " to ensure you've set up everything correctly."
             )
             exit(1)
 
