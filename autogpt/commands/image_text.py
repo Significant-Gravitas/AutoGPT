@@ -20,14 +20,14 @@ def summarize_image(image):
     api_url = f"https://api-inference.huggingface.co/models/{model}"
     api_token = cfg.huggingface_api_token
     headers = {"Authorization": f"Bearer {api_token}"}
-    
+
     if api_token is None:
         raise ValueError("You need to set your Hugging Face API token in the config file.")
-    
+
     response = requests.post(
-        api_url, 
+        api_url,
         headers=headers,
-        data=image, 
+        data=image,
     )
-    
+
     return "The image is about: " + response.json()[0]["generated_text"]
