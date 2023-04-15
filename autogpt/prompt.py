@@ -61,8 +61,8 @@ def get_prompt() -> str:
         ("Delete file", "delete_file", {"file": "<file>"}),
         ("Search Files", "search_files", {"directory": "<directory>"}),
         (
-            "Downloads a file from the internet, and stores it locally", 
-            "download_file", 
+            "Downloads a file from the internet, and stores it locally",
+            "download_file",
             {"url": "<file_url>", "file": "<saved_filename>"}
         ),
         ("Evaluate Code", "evaluate_code", {"code": "<full_code_string>"}),
