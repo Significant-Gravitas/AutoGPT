@@ -126,13 +126,16 @@ def create_embedding_with_ada(text) -> list:
         backoff = 2 ** (attempt + 2)
         try:
             if CFG.use_azure:
-                return openai.Embedding.create(input=[text],
-                    engine=CFG.get_azure_deployment_id_for_model("text-embedding-ada-002"),
+                return openai.Embedding.create(
+                    input=[text],
+                    engine=CFG.get_azure_deployment_id_for_model(
+                        "text-embedding-ada-002"
+                    ),
                 )["data"][0]["embedding"]
             else:
-                return openai.Embedding.create(input=[text], model="text-embedding-ada-002")[
-                    "data"
-                ][0]["embedding"]
+                return openai.Embedding.create(
+                    input=[text], model="text-embedding-ada-002"
+                )["data"][0]["embedding"]
         except RateLimitError:
             pass
         except APIError as e:
@@ -148,4 +151,3 @@ def create_embedding_with_ada(text) -> list:
                 f"API Bad gateway. Waiting {backoff} seconds..." + Fore.RESET,
             )
         time.sleep(backoff)
-
