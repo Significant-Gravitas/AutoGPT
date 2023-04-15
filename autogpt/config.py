@@ -86,6 +86,7 @@ class Config(metaclass=Singleton):
             "USER_AGENT",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
         )
+        self.headless_browser = os.getenv('HEADLESS_BROWSER',"True") == "True"
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
         self.redis_port = os.getenv("REDIS_PORT", "6379")
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
