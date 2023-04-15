@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 def send_tweet(tweet_text):
     consumer_key = os.environ.get("TW_CONSUMER_KEY")
     consumer_secret= os.environ.get("TW_CONSUMER_SECRET")
