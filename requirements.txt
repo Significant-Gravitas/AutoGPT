@@ -22,3 +22,5 @@ pre-commit
 black
 sourcery
 isort
+zarr
+sklearn
