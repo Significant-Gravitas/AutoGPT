@@ -297,7 +297,7 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 ## 🧠 Memory pre-seeding
 
 ```
-# python scripts/data_ingestion.py -h 
+# python autogpt/data_ingestion.py -h 
 usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
 
 Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
@@ -310,10 +310,10 @@ options:
   --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
   --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000
 
-# python scripts/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
+# python autogpt/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
 ```
 
-This script located at scripts/data_ingestion.py, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
+This script located at autogpt/data_ingestion.py, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
 
 Memory pre-seeding is a technique that involves ingesting relevant documents or data into the AI's memory so that it can use this information to generate more informed and accurate responses.
 
