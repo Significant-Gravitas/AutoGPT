@@ -65,9 +65,16 @@ class Config(metaclass=Singleton):
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
         self.elevenlabs_voice_2_id = os.getenv("ELEVENLABS_VOICE_2_ID")
 
+        self.use_mac_os_voice_input = False
+        self.use_mac_os_voice_input = os.getenv("USE_MAC_OS_VOICE_INPUT")
+
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
 
+        self.telegram_enabled = os.getenv("TELEGRAM_ENABLED") == 'True'
+        self.telegram_api_key = os.getenv("TELEGRAM_API_KEY")
+        self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
 
