@@ -2,7 +2,9 @@
 try:
     from playwright.sync_api import sync_playwright
 except ImportError:
-    print("Playwright not installed. Please install it with 'pip install playwright' to use.")
+    print(
+        "Playwright not installed. Please install it with 'pip install playwright' to use."
+    )
 from bs4 import BeautifulSoup
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from typing import List, Union
@@ -10,10 +12,10 @@ from typing import List, Union
 
 def scrape_text(url: str) -> str:
     """Scrape text from a webpage
-    
+
     Args:
         url (str): The URL to scrape text from
-        
+
     Returns:
         str: The scraped text
     """
@@ -32,7 +34,7 @@ def scrape_text(url: str) -> str:
             text = soup.get_text()
             lines = (line.strip() for line in text.splitlines())
             chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-            text = '\n'.join(chunk for chunk in chunks if chunk)
+            text = "\n".join(chunk for chunk in chunks if chunk)
 
         except Exception as e:
             text = f"Error: {str(e)}"
