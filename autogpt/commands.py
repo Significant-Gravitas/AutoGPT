@@ -1,23 +1,29 @@
-from autogpt import browse
 import json
-from autogpt.memory import get_memory
 import datetime
 import autogpt.agent_manager as agents
-from autogpt import speak
 from autogpt.config import Config
-import autogpt.ai_functions as ai
-from autogpt.file_operations import read_file, write_to_file, append_to_file, delete_file, search_files
-from autogpt.execute_code import execute_python_file, execute_shell
 from autogpt.json_parser import fix_and_parse_json
 from autogpt.image_gen import generate_image
 from duckduckgo_search import ddg
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+from autogpt.ai_functions import evaluate_code, improve_code, write_tests
+from autogpt.browse import scrape_links, scrape_text, summarize_text
+from autogpt.execute_code import execute_python_file, execute_shell
+from autogpt.file_operations import (
+    append_to_file,
+    delete_file,
+    read_file,
+    search_files,
+    write_to_file,
+)
+from autogpt.memory import get_memory
+from autogpt.speak import say_text
 from autogpt.web import browse_website
+
+
 cfg = Config()
 
 
-def is_valid_int(value):
+def is_valid_int(value) -> bool:
     try:
         int(value)
         return True
@@ -31,9 +37,14 @@ def get_command(response):
         response_json = fix_and_parse_json(response)
 
         if "command" not in response_json:
-            return "Error:" , "Missing 'command' object in JSON"
+            return "Error:", "Missing 'command' object in JSON"
+
+        if not isinstance(response_json, dict):
+            return "Error:", f"'response_json' object is not dictionary {response_json}"
 
         command = response_json["command"]
+        if not isinstance(command, dict):
+            return "Error:", "'command' object is not a dictionary"
 
         if "name" not in command:
             return "Error:", "Missing 'name' field in 'command' object"
@@ -57,9 +68,9 @@ def execute_command(command_name, arguments):
 
     try:
         if command_name == "google":
-
             # Check if the Google API key is set and use the official search method
-            # If the API key is not set or has only whitespaces, use the unofficial search method
+            # If the API key is not set or has only whitespaces, use the unofficial
+            # search method
             key = cfg.google_api_key
             if key and key.strip() and key != "your-google-api-key":
                 return google_official_search(arguments["input"])
@@ -69,9 +80,8 @@ def execute_command(command_name, arguments):
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
             return start_agent(
-                arguments["name"],
-                arguments["task"],
-                arguments["prompt"])
+                arguments["name"], arguments["task"], arguments["prompt"]
+            )
         elif command_name == "message_agent":
             return message_agent(arguments["key"], arguments["message"])
         elif command_name == "list_agents":
@@ -98,18 +108,22 @@ def execute_command(command_name, arguments):
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
         elif command_name == "evaluate_code":
-            return ai.evaluate_code(arguments["code"])
+            return evaluate_code(arguments["code"])
         elif command_name == "improve_code":
-            return ai.improve_code(arguments["suggestions"], arguments["code"])
+            return improve_code(arguments["suggestions"], arguments["code"])
         elif command_name == "write_tests":
-            return ai.write_tests(arguments["code"], arguments.get("focus"))
+            return write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
         elif command_name == "execute_shell":
             if cfg.execute_local_commands:
                 return execute_shell(arguments["command_line"])
             else:
-                return "You are not allowed to run local shell commands. To execute shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' in your config. Do not attempt to bypass the restriction."
+                return (
+                    "You are not allowed to run local shell commands. To execute"
+                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+                    "in your config. Do not attempt to bypass the restriction."
+                )
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
         elif command_name == "do_nothing":
@@ -117,7 +131,11 @@ def execute_command(command_name, arguments):
         elif command_name == "task_complete":
             shutdown()
         else:
-            return f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for available commands and only respond in the specified JSON format."
+            return (
+                f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
+                " list for available commands and only respond in the specified JSON"
+                " format."
+            )
     # All errors, return "Error: + error message"
     except Exception as e:
         return "Error: " + str(e)
@@ -125,13 +143,17 @@ def execute_command(command_name, arguments):
 
 def get_datetime():
     """Return the current date and time"""
-    return "Current date and time: " + \
-        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return "Current date and time: " + datetime.datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
 
 def google_search(query, num_results=8):
     """Return the results of a google search"""
     search_results = []
+    if not query:
+        return json.dumps(search_results)
+
     for j in ddg(query, max_results=num_results):
         search_results.append(j)
 
@@ -140,9 +162,10 @@ def google_search(query, num_results=8):
 
 def google_official_search(query, num_results=8):
     """Return the results of a google search using the official Google API"""
+    import json
+
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
-    import json
 
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
@@ -153,7 +176,11 @@ def google_official_search(query, num_results=8):
         service = build("customsearch", "v1", developerKey=api_key)
 
         # Send the search query and retrieve the results
-        result = service.cse().list(q=query, cx=custom_search_engine_id, num=num_results).execute()
+        result = (
+            service.cse()
+            .list(q=query, cx=custom_search_engine_id, num=num_results)
+            .execute()
+        )
 
         # Extract the search result items from the response
         search_results = result.get("items", [])
@@ -166,7 +193,11 @@ def google_official_search(query, num_results=8):
         error_details = json.loads(e.content.decode())
 
         # Check if the error is related to an invalid or missing API key
-        if error_details.get("error", {}).get("code") == 403 and "invalid API key" in error_details.get("error", {}).get("message", ""):
+        if error_details.get("error", {}).get(
+            "code"
+        ) == 403 and "invalid API key" in error_details.get("error", {}).get(
+            "message", ""
+        ):
             return "Error: The provided Google API key is invalid or missing."
         else:
             return f"Error: {e}"
@@ -177,61 +208,14 @@ def google_official_search(query, num_results=8):
 
 def get_text_summary(url, question):
     """Return the results of a google search"""
-    text = browse.scrape_text(url)
-    summary = browse.summarize_text(url, text, question)
+    text = scrape_text(url)
+    summary = summarize_text(url, text, question)
     return """ "Result" : """ + summary
 
 
 def get_hyperlinks(url):
     """Return the results of a google search"""
-    link_list = browse.scrape_links(url)
-    return link_list
-
-
-def commit_memory(string):
-    """Commit a string to memory"""
-    _text = f"""Committing memory with string "{string}" """
-    mem.permanent_memory.append(string)
-    return _text
-
-
-def delete_memory(key):
-    """Delete a memory with a given key"""
-    if key >= 0 and key < len(mem.permanent_memory):
-        _text = "Deleting memory with key " + str(key)
-        del mem.permanent_memory[key]
-        print(_text)
-        return _text
-    else:
-        print("Invalid key, cannot delete memory.")
-        return None
-
-
-def overwrite_memory(key, string):
-    """Overwrite a memory with a given key and string"""
-    # Check if the key is a valid integer
-    if is_valid_int(key):
-        key_int = int(key)
-        # Check if the integer key is within the range of the permanent_memory list
-        if 0 <= key_int < len(mem.permanent_memory):
-            _text = "Overwriting memory with key " + str(key) + " and string " + string
-            # Overwrite the memory slot with the given integer key and string
-            mem.permanent_memory[key_int] = string
-            print(_text)
-            return _text
-        else:
-            print(f"Invalid key '{key}', out of range.")
-            return None
-    # Check if the key is a valid string
-    elif isinstance(key, str):
-        _text = "Overwriting memory with key " + key + " and string " + string
-        # Overwrite the memory slot with the given string key and string
-        mem.permanent_memory[key] = string
-        print(_text)
-        return _text
-    else:
-        print(f"Invalid key '{key}', must be an integer or a string.")
-        return None
+    return scrape_links(url)
 
 
 def shutdown():
@@ -242,8 +226,6 @@ def shutdown():
 
 def start_agent(name, task, prompt, model=cfg.fast_llm_model):
     """Start an agent with a given name, task, and prompt"""
-    global cfg
-
     # Remove underscores from name
     voice_name = name.replace("_", " ")
 
@@ -252,22 +234,20 @@ def start_agent(name, task, prompt, model=cfg.fast_llm_model):
 
     # Create agent
     if cfg.speak_mode:
-        speak.say_text(agent_intro, 1)
+        say_text(agent_intro, 1)
     key, ack = agents.create_agent(task, first_message, model)
 
     if cfg.speak_mode:
-        speak.say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
+        say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
     # Assign task (prompt), get response
-    agent_response = message_agent(key, prompt)
+    agent_response = agents.message_agent(key, prompt)
 
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
 
 def message_agent(key, message):
     """Message an agent with a given key and message"""
-    global cfg
-
     # Check if the key is a valid integer
     if is_valid_int(key):
         agent_response = agents.message_agent(int(key), message)
@@ -279,18 +259,16 @@ def message_agent(key, message):
 
     # Speak response
     if cfg.speak_mode:
-        speak.say_text(agent_response, 1)
+        say_text(agent_response, 1)
     return agent_response
 
 
 def list_agents():
     """List all agents"""
-    return agents.list_agents()
+    return list_agents()
 
 
 def delete_agent(key):
     """Delete an agent with a given key"""
     result = agents.delete_agent(key)
-    if not result:
-        return f"Agent {key} does not exist."
-    return f"Agent {key} deleted."
+    return f"Agent {key} deleted." if result else f"Agent {key} does not exist."

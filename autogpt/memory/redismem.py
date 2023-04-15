@@ -1,26 +1,22 @@
 """Redis memory provider."""
 from typing import Any, List, Optional
-import redis
-from redis.commands.search.field import VectorField, TextField
-from redis.commands.search.query import Query
-from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+
 import numpy as np
-
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
-from autogpt.logger import logger
+import redis
 from colorama import Fore, Style
+from redis.commands.search.field import TextField, VectorField
+from redis.commands.search.indexDefinition import IndexDefinition, IndexType
+from redis.commands.search.query import Query
 
+from autogpt.logger import logger
+from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 SCHEMA = [
     TextField("data"),
     VectorField(
         "embedding",
         "HNSW",
-        {
-            "TYPE": "FLOAT32",
-            "DIM": 1536,
-            "DISTANCE_METRIC": "COSINE"
-        }
+        {"TYPE": "FLOAT32", "DIM": 1536, "DISTANCE_METRIC": "COSINE"},
     ),
 ]
 
@@ -43,7 +39,7 @@ class RedisMemory(MemoryProviderSingleton):
             host=redis_host,
             port=redis_port,
             password=redis_password,
-            db=0  # Cannot be changed
+            db=0,  # Cannot be changed
         )
         self.cfg = cfg
 
@@ -51,9 +47,15 @@ class RedisMemory(MemoryProviderSingleton):
         try:
             self.redis.ping()
         except redis.ConnectionError as e:
-            logger.typewriter_log("FAILED TO CONNECT TO REDIS", Fore.RED, Style.BRIGHT + str(e) + Style.RESET_ALL)
-            logger.double_check("Please ensure you have setup and configured Redis properly for use. " +
-                                f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL} to ensure you've set up everything correctly.")
+            logger.typewriter_log(
+                "FAILED TO CONNECT TO REDIS",
+                Fore.RED,
+                Style.BRIGHT + str(e) + Style.RESET_ALL,
+            )
+            logger.double_check(
+                "Please ensure you have setup and configured Redis properly for use. "
+                + f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL} to ensure you've set up everything correctly."
+            )
             exit(1)
 
         if cfg.wipe_redis_on_start:
@@ -62,15 +64,13 @@ class RedisMemory(MemoryProviderSingleton):
             self.redis.ft(f"{cfg.memory_index}").create_index(
                 fields=SCHEMA,
                 definition=IndexDefinition(
-                    prefix=[f"{cfg.memory_index}:"],
-                    index_type=IndexType.HASH
-                    )
-                )
+                    prefix=[f"{cfg.memory_index}:"], index_type=IndexType.HASH
+                ),
+            )
         except Exception as e:
             print("Error creating Redis search index: ", e)
-        existing_vec_num = self.redis.get(f'{cfg.memory_index}-vec_num')
-        self.vec_num = int(existing_vec_num.decode('utf-8')) if\
-            existing_vec_num else 0
+        existing_vec_num = self.redis.get(f"{cfg.memory_index}-vec_num")
+        self.vec_num = int(existing_vec_num.decode("utf-8")) if existing_vec_num else 0
 
     def add(self, data: str) -> str:
         """
@@ -81,20 +81,18 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: Message indicating that the data has been added.
         """
-        if 'Command Error:' in data:
+        if "Command Error:" in data:
             return ""
         vector = get_ada_embedding(data)
         vector = np.array(vector).astype(np.float32).tobytes()
-        data_dict = {
-            b"data": data,
-            "embedding": vector
-        }
+        data_dict = {b"data": data, "embedding": vector}
         pipe = self.redis.pipeline()
         pipe.hset(f"{self.cfg.memory_index}:{self.vec_num}", mapping=data_dict)
-        _text = f"Inserting data into memory at index: {self.vec_num}:\n"\
-            f"data: {data}"
+        _text = (
+            f"Inserting data into memory at index: {self.vec_num}:\n" f"data: {data}"
+        )
         self.vec_num += 1
-        pipe.set(f'{self.cfg.memory_index}-vec_num', self.vec_num)
+        pipe.set(f"{self.cfg.memory_index}-vec_num", self.vec_num)
         pipe.execute()
         return _text
 
@@ -118,11 +116,7 @@ class RedisMemory(MemoryProviderSingleton):
         self.redis.flushall()
         return "Obliviated"
 
-    def get_relevant(
-        self,
-        data: str,
-        num_relevant: int = 5
-    ) -> Optional[List[Any]]:
+    def get_relevant(self, data: str, num_relevant: int = 5) -> Optional[List[Any]]:
         """
         Returns all the data in the memory that is relevant to the given data.
         Args:
@@ -133,10 +127,12 @@ class RedisMemory(MemoryProviderSingleton):
         """
         query_embedding = get_ada_embedding(data)
         base_query = f"*=>[KNN {num_relevant} @embedding $vector AS vector_score]"
-        query = Query(base_query).return_fields(
-            "data",
-            "vector_score"
-        ).sort_by("vector_score").dialect(2)
+        query = (
+            Query(base_query)
+            .return_fields("data", "vector_score")
+            .sort_by("vector_score")
+            .dialect(2)
+        )
         query_vector = np.array(query_embedding).astype(np.float32).tobytes()
 
         try:
