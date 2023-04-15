@@ -40,7 +40,7 @@ def split_file(
     Split text into chunks of a specified maximum length with a specified overlap
     between chunks.
 
-    :param text: The input text to be split into chunks
+    :param content: The input text to be split into chunks
     :param max_length: The maximum length of each chunk,
         default is 4000 (about 1k token)
     :param overlap: The number of overlapping characters between chunks,
