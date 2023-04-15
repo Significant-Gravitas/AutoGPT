@@ -96,6 +96,8 @@ def get_prompt() -> str:
                 "execute_shell",
                 {"command_line": "<command_line>"},
             ),
+        )
+        commands.append(
             (
                 "Execute Shell Command Popen, non-interactive commands only",
                 "execute_shell_popen",
