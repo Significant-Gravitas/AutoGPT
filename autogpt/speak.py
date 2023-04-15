@@ -5,11 +5,12 @@ from playsound import playsound
 
 from autogpt.config import Config
 
-cfg = Config()
 import threading
 from threading import Lock, Semaphore
 
 import gtts
+
+cfg = Config()
 
 # Default voice IDs
 default_voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
