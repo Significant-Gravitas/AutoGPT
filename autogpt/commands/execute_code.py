@@ -41,6 +41,9 @@ def execute_python_file(file: str):
     try:
         client = docker.from_env()
 
+        # You can replace 'python:3.8' with the desired Python image/version
+        # You can find available Python images on Docker Hub:
+        # https://hub.docker.com/_/python
         image_name = "python:3.10"
         try:
             client.images.get(image_name)
@@ -58,9 +61,6 @@ def execute_python_file(file: str):
                 elif status:
                     print(status)
 
-        # You can replace 'python:3.8' with the desired Python image/version
-        # You can find available Python images on Docker Hub:
-        # https://hub.docker.com/_/python
         container = client.containers.run(
             image_name,
             f"python {file}",
