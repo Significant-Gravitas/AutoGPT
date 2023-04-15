@@ -31,40 +31,44 @@ def check_openai_api_key():
 
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
-    if cfg.speak_mode and cfg.debug_mode:
-        speak.say_text(
-            "I have received an invalid JSON response from the OpenAI API. "
-            "Trying to fix it now."
-        )
-    logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
-
     try:
-        # Use regex to search for JSON objects
-        import regex
-
-        json_pattern = regex.compile(r"\{(?:[^{}]|(?R))*\}")
-        json_match = json_pattern.search(json_string)
-
-        if json_match:
-            # Extract the valid JSON object from the string
-            json_string = json_match.group(0)
-            logger.typewriter_log(
-                title="Apparently json was fixed.", title_color=Fore.GREEN
+        json_str = json_string.replace("\t", "")
+        return json.loads(json_str)
+    except:
+        if cfg.speak_mode and cfg.debug_mode:
+            speak.say_text(
+                "I have received an invalid JSON response from the OpenAI API. "
+                "Trying to fix it now."
             )
-            if cfg.speak_mode and cfg.debug_mode:
-                speak.say_text("Apparently json was fixed.")
-        else:
-            raise ValueError("No valid JSON object found")
+        logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
 
-    except (json.JSONDecodeError, ValueError) as e:
-        if cfg.debug_mode:
-            logger.error("Error: Invalid JSON: %s\n", json_string)
-        if cfg.speak_mode:
-            speak.say_text("Didn't work. I will have to ignore this response then.")
-        logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
-        json_string = {}
+        try:
+            # Use regex to search for JSON objects
+            import regex
 
-    return json_string
+            json_pattern = regex.compile(r"\{(?:[^{}]|(?R))*\}")
+            json_match = json_pattern.search(json_string)
+
+            if json_match:
+                # Extract the valid JSON object from the string
+                json_string = json_match.group(0)
+                logger.typewriter_log(
+                    title="Apparently json was fixed.", title_color=Fore.GREEN
+                )
+                if cfg.speak_mode and cfg.debug_mode:
+                    speak.say_text("Apparently json was fixed.")
+            else:
+                raise ValueError("No valid JSON object found")
+
+        except (json.JSONDecodeError, ValueError) as e:
+            if cfg.debug_mode:
+                logger.error("Error: Invalid JSON: %s\n", json_string)
+            if cfg.speak_mode:
+                speak.say_text("Didn't work. I will have to ignore this response then.")
+            logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
+            json_string = {}
+
+        return json_string
 
 
 def print_assistant_thoughts(assistant_reply):
