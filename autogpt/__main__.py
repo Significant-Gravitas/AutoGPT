@@ -1,36 +1,18 @@
 """Main script for the autogpt package."""
 import logging
-from colorama import Fore
-from autogpt.agent.agent import Agent
-from autogpt.args import parse_arguments
+from colorama import Fore, Style
 
-from autogpt.config import Config, check_openai_api_key
+from autogpt.args import parse_arguments
+from autogpt.chat import cfg
+
+from autogpt.config import check_openai_api_key, AIConfig
 from autogpt.logs import logger
+from autogpt import utils
+from autogpt.agent import Agent
 from autogpt.memory import get_memory
 
-from autogpt import chat
-from autogpt import commands as cmd
-from autogpt import speak, utils
-from autogpt.agent import Agent
-from autogpt.ai_config import AIConfig
-from autogpt.config import Config
-from autogpt.json_parser import fix_and_parse_json
-from autogpt.logger import logger
-from autogpt.memory import get_memory, get_supported_memory_backends
-from autogpt.spinner import Spinner
 
 # Load environment variables from .env file
-
-
-def check_openai_api_key():
-    """Check if the OpenAI API key is set in config.py or as an environment variable."""
-    if not cfg.openai_api_key:
-        print(
-            Fore.RED
-            + "Please set your OpenAI API key in .env or as an environment variable."
-        )
-        print("You can get your key from https://beta.openai.com/account/api-keys")
-        exit(1)
 
 
 def construct_prompt():
@@ -114,7 +96,7 @@ def prompt_user():
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
-        ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
+        ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i + 1}: ")
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)
@@ -127,121 +109,6 @@ def prompt_user():
 
     config = AIConfig(ai_name, ai_role, ai_goals)
     return config
-
-
-def parse_arguments():
-    """Parses the arguments passed to the script"""
-    global cfg
-    cfg.set_debug_mode(False)
-    cfg.set_continuous_mode(False)
-    cfg.set_speak_mode(False)
-
-    parser = argparse.ArgumentParser(description="Process arguments.")
-    parser.add_argument(
-        "--continuous", "-c", action="store_true", help="Enable Continuous Mode"
-    )
-    parser.add_argument(
-        "--continuous-limit",
-        "-l",
-        type=int,
-        dest="continuous_limit",
-        help="Defines the number of times to run in continuous mode",
-    )
-    parser.add_argument("--speak", action="store_true", help="Enable Speak Mode")
-    parser.add_argument("--debug", action="store_true", help="Enable Debug Mode")
-    parser.add_argument(
-        "--gpt3only", action="store_true", help="Enable GPT3.5 Only Mode"
-    )
-    parser.add_argument("--gpt4only", action="store_true", help="Enable GPT4 Only Mode")
-    parser.add_argument(
-        "--use-memory",
-        "-m",
-        dest="memory_type",
-        help="Defines which Memory backend to use",
-    )
-    parser.add_argument(
-        "--skip-reprompt",
-        "-y",
-        dest="skip_reprompt",
-        action="store_true",
-        help="Skips the re-prompting messages at the beginning of the script",
-    )
-    parser.add_argument(
-        "--ai-settings",
-        "-C",
-        dest="ai_settings_file",
-        help="Specifies which ai_settings.yaml file to use, will also automatically"
-        " skip the re-prompt.",
-    )
-    args = parser.parse_args()
-
-    if args.debug:
-        logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_debug_mode(True)
-
-    if args.continuous:
-        logger.typewriter_log("Continuous Mode: ", Fore.RED, "ENABLED")
-        logger.typewriter_log(
-            "WARNING: ",
-            Fore.RED,
-            "Continuous mode is not recommended. It is potentially dangerous and may"
-            " cause your AI to run forever or carry out actions you would not usually"
-            " authorise. Use at your own risk.",
-        )
-        cfg.set_continuous_mode(True)
-
-        if args.continuous_limit:
-            logger.typewriter_log(
-                "Continuous Limit: ", Fore.GREEN, f"{args.continuous_limit}"
-            )
-            cfg.set_continuous_limit(args.continuous_limit)
-
-    # Check if continuous limit is used without continuous mode
-    if args.continuous_limit and not args.continuous:
-        parser.error("--continuous-limit can only be used with --continuous")
-
-    if args.speak:
-        logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_speak_mode(True)
-
-    if args.gpt3only:
-        logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_smart_llm_model(cfg.fast_llm_model)
-
-    if args.gpt4only:
-        logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
-        cfg.set_fast_llm_model(cfg.smart_llm_model)
-
-    if args.memory_type:
-        supported_memory = get_supported_memory_backends()
-        chosen = args.memory_type
-        if not chosen in supported_memory:
-            logger.typewriter_log(
-                "ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ",
-                Fore.RED,
-                f"{supported_memory}",
-            )
-            logger.typewriter_log("Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
-        else:
-            cfg.memory_backend = chosen
-
-    if args.skip_reprompt:
-        logger.typewriter_log("Skip Re-prompt: ", Fore.GREEN, "ENABLED")
-        cfg.skip_reprompt = True
-
-    if args.ai_settings_file:
-        file = args.ai_settings_file
-
-        # Validate file
-        (validated, message) = utils.validate_yaml_file(file)
-        if not validated:
-            logger.typewriter_log("FAILED FILE VALIDATION", Fore.RED, message)
-            logger.double_check()
-            exit(1)
-
-        logger.typewriter_log("Using AI Settings File:", Fore.GREEN, file)
-        cfg.ai_settings_file = file
-        cfg.skip_reprompt = True
 
 
 def main():
