@@ -29,6 +29,11 @@ body:
           required: true
   - type: textarea
     attributes:
+      label: OS Type and Version 🕹
+      description: |
+        **Ex: MacOS 13.1**
+  - type: textarea
+    attributes:
       label: Steps to reproduce 🕹
       description: |
         **⚠️ Issues that we can't reproduce will be closed.**
@@ -49,3 +54,8 @@ body:
         ```yaml
         # Paste your prompt here
         ```
+   - type: textarea
+    attributes:
+      label: GPT Version 🕹
+      description: |
+        **GPT-4, GPT-3.5-Turbo, etc**
