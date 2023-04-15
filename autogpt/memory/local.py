@@ -1,6 +1,6 @@
 import dataclasses
 import os
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 import orjson
@@ -24,10 +24,18 @@ class CacheContent:
 
 
 class LocalCache(MemoryProviderSingleton):
-    # on load, load our database
+    """A class that stores the memory in a local file"""
+
     def __init__(self, cfg) -> None:
-        self.index = cfg.local_cache_index
-        self.filename = f"{self.index}.json"
+        """Initialize a class instance
+
+        Args:
+            cfg: Config object
+
+        Returns:
+            None
+        """
+        self.filename = f"{cfg.local_cache_index}.json"
         if os.path.exists(self.filename):
             try:
                 with open(self.filename, "w+b") as f:
@@ -43,7 +51,8 @@ class LocalCache(MemoryProviderSingleton):
                 self.data = CacheContent()
         else:
             print(
-                f"Warning: The file '{self.filename}' does not exist. Local memory would not be saved to a file."
+                f"Warning: The file '{self.filename}' does not exist."
+                "Local memory would not be saved to a file."
             )
             self.data = CacheContent()
 
@@ -117,7 +126,7 @@ class LocalCache(MemoryProviderSingleton):
 
         return [self.data.texts[i] for i in top_k_indices]
 
-    def get_stats(self):
+    def get_stats(self) -> Tuple[int, Tuple[int, ...]]:
         """
         Returns: The stats of the local cache.
         """
