@@ -51,6 +51,12 @@ def parse_arguments() -> None:
         help="Skips the re-prompting messages at the beginning of the script",
     )
     parser.add_argument(
+        "--use-browser",
+        "-b",
+        dest="browser_name",
+        help="Specifies which web-browser to use when using selenium to scrape the web."
+    )
+    parser.add_argument(
         "--ai-settings",
         "-C",
         dest="ai_settings_file",
@@ -126,3 +132,6 @@ def parse_arguments() -> None:
         logger.typewriter_log("Using AI Settings File:", Fore.GREEN, file)
         CFG.ai_settings_file = file
         CFG.skip_reprompt = True
+
+    if args.browser_name:
+        CFG.selenium_web_browser = args.browser_name
