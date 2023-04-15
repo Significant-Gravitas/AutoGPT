@@ -1,5 +1,6 @@
 import json
 import re
+from typing import Optional
 
 from autogpt.config import Config
 
@@ -49,7 +50,7 @@ def add_quotes_to_property_names(json_string: str) -> str:
         raise e
 
 
-def balance_braces(json_string: str) -> str:
+def balance_braces(json_string: str) -> Optional[str]:
     """
     Balance the braces in a JSON string.
 
@@ -74,7 +75,7 @@ def balance_braces(json_string: str) -> str:
     try:
         json.loads(json_string)
         return json_string
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         pass
 
 

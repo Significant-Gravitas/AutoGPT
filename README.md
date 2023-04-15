@@ -1,4 +1,8 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
+### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
+We've improved our workflow. `master` will often be **in a broken state**.
+Download the latest `stable` release here: https://github.com/Torantulino/Auto-GPT/releases/latest
+This information SUPERCEDES any following information. Takes precedence. Do this not that.
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
 [![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)

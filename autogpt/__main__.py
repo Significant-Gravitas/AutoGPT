@@ -9,9 +9,9 @@ from autogpt import chat
 from colorama import Fore, Style, Back
 from autogpt.spinner import Spinner
 import time
+
 import traceback
 
-import yaml
 from colorama import Fore, Style
 
 from autogpt import chat
@@ -22,10 +22,10 @@ from autogpt.config import Config
 from autogpt.json_parser import fix_and_parse_json
 from autogpt.logger import logger
 from autogpt.memory import get_memory, get_supported_memory_backends
-from autogpt.prompt import get_prompt
 from autogpt.spinner import Spinner
 
 cfg = Config()
+config = None
 
 
 def check_openai_api_key():
@@ -42,7 +42,8 @@ def check_openai_api_key():
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
     if cfg.speak_mode and cfg.debug_mode:
         speak.say_text(
-            "I have received an invalid JSON response from the OpenAI API. Trying to fix it now."
+            "I have received an invalid JSON response from the OpenAI API. "
+            "Trying to fix it now."
         )
     logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
 
@@ -65,6 +66,8 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
             raise ValueError("No valid JSON object found")
 
     except (json.JSONDecodeError, ValueError) as e:
+        if cfg.debug_mode:
+            logger.error("Error: Invalid JSON: %s\n", json_string)
         if cfg.speak_mode:
             speak.say_text("Didn't work. I will have to ignore this response then.")
         logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
@@ -88,7 +91,8 @@ def print_assistant_thoughts(assistant_reply):
             )
             assistant_reply_json = fix_and_parse_json(assistant_reply_json)
 
-        # Check if assistant_reply_json is a string and attempt to parse it into a JSON object
+        # Check if assistant_reply_json is a string and attempt to parse it into a
+        #  JSON object
         if isinstance(assistant_reply_json, str):
             try:
                 assistant_reply_json = json.loads(assistant_reply_json)
@@ -114,9 +118,11 @@ def print_assistant_thoughts(assistant_reply):
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
         logger.typewriter_log(
-            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, assistant_thoughts_text
+            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
         )
-        logger.typewriter_log("REASONING:", Fore.YELLOW, assistant_thoughts_reasoning)
+        logger.typewriter_log(
+            "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
+        )
 
         if assistant_thoughts_plan:
             logger.typewriter_log("PLAN:", Fore.YELLOW, "")
@@ -132,35 +138,40 @@ def print_assistant_thoughts(assistant_reply):
                 line = line.lstrip("- ")
                 logger.typewriter_log("- ", Fore.GREEN, line.strip())
 
-        logger.typewriter_log("CRITICISM:", Fore.YELLOW, assistant_thoughts_criticism)
+        logger.typewriter_log(
+            "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
+        )
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
 
         return assistant_reply_json
-    except json.decoder.JSONDecodeError as e:
+    except json.decoder.JSONDecodeError:
+        call_stack = traceback.format_exc()
         logger.error("Error: Invalid JSON\n", assistant_reply)
+        logger.error("Traceback: \n", call_stack)
         if cfg.speak_mode:
             speak.say_text(
-                "I have received an invalid JSON response from the OpenAI API. I cannot ignore this response."
+                "I have received an invalid JSON response from the OpenAI API."
+                " I cannot ignore this response."
             )
 
     # All other errors, return "Error: + error message"
-    except Exception as e:
+    except Exception:
         call_stack = traceback.format_exc()
         logger.error("Error: \n", call_stack)
 
 
 def construct_prompt():
     """Construct the prompt for the AI to respond to"""
-    config = AIConfig.load(cfg.ai_settings_file)
+    config: AIConfig = AIConfig.load(cfg.ai_settings_file)
     if cfg.skip_reprompt and config.ai_name:
         logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
         logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
-        logger.typewriter_log("Goals:", Fore.GREEN, config.ai_goals)
+        logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
     elif config.ai_name:
         logger.typewriter_log(
-            f"Welcome back! ",
+            "Welcome back! ",
             Fore.GREEN,
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True,
@@ -183,8 +194,7 @@ Continue (y/n): """
     global ai_name
     ai_name = config.ai_name
 
-    full_prompt = config.construct_full_prompt()
-    return full_prompt
+    return config.construct_full_prompt()
 
 
 def prompt_user():
@@ -194,7 +204,8 @@ def prompt_user():
     logger.typewriter_log(
         "Welcome to Auto-GPT! ",
         Fore.GREEN,
-        "Enter the name of your AI and its role below. Entering nothing will load defaults.",
+        "Enter the name of your AI and its role below. Entering nothing will load"
+        " defaults.",
         speak_text=True,
     )
 
@@ -214,17 +225,20 @@ def prompt_user():
     logger.typewriter_log(
         "Describe your AI's role: ",
         Fore.GREEN,
-        "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'",
+        "For example, 'an AI designed to autonomously develop and run businesses with"
+        " the sole goal of increasing your net worth.'",
     )
     ai_role = utils.clean_input(f"{ai_name} is: ")
     if ai_role == "":
-        ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
+        ai_role = "an AI designed to autonomously develop and run businesses with the"
+        " sole goal of increasing your net worth."
 
     # Enter up to 5 goals for the AI
     logger.typewriter_log(
         "Enter up to 5 goals for your AI: ",
         Fore.GREEN,
-        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously'",
+        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage"
+        " multiple businesses autonomously'",
     )
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
@@ -285,7 +299,8 @@ def parse_arguments():
         "--ai-settings",
         "-C",
         dest="ai_settings_file",
-        help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
+        help="Specifies which ai_settings.yaml file to use, will also automatically"
+        " skip the re-prompt.",
     )
     parser.add_argument(
         '--allow-downloads',
@@ -305,7 +320,9 @@ def parse_arguments():
         logger.typewriter_log(
             "WARNING: ",
             Fore.RED,
-            "Continuous mode is not recommended. It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Use at your own risk.",
+            "Continuous mode is not recommended. It is potentially dangerous and may"
+            " cause your AI to run forever or carry out actions you would not usually"
+            " authorise. Use at your own risk.",
         )
         cfg.set_continuous_mode(True)
 
@@ -340,7 +357,7 @@ def parse_arguments():
                 Fore.RED,
                 f"{supported_memory}",
             )
-            logger.typewriter_log(f"Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
+            logger.typewriter_log("Defaulting to: ", Fore.YELLOW, cfg.memory_backend)
         else:
             cfg.memory_backend = chosen
 
@@ -382,14 +399,16 @@ def main():
     # print(prompt)
     # Initialize variables
     full_message_history = []
-    result = None
     next_action_count = 0
     # Make a constant:
-    user_input = "Determine which next command to use, and respond using the format specified above:"
+    user_input = (
+        "Determine which next command to use, and respond using the"
+        " format specified above:"
+    )
     # Initialize memory and make sure it is empty.
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(cfg, init=True)
-    print("Using memory of type: " + memory.__class__.__name__)
+    print(f"Using memory of type: {memory.__class__.__name__}")
     agent = Agent(
         ai_name=ai_name,
         memory=memory,
@@ -433,6 +452,8 @@ class Agent:
     def start_interaction_loop(self):
         # Interaction Loop
         loop_count = 0
+        command_name = None
+        arguments = None
         while True:
             # Discontinue if continuous limit is reached
             loop_count += 1
@@ -477,10 +498,13 @@ class Agent:
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
+                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
                 print(
-                    f"Enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter feedback for {self.ai_name}...",
+                    "Enter 'y' to authorise command, 'y -N' to run N continuous"
+                    " commands, 'n' to exit program, or enter feedback for"
+                    f" {self.ai_name}...",
                     flush=True,
                 )
                 while True:
@@ -498,7 +522,8 @@ class Agent:
                             self.user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             print(
-                                "Invalid input format. Please enter 'y -n' where n is the number of continuous tasks."
+                                "Invalid input format. Please enter 'y -n' where n"
+                                " is the number of continuous tasks."
                             )
                             continue
                         break
@@ -524,18 +549,22 @@ class Agent:
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
+                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
                 result = (
-                    f"Command {command_name} threw the following error: " + arguments
+                    f"Command {command_name} threw the following error: {arguments}"
                 )
             elif command_name == "human_feedback":
                 result = f"Human feedback: {self.user_input}"
             else:
-                result = f"Command {command_name} returned: {cmd.execute_command(command_name, arguments)}"
+                result = (
+                    f"Command {command_name} "
+                    f"returned: {cmd.execute_command(command_name, arguments)}"
+                )
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
 
