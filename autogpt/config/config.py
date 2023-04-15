@@ -72,6 +72,10 @@ class Config(metaclass=Singleton):
         self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
         self.use_weaviate_embedded = os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
 
+        # milvus configuration, e.g., localhost:19530.
+        self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
+        self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
+
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
 
