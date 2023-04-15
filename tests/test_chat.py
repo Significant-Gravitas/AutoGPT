@@ -9,17 +9,17 @@ from autogpt.chat import create_chat_message, generate_context
 
 class TestChat(unittest.TestCase):
 
-    # Tests that the function returns a dictionary with the correct keys and values when valid strings are provided for role and content. 
+    # Tests that the function returns a dictionary with the correct keys and values when valid strings are provided for role and content.
     def test_happy_path_role_content(self):
         result = create_chat_message("system", "Hello, world!")
         self.assertEqual(result, {"role": "system", "content": "Hello, world!"})
 
-    # Tests that the function returns a dictionary with the correct keys and values when empty strings are provided for role and content. 
+    # Tests that the function returns a dictionary with the correct keys and values when empty strings are provided for role and content.
     def test_empty_role_content(self):
         result = create_chat_message("", "")
         self.assertEqual(result, {"role": "", "content": ""})
 
-    # Tests the behavior of the generate_context function when all input parameters are empty.  
+    # Tests the behavior of the generate_context function when all input parameters are empty.
     @patch("time.strftime")
     def test_generate_context_empty_inputs(self, mock_strftime):
         # Mock the time.strftime function to return a fixed value
@@ -41,7 +41,7 @@ class TestChat(unittest.TestCase):
         ])
         self.assertEqual(result, expected_result)
 
-    # Tests that the function successfully generates a current_context given valid inputs. 
+    # Tests that the function successfully generates a current_context given valid inputs.
     def test_generate_context_valid_inputs(self):
         # Given
         prompt = "What is your favorite color?"
@@ -69,7 +69,7 @@ class TestChat(unittest.TestCase):
         self.assertGreaterEqual(len(result[3]), 3) # current_context should have at least 3 messages
         self.assertLessEqual(result[1], 2048) # token limit for GPT-3.5-turbo-0301 is 2048 tokens
 
-    # Tests that the function works correctly with valid inputs. 
+    # Tests that the function works correctly with valid inputs.
     def test_generate_context_valid_inputs(self):
         # Arrange
         prompt = "Hello, how can I assist you today?"
