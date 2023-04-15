@@ -15,7 +15,6 @@ def MockConfig():
             "speak_mode": False,
             "milvus_collection": "autogpt",
             "milvus_addr": "localhost:19530",
-
         },
     )
 
