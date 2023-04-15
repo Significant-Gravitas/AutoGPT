@@ -1,4 +1,12 @@
+from colorama import Fore
+from autogpt.config.ai_config import AIConfig
+from autogpt.config.config import Config
+from autogpt.logs import logger
 from autogpt.promptgenerator import PromptGenerator
+from autogpt.setup import prompt_user
+from autogpt.utils import clean_input
+
+CFG = Config()
 
 
 def get_prompt() -> str:
@@ -106,3 +114,42 @@ def get_prompt() -> str:
 
     # Generate the prompt string
     return prompt_generator.generate_prompt_string()
+
+
+def construct_prompt() -> str:
+    """Construct the prompt for the AI to respond to
+
+    Returns:
+        str: The prompt string
+    """
+    config = AIConfig.load(CFG.ai_settings_file)
+    if CFG.skip_reprompt and config.ai_name:
+        logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
+        logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
+        logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
+    elif config.ai_name:
+        logger.typewriter_log(
+            "Welcome back! ",
+            Fore.GREEN,
+            f"Would you like me to return to being {config.ai_name}?",
+            speak_text=True,
+        )
+        should_continue = clean_input(
+            f"""Continue with the last settings?
+Name:  {config.ai_name}
+Role:  {config.ai_role}
+Goals: {config.ai_goals}
+Continue (y/n): """
+        )
+        if should_continue.lower() == "n":
+            config = AIConfig()
+
+    if not config.ai_name:
+        config = prompt_user()
+        config.save()
+
+    # Get rid of this global:
+    global ai_name
+    ai_name = config.ai_name
+
+    return config.construct_full_prompt()
