@@ -14,7 +14,9 @@ def safe_join(base, *paths):
     new_path = os.path.join(base, *paths)
     norm_new_path = os.path.normpath(new_path)
 
-    if os.path.commonprefix([base, norm_new_path]) != base:
+    abslute_file_path = os.path.join(os.path.abspath(base), *paths)
+
+    if os.path.commonprefix([base, norm_new_path]) != base or os.path.realpath(abslute_file_path) != abslute_file_path:
         raise ValueError("Attempted to access outside of working directory.")
 
     return norm_new_path
