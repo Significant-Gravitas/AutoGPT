@@ -50,7 +50,7 @@ Your support is greatly appreciated
     - [Setting up environment variables](#setting-up-environment-variables-1)
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
-  - [🧠 Memory pre-seeding](#memory-pre-seeding)
+  - [🧠 Memory pre-seeding](#-memory-pre-seeding)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#-image-generation)
