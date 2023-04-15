@@ -1,19 +1,5 @@
-def split_text(text, char_limit):
-    paragraphs = re.split(r'\n\s*\n', text)
-    chunks = []
-    current_chunk = ""
-
-    for paragraph in paragraphs:
-        if len(current_chunk + paragraph) <= char_limit:
-            current_chunk += "\n\n" + paragraph
-        else:
-            chunks.append(current_chunk.strip())
-            current_chunk = paragraph
-
-    if current_chunk:
-        chunks.append(current_chunk.strip())
-
-    return chunks
+from . import *
+from llm_utils import create_chat_completion
 
 
 def read_file(filepath, char_limit=4000):
@@ -22,7 +8,28 @@ def read_file(filepath, char_limit=4000):
         with open(filepath, "r", encoding='utf-8') as f:
             content = f.read()
             chunks = split_text(content, char_limit)
-            content = f"\nCHUNK\n".join(chunks)
-            return content
+            if len(chunks) > 1:
+                summaries = []
+
+                for i, chunk in enumerate(chunks):
+                    print(f"Summarizing chunk {i + 1} / {len(chunks)}")
+                    messages = [create_message(chunk)]
+
+                    summary = create_chat_completion(
+                        model=cfg.fast_llm_model,
+                        messages=messages,
+                        max_tokens=300,
+                    )
+                    summaries.append(summary)
+
+                print(f"Summarized {len(chunks)} chunks.")
+
+                combined_summary = "\n".join(summaries)
+
+                return combined_summary
+            elif len(chunks) == 1:
+                return chunks[0]
+            else:
+                return "Error: empty content"
     except Exception as e:
         return "Error: " + str(e)

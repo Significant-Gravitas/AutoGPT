@@ -1,6 +1,8 @@
-import os
 import re
 from pdfminer.high_level import extract_text
+from . import *
+from llm_utils import create_chat_completion
+
 
 def filter_text(text):
     """
@@ -22,25 +24,7 @@ def remove_duplicate_lines(text):
     return "\n".join(unique_lines)
 
 
-def split_text(text, char_limit):
-    paragraphs = re.split(r'\n\s*\n', text)
-    chunks = []
-    current_chunk = ""
-
-    for paragraph in paragraphs:
-        if len(current_chunk + paragraph) <= char_limit:
-            current_chunk += "\n\n" + paragraph
-        else:
-            chunks.append(current_chunk.strip())
-            current_chunk = paragraph
-
-    if current_chunk:
-        chunks.append(current_chunk.strip())
-
-    return chunks
-
-
-def read_file(file_path, char_limit=4000):
+def read_file(file_path, char_limit=8192):
     """
     Entry method to read a PDF file and separated by char_limit.
     """
@@ -48,6 +32,33 @@ def read_file(file_path, char_limit=4000):
     filtered_text = filter_text(raw_text)
     no_duplicate_text = remove_duplicate_lines(filtered_text)
     chunks = split_text(no_duplicate_text, char_limit)
+    if len(chunks) > 1:
+        summaries = []
 
-    content = f"\n===CHUNK===\n".join(chunks)
-    return content
+        for i, chunk in enumerate(chunks):
+            print(f"Summarizing chunk {i + 1} / {len(chunks)}")
+            messages = [create_message(chunk)]
+
+            summary = create_chat_completion(
+                model=cfg.fast_llm_model,
+                messages=messages,
+                max_tokens=300,
+            )
+            summaries.append(summary)
+
+        print(f"Summarized {len(chunks)} chunks.")
+
+        combined_summary = "\n".join(summaries)
+        messages = [create_message(combined_summary)]
+
+        final_summary = create_chat_completion(
+            model=cfg.fast_llm_model,
+            messages=messages,
+            max_tokens=300,
+        )
+
+        return final_summary
+    elif len(chunks) == 1:
+        return chunks[0]
+    else:
+        return "Error: empty content"
