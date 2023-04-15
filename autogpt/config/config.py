@@ -73,6 +73,8 @@ class Config(metaclass=Singleton):
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36"
             " (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
         )
+        self.custom_webdriver_path = os.getenv("CUSTOM_WEBDRIVER_PATH")
+        self.use_default_user_data = os.getenv("USE_DEFAULT_USER_DATA")
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
         self.redis_port = os.getenv("REDIS_PORT", "6379")
         self.redis_password = os.getenv("REDIS_PASSWORD", "")

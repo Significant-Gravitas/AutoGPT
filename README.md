@@ -59,6 +59,7 @@ Your support is greatly appreciated
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
   - [Run tests](#run-tests)
   - [Run linter](#run-linter)
+  - [Note for China Mainland users](#note-for-china-mainland-users)
 
 ## 🚀 Features
 
@@ -442,3 +443,17 @@ flake8 autogpt/ tests/
 # Or, if you want to run flake8 with the same configuration as the CI:
 flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
 ```
+
+## Note for China Mainland users
+
+You need to provide both a proxy for the commandline script and the Chrome instance to make the Auto-GPT work.
+
+For example, the following command enables the script to access the Internet.
+```bash
+export https_proxy=socks5:xxx
+python -m autogpt --gpt3only
+```
+
+To enable the Chrome instance invoked by Auto-GPT to access the Internet, it is recommended to set `USE_DEFAULT_USER_DATA=True` in the `.env` file, so that Chrome instance can use your daily proxy config.
+
+Their is also a `CUSTOM_WEBDRIVER_PATH` environment in the `.env` file when your script cannot download WebDriver directly from the Internet. Follow the guidelines at https://sites.google.com/chromium.org/driver/downloads to manually download the WebDriver and set the `CUSTOM_WEBDRIVER_PATH` environment properly.
