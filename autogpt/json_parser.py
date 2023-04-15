@@ -12,7 +12,7 @@ JSON_SCHEMA = """
 {
     "command": {
         "name": "command name",
-        "args":{
+        "args": {
             "arg name": "value"
         }
     },
