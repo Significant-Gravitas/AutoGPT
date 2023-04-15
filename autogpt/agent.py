@@ -60,7 +60,7 @@ class Agent:
 
             self.check_limit_loop_count()
 
-    def start_argent(self):
+    def start_agent(self):
         self.send_message_to_ai()
 
         print_assistant_thoughts(self.ai_name, self.assistant_reply)
