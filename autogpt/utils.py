@@ -28,6 +28,7 @@ def clean_input(prompt: str = "", talk=False):
                     return "y"
                 elif chat_answer in ["no", "nope", "n", "nah", "negative", "nay", "nay nay"]:
                     return "n"
+                return chat_answer
                       
             ## ask for input, default when just pressing Enter is y
             print("Asking user via keyboard...")
