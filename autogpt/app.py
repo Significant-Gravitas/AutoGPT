@@ -9,7 +9,11 @@ from autogpt.commands.write_tests import write_tests
 from autogpt.config import Config
 from autogpt.commands.image_gen import generate_image
 from autogpt.commands.web_requests import scrape_links, scrape_text
-from autogpt.commands.execute_code import execute_python_file, execute_shell, execute_shell_popen
+from autogpt.commands.execute_code import (
+    execute_python_file,
+    execute_shell,
+    execute_shell_popen,
+)
 from autogpt.commands.file_operations import (
     append_to_file,
     delete_file,
