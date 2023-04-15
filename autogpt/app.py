@@ -22,6 +22,8 @@ from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
 from autogpt.commands.web_selenium import browse_website
+from autogpt.commands.git_operations import clone_repository
+from autogpt.commands.twitter import send_tweet
 
 
 CFG = Config()
@@ -87,6 +89,21 @@ def get_command(response: str):
         return "Error:", str(e)
 
 
+def map_command_synonyms(command_name: str):
+    """Takes the original command name given by the AI, and checks if the
+    string matches a list of common/known hallucinations
+    """
+    synonyms = [
+        ("write_file", "write_to_file"),
+        ("create_file", "write_to_file"),
+        ("search", "google"),
+    ]
+    for seen_command, actual_command_name in synonyms:
+        if command_name == seen_command:
+            return actual_command_name
+    return command_name
+
+
 def execute_command(command_name: str, arguments):
     """Execute the command and return the result
 
@@ -99,6 +116,7 @@ def execute_command(command_name: str, arguments):
     memory = get_memory(CFG)
 
     try:
+        command_name = map_command_synonyms(command_name)
         if command_name == "google":
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial
@@ -108,7 +126,7 @@ def execute_command(command_name: str, arguments):
                 google_result = google_official_search(arguments["input"])
             else:
                 google_result = google_search(arguments["input"])
-            safe_message = google_result.encode('utf-8', 'ignore')
+            safe_message = google_result.encode("utf-8", "ignore")
             return str(safe_message)
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
@@ -126,6 +144,10 @@ def execute_command(command_name: str, arguments):
             return get_text_summary(arguments["url"], arguments["question"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
+        elif command_name == "clone_repository":
+            return clone_repository(
+                arguments["repository_url"], arguments["clone_path"]
+            )
         elif command_name == "read_file":
             return read_file(arguments["file"])
         elif command_name == "write_to_file":
@@ -160,6 +182,8 @@ def execute_command(command_name: str, arguments):
                 )
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
+        elif command_name == "send_tweet":
+            return send_tweet(arguments['text'])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
@@ -244,11 +268,8 @@ def message_agent(key: str, message: str) -> str:
     # Check if the key is a valid integer
     if is_valid_int(key):
         agent_response = AGENT_MANAGER.message_agent(int(key), message)
-    # Check if the key is a valid string
-    elif isinstance(key, str):
-        agent_response = AGENT_MANAGER.message_agent(key, message)
     else:
-        return "Invalid key, must be an integer or a string."
+        return "Invalid key, must be an integer."
 
     # Speak response
     if CFG.speak_mode:
@@ -260,9 +281,11 @@ def list_agents():
     """List all agents
 
     Returns:
-        list: A list of all agents
+        str: A list of all agents
     """
-    return AGENT_MANAGER.list_agents()
+    return "List of agents:\n" + "\n".join(
+        [str(x[0]) + ": " + x[1] for x in AGENT_MANAGER.list_agents()]
+    )
 
 
 def delete_agent(key: str) -> str:
