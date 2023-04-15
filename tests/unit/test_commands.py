@@ -1,6 +1,7 @@
 from autogpt import commands
 import unittest
-from unittest.mock import patch,MagicMock
+from unittest.mock import patch, MagicMock
+
 
 class TestCommands(unittest.TestCase):
     def test_make_agent(self):
