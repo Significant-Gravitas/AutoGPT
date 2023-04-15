@@ -37,6 +37,9 @@ class Config(metaclass=Singleton):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "1"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
+        self.use_gmail = os.getenv("USE_GMAIL")=="True"
+        self.email_id = os.getenv("GMAIL_ID")
+        self.email_password = os.getenv("GMAIL_PASSWORD")
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
@@ -88,7 +91,9 @@ class Config(metaclass=Singleton):
         self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
-        self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
+        self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
+        self.memory_embedder = os.getenv("MEMORY_EMBEDDER", 'ada')
+
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 

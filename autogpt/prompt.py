@@ -82,6 +82,7 @@ def get_prompt() -> str:
         ),
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
+        ("email","send_email",{"email":"<email>","subject":"<subject>","body":"<body of the email(string)>"})
     ]
 
     # Only add shell command to the prompt if the AI is allowed to execute it

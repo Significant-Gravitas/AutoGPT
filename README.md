@@ -66,6 +66,7 @@ Your support is greatly appreciated
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
   - [Run tests](#run-tests)
   - [Run linter](#run-linter)
+  - [setting gmail](#-setting-gmail)
 
 ## 🚀 Features
 
@@ -480,3 +481,14 @@ flake8 autogpt/ tests/
 # Or, if you want to run flake8 with the same configuration as the CI:
 flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
 ```
+
+## setting gmail
+
+1. go to the https://myaccount.google.com/security and turn on 2 step verification
+2. then go to https://myaccount.google.com/apppasswords and select app -> other(custom name) -> generate
+3. copy the 16 digit app password
+
+In the `.env` file set:
+- `USE_GMAIL`=True
+- `GMAIL_ID`=your_gmail_id
+- `GMAIL_PASSWORD` = app_password
