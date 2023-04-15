@@ -57,9 +57,9 @@ def split_text(text, max_length=8192):
 def create_message(chunk, question):
     return {
         "role": "user",
-        "content": f'"""{chunk}""" Using the above text, please answer the following'
+        "content": f'"""{chunk}""" Using the above text, answer the following'
         f' question: "{question}" -- if the question cannot be answered using the text,'
-        " please summarize the text.",
+        " summarize the text.",
     }
 
 
