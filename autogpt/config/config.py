@@ -26,6 +26,7 @@ class Config(metaclass=Singleton):
         self.skip_reprompt = False
         self.allow_downloads = False
 
+        self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -62,6 +63,10 @@ class Config(metaclass=Singleton):
 
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
+
+        # milvus configuration, e.g., localhost:19530.
+        self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
+        self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
@@ -128,15 +133,9 @@ class Config(metaclass=Singleton):
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
         except FileNotFoundError:
             config_params = {}
-        self.openai_api_type = os.getenv(
-            "OPENAI_API_TYPE", config_params.get("azure_api_type", "azure")
-        )
-        self.openai_api_base = os.getenv(
-            "OPENAI_AZURE_API_BASE", config_params.get("azure_api_base", "")
-        )
-        self.openai_api_version = os.getenv(
-            "OPENAI_AZURE_API_VERSION", config_params.get("azure_api_version", "")
-        )
+        self.openai_api_type = config_params.get("azure_api_type") or "azure"
+        self.openai_api_base = config_params.get("azure_api_base") or ""
+        self.openai_api_version = config_params.get("azure_api_version") or "2023-03-15-preview"
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", [])
 
     def set_continuous_mode(self, value: bool) -> None:
