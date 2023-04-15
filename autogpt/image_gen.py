@@ -42,6 +42,10 @@ def generate_image(prompt):
         API_URL = (
             "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
         )
+        if cfg.huggingface_api_token is None:
+            raise ValueError(
+                "You need to set your Hugging Face API token in the config file."
+            )
         headers = {"Authorization": "Bearer " + cfg.huggingface_api_token}
 
         response = requests.post(

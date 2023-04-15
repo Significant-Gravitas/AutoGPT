@@ -54,7 +54,8 @@ class Logger(metaclass=Singleton):
         error_handler = logging.FileHandler(os.path.join(log_dir, error_file))
         error_handler.setLevel(logging.ERROR)
         error_formatter = AutoGptFormatter(
-            "%(asctime)s %(levelname)s %(module)s:%(funcName)s:%(lineno)d %(title)s %(message_no_color)s"
+            "%(asctime)s %(levelname)s %(module)s:%(funcName)s:%(lineno)d %(title)s"
+            " %(message_no_color)s"
         )
         error_handler.setFormatter(error_formatter)
 
@@ -117,7 +118,12 @@ class Logger(metaclass=Singleton):
 
     def double_check(self, additionalText=None):
         if not additionalText:
-            additionalText = "Please ensure you've setup and configured everything correctly. Read https://github.com/Torantulino/Auto-GPT#readme to double check. You can also create a github issue or join the discord and ask there!"
+            additionalText = (
+                "Please ensure you've setup and configured everything"
+                " correctly. Read https://github.com/Torantulino/Auto-GPT#readme to "
+                "double check. You can also create a github issue or join the discord"
+                " and ask there!"
+            )
 
         self.typewriter_log("DOUBLE CHECK CONFIGURATION", Fore.YELLOW, additionalText)
 
@@ -150,7 +156,7 @@ class TypingConsoleHandler(logging.StreamHandler):
 
 
 class ConsoleHandler(logging.StreamHandler):
-    def emit(self, record):
+    def emit(self, record) -> None:
         msg = self.format(record)
         try:
             print(msg)

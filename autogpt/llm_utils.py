@@ -1,6 +1,7 @@
 import time
 
 import openai
+from openai.error import APIError, RateLimitError
 from colorama import Fore
 
 from autogpt.config import Config
@@ -18,6 +19,12 @@ def create_chat_completion(
     """Create a chat completion using the OpenAI API"""
     response = None
     num_retries = 5
+    if cfg.debug_mode:
+        print(
+            Fore.GREEN
+            + f"Creating chat completion with model {model}, temperature {temperature},"
+            f" max_tokens {max_tokens}" + Fore.RESET
+        )
     for attempt in range(num_retries):
         try:
             if cfg.use_azure:
@@ -36,14 +43,14 @@ def create_chat_completion(
                     max_tokens=max_tokens,
                 )
             break
-        except openai.error.RateLimitError:
+        except RateLimitError:
             if cfg.debug_mode:
                 print(
                     Fore.RED + "Error: ",
                     "API Rate Limit Reached. Waiting 20 seconds..." + Fore.RESET,
                 )
             time.sleep(20)
-        except openai.error.APIError as e:
+        except APIError as e:
             if e.http_status == 502:
                 if cfg.debug_mode:
                     print(

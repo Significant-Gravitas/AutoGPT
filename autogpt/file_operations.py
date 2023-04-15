@@ -32,8 +32,10 @@ def split_file(content, max_length=4000, overlap=0):
     between chunks.
 
     :param text: The input text to be split into chunks
-    :param max_length: The maximum length of each chunk, default is 4000 (about 1k token)
-    :param overlap: The number of overlapping characters between chunks, default is no overlap
+    :param max_length: The maximum length of each chunk,
+        default is 4000 (about 1k token)
+    :param overlap: The number of overlapping characters between chunks,
+        default is no overlap
     :return: A generator yielding chunks of text
     """
     start = 0
@@ -49,7 +51,7 @@ def split_file(content, max_length=4000, overlap=0):
         start += max_length - overlap
 
 
-def read_file(filename):
+def read_file(filename) -> str:
     """Read a file and return the contents"""
     try:
         filepath = safe_join(working_directory, filename)
@@ -57,7 +59,7 @@ def read_file(filename):
             content = f.read()
         return content
     except Exception as e:
-        return "Error: " + str(e)
+        return f"Error: {str(e)}"
 
 
 def ingest_file(filename, memory, max_length=4000, overlap=200):
