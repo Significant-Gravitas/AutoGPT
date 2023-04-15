@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 
 from autogpt.config import Config
 from autogpt.memory import get_memory
+from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 
 CFG = Config()
 memory = get_memory(CFG)
@@ -133,37 +134,6 @@ def scrape_text(url: str) -> str:
     text = "\n".join(chunk for chunk in chunks if chunk)
 
     return text
-
-
-def extract_hyperlinks(soup: BeautifulSoup, base_url: str) -> List[Tuple[str, str]]:
-    """Extract hyperlinks from a BeautifulSoup object
-
-    Args:
-        soup (BeautifulSoup): The BeautifulSoup object
-        base_url (str): The base URL
-
-    Returns:
-        List[Tuple[str, str]]: The extracted hyperlinks
-    """
-    return [
-        (link.text, urljoin(base_url, link["href"]))
-        for link in soup.find_all("a", href=True)
-    ]
-
-
-def format_hyperlinks(hyperlinks: List[Tuple[str, str]]) -> List[str]:
-    """Format hyperlinks into a list of strings
-
-    Args:
-        hyperlinks (List[Tuple[str, str]]): The hyperlinks to format
-
-    Returns:
-        List[str]: The formatted hyperlinks
-    """
-    formatted_links = []
-    for link_text, link_url in hyperlinks:
-        formatted_links.append(f"{link_text} ({link_url})")
-    return formatted_links
 
 
 def scrape_links(url: str) -> Union[str, List[str]]:
