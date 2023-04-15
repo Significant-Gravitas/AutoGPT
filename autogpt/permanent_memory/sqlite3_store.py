@@ -18,11 +18,13 @@ class MemoryDB:
                 # As last resort, open in dynamic memory. Won't be persistent.
                 self.db_file = ":memory:"
             self.cnx = sqlite3.connect(self.db_file)
-            self.cnx.execute("CREATE VIRTUAL TABLE \
+            self.cnx.execute(
+                "CREATE VIRTUAL TABLE \
                 IF NOT EXISTS text USING FTS5 \
                 (session, \
                  key, \
-                 block);")
+                 block);"
+            )
             self.session_id = int(self.get_max_session_id()) + 1
             self.cnx.commit()
 
@@ -66,7 +68,7 @@ class MemoryDB:
             cnx = self.get_cnx()
             cnx.execute(cmd_str, (session_id, key, text))
             cnx.commit()
-    
+
     # Overwrite text at key.
     def overwrite(self, key, text):
         self.delete_memory(key)
@@ -76,8 +78,8 @@ class MemoryDB:
         cnx = self.get_cnx()
         cnx.execute(cmd_str, (session_id, key, text))
         cnx.commit()
-    
-    def delete_memory(self, key, session_id = None):
+
+    def delete_memory(self, key, session_id=None):
         session = session_id
         if session is None:
             session = self.session_id
