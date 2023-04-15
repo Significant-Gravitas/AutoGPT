@@ -1,0 +1,29 @@
+name: Feature request 🚀
+description: Suggest a new idea for Auto-GPT.
+labels: ['status: needs triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please provide a searchable summary of the issue in the title above ⬆️.
+
+        Thanks for contributing by creating an issue! ❤️
+  - type: checkboxes
+    attributes:
+      label: Duplicates
+      description: Please [search the history](https://github.com/Torantulino/Auto-GPT/issues) to see if an issue already exists for the same problem.
+      options:
+        - label: I have searched the existing issues
+          required: true
+  - type: textarea
+    attributes:
+      label: Summary 💡
+      description: Describe how it should work.
+  - type: textarea
+    attributes:
+      label: Examples 🌈
+      description: Provide a link to other implementations, or screenshots of the expected behavior.
+  - type: textarea
+    attributes:
+      label: Motivation 🔦
+      description: What are you trying to accomplish? How has the lack of this feature affected you? Providing context helps us come up with a solution that is more useful in the real world.
