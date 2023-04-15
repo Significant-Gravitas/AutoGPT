@@ -1,8 +1,10 @@
+# sourcery skip: do-not-use-staticmethod
+"""
+A module that contains the AIConfig class object that contains the configuration
+"""
 import os
-from typing import Type
+from typing import List, Optional, Type
 import yaml
-
-from autogpt.prompt import get_prompt
 
 
 class AIConfig:
@@ -16,7 +18,7 @@ class AIConfig:
     """
 
     def __init__(
-        self, ai_name: str = "", ai_role: str = "", ai_goals: list = []
+        self, ai_name: str = "", ai_role: str = "", ai_goals: Optional[List] = None
     ) -> None:
         """
         Initialize a class instance
@@ -28,7 +30,8 @@ class AIConfig:
         Returns:
             None
         """
-
+        if ai_goals is None:
+            ai_goals = []
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
@@ -36,15 +39,14 @@ class AIConfig:
     # Soon this will go in a folder where it remembers more stuff about the run(s)
     SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "ai_settings.yaml")
 
-    @classmethod
-    def load(cls: "Type[AIConfig]", config_file: str = SAVE_FILE) -> "Type[AIConfig]":
+    @staticmethod
+    def load(config_file: str = SAVE_FILE) -> "AIConfig":
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from
           yaml file if yaml file exists,
         else returns class with no parameters.
 
         Parameters:
-           cls (class object): An AIConfig Class object.
            config_file (int): The path to the config yaml file.
              DEFAULT: "../ai_settings.yaml"
 
@@ -62,7 +64,7 @@ class AIConfig:
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
         # type: Type[AIConfig]
-        return cls(ai_name, ai_role, ai_goals)
+        return AIConfig(ai_name, ai_role, ai_goals)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
@@ -102,6 +104,8 @@ class AIConfig:
             " simple strategies with no legal complications."
             ""
         )
+
+        from autogpt.prompt import get_prompt
 
         # Construct full prompt
         full_prompt = (
