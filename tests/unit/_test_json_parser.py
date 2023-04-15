@@ -111,3 +111,9 @@ def test_invalid_json_leading_sentence_with_gpt(self):
     }
 
     assert fix_and_parse_json(json_str, try_to_fix_with_gpt=False) == good_obj
+
+def test_invalid_json_property_name_missing_quotes():
+    # Test that an invalid JSON missing quotes around property names can be fixed
+    json_str = '{"name": "John", "age": 30, link: "something http://google.com"}'
+    good_obj = {"name": "John", "age": 30, "link": "something http://google.com"}
+    assert fix_and_parse_json(json_str, try_to_fix_with_gpt=False) == good_obj
