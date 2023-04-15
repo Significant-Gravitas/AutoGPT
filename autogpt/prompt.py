@@ -1,9 +1,10 @@
 from autogpt.promptgenerator import PromptGenerator
 
 
-def get_prompt():
+def get_prompt() -> str:
     """
-    This function generates a prompt string that includes various constraints, commands, resources, and performance evaluations.
+    This function generates a prompt string that includes various constraints,
+        commands, resources, and performance evaluations.
 
     Returns:
         str: The generated prompt string.
@@ -14,10 +15,12 @@ def get_prompt():
 
     # Add constraints to the PromptGenerator object
     prompt_generator.add_constraint(
-        "~4000 word limit for short term memory. Your short term memory is short, so immediately save important information to files."
+        "~4000 word limit for short term memory. Your short term memory is short, so"
+        " immediately save important information to files."
     )
     prompt_generator.add_constraint(
-        "If you are unsure how you previously did something or want to recall past events, thinking about similar events will help you remember."
+        "If you are unsure how you previously did something or want to recall past"
+        " events, thinking about similar events will help you remember."
     )
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint(
@@ -87,7 +90,8 @@ def get_prompt():
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation(
-        "Continuously review and analyze your actions to ensure you are performing to the best of your abilities."
+        "Continuously review and analyze your actions to ensure you are performing to"
+        " the best of your abilities."
     )
     prompt_generator.add_performance_evaluation(
         "Constructively self-criticize your big-picture behavior constantly."
@@ -96,10 +100,9 @@ def get_prompt():
         "Reflect on past decisions and strategies to refine your approach."
     )
     prompt_generator.add_performance_evaluation(
-        "Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps."
+        "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
+        " the least number of steps."
     )
 
     # Generate the prompt string
-    prompt_string = prompt_generator.generate_prompt_string()
-
-    return prompt_string
+    return prompt_generator.generate_prompt_string()

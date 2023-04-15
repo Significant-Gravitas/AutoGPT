@@ -2,6 +2,7 @@ import os
 import subprocess
 
 import docker
+from docker.errors import ImageNotFound
 
 WORKSPACE_FOLDER = "auto_gpt_workspace"
 
@@ -35,7 +36,7 @@ def execute_python_file(file):
             try:
                 client.images.get(image_name)
                 print(f"Image '{image_name}' found locally")
-            except docker.errors.ImageNotFound:
+            except ImageNotFound:
                 print(
                     f"Image '{image_name}' not found locally, pulling from Docker Hub"
                 )
@@ -68,7 +69,7 @@ def execute_python_file(file):
                 detach=True,
             )
 
-            output = container.wait()
+            container.wait()
             logs = container.logs().decode("utf-8")
             container.remove()
 
@@ -84,7 +85,7 @@ def execute_python_file(file):
 def execute_shell(command_line):
     current_dir = os.getcwd()
 
-    if not WORKSPACE_FOLDER in current_dir:  # Change dir into workspace if necessary
+    if WORKSPACE_FOLDER not in current_dir:  # Change dir into workspace if necessary
         work_dir = os.path.join(os.getcwd(), WORKSPACE_FOLDER)
         os.chdir(work_dir)
 
