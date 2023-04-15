@@ -40,6 +40,12 @@ class PineconeMemory(MemoryProviderSingleton):
         self.index = pinecone.Index(table_name)
 
     def add(self, data):
+        """
+        Adds data to the memory.
+
+        Args:
+            data: The data to add to the memory.
+        """
         vector = get_embedding(data)
         # no metadata here. We may wish to change that long term.
         self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})])
@@ -48,6 +54,7 @@ class PineconeMemory(MemoryProviderSingleton):
         return _text
 
     def get(self, data):
+        """Gets relevant data from the memory."""
         return self.get_relevant(data, 1)
 
     def clear(self):

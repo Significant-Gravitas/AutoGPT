@@ -24,6 +24,11 @@ EMBED_DIM = {
 
 
 def get_embedding(text):
+    """Get the embedding for the given text.
+
+    Args:
+        text (str): The text to embed.
+    """
     text = text.replace("\n", " ")
 
     # Use the embedder specified in the config
