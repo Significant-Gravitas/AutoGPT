@@ -184,7 +184,7 @@ def execute_command(command_name: str, arguments):
             return generate_image(arguments["prompt"])
         elif command_name == "send_email":
             if CFG.use_gmail:
-                return send_email(arguments["email"],arguments['subject'],arguments['body'])
+                return send_email(arguments["email"], arguments['subject'], arguments['body'])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
