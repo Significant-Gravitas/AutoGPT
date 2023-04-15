@@ -1,4 +1,6 @@
 """Selenium web scraping module."""
+import os
+import platform
 from selenium import webdriver
 import autogpt.processing.text as summary
 from bs4 import BeautifulSoup
@@ -14,6 +16,20 @@ from autogpt.config import Config
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
+
+
+def get_chrome_user_data_directory() -> str:
+    operating_system = platform.system()
+    user_home = os.path.expanduser('~')
+
+    if operating_system == 'Windows':
+        return os.path.join(user_home, 'AppData', 'Local', 'Google', 'Chrome', 'User Data')
+    elif operating_system == 'Darwin':  # macOS
+        return os.path.join(user_home, 'Library', 'Application Support', 'Google', 'Chrome')
+    elif operating_system == 'Linux':
+        return os.path.join(user_home, '.config', 'google-chrome')
+    else:
+        raise ValueError(f'Unsupported operating system: {operating_system}')
 
 
 def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
@@ -54,8 +70,16 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         " (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
+    if cfg.use_default_user_data:
+        chrome_user_data_directory = get_chrome_user_data_directory()
+        options.add_argument(f'--user-data-dir={chrome_user_data_directory}')
+    driver_path = ''
+    if os.path.exists(cfg.custom_webdriver_path):
+        driver_path = cfg.custom_webdriver_path
+    else:
+        driver_path = ChromeDriverManager().install()
     driver = webdriver.Chrome(
-        executable_path=ChromeDriverManager().install(), options=options
+        executable_path=driver_path, options=options
     )
     driver.get(url)
 
