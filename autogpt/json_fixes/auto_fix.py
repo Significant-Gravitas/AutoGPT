@@ -21,12 +21,14 @@ def fix_json(json_string: str, schema: str) -> str:
     # Try to fix the JSON using GPT:
     function_string = "def fix_json(json_string: str, schema:str=None) -> str:"
     args = [f"'''{json_string}'''", f"'''{schema}'''"]
-    description_string = "This function takes a JSON string and ensures that it"\
-        " is parseable and fully compliant with the provided schema. If an object"\
-        " or field specified in the schema isn't contained within the correct JSON,"\
-        " it is omitted. The function also escapes any double quotes within JSON"\
-        " string values to ensure that they are valid. If the JSON string contains"\
+    description_string = (
+        "This function takes a JSON string and ensures that it"
+        " is parseable and fully compliant with the provided schema. If an object"
+        " or field specified in the schema isn't contained within the correct JSON,"
+        " it is omitted. The function also escapes any double quotes within JSON"
+        " string values to ensure that they are valid. If the JSON string contains"
         " any None or NaN values, they are replaced with null before being parsed."
+    )
 
     # If it doesn't already start with a "`", add one:
     if not json_string.startswith("`"):
