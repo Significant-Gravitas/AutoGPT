@@ -62,6 +62,10 @@ class Config(metaclass=Singleton):
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
 
+        # milvus configuration, e.g., localhost:19530.
+        self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
+        self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
+
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
 
