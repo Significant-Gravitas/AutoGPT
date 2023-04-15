@@ -6,7 +6,6 @@ from autogpt.logs import logger
 
 def fix_json(json_str: str, schema: str) -> str:
     """Fix the given JSON string to make it parseable and fully compliant with the provided schema."""
-    # Try to fix the JSON using GPT:
     function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
     args = [f"'''{json_str}'''", f"'''{schema}'''"]
     description_string = (
@@ -17,24 +16,32 @@ def fix_json(json_str: str, schema: str) -> str:
         " when the format is incorrect."
     )
 
-    # If it doesn't already start with a "`", add one:
-    if not json_str.startswith("`"):
-        json_str = "```json\n" + json_str + "\n```"
+    json_str = ensure_code_block(json_str)
+
     result_string = call_ai_function(
         function_string, args, description_string, model=cfg.fast_llm_model
     )
-    logger.debug("------------ JSON FIX ATTEMPT ---------------")
-    logger.debug(f"Original JSON: {json_str}")
-    logger.debug("-----------")
-    logger.debug(f"Fixed JSON: {result_string}")
-    logger.debug("----------- END OF FIX ATTEMPT ----------------")
+
+    log_attempt(json_str, result_string)
 
     try:
         json.loads(result_string)  # just check the validity
         return result_string
-    except:  # noqa: E722
-        # Get the call stack:
-        # import traceback
-        # call_stack = traceback.format_exc()
-        # print(f"Failed to fix JSON: '{json_str}' "+call_stack)
+    except json.JSONDecodeError:
         return "failed"
+
+
+def ensure_code_block(json_str: str) -> str:
+    """Ensure the JSON string is wrapped in a code block."""
+    if not json_str.startswith("```"):
+        return f"```json\n{json_str}\n```"
+    return json_str
+
+
+def log_attempt(original_json: str, fixed_json: str) -> None:
+    """Log JSON fix attempt."""
+    logger.debug("------------ JSON FIX ATTEMPT ---------------")
+    logger.debug(f"Original JSON: {original_json}")
+    logger.debug("-----------")
+    logger.debug(f"Fixed JSON: {fixed_json}")
+    logger.debug("----------- END OF FIX ATTEMPT ----------------")
