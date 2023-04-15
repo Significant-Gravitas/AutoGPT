@@ -1,7 +1,9 @@
 """Google search command for Autogpt."""
 import json
+import os
+import httplib2
 from typing import List, Union
-
+from httplib2 import socks
 from duckduckgo_search import ddg
 
 from autogpt.config import Config
@@ -48,12 +50,23 @@ def google_official_search(query: str, num_results: int = 8) -> Union[str, List[
     from googleapiclient.errors import HttpError
 
     try:
+        # Check if the HTTP_PROXY_HOST and HTTP_PROXY_PORT environment variables are set
+        http = None
+        host = os.getenv("HTTP_PROXY_HOST")
+        port = os.getenv("HTTP_PROXY_PORT")
+        if host and port:
+            # If they are set, use them to create an httplib2.Http instance with a proxy
+            http = httplib2.Http(
+                socks.PROXY_TYPE_HTTP,
+                proxy_info=httplib2.ProxyInfo(socks.PROXY_TYPE_HTTP, host, int(port)),
+            )
+
         # Get the Google API key and Custom Search Engine ID from the config file
         api_key = CFG.google_api_key
         custom_search_engine_id = CFG.custom_search_engine_id
 
         # Initialize the Custom Search API service
-        service = build("customsearch", "v1", developerKey=api_key)
+        service = build("customsearch", "v1", developerKey=api_key, http=http)
 
         # Send the search query and retrieve the results
         result = (
