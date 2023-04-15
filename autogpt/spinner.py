@@ -32,6 +32,7 @@ class Spinner:
     def __exit__(self, exc_type, exc_value, exc_traceback):
         """Stop the spinner"""
         self.running = False
-        self.spinner_thread.join()
+        if self.spinner_thread is not None:
+            self.spinner_thread.join()
         sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
         sys.stdout.flush()
