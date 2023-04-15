@@ -35,13 +35,13 @@ class RedisMemory(MemoryProviderSingleton):
         redis_port = cfg.redis_port
         redis_password = cfg.redis_password
         self.dimension = 1536
+        self.index = cfg.redis_index
         self.redis = redis.Redis(
             host=redis_host,
             port=redis_port,
             password=redis_password,
             db=0,  # Cannot be changed
         )
-        self.cfg = cfg
 
         # Check redis connection
         try:
@@ -61,15 +61,15 @@ class RedisMemory(MemoryProviderSingleton):
         if cfg.wipe_redis_on_start:
             self.redis.flushall()
         try:
-            self.redis.ft(f"{cfg.memory_index}").create_index(
+            self.redis.ft(f"{self.index}").create_index(
                 fields=SCHEMA,
                 definition=IndexDefinition(
-                    prefix=[f"{cfg.memory_index}:"], index_type=IndexType.HASH
+                    prefix=[f"{self.index}:"], index_type=IndexType.HASH
                 ),
             )
         except Exception as e:
             print("Error creating Redis search index: ", e)
-        existing_vec_num = self.redis.get(f"{cfg.memory_index}-vec_num")
+        existing_vec_num = self.redis.get(f"{self.index}-vec_num")
         self.vec_num = int(existing_vec_num.decode("utf-8")) if existing_vec_num else 0
 
     def add(self, data: str) -> str:
@@ -87,12 +87,12 @@ class RedisMemory(MemoryProviderSingleton):
         vector = np.array(vector).astype(np.float32).tobytes()
         data_dict = {b"data": data, "embedding": vector}
         pipe = self.redis.pipeline()
-        pipe.hset(f"{self.cfg.memory_index}:{self.vec_num}", mapping=data_dict)
+        pipe.hset(f"{self.index}:{self.vec_num}", mapping=data_dict)
         _text = (
             f"Inserting data into memory at index: {self.vec_num}:\n" f"data: {data}"
         )
         self.vec_num += 1
-        pipe.set(f"{self.cfg.memory_index}-vec_num", self.vec_num)
+        pipe.set(f"{self.index}-vec_num", self.vec_num)
         pipe.execute()
         return _text
 
@@ -136,7 +136,7 @@ class RedisMemory(MemoryProviderSingleton):
         query_vector = np.array(query_embedding).astype(np.float32).tobytes()
 
         try:
-            results = self.redis.ft(f"{self.cfg.memory_index}").search(
+            results = self.redis.ft(f"{self.index}").search(
                 query, query_params={"vector": query_vector}
             )
         except Exception as e:
@@ -148,4 +148,4 @@ class RedisMemory(MemoryProviderSingleton):
         """
         Returns: The stats of the memory index.
         """
-        return self.redis.ft(f"{self.cfg.memory_index}").info()
+        return self.redis.ft(f"{self.index}").info()

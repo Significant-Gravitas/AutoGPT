@@ -26,7 +26,8 @@ class CacheContent:
 class LocalCache(MemoryProviderSingleton):
     # on load, load our database
     def __init__(self, cfg) -> None:
-        self.filename = f"{cfg.memory_index}.json"
+        self.index = cfg.local_cache_index
+        self.filename = f"{self.index}.json"
         if os.path.exists(self.filename):
             try:
                 with open(self.filename, "w+b") as f:

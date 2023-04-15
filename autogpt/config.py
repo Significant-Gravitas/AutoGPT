@@ -76,6 +76,7 @@ class Config(metaclass=Singleton):
 
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
+        self.pinecone_index = os.getenv("PINECONE_INDEX", "auto-gpt")
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
@@ -90,9 +91,11 @@ class Config(metaclass=Singleton):
         self.redis_port = os.getenv("REDIS_PORT", "6379")
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
         self.wipe_redis_on_start = os.getenv("WIPE_REDIS_ON_START", "True") == "True"
-        self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
+        self.redis_index = os.getenv("REDIS_INDEX", "auto-gpt")
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
+        self.local_cache_index = os.getenv("LOCAL_CACHE_INDEX", "auto-gpt")
+        
         self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
