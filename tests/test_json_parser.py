@@ -1,75 +1,34 @@
-import unittest
+from unittest import TestCase
 
-import tests.context
 from autogpt.json_fixes.parsing import fix_and_parse_json
 
 
-class TestParseJson(unittest.TestCase):
+class TestParseJson(TestCase):
     def test_valid_json(self):
-        # Test that a valid JSON string is parsed correctly
+        """Test that a valid JSON string is parsed correctly."""
         json_str = '{"name": "John", "age": 30, "city": "New York"}'
         obj = fix_and_parse_json(json_str)
         self.assertEqual(obj, {"name": "John", "age": 30, "city": "New York"})
 
     def test_invalid_json_minor(self):
-        # Test that an invalid JSON string can be fixed with gpt
+        """Test that an invalid JSON string raises an error when not attempting to fix with GPT."""
         json_str = '{"name": "John", "age": 30, "city": "New York",}'
         with self.assertRaises(Exception):
             fix_and_parse_json(json_str, try_to_fix_with_gpt=False)
 
     def test_invalid_json_major_with_gpt(self):
-        # Test that an invalid JSON string raises an error when try_to_fix_with_gpt is False
-        json_str = 'BEGIN: "name": "John" - "age": 30 - "city": "New York" :END'
-        with self.assertRaises(Exception):
-            fix_and_parse_json(json_str, try_to_fix_with_gpt=False)
+        """Test that a majorly invalid JSON string is fixed and parsed correctly when using GPT."""
+        # TODO: Implement this test using fix_and_parse_json(json_str, try_to_fix_with_gpt=True)
+        pass
 
     def test_invalid_json_major_without_gpt(self):
-        # Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False
+        """Test that a majorly invalid JSON string raises an error when not attempting to fix with GPT."""
         json_str = 'BEGIN: "name": "John" - "age": 30 - "city": "New York" :END'
-        # Assert that this raises an exception:
         with self.assertRaises(Exception):
             fix_and_parse_json(json_str, try_to_fix_with_gpt=False)
 
-    def test_invalid_json_leading_sentence_with_gpt(self):
-        # Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False
-        json_str = """I suggest we start by browsing the repository to find any issues that we can fix.
-
-{
-    "command": {
-        "name": "browse_website",
-        "args":{
-            "url": "https://github.com/Torantulino/Auto-GPT"
-        }
-    },
-    "thoughts":
-    {
-        "text": "I suggest we start browsing the repository to find any issues that we can fix.",
-        "reasoning": "Browsing the repository will give us an idea of the current state of the codebase and identify any issues that we can address to improve the repo.",
-        "plan": "- Look through the repository to find any issues.\n- Investigate any issues to determine what needs to be fixed\n- Identify possible solutions to fix the issues\n- Open Pull Requests with fixes",
-        "criticism": "I should be careful while browsing so as not to accidentally introduce any new bugs or issues.",
-        "speak": "I will start browsing the repository to find any issues we can fix."
-    }
-}"""
-        good_obj = {
-            "command": {
-                "name": "browse_website",
-                "args": {"url": "https://github.com/Torantulino/Auto-GPT"},
-            },
-            "thoughts": {
-                "text": "I suggest we start browsing the repository to find any issues that we can fix.",
-                "reasoning": "Browsing the repository will give us an idea of the current state of the codebase and identify any issues that we can address to improve the repo.",
-                "plan": "- Look through the repository to find any issues.\n- Investigate any issues to determine what needs to be fixed\n- Identify possible solutions to fix the issues\n- Open Pull Requests with fixes",
-                "criticism": "I should be careful while browsing so as not to accidentally introduce any new bugs or issues.",
-                "speak": "I will start browsing the repository to find any issues we can fix.",
-            },
-        }
-        # Assert that this raises an exception:
-        self.assertEqual(
-            fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj
-        )
-
-    def test_invalid_json_leading_sentence_with_gpt(self):
-        # Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False
+    def test_invalid_json_leading_sentence(self):
+        """Test that an invalid JSON string with a leading sentence is fixed and parsed correctly."""
         json_str = """I will first need to browse the repository (https://github.com/Torantulino/Auto-GPT) and identify any potential bugs that need fixing. I will use the "browse_website" command for this.
 
 {
@@ -101,11 +60,4 @@ class TestParseJson(unittest.TestCase):
                 "speak": "I am browsing the repository to identify potential bugs.",
             },
         }
-        # Assert that this raises an exception:
-        self.assertEqual(
-            fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(fix_and_parse_json(json_str), good_obj)
