@@ -6,6 +6,8 @@ cfg = Config()
 import gtts
 import threading
 from threading import Lock, Semaphore
+from logger import logger
+import logging
 
 # Default voice IDs
 default_voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
@@ -74,6 +76,11 @@ def macos_tts_speech(text, voice_index=0):
 def say_text(text, voice_index=0):
 
     def speak():
+
+        print("logger_say_text: ", logger)
+        logger.debug(f"say_text_debug: {text}")
+        logger.warn(f"say_text_warn: {text}")
+        logger.error(f"say_text_error: {text}")
         if not cfg.elevenlabs_api_key:
             if cfg.use_mac_os_tts == 'True':
                 macos_tts_speech(text, voice_index)

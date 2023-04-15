@@ -215,7 +215,6 @@ def prompt_user():
 def parse_arguments():
     """Parses the arguments passed to the script"""
     global cfg
-    cfg.set_debug_mode(False)
     cfg.set_continuous_mode(False)
     cfg.set_speak_mode(False)
 
@@ -279,7 +278,11 @@ def main():
     # TODO: fill in llm values here
     check_openai_api_key()
     parse_arguments()
-    logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
+    if cfg.debug_mode:
+        print("DEBUG_MODE: ", cfg.debug_mode)
+        logger.set_level(logging.DEBUG)
+    else:
+        logger.set_level(logging.INFO)
     ai_name = ""
     prompt = construct_prompt()
     # print(prompt)

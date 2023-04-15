@@ -34,7 +34,6 @@ class Config(metaclass=Singleton):
 
     def __init__(self):
         """Initialize the Config class"""
-        self.debug_mode = False
         self.continuous_mode = False
         self.continuous_limit = 0
         self.speak_mode = False
@@ -48,6 +47,7 @@ class Config(metaclass=Singleton):
         self.temperature = float(os.getenv("TEMPERATURE", "1"))
         self.use_azure = os.getenv("USE_AZURE") == 'True'
         self.execute_local_commands = os.getenv('EXECUTE_LOCAL_COMMANDS', 'False') == 'True'
+        self.debug_mode = os.getenv('DEBUG_MODE', 'False') == 'True'
 
         if self.use_azure:
             self.load_azure_config()
