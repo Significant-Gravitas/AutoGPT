@@ -1,5 +1,6 @@
 from autogpt.memory.local import LocalCache
 from autogpt.memory.no_memory import NoMemory
+from autogpt.memory.chroma import ChromaMemory
 
 # List of supported memory backends
 # Add a backend to this list if the import attempt is successful
@@ -26,6 +27,14 @@ try:
 except ImportError:
     print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
+
+try:
+    from autogpt.memory.chroma import ChromaMemory
+
+    supported_memory.append("chroma")
+except ImportError:
+    print("Chroma not installed. Skipping import.")
+    ChromaMemory = None
 
 
 def get_memory(cfg, init=False):

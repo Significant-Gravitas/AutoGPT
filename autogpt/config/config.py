@@ -66,6 +66,11 @@ class Config(metaclass=Singleton):
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
 
+        #chroma configuration
+        self.chroma_db_directory = os.getenv("CHROMA_DB_DIRECTORY")
+        self.chroma_server_host = os.getenv("CHROMA_SERVER_HOST")
+        self.chroma_server_port = os.getenv("CHROMA_SERVER_PORT")
+
         # milvus configuration, e.g., localhost:19530.
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
