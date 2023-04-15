@@ -43,9 +43,9 @@ def get_embedding(text):
             model=model,
             engine=engine,
         )["data"][0]["embedding"]
-    
+
     return embedding
-    
+
 
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
