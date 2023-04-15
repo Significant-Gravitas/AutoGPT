@@ -139,7 +139,6 @@ def parse_arguments() -> None:
         CFG.ai_settings_file = file
         CFG.skip_reprompt = True
 
-
     if args.allow_downloads:
         logger.typewriter_log("Native Downloading:", Fore.GREEN, "ENABLED")
         logger.typewriter_log("WARNING: ", Fore.YELLOW,
