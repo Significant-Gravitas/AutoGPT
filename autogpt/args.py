@@ -149,11 +149,3 @@ def parse_arguments() -> None:
 
     if args.browser_name:
         CFG.selenium_web_browser = args.browser_name
-
-    if args.allow_downloads:
-        logger.typewriter_log("Native Downloading:", Fore.GREEN, "ENABLED")
-        logger.typewriter_log("WARNING: ", Fore.YELLOW,
-                              f"{Back.LIGHTYELLOW_EX}Auto-GPT will now be able to download and save files to your machine.{Back.RESET} " +
-                              "It is recommended that you monitor any files it downloads carefully.")
-        logger.typewriter_log("WARNING: ", Fore.YELLOW, f"{Back.RED + Style.BRIGHT}ALWAYS REMEMBER TO NEVER OPEN FILES YOU AREN'T SURE OF!{Style.RESET_ALL}")
-        CFG.allow_downloads = True
