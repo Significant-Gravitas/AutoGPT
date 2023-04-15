@@ -70,12 +70,12 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         " (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
-    if cfg.use_default_user_data:
+    if CFG.use_default_user_data:
         chrome_user_data_directory = get_chrome_user_data_directory()
         options.add_argument(f'--user-data-dir={chrome_user_data_directory}')
     driver_path = ''
-    if os.path.exists(cfg.custom_webdriver_path):
-        driver_path = cfg.custom_webdriver_path
+    if os.path.exists(CFG.custom_webdriver_path):
+        driver_path = CFG.custom_webdriver_path
     else:
         driver_path = ChromeDriverManager().install()
     driver = webdriver.Chrome(
