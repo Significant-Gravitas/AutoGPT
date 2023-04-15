@@ -20,7 +20,6 @@ selenium
 webdriver-manager
 coverage
 flake8
-sentence_transformers
 numpy
 pre-commit
 black
