@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 from typing import Type
 import yaml
 
@@ -34,7 +34,7 @@ class AIConfig:
         self.ai_goals = ai_goals
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "ai_settings.yaml")
+    SAVE_FILE = Path(__file__).parent.parent / "ai_settings.yaml"
 
     @classmethod
     def load(cls: "Type[AIConfig]", config_file: str = SAVE_FILE) -> "Type[AIConfig]":
@@ -51,11 +51,10 @@ class AIConfig:
         Returns:
             cls (object): An instance of given cls object
         """
-
-        try:
-            with open(config_file, encoding="utf-8") as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
-        except FileNotFoundError:
+        config_file = Path(config_file)
+        if config_file.exists():
+            config_params = yaml.load(config_file.read_text(), Loader=yaml.FullLoader)
+        else:
             config_params = {}
 
         ai_name = config_params.get("ai_name", "")
@@ -75,14 +74,15 @@ class AIConfig:
         Returns:
             None
         """
+        config_file = Path(config_file)
 
         config = {
             "ai_name": self.ai_name,
             "ai_role": self.ai_role,
             "ai_goals": self.ai_goals,
         }
-        with open(config_file, "w", encoding="utf-8") as file:
-            yaml.dump(config, file, allow_unicode=True)
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(yaml.dump(config, allow_unicode=True), encoding="utf-8")
 
     def construct_full_prompt(self) -> str:
         """
