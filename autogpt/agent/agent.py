@@ -1,15 +1,13 @@
-import json
-import regex
-import traceback
-
 from colorama import Fore, Style
+from autogpt.app import execute_command, get_command
 
 from autogpt.chat import chat_with_ai, create_chat_message
-import autogpt.commands as cmd
 from autogpt.config import Config
-from autogpt.json_parser import fix_and_parse_json
-from autogpt.logger import logger
-from autogpt.speak import say_text
+from autogpt.json_fixes.bracket_termination import (
+    attempt_to_fix_json_by_finding_outermost_brackets,
+)
+from autogpt.logs import logger, print_assistant_thoughts
+from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 
@@ -77,7 +75,7 @@ class Agent:
 
             # Get command name and arguments
             try:
-                command_name, arguments = cmd.get_command(
+                command_name, arguments = get_command(
                     attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
                 )
                 if cfg.speak_mode:
@@ -158,7 +156,7 @@ class Agent:
             else:
                 result = (
                     f"Command {command_name} returned: "
-                    f"{cmd.execute_command(command_name, arguments)}"
+                    f"{execute_command(command_name, arguments)}"
                 )
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
@@ -183,122 +181,3 @@ class Agent:
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
-
-
-def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
-    cfg = Config()
-    if cfg.speak_mode and cfg.debug_mode:
-        say_text(
-            "I have received an invalid JSON response from the OpenAI API. "
-            "Trying to fix it now."
-        )
-    logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
-
-    try:
-        json_pattern = regex.compile(r"\{(?:[^{}]|(?R))*\}")
-        json_match = json_pattern.search(json_string)
-
-        if json_match:
-            # Extract the valid JSON object from the string
-            json_string = json_match.group(0)
-            logger.typewriter_log(
-                title="Apparently json was fixed.", title_color=Fore.GREEN
-            )
-            if cfg.speak_mode and cfg.debug_mode:
-                say_text("Apparently json was fixed.")
-        else:
-            raise ValueError("No valid JSON object found")
-
-    except (json.JSONDecodeError, ValueError):
-        if cfg.speak_mode:
-            say_text("Didn't work. I will have to ignore this response then.")
-        logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
-        json_string = {}
-
-    return json_string
-
-
-def print_assistant_thoughts(ai_name, assistant_reply):
-    """Prints the assistant's thoughts to the console"""
-    cfg = Config()
-    try:
-        try:
-            # Parse and print Assistant response
-            assistant_reply_json = fix_and_parse_json(assistant_reply)
-        except json.JSONDecodeError:
-            logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
-            assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
-                assistant_reply
-            )
-            if isinstance(assistant_reply_json, str):
-                assistant_reply_json = fix_and_parse_json(assistant_reply_json)
-
-        # Check if assistant_reply_json is a string and attempt to parse
-        # it into a JSON object
-        if isinstance(assistant_reply_json, str):
-            try:
-                assistant_reply_json = json.loads(assistant_reply_json)
-            except json.JSONDecodeError:
-                logger.error("Error: Invalid JSON\n", assistant_reply)
-                assistant_reply_json = (
-                    attempt_to_fix_json_by_finding_outermost_brackets(
-                        assistant_reply_json
-                    )
-                )
-
-        assistant_thoughts_reasoning = None
-        assistant_thoughts_plan = None
-        assistant_thoughts_speak = None
-        assistant_thoughts_criticism = None
-        if not isinstance(assistant_reply_json, dict):
-            assistant_reply_json = {}
-        assistant_thoughts = assistant_reply_json.get("thoughts", {})
-        assistant_thoughts_text = assistant_thoughts.get("text")
-
-        if assistant_thoughts:
-            assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
-            assistant_thoughts_plan = assistant_thoughts.get("plan")
-            assistant_thoughts_criticism = assistant_thoughts.get("criticism")
-            assistant_thoughts_speak = assistant_thoughts.get("speak")
-
-        logger.typewriter_log(
-            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
-        )
-        logger.typewriter_log(
-            "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
-        )
-
-        if assistant_thoughts_plan:
-            logger.typewriter_log("PLAN:", Fore.YELLOW, "")
-            # If it's a list, join it into a string
-            if isinstance(assistant_thoughts_plan, list):
-                assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
-            elif isinstance(assistant_thoughts_plan, dict):
-                assistant_thoughts_plan = str(assistant_thoughts_plan)
-
-            # Split the input_string using the newline character and dashes
-            lines = assistant_thoughts_plan.split("\n")
-            for line in lines:
-                line = line.lstrip("- ")
-                logger.typewriter_log("- ", Fore.GREEN, line.strip())
-
-        logger.typewriter_log(
-            "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
-        )
-        # Speak the assistant's thoughts
-        if cfg.speak_mode and assistant_thoughts_speak:
-            say_text(assistant_thoughts_speak)
-
-        return assistant_reply_json
-    except json.decoder.JSONDecodeError:
-        logger.error("Error: Invalid JSON\n", assistant_reply)
-        if cfg.speak_mode:
-            say_text(
-                "I have received an invalid JSON response from the OpenAI API."
-                " I cannot ignore this response."
-            )
-
-    # All other errors, return "Error: + error message"
-    except Exception:
-        call_stack = traceback.format_exc()
-        logger.error("Error: \n", call_stack)
