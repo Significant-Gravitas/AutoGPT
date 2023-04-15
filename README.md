@@ -103,8 +103,8 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 
 4. Install the required dependencies
 
-```bash
-pip install poetry
+```
+curl -sSL https://install.python-poetry.org | python3 -
 poetry install
 ```
 

@@ -18,21 +18,34 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
 # Set environment variables
 ENV PIP_NO_CACHE_DIR=yes \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_NO_INTERACTION=1
 
 # Create a non-root user and set permissions
 RUN useradd --create-home appuser
 WORKDIR /home/appuser
 RUN chown appuser:appuser /home/appuser
-USER appuser
 
-# Copy the requirements.txt file and install the requirements
-COPY --chown=appuser:appuser requirements.txt .
-RUN sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
-	pip install --no-cache-dir --user -r requirements.txt
+# Install Curl
+RUN apt-get update && apt-get -y install curl
+
+# Install and configure Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="$POETRY_HOME/bin:$PATH"
+RUN poetry config installer.max-workers 10
+
+# Install dependencies
+COPY --chown=appuser:appuser pyproject.toml poetry.lock ./
+RUN poetry install --only main --no-interaction --no-ansi
 
 # Copy the application files
-COPY --chown=appuser:appuser autogpt/ ./autogpt
+COPY --chown=appuser:appuser autogpt/ ./autogpt/
 
-# Set the entrypoint
-ENTRYPOINT ["python", "-m", "autogpt"]
+# Switch to the non-root user
+USER appuser
+
+# Set the entrypoint and command
+ENTRYPOINT ["poetry", "run"]
+CMD ["python", "-m", "autogpt"]
