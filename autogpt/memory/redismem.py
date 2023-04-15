@@ -9,14 +9,18 @@ from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
 from autogpt.logs import logger
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton, get_embedding, EMBED_DIM
 
 SCHEMA = [
     TextField("data"),
     VectorField(
         "embedding",
         "HNSW",
-        {"TYPE": "FLOAT32", "DIM": 1536, "DISTANCE_METRIC": "COSINE"},
+        {
+            "TYPE": "FLOAT32",
+            "DIM": EMBED_DIM,
+            "DISTANCE_METRIC": "COSINE"
+        }
     ),
 ]
 
@@ -34,7 +38,6 @@ class RedisMemory(MemoryProviderSingleton):
         redis_host = cfg.redis_host
         redis_port = cfg.redis_port
         redis_password = cfg.redis_password
-        self.dimension = 1536
         self.redis = redis.Redis(
             host=redis_host,
             port=redis_port,
@@ -85,7 +88,7 @@ class RedisMemory(MemoryProviderSingleton):
         """
         if "Command Error:" in data:
             return ""
-        vector = get_ada_embedding(data)
+        vector = get_embedding(data)
         vector = np.array(vector).astype(np.float32).tobytes()
         data_dict = {b"data": data, "embedding": vector}
         pipe = self.redis.pipeline()
@@ -127,7 +130,7 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: A list of the most relevant data.
         """
-        query_embedding = get_ada_embedding(data)
+        query_embedding = get_embedding(data)
         base_query = f"*=>[KNN {num_relevant} @embedding $vector AS vector_score]"
         query = (
             Query(base_query)
