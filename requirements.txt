@@ -12,7 +12,7 @@ docker
 duckduckgo-search
 google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
 pinecone-client==2.2.1
-pymilvus==2.2.4
+# pymilvus==2.2.4  # Uncomment to use, but don't push uncommented to repo (causes trouble with package-installation in automated tests)
 redis
 orjson
 Pillow
