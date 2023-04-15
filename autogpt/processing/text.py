@@ -1,5 +1,5 @@
 """Text processing functions"""
-from typing import Generator, Optional
+from typing import Generator, Optional, Dict
 from selenium.webdriver.remote.webdriver import WebDriver
 from autogpt.memory import get_memory
 from autogpt.config import Config
@@ -114,7 +114,7 @@ def scroll_to_percentage(driver: WebDriver, ratio: float) -> None:
     driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {ratio});")
 
 
-def create_message(chunk: str, question: str) -> dict[str, str]:
+def create_message(chunk: str, question: str) -> Dict[str, str]:
     """Create a message for the chat completion
 
     Args:
@@ -122,7 +122,7 @@ def create_message(chunk: str, question: str) -> dict[str, str]:
         question (str): The question to answer
 
     Returns:
-        dict[str, str]: The message to send to the chat completion
+        Dict[str, str]: The message to send to the chat completion
     """
     return {
         "role": "user",
