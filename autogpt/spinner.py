@@ -38,7 +38,11 @@ class Spinner:
         sys.stdout.flush()
 
     def update_message(self, new_message, delay=0.1):
-        """Update the spinner message"""
+        """Update the spinner message
+        Args:
+            new_message (str): New message to display
+            delay: Delay in seconds before updating the message
+        """
         time.sleep(delay)
         sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")  # Clear the current message
         sys.stdout.flush()

@@ -146,7 +146,11 @@ def search_files(directory):
 
 
 def download_file(url, filename):
-    """Downloads a file"""
+    """Downloads a file
+    Args:
+        url (str): URL of the file to download
+        filename (str): Filename to save the file as
+    """
     safe_filename = safe_join(working_directory, filename)
     try:
         message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"

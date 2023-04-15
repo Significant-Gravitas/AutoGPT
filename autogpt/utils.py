@@ -27,7 +27,12 @@ def validate_yaml_file(file: str):
 
 
 def readable_file_size(size, decimal_places=2):
-    """Converts the given size in bytes to a readable format."""
+    """Converts the given size in bytes to a readable format.
+
+    Args:
+        size: Size in bytes
+        decimal_places (int): Number of decimal places to display
+    """
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if size < 1024.0:
             break
