@@ -7,27 +7,6 @@ from unittest.mock import patch
 from autogpt.chat import create_chat_message, generate_context
 
 
-
-"""
-Code Analysis
-
-Objective:
-The objective of the function is to create a chat message with the given role and content and return it as a dictionary.
-
-Inputs:
-The function takes two inputs:
-- role (str): The role of the message sender, e.g., "system", "user", or "assistant".
-- content (str): The content of the message.
-
-Flow:
-The function takes the role and content as input and creates a dictionary containing the role and content of the message. It then returns the dictionary as output.
-
-Outputs:
-The function returns a dictionary containing the role and content of the message.
-
-"""
-
-
 class TestChat(unittest.TestCase):
 
     # Tests that the function returns a dictionary with the correct keys and values when valid strings are provided for role and content. 
