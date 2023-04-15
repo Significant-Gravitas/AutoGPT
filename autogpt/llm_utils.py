@@ -115,7 +115,7 @@ def create_chat_completion(
     return response.choices[0].message["content"]
 
 
-def create_embedding_with_ada(text) -> list: 
+def create_embedding_with_ada(text) -> list:
     """Create a embedding with text-ada-002 using the OpenAI SDK"""
     num_retries = 10
     for attempt in range(num_retries):
