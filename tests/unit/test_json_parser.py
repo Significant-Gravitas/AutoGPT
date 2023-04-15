@@ -31,8 +31,8 @@ class TestParseJson(TestCase):
             fix_and_parse_json(json_str, try_to_fix_with_gpt=False)
 
     def test_invalid_json_leading_sentence_with_gpt(self):
-        """Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False"""
-        json_str = """I suggest we start by browsing the repository to find any issues that we can fix.
+        """Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False."""
+        json_str = """I will first need to browse the repository (https://github.com/Torantulino/Auto-GPT) and identify any potential bugs that need fixing. I will use the "browse_website" command for this.
 
 {
     "command": {
@@ -63,9 +63,6 @@ class TestParseJson(TestCase):
                 "speak": "I will start browsing the repository to find any issues we can fix.",
             },
         }
-
-        # # Assert that this can be fixed with GPT
-        # self.assertEqual(fix_and_parse_json(json_str), good_obj)
 
         # Assert that trying to fix this without GPT raises an exception
         with self.assertRaises(Exception):
