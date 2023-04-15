@@ -3,6 +3,7 @@ import json
 from typing import List, NoReturn, Union
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.evaluate_code import evaluate_code
+from autogpt.commands.get_num_astronauts import get_num_astronauts
 from autogpt.commands.google_search import google_official_search, google_search
 from autogpt.commands.improve_code import improve_code
 from autogpt.commands.write_tests import write_tests
@@ -164,6 +165,8 @@ def execute_command(command_name: str, arguments):
             return "No action performed."
         elif command_name == "task_complete":
             shutdown()
+        elif command_name == "num_astronauts":
+            return get_num_astronauts()
         else:
             return (
                 f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
