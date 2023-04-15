@@ -1,7 +1,7 @@
 """This module contains the argument parsing logic for the script."""
 import argparse
 
-from colorama import Fore
+from colorama import Fore, Back, Style
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.logs import logger

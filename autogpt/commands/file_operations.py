@@ -8,6 +8,7 @@ from requests.adapters import HTTPAdapter
 from requests.adapters import Retry
 from colorama import Fore, Back
 from autogpt.spinner import Spinner
+from autogpt.utils import readable_file_size
 
 # Set a dedicated folder for file I/O
 WORKING_DIRECTORY = Path(__file__).parent.parent / "auto_gpt_workspace"
