@@ -4,6 +4,7 @@ import autogpt.agent_manager as agents
 from autogpt.config import Config
 from autogpt.json_parser import fix_and_parse_json
 from autogpt.image_gen import generate_image
+from autogpt.image_text import summarize_image_from_file
 from duckduckgo_search import ddg
 from autogpt.ai_functions import evaluate_code, improve_code, write_tests
 from autogpt.browse import scrape_links, scrape_text, summarize_text
@@ -126,6 +127,8 @@ def execute_command(command_name, arguments):
                 )
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
+        elif command_name == "summarize_image_from_file":
+            return summarize_image_from_file(arguments["image"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":

@@ -71,6 +71,7 @@ def get_prompt() -> str:
         ),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
+        ("Describe Image", "summarize_image_from_file", {"image": "<file>"}),
         ("Do Nothing", "do_nothing", {}),
     ]
 
