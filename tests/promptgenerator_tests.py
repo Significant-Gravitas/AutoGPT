@@ -92,6 +92,7 @@ class promptgenerator_tests(unittest.TestCase):
         self.assertIn("commands", prompt_string.lower())
         self.assertIn("resources", prompt_string.lower())
         self.assertIn("performance evaluation", prompt_string.lower())
+        print(prompt_string)
 
 
 # Run the tests when this script is executed
