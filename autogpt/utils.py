@@ -1,10 +1,10 @@
-from telegram_chat import TelegramUtils
+from autogpt.telegram_chat import TelegramUtils
 import speech_recognition as sr
-import speak
+import autogpt.speech.say as speak
 import traceback
 import asyncio
 
-from config import Config
+from autogpt.config.config import Config
 cfg = Config()
 
 def clean_input(prompt: str = "", talk=False):
@@ -15,7 +15,7 @@ def clean_input(prompt: str = "", talk=False):
             except:
                 print(traceback.format_exc())
                 print("Siri could not understand your input.")
-                speak.macos_tts_speech("I didn't understand that. Sorry.")
+                speak.say_text("I didn't understand that. Sorry.")
                 return input(prompt)
         else:
             if cfg.telegram_enabled:
