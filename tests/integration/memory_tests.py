@@ -8,6 +8,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent / 'scripts'))
 from config import Config
 from memory.local import LocalCache
 
+
 class TestLocalCache(unittest.TestCase):
 
     def random_string(self, length):
@@ -44,6 +45,7 @@ class TestLocalCache(unittest.TestCase):
 
         self.assertEqual(len(relevant_texts), k)
         self.assertIn(self.example_texts[1], relevant_texts)
+
 
 if __name__ == '__main__':
     unittest.main()

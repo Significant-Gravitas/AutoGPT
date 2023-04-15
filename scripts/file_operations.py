@@ -37,7 +37,7 @@ def write_to_file(filename, text):
         directory = path.dirname(filepath)
         if not path.exists(directory):
             makedirs(directory)
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding='utf-8') as f:
             f.write(text)
         return "File written to successfully."
     except Exception as e:
@@ -63,6 +63,7 @@ def delete_file(filename):
         return "File deleted successfully."
     except Exception as e:
         return "Error: " + str(e)
+
 
 def search_files(directory):
     found_files = []
