@@ -4,11 +4,20 @@ import json
 from autogpt.llm_utils import call_ai_function
 from autogpt.logs import logger
 from autogpt.config import Config
-cfg = Config()
+
+CFG = Config()
 
 
 def fix_json(json_string: str, schema: str) -> str:
-    """Fix the given JSON string to make it parseable and fully compliant with the provided schema."""
+    """Fix the given JSON string to make it parseable and fully compliant with
+        the provided schema.
+
+    Args:
+        json_string (str): The JSON string to fix.
+        schema (str): The schema to use to fix the JSON.
+    Returns:
+        str: The fixed JSON string.
+    """
     # Try to fix the JSON using GPT:
     function_string = "def fix_json(json_string: str, schema:str=None) -> str:"
     args = [f"'''{json_string}'''", f"'''{schema}'''"]
@@ -24,7 +33,7 @@ def fix_json(json_string: str, schema: str) -> str:
     if not json_string.startswith("`"):
         json_string = "```json\n" + json_string + "\n```"
     result_string = call_ai_function(
-        function_string, args, description_string, model=cfg.fast_llm_model
+        function_string, args, description_string, model=CFG.fast_llm_model
     )
     logger.debug("------------ JSON FIX ATTEMPT ---------------")
     logger.debug(f"Original JSON: {json_string}")
