@@ -35,22 +35,27 @@ Your support is greatly appreciated
 ## Table of Contents
 
 - [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
-  - [Demo (30/03/2023):](#demo-30032023)
+    - [🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴](#----urgent-use-stable-not-master----)
+    - [Demo (30/03/2023):](#demo-30032023)
   - [Table of Contents](#table-of-contents)
   - [🚀 Features](#-features)
   - [📋 Requirements](#-requirements)
   - [💾 Installation](#-installation)
   - [🔧 Usage](#-usage)
     - [Logs](#logs)
+    - [Docker](#docker)
+    - [Command Line Arguments](#command-line-arguments)
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
-  - [Redis Setup](#redis-setup)
-  - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+  - [Memory Backend Setup](#memory-backend-setup)
+    - [Redis Setup](#redis-setup)
+    - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+    - [Milvus Setup](#milvus-setup)
     - [Setting up environment variables](#setting-up-environment-variables-1)
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
-  - [🧠 Memory pre-seeding](#memory-pre-seeding)
+  - [🧠 Memory pre-seeding](#-memory-pre-seeding)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#-image-generation)
@@ -75,10 +80,11 @@ Your support is greatly appreciated
   - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - [OpenAI API key](https://platform.openai.com/account/api-keys)
 
-
 Optional:
 
-- [PINECONE API key](https://www.pinecone.io/) (If you want Pinecone backed memory)
+- Memory backend
+  - [PINECONE API key](https://www.pinecone.io/) (If you want Pinecone backed memory)
+  - [Milvus](https://milvus.io/) (If you want Milvus as memory backend)
 - ElevenLabs Key (If you want the AI to speak)
 
 ## 💾 Installation
@@ -209,7 +215,11 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
-## Redis Setup
+## Memory Backend Setup
+
+Setup any one backend to persist memory.
+
+### Redis Setup
 
 Install docker desktop.
 
@@ -246,13 +256,25 @@ You can specify the memory index for redis using the following:
 MEMORY_INDEX=whatever
 ```
 
-## 🌲 Pinecone API Key Setup
+### 🌲 Pinecone API Key Setup
 
 Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
 
 1. Go to [pinecone](https://app.pinecone.io/) and make an account if you don't already have one.
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
+
+### Milvus Setup
+
+[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
+
+- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
+  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
+  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
+- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
+- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
+- optional
+  - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
 
 ### Setting up environment variables
 
