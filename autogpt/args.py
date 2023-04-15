@@ -36,6 +36,9 @@ def parse_arguments() -> None:
     parser.add_argument(
         "--gpt3only", action="store_true", help="Enable GPT3.5 Only Mode"
     )
+    parser.add_argument(
+        "--no-gui", dest="no_gui", action="store_true", help="Enable running on machines without GUI"
+    )
     parser.add_argument("--gpt4only", action="store_true", help="Enable GPT4 Only Mode")
     parser.add_argument(
         "--use-memory",
@@ -63,6 +66,7 @@ def parse_arguments() -> None:
         help="Specifies which ai_settings.yaml file to use, will also automatically"
         " skip the re-prompt.",
     )
+
     args = parser.parse_args()
 
     if args.debug:
@@ -135,3 +139,6 @@ def parse_arguments() -> None:
 
     if args.browser_name:
         CFG.selenium_web_browser = args.browser_name
+
+    if args.no_gui:
+        CFG.no_gui = True
