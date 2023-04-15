@@ -1,13 +1,11 @@
-import logging
 import time
 
-import openai
-from dotenv import load_dotenv
+from openai.error import RateLimitError
 
 from autogpt import token_counter
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
-from autogpt.logger import logger
+from autogpt.logs import logger
 
 cfg = Config()
 
@@ -55,18 +53,22 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
 def chat_with_ai(
     prompt, user_input, full_message_history, permanent_memory, token_limit
 ):
-    """Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory."""
+    """Interact with the OpenAI API, sending the prompt, user input, message history,
+    and permanent memory."""
     while True:
         try:
             """
-            Interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory.
+            Interact with the OpenAI API, sending the prompt, user input,
+                message history, and permanent memory.
 
             Args:
-            prompt (str): The prompt explaining the rules to the AI.
-            user_input (str): The input from the user.
-            full_message_history (list): The list of all messages sent between the user and the AI.
-            permanent_memory (Obj): The memory object containing the permanent memory.
-            token_limit (int): The maximum number of tokens allowed in the API call.
+                prompt (str): The prompt explaining the rules to the AI.
+                user_input (str): The input from the user.
+                full_message_history (list): The list of all messages sent between the
+                    user and the AI.
+                permanent_memory (Obj): The memory object containing the permanent
+                  memory.
+                token_limit (int): The maximum number of tokens allowed in the API call.
 
             Returns:
             str: The AI's response.
@@ -118,7 +120,8 @@ def chat_with_ai(
                 if current_tokens_used + tokens_to_add > send_token_limit:
                     break
 
-                # Add the most recent message to the start of the current context, after the two system prompts.
+                # Add the most recent message to the start of the current context,
+                #  after the two system prompts.
                 current_context.insert(
                     insertion_index, full_message_history[next_message_to_add_index]
                 )
@@ -134,7 +137,9 @@ def chat_with_ai(
 
             # Calculate remaining tokens
             tokens_remaining = token_limit - current_tokens_used
-            # assert tokens_remaining >= 0, "Tokens remaining is negative. This should never happen, please submit a bug report at https://www.github.com/Torantulino/Auto-GPT"
+            # assert tokens_remaining >= 0, "Tokens remaining is negative.
+            # This should never happen, please submit a bug report at
+            #  https://www.github.com/Torantulino/Auto-GPT"
 
             # Debug print the current context
             logger.debug(f"Token limit: {token_limit}")
@@ -149,7 +154,8 @@ def chat_with_ai(
                 logger.debug("")
             logger.debug("----------- END OF CONTEXT ----------------")
 
-            # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
+            # TODO: use a model defined elsewhere, so that model can contain
+            # temperature and other settings we care about
             assistant_reply = create_chat_completion(
                 model=model,
                 messages=current_context,
@@ -163,7 +169,7 @@ def chat_with_ai(
             )
 
             return assistant_reply
-        except openai.error.RateLimitError:
+        except RateLimitError:
             # TODO: When we switch to langchain, this is built in
             print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)
