@@ -5,6 +5,7 @@ from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton
 from autogpt.llm_utils import create_embedding_with_ada
 
+
 class PineconeMemory(MemoryProviderSingleton):
     def __init__(self, cfg):
         pinecone_api_key = cfg.pinecone_api_key
