@@ -105,9 +105,11 @@ def execute_command(command_name: str, arguments):
             # search method
             key = CFG.google_api_key
             if key and key.strip() and key != "your-google-api-key":
-                return google_official_search(arguments["input"])
+                google_result = google_official_search(arguments["input"])
             else:
-                return google_search(arguments["input"])
+                google_result = google_search(arguments["input"])
+            safe_message = google_result.encode('utf-8', 'ignore')
+            return str(safe_message)
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
