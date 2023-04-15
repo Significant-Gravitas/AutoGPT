@@ -22,7 +22,7 @@ def count_message_tokens(
         int: The number of tokens used by the list of messages.
     """
     try:
-        encoding = encoding_for_model(model)
+        encoding = tiktoken.encoding_for_model(model)
     except KeyError:
         warn("Warning: model not found. Using cl100k_base encoding.")
         encoding = get_encoding("cl100k_base")
