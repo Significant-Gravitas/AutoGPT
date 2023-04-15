@@ -1,9 +1,18 @@
+from colorama import Fore
+from autogpt.config.ai_config import AIConfig
+from autogpt.config.config import Config
+from autogpt.logs import logger
 from autogpt.promptgenerator import PromptGenerator
+from autogpt.setup import prompt_user
+from autogpt.utils import clean_input
+
+CFG = Config()
 
 
-def get_prompt():
+def get_prompt() -> str:
     """
-    This function generates a prompt string that includes various constraints, commands, resources, and performance evaluations.
+    This function generates a prompt string that includes various constraints,
+        commands, resources, and performance evaluations.
 
     Returns:
         str: The generated prompt string.
@@ -14,10 +23,12 @@ def get_prompt():
 
     # Add constraints to the PromptGenerator object
     prompt_generator.add_constraint(
-        "~4000 word limit for short term memory. Your short term memory is short, so immediately save important information to files."
+        "~4000 word limit for short term memory. Your short term memory is short, so"
+        " immediately save important information to files."
     )
     prompt_generator.add_constraint(
-        "If you are unsure how you previously did something or want to recall past events, thinking about similar events will help you remember."
+        "If you are unsure how you previously did something or want to recall past"
+        " events, thinking about similar events will help you remember."
     )
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint(
@@ -87,7 +98,8 @@ def get_prompt():
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation(
-        "Continuously review and analyze your actions to ensure you are performing to the best of your abilities."
+        "Continuously review and analyze your actions to ensure you are performing to"
+        " the best of your abilities."
     )
     prompt_generator.add_performance_evaluation(
         "Constructively self-criticize your big-picture behavior constantly."
@@ -96,10 +108,48 @@ def get_prompt():
         "Reflect on past decisions and strategies to refine your approach."
     )
     prompt_generator.add_performance_evaluation(
-        "Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps."
+        "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
+        " the least number of steps."
     )
 
     # Generate the prompt string
-    prompt_string = prompt_generator.generate_prompt_string()
+    return prompt_generator.generate_prompt_string()
 
-    return prompt_string
+
+def construct_prompt() -> str:
+    """Construct the prompt for the AI to respond to
+
+    Returns:
+        str: The prompt string
+    """
+    config = AIConfig.load(CFG.ai_settings_file)
+    if CFG.skip_reprompt and config.ai_name:
+        logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
+        logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
+        logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
+    elif config.ai_name:
+        logger.typewriter_log(
+            "Welcome back! ",
+            Fore.GREEN,
+            f"Would you like me to return to being {config.ai_name}?",
+            speak_text=True,
+        )
+        should_continue = clean_input(
+            f"""Continue with the last settings?
+Name:  {config.ai_name}
+Role:  {config.ai_role}
+Goals: {config.ai_goals}
+Continue (y/n): """
+        )
+        if should_continue.lower() == "n":
+            config = AIConfig()
+
+    if not config.ai_name:
+        config = prompt_user()
+        config.save()
+
+    # Get rid of this global:
+    global ai_name
+    ai_name = config.ai_name
+
+    return config.construct_full_prompt()

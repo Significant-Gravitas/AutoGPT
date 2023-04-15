@@ -1,25 +1,28 @@
+"""Logging module for Auto-GPT."""
+import json
 import logging
 import os
 import random
 import re
 import time
 from logging import LogRecord
+import traceback
 
 from colorama import Fore, Style
 
-from autogpt import speak
+from autogpt.speech import say_text
 from autogpt.config import Config, Singleton
 
-cfg = Config()
-
-"""
-Logger that handle titles in different colors.
-Outputs logs in console, activity.log, and errors.log
-For console handler: simulates typing
-"""
+CFG = Config()
 
 
 class Logger(metaclass=Singleton):
+    """
+    Logger that handle titles in different colors.
+    Outputs logs in console, activity.log, and errors.log
+    For console handler: simulates typing
+    """
+
     def __init__(self):
         # create log directory if it doesn't exist
         this_files_dir_path = os.path.dirname(__file__)
@@ -54,7 +57,8 @@ class Logger(metaclass=Singleton):
         error_handler = logging.FileHandler(os.path.join(log_dir, error_file))
         error_handler.setLevel(logging.ERROR)
         error_formatter = AutoGptFormatter(
-            "%(asctime)s %(levelname)s %(module)s:%(funcName)s:%(lineno)d %(title)s %(message_no_color)s"
+            "%(asctime)s %(levelname)s %(module)s:%(funcName)s:%(lineno)d %(title)s"
+            " %(message_no_color)s"
         )
         error_handler.setFormatter(error_formatter)
 
@@ -73,8 +77,8 @@ class Logger(metaclass=Singleton):
     def typewriter_log(
         self, title="", title_color="", content="", speak_text=False, level=logging.INFO
     ):
-        if speak_text and cfg.speak_mode:
-            speak.say_text(f"{title}. {content}")
+        if speak_text and CFG.speak_mode:
+            say_text(f"{title}. {content}")
 
         if content:
             if isinstance(content, list):
@@ -117,7 +121,12 @@ class Logger(metaclass=Singleton):
 
     def double_check(self, additionalText=None):
         if not additionalText:
-            additionalText = "Please ensure you've setup and configured everything correctly. Read https://github.com/Torantulino/Auto-GPT#readme to double check. You can also create a github issue or join the discord and ask there!"
+            additionalText = (
+                "Please ensure you've setup and configured everything"
+                " correctly. Read https://github.com/Torantulino/Auto-GPT#readme to "
+                "double check. You can also create a github issue or join the discord"
+                " and ask there!"
+            )
 
         self.typewriter_log("DOUBLE CHECK CONFIGURATION", Fore.YELLOW, additionalText)
 
@@ -150,7 +159,7 @@ class TypingConsoleHandler(logging.StreamHandler):
 
 
 class ConsoleHandler(logging.StreamHandler):
-    def emit(self, record):
+    def emit(self, record) -> None:
         msg = self.format(record)
         try:
             print(msg)
@@ -187,3 +196,93 @@ def remove_color_codes(s: str) -> str:
 
 
 logger = Logger()
+
+
+def print_assistant_thoughts(ai_name, assistant_reply):
+    """Prints the assistant's thoughts to the console"""
+    from autogpt.json_fixes.bracket_termination import (
+        attempt_to_fix_json_by_finding_outermost_brackets,
+    )
+    from autogpt.json_fixes.parsing import fix_and_parse_json
+
+    try:
+        try:
+            # Parse and print Assistant response
+            assistant_reply_json = fix_and_parse_json(assistant_reply)
+        except json.JSONDecodeError:
+            logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
+            assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
+                assistant_reply
+            )
+            if isinstance(assistant_reply_json, str):
+                assistant_reply_json = fix_and_parse_json(assistant_reply_json)
+
+        # Check if assistant_reply_json is a string and attempt to parse
+        # it into a JSON object
+        if isinstance(assistant_reply_json, str):
+            try:
+                assistant_reply_json = json.loads(assistant_reply_json)
+            except json.JSONDecodeError:
+                logger.error("Error: Invalid JSON\n", assistant_reply)
+                assistant_reply_json = (
+                    attempt_to_fix_json_by_finding_outermost_brackets(
+                        assistant_reply_json
+                    )
+                )
+
+        assistant_thoughts_reasoning = None
+        assistant_thoughts_plan = None
+        assistant_thoughts_speak = None
+        assistant_thoughts_criticism = None
+        if not isinstance(assistant_reply_json, dict):
+            assistant_reply_json = {}
+        assistant_thoughts = assistant_reply_json.get("thoughts", {})
+        assistant_thoughts_text = assistant_thoughts.get("text")
+
+        if assistant_thoughts:
+            assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
+            assistant_thoughts_plan = assistant_thoughts.get("plan")
+            assistant_thoughts_criticism = assistant_thoughts.get("criticism")
+            assistant_thoughts_speak = assistant_thoughts.get("speak")
+
+        logger.typewriter_log(
+            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
+        )
+        logger.typewriter_log(
+            "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
+        )
+
+        if assistant_thoughts_plan:
+            logger.typewriter_log("PLAN:", Fore.YELLOW, "")
+            # If it's a list, join it into a string
+            if isinstance(assistant_thoughts_plan, list):
+                assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
+            elif isinstance(assistant_thoughts_plan, dict):
+                assistant_thoughts_plan = str(assistant_thoughts_plan)
+
+            # Split the input_string using the newline character and dashes
+            lines = assistant_thoughts_plan.split("\n")
+            for line in lines:
+                line = line.lstrip("- ")
+                logger.typewriter_log("- ", Fore.GREEN, line.strip())
+
+        logger.typewriter_log(
+            "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
+        )
+        # Speak the assistant's thoughts
+        if CFG.speak_mode and assistant_thoughts_speak:
+            say_text(assistant_thoughts_speak)
+
+        return assistant_reply_json
+    except json.decoder.JSONDecodeError:
+        logger.error("Error: Invalid JSON\n", assistant_reply)
+        if CFG.speak_mode:
+            say_text(
+                "I have received an invalid JSON response from the OpenAI API."
+                " I cannot ignore this response."
+            )
+
+    # All other errors, return "Error: + error message"
+    except Exception:
+        call_stack = traceback.format_exc()
+        logger.error("Error: \n", call_stack)
