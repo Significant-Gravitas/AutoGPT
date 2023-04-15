@@ -31,7 +31,7 @@ Pillow = "*"
 numpy = "*"
 selenium = "*"
 webdriver_manager = "*"
-pymilvus = "*"
+#pymilvus = "*" uncomment if you need to use it, it seems to be causing issues on windows.
 redis = "*"
 gitpython = "*"
 
