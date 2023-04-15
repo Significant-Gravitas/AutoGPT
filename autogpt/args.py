@@ -149,4 +149,3 @@ def parse_arguments() -> None:
                               "It is recommended that you monitor any files it downloads carefully.")
         logger.typewriter_log("WARNING: ", Fore.YELLOW, f"{Back.RED + Style.BRIGHT}ALWAYS REMEMBER TO NEVER OPEN FILES YOU AREN'T SURE OF!{Style.RESET_ALL}")
         CFG.allow_downloads = True
-
