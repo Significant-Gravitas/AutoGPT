@@ -1,21 +1,30 @@
+"""Browse a webpage and summarize it using the LLM model"""
+from typing import List, Tuple, Union
 from urllib.parse import urljoin, urlparse
 
 import requests
+from requests import Response
 from bs4 import BeautifulSoup
 
 from autogpt.config import Config
-from autogpt.llm_utils import create_chat_completion
 from autogpt.memory import get_memory
 
-cfg = Config()
-memory = get_memory(cfg)
+CFG = Config()
+memory = get_memory(CFG)
 
 session = requests.Session()
-session.headers.update({"User-Agent": cfg.user_agent})
+session.headers.update({"User-Agent": CFG.user_agent})
 
 
-# Function to check if the URL is valid
-def is_valid_url(url):
+def is_valid_url(url: str) -> bool:
+    """Check if the URL is valid
+
+    Args:
+        url (str): The URL to check
+
+    Returns:
+        bool: True if the URL is valid, False otherwise
+    """
     try:
         result = urlparse(url)
         return all([result.scheme, result.netloc])
@@ -23,13 +32,27 @@ def is_valid_url(url):
         return False
 
 
-# Function to sanitize the URL
-def sanitize_url(url):
+def sanitize_url(url: str) -> str:
+    """Sanitize the URL
+
+    Args:
+        url (str): The URL to sanitize
+
+    Returns:
+        str: The sanitized URL
+    """
     return urljoin(url, urlparse(url).path)
 
 
-# Define and check for local file address prefixes
-def check_local_file_access(url):
+def check_local_file_access(url: str) -> bool:
+    """Check if the URL is a local file
+
+    Args:
+        url (str): The URL to check
+
+    Returns:
+        bool: True if the URL is a local file, False otherwise
+    """
     local_prefixes = [
         "file:///",
         "file://localhost",
@@ -39,7 +62,22 @@ def check_local_file_access(url):
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
 
-def get_response(url, timeout=10):
+def get_response(
+    url: str, timeout: int = 10
+) -> Union[Tuple[None, str], Tuple[Response, None]]:
+    """Get the response from a URL
+
+    Args:
+        url (str): The URL to get the response from
+        timeout (int): The timeout for the HTTP request
+
+    Returns:
+        tuple[None, str] | tuple[Response, None]: The response and error message
+
+    Raises:
+        ValueError: If the URL is invalid
+        requests.exceptions.RequestException: If the HTTP request fails
+    """
     try:
         # Restrict access to local files
         if check_local_file_access(url):
@@ -55,21 +93,28 @@ def get_response(url, timeout=10):
 
         # Check if the response contains an HTTP error
         if response.status_code >= 400:
-            return None, "Error: HTTP " + str(response.status_code) + " error"
+            return None, f"Error: HTTP {str(response.status_code)} error"
 
         return response, None
     except ValueError as ve:
         # Handle invalid URL format
-        return None, "Error: " + str(ve)
+        return None, f"Error: {str(ve)}"
 
     except requests.exceptions.RequestException as re:
         # Handle exceptions related to the HTTP request
         #  (e.g., connection errors, timeouts, etc.)
-        return None, "Error: " + str(re)
+        return None, f"Error: {str(re)}"
 
 
-def scrape_text(url):
-    """Scrape text from a webpage"""
+def scrape_text(url: str) -> str:
+    """Scrape text from a webpage
+
+    Args:
+        url (str): The URL to scrape text from
+
+    Returns:
+        str: The scraped text
+    """
     response, error_message = get_response(url)
     if error_message:
         return error_message
@@ -89,24 +134,45 @@ def scrape_text(url):
     return text
 
 
-def extract_hyperlinks(soup):
-    """Extract hyperlinks from a BeautifulSoup object"""
+def extract_hyperlinks(soup: BeautifulSoup) -> List[Tuple[str, str]]:
+    """Extract hyperlinks from a BeautifulSoup object
+
+    Args:
+        soup (BeautifulSoup): The BeautifulSoup object
+
+    Returns:
+        List[Tuple[str, str]]: The extracted hyperlinks
+    """
     hyperlinks = []
     for link in soup.find_all("a", href=True):
         hyperlinks.append((link.text, link["href"]))
     return hyperlinks
 
 
-def format_hyperlinks(hyperlinks):
-    """Format hyperlinks into a list of strings"""
+def format_hyperlinks(hyperlinks: List[Tuple[str, str]]) -> List[str]:
+    """Format hyperlinks into a list of strings
+
+    Args:
+        hyperlinks (List[Tuple[str, str]]): The hyperlinks to format
+
+    Returns:
+        List[str]: The formatted hyperlinks
+    """
     formatted_links = []
     for link_text, link_url in hyperlinks:
         formatted_links.append(f"{link_text} ({link_url})")
     return formatted_links
 
 
-def scrape_links(url):
-    """Scrape links from a webpage"""
+def scrape_links(url: str) -> Union[str, List[str]]:
+    """Scrape links from a webpage
+
+    Args:
+        url (str): The URL to scrape links from
+
+    Returns:
+        Union[str, List[str]]: The scraped links
+    """
     response, error_message = get_response(url)
     if error_message:
         return error_message
@@ -122,25 +188,6 @@ def scrape_links(url):
     return format_hyperlinks(hyperlinks)
 
 
-def split_text(text, max_length=cfg.browse_chunk_max_length):
-    """Split text into chunks of a maximum length"""
-    paragraphs = text.split("\n")
-    current_length = 0
-    current_chunk = []
-
-    for paragraph in paragraphs:
-        if current_length + len(paragraph) + 1 <= max_length:
-            current_chunk.append(paragraph)
-            current_length += len(paragraph) + 1
-        else:
-            yield "\n".join(current_chunk)
-            current_chunk = [paragraph]
-            current_length = len(paragraph) + 1
-
-    if current_chunk:
-        yield "\n".join(current_chunk)
-
-
 def create_message(chunk, question):
     """Create a message for the user to summarize a chunk of text"""
     return {
@@ -149,50 +196,3 @@ def create_message(chunk, question):
         f' question: "{question}" -- if the question cannot be answered using the'
         " text, please summarize the text.",
     }
-
-
-def summarize_text(url, text, question):
-    """Summarize text using the LLM model"""
-    if not text:
-        return "Error: No text to summarize"
-
-    text_length = len(text)
-    print(f"Text length: {text_length} characters")
-
-    summaries = []
-    chunks = list(split_text(text))
-
-    for i, chunk in enumerate(chunks):
-        print(f"Adding chunk {i + 1} / {len(chunks)} to memory")
-
-        memory_to_add = f"Source: {url}\n" f"Raw content part#{i + 1}: {chunk}"
-
-        memory.add(memory_to_add)
-
-        print(f"Summarizing chunk {i + 1} / {len(chunks)}")
-        messages = [create_message(chunk, question)]
-
-        summary = create_chat_completion(
-            model=cfg.fast_llm_model,
-            messages=messages,
-            max_tokens=cfg.browse_summary_max_token,
-        )
-        summaries.append(summary)
-        print(f"Added chunk {i + 1} summary to memory")
-
-        memory_to_add = f"Source: {url}\n" f"Content summary part#{i + 1}: {summary}"
-
-        memory.add(memory_to_add)
-
-    print(f"Summarized {len(chunks)} chunks.")
-
-    combined_summary = "\n".join(summaries)
-    messages = [create_message(combined_summary, question)]
-
-    final_summary = create_chat_completion(
-        model=cfg.fast_llm_model,
-        messages=messages,
-        max_tokens=cfg.browse_summary_max_token,
-    )
-
-    return final_summary
