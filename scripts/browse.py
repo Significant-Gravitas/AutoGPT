@@ -16,7 +16,7 @@ def fetch_url(url):
 
     # Wait for page to load
     # browser.implicitly_wait(10)
-    sleep(5)
+    sleep(15)
 
     # Use a more targeted XPath expression to select only elements that are likely to have meaningful text content
     xpath = "//*[self::h1 or self::h2 or self::h3 or self::h4 or self::h5 or self::h6 or self::p or self::a or self::li or self::span or self::a or self::button]"
