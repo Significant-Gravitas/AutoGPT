@@ -76,7 +76,7 @@ def create_chat_completion(
             f" max_tokens {max_tokens}" + Fore.RESET
         )
     for attempt in range(num_retries):
-        backoff = 2 ** (attempt + 1)
+        backoff = 2 ** (attempt + 2)
         try:
             if CFG.use_azure:
                 response = openai.ChatCompletion.create(
