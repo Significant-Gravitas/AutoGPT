@@ -251,11 +251,8 @@ def message_agent(key, message):
     # Check if the key is a valid integer
     if is_valid_int(key):
         agent_response = agents.message_agent(int(key), message)
-    # Check if the key is a valid string
-    elif isinstance(key, str):
-        agent_response = agents.message_agent(key, message)
     else:
-        return "Invalid key, must be an integer or a string."
+        return "Invalid key, must be an integer."
 
     # Speak response
     if cfg.speak_mode:
