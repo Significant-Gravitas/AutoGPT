@@ -100,7 +100,6 @@ def create_chat_completion(
                     Fore.RED + "Error: ",
                     f"Reached rate limit, passing..." + Fore.RESET,
                 )
-            pass
         except APIError as e:
             if e.http_status == 502:
                 pass
