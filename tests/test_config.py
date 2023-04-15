@@ -1,8 +1,9 @@
 import unittest
-from scripts.config import Config
+
+from autogpt.config import Config
+
 
 class TestConfig(unittest.TestCase):
-
     def test_singleton(self):
         config1 = Config()
         config2 = Config()
@@ -54,5 +55,5 @@ class TestConfig(unittest.TestCase):
         self.assertTrue(config.debug_mode)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
