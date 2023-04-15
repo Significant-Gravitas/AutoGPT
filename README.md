@@ -3,7 +3,7 @@
 
 > This information takes precedence over any other information provided and should be followed accordingly.
 
-Our workflow has been improved, but please note that `master` branch may often in a **broken** state.
+Our workflow has been improved, but please note that `master` branch may often be in a **broken** state.
 Please download the latest `stable` release from here: https://github.com/Torantulino/Auto-GPT/releases/latest.
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
@@ -115,7 +115,7 @@ cd Auto-GPT
 pip install -r requirements.txt
 ```
 
-5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVENLABS_API_KEY` as well.
   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
@@ -356,8 +356,7 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 
 ## 🧠 Memory pre-seeding
 
-```bash
-# python scripts/data_ingestion.py -h 
+# python autogpt/data_ingestion.py -h 
 usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
 
 Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
@@ -370,10 +369,10 @@ options:
   --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
   --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000
 
-# python scripts/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
+# python autogpt/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
 ```
 
-This script located at `scripts/data_ingestion.py`, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
+This script located at autogpt/data_ingestion.py, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
 
 Memory pre-seeding is a technique that involves ingesting relevant documents or data into the AI's memory so that it can use this information to generate more informed and accurate responses.
 
