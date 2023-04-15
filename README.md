@@ -355,6 +355,22 @@ python -m autogpt --speak --continuous
 
 2. To exit the program, press Ctrl + C
 
+## Telegram Bot
+First setup a telegram bot by following the instructions [here](https://core.telegram.org/bots#6-botfather)
+
+Then set the following variables in your `.env`:
+
+```
+TELEGRAM_ENABLED=True
+TELEGRAM_API_KEY=your-telegram-bot-token
+TELEGRAM_CHAT_ID=your-telegram-bot-chat-id
+```
+to obtain your chat id, send a message to your bot and then use the following command:
+
+```
+curl https://api.telegram.org/bot<your-telegram-bot-token>/getUpdates
+```
+
 ## GPT3.5 ONLY Mode
 
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
