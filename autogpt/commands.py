@@ -265,7 +265,7 @@ def message_agent(key, message):
 
 def list_agents():
     """List all agents"""
-    return agents.list_agents()
+    return "List of agents:\n" + "\n".join([str(x[0]) + ": " + x[1] for x in agents.list_agents()])
 
 
 def delete_agent(key):
