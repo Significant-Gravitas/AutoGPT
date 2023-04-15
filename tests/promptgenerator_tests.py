@@ -1,14 +1,13 @@
 # Import the required libraries for unit testing
-import unittest
-import sys
 import os
+import sys
+import unittest
 
 from autogpt.promptgenerator import PromptGenerator
 
 
 # Create a test class for the PromptGenerator, subclassed from unittest.TestCase
 class promptgenerator_tests(unittest.TestCase):
-
     # Set up the initial state for each test method by creating an instance of PromptGenerator
     def setUp(self):
         self.generator = PromptGenerator()
@@ -67,7 +66,8 @@ class promptgenerator_tests(unittest.TestCase):
             self.generator.add_constraint(constraint)
         for command in commands:
             self.generator.add_command(
-                command["label"], command["name"], command["args"])
+                command["label"], command["name"], command["args"]
+            )
         for resource in resources:
             self.generator.add_resource(resource)
         for evaluation in evaluations:
@@ -95,5 +95,5 @@ class promptgenerator_tests(unittest.TestCase):
 
 
 # Run the tests when this script is executed
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

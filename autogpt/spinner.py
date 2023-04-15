@@ -1,14 +1,15 @@
+import itertools
 import sys
 import threading
-import itertools
 import time
 
 
 class Spinner:
     """A simple spinner class"""
+
     def __init__(self, message="Loading...", delay=0.1):
         """Initialize the spinner class"""
-        self.spinner = itertools.cycle(['-', '/', '|', '\\'])
+        self.spinner = itertools.cycle(["-", "/", "|", "\\"])
         self.delay = delay
         self.message = message
         self.running = False
@@ -31,6 +32,7 @@ class Spinner:
     def __exit__(self, exc_type, exc_value, exc_traceback):
         """Stop the spinner"""
         self.running = False
-        self.spinner_thread.join()
+        if self.spinner_thread is not None:
+            self.spinner_thread.join()
         sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
         sys.stdout.flush()

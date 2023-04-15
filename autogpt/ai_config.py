@@ -1,5 +1,7 @@
-import yaml
 import os
+from typing import Type
+import yaml
+
 from autogpt.prompt import get_prompt
 
 
@@ -13,7 +15,9 @@ class AIConfig:
         ai_goals (list): The list of objectives the AI is supposed to complete.
     """
 
-    def __init__(self, ai_name: str="", ai_role: str="", ai_goals: list=[]) -> None:
+    def __init__(
+        self, ai_name: str = "", ai_role: str = "", ai_goals: list = []
+    ) -> None:
         """
         Initialize a class instance
 
@@ -30,24 +34,26 @@ class AIConfig:
         self.ai_goals = ai_goals
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ai_settings.yaml')
+    SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "ai_settings.yaml")
 
     @classmethod
-    def load(cls: object, config_file: str=SAVE_FILE) -> object:
+    def load(cls: "Type[AIConfig]", config_file: str = SAVE_FILE) -> "Type[AIConfig]":
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from yaml file if yaml file exists,
+        Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from
+          yaml file if yaml file exists,
         else returns class with no parameters.
 
         Parameters:
            cls (class object): An AIConfig Class object.
-           config_file (int): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
+           config_file (int): The path to the config yaml file.
+             DEFAULT: "../ai_settings.yaml"
 
         Returns:
             cls (object): An instance of given cls object
         """
 
         try:
-            with open(config_file, encoding='utf-8') as file:
+            with open(config_file, encoding="utf-8") as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
         except FileNotFoundError:
             config_params = {}
@@ -55,22 +61,27 @@ class AIConfig:
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
-
+        # type: Type[AIConfig]
         return cls(ai_name, ai_role, ai_goals)
 
-    def save(self, config_file: str=SAVE_FILE) -> None:
+    def save(self, config_file: str = SAVE_FILE) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
         Parameters:
-            config_file(str): The path to the config yaml file. DEFAULT: "../ai_settings.yaml"
+            config_file(str): The path to the config yaml file.
+              DEFAULT: "../ai_settings.yaml"
 
         Returns:
             None
         """
 
-        config = {"ai_name": self.ai_name, "ai_role": self.ai_role, "ai_goals": self.ai_goals}
-        with open(config_file, "w",  encoding='utf-8') as file:
+        config = {
+            "ai_name": self.ai_name,
+            "ai_role": self.ai_role,
+            "ai_goals": self.ai_goals,
+        }
+        with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
 
     def construct_full_prompt(self) -> str:
@@ -81,13 +92,21 @@ class AIConfig:
             None
 
         Returns:
-            full_prompt (str): A string containing the initial prompt for the user including the ai_name, ai_role and ai_goals.
+            full_prompt (str): A string containing the initial prompt for the user
+              including the ai_name, ai_role and ai_goals.
         """
 
-        prompt_start = """Your decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications."""
+        prompt_start = (
+            "Your decisions must always be made independently without"
+            "seeking user assistance. Play to your strengths as an LLM and pursue"
+            " simple strategies with no legal complications."
+            ""
+        )
 
         # Construct full prompt
-        full_prompt = f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+        full_prompt = (
+            f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+        )
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
