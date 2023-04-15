@@ -2,8 +2,7 @@
 
 import pytest
 import requests
-from bs4 import BeautifulSoup
-from autogpt.commands.web_requests import scrape_text, extract_hyperlinks
+from autogpt.commands.web_requests import scrape_text
 
 """
 Code Analysis
@@ -114,18 +113,3 @@ class TestScrapeText:
 
         # Check that the function properly handles HTML tags
         assert result == "This is bold text."
-
-    def test_extract_hyperlinks(self):
-        body = """
-        <body>
-        <a href="https://google.com">Google</a>
-        <a href="foo.html">Foo</a>
-        <div>Lorem Ipsum. Dolore sit amet.</div>
-        </body>
-        """
-        soup = BeautifulSoup(body, "html.parser")
-        links = extract_hyperlinks(soup, "http://example.com")
-        self.assertEqual(
-            links,
-            [("Google", "https://google.com"), ("Foo", "http://example.com/foo.html")],
-        )

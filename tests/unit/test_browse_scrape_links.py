@@ -1,4 +1,5 @@
-from autogpt.commands.web_requests import scrape_links
+from bs4 import BeautifulSoup
+from autogpt.commands.web_requests import scrape_links, extract_hyperlinks
 
 """
 Code Analysis
@@ -111,3 +112,18 @@ class TestScrapeLinks:
         assert result[0] == "Google (https://www.google.com)"
         assert result[1] == "GitHub (https://github.com)"
         assert result[2] == "CodiumAI (https://www.codium.ai)"
+
+    def test_extract_hyperlinks(self):
+        body = """
+        <body>
+        <a href="https://google.com">Google</a>
+        <a href="foo.html">Foo</a>
+        <div>Lorem Ipsum. Dolore sit amet.</div>
+        </body>
+        """
+        soup = BeautifulSoup(body, "html.parser")
+        links = extract_hyperlinks(soup, "http://example.com")
+        self.assertEqual(
+            links,
+            [("Google", "https://google.com"), ("Foo", "http://example.com/foo.html")],
+        )
