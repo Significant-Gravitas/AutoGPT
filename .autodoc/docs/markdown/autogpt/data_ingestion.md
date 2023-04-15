@@ -1,0 +1,35 @@
+[View code on GitHub](https://github.com/Significant-Gravitas/Auto-GPT/autogpt/data_ingestion.py)
+
+This code is responsible for ingesting text data from a file or a directory into the memory for the Auto-GPT project. It provides a command-line interface for users to specify the input file or directory, and some optional parameters like overlap size and maximum chunk length.
+
+The `configure_logging()` function sets up logging with a specific format and log file. The `ingest_directory()` function takes a directory path, memory object, and command-line arguments as input, and ingests all files in the directory by calling the `ingest_file()` function for each file. The `main()` function is the entry point of the script, which parses command-line arguments, initializes the memory, and calls the appropriate ingestion function based on the input.
+
+The command-line arguments include:
+- `--file`: The file to ingest.
+- `--dir`: The directory containing the files to ingest.
+- `--init`: Initialize the memory and wipe its content (default: False).
+- `--overlap`: The overlap size between chunks when ingesting files (default: 200).
+- `--max_length`: The max_length of each chunk when ingesting files (default: 4000).
+
+For example, to ingest a single file with a maximum chunk length of 5000 and an overlap of 300, the user would run:
+
+```
+python auto_gpt_ingest.py --file input.txt --max_length 5000 --overlap 300
+```
+
+To ingest all files in a directory with the default parameters, the user would run:
+
+```
+python auto_gpt_ingest.py --dir input_directory
+```
+
+This code is essential for preparing the text data to be used by the Auto-GPT model, as it handles the ingestion process and stores the data in memory for further processing.
+## Questions: 
+ 1. **Question**: What is the purpose of the `configure_logging()` function and how is it used in the code?
+   **Answer**: The `configure_logging()` function sets up the logging configuration for the AutoGPT-Ingestion process. It creates a log file named "log-ingestion.txt" and sets the logging level to DEBUG. The function is called in the `main()` function to initialize the logger.
+
+2. **Question**: How does the `ingest_directory()` function work and what are its parameters?
+   **Answer**: The `ingest_directory()` function ingests all files in a given directory by calling the `ingest_file()` function for each file. It takes three parameters: `directory` which is the directory containing the files to ingest, `memory` which is an object with an `add()` method to store the chunks in memory, and `args` which contains the command-line arguments.
+
+3. **Question**: How are command-line arguments parsed and used in the `main()` function?
+   **Answer**: The `argparse.ArgumentParser` is used to parse command-line arguments. The script accepts several arguments such as `--file`, `--dir`, `--init`, `--overlap`, and `--max_length`. These arguments are used to control the ingestion process, such as specifying a file or directory to ingest, initializing the memory, and setting the overlap and max_length for ingesting files.

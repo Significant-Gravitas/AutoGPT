@@ -1,0 +1,24 @@
+[View code on GitHub](https://github.com/Significant-Gravitas/Auto-GPT/autogpt/web.py)
+
+This code is responsible for browsing a given website, extracting relevant information, and summarizing the content based on a provided question. It uses the Selenium library to interact with the website and BeautifulSoup to parse the HTML content.
+
+The main function `browse_website(url, question)` takes a URL and a question as input. It first calls `scrape_text_with_selenium(url)` to load the website using Selenium and extract the text content using BeautifulSoup. The extracted text is then passed to the `summary.summarize_text(driver, text, question)` function, which generates a summary based on the provided question.
+
+Additionally, the `browse_website` function calls `scrape_links_with_selenium(driver)` to extract hyperlinks from the website. It limits the number of links to 5 and formats them using the `format_hyperlinks(hyperlinks)` function. Finally, the browser is closed using `close_browser(driver)` and the summary text along with the formatted links are returned.
+
+The `scrape_text_with_selenium(url)` function initializes a Selenium WebDriver with a custom user-agent, navigates to the given URL, and waits for the page to load. It then extracts the HTML content and removes any script or style tags using BeautifulSoup. The text content is extracted, cleaned, and returned along with the WebDriver instance.
+
+The `scrape_links_with_selenium(driver)` function extracts hyperlinks from the website using BeautifulSoup. It first removes any script or style tags and then calls `extract_hyperlinks(soup)` to get a list of hyperlinks. The hyperlinks are then formatted and returned.
+
+The `add_header(driver)` function is used to inject a custom JavaScript file (overlay.js) into the website. This can be useful for adding custom headers or modifying the website's appearance.
+
+Overall, this code can be used in the larger project to browse websites, extract relevant information, and generate summaries based on user-provided questions.
+## Questions: 
+ 1. **Question:** What is the purpose of the `browse_website` function and what does it return?
+   **Answer:** The `browse_website` function takes a URL and a question as input, scrapes the text and links from the website using Selenium, adds a header, and generates a summary of the text based on the question. It returns a formatted string containing the summary and the top 5 links from the website.
+
+2. **Question:** How does the `scrape_text_with_selenium` function work and what does it return?
+   **Answer:** The `scrape_text_with_selenium` function takes a URL as input, initializes a Selenium WebDriver with specific options, navigates to the URL, and extracts the text content from the page's HTML. It returns the WebDriver instance and the extracted text.
+
+3. **Question:** What is the purpose of the `extract_hyperlinks` function and what does it return?
+   **Answer:** The `extract_hyperlinks` function takes a BeautifulSoup object as input and extracts all the hyperlinks (anchor tags with href attribute) from the HTML. It returns a list of tuples containing the link text and the link URL.

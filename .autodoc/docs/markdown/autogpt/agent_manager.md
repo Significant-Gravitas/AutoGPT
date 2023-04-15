@@ -1,0 +1,24 @@
+[View code on GitHub](https://github.com/Significant-Gravitas/Auto-GPT/autogpt/agent_manager.py)
+
+This code defines a module for managing GPT agents in the Auto-GPT project. The primary purpose of this module is to create, manage, and communicate with multiple GPT agents, each with their own task, message history, and model.
+
+The module maintains a dictionary called `agents`, where each agent is assigned a unique key. The agent's information is stored as a tuple containing the task, full message history, and model.
+
+The `create_agent(task, prompt, model)` function creates a new GPT agent with a given task, initial prompt, and model. It initializes the message history with the user's prompt and generates the agent's reply using the `create_chat_completion()` function from the `autogpt.llm_utils` module. The agent is then added to the `agents` dictionary with a unique key, and the function returns the key and agent's reply.
+
+The `message_agent(key, message)` function allows users to send a message to an existing agent using its key. It appends the user's message to the agent's message history and generates the agent's reply using the `create_chat_completion()` function. The agent's reply is then added to the message history, and the function returns the reply.
+
+The `list_agents()` function returns a list of all agents, including their keys and tasks. This is useful for managing multiple agents and keeping track of their assigned tasks.
+
+The `delete_agent(key)` function deletes an agent from the `agents` dictionary using its key. It returns `True` if the deletion is successful and `False` otherwise.
+
+Overall, this module provides a convenient way to manage multiple GPT agents in the Auto-GPT project, allowing users to create, communicate with, and delete agents as needed.
+## Questions: 
+ 1. **Question:** What is the purpose of the `create_chat_completion()` function and where is it defined?
+   **Answer:** The `create_chat_completion()` function is used to generate a response from the GPT model based on the given messages. It is defined in the `autogpt.llm_utils` module, which is imported at the beginning of the code.
+
+2. **Question:** How are agents stored and managed in this code?
+   **Answer:** Agents are stored in a dictionary called `agents`, where the keys are unique integers and the values are tuples containing the task, full message history, and the model. Functions like `create_agent()`, `message_agent()`, `list_agents()`, and `delete_agent()` are provided to manage the agents.
+
+3. **Question:** What is the purpose of the `next_key` variable and how is it used?
+   **Answer:** The `next_key` variable is used to assign unique keys to the agents. It is incremented every time a new agent is created, ensuring that each agent has a unique key even if some agents are deleted.

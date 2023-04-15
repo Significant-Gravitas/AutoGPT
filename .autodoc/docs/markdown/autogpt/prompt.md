@@ -1,0 +1,27 @@
+[View code on GitHub](https://github.com/Significant-Gravitas/Auto-GPT/autogpt/prompt.py)
+
+The code in this file is responsible for generating a prompt string that includes various constraints, commands, resources, and performance evaluations for the Auto-GPT project. The main function, `get_prompt()`, returns a generated prompt string that can be used as input for the GPT model.
+
+First, the function initializes a `PromptGenerator` object. Then, it adds constraints to the object, such as a 4000-word limit for short-term memory and no user assistance. These constraints help guide the GPT model's behavior.
+
+Next, the function defines a list of commands that the GPT model can use. Each command is a tuple containing a label, a command name, and a dictionary of arguments. Examples of commands include "Google Search", "Browse Website", and "Start GPT Agent". These commands are added to the `PromptGenerator` object using a loop.
+
+After adding commands, the function adds resources to the `PromptGenerator` object. Resources are additional capabilities that the GPT model can utilize, such as internet access for searches and GPT-3.5 powered agents for task delegation.
+
+Finally, the function adds performance evaluations to the `PromptGenerator` object. These evaluations provide guidance on how the GPT model should assess and improve its performance, such as continuous self-review and reflection on past decisions.
+
+Once all constraints, commands, resources, and performance evaluations have been added to the `PromptGenerator` object, the function generates the prompt string using the `generate_prompt_string()` method and returns it.
+
+In the larger project, the generated prompt string can be used as input for the GPT model, guiding its behavior and providing a set of commands and resources it can use to complete tasks.
+## Questions: 
+ 1. **What is the purpose of the `PromptGenerator` class and how is it used in this code?**
+
+   The `PromptGenerator` class is used to generate a prompt string that includes various constraints, commands, resources, and performance evaluations. In this code, an instance of `PromptGenerator` is created, and then constraints, commands, resources, and performance evaluations are added to it. Finally, the `generate_prompt_string()` method is called to generate the final prompt string.
+
+2. **How are the commands defined and added to the `PromptGenerator` object?**
+
+   The commands are defined in a list called `commands`, where each command is represented as a tuple containing the command label, command name, and a dictionary of arguments. The commands are then added to the `PromptGenerator` object using a for loop that iterates through the list and calls the `add_command()` method for each command.
+
+3. **What is the purpose of the `get_prompt()` function and what does it return?**
+
+   The `get_prompt()` function is responsible for generating a prompt string that includes various constraints, commands, resources, and performance evaluations using the `PromptGenerator` class. It returns the generated prompt string as a string value.
