@@ -121,7 +121,8 @@ def print_assistant_thoughts(assistant_reply):
             speak.say_text(assistant_thoughts_speak)
 
         if cfg.telegram_enabled:
-            asyncio.run(TelegramUtils.send_message(assistant_thoughts_text))
+            telegramUtils = TelegramUtils()
+            telegramUtils.send_message(assistant_thoughts_text)
 
         return assistant_reply_json
     except json.decoder.JSONDecodeError as e:
@@ -389,8 +390,9 @@ class Agent:
                                 "I decided to just continue thinking. Is that okay? \n Input:", talk=True)
                     else:
                         if cfg.telegram_enabled:
-                            console_input = TelegramUtils.ask_user(
-                                f"I want to execute {command_name} and {arguments}. Is that okay?")
+                            loop = asyncio.get_event_loop()
+                            console_input = loop.run_until_complete(TelegramUtils.ask_user(
+                               prompt= f"I want to execute {command_name} and {arguments}. Is that okay?"))
                         else:
                             console_input = utils.clean_input(
                                 Fore.MAGENTA + "Input:" + Style.RESET_ALL)
