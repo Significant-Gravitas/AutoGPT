@@ -113,3 +113,38 @@ def create_chat_completion(
         raise RuntimeError(f"Failed to get response after {num_retries} retries")
 
     return response.choices[0].message["content"]
+
+
+def create_embedding_with_ada(text) -> list: 
+    """Create a embedding with text-ada-002 using the OpenAI SDK"""
+    num_retries = 5
+    for attempt in range(num_retries):
+        try:
+            if cfg.use_azure:
+                return openai.Embedding.create(input=[text],
+                    engine=cfg.get_azure_deployment_id_for_model("text-embedding-ada-002"),
+                )["data"][0]["embedding"]
+            else:
+                return openai.Embedding.create(input=[text], model="text-embedding-ada-002")[
+                    "data"
+                ][0]["embedding"]
+        except RateLimitError:
+            if cfg.debug_mode:
+                    print(
+                    Fore.RED + "Error: ",
+                    "API Rate Limit Reached. Waiting 20 seconds..." + Fore.RESET,
+                )
+            time.sleep(20)
+        except APIError as e:
+            if e.http_status == 502:
+                if cfg.debug_mode:
+                    print(
+                        Fore.RED + "Error: ",
+                        "API Bad gateway. Waiting 20 seconds..." + Fore.RESET,
+                    )
+                time.sleep(20)
+            else:
+                raise
+            if attempt == num_retries - 1:
+                raise
+
