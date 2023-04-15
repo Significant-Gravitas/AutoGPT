@@ -1,7 +1,5 @@
 # sourcery skip: snake-case-functions
 """Tests for the MilvusMemory class."""
-import os
-import sys
 import unittest
 
 try:
