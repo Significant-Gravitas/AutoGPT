@@ -7,7 +7,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.options import Options
+from webdriver_manager.firefox import GeckoDriverManager
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.safari.options import Options as SafariOptions
 import logging
 from pathlib import Path
 from autogpt.config import Config
@@ -49,14 +52,25 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     """
     logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
-    options = Options()
+    options_available = {'chrome': ChromeOptions, 'safari': SafariOptions, 'firefox': FirefoxOptions}
+
+    options = options_available[CFG.selenium_web_browser]()
     options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        " (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
-    driver = webdriver.Chrome(
-        executable_path=ChromeDriverManager().install(), options=options
-    )
+
+    if CFG.selenium_web_browser == "firefox":
+        driver = webdriver.Firefox(
+            executable_path=GeckoDriverManager().install(), options=options
+        )
+    elif CFG.selenium_web_browser == "safari":
+        # Requires a bit more setup on the users end
+        # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
+        driver = webdriver.Safari(options=options)
+    else:
+        driver = webdriver.Chrome(
+            executable_path=ChromeDriverManager().install(), options=options
+        )
     driver.get(url)
 
     WebDriverWait(driver, 10).until(
