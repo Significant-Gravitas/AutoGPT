@@ -67,7 +67,7 @@ class TestSqliteMemory(unittest.TestCase):
 
         stats = self.memory.get_stats()
         self.assertEqual(
-            stats, {"num_memories": 1, "index": self.cfg.memory_index, "embeder": "ada"}
+            stats, {"num_memories": 1, "index": self.cfg.memory_index, "embedder": "ada"}
         )
 
 

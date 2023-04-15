@@ -10,15 +10,18 @@ from colorama import Fore, Style
 from sklearn.neighbors import NearestNeighbors
 
 from autogpt.logger import logger
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton
+from autogpt.memory.base import get_ada_embedding as get_embedding 
 
 CHUNK_SIZE = 1000
 EMBED_DIM = 1536
 
 
-# Based on: https://github.com/wawawario2/long_term_memory
 class SqliteMemory(MemoryProviderSingleton):
-    """SQLite memory provider."""
+    """
+    SQLite memory provider.
+    Based on: https://github.com/wawawario2/long_term_memory
+    """
 
     def __init__(self, cfg):
         """
@@ -29,9 +32,9 @@ class SqliteMemory(MemoryProviderSingleton):
 
         Returns: None
         """
-        # Store the index (table name) and the embeder name
+        # Store the index (table name) and the embedder name
         self.index = cfg.memory_index
-        self.embeder_name = "ada"
+        self.embedder_name = "ada"
 
         # Set database and embeddings to None
         self.sql_conn = None
@@ -49,7 +52,7 @@ class SqliteMemory(MemoryProviderSingleton):
         parent_dir = Path("memory")
         self.database_path = parent_dir / "memory.db"
         self.embeddings_path = (
-            parent_dir / f"embeddings_{self.index}_{self.embeder_name}.zarr"
+            parent_dir / f"embeddings_{self.index}_{self.embedder_name}.zarr"
         )
 
         # If parent directory doesn't exist, create it
@@ -72,11 +75,11 @@ class SqliteMemory(MemoryProviderSingleton):
             self._create_embeddings()
         # Database exists, check if embeddings exist
         elif not self.embeddings_path.exists():
-            # Check if another embeddings directory for this index exists, but using a different embeder
+            # Check if another embeddings directory for this index exists, but using a different embedder
             for file in parent_dir.glob(f"embeddings_{self.index}_*.zarr"):
-                # Found another embeddings directory using a different embeder, convert it
-                old_embeder_name = file.stem.split("_")[-1]
-                self._convert_embeddings(file, old_embeder_name)
+                # Found another embeddings directory using a different embedder, convert it
+                old_embedder_name = file.stem.split("_")[-1]
+                self._convert_embeddings(file, old_embedder_name)
                 break
 
             # Embeddings don't exist, check if a table for this index exists and is empty
@@ -197,36 +200,37 @@ class SqliteMemory(MemoryProviderSingleton):
                 index, text = row
 
                 # Generate the embedding
-                embedding = get_ada_embedding(text)
+                embedding = get_embedding(text)
+                embedding = np.expand_dims(embedding, axis=0)
 
                 # Store the embedding
                 self.embeddings[index] = embedding
 
     def _convert_embeddings(
-        self, old_embeddings: Path, prev_embeder: str, soft_delete: bool = True
+        self, old_embeddings: Path, prev_embedder: str, soft_delete: bool = True
     ) -> None:
         """
-        Converts the embeddings from a different embeder to the current one.
+        Converts the embeddings from a different embedder to the current one.
 
         Args:
             old_embeddings: The path to the previous embeddings
-            prev_embeder: The name of the previous embeder
+            prev_embedder: The name of the previous embedder
 
         Returns: None
         """
 
-        # Ask user if they want to regenerate embeddings (may come with additional costs for embeders like "ada")
+        # Ask user if they want to regenerate embeddings (may come with additional costs for embedders like "ada")
         print(
             f"WARNING: Embeddings for index '{self.index}' were generated "
-            f"with a different embeder ({prev_embeder}) than the current one ({self.embeder_name}). "
-            "Regenerating embeddings (may come with additional costs if using embeders like 'ada'), "
+            f"with a different embedder ({prev_embedder}) than the current one ({self.embedder_name}). "
+            "Regenerating embeddings (may come with additional costs if using embedders like 'ada'), "
             "do you want to regenerate them [y/N]?",
             end="",
         )
         if input().lower() != "y":
             logger.error(
-                "Embeddings for this index were generated with a different embeder. "
-                "Either regenerate them, use a different embeder or remove the old embeddings file."
+                "Embeddings for this index were generated with a different embedder. "
+                "Either regenerate them, use a different embedder or remove the old embeddings file."
             )
             exit(1)
 
@@ -241,7 +245,7 @@ class SqliteMemory(MemoryProviderSingleton):
         # For each data point, get the embedding and add it to the new embeddings array
         for index, data, timestamp in rows:
             # embedding = get_embedding(data)
-            embedding = get_ada_embedding(data)
+            embedding = get_embedding(data)
             embedding = np.expand_dims(embedding, axis=0)
             self.embeddings[index] = embedding
 
@@ -261,7 +265,7 @@ class SqliteMemory(MemoryProviderSingleton):
         Returns: Message indicating that the data has been added.
         """
         # Create the data embedding
-        embedding = get_ada_embedding(data)
+        embedding = get_embedding(data)
         embedding = np.expand_dims(embedding, axis=0)
 
         # Get the embedding index (index of the next vector is the same as the number of vectors)
@@ -327,7 +331,7 @@ class SqliteMemory(MemoryProviderSingleton):
             return []
 
         # Create the data embedding
-        embedding = get_ada_embedding(data)
+        embedding = get_embedding(data)
         embedding = np.expand_dims(embedding, axis=0)
 
         # Get the nearest neighbors
@@ -362,5 +366,5 @@ class SqliteMemory(MemoryProviderSingleton):
         return {
             "num_memories": self.embeddings.shape[0],
             "index": self.index,
-            "embeder": self.embeder_name,
+            "embedder": self.embedder_name,
         }
