@@ -68,7 +68,7 @@ def create_chat_completion(
         str: The response from the chat completion
     """
     response = None
-    num_retries = 5
+    num_retries = 10
     if CFG.debug_mode:
         print(
             Fore.GREEN
@@ -110,6 +110,6 @@ def create_chat_completion(
             )
         time.sleep(backoff)
     if response is None:
-        raise RuntimeError("Failed to get response after 5 retries")
+        raise RuntimeError(f"Failed to get response after {num_retries} retries")
 
     return response.choices[0].message["content"]
