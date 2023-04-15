@@ -152,3 +152,6 @@ dmypy.json
 .pyre/
 llama-*
 vicuna-*
+
+# For Macs Dev Environs: ignoring .Desktop Services_Store
+*.DS_Store
