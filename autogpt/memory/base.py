@@ -7,6 +7,7 @@ from autogpt.config import AbstractSingleton, Config
 
 cfg = Config()
 
+
 def get_ada_embedding(text):
     text = text.replace("\n", " ")
     if cfg.use_azure:

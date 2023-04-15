@@ -11,6 +11,7 @@ from autogpt.config import Config
 from autogpt.memory.weaviate import WeaviateMemory
 from autogpt.memory.base import get_ada_embedding
 
+
 @mock.patch.dict(os.environ, {
     "WEAVIATE_HOST": "127.0.0.1",
     "WEAVIATE_PROTOCOL": "http",
@@ -38,13 +39,13 @@ class TestWeaviateMemory(unittest.TestCase):
             ))
         else:
             cls.client = Client(f"{cls.cfg.weaviate_protocol}://{cls.cfg.weaviate_host}:{self.cfg.weaviate_port}")
-    
+
     """
     In order to run these tests you will need a local instance of
     Weaviate running. Refer to https://weaviate.io/developers/weaviate/installation/docker-compose
     for creating local instances using docker.
     Alternatively in your .env file set the following environmental variables to run Weaviate embedded (see: https://weaviate.io/developers/weaviate/installation/embedded):
-    
+
         USE_WEAVIATE_EMBEDDED=True
         WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate"
     """
@@ -53,7 +54,7 @@ class TestWeaviateMemory(unittest.TestCase):
             self.client.schema.delete_class(self.cfg.memory_index)
         except:
             pass
-        
+
         self.memory = WeaviateMemory(self.cfg)
 
     def test_add(self):
@@ -67,7 +68,7 @@ class TestWeaviateMemory(unittest.TestCase):
 
     def test_get(self):
         doc = 'You are an Avenger and swore to defend the Galaxy from a menace called Thanos'
-        
+
         with self.client.batch as batch:
             batch.add_data_object(
                 uuid=get_valid_uuid(uuid4()),
@@ -83,7 +84,6 @@ class TestWeaviateMemory(unittest.TestCase):
         self.assertEqual(len(actual), 1)
         self.assertEqual(actual[0], doc)
 
-
     def test_get_stats(self):
         docs = [
             'You are now about to count the number of docs in this index',
@@ -97,7 +97,6 @@ class TestWeaviateMemory(unittest.TestCase):
         self.assertTrue(stats)
         self.assertTrue('count' in stats)
         self.assertEqual(stats['count'], 2)
-
 
     def test_clear(self):
         docs = [

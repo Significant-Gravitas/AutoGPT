@@ -27,6 +27,7 @@ except ImportError:
     print("Weaviate not installed. Skipping import.")
     WeaviateMemory = None
 
+
 def get_memory(cfg, init=False):
     memory = None
     if cfg.memory_backend == "pinecone":
@@ -53,7 +54,7 @@ def get_memory(cfg, init=False):
                   " use Weaviate as a memory backend.")
         else:
             memory = WeaviateMemory(cfg)
-            
+
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 

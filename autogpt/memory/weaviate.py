@@ -6,6 +6,7 @@ from weaviate import Client
 from weaviate.embedded import EmbeddedOptions
 from weaviate.util import generate_uuid5
 
+
 def default_schema(weaviate_index):
     return {
         "class": weaviate_index,
@@ -17,6 +18,7 @@ def default_schema(weaviate_index):
             }
         ],
     }
+
 
 class WeaviateMemory(MemoryProviderSingleton):
     def __init__(self, cfg):
@@ -72,12 +74,11 @@ class WeaviateMemory(MemoryProviderSingleton):
     def get(self, data):
         return self.get_relevant(data, 1)
 
-
     def clear(self):
         self.client.schema.delete_all()
 
         # weaviate does not yet have a neat way to just remove the items in an index
-        # without removing the entire schema, therefore we need to re-create it 
+        # without removing the entire schema, therefore we need to re-create it
         # after a call to delete_all
         self._create_schema()
 
