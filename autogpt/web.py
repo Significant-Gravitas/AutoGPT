@@ -15,6 +15,9 @@ cfg = Config()
 
 
 def browse_website(url, question):
+    if(url == "<website_url>"):
+        return f"You did not provide a website URL for the param <website_url>, please re-run with a URL",
+    
     driver, text = scrape_text_with_selenium(url)
     add_header(driver)
     summary_text = summary.summarize_text(driver, text, question)
