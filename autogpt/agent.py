@@ -73,7 +73,7 @@ class Agent:
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             # Print Assistant thoughts
-            print_assistant_thoughts(assistant_reply)
+            print_assistant_thoughts(self.ai_name, assistant_reply)
 
             # Get command name and arguments
             try:
