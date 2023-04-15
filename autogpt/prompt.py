@@ -65,11 +65,6 @@ def get_prompt() -> str:
         ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
         ("Delete file", "delete_file", {"file": "<file>"}),
         ("Search Files", "search_files", {"directory": "<directory>"}),
-        (
-            "Downloads a file from the internet, and stores it locally",
-            "download_file",
-            {"url": "<file_url>", "file": "<saved_filename>"}
-        ),
         ("Evaluate Code", "evaluate_code", {"code": "<full_code_string>"}),
         (
             "Get Improved Code",
@@ -92,6 +87,16 @@ def get_prompt() -> str:
                 "Execute Shell Command, non-interactive commands only",
                 "execute_shell",
                 {"command_line": "<command_line>"},
+            ),
+        )
+
+    # Only add the download file command if the AI is allowed to execute it
+    if cfg.allow_downloads:
+        commands.append(
+            (
+                "Downloads a file from the internet, and stores it locally",
+                "download_file",
+                {"url": "<file_url>", "file": "<saved_filename>"}
             ),
         )
 
