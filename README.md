@@ -115,9 +115,10 @@ cd Auto-GPT
 pip install -r requirements.txt
 ```
 
-5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
+5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` or set `USE_AZURE_CS_TTS` to `true` to use Azure Speech Services.
   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+  - If you are using Azure Speech Services, obtain and set your API key, region and voice parameters, see [Azure Speech Services Configuration](#azure-speech-services-configuration) for details.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
     - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section:
       - `fast_llm_model_deployment_id` - your gpt-3.5-turbo or gpt-4 deployment ID
@@ -195,6 +196,34 @@ Use this to use TTS _(Text-to-Speech)_ for Auto-GPT
 ```bash
 python -m autogpt --speak
 ```
+
+### Azure Speech Services Configuration
+
+If you need an Azure Speech Services account, you can get one to try for free here : [Azure Speech Services](https://azure.microsoft.com/en-us/products/cognitive-services/speech-services/)
+
+  Once you have an account go to the [Azure portal](https://portal.azure.com) for your API key and region values.
+
+  To get your API and region: Go to the "Keys and Endpoint" section of your Speech Service (you don't need the endpoint url)
+
+Voices and Styles available to Auto-GPT:
+
+  You can find a list of valid values for Auto-GPT here : [Voice and Style values](https://learn.microsoft.com/en-us/azure/cognitive-services/speech-service/language-support?tabs=tts#voice-styles-and-roles)
+
+Configure Auto-GPT to use Azure Speech Services
+
+  Add/edit these entries for your env:
+
+```
+USE_AZURE_CS_TTS=True
+AZURE_CS_TTS_APIKEY=<your key here>
+AZURE_CS_TTS_REGION=<your region here>
+AZURE_CS_TTS_VOICE_1_ID=en-US-DavisNeural
+AZURE_CS_TTS_VOICE_1_STYLE=terrified
+AZURE_CS_TTS_VOICE_2_ID=en-US-SaraNeural
+AZURE_CS_TTS_VOICE_2_STYLE=Whispering
+```
+
+NOTE: If you have USE_AZURE_CS_TTS set to true it will be used over ElevenLabs and other speech providers.
 
 ## OpenAI API Keys Configuration
 
