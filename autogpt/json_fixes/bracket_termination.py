@@ -13,6 +13,12 @@ CFG = Config()
 
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
+    """
+    Attempt to fix JSON by finding the outermost brackets.
+
+    Args:
+        json_string (str): The JSON string to fix.
+    """
     if CFG.speak_mode and CFG.debug_mode:
         say_text(
             "I have received an invalid JSON response from the OpenAI API. "

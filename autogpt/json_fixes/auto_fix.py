@@ -8,7 +8,12 @@ cfg = Config()
 
 
 def fix_json(json_string: str, schema: str) -> str:
-    """Fix the given JSON string to make it parseable and fully compliant with the provided schema."""
+    """Fix the given JSON string to make it parseable and fully compliant with the provided schema.
+
+    Args:
+        json_string (str): The JSON string to fix
+        schema (str): The schema to use
+    """
     # Try to fix the JSON using GPT:
     function_string = "def fix_json(json_string: str, schema:str=None) -> str:"
     args = [f"'''{json_string}'''", f"'''{schema}'''"]
