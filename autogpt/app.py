@@ -88,6 +88,21 @@ def get_command(response: str):
         return "Error:", str(e)
 
 
+def map_command_synonyms(command_name: str):
+    """ Takes the original command name given by the AI, and checks if the
+        string matches a list of common/known hallucinations
+    """
+    synonyms = [
+        ('write_file', 'write_to_file'),
+        ('create_file', 'write_to_file'),
+        ('search', 'google')
+    ]
+    for seen_command, actual_command_name in synonyms:
+        if command_name == seen_command:
+            return actual_command_name
+    return command_name
+
+
 def execute_command(command_name: str, arguments):
     """Execute the command and return the result
 
@@ -100,6 +115,7 @@ def execute_command(command_name: str, arguments):
     memory = get_memory(CFG)
 
     try:
+        command_name = map_command_synonyms(command_name)
         if command_name == "google":
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial
