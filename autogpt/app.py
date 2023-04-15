@@ -22,6 +22,7 @@ from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
 from autogpt.commands.web_selenium import browse_website
+from autogpt.commands.git_operations import clone_repository
 
 
 CFG = Config()
@@ -126,6 +127,8 @@ def execute_command(command_name: str, arguments):
             return get_text_summary(arguments["url"], arguments["question"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
+        elif command_name == "clone_repository":
+            return clone_repository(arguments["repository_url"], arguments["clone_path"])
         elif command_name == "read_file":
             return read_file(arguments["file"])
         elif command_name == "write_to_file":

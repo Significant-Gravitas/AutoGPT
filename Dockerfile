@@ -1,6 +1,10 @@
 # Use an official Python base image from the Docker Hub
 FROM python:3.11-slim
 
+# Install git
+RUN apt-get -y update
+RUN apt-get -y install git
+
 # Set environment variables
 ENV PIP_NO_CACHE_DIR=yes \
     PYTHONUNBUFFERED=1 \
