@@ -98,7 +98,7 @@ def create_chat_completion(
             if CFG.debug_mode:
                 print(
                     Fore.RED + "Error: ",
-                    f"Reached rate limit. Waiting {backoff} seconds..." + Fore.RESET,
+                    f"Reached rate limit, passing..." + Fore.RESET,
                 )
             pass
         except APIError as e:
