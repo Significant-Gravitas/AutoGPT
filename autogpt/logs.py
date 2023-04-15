@@ -204,6 +204,7 @@ def print_assistant_thoughts(ai_name, assistant_reply):
         attempt_to_fix_json_by_finding_outermost_brackets,
     )
     from autogpt.json_fixes.parsing import fix_and_parse_json
+
     try:
         try:
             # Parse and print Assistant response
