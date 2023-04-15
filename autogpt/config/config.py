@@ -51,6 +51,15 @@ class Config(metaclass=Singleton):
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
         self.elevenlabs_voice_2_id = os.getenv("ELEVENLABS_VOICE_2_ID")
 
+        self.use_azure_cs_tts = False
+        self.use_azure_cs_tts = os.getenv("USE_AZURE_CS_TTS")
+        self.azure_cs_tts_apikey = os.getenv("AZURE_CS_TTS_APIKEY")
+        self.azure_cs_tts_region = os.getenv("AZURE_CS_TTS_REGION")
+        self.azure_cs_tts_voice_1_id = os.getenv("AZURE_CS_TTS_VOICE_1_ID")
+        self.azure_cs_tts_voice_1_style = os.getenv("AZURE_CS_TTS_VOICE_1_STYLE")
+        self.azure_cs_tts_voice_2_id = os.getenv("AZURE_CS_TTS_VOICE_2_ID")
+        self.azure_cs_tts_voice_2_style = os.getenv("AZURE_CS_TTS_VOICE_2_STYLE")
+
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
 
@@ -193,6 +202,30 @@ class Config(metaclass=Singleton):
     def set_elevenlabs_voice_2_id(self, value: str) -> None:
         """Set the ElevenLabs Voice 2 ID value."""
         self.elevenlabs_voice_2_id = value
+
+    def set_azure_cs_tts_apikey(self, value: str) -> None:
+        """Set the Azure Cog Services API key value."""
+        self.azure_cs_tts_apikey = value
+
+    def set_azure_cs_tts_region(self, value: str) -> None:
+        """Set the Azure Cog Services region value."""
+        self.azure_cs_tts_region = value
+
+    def set_azure_cs_tts_voice_1_id(self, value: str) -> None:
+        """Set the Azure Cog Services Voice 1 ID value."""
+        self.azure_cs_tts_voice_1_id = value
+
+    def set_azure_cs_tts_voice_1_style(self, value: str) -> None:
+        """Set the Azure Cog Services Voice 1 Style value."""
+        self.azure_cs_tts_voice_1_style = value
+
+    def set_azure_cs_tts_voice_2_id(self, value: str) -> None:
+        """Set the Azure Cog Services Voice 2 ID value."""
+        self.azure_cs_tts_voice_2_id = value
+
+    def set_azure_cs_tts_voice_2_style(self, value: str) -> None:
+        """Set the Azure Cog Services Voice 2 Style value."""
+        self.azure_cs_tts_voice_2_style = value
 
     def set_google_api_key(self, value: str) -> None:
         """Set the Google API key value."""

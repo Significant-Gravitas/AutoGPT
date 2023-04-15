@@ -7,12 +7,15 @@ from autogpt.speech.brian import BrianSpeech
 from autogpt.speech.macos_tts import MacOSTTS
 from autogpt.speech.gtts import GTTSVoice
 from autogpt.speech.eleven_labs import ElevenLabsSpeech
+from autogpt.speech.azure_cog_services_speech import AzureCogServicesSpeech
 
 
 CFG = Config()
 DEFAULT_VOICE_ENGINE = GTTSVoice()
 VOICE_ENGINE = None
-if CFG.elevenlabs_api_key:
+if CFG.azure_cs_tts_apikey and CFG.use_azure_cs_tts:
+    VOICE_ENGINE = AzureCogServicesSpeech()
+elif CFG.elevenlabs_api_key:
     VOICE_ENGINE = ElevenLabsSpeech()
 elif CFG.use_mac_os_tts == "True":
     VOICE_ENGINE = MacOSTTS()
