@@ -19,6 +19,8 @@ auto-gpt.json
 log.txt
 log-ingestion.txt
 logs
+*.log
+*.mp3
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

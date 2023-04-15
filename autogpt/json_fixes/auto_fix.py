@@ -1,47 +1,56 @@
 """This module contains the function to fix JSON strings using GPT-3."""
 import json
+
 from autogpt.llm_utils import call_ai_function
 from autogpt.logs import logger
+from autogpt.config import Config
+
+CFG = Config()
 
 
-def fix_json(json_str: str, schema: str) -> str:
-    """Fix the given JSON string to make it parseable and fully compliant with the provided schema."""
-    function_string = "def fix_json(json_str: str, schema:str=None) -> str:"
-    args = [f"'''{json_str}'''", f"'''{schema}'''"]
+def fix_json(json_string: str, schema: str) -> str:
+    """Fix the given JSON string to make it parseable and fully compliant with
+        the provided schema.
+
+    Args:
+        json_string (str): The JSON string to fix.
+        schema (str): The schema to use to fix the JSON.
+    Returns:
+        str: The fixed JSON string.
+    """
+    # Try to fix the JSON using GPT:
+    function_string = "def fix_json(json_string: str, schema:str=None) -> str:"
+    args = [f"'''{json_string}'''", f"'''{schema}'''"]
     description_string = (
-        "Fixes the provided JSON string to make it parseable"
-        " and fully compliant with the provided schema.\n If an object or"
-        " field specified in the schema isn't contained within the correct"
-        " JSON, it is omitted.\n This function is brilliant at guessing"
-        " when the format is incorrect."
+        "This function takes a JSON string and ensures that it"
+        " is parseable and fully compliant with the provided schema. If an object"
+        " or field specified in the schema isn't contained within the correct JSON,"
+        " it is omitted. The function also escapes any double quotes within JSON"
+        " string values to ensure that they are valid. If the JSON string contains"
+        " any None or NaN values, they are replaced with null before being parsed."
     )
 
-    json_str = ensure_code_block(json_str)
-
+    json_string = ensure_code_block(json_string)
+    
     result_string = call_ai_function(
-        function_string, args, description_string, model=cfg.fast_llm_model
+        function_string, args, description_string, model=CFG.fast_llm_model
     )
 
-    log_attempt(json_str, result_string)
+    logger.debug("------------ JSON FIX ATTEMPT ---------------")
+    logger.debug(f"Original JSON: {json_string}")
+    logger.debug("-----------")
+    logger.debug(f"Fixed JSON: {result_string}")
+    logger.debug("----------- END OF FIX ATTEMPT ----------------")
 
     try:
         json.loads(result_string)  # just check the validity
         return result_string
-    except json.JSONDecodeError:
+    except json.JSONDecodeError:  # noqa: E722
         return "failed"
 
 
-def ensure_code_block(json_str: str) -> str:
+def ensure_code_block(json_string: str) -> str:
     """Ensure the JSON string is wrapped in a code block."""
-    if not json_str.startswith("```"):
-        return f"```json\n{json_str}\n```"
-    return json_str
-
-
-def log_attempt(original_json: str, fixed_json: str) -> None:
-    """Log JSON fix attempt."""
-    logger.debug("------------ JSON FIX ATTEMPT ---------------")
-    logger.debug(f"Original JSON: {original_json}")
-    logger.debug("-----------")
-    logger.debug(f"Fixed JSON: {fixed_json}")
-    logger.debug("----------- END OF FIX ATTEMPT ----------------")
+    if not json_string.startswith("```"):
+        return f"```json\n{json_string}\n```"
+    return json_string

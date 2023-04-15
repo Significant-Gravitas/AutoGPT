@@ -3,6 +3,7 @@ from typing import List, Tuple, Union
 from urllib.parse import urljoin, urlparse
 
 import requests
+from requests.compat import urljoin
 from requests import Response
 from bs4 import BeautifulSoup
 
@@ -72,7 +73,7 @@ def get_response(
         timeout (int): The timeout for the HTTP request
 
     Returns:
-        tuple[None, str] | tuple[Response, None]: The response and error message
+        Tuple[None, str] | Tuple[Response, None]: The response and error message
 
     Raises:
         ValueError: If the URL is invalid
@@ -134,19 +135,20 @@ def scrape_text(url: str) -> str:
     return text
 
 
-def extract_hyperlinks(soup: BeautifulSoup) -> List[Tuple[str, str]]:
+def extract_hyperlinks(soup: BeautifulSoup, base_url: str) -> List[Tuple[str, str]]:
     """Extract hyperlinks from a BeautifulSoup object
 
     Args:
         soup (BeautifulSoup): The BeautifulSoup object
+        base_url (str): The base URL
 
     Returns:
         List[Tuple[str, str]]: The extracted hyperlinks
     """
-    hyperlinks = []
-    for link in soup.find_all("a", href=True):
-        hyperlinks.append((link.text, link["href"]))
-    return hyperlinks
+    return [
+        (link.text, urljoin(base_url, link["href"]))
+        for link in soup.find_all("a", href=True)
+    ]
 
 
 def format_hyperlinks(hyperlinks: List[Tuple[str, str]]) -> List[str]:
@@ -183,7 +185,7 @@ def scrape_links(url: str) -> Union[str, List[str]]:
     for script in soup(["script", "style"]):
         script.extract()
 
-    hyperlinks = extract_hyperlinks(soup)
+    hyperlinks = extract_hyperlinks(soup, url)
 
     return format_hyperlinks(hyperlinks)
 
@@ -192,7 +194,7 @@ def create_message(chunk, question):
     """Create a message for the user to summarize a chunk of text"""
     return {
         "role": "user",
-        "content": f'"""{chunk}""" Using the above text, please answer the following'
+        "content": f'"""{chunk}""" Using the above text, answer the following'
         f' question: "{question}" -- if the question cannot be answered using the'
-        " text, please summarize the text.",
+        " text, summarize the text.",
     }
