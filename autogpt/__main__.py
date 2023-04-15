@@ -287,6 +287,12 @@ def parse_arguments():
         help="Skips the re-prompting messages at the beginning of the script",
     )
     parser.add_argument(
+        "--use-browser",
+        "-b",
+        dest="browser_name",
+        help="Specifies which web-browser to use when using selenium to scrape the web."
+    )
+    parser.add_argument(
         "--ai-settings",
         "-C",
         dest="ai_settings_file",
@@ -349,6 +355,9 @@ def parse_arguments():
         logger.typewriter_log("Skip Re-prompt: ", Fore.GREEN, "ENABLED")
         cfg.skip_reprompt = True
 
+    if args.browser_name:
+        cfg.selenium_web_browser = args.browser_name
+
     if args.ai_settings_file:
         file = args.ai_settings_file
 
@@ -384,7 +393,8 @@ def main():
     # Initialize memory and make sure it is empty.
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(cfg, init=True)
-    print(f"Using memory of type: {memory.__class__.__name__}")
+    logger.typewriter_log(f"Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}")
+    logger.typewriter_log(f"Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
     agent = Agent(
         ai_name=ai_name,
         memory=memory,

@@ -32,9 +32,9 @@ def browse_website(url, question):
 
 def scrape_text_with_selenium(url):
     logging.getLogger("selenium").setLevel(logging.CRITICAL)
-    
+
     options_available = {'chrome': ChromeOptions, 'safari': SafariOptions, 'firefox': FirefoxOptions}
-    
+
     options = options_available[cfg.selenium_web_browser]()
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
@@ -45,14 +45,14 @@ def scrape_text_with_selenium(url):
             executable_path=GeckoDriverManager().install(), options=options
         )
     elif cfg.selenium_web_browser == "safari":
-        # Requires a bit more setup on the users end 
+        # Requires a bit more setup on the users end
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
     else:
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
-        
+
     driver.get(url)
 
     WebDriverWait(driver, 10).until(
