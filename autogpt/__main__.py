@@ -17,6 +17,8 @@ from autogpt.spinner import Spinner
 
 cfg = Config()
 config = None
+if cfg.telegram_enabled:
+    from telegram_chat import TelegramUtils
 
 
 def check_openai_api_key():
@@ -135,6 +137,10 @@ def print_assistant_thoughts(assistant_reply):
         # Speak the assistant's thoughts
         if cfg.speak_mode and assistant_thoughts_speak:
             speak.say_text(assistant_thoughts_speak)
+
+        if cfg.telegram_enabled:
+            telegramUtils = TelegramUtils()
+            telegramUtils.send_message(assistant_thoughts_text)
 
         return assistant_reply_json
     except json.decoder.JSONDecodeError:
@@ -484,10 +490,23 @@ class Agent:
                     flush=True,
                 )
                 while True:
-                    console_input = utils.clean_input(
-                        Fore.MAGENTA + "Input:" + Style.RESET_ALL
-                    )
-                    if console_input.lower().rstrip() == "y":
+                    if cfg.speak_mode and not cfg.telegram_enabled:
+                        if command_name != "do_nothing":
+                            console_input = utils.clean_input(
+                                f"I want to {command_name}, is that okay? \n Input:", talk=True)
+                        else:
+                            console_input = utils.clean_input(
+                                "I decided to just continue thinking. Is that okay? \n Input:", talk=True)
+                    else:
+                        if cfg.telegram_enabled:
+                            loop = asyncio.get_event_loop()
+                            console_input = loop.run_until_complete(TelegramUtils.ask_user(
+                               prompt= f"I want to execute {command_name} and {arguments}. Is that okay?"))
+                        else:
+                            console_input = utils.clean_input(
+                                Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+
+                    if console_input.lower() == "y" or console_input.lower() == "yes" or console_input.lower() == "y -1" or console_input.lower() == "okay" or console_input.lower() == "ok":
                         self.user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().startswith("y -"):
