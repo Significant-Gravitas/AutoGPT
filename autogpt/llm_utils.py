@@ -95,6 +95,11 @@ def create_chat_completion(
                 )
             break
         except RateLimitError:
+            if CFG.debug_mode:
+                print(
+                    Fore.RED + "Error: ",
+                    f"Reached rate limit. Waiting {backoff} seconds..." + Fore.RESET,
+                )
             pass
         except APIError as e:
             if e.http_status == 502:
