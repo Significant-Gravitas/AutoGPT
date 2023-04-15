@@ -16,6 +16,12 @@ redis
 orjson
 Pillow
 weaviate-client==3.15.5
+selenium
+webdriver-manager
 coverage
 flake8
 numpy
+pre-commit
+black
+sourcery
+isort
