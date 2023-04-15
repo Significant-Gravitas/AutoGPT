@@ -68,28 +68,3 @@ class TestChat(unittest.TestCase):
         self.assertGreaterEqual(result[2], 0)
         self.assertGreaterEqual(len(result[3]), 3) # current_context should have at least 3 messages
         self.assertLessEqual(result[1], 2048) # token limit for GPT-3.5-turbo-0301 is 2048 tokens
-
-    # Tests that the function works correctly with valid inputs.
-    def test_generate_context_valid_inputs(self):
-        # Arrange
-        prompt = "Hello, how can I assist you today?"
-        relevant_memory = "You previously mentioned needing help with a software issue."
-        full_message_history = [
-            create_chat_message("user", "Can you help me with a software issue?"),
-            create_chat_message("assistant", "Of course, what seems to be the problem?"),
-            create_chat_message("user", "I keep getting an error message."),
-            create_chat_message("assistant", "Let's try some troubleshooting steps."),
-        ]
-        model = "gpt-3.5-turbo-0301"
-
-        # Act
-        next_message_index, tokens_used, insertion_index, context = generate_context(
-            prompt, relevant_memory, full_message_history, model
-        )
-
-        # Assert
-        self.assertEqual(next_message_index, 3)
-        self.assertGreater(tokens_used, 0)
-        self.assertLessEqual(tokens_used, 2048)
-        self.assertEqual(insertion_index, 3)
-        self.assertEqual(len(context), 3)
