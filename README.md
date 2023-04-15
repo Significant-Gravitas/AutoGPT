@@ -100,7 +100,7 @@ git clone https://github.com/Torantulino/Auto-GPT.git
 3. Navigate to the directory where the repository was downloaded
 
 ```bash
-cd 'Auto-GPT'
+cd Auto-GPT
 ```
 
 4. Install the required dependencies
