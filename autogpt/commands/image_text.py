@@ -1,7 +1,7 @@
 import requests
 
 from autogpt.config import Config
-from autogpt.file_operations import safe_join
+from autogpt.commands.file_operations import safe_join
 
 cfg = Config()
 
