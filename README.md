@@ -111,10 +111,15 @@ cd Auto-GPT
 
 4. Install the required dependencies
 
-
+Linux, maxOS, Windows(WSL)
 ```
 curl -sSL https://install.python-poetry.org | python3 -
 poetry install
+```
+
+Windows (Powershell)
+```
+(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
 ```
 
 5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVENLABS_API_KEY` as well.
