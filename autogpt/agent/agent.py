@@ -1,16 +1,16 @@
-import json
-import regex
-import traceback
-
 from colorama import Fore, Style
+from autogpt.app import execute_command, get_command
 
 from autogpt import chat, utils, speak
 from autogpt.chat import cfg
 import autogpt.commands as cmd
+from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
-from autogpt.json_parser import fix_and_parse_json
-from autogpt.logger import logger
-from autogpt.speak import say_text
+from autogpt.json_fixes.bracket_termination import (
+    attempt_to_fix_json_by_finding_outermost_brackets,
+)
+from autogpt.logs import logger, print_assistant_thoughts
+from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 
 
@@ -156,6 +156,25 @@ class Agent:
                 self.next_action_count = abs(int(console_input.split(" ")[1]))
                 self.user_input = GENERATE_NEXT_COMMAND
             except ValueError:
+                command_name, arguments = get_command(
+                    attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
+                )
+                if cfg.speak_mode:
+                    say_text(f"I want to execute {command_name}")
+            except Exception as e:
+                logger.error("Error: \n", str(e))
+
+            if not cfg.continuous_mode and self.next_action_count == 0:
+                ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+                # Get key press: Prompt the user to press enter to continue or escape
+                # to exit
+                self.user_input = ""
+                logger.typewriter_log(
+                    "NEXT ACTION: ",
+                    Fore.CYAN,
+                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+                    f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                )
                 print(
                     "Invalid input format. Please enter 'y -n' where n is the number of continuous tasks.")
                 return True
@@ -168,6 +187,7 @@ class Agent:
         self.user_input = console_input
         self.command_name = "human_feedback"
         return False
+    
 
     def send_message_to_ai(self):
         # Send message to AI, get response
@@ -312,9 +332,3 @@ def print_assistant_thoughts(ai_name, assistant_reply):
                 "I have received an invalid JSON response from the OpenAI API."
                 " I cannot ignore this response."
             )
-
-    # All other errors, return "Error: + error message"
-    except Exception:
-        call_stack = traceback.format_exc()
-        logger.error("Error: \n", call_stack)
-

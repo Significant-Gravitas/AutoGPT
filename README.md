@@ -35,22 +35,27 @@ Your support is greatly appreciated
 ## Table of Contents
 
 - [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
-  - [Demo (30/03/2023):](#demo-30032023)
+    - [🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴](#----urgent-use-stable-not-master----)
+    - [Demo (30/03/2023):](#demo-30032023)
   - [Table of Contents](#table-of-contents)
   - [🚀 Features](#-features)
   - [📋 Requirements](#-requirements)
   - [💾 Installation](#-installation)
   - [🔧 Usage](#-usage)
     - [Logs](#logs)
+    - [Docker](#docker)
+    - [Command Line Arguments](#command-line-arguments)
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
-  - [Redis Setup](#redis-setup)
-  - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+  - [Memory Backend Setup](#memory-backend-setup)
+    - [Redis Setup](#redis-setup)
+    - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
+    - [Milvus Setup](#milvus-setup)
     - [Setting up environment variables](#setting-up-environment-variables-1)
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
-  - [🧠 Memory pre-seeding](#memory-pre-seeding)
+  - [🧠 Memory pre-seeding](#-memory-pre-seeding)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#-image-generation)
@@ -75,10 +80,11 @@ Your support is greatly appreciated
   - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
 - [OpenAI API key](https://platform.openai.com/account/api-keys)
 
-
 Optional:
 
-- [PINECONE API key](https://www.pinecone.io/) (If you want Pinecone backed memory)
+- Memory backend
+  - [PINECONE API key](https://www.pinecone.io/) (If you want Pinecone backed memory)
+  - [Milvus](https://milvus.io/) (If you want Milvus as memory backend)
 - ElevenLabs Key (If you want the AI to speak)
 
 ## 💾 Installation
@@ -111,7 +117,7 @@ pip install -r requirements.txt
 ```
 
 5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
-  - Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+  - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then:
     - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all of the deployment ids for the relevant models in the `azure_model_map` section:
@@ -173,6 +179,17 @@ Use this to use TTS for Auto-GPT
 python -m autogpt --speak
 ```
 
+## OpenAI API Keys Configuration
+
+Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+
+To use OpenAI API key for Auto-GPT, you NEED to have billing set up (AKA paid account).
+
+You can set up paid account at https://platform.openai.com/account/billing/overview.
+
+![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./docs/imgs/openai-api-key-billing-paid-account.png)
+
+
 ## 🔍 Google API Keys Configuration
 
 This section is optional, use the official google api if you are having issues with error 429 when running a google search.
@@ -209,7 +226,11 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ```
 
-## Redis Setup
+## Memory Backend Setup
+
+Setup any one backend to persist memory.
+
+### Redis Setup
 
 Install docker desktop.
 
@@ -246,13 +267,25 @@ You can specify the memory index for redis using the following:
 MEMORY_INDEX=whatever
 ```
 
-## 🌲 Pinecone API Key Setup
+### 🌲 Pinecone API Key Setup
 
 Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
 
 1. Go to [pinecone](https://app.pinecone.io/) and make an account if you don't already have one.
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
+
+### Milvus Setup
+
+[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
+
+- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
+  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
+  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
+- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
+- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
+- optional
+  - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
 
 ### Setting up environment variables
 
@@ -333,7 +366,7 @@ Memories will be available to the AI immediately as they are ingested, even if i
 In the example above, the script initializes the memory, ingests all files within the seed_data directory into memory with an overlap between chunks of 200 and a maximum length of each chunk of 4000.
 Note that you can also use the --file argument to ingest a single file into memory and that the script will only ingest files within the auto_gpt_workspace directory.
 
-You can adjust the max_length and overlap parameters to fine-tune the way the docuents are presented to the AI when it "recall" that memory:
+You can adjust the max_length and overlap parameters to fine-tune the way the documents are presented to the AI when it "recall" that memory:
 
 - Adjusting the overlap value allows the AI to access more contextual information from each chunk when recalling information, but will result in more chunks being created and therefore increase memory backend usage and OpenAI API requests.
 - Reducing the max_length value will create more chunks, which can save prompt tokens by allowing for more message history in the context, but will also increase the number of chunks.
@@ -376,6 +409,10 @@ IMAGE_PROVIDER=sd
 HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 ```
 
+## Selenium
+
+sudo Xvfb :10 -ac -screen 0 1024x768x24 &
+DISPLAY=:10 your-client
 ## ⚠️ Limitations
 
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
