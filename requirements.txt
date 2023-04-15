@@ -26,3 +26,4 @@ sourcery
 isort
 zarr
 sklearn
+gitpython==3.1.31
