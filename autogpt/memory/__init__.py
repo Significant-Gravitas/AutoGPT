@@ -22,7 +22,7 @@ except ImportError:
     PineconeMemory = None
 
 try:
-    from memory.milvus import MilvusMemory
+    from autogpt.memory.milvus import MilvusMemory
 except ImportError:
     print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
@@ -48,14 +48,14 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = RedisMemory(cfg)
-    elif cfg.memory_backend == "no_memory":
-        memory = NoMemory(cfg)
     elif cfg.memory_backend == "milvus":
         if not MilvusMemory:
             print("Error: Milvus sdk is not installed."
                   "Please install pymilvus to use Milvus as memory backend.")
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "no_memory":
+        memory = NoMemory(cfg)
 
     if memory is None:
         memory = LocalCache(cfg)
