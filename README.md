@@ -420,7 +420,7 @@ HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 ```
 
 ## Selenium
-```bash
+```bashOkay that's good what can you actually want you to close that a sister and a dog eat quietly and don't need to cross I love is there an option
 sudo Xvfb :10 -ac -screen 0 1024x768x24 & DISPLAY=:10 <YOUR_CLIENT>
 ```
 
