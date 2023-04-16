@@ -1,5 +1,6 @@
 """Browse a webpage and summarize it using the LLM model"""
-from typing import List, Tuple, Union
+from __future__ import annotations
+
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -66,7 +67,7 @@ def check_local_file_access(url: str) -> bool:
 
 def get_response(
     url: str, timeout: int = 10
-) -> Union[Tuple[None, str], Tuple[Response, None]]:
+) -> tuple[None, str] | tuple[Response, None]:
     """Get the response from a URL
 
     Args:
@@ -74,7 +75,7 @@ def get_response(
         timeout (int): The timeout for the HTTP request
 
     Returns:
-        Tuple[None, str] | Tuple[Response, None]: The response and error message
+        tuple[None, str] | tuple[Response, None]: The response and error message
 
     Raises:
         ValueError: If the URL is invalid
@@ -136,14 +137,14 @@ def scrape_text(url: str) -> str:
     return text
 
 
-def scrape_links(url: str) -> Union[str, List[str]]:
+def scrape_links(url: str) -> str | list[str]:
     """Scrape links from a webpage
 
     Args:
         url (str): The URL to scrape links from
 
     Returns:
-        Union[str, List[str]]: The scraped links
+       str | list[str]: The scraped links
     """
     response, error_message = get_response(url)
     if error_message:

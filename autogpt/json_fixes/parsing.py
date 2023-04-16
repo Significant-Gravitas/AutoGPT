@@ -1,8 +1,9 @@
 """Fix and parse JSON strings."""
+from __future__ import annotations
 
 import contextlib
 import json
-from typing import Any, Dict, Union
+from typing import Any
 
 from autogpt.config import Config
 from autogpt.json_fixes.auto_fix import fix_json
@@ -71,7 +72,7 @@ def correct_json(json_to_load: str) -> str:
 
 def fix_and_parse_json(
     json_to_load: str, try_to_fix_with_gpt: bool = True
-) -> Union[str, Dict[Any, Any]]:
+) -> str | dict[Any, Any]:
     """Fix and parse JSON string
 
     Args:
@@ -80,7 +81,7 @@ def fix_and_parse_json(
             Defaults to True.
 
     Returns:
-        Union[str, Dict[Any, Any]]: The parsed JSON.
+        str or dict[Any, Any]: The parsed JSON.
     """
 
     with contextlib.suppress(json.JSONDecodeError):
@@ -109,7 +110,7 @@ def fix_and_parse_json(
 
 def try_ai_fix(
     try_to_fix_with_gpt: bool, exception: Exception, json_to_load: str
-) -> Union[str, Dict[Any, Any]]:
+) -> str | dict[Any, Any]:
     """Try to fix the JSON with the AI
 
     Args:
@@ -121,7 +122,7 @@ def try_ai_fix(
         exception: If try_to_fix_with_gpt is False.
 
     Returns:
-        Union[str, Dict[Any, Any]]: The JSON string or dictionary.
+        str or dict[Any, Any]: The JSON string or dictionary.
     """
     if not try_to_fix_with_gpt:
         raise exception
