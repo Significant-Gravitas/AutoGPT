@@ -32,12 +32,8 @@ def safe_path_join(base: Path, *paths: str | Path) -> Path:
     """
     joined_path = base.joinpath(*paths).resolve()
 
-    if not os.path.commonpath([joined_path, WORKSPACE_PATH]) == WORKSPACE_PATH:
-        raise ValueError(f"Attempted to access path '{joined_path}' outside of working directory '{WORKSPACE_PATH}'.")
-
-    return joined_path
-
     if not joined_path.is_relative_to(base):
         raise ValueError(f"Attempted to access path '{joined_path}' outside of working directory '{base}'.")
 
     return joined_path
+
