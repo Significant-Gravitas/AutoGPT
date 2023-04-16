@@ -25,6 +25,8 @@ black
 sourcery
 isort
 gitpython==3.1.31
-
 regex~=2023.3.23
 python-slugify~=8.0.1
+pytest
+pytest-mock
+tweepy

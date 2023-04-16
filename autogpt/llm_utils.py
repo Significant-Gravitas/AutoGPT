@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 from ast import List
 import time
-from typing import Dict, Optional
 
 import openai
 from openai.error import APIError, RateLimitError
@@ -14,7 +15,7 @@ openai.api_key = CFG.openai_api_key
 
 
 def call_ai_function(
-    function: str, args: List, description: str, model: Optional[str] = None
+    function: str, args: list, description: str, model: str | None = None
 ) -> str:
     """Call an AI function
 
@@ -51,15 +52,15 @@ def call_ai_function(
 # Overly simple abstraction until we create something better
 # simple retry mechanism when getting a rate error or a bad gateway
 def create_chat_completion(
-    messages: List,  # type: ignore
-    model: Optional[str] = None,
+    messages: list,  # type: ignore
+    model: str | None = None,
     temperature: float = CFG.temperature,
-    max_tokens: Optional[int] = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Create a chat completion using the OpenAI API
 
     Args:
-        messages (List[Dict[str, str]]): The messages to send to the chat completion
+        messages (list[dict[str, str]]): The messages to send to the chat completion
         model (str, optional): The model to use. Defaults to None.
         temperature (float, optional): The temperature to use. Defaults to 0.9.
         max_tokens (int, optional): The max tokens to use. Defaults to None.
@@ -126,13 +127,16 @@ def create_embedding_with_ada(text) -> list:
         backoff = 2 ** (attempt + 2)
         try:
             if CFG.use_azure:
-                return openai.Embedding.create(input=[text],
-                    engine=CFG.get_azure_deployment_id_for_model("text-embedding-ada-002"),
+                return openai.Embedding.create(
+                    input=[text],
+                    engine=CFG.get_azure_deployment_id_for_model(
+                        "text-embedding-ada-002"
+                    ),
                 )["data"][0]["embedding"]
             else:
-                return openai.Embedding.create(input=[text], model="text-embedding-ada-002")[
-                    "data"
-                ][0]["embedding"]
+                return openai.Embedding.create(
+                    input=[text], model="text-embedding-ada-002"
+                )["data"][0]["embedding"]
         except RateLimitError:
             pass
         except APIError as e:
@@ -148,4 +152,3 @@ def create_embedding_with_ada(text) -> list:
                 f"API Bad gateway. Waiting {backoff} seconds..." + Fore.RESET,
             )
         time.sleep(backoff)
-
