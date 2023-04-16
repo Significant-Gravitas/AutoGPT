@@ -51,7 +51,7 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
 
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
-    prompt, user_input, full_message_history, permanent_memory, token_limit
+    agent, prompt, user_input, full_message_history, permanent_memory, token_limit
 ):
     """Interact with the OpenAI API, sending the prompt, user input, message history,
     and permanent memory."""
@@ -109,7 +109,7 @@ def chat_with_ai(
             current_tokens_used += token_counter.count_message_tokens(
                 [create_chat_message("user", user_input)], model
             )  # Account for user input (appended later)
-
+            
             while next_message_to_add_index >= 0:
                 # print (f"CURRENT TOKENS USED: {current_tokens_used}")
                 message_to_add = full_message_history[next_message_to_add_index]
@@ -134,6 +134,26 @@ def chat_with_ai(
 
             # Append user input, the length of this is accounted for above
             current_context.extend([create_chat_message("user", user_input)])
+
+            plugin_count = len(cfg.plugins)
+            for i, plugin in enumerate(cfg.plugins):
+                plugin_response = plugin.on_planning(
+                    agent.prompt_generator, current_context
+                )
+                if not plugin_response or plugin_response == "":
+                    continue
+                tokens_to_add = token_counter.count_message_tokens(
+                    [plugin_response], model
+                )
+                if current_tokens_used + tokens_to_add > send_token_limit:
+                    if cfg.debug_mode:
+                        print("Plugin response too long, skipping:",
+                              plugin_response)
+                        print("Plugins remaining at stop:", plugin_count - i)
+                    break
+                current_context.append(
+                    create_chat_message("system", plugin_response)
+                )
 
             # Calculate remaining tokens
             tokens_remaining = token_limit - current_tokens_used

@@ -65,6 +65,7 @@ class Agent:
             # Send message to AI, get response
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
+                    self,
                     self.prompt,
                     self.user_input,
                     self.full_message_history,
