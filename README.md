@@ -6,10 +6,10 @@
 Our workflow has been improved, but please note that `master` branch may often be in a **broken** state.
 Please download the latest `stable` release from here: https://github.com/Torantulino/Auto-GPT/releases/latest.
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
+![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)
 [![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
-[![Unit Tests](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml)
+[![Unit Tests](https://github.com/Significant-Gravitaso/Auto-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/Significant-Gravitas/Auto-GPT/actions/workflows/ci.yml)
 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
@@ -21,7 +21,7 @@ https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-
 <p align="center">
 If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 Your support is greatly appreciated
-Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
+Development of this free, open-source project is made possible by all the <a href="https://github.com/Significant-Gravitas/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
 </p>
 
 
@@ -106,7 +106,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 2. Clone the repository: For this step, you need Git installed. Alternatively, you can download the zip file by clicking the button at the top of this page ☝️
 
 ```bash
-git clone https://github.com/Torantulino/Auto-GPT.git
+git clone https://github.com/Significant-Gravitas/Auto-GPT.git
 ```
 
 3. Navigate to the directory where the repository was downloaded
@@ -195,7 +195,7 @@ python -m autogpt --help
 ```bash
 python -m autogpt --ai-settings <filename>
 ```
-* Specify one of 3 memory backends: `local`, `redis`, `pinecone` or `no_memory`
+* Specify a memory backend
 ```bash
 python -m autogpt --use-memory  <memory-backend>
 ```
@@ -279,6 +279,8 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 * `redis` will use the redis cache that you configured
 * `milvus` will use the milvus cache that you configured
 * `weaviate` will use the weaviate cache that you configured
+
+## Memory Backend Setup
 
 ### Redis Setup
 > _**CAUTION**_ \
@@ -382,8 +384,10 @@ MEMORY_INDEX="Autogpt" # name of the index to create for the application
 
 
 ## 🧠 Memory pre-seeding
+Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.
 
-# python autogpt/data_ingestion.py -h 
+```bash
+# python data_ingestion.py -h 
 usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
 
 Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
@@ -396,32 +400,26 @@ options:
   --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
   --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000)
 
-# python autogpt/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
-This script located at autogpt/data_ingestion.py, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
+# python data_ingestion.py --dir DataFolder --init --overlap 100 --max_length 2000
+```
+In the example above, the script initializes the memory, ingests all files within the `Auto-Gpt/autogpt/auto_gpt_workspace/DataFolder` directory into memory with an overlap between chunks of 100 and a maximum length of each chunk of 2000.
 
-Memory pre-seeding is a technique that involves ingesting relevant documents or data into the AI's memory so that it can use this information to generate more informed and accurate responses.
+Note that you can also use the `--file` argument to ingest a single file into memory and that data_ingestion.py will only ingest files within the `/auto_gpt_workspace` directory.
 
-To pre-seed the memory, the content of each document is split into chunks of a specified maximum length with a specified overlap between chunks, and then each chunk is added to the memory backend set in the .env file. When the AI is prompted to recall information, it can then access those pre-seeded memories to generate more informed and accurate responses.
+The DIR path is relative to the auto_gpt_workspace directory, so `python data_ingestion.py --dir . --init` will ingest everything in `auto_gpt_workspace` directory.
 
-This technique is particularly useful when working with large amounts of data or when there is specific information that the AI needs to be able to access quickly. 
-By pre-seeding the memory, the AI can retrieve and use this information more efficiently, saving time, API call and improving the accuracy of its responses. 
+You can adjust the `max_length` and overlap parameters to fine-tune the way the docuents are presented to the AI when it "recall" that memory:
+- Adjusting the overlap value allows the AI to access more contextual information from each chunk when recalling information, but will result in more chunks being created and therefore increase memory backend usage and OpenAI API requests.
+- Reducing the `max_length` value will create more chunks, which can save prompt tokens by allowing for more message history in the context, but will also increase the number of chunks.
+- Increasing the `max_length` value will provide the AI with more contextual information from each chunk, reducing the number of chunks created and saving on OpenAI API requests. However, this may also use more prompt tokens and decrease the overall context available to the AI.
 
-You could for example download the documentation of an API, a GitHub repository, etc. and ingest it into memory before running Auto-GPT. 
+Memory pre-seeding is a technique for improving AI accuracy by ingesting relevant data into its memory. Chunks of data are split and added to memory, allowing the AI to access them quickly and generate more accurate responses. It's useful for large datasets or when specific information needs to be accessed quickly. Examples include ingesting API or GitHub documentation before running Auto-GPT.
 
 ⚠️ If you use Redis as your memory, make sure to run Auto-GPT with the `WIPE_REDIS_ON_START` set to `False` in your `.env` file.
 
 ⚠️For other memory backend, we currently forcefully wipe the memory when starting Auto-GPT. To ingest data with those memory backend, you can call the `data_ingestion.py` script anytime during an Auto-GPT run. 
 
 Memories will be available to the AI immediately as they are ingested, even if ingested while Auto-GPT is running.
-
-In the example above, the script initializes the memory, ingests all files within the `/seed_data` directory into memory with an overlap between chunks of 200 and a maximum length of each chunk of 4000.
-Note that you can also use the `--file` argument to ingest a single file into memory and that the script will only ingest files within the `/auto_gpt_workspace` directory.
-
-You can adjust the `max_length` and overlap parameters to fine-tune the way the docuents are presented to the AI when it "recall" that memory:
-
-- Adjusting the overlap value allows the AI to access more contextual information from each chunk when recalling information, but will result in more chunks being created and therefore increase memory backend usage and OpenAI API requests.
-- Reducing the `max_length` value will create more chunks, which can save prompt tokens by allowing for more message history in the context, but will also increase the number of chunks.
-- Increasing the `max_length` value will provide the AI with more contextual information from each chunk, reducing the number of chunks created and saving on OpenAI API requests. However, this may also use more prompt tokens and decrease the overall context available to the AI.
 
 ## 💀 Continuous Mode ⚠️
 
