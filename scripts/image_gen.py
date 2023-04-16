@@ -1,3 +1,4 @@
+import logging
 import requests
 import io
 import os.path
@@ -50,8 +51,12 @@ def generate_image(prompt, image_size="256x256"):
         response = requests.post(API_URL, headers=headers, json={
             "inputs": prompt,
         })
+        logging.exception('response: %s', response)
 
-        image = Image.open(io.BytesIO(response.content))
+        try:
+            image = Image.open(io.BytesIO(response.content))
+        except IOError:
+            return "Error: cannot identify image file"
         print("Image Generated for prompt:" + prompt)
 
         image.save(os.path.join(working_directory, filename))
