@@ -31,6 +31,7 @@ class Agent:
         memory,
         full_message_history,
         next_action_count,
+        command_registry,
         config,
         prompt,
         user_input,
@@ -39,6 +40,7 @@ class Agent:
         self.memory = memory
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
+        self.command_registry = command_registry
         self.config = config
         self.prompt = prompt
         self.user_input = user_input
@@ -167,7 +169,7 @@ class Agent:
                     )
                 result = (
                     f"Command {command_name} returned: "
-                    f"{execute_command(command_name, arguments, self.config.prompt_generator)}"
+                    f"{execute_command(self.command_registry, command_name, arguments, self.config.prompt_generator)}"
                 )
 
                 for plugin in cfg.plugins:
