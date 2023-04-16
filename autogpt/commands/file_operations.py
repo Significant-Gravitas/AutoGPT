@@ -1,19 +1,11 @@
 """File operations for AutoGPT"""
 import os
 import os.path
-from pathlib import Path
+from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
 from typing import Generator, List
 
-# Set a dedicated folder for file I/O
-WORKING_DIRECTORY = Path(os.getcwd()) / "auto_gpt_workspace"
-
-# Create the directory if it doesn't exist
-if not os.path.exists(WORKING_DIRECTORY):
-    os.makedirs(WORKING_DIRECTORY)
-
 LOG_FILE = "file_logger.txt"
-LOG_FILE_PATH = WORKING_DIRECTORY / LOG_FILE
-WORKING_DIRECTORY = str(WORKING_DIRECTORY)
+LOG_FILE_PATH = WORKSPACE_PATH / LOG_FILE
 
 
 def check_duplicate_operation(operation: str, filename: str) -> bool:
@@ -46,25 +38,6 @@ def log_operation(operation: str, filename: str) -> None:
             f.write("File Operation Logger ")
 
     append_to_file(LOG_FILE, log_entry, shouldLog = False)
-
-
-def safe_join(base: str, *paths) -> str:
-    """Join one or more path components intelligently.
-
-    Args:
-        base (str): The base path
-        *paths (str): The paths to join to the base path
-
-    Returns:
-        str: The joined path
-    """
-    new_path = os.path.join(base, *paths)
-    norm_new_path = os.path.normpath(new_path)
-
-    if os.path.commonprefix([base, norm_new_path]) != base:
-        raise ValueError("Attempted to access outside of working directory.")
-
-    return norm_new_path
 
 
 def split_file(
@@ -104,7 +77,7 @@ def read_file(filename: str) -> str:
         str: The contents of the file
     """
     try:
-        filepath = safe_join(WORKING_DIRECTORY, filename)
+        filepath = path_in_workspace(filename)
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
         return content
@@ -159,7 +132,7 @@ def write_to_file(filename: str, text: str) -> str:
     if check_duplicate_operation("write", filename):
         return "Error: File has already been updated."
     try:
-        filepath = safe_join(WORKING_DIRECTORY, filename)
+        filepath = path_in_workspace(filename)
         directory = os.path.dirname(filepath)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -182,7 +155,7 @@ def append_to_file(filename: str, text: str, shouldLog: bool = True) -> str:
         str: A message indicating success or failure
     """
     try:
-        filepath = safe_join(WORKING_DIRECTORY, filename)
+        filepath = path_in_workspace(filename)
         with open(filepath, "a") as f:
             f.write(text)
 
@@ -206,7 +179,7 @@ def delete_file(filename: str) -> str:
     if check_duplicate_operation("delete", filename):
         return "Error: File has already been deleted."
     try:
-        filepath = safe_join(WORKING_DIRECTORY, filename)
+        filepath = path_in_workspace(filename)
         os.remove(filepath)
         log_operation("delete", filename)
         return "File deleted successfully."
@@ -226,15 +199,15 @@ def search_files(directory: str) -> List[str]:
     found_files = []
 
     if directory in {"", "/"}:
-        search_directory = WORKING_DIRECTORY
+        search_directory = WORKSPACE_PATH
     else:
-        search_directory = safe_join(WORKING_DIRECTORY, directory)
+        search_directory = path_in_workspace(directory)
 
     for root, _, files in os.walk(search_directory):
         for file in files:
             if file.startswith("."):
                 continue
-            relative_path = os.path.relpath(os.path.join(root, file), WORKING_DIRECTORY)
+            relative_path = os.path.relpath(os.path.join(root, file), WORKSPACE_PATH)
             found_files.append(relative_path)
 
     return found_files
