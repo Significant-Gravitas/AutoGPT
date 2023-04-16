@@ -59,6 +59,7 @@ Development of this free, open-source project is made possible by all the <a hre
     - [Redis Setup](#redis-setup)
     - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
     - [Milvus Setup](#milvus-setup)
+    - [Weaviate Setup](#weaviate-setup)
     - [Setting up environment variables](#setting-up-environment-variables-1)
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
@@ -267,7 +268,19 @@ export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
 export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 ```
 
-## Redis Setup
+## Setting Your Cache Type
+
+By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+
+To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
+
+* `local` (default) uses a local JSON cache file
+* `pinecone` uses the Pinecone.io account you configured in your ENV settings
+* `redis` will use the redis cache that you configured
+* `milvus` will use the milvus cache that you configured
+* `weaviate` will use the weaviate cache that you configured
+
+### Redis Setup
 > _**CAUTION**_ \
 This is not intended to be publicly accessible and lacks security measures. Therefore, avoid exposing Redis to the internet without a password or at all
 1. Install docker desktop
@@ -306,20 +319,6 @@ Pinecone enables the storage of vast amounts of vector-based memory, allowing fo
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
 
-### Milvus Setup
-
-[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
-
-- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
-  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
-  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
-- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
-- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
-- optional
-  - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
-
-### Setting up environment variables
-
 In the `.env` file set:
 - `PINECONE_API_KEY`
 - `PINECONE_ENV` (example: _"us-east4-gcp"_)
@@ -343,16 +342,52 @@ export PINECONE_ENV="<YOUR_PINECONE_REGION>" # e.g: "us-east4-gcp"
 export MEMORY_BACKEND="pinecone"
 ```
 
-## Setting Your Cache Type
+### Milvus Setup
 
-By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
 
-To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
+- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
+  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
+  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
+- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
+- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
+- optional
+  - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
 
-* `local` (default) uses a local JSON cache file
-* `pinecone` uses the Pinecone.io account you configured in your ENV settings
-* `redis` will use the redis cache that you configured
 
+### Weaviate Setup
+[Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
+Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded) is supported which allows the Auto-GPT process itself to start a Weaviate instance. To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip install "weaviate-client>=3.15.4"`. 
+
+#### Setting up environment variables
+
+In your `.env` file set the following:
+
+```
+MEMORY_BACKEND=weaviate
+WEAVIATE_HOST="127.0.0.1" # the IP or domain of the running Weaviate instance
+WEAVIATE_PORT="8080" 
+WEAVIATE_PROTOCOL="http"
+WEAVIATE_USERNAME="your username"
+WEAVIATE_PASSWORD="your password"
+WEAVIATE_API_KEY="your weaviate API key if you have one"
+WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate" # this is optional and indicates where the data should be persisted when running an embedded instance
+USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
+MEMORY_INDEX="Autogpt" # name of the index to create for the application
+```
+
+### Milvus Setup
+
+[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
+
+- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
+  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
+  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
+- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
+- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
+- optional
+  - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
+ 
 ## View Memory Usage
 
 1. View memory usage by using the `--debug` flag :)

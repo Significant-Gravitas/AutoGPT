@@ -22,6 +22,12 @@ except ImportError:
     PineconeMemory = None
 
 try:
+    from autogpt.memory.weaviate import WeaviateMemory
+except ImportError:
+    print("Weaviate not installed. Skipping import.")
+    WeaviateMemory = None
+
+try:
     from autogpt.memory.milvus import MilvusMemory
 except ImportError:
     print("pymilvus not installed. Skipping import.")
@@ -48,6 +54,12 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = RedisMemory(cfg)
+    elif cfg.memory_backend == "weaviate":
+        if not WeaviateMemory:
+            print("Error: Weaviate is not installed. Please install weaviate-client to"
+                  " use Weaviate as a memory backend.")
+        else:
+            memory = WeaviateMemory(cfg)
     elif cfg.memory_backend == "milvus":
         if not MilvusMemory:
             print(
@@ -77,4 +89,5 @@ __all__ = [
     "PineconeMemory",
     "NoMemory",
     "MilvusMemory",
+    "WeaviateMemory"
 ]
