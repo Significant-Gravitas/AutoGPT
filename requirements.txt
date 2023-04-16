@@ -28,3 +28,4 @@ gitpython==3.1.31
 pytest
 pytest-mock
 tweepy
+pymilvus
