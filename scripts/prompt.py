@@ -38,7 +38,7 @@ def get_prompt():
         ("Execute Shell Command, non-interactive commands only", "execute_shell", { "command_line": "<command_line>"}),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
-        ("Do Nothing", "do_nothing", {}),
+        #("Do Nothing", "do_nothing", {}),
     ]
 
     # Add commands to the PromptGenerator object
@@ -56,7 +56,8 @@ def get_prompt():
     prompt_generator.add_performance_evaluation("Constructively self-criticize your big-picture behavior constantly.")
     prompt_generator.add_performance_evaluation("Reflect on past decisions and strategies to refine your approach.")
     prompt_generator.add_performance_evaluation("Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps.")
-
+    prompt_generator.add_performance_evaluation("Command should never be empty. Refrain from executing the command with arguments that have previously been used for the same command.")
+    
     # Generate the prompt string
     prompt_string = prompt_generator.generate_prompt_string()
 

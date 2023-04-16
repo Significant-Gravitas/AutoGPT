@@ -261,15 +261,34 @@ export PINECONE_ENV="Your pinecone region" # something like: us-east4-gcp
 export MEMORY_BACKEND="pinecone"
 ```
 
+
+## 🌲 Annoy Local Vector Database Setup
+
+Annoy is a fast and efficient local vector database, suitable for tasks that require lower-latency access to embeddings compared to cloud-based solutions.
+
+1. Install the Annoy library with the following command:
+
+```
+pip install annoy
+```
+
+
+### Setting up Annoy environment variables
+
+In the `.env` file set:
+- `ANNOY_INDEX_FILE=./annoy_index/annoy_index_file.ann`
+- `ANNOY_METADATA_FILE=./annoy_index/annoy_metadata_file.json`
+
 ## Setting Your Cache Type
 
-By default Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+By default Auto-GPT is going to use LocalCache instead of Redis, Pinecone, or Annoy.
 
 To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
 
 `local` (default) uses a local JSON cache file
 `pinecone` uses the Pinecone.io account you configured in your ENV settings
-`redis` will use the redis cache that you configured
+`redis` will use the Redis cache that you configured
+`annoy` will use the local Annoy vector database
 
 ## View Memory Usage
 

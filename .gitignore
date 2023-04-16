@@ -5,6 +5,8 @@ scripts/__pycache__/keys.cpython-310.pyc
 package-lock.json
 *.pyc
 auto_gpt_workspace/*
+annoy_index/*
+*.ann
 *.mpeg
 .env
 azure.yaml
@@ -26,3 +28,4 @@ htmlcov/
 
 # For Macs Dev Environs: ignoring .Desktop Services_Store
 .DS_Store
+
