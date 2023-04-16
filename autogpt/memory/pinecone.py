@@ -64,7 +64,7 @@ class PineconeMemory(MemoryProviderSingleton):
         :param data: The data to compare to.
         :param num_relevant: The number of relevant data to return. Defaults to 5
         """
-        query_embedding = create_embedding_with_ada(data)
+        query_embedding = create_embedding(data)
         results = self.index.query(
             query_embedding, top_k=num_relevant, include_metadata=True
         )

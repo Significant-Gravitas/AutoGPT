@@ -119,7 +119,7 @@ def create_chat_completion(
     return response.choices[0].message["content"]
 
 
-def create_embedding_with_ada(text) -> list:
+def create_embedding(text, model_name="text-embedding-ada-002") -> list:
     """Create a embedding with text-ada-002 using the OpenAI SDK"""
     num_retries = 10
     for attempt in range(num_retries):
@@ -129,12 +129,12 @@ def create_embedding_with_ada(text) -> list:
                 return openai.Embedding.create(
                     input=[text],
                     engine=CFG.get_azure_deployment_id_for_model(
-                        "text-embedding-ada-002"
+                        model_name
                     ),
                 )["data"][0]["embedding"]
             else:
                 return openai.Embedding.create(
-                    input=[text], model="text-embedding-ada-002"
+                    input=[text], model=model_name
                 )["data"][0]["embedding"]
         except RateLimitError:
             pass
