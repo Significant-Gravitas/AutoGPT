@@ -23,6 +23,5 @@ numpy
 pre-commit
 black
 isort
-gitpython
+gitpython==3.1.31
 tweepy
-pymilvus
