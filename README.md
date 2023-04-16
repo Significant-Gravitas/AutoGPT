@@ -189,18 +189,18 @@ Here are some common arguments you can use when running Auto-GPT:
 > Replace anything in angled brackets (<>) to a value you want to specify
 * View all available command line arguments
 ```bash
-python scripts/main.py --help
+python -m autogpt --help
 ```
 * Run Auto-GPT with a different AI Settings file
 ```bash
-python scripts/main.py --ai-settings <filename>
+python -m autogpt --ai-settings <filename>
 ```
 * Specify one of 3 memory backends: `local`, `redis`, `pinecone` or `no_memory`
 ```bash
-python scripts/main.py --use-memory  <memory-backend>
+python -m autogpt --use-memory  <memory-backend>
 ```
 
-> **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python scripts/main.py --help` for more information
+> **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python -m autogpt --help` for more information
 
 ## 🗣️ Speech Mode
 
@@ -375,18 +375,6 @@ WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate" # this is optional and i
 USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
 MEMORY_INDEX="Autogpt" # name of the index to create for the application
 ```
-
-### Milvus Setup
-
-[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
-
-- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
-  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
-  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
-- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
-- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
-- optional
-  - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
  
 ## View Memory Usage
 

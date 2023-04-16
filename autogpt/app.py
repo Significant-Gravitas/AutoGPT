@@ -81,9 +81,18 @@ def google(input_str: str) -> str:
     """
     key = CFG.google_api_key
     if key and key.strip() and key != "your-google-api-key":
-        return google_official_search(input_str)
+        google_result = google_official_search(input_str)
+        return google_result
     else:
-        return str(google_search(input_str).encode("utf-8", "ignore"))
+        google_result = google_search(input_str)
+    # google_result can be a list or a string depending on the search results
+    if isinstance(google_result, list):
+        safe_message = [google_result_single.encode('utf-8', 'ignore')
+                        for google_result_single in google_result]
+    else:
+        safe_message = google_result.encode('utf-8', 'ignore')
+    return str(safe_message)
+
 
 
 def execute_shell_command(args: Dict[str, Any]) -> str:
