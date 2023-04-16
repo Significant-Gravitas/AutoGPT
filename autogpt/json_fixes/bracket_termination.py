@@ -37,7 +37,7 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
 
     except (json.JSONDecodeError, ValueError):
         if CFG.debug_mode:
-            logger.error("Error: Invalid JSON: %s\n", json_string)
+            logger.error(f"Error: Invalid JSON: {json_string}\n")
         if CFG.speak_mode:
             say_text("Didn't work. I will have to ignore this response then.")
         logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
