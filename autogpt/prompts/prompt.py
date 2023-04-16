@@ -133,7 +133,7 @@ def build_default_prompt_generator() -> PromptGenerator:
     return prompt_generator
 
 
-def construct_prompt() -> str:
+def construct_main_ai_config() -> AIConfig:
     """Construct the prompt for the AI to respond to
 
     Returns:
@@ -165,4 +165,4 @@ Continue (y/n): """
         config = prompt_user()
         config.save()
 
-    return config.construct_full_prompt()
+    return config

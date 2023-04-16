@@ -10,7 +10,7 @@ from autogpt.config import Config, check_openai_api_key
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 
-from autogpt.prompts.prompt import construct_prompt
+from autogpt.prompts.prompt import construct_main_ai_config
 from autogpt.plugins import load_plugins
 
 
@@ -47,7 +47,7 @@ def main() -> None:
     cfg.set_plugins(loaded_plugins)
 
     ai_name = ""
-    prompt = construct_prompt()
+    ai_config = construct_main_ai_config()
     # print(prompt)
     # Initialize variables
     full_message_history = []
@@ -69,7 +69,8 @@ def main() -> None:
         memory=memory,
         full_message_history=full_message_history,
         next_action_count=next_action_count,
-        prompt=prompt,
+        config=ai_config,
+        prompt=ai_config.construct_full_prompt(),
         user_input=user_input,
     )
     agent.start_interaction_loop()
