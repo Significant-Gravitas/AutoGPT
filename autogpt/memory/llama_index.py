@@ -1,12 +1,10 @@
 """LlamaIndex memory storage provider."""
-from llama_index.indices.base import BaseGPTIndex
 from llama_index.indices.vector_store.base import GPTVectorStoreIndex
-from llama_index import Document
 from llama_index.data_structs.node_v2 import Node, DocumentRelationship
-from llama_index.indices.query.schema import QueryConfig
 from llama_index.indices.registry import INDEX_STRUCT_TYPE_TO_INDEX_CLASS
 from typing import List, cast
 import json
+import uuid
 
 from autogpt.memory.base import MemoryProviderSingleton
 from autogpt.memory.base import get_ada_embedding
@@ -54,11 +52,14 @@ class LlamaIndexMemory(MemoryProviderSingleton):
         Returns:
             str: log.
         """
+        # set node_doc_id = source doc id
+        doc_id = str(uuid.uuid4())
         # NOTE: set a fixed ref_doc_id for now to get it working
         node = Node(
             data, 
+            doc_id=doc_id,
             embedding=get_ada_embedding(data), 
-            relationships={DocumentRelationship.SOURCE: "ref_doc_id"}
+            relationships={DocumentRelationship.SOURCE: doc_id}
         )
         node_id = node.get_doc_id()
 
@@ -94,6 +95,8 @@ class LlamaIndexMemory(MemoryProviderSingleton):
         """
         for node_id in self._node_ids:
             self._index.delete(node_id)
+            self._index.docstore.delete_document(node_id, raise_error=False)
+        self._node_ids = []
 
         return "Index cleared."
         

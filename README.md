@@ -54,6 +54,7 @@ Your support is greatly appreciated
     - [Redis Setup](#redis-setup)
     - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
     - [Milvus Setup](#milvus-setup)
+    - [LlamaIndex Setup](#llamaindex-setup)
     - [Setting up environment variables](#setting-up-environment-variables-1)
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
@@ -291,6 +292,27 @@ Pinecone enables the storage of vast amounts of vector-based memory, allowing fo
 - set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
 - optional
   - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
+
+### LlamaIndex Setup
+
+[LlamaIndex](https://gpt-index.readthedocs.io/en/latest/) is an open-source
+tool that provides an interface between data and LLM's. At its core,
+it provides a set of data structures (indices and graphs) that can model the data
+in various ways.
+
+Querying an index/graph will both retrieve the set of relevant
+data from the knowledge corpus as well as (optionally) synthesize
+the final answer. 
+
+**Simple Setup**
+- Specify `LLAMA_INDEX_STRUCT_TYPE` to "simple_dict" (see [here](https://gpt-index.readthedocs.io/en/latest/reference/indices/composability_query.html#gpt_index.data_structs.struct_type.IndexStructType) for a full description of all structure types). 
+- Set `MEMORY_BACKEND` to "llama_index"
+
+**Advanced Setup**
+
+- If your index is already saved in disk, specify `LLAMAINDEX_JSON_PATH`.
+- If you want to specify query arguments, serialize them to a dictionary in JSON and load via `LLAMA_QUERY_KWARGS_PATH`
+
 
 ### Setting up environment variables
 
