@@ -45,7 +45,7 @@ def log_operation(operation: str, filename: str) -> None:
         with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
             f.write("File Operation Logger ")
 
-    append_to_file(LOG_FILE, log_entry)
+    append_to_file(LOG_FILE, log_entry, shouldLog = False)
 
 
 def safe_join(base: str, *paths) -> str:
@@ -171,7 +171,7 @@ def write_to_file(filename: str, text: str) -> str:
         return f"Error: {str(e)}"
 
 
-def append_to_file(filename: str, text: str) -> str:
+def append_to_file(filename: str, text: str, shouldLog: bool = True) -> str:
     """Append text to a file
 
     Args:
@@ -185,7 +185,10 @@ def append_to_file(filename: str, text: str) -> str:
         filepath = safe_join(WORKING_DIRECTORY, filename)
         with open(filepath, "a") as f:
             f.write(text)
-        log_operation("append", filename)
+        
+        if shouldLog:
+            log_operation("append", filename)
+
         return "Text appended successfully."
     except Exception as e:
         return f"Error: {str(e)}"
