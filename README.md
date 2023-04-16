@@ -195,7 +195,7 @@ python -m autogpt --help
 ```bash
 python -m autogpt --ai-settings <filename>
 ```
-* Specify one of 3 memory backends: `local`, `redis`, `pinecone` or `no_memory`
+* Specify a memory backend
 ```bash
 python -m autogpt --use-memory  <memory-backend>
 ```
@@ -279,6 +279,8 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 * `redis` will use the redis cache that you configured
 * `milvus` will use the milvus cache that you configured
 * `weaviate` will use the weaviate cache that you configured
+
+## Memory Backend Setup
 
 ### Redis Setup
 > _**CAUTION**_ \
