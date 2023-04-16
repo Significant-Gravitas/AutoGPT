@@ -23,3 +23,6 @@ numpy
 pre-commit
 black
 isort
+gitpython
+tweepy
+pymilvus
