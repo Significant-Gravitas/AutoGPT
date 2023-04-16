@@ -18,7 +18,7 @@ def main() -> None:
     parse_arguments()
     logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
     ai_name = ""
-    master_prompt = construct_prompt()
+    system_prompt = construct_prompt()
     # print(prompt)
     # Initialize variables
     full_message_history = []
@@ -40,7 +40,7 @@ def main() -> None:
         memory=memory,
         full_message_history=full_message_history,
         next_action_count=next_action_count,
-        master_prompt=master_prompt,
+        system_prompt=system_prompt,
         triggering_prompt=triggering_prompt,
     )
     agent.start_interaction_loop()

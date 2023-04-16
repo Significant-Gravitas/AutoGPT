@@ -19,14 +19,14 @@ class Agent:
         memory: The memory object to use.
         full_message_history: The full message history.
         next_action_count: The number of actions to execute.
-        master_prompt: The master prompt is the initial prompt that defines everything the AI needs to know to achieve its task successfully.
-        Currently, the dynamic and customizable information in the master prompt are ai_name, description and goals.
+        system_prompt: The system prompt is the initial prompt that defines everything the AI needs to know to achieve its task successfully.
+        Currently, the dynamic and customizable information in the system prompt are ai_name, description and goals.
 
         triggering_prompt: The last sentence the AI will see before answering. For Auto-GPT, this prompt is:
             Determine which next command to use, and respond using the format specified above:
-            The triggering prompt is not part of the master prompt because between the master prompt and the triggering
+            The triggering prompt is not part of the system prompt because between the system prompt and the triggering
             prompt we have contextual information that can distract the AI and make it forget that its goal is to find the next task to achieve.
-            MASTER PROMPT
+            SYSTEM PROMPT
             CONTEXTUAL INFORMATION (memory, previous conversations, anything relevant)
             TRIGGERING PROMPT
 
@@ -39,14 +39,14 @@ class Agent:
         memory,
         full_message_history,
         next_action_count,
-        master_prompt,
+        system_prompt,
         triggering_prompt,
     ):
         self.ai_name = ai_name
         self.memory = memory
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
-        self.master_prompt = master_prompt
+        self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
 
     def start_interaction_loop(self):
@@ -71,7 +71,7 @@ class Agent:
             # Send message to AI, get response
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
-                    self.master_prompt,
+                    self.system_prompt,
                     self.triggering_prompt,
                     self.full_message_history,
                     self.memory,
