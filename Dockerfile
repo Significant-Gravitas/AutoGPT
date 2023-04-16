@@ -25,4 +25,4 @@ RUN pip install --no-cache-dir --user -r requirements-docker.txt
 COPY --chown=appuser:appuser autogpt/ ./autogpt
 
 # Set the entrypoint
-ENTRYPOINT ["python", "-m", "autogpt", "--debug"]
+ENTRYPOINT ["python", "-m", "autogpt"]
