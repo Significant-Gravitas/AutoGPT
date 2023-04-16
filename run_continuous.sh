@@ -1,3 +1,3 @@
 #!/bin/bash
 
-./run.sh --continuous "$@"
+./run.sh --continuous $@
