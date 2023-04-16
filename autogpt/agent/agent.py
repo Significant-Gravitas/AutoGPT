@@ -110,6 +110,7 @@ class Agent:
                     console_input = clean_input(
                         Fore.MAGENTA + "Input:" + Style.RESET_ALL
                     )
+
                     if console_input.lower().rstrip() == "y":
                         self.user_input = "GENERATE NEXT COMMAND JSON"
                         break
@@ -160,10 +161,19 @@ class Agent:
             elif command_name == "human_feedback":
                 result = f"Human feedback: {self.user_input}"
             else:
+                for plugin in cfg.plugins:
+                    command_name, arguments = plugin.pre_command(
+                        command_name, arguments
+                    )
                 result = (
                     f"Command {command_name} returned: "
                     f"{execute_command(command_name, arguments)}"
                 )
+                
+                for plugin in cfg.plugins:
+                    result = plugin.post_command(
+                        command_name, result
+                    )
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
 
