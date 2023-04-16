@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# Create a password for the Redis server and update the .env file
-sed -e 's:^\(REDIS_PASSWORD\)=\(.*\)$:openssl rand -base64 32 | xargs echo \1=$1 | sed s," ",,g:e' .env
-
+# This script is used to run the main script in a virtual environment.
 if ! command -v python3 -m venv &> /dev/null    # Check if venv is installed and install it if not
 then
 echo "venv is not found. Installing venv..."
