@@ -41,6 +41,7 @@ class Config(metaclass=Singleton):
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
 
+
         if self.use_azure:
             self.load_azure_config()
             openai.api_type = self.openai_api_type
@@ -57,9 +58,6 @@ class Config(metaclass=Singleton):
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
 
-        self.github_api_key = os.getenv("GITHUB_API_KEY")
-        self.github_username = os.getenv("GITHUB_USERNAME")
-
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
@@ -72,9 +70,8 @@ class Config(metaclass=Singleton):
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
-        self.huggingface_audio_to_text_model = os.getenv(
-            "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
-        )
+
+        self.new_relic_api_key = os.getenv("NEW_RELIC_API_KEY")
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if
@@ -91,7 +88,9 @@ class Config(metaclass=Singleton):
         self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
-        self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
+        self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
+        self.memory_embedder = os.getenv("MEMORY_EMBEDDER", 'ada')
+
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
@@ -140,9 +139,7 @@ class Config(metaclass=Singleton):
             config_params = {}
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
-        self.openai_api_version = (
-            config_params.get("azure_api_version") or "2023-03-15-preview"
-        )
+        self.openai_api_version = config_params.get("azure_api_version") or "2023-03-15-preview"
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", [])
 
     def set_continuous_mode(self, value: bool) -> None:
@@ -216,6 +213,10 @@ class Config(metaclass=Singleton):
     def set_debug_mode(self, value: bool) -> None:
         """Set the debug mode value."""
         self.debug_mode = value
+
+    def set_new_relic_api_key(self, value: str) -> None:
+        """Set the new relic API key value."""
+        self.new_relic_api_key = value
 
 
 def check_openai_api_key() -> None:
