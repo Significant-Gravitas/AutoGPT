@@ -3,11 +3,13 @@ from typing import List, Tuple, Union
 from urllib.parse import urljoin, urlparse
 
 import requests
+from requests.compat import urljoin
 from requests import Response
 from bs4 import BeautifulSoup
 
 from autogpt.config import Config
 from autogpt.memory import get_memory
+from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 
 CFG = Config()
 memory = get_memory(CFG)
@@ -134,36 +136,6 @@ def scrape_text(url: str) -> str:
     return text
 
 
-def extract_hyperlinks(soup: BeautifulSoup) -> List[Tuple[str, str]]:
-    """Extract hyperlinks from a BeautifulSoup object
-
-    Args:
-        soup (BeautifulSoup): The BeautifulSoup object
-
-    Returns:
-        List[Tuple[str, str]]: The extracted hyperlinks
-    """
-    hyperlinks = []
-    for link in soup.find_all("a", href=True):
-        hyperlinks.append((link.text, link["href"]))
-    return hyperlinks
-
-
-def format_hyperlinks(hyperlinks: List[Tuple[str, str]]) -> List[str]:
-    """Format hyperlinks into a list of strings
-
-    Args:
-        hyperlinks (List[Tuple[str, str]]): The hyperlinks to format
-
-    Returns:
-        List[str]: The formatted hyperlinks
-    """
-    formatted_links = []
-    for link_text, link_url in hyperlinks:
-        formatted_links.append(f"{link_text} ({link_url})")
-    return formatted_links
-
-
 def scrape_links(url: str) -> Union[str, List[str]]:
     """Scrape links from a webpage
 
@@ -183,7 +155,7 @@ def scrape_links(url: str) -> Union[str, List[str]]:
     for script in soup(["script", "style"]):
         script.extract()
 
-    hyperlinks = extract_hyperlinks(soup)
+    hyperlinks = extract_hyperlinks(soup, url)
 
     return format_hyperlinks(hyperlinks)
 

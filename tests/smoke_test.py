@@ -3,7 +3,7 @@ import subprocess
 import sys
 import unittest
 
-from autogpt.file_operations import delete_file, read_file
+from autogpt.commands.file_operations import delete_file, read_file
 
 env_vars = {"MEMORY_BACKEND": "no_memory", "TEMPERATURE": "0"}
 

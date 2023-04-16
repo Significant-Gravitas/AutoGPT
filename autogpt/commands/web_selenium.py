@@ -1,5 +1,6 @@
 """Selenium web scraping module."""
 from selenium import webdriver
+from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 import autogpt.processing.text as summary
 from bs4 import BeautifulSoup
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -33,7 +34,7 @@ def browse_website(url: str, question: str) -> Tuple[str, WebDriver]:
     driver, text = scrape_text_with_selenium(url)
     add_header(driver)
     summary_text = summary.summarize_text(url, text, question, driver)
-    links = scrape_links_with_selenium(driver)
+    links = scrape_links_with_selenium(driver, url)
 
     # Limit links to 5
     if len(links) > 5:
@@ -96,7 +97,7 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
     return driver, text
 
 
-def scrape_links_with_selenium(driver: WebDriver) -> List[str]:
+def scrape_links_with_selenium(driver: WebDriver, url: str) -> List[str]:
     """Scrape links from a website using selenium
 
     Args:
@@ -111,7 +112,7 @@ def scrape_links_with_selenium(driver: WebDriver) -> List[str]:
     for script in soup(["script", "style"]):
         script.extract()
 
-    hyperlinks = extract_hyperlinks(soup)
+    hyperlinks = extract_hyperlinks(soup, url)
 
     return format_hyperlinks(hyperlinks)
 
@@ -126,30 +127,6 @@ def close_browser(driver: WebDriver) -> None:
         None
     """
     driver.quit()
-
-
-def extract_hyperlinks(soup: BeautifulSoup) -> List[Tuple[str, str]]:
-    """Extract hyperlinks from a BeautifulSoup object
-
-    Args:
-        soup (BeautifulSoup): The BeautifulSoup object to extract the hyperlinks from
-
-    Returns:
-        List[Tuple[str, str]]: The hyperlinks extracted from the BeautifulSoup object
-    """
-    return [(link.text, link["href"]) for link in soup.find_all("a", href=True)]
-
-
-def format_hyperlinks(hyperlinks: List[Tuple[str, str]]) -> List[str]:
-    """Format hyperlinks to be displayed to the user
-
-    Args:
-        hyperlinks (List[Tuple[str, str]]): The hyperlinks to format
-
-    Returns:
-        List[str]: The formatted hyperlinks
-    """
-    return [f"{link_text} ({link_url})" for link_text, link_url in hyperlinks]
 
 
 def add_header(driver: WebDriver) -> None:

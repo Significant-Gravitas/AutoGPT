@@ -48,19 +48,20 @@ Your support is greatly appreciated
     - [Docker](#docker)
     - [Command Line Arguments](#command-line-arguments)
   - [🗣️ Speech Mode](#️-speech-mode)
+    - [List of IDs with names from eleven labs, you can use the name or ID:](#list-of-ids-with-names-from-eleven-labs-you-can-use-the-name-or-id)
+  - [OpenAI API Keys Configuration](#openai-api-keys-configuration)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
   - [Memory Backend Setup](#memory-backend-setup)
     - [Redis Setup](#redis-setup)
     - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
     - [Milvus Setup](#milvus-setup)
-    - [Setting up environment variables](#setting-up-environment-variables-1)
-  - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
   - [🧠 Memory pre-seeding](#-memory-pre-seeding)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#-image-generation)
+  - [Selenium](#selenium)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
@@ -115,7 +116,15 @@ cd Auto-GPT
 pip install -r requirements.txt
 ```
 
-5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVENLABS_API_KEY` as well.
+5. Locate the file named `.env.template` in the main `/Auto-GPT` folder.
+   Create a copy of this file, called `.env` by removing the `template` extension.  The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`
+   Open the `.env` file in a text editor.  Note: Files starting with a dot might be hidden by your Operating System.
+   Find the line that says `OPENAI_API_KEY=`.
+   After the `"="`, enter your unique OpenAI API Key (without any quotes or spaces).
+   Enter any other API keys or Tokens for services you would like to utilize.
+   Save and close the `".env"` file.
+   By completing these steps, you have properly configured the API Keys for your project.
+   
   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
@@ -124,8 +133,8 @@ pip install -r requirements.txt
       - `smart_llm_model_deployment_id` - your gpt-4 deployment ID
       - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID
     - Please specify all of these values as double-quoted strings
-    > Replace string in angled brackets (<>) to your own ID
     ```yaml
+    # Replace string in angled brackets (<>) to your own ID
     azure_model_map:
       fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
       ...
@@ -196,6 +205,19 @@ Use this to use TTS _(Text-to-Speech)_ for Auto-GPT
 python -m autogpt --speak
 ```
 
+### List of IDs with names from eleven labs, you can use the name or ID:
+
+- Rachel : 21m00Tcm4TlvDq8ikWAM
+- Domi : AZnzlk1XvdvUeBnXmlld
+- Bella : EXAVITQu4vr4xnSDxMaL
+- Antoni : ErXwobaYiN019PkySvjV
+- Elli : MF3mGyEYCl7XYWbV9V6O
+- Josh : TxGEqnHWrfWFTfGW9XjX
+- Arnold : VR6AewLTigWG4xSOukaG
+- Adam : pNInz6obpgDQGcFmaJgB
+- Sam : yoZ06aMxZJJ28mfd3POQ
+
+
 ## OpenAI API Keys Configuration
 
 Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
@@ -241,7 +263,18 @@ export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
 export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 ```
 
-## Redis Setup
+## Memory Backend Setup
+
+By default, Auto-GPT is going to use LocalCache.
+To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
+
+- `local` (default) uses a local JSON cache file
+- `pinecone` uses the Pinecone.io account you configured in your ENV settings
+- `redis` will use the redis cache that you configured
+- `milvus` will use the milvus that you configured
+
+### Redis Setup
+
 > _**CAUTION**_ \
 This is not intended to be publicly accessible and lacks security measures. Therefore, avoid exposing Redis to the internet without a password or at all
 1. Install docker desktop
@@ -279,20 +312,6 @@ Pinecone enables the storage of vast amounts of vector-based memory, allowing fo
 1. Go to [pinecone](https://app.pinecone.io/) and make an account if you don't already have one.
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
-
-### Milvus Setup
-
-[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
-
-- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
-  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
-  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
-- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
-- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
-- optional
-  - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
-
-### Setting up environment variables
 
 In the `.env` file set:
 - `PINECONE_API_KEY`
@@ -339,15 +358,17 @@ USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
 MEMORY_INDEX="Autogpt" # name of the index to create for the application
 ```
 
-## Setting Your Cache Type
+### Milvus Setup
 
-By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
 
-To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
-
-`local` (default) uses a local JSON cache file
-`pinecone` uses the Pinecone.io account you configured in your ENV settings
-`redis` will use the redis cache that you configured
+- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
+  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
+  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
+- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
+- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
+- optional
+  - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
 
 ## View Memory Usage
 
@@ -356,7 +377,8 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 
 ## 🧠 Memory pre-seeding
 
-# python autogpt/data_ingestion.py -h 
+    python autogpt/data_ingestion.py -h 
+
 usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
 
 Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
@@ -367,10 +389,9 @@ options:
   --dir DIR                The directory containing the files to ingest.
   --init                   Init the memory and wipe its content (default: False)
   --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
-  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000
+  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000)
 
-# python autogpt/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
-```
+    python autogpt/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
 
 This script located at autogpt/data_ingestion.py, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
 

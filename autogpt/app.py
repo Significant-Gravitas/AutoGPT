@@ -8,6 +8,7 @@ from autogpt.commands.improve_code import improve_code
 from autogpt.commands.write_tests import write_tests
 from autogpt.config import Config
 from autogpt.commands.image_gen import generate_image
+from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.commands.execute_code import execute_python_file, execute_shell
 from autogpt.commands.file_operations import (
@@ -23,6 +24,7 @@ from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
 from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.git_operations import clone_repository
+from autogpt.commands.twitter import send_tweet
 
 
 CFG = Config()
@@ -179,8 +181,12 @@ def execute_command(command_name: str, arguments):
                     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
                     "in your config. Do not attempt to bypass the restriction."
                 )
+        elif command_name == "read_audio_from_file":
+            return read_audio_from_file(arguments["file"])
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
+        elif command_name == "send_tweet":
+            return send_tweet(arguments["text"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
