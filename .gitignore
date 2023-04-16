@@ -11,7 +11,6 @@ annoy_index/*
 *.mpeg
 .env
 azure.yaml
-*venv/*
 outputs/*
 ai_settings.yaml
 last_run_ai_settings.yaml
@@ -132,10 +131,9 @@ celerybeat.pid
 .env
 .venv
 env/
-venv/
+venv*/
 ENV/
 env.bak/
-venv.bak/
 
 # Spyder project settings
 .spyderproject
