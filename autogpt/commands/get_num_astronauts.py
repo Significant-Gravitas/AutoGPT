@@ -1,5 +1,6 @@
 import requests
 
+
 def get_num_astronauts():
     """Get the number of astronauts in space.
 
