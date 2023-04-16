@@ -72,7 +72,8 @@ def correct_json(json_to_load: str) -> str:
 def fix_and_parse_json(
     json_to_load: str, try_to_fix_with_gpt: bool = True
 ) -> Union[str, Dict[Any, Any]]:
-    """Fix and parse JSON string
+    """
+    Fix and parse JSON string
 
     Args:
         json_to_load (str): The JSON string.
@@ -110,7 +111,8 @@ def fix_and_parse_json(
 def try_ai_fix(
     try_to_fix_with_gpt: bool, exception: Exception, json_to_load: str
 ) -> Union[str, Dict[Any, Any]]:
-    """Try to fix the JSON with the AI
+    """
+    Try to fix the JSON with the AI
 
     Args:
         try_to_fix_with_gpt (bool): Whether to try to fix the JSON with the AI.

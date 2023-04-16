@@ -8,7 +8,8 @@ CFG = Config()
 
 
 def fix_invalid_escape(json_to_load: str, error_message: str) -> str:
-    """Fix invalid escape sequences in JSON strings.
+    """
+    Fix invalid escape sequences in JSON strings.
 
     Args:
         json_to_load (str): The JSON string.
