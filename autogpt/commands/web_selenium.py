@@ -27,7 +27,24 @@ def get_browser_instance() -> WebDriver:
     if not browser:
         logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
-        options_available = {'chrome': ChromeOptions, 'safari': SafariOptions, 'firefox': FirefoxOptions}
+        # For Chrome
+        chrome_options = ChromeOptions()
+        chrome_options.add_experimental_option("prefs", {
+            "download.default_directory": "/dev/null",
+            "download.prompt_for_download": False,
+            "download.directory_upgrade": True,
+            "plugins.always_open_pdf_externally": True
+        })
+
+        # For Firefox
+        firefox_options = FirefoxOptions()
+        firefox_options.set_preference("browser.download.folderList", 2)
+        firefox_options.set_preference("browser.download.manager.showWhenStarting", False)
+        firefox_options.set_preference("browser.download.dir", "/dev/null")
+        firefox_options.set_preference("browser.helperApps.neverAsk.saveToDisk", "application/pdf")
+        firefox_options.set_preference("pdfjs.disabled", True)
+
+        options_available = {'chrome': chrome_options, 'safari': SafariOptions, 'firefox': firefox_options}
         options = options_available[CFG.selenium_web_browser]()
         options.add_argument(
             "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
