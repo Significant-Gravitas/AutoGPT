@@ -5,7 +5,7 @@ from typing import Any, List, Optional, Tuple
 import numpy as np
 import orjson
 
-from autogpt.memory.base import MemoryProviderSingleton
+from multigpt.memory.base import MemoryProvider
 from autogpt.llm_utils import create_embedding_with_ada
 
 EMBED_DIM = 1536
@@ -24,10 +24,10 @@ class CacheContent:
     )
 
 
-class LocalCache(MemoryProviderSingleton):
+class LocalCache(MemoryProvider):
     """A class that stores the memory in a local file"""
 
-    def __init__(self, cfg) -> None:
+    def __init__(self, cfg, ai_key) -> None:
         """Initialize a class instance
 
         Args:
@@ -36,25 +36,33 @@ class LocalCache(MemoryProviderSingleton):
         Returns:
             None
         """
-        self.filename = f"{cfg.memory_index}.json"
-        if os.path.exists(self.filename):
-            try:
-                with open(self.filename, "w+b") as f:
-                    file_content = f.read()
-                    if not file_content.strip():
-                        file_content = b"{}"
-                        f.write(file_content)
-
-                    loaded = orjson.loads(file_content)
-                    self.data = CacheContent(**loaded)
-            except orjson.JSONDecodeError:
-                print(f"Error: The file '{self.filename}' is not in JSON format.")
-                self.data = CacheContent()
-        else:
+        filename = f"{cfg.memory_index}-agent-id-{ai_key}.json"
+        cache_folder = f"local_cache"
+        self.cache_uri = os.path.join(cache_folder, filename)
+        if not os.path.exists(cache_folder):
             print(
-                f"Warning: The file '{self.filename}' does not exist."
-                "Local memory would not be saved to a file."
+                "Cache folder does not exist yet."
+                f"Creating {cache_folder}..."
             )
+            os.mkdir(cache_folder)
+
+        if not os.path.exists(self.cache_uri):
+            print(
+                f"Warning: The file '{filename}' does not exist yet."
+                f" Creating {filename}..."
+            )
+
+        try:
+            with open(self.cache_uri, "w+b") as f:
+                file_content = f.read()
+                if not file_content.strip():
+                    file_content = b"{}"
+                    f.write(file_content)
+
+                loaded = orjson.loads(file_content)
+                self.data = CacheContent(**loaded)
+        except orjson.JSONDecodeError:
+            print(f"Error: The file '{filename}' is not in JSON format.")
             self.data = CacheContent()
 
     def add(self, text: str):
@@ -83,7 +91,7 @@ class LocalCache(MemoryProviderSingleton):
             axis=0,
         )
 
-        with open(self.filename, "wb") as f:
+        with open(self.cache_uri, "wb") as f:
             out = orjson.dumps(self.data, option=SAVE_OPTIONS)
             f.write(out)
         return text

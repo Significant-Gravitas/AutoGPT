@@ -7,13 +7,13 @@ from pymilvus import (
     Collection,
 )
 
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from multigpt.memory.base import MemoryProvider, get_ada_embedding
 
 
-class MilvusMemory(MemoryProviderSingleton):
+class MilvusMemory(MemoryProvider):
     """Milvus memory storage provider."""
 
-    def __init__(self, cfg) -> None:
+    def __init__(self, cfg, ai_key) -> None:
         """Construct a milvus memory storage connection.
 
         Args:

@@ -20,8 +20,8 @@ from autogpt.spinner import Spinner
 from multigpt.expert import Expert
 from multigpt.multi_agent_manager import MultiAgentManager
 
-MIN_EXPERTS = 1
-MAX_EXPERTS = 2
+MIN_EXPERTS = 2
+MAX_EXPERTS = 6
 CONTINUOUS_LIMIT = 10
 EXPERT_PROMPT = """The task is: {task}.
 
@@ -69,7 +69,16 @@ def create_expert_gpts(experts: List[Expert]):
     # create expertGPTs
     for expert in experts:
         slugified_filename = slugify(expert.ai_name, separator="_", lowercase=True) + "_settings.yaml"
-        filepath = os.path.join(os.path.dirname(__file__), "saved_agents", f"{slugified_filename}")
+
+        saved_agents_directory = os.path.join(os.path.dirname(__file__), "saved_agents")
+        if not os.path.exists(saved_agents_directory):
+            print(
+                "saved_agents directory does not exist yet."
+                f"Creating saved_agents..."
+            )
+            os.mkdir(saved_agents_directory)
+
+        filepath = os.path.join(saved_agents_directory, f"{slugified_filename}")
         expert.save(filepath)
         # TODO: sometimes doesn't find the file, because it hasn't finished saving yet
         MULTIAGENTMANAGER.create_agent(expert)

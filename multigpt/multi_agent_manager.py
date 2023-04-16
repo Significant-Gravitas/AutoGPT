@@ -5,7 +5,7 @@ from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Singleton
 from autogpt.json_fixes.bracket_termination import attempt_to_fix_json_by_finding_outermost_brackets
 from autogpt.logs import logger, print_assistant_thoughts
-from autogpt.memory import get_memory
+from multigpt.memory import get_memory
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
@@ -18,6 +18,8 @@ class MultiAgentManager(metaclass=Singleton):
     def __init__(self, cfg):
         self.cfg = cfg
         self.agents = []
+        self.agent_counter = 0
+        self.next_action_count = 0
 
     def create_agent(self, expert: Expert):
         user_input = (
@@ -26,8 +28,10 @@ class MultiAgentManager(metaclass=Singleton):
         )
         prompt = expert.construct_full_prompt()
 
-        # TODO enforce memory exclusivity. Need to make adjustments to memory subpackage/rewrite it for multiple agents
-        memory = get_memory(self.cfg, init=True)
+        agent_id = self.agent_counter
+        self.agent_counter += 1
+
+        memory = get_memory(self.cfg, ai_key=agent_id, init=True)
         logger.typewriter_log(
             f"Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
         )
@@ -36,9 +40,9 @@ class MultiAgentManager(metaclass=Singleton):
             ai_name=expert.ai_name,
             memory=memory,
             full_message_history=[],
-            next_action_count=0,
             prompt=prompt,
             user_input=user_input,
+            agent_id=agent_id
         )
         self.agents.append(agent)
 
@@ -87,7 +91,7 @@ class MultiAgentManager(metaclass=Singleton):
             except Exception as e:
                 logger.error("Error: \n", str(e))
 
-            if not self.cfg.continuous_mode and active_agent.next_action_count == 0:
+            if not self.cfg.continuous_mode and self.next_action_count == 0:
                 ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -113,7 +117,7 @@ class MultiAgentManager(metaclass=Singleton):
                         break
                     elif console_input.lower().startswith("y -"):
                         try:
-                            active_agent.next_action_count = abs(
+                            self.next_action_count = abs(
                                 int(console_input.split(" ")[1])
                             )
                             active_agent.user_input = "GENERATE NEXT COMMAND JSON"
@@ -162,8 +166,8 @@ class MultiAgentManager(metaclass=Singleton):
                     f"Command {command_name} returned: "
                     f"{execute_command(command_name, arguments)}"
                 )
-                if active_agent.next_action_count > 0:
-                    active_agent.next_action_count -= 1
+                if self.next_action_count > 0:
+                    self.next_action_count -= 1
 
             memory_to_add = (
                 f"Assistant Reply: {assistant_reply} "
