@@ -24,6 +24,7 @@ from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
 from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.git_operations import clone_repository
+from autogpt.commands.twitter import send_tweet
 
 
 CFG = Config()
@@ -184,6 +185,8 @@ def execute_command(command_name: str, arguments):
             return read_audio_from_file(arguments["file"])
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
+        elif command_name == "send_tweet":
+            return send_tweet(arguments['text'])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
