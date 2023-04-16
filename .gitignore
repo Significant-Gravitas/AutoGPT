@@ -5,6 +5,8 @@ scripts/__pycache__/keys.cpython-310.pyc
 package-lock.json
 *.pyc
 auto_gpt_workspace/*
+annoy_index/*
+*.ann
 *.mpeg
 .env
 azure.yaml

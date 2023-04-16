@@ -19,6 +19,13 @@ except ImportError:
     print("Pinecone not installed. Skipping import.")
     PineconeMemory = None
 
+try:
+    from memory.annoy import AnnoyMemory
+    supported_memory.append('annoy')
+except ImportError:
+    print("Annoy not installed. Skipping import.")
+    AnnoyMemory = None
+
 
 def get_memory(cfg, init=False):
     memory = None
@@ -36,6 +43,12 @@ def get_memory(cfg, init=False):
                   " use Redis as a memory backend.")
         else:
             memory = RedisMemory(cfg)
+    elif cfg.memory_backend == 'annoy':
+        if not AnnoyMemory:
+            print("Error: Annoy is not installed. Please install annoy to"
+                  " use Annoy as a memory backend.")
+        else:
+            memory = AnnoyMemory(cfg)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
