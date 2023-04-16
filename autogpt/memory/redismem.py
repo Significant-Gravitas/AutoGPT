@@ -1,5 +1,7 @@
 """Redis memory provider."""
-from typing import Any, List, Optional
+from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 import redis
@@ -8,8 +10,9 @@ from redis.commands.search.field import TextField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
-from autogpt.logger import logger
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.logs import logger
+from autogpt.memory.base import MemoryProviderSingleton
+from autogpt.llm_utils import create_embedding_with_ada
 
 SCHEMA = [
     TextField("data"),
@@ -54,7 +57,9 @@ class RedisMemory(MemoryProviderSingleton):
             )
             logger.double_check(
                 "Please ensure you have setup and configured Redis properly for use. "
-                + f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL} to ensure you've set up everything correctly."
+                + f"You can check out {Fore.CYAN + Style.BRIGHT}"
+                f"https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL}"
+                " to ensure you've set up everything correctly."
             )
             exit(1)
 
@@ -83,7 +88,7 @@ class RedisMemory(MemoryProviderSingleton):
         """
         if "Command Error:" in data:
             return ""
-        vector = get_ada_embedding(data)
+        vector = create_embedding_with_ada(data)
         vector = np.array(vector).astype(np.float32).tobytes()
         data_dict = {b"data": data, "embedding": vector}
         pipe = self.redis.pipeline()
@@ -96,7 +101,7 @@ class RedisMemory(MemoryProviderSingleton):
         pipe.execute()
         return _text
 
-    def get(self, data: str) -> Optional[List[Any]]:
+    def get(self, data: str) -> list[Any] | None:
         """
         Gets the data from the memory that is most relevant to the given data.
 
@@ -116,7 +121,7 @@ class RedisMemory(MemoryProviderSingleton):
         self.redis.flushall()
         return "Obliviated"
 
-    def get_relevant(self, data: str, num_relevant: int = 5) -> Optional[List[Any]]:
+    def get_relevant(self, data: str, num_relevant: int = 5) -> list[Any] | None:
         """
         Returns all the data in the memory that is relevant to the given data.
         Args:
@@ -125,7 +130,7 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: A list of the most relevant data.
         """
-        query_embedding = get_ada_embedding(data)
+        query_embedding = create_embedding_with_ada(data)
         base_query = f"*=>[KNN {num_relevant} @embedding $vector AS vector_score]"
         query = (
             Query(base_query)
