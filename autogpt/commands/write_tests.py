@@ -1,16 +1,17 @@
 """A module that contains a function to generate test cases for the submitted code."""
+from __future__ import annotations
+
 import json
-from typing import List
 from autogpt.llm_utils import call_ai_function
 
 
-def write_tests(code: str, focus: List[str]) -> str:
+def write_tests(code: str, focus: list[str]) -> str:
     """
     A function that takes in code and focus topics and returns a response from create
       chat completion api call.
 
     Parameters:
-        focus (List): A list of suggestions around what needs to be improved.
+        focus (list): A list of suggestions around what needs to be improved.
         code (str): Code for test cases to be generated against.
     Returns:
         A result string from create chat completion. Test cases for the submitted code
