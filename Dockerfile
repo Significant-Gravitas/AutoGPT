@@ -11,17 +11,17 @@ ENV PIP_NO_CACHE_DIR=yes \
     PYTHONDONTWRITEBYTECODE=1
 
 # Create a non-root user and set permissions
-RUN useradd --create-home appuser
-WORKDIR /home/appuser
-RUN chown appuser:appuser /home/appuser
-USER appuser
+RUN useradd --create-home user
+WORKDIR /home/user
+RUN chown user:user /home/appuser
+USER user
 
 # Copy the requirements.txt file and install the requirements
-COPY --chown=appuser:appuser requirements-docker.txt .
+COPY --chown=user:user requirements-docker.txt .
 RUN pip install --no-cache-dir --user -r requirements-docker.txt
 
 # Copy the application files
-COPY --chown=appuser:appuser autogpt/ ./autogpt
+COPY --chown=user:user autogpt/ ./autogpt
 
 # Set the entrypoint
 ENTRYPOINT ["python", "-m", "autogpt"]
