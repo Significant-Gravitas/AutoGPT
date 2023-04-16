@@ -204,10 +204,7 @@ logger = Logger()
 
 def print_assistant_thoughts(ai_name, assistant_reply):
     """Prints the assistant's thoughts to the console"""
-    from autogpt.json_fixes.bracket_termination import (
-        attempt_to_fix_json_by_finding_outermost_brackets,
-    )
-    from autogpt.json_fixes.parsing import fix_and_parse_json
+    from autogpt.json_utils.auto_fix import fix_and_parse_json, attempt_to_fix_json_by_finding_outermost_brackets
 
     try:
         try:
