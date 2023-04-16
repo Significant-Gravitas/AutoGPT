@@ -84,7 +84,6 @@ def get_prompt() -> str:
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
         ("Convert Audio to text", "read_audio_from_file", {"file": "<file>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
-
     ]
 
     # Only add shell command to the prompt if the AI is allowed to execute it
