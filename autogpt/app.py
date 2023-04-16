@@ -1,6 +1,6 @@
 """ Command and Control """
 import json
-from typing import List, NoReturn, Union
+from typing import List, NoReturn, Union, Dict
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.google_search import google_official_search, google_search
@@ -47,11 +47,11 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response: str):
+def get_command(response_json: Dict):
     """Parse the response and return the command name and arguments
 
     Args:
-        response (str): The response from the user
+        response_json (json): The response from the AI
 
     Returns:
         tuple: The command name and arguments
@@ -62,8 +62,6 @@ def get_command(response: str):
         Exception: If any other error occurs
     """
     try:
-        response_json = fix_and_parse_json(response)
-
         if "command" not in response_json:
             return "Error:", "Missing 'command' object in JSON"
 
@@ -125,9 +123,16 @@ def execute_command(command_name: str, arguments):
             key = CFG.google_api_key
             if key and key.strip() and key != "your-google-api-key":
                 google_result = google_official_search(arguments["input"])
+                return google_result
             else:
                 google_result = google_search(arguments["input"])
-            safe_message = google_result.encode("utf-8", "ignore")
+
+            # google_result can be a list or a string depending on the search results
+            if isinstance(google_result, list):
+                safe_message = [google_result_single.encode('utf-8', 'ignore') for google_result_single in google_result]
+            else:
+                safe_message = google_result.encode('utf-8', 'ignore')
+
             return str(safe_message)
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
@@ -186,7 +191,7 @@ def execute_command(command_name: str, arguments):
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
         elif command_name == "send_tweet":
-            return send_tweet(arguments['text'])
+            return send_tweet(arguments["text"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":

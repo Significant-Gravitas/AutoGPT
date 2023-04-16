@@ -1,4 +1,6 @@
 """Web scraping commands using Playwright"""
+from __future__ import annotations
+
 try:
     from playwright.sync_api import sync_playwright
 except ImportError:
@@ -7,7 +9,6 @@ except ImportError:
     )
 from bs4 import BeautifulSoup
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
-from typing import List, Union
 
 
 def scrape_text(url: str) -> str:
@@ -45,7 +46,7 @@ def scrape_text(url: str) -> str:
     return text
 
 
-def scrape_links(url: str) -> Union[str, List[str]]:
+def scrape_links(url: str) -> str | list[str]:
     """Scrape links from a webpage
 
     Args:
