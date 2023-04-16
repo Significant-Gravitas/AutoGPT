@@ -59,7 +59,7 @@ def safe_join(base: str, *paths) -> str:
     Returns:
         str: The joined path
     """
-    if CFG.working_directory_restricted:
+    if str(CFG.working_directory_restricted).lower() == "true":
         new_path = os.path.normpath(os.path.join(base, *paths))
         if os.path.commonprefix([base, new_path]) != base:
             raise ValueError("Attempted to access outside of working directory.")
