@@ -1,14 +1,25 @@
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 import os
 import uuid
 import datetime
 import chromadb
-from autogpt.memory.base import MemoryProviderSingleton, get_embedding
+from autogpt.memory.base import MemoryProviderSingleton
+from autogpt.llm_utils import create_embedding
 from chromadb.errors import NoIndexException
 
+
 class LocalCache(MemoryProviderSingleton):
-    # on load, load our database
+    """A class that stores the memory in a local file"""
+
     def __init__(self, cfg) -> None:
+        """Initialize a class instance
+
+        Args:
+            cfg: Config object
+
+        Returns:
+            None
+        """
         self.persistence = cfg.memory_directory
         if self.persistence is not None and os.path.exists(self.persistence):
             self.chromaClient = chromadb.Client(Settings(
@@ -23,10 +34,22 @@ class LocalCache(MemoryProviderSingleton):
         self.useOpenAIEmbeddings = True if (cfg.openai_embeddings_model) else False
 
     def add(self, text: str):
+        """
+        Add text to our list of texts, add embedding as row to our
+            embeddings-matrix
+
+        Args:
+            text: str
+
+        Returns: None
+        """
+        if "Command Error:" in text:
+            return ""
+
         current_time = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")
         metadata = {"time_added": current_time}
         if self.useOpenAIEmbeddings:
-            embeddings = get_embedding(text)
+            embeddings = create_embedding(text)
             self.chromaCollection.add(
                 embeddings=[embeddings],
                 ids=[str(uuid.uuid4())],
@@ -63,7 +86,7 @@ class LocalCache(MemoryProviderSingleton):
         """
         results = None
         if self.useOpenAIEmbeddings:
-            embeddings = get_embedding(data)
+            embeddings = create_embedding(data)
             results = self.chromaCollection.query(
                 query_embeddings=[data],
                 n_results=1
@@ -79,7 +102,7 @@ class LocalCache(MemoryProviderSingleton):
         results = None
         try: 
             if self.useOpenAIEmbeddings:
-                embeddings = get_embedding(text)
+                embeddings = create_embedding(text)
                 results = self.chromaCollection.query(
                     query_embeddings=[text],
                     n_results=min(k, self.chromaCollection.count())
@@ -94,7 +117,7 @@ class LocalCache(MemoryProviderSingleton):
             pass
         return results
 
-    def get_stats(self):
+    def get_stats(self) -> Tuple[int, Tuple[int, ...]]:
         """
         Returns: The number of items that have been added to the Chroma collection
         """
