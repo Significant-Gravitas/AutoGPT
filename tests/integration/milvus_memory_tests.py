@@ -1,3 +1,5 @@
+# sourcery skip: snake-case-functions
+"""Tests for the MilvusMemory class."""
 import random
 import string
 import unittest
@@ -7,10 +9,14 @@ from autogpt.memory.milvus import MilvusMemory
 
 
 class TestMilvusMemory(unittest.TestCase):
-    def random_string(self, length):
+    """Tests for the MilvusMemory class."""
+
+    def random_string(self, length: int) -> str:
+        """Generate a random string of the given length."""
         return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
-    def setUp(self):
+    def setUp(self) -> None:
+        """Set up the test environment."""
         cfg = Config()
         cfg.milvus_addr = "localhost:19530"
         self.memory = MilvusMemory(cfg)
@@ -31,10 +37,11 @@ class TestMilvusMemory(unittest.TestCase):
         for _ in range(5):
             self.memory.add(self.random_string(10))
 
-    def test_get_relevant(self):
+    def test_get_relevant(self) -> None:
+        """Test getting relevant texts from the cache."""
         query = "I'm interested in artificial intelligence and NLP"
-        k = 3
-        relevant_texts = self.memory.get_relevant(query, k)
+        num_relevant = 3
+        relevant_texts = self.memory.get_relevant(query, num_relevant)
 
         print(f"Top {k} relevant texts for the query '{query}':")
         for i, text in enumerate(relevant_texts, start=1):
@@ -42,7 +49,3 @@ class TestMilvusMemory(unittest.TestCase):
 
         self.assertEqual(len(relevant_texts), k)
         self.assertIn(self.example_texts[1], relevant_texts)
-
-
-if __name__ == "__main__":
-    unittest.main()

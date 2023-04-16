@@ -31,3 +31,9 @@ repos:
         types: [ python ]
         exclude: .+/(dist|.venv|venv|build)/.+
         pass_filenames: true
+      - id: pytest-check
+        name: pytest-check
+        entry: pytest -k "not integration_test"
+        language: system
+        pass_filenames: false
+        always_run: true
