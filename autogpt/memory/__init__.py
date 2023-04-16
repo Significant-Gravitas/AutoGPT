@@ -21,6 +21,12 @@ except ImportError:
     print("Pinecone not installed. Skipping import.")
     PineconeMemory = None
 
+try:
+    from autogpt.memory.milvus import MilvusMemory
+except ImportError:
+    print("pymilvus not installed. Skipping import.")
+    MilvusMemory = None
+
 
 def get_memory(cfg, init=False):
     memory = None
@@ -42,6 +48,14 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = RedisMemory(cfg)
+    elif cfg.memory_backend == "milvus":
+        if not MilvusMemory:
+            print(
+                "Error: Milvus sdk is not installed."
+                "Please install pymilvus to use Milvus as memory backend."
+            )
+        else:
+            memory = MilvusMemory(cfg)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
@@ -56,4 +70,11 @@ def get_supported_memory_backends():
     return supported_memory
 
 
-__all__ = ["get_memory", "LocalCache", "RedisMemory", "PineconeMemory", "NoMemory"]
+__all__ = [
+    "get_memory",
+    "LocalCache",
+    "RedisMemory",
+    "PineconeMemory",
+    "NoMemory",
+    "MilvusMemory",
+]
