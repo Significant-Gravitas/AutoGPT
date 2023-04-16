@@ -155,6 +155,9 @@ class Agent:
                         "",
                     )
                 elif self.user_input == "EXIT":
+                    if cfg.telegram_enabled:
+                        telegramUtils = TelegramUtils()
+                        telegramUtils.send_message("Exiting...")
                     print("Exiting...", flush=True)
                     break
             else:
