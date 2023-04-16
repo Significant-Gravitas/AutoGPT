@@ -4,6 +4,8 @@ import os
 import sys
 import unittest
 
+import pytest
+
 from autogpt.memory.local import LocalCache
 
 
@@ -21,6 +23,7 @@ def mock_config() -> dict:
     )
 
 
+@pytest.mark.integration_test
 class TestLocalCache(unittest.TestCase):
     """Tests for LocalCache class"""
 
