@@ -1,0 +1,44 @@
+name: Python CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [3.8]
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Lint with flake8
+      continue-on-error: false
+      run: flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
+
+    - name: Run unittest tests with coverage
+      run: |
+        coverage run --source=autogpt -m unittest discover tests
+
+    - name: Generate coverage report
+      run: |
+        coverage report
+        coverage xml
