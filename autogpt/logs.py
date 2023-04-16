@@ -8,10 +8,12 @@ import time
 from logging import LogRecord
 import traceback
 
+
 from colorama import Fore, Style
 
 from autogpt.speech import say_text
 from autogpt.config import Config, Singleton
+from autogpt import utils
 
 CFG = Config()
 
@@ -196,6 +198,11 @@ def remove_color_codes(s: str) -> str:
 
 
 logger = Logger()
+ai_output_language_code = CFG.ai_output_language_code
+
+def trans(text):
+    lc = ai_output_language_code
+    return text if lc == 'en' else utils.translate(text,lc)
 
 
 def print_assistant_thoughts(ai_name, assistant_reply):
@@ -246,14 +253,14 @@ def print_assistant_thoughts(ai_name, assistant_reply):
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
         logger.typewriter_log(
-            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
+            f"{ai_name.upper()} "+trans("THOUGHTS:"),Fore.YELLOW, f"{trans(assistant_thoughts_text)}"
         )
         logger.typewriter_log(
-            "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
+            trans("REASONING:"), Fore.YELLOW, f"{trans(assistant_thoughts_reasoning)}"
         )
 
         if assistant_thoughts_plan:
-            logger.typewriter_log("PLAN:", Fore.YELLOW, "")
+            logger.typewriter_log(trans("PLAN:"), Fore.YELLOW, "")
             # If it's a list, join it into a string
             if isinstance(assistant_thoughts_plan, list):
                 assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
@@ -264,16 +271,18 @@ def print_assistant_thoughts(ai_name, assistant_reply):
             lines = assistant_thoughts_plan.split("\n")
             for line in lines:
                 line = line.lstrip("- ")
-                logger.typewriter_log("- ", Fore.GREEN, line.strip())
+                logger.typewriter_log("- ", Fore.GREEN, trans(line.strip()))
 
         logger.typewriter_log(
-            "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
+            trans("CRITICISM:"), Fore.YELLOW, f"{trans(assistant_thoughts_criticism)}"
         )
         # Speak the assistant's thoughts
         if CFG.speak_mode and assistant_thoughts_speak:
             say_text(assistant_thoughts_speak)
         else:
-            logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
+            logger.typewriter_log(
+                trans("SPEAK:"), Fore.YELLOW, f"{trans(assistant_thoughts_speak)}"
+            )
 
         return assistant_reply_json
     except json.decoder.JSONDecodeError:

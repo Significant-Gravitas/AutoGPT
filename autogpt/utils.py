@@ -1,5 +1,11 @@
+import re
+import html
+from urllib import parse
+import requests
+
 import yaml
 from colorama import Fore
+
 
 
 def clean_input(prompt: str = ""):
@@ -24,3 +30,19 @@ def validate_yaml_file(file: str):
         )
 
     return (True, f"Successfully validated {Fore.CYAN}`{file}`{Fore.RESET}!")
+
+
+GOOGLE_TRANSLATE_URL = 'http://translate.google.com/m?q=%s&tl=%s&sl=%s'
+def translate(query,language_code):
+
+    text = parse.quote(query)
+    url = GOOGLE_TRANSLATE_URL % (text,language_code,'en')
+    response = requests.get(url)
+    data = response.text
+    expr = r'(?s)class="(?:t0|result-container)">(.*?)<'
+    result = re.findall(expr, data)
+    if (len(result) == 0):
+        return ""
+
+    return html.unescape(result[0])
+    
