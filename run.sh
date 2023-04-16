@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # This script is used to run the main script in a virtual environment.
+export PATH="/usr/local/bin:$PATH" # Add /usr/local/bin to the PATH variable
 
 set_venv() {
     if [ -d "venv" ]; then # Check if the virtual environment exists
