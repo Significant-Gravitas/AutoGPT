@@ -37,7 +37,7 @@ async def delete_old_messages():
         print("Deleting message: " + update.message.text)
         await bot.delete_message(chat_id=cfg.telegram_chat_id, message_id=update.message.message_id)
         count += 1
-    if(count > 0):
+    if (count > 0):
         print("Cleaned up old messages.")
 
 
@@ -45,13 +45,12 @@ async def start(update: Update, context: CallbackContext):
     global main_started
     print("Starting Auto-GPT...")
     if is_authorized_user(update):
-        if main_started :
+        if main_started:
             TelegramUtils.send_message("Already started!")
         else:
             main_started = True
             TelegramUtils.send_message("Auto-GPT is starting now!")
             os.system("python -m autogpt {}".format(" ".join(sys.argv[1:])))
-
 
 
 def get_or_create_eventloop():
@@ -82,6 +81,7 @@ def main():
     except KeyboardInterrupt:
         pass
 
+
 if __name__ == "__main__":
     try:
         main()
@@ -92,7 +92,7 @@ if __name__ == "__main__":
         print("Exiting...")
         TelegramUtils.send_message(
             "I hope I could help! :) \n \n Bye bye! <3")
-       
+
         exit(0)
     except Exception as e:
         print(e)

@@ -60,7 +60,7 @@ class Config(metaclass=Singleton):
         self.telegram_enabled = os.getenv("TELEGRAM_ENABLED") == 'True'
         self.telegram_api_key = os.getenv("TELEGRAM_API_KEY")
         self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
-        
+
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
 
