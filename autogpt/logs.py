@@ -80,6 +80,12 @@ class Logger(metaclass=Singleton):
         if speak_text and CFG.speak_mode:
             say_text(f"{title}. {content}")
 
+        if CFG.telegram_enabled:
+            from autogpt.telegram_chat import TelegramUtils
+            telegramUtils = TelegramUtils()
+            message = f"{title}. {content}"
+            telegramUtils.send_message(message)
+        
         if content:
             if isinstance(content, list):
                 content = " ".join(content)

@@ -59,6 +59,7 @@ class TelegramUtils:
 
     @staticmethod
     async def _send_message(message):
+        print ("Sending message to Telegram.. ")
         recipient_chat_id = cfg.telegram_chat_id
         bot = TelegramUtils.get_bot()
         await bot.send_message(chat_id=recipient_chat_id, text=message)
@@ -73,7 +74,7 @@ class TelegramUtils:
         print("Asking user: " + question)
         TelegramUtils.send_message(question)
 
-        print("Waiting for response...")
+        print("Waiting for response on Telegram chat...")
         await TelegramUtils._poll_updates()
         response_text = response_queue
 
