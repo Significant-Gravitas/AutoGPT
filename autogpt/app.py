@@ -1,6 +1,6 @@
 """ Command and Control """
 import json
-from typing import List, NoReturn, Union
+from typing import Dict, Any, List, NoReturn, Union
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.google_search import google_official_search, google_search
@@ -29,6 +29,106 @@ from autogpt.commands.twitter import send_tweet
 
 CFG = Config()
 AGENT_MANAGER = AgentManager()
+COMMANDS = {
+    "google": lambda args: google(args["input"]),
+    "memory_add": lambda args: get_memory(CFG).add(args["string"]),
+    "start_agent": lambda args: start_agent(args["name"],
+                                            args["task"],
+                                            args["prompt"]),
+    "message_agent": lambda args: message_agent(args["key"],
+                                                args["message"]),
+    "list_agents": lambda: list_agents(),
+    "delete_agent": lambda args: delete_agent(args["key"]),
+    "get_text_summary": lambda args: get_text_summary(args["url"],
+                                                      args["question"]),
+    "get_hyperlinks": lambda args: get_hyperlinks(args["url"]),
+    "clone_repository": lambda args: clone_repository(args["repository_url"],
+                                                      args["clone_path"]),
+    "read_file": lambda args: read_file(args["file"]),
+    "write_to_file": lambda args: write_to_file(args["file"],
+                                                args["text"]),
+    "append_to_file": lambda args: append_to_file(args["file"],
+                                                  args["text"]),
+    "delete_file": lambda args: delete_file(args["file"]),
+    "search_files": lambda args: search_files(args["directory"]),
+    "browse_website": lambda args: browse_website(args["url"],
+                                                  args["question"]),
+    "evaluate_code": lambda args: evaluate_code(args["code"]),
+    "improve_code": lambda args: improve_code(args["suggestions"],
+                                              args["code"]),
+    "write_tests": lambda args: write_tests(args["code"],
+                                            args.get("focus")),
+    "execute_python_file": lambda args: execute_python_file(args["file"]),
+    "execute_shell": lambda args: execute_shell_command(args),
+    "read_audio_from_file": lambda args: read_audio_from_file(args["file"]),
+    "generate_image": lambda args: generate_image(args["prompt"]),
+    "send_tweet": lambda args: send_tweet(args["text"]),
+    "do_nothing": lambda: "No action performed.",
+    "task_complete": lambda: shutdown()
+}
+
+
+def google(input_str: str) -> str:
+    """
+    Return the search results for the input string using the official or unofficial
+    search method.
+
+    Args:
+        input_str (str): The search query.
+
+    Returns:
+        str: The search results.
+    """
+    key = CFG.google_api_key
+    if key and key.strip() and key != "your-google-api-key":
+        return google_official_search(input_str)
+    else:
+        return str(google_search(input_str).encode("utf-8", "ignore"))
+
+
+def execute_shell_command(args: Dict[str, Any]) -> str:
+    """
+    Execute the shell command if local commands execution is allowed in the
+    configuration.
+
+    Args:
+        args (dict): The arguments containing the command line.
+
+    Returns:
+        str: The result of the shell command or a warning message.
+    """
+    if CFG.execute_local_commands:
+        return execute_shell(args["command_line"])
+    else:
+        return (
+            "You are not allowed to run local shell commands. To execute "
+            "shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+            "in your config. Do not attempt to bypass the restriction."
+        )
+
+
+def execute_command(command_name: str, arguments: Dict[str, Any]) -> str:
+    """Execute the command and return the result.
+
+    Args:
+        command_name (str): The name of the command to execute.
+        arguments (dict): The arguments for the command.
+
+    Returns:
+        str: The result of the command.
+    """
+    try:
+        command_name = map_command_synonyms(command_name)
+        if command_name in COMMANDS:
+            return COMMANDS[command_name](arguments)
+        else:
+            return (
+                f"Unknown command '{command_name}'. Please refer to the "
+                "COMMANDS list for available commands and only respond in "
+                "the specified JSON format."
+            )
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 def is_valid_int(value: str) -> bool:
