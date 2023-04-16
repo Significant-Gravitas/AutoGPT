@@ -35,6 +35,25 @@ def get_prompt() -> str:
         " events, thinking about similar events will help you remember."
     )
     prompt_generator.add_constraint("No user assistance")
+    prompt_generator.add_constraint("Every constraint is mandatory")
+    prompt_generator.add_constraint("Ensure that you do not break any constraints")
+    prompt_generator.add_constraint("Ensure that you do not overwrite file that have important informations")
+    prompt_generator.add_constraint("ALWAYS TRUE :Only use one command at a time in the plan")
+    prompt_generator.add_constraint("Ensure that the command passed are written correctly")
+    prompt_generator.add_constraint("Ensure that the arguments correspond to the plan")
+    prompt_generator.add_constraint("2 Compose an impactful sentence.")
+    prompt_generator.add_constraint("3 Critique the sentence for clarity, coherence, grammar, and overall effectiveness.")
+    prompt_generator.add_constraint("4 Create a plan for revising the sentence, considering the critique.")
+    prompt_generator.add_constraint("5 Evaluate the plan to ensure it addresses the issues identified in the critique.")
+    prompt_generator.add_constraint("6 Refine the plan as needed.")
+    prompt_generator.add_constraint("7 Rephrase the sentence according to the refined plan.")
+    prompt_generator.add_constraint("8 Repeat steps 2-7 for additional sentences.")
+    prompt_generator.add_constraint("9 Merge the revised sentences.")
+    prompt_generator.add_constraint("10 Showcase the integrated text.")
+    prompt_generator.add_constraint("If instructed by the plan to use a specific commands, ALWAYS use the specific command")
+    prompt_generator.add_constraint("You can only provide one command at a time in the plan")
+
+    
     prompt_generator.add_constraint(
         'Exclusively use the commands listed in double quotes e.g. "command name"'
     )
@@ -131,6 +150,15 @@ def get_prompt() -> str:
     prompt_generator.add_performance_evaluation(
         "Continuously review and analyze your actions to ensure you are performing to"
         " the best of your abilities."
+    )
+    prompt_generator.add_performance_evaluation(
+        "Check if you diverge from your role and goals."
+    )
+    prompt_generator.add_performance_evaluation(
+        "Focus on your role and goals."
+    )
+    prompt_generator.add_performance_evaluation(
+        "Prioritize the advancement of the goals."
     )
     prompt_generator.add_performance_evaluation(
         "Constructively self-criticize your big-picture behavior constantly."
