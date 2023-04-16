@@ -3,6 +3,7 @@ from autogpt.config import Config
 
 cfg = Config()
 
+
 def send_tweet(tweet_text):
     """Sends a tweet with the Twitter v2 API
 
