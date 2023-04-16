@@ -3,7 +3,7 @@ import os
 import json
 from typing import Literal
 from annoy import AnnoyIndex
-from memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 class AnnoyMemory(MemoryProviderSingleton):
     """

@@ -80,6 +80,8 @@ def get_memory(cfg, init=False):
                 "Error: Annoy is not installed."
                 "Please install annoy to use Annoy as memory backend."
             )
+        else:
+            memory = AnnoyMemory(cfg)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
