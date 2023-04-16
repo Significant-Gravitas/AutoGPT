@@ -15,6 +15,15 @@ pinecone-client==2.2.1
 redis
 orjson
 Pillow
+selenium
+webdriver-manager
 coverage
 flake8
 numpy
+pre-commit
+black
+sourcery
+isort
+gitpython==3.1.31
+pytest
+pytest-mock
