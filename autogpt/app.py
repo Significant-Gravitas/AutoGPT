@@ -21,6 +21,7 @@ from autogpt.commands.file_operations import (
 from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
+from autogpt.prompts.generator import PromptGenerator
 from autogpt.speech import say_text
 from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.git_operations import clone_repository
@@ -105,7 +106,7 @@ def map_command_synonyms(command_name: str):
     return command_name
 
 
-def execute_command(command_name: str, arguments):
+def execute_command(command_name: str, arguments, prompt: PromptGenerator):
     """Execute the command and return the result
 
     Args:
@@ -192,6 +193,9 @@ def execute_command(command_name: str, arguments):
         elif command_name == "task_complete":
             shutdown()
         else:
+            for command in prompt.commands:
+                if command_name == command["label"] or command_name == command["name"]:
+                    return command["function"](*arguments.values())
             return (
                 f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
                 " list for available commands and only respond in the specified JSON"
