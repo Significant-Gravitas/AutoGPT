@@ -360,7 +360,7 @@ options:
   --dir DIR                The directory containing the files to ingest.
   --init                   Init the memory and wipe its content (default: False)
   --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
-  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000
+  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000)
 
 # python data_ingestion.py --dir DataFolder --init --overlap 100 --max_length 2000
 ```
