@@ -500,16 +500,29 @@ We look forward to connecting with you and hearing your thoughts, ideas, and exp
 
 ## Run tests
 
-To run tests, run the following command:
+To run all tests, run the following command:
 
 ```bash
-python -m unittest discover tests
+pytest 
+
+```
+
+To run just without integration tests:
+
+```
+pytest --without-integration
+```
+
+To run just without slow integration tests:
+
+```
+pytest --without-slow-integration
 ```
 
 To run tests and see coverage, run the following command:
 
 ```bash
-coverage run -m unittest discover tests
+pytest --cov=autogpt --without-integration --without-slow-integration
 ```
 
 ## Run linter
