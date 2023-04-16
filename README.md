@@ -280,6 +280,8 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 * `milvus` will use the milvus cache that you configured
 * `weaviate` will use the weaviate cache that you configured
 
+## Memory Backend Setup
+
 ### Redis Setup
 > _**CAUTION**_ \
 This is not intended to be publicly accessible and lacks security measures. Therefore, avoid exposing Redis to the internet without a password or at all
