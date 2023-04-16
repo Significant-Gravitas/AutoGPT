@@ -115,14 +115,14 @@ cd Auto-GPT
 pip install -r requirements.txt
 ```
 
-5. Locate the file named '.env.template' in the 'Auto-GPT' folder.
-   Open the ".env.template" file in a text editor.
-   Find the line that says "OPENAI_API_KEY=".
-   After the "=", enter your unique OpenAI API Key (without any quotes or spaces).
+5. Locate the file named `.env.template` in the main `/Auto-GPT` folder.
+   Open the `.env.template` file in a text editor.
+   Find the line that says `OPENAI_API_KEY=`.
+   After the `"="`, enter your unique OpenAI API Key (without any quotes or spaces).
    Enter any other API keys or Tokens for services you would like to utilize.
-   Rename this file to ".env" by removing the ".template" extension.
-   Use the 'Save as..' option and chose 'No Extension' from the 'Save as type:' dropdown menu below the file name. 
-   Save and close the ".env" file.
+   Rename this file to `.env` by removing the `.template` extension.
+   Use the `"Save as.."` option and chose `"No Extension"` from the "`Save as type:"` dropdown menu below the file name. 
+   Save and close the `".env"` file.
    By completing these steps, you have properly configured the API Keys for your project.
    
   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
