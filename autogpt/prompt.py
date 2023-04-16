@@ -82,10 +82,18 @@ def get_prompt() -> str:
         ),
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
-        ("Convert Audio to text", "read_audio_from_file", {"file": "<file>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
-
     ]
+
+    # Only add the audio to text command if the model is specified
+    if cfg.huggingface_audio_to_text_model:
+        commands.append(
+            (
+                "Convert Audio to text",
+                "read_audio_from_file",
+                {"file": "<file>"}
+            ),
+        )
 
     # Only add shell command to the prompt if the AI is allowed to execute it
     if cfg.execute_local_commands:
@@ -169,7 +177,7 @@ Continue (y/n): """
 
     if not config.ai_name:
         config = prompt_user()
-        config.save()
+        config.save(CFG.ai_settings_file)
 
     # Get rid of this global:
     global ai_name
