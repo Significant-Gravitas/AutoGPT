@@ -273,9 +273,7 @@ def print_assistant_thoughts(ai_name, assistant_reply):
         if CFG.speak_mode and assistant_thoughts_speak:
             say_text(assistant_thoughts_speak)
         else:
-            logger.typewriter_log(
-                "SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}"
-            )
+            logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
 
         return assistant_reply_json
     except json.decoder.JSONDecodeError:
