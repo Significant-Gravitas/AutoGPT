@@ -74,7 +74,7 @@ class TelegramUtils:
         #await delete_old_messages()
 
         print("Asking user: " + question)
-        await TelegramUtils.send_message(question)
+        TelegramUtils.send_message(question)
 
         print("Waiting for response on Telegram chat...")
         await TelegramUtils._poll_updates()
