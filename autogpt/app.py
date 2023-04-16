@@ -169,6 +169,12 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
     return scrape_links(url)
 
 
+def shutdown() -> NoReturn:
+    """Shut down the program"""
+    print("Shutting down...")
+    quit()
+
+
 @command(
     "start_agent",
     "Start GPT Agent",
