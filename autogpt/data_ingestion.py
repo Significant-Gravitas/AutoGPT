@@ -2,7 +2,7 @@ import argparse
 import logging
 
 from autogpt.config import Config
-from autogpt.file_operations import ingest_file, search_files
+from autogpt.commands.file_operations import ingest_file, search_files
 from autogpt.memory import get_memory
 
 cfg = Config()
@@ -34,11 +34,12 @@ def ingest_directory(directory, memory, args):
         print(f"Error while ingesting directory '{directory}': {str(e)}")
 
 
-def main():
+def main() -> None:
     logger = configure_logging()
 
     parser = argparse.ArgumentParser(
-        description="Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script."
+        description="Ingest a file or a directory with multiple files into memory. "
+        "Make sure to set your .env before running this script."
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--file", type=str, help="The file to ingest.")
@@ -86,7 +87,8 @@ def main():
             print(f"Error while ingesting directory '{args.dir}': {str(e)}")
     else:
         print(
-            "Please provide either a file path (--file) or a directory name (--dir) inside the auto_gpt_workspace directory as input."
+            "Please provide either a file path (--file) or a directory name (--dir)"
+            " inside the auto_gpt_workspace directory as input."
         )
 
 
