@@ -6,7 +6,7 @@ import subprocess
 import docker
 from docker.errors import ImageNotFound
 
-WORKING_DIRECTORY = Path(__file__).parent.parent / "auto_gpt_workspace"
+WORKING_DIRECTORY = Path(__file__).parent.parent.parent / "auto_gpt_workspace"
 
 
 def execute_python_file(file: str):
