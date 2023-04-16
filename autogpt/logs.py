@@ -75,7 +75,7 @@ class Logger(metaclass=Singleton):
         self.logger.setLevel(logging.DEBUG)
 
     def typewriter_log(
-        self, title="", title_color="", content="", speak_text=False, level=logging.INFO
+            self, title="", title_color="", content="", speak_text=False, level=logging.INFO
     ):
         if speak_text and CFG.speak_mode:
             say_text(f"{title}. {content}")
@@ -91,18 +91,18 @@ class Logger(metaclass=Singleton):
         )
 
     def debug(
-        self,
-        message,
-        title="",
-        title_color="",
+            self,
+            message,
+            title="",
+            title_color="",
     ):
         self._log(title, title_color, message, logging.DEBUG)
 
     def warn(
-        self,
-        message,
-        title="",
-        title_color="",
+            self,
+            message,
+            title="",
+            title_color="",
     ):
         self._log(title, title_color, message, logging.WARN)
 
@@ -176,10 +176,10 @@ class AutoGptFormatter(logging.Formatter):
     def format(self, record: LogRecord) -> str:
         if hasattr(record, "color"):
             record.title_color = (
-                getattr(record, "color")
-                + getattr(record, "title")
-                + " "
-                + Style.RESET_ALL
+                    getattr(record, "color")
+                    + getattr(record, "title")
+                    + " "
+                    + Style.RESET_ALL
             )
         else:
             record.title_color = getattr(record, "title")
@@ -288,3 +288,43 @@ def print_assistant_thoughts(ai_name, assistant_reply):
     except Exception:
         call_stack = traceback.format_exc()
         logger.error("Error: \n", call_stack)
+
+
+def print_assistant_thoughts(ai_name: object, assistant_reply_json_valid: object) -> None:
+    assistant_thoughts_reasoning = None
+    assistant_thoughts_plan = None
+    assistant_thoughts_speak = None
+    assistant_thoughts_criticism = None
+
+    assistant_thoughts = assistant_reply_json_valid.get("thoughts", {})
+    assistant_thoughts_text = assistant_thoughts.get("text")
+    if assistant_thoughts:
+        assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
+        assistant_thoughts_plan = assistant_thoughts.get("plan")
+        assistant_thoughts_criticism = assistant_thoughts.get("criticism")
+        assistant_thoughts_speak = assistant_thoughts.get("speak")
+    logger.typewriter_log(
+        f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
+    )
+    logger.typewriter_log(
+        "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
+    )
+    if assistant_thoughts_plan:
+        logger.typewriter_log("PLAN:", Fore.YELLOW, "")
+        # If it's a list, join it into a string
+        if isinstance(assistant_thoughts_plan, list):
+            assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
+        elif isinstance(assistant_thoughts_plan, dict):
+            assistant_thoughts_plan = str(assistant_thoughts_plan)
+
+        # Split the input_string using the newline character and dashes
+        lines = assistant_thoughts_plan.split("\n")
+        for line in lines:
+            line = line.lstrip("- ")
+            logger.typewriter_log("- ", Fore.GREEN, line.strip())
+    logger.typewriter_log(
+        "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
+    )
+    # Speak the assistant's thoughts
+    if CFG.speak_mode and assistant_thoughts_speak:
+        say_text(assistant_thoughts_speak)
