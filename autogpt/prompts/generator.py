@@ -1,6 +1,6 @@
 """ A module for generating custom prompt strings."""
 import json
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 
 class PromptGenerator:
@@ -18,6 +18,7 @@ class PromptGenerator:
         self.commands = []
         self.resources = []
         self.performance_evaluation = []
+        self.goals = []
         self.response_format = {
             "thoughts": {
                 "text": "thought",
@@ -38,7 +39,13 @@ class PromptGenerator:
         """
         self.constraints.append(constraint)
 
-    def add_command(self, command_label: str, command_name: str, args=None) -> None:
+    def add_command(
+        self,
+        command_label: str,
+        command_name: str,
+        args=None,
+        function: Optional[Callable] = None,
+    ) -> None:
         """
         Add a command to the commands list with a label, name, and optional arguments.
 
@@ -47,6 +54,8 @@ class PromptGenerator:
             command_name (str): The name of the command.
             args (dict, optional): A dictionary containing argument names and their
               values. Defaults to None.
+            function (callable, optional): A callable function to be called when
+                the command is executed. Defaults to None.
         """
         if args is None:
             args = {}
@@ -57,6 +66,7 @@ class PromptGenerator:
             "label": command_label,
             "name": command_name,
             "args": command_args,
+            "function": function,
         }
 
         self.commands.append(command)

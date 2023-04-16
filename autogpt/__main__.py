@@ -1,5 +1,7 @@
 """Main script for the autogpt package."""
 import logging
+import os
+from pathlib import Path
 from colorama import Fore
 from autogpt.agent.agent import Agent
 from autogpt.args import parse_arguments
@@ -8,7 +10,9 @@ from autogpt.config import Config, check_openai_api_key
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 
-from autogpt.prompt import construct_prompt
+from autogpt.prompts.prompt import construct_prompt
+from autogpt.plugins import load_plugins
+
 
 # Load environment variables from .env file
 
@@ -36,8 +40,7 @@ def main() -> None:
                 loaded_plugins.append(plugin())
 
     if loaded_plugins:
-        print(f"\nPlugins found: {len(loaded_plugins)}\n"
-              "--------------------")
+        print(f"\nPlugins found: {len(loaded_plugins)}\n" "--------------------")
     for plugin in loaded_plugins:
         print(f"{plugin._name}: {plugin._version} - {plugin._description}")
 
