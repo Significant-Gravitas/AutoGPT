@@ -1,4 +1,9 @@
 """Google search command for Autogpt."""
+import re
+import html
+from urllib import parse
+import requests
+
 import json
 from typing import List, Union
 
@@ -6,8 +11,8 @@ from duckduckgo_search import ddg
 
 from autogpt.config import Config
 
-from googletrans import Translator
 from autogpt.logs import logger
+
 
 CFG = Config()
 
@@ -40,12 +45,19 @@ def google_search(query: str, num_results: int = 8) -> str:
 
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
+GOOGLE_TRANSLATE_URL = 'http://translate.google.com/m?q=%s&tl=%s&sl=%s'
 def translate(query,language_code):
-    translator = Translator()
-    result = translator.translate(query, dest=language_code)
-    logger.debug(f"translate query input to ["+language_code+'] input:'+result.text)
-    return result.text
-    
+
+    text = parse.quote(query)
+    url = GOOGLE_TRANSLATE_URL % (text,language_code,'en')
+    response = requests.get(url)
+    data = response.text
+    expr = r'(?s)class="(?:t0|result-container)">(.*?)<'
+    result = re.findall(expr, data)
+    if (len(result) == 0):
+        return ""
+
+    return html.unescape(result[0])
     
 def google_official_search(query: str, num_results: int = 8) -> Union[str, List[str]]:
     """Return the results of a google search using the official Google API
