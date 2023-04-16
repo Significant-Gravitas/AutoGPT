@@ -32,7 +32,8 @@ class AgentManager(metaclass=Singleton):
         for plugin in self.cfg.plugins:
             plugin_messages = plugin.pre_instruction(messages)
             if plugin_messages:
-                messages.extend(plugin_messages)
+                for plugin_message in plugin_messages:
+                    messages.append({"role": "system", "content": plugin_message})
 
         # Start GPT instance
         agent_reply = create_chat_completion(
@@ -77,7 +78,8 @@ class AgentManager(metaclass=Singleton):
         for plugin in self.cfg.plugins:
             plugin_messages = plugin.pre_instruction(messages)
             if plugin_messages:
-                messages.extend(plugin_messages)
+                for plugin_message in plugin_messages:
+                    messages.append({"role": "system", "content": plugin_message})
 
         # Start GPT instance
         agent_reply = create_chat_completion(
