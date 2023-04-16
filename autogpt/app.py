@@ -6,7 +6,7 @@ from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.google_search import google_official_search, google_search
 from autogpt.commands.improve_code import improve_code
 from autogpt.commands.write_tests import write_tests
-from autogpt.config import Config
+from autogpt.config import Config 
 from autogpt.commands.image_gen import generate_image
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.web_requests import scrape_links, scrape_text
@@ -26,6 +26,7 @@ from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.git_operations import clone_repository
 from autogpt.commands.twitter import send_tweet
 
+CFG = Config()
 AGENT_MANAGER = AgentManager()
 
 

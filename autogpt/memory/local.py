@@ -3,6 +3,7 @@ import os
 import uuid
 import datetime
 import chromadb
+import logging
 from autogpt.memory.base import MemoryProviderSingleton
 from autogpt.llm_utils import create_embedding
 from chromadb.errors import NoIndexException
@@ -20,7 +21,11 @@ class LocalCache(MemoryProviderSingleton):
         Returns:
             None
         """
+
         self.persistence = cfg.memory_directory
+        # switch chroma's logging defaults to error only
+        logging.getLogger('chromadb').setLevel(logging.ERROR)
+        
         if self.persistence is not None and os.path.exists(self.persistence):
             self.chromaClient = chromadb.Client(Settings(
                 chroma_db_impl="duckdb+parquet", # duckdb+parquet = persisted, duckdb = in-memory
