@@ -159,5 +159,4 @@ vicuna-*
 .DS_Store
 
 
-# multigpt
-multigpt/
+/multigpt/saved_agents/

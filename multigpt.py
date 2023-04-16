@@ -1,7 +1,8 @@
 import re
 import os
+from slugify import slugify
 import subprocess
-from colorama import Fore, Style
+from colorama import Fore
 from typing import List
 
 from autogpt.logs import logger
@@ -10,9 +11,7 @@ from autogpt.spinner import Spinner
 from autogpt.llm_utils import create_chat_completion
 from autogpt.config.config import Config
 
-from autogpt.expert import Expert
-from autogpt.prompt_engineer import generate_prompt
-
+from multigpt.expert import Expert
 
 CFG = Config()
 MIN_EXPERTS = 2
@@ -31,9 +30,11 @@ Help me determine which historical or renowned experts in various fields would b
 1b) [Goal b]
 1c) [Goal c]"""
 
+
 def start_autogpt():
     # check if start programmatically or execute from command line
     pass
+
 
 # def parse_expert_list(expert_list):
 #     # parse expert list
@@ -55,7 +56,7 @@ def parse_experts(experts: str) -> List[Expert]:
     # print(personas)
     res = []
     for persona in personas:
-        try: 
+        try:
             tmp = re.split(r"[0-9][a-c]\) ", persona)
             # print(tmp)
             name, description = tmp[0].split(":")[:2]
@@ -67,13 +68,13 @@ def parse_experts(experts: str) -> List[Expert]:
             )
             goals_str = ""
             for i, goal in enumerate(goals):
-                goals_str += f"{i+1}. {goal}\n"
+                goals_str += f"{i + 1}. {goal}\n"
             logger.typewriter_log(
                 f"Goals:", Fore.GREEN, goals_str
             )
             # print(name, description, goals)
             res.append(Expert(name, description, goals))
-        except :
+        except:
             print("Error parsing expert")
     return res
 
@@ -81,17 +82,19 @@ def parse_experts(experts: str) -> List[Expert]:
 def spawn_expert_gpt(expert_config_path: str):
     # spawn expertGPT
     # TODO: returns file not found error
-    subprocess.run(f"python -m {os.path.join(os.path.dirname(__file__), 'autogpt')} -c --continuous-limit {CONTINUOUS_LIMIT} --ai-settings '{expert_config_path}'")
+    subprocess.run(
+        f"python -m {os.path.join(os.path.dirname(__file__), 'autogpt')} -c --continuous-limit {CONTINUOUS_LIMIT} --ai-settings '{expert_config_path}'")
 
 
 def create_expert_gpts(experts: List[Expert]):
     # create expertGPTs
     for expert in experts:
-        filepath = os.path.join(os.path.dirname(__file__), "multigpt", f"{expert.ai_name}_settings.yaml")
+        slugified_filename = slugify(expert.ai_name, replacements=[[' ', '_']], lowercase=True) + "_settings.yaml"
+        filepath = os.path.join(os.path.dirname(__file__), "multigpt", "saved_agents", f"{slugified_filename}")
         expert.save(filepath)
         # TODO: sometimes doesn't find the file, because it hasn't finished saving yet
         spawn_expert_gpt(filepath)
-        
+
 
 if __name__ == "__main__":
     # DONE: Ask user for task description
@@ -101,7 +104,7 @@ if __name__ == "__main__":
     # create autoGPTs
     # access results of instances -- message passing
     # start_autogpt()
-    
+
     logger.typewriter_log(
         "Welcome to MultiGPT!", Fore.BLUE,
         "I am the orchestrator of your AI assistants.", speak_text=True
@@ -118,7 +121,10 @@ if __name__ == "__main__":
         task = "Achieve world domination!"
 
     with Spinner("Thinking... "):
-        experts_string = create_chat_completion([{"role": "system", "content": expert_prompt.format(task=task, min_experts=MIN_EXPERTS, max_experts=MAX_EXPERTS)}], CFG.smart_llm_model, max_tokens=1000)
-    
+        experts_string = create_chat_completion([{"role": "system",
+                                                  "content": expert_prompt.format(task=task, min_experts=MIN_EXPERTS,
+                                                                                  max_experts=MAX_EXPERTS)}],
+                                                CFG.smart_llm_model, max_tokens=1000)
+
     experts = parse_experts(experts_string)
     create_expert_gpts(experts)
