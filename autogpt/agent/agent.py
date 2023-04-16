@@ -167,13 +167,11 @@ class Agent:
                     )
                 result = (
                     f"Command {command_name} returned: "
-                    f"{execute_command(command_name, arguments)}"
+                    f"{execute_command(command_name, arguments, self.config.prompt_generator)}"
                 )
-                
+
                 for plugin in cfg.plugins:
-                    result = plugin.post_command(
-                        command_name, result
-                    )
+                    result = plugin.post_command(command_name, result)
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
 
