@@ -189,18 +189,18 @@ Here are some common arguments you can use when running Auto-GPT:
 > Replace anything in angled brackets (<>) to a value you want to specify
 * View all available command line arguments
 ```bash
-python scripts/main.py --help
+python -m autogpt --help
 ```
 * Run Auto-GPT with a different AI Settings file
 ```bash
-python scripts/main.py --ai-settings <filename>
+python -m autogpt --ai-settings <filename>
 ```
 * Specify one of 3 memory backends: `local`, `redis`, `pinecone` or `no_memory`
 ```bash
-python scripts/main.py --use-memory  <memory-backend>
+python -m autogpt --use-memory  <memory-backend>
 ```
 
-> **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python scripts/main.py --help` for more information
+> **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python -m autogpt --help` for more information
 
 ## 🗣️ Speech Mode
 
