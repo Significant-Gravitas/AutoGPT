@@ -3,7 +3,7 @@ import time
 from typing import Dict, Optional
 
 import openai
-from openai.error import APIError, RateLimitError
+from openai.error import APIError, RateLimitError ,AuthenticationError
 from colorama import Fore
 
 from autogpt.config import Config
@@ -94,11 +94,15 @@ def create_chat_completion(
                     max_tokens=max_tokens,
                 )
             break
-        except RateLimitError:
+        except RateLimitError as e:
+            """
+            Throws Error related to rateLimiting , Also throws error when there aren't
+            enough credits for openai-api-key.
+            """
             if CFG.debug_mode:
                 print(
-                    Fore.RED + "Error: ",
-                    f"Reached rate limit, passing..." + Fore.RESET,
+                    Fore.RED + f"Error: {e}"
+                    + Fore.RESET,
                 )
         except APIError as e:
             if e.http_status == 502:
@@ -107,12 +111,20 @@ def create_chat_completion(
                 raise
             if attempt == num_retries - 1:
                 raise
+        except AuthenticationError as e:
+            """
+            Throws Error If The Provided key is invalid and serveral other possible
+            authentication errors.
+            """
+            if CFG.debug_mode:
+                print(Fore.RED + f"Error: {e}" + Fore.RESET)
         if CFG.debug_mode:
             print(
                 Fore.RED + "Error: ",
                 f"API Bad gateway. Waiting {backoff} seconds..." + Fore.RESET,
             )
         time.sleep(backoff)
+     
     if response is None:
         raise RuntimeError(f"Failed to get response after {num_retries} retries")
 
