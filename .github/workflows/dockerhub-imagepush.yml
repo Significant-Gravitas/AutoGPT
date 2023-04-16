@@ -1,8 +1,8 @@
 name: Push Docker Image on Release
 
 on:
-  push:
-    branches: [ "stable" ]
+  release:
+    types: [published]
 
 jobs:
 
