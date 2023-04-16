@@ -33,7 +33,7 @@ repos:
         pass_filenames: true
       - id: pytest-check
         name: pytest-check
-        entry: pytest -k "not integration_test"
+        entry: pytest --cov=autogpt --without-integration --without-slow-integration
         language: system
         pass_filenames: false
         always_run: true
