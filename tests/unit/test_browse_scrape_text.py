@@ -2,7 +2,7 @@
 
 import requests
 
-from autogpt.browse import scrape_text
+from autogpt.commands.web_requests import scrape_text
 
 """
 Code Analysis
@@ -41,7 +41,7 @@ class TestScrapeText:
         mock_response = mocker.Mock()
         mock_response.status_code = 200
         mock_response.text = f"<html><body><div><p style='color: blue;'>{expected_text}</p></div></body></html>"
-        mocker.patch("requests.get", return_value=mock_response)
+        mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function with a valid URL and assert that it returns the expected text
         url = "http://www.example.com"
@@ -50,7 +50,9 @@ class TestScrapeText:
     # Tests that the function returns an error message when an invalid or unreachable url is provided.
     def test_invalid_url(self, mocker):
         # Mock the requests.get() method to raise an exception
-        mocker.patch("requests.get", side_effect=requests.exceptions.RequestException)
+        mocker.patch(
+            "requests.Session.get", side_effect=requests.exceptions.RequestException
+        )
 
         # Call the function with an invalid URL and assert that it returns an error message
         url = "http://www.invalidurl.com"
@@ -63,7 +65,7 @@ class TestScrapeText:
         mock_response = mocker.Mock()
         mock_response.status_code = 200
         mock_response.text = "<html><body></body></html>"
-        mocker.patch("requests.get", return_value=mock_response)
+        mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function with a valid URL and assert that it returns an empty string
         url = "http://www.example.com"
@@ -72,7 +74,7 @@ class TestScrapeText:
     # Tests that the function returns an error message when the response status code is an http error (>=400).
     def test_http_error(self, mocker):
         # Mock the requests.get() method to return a response with a 404 status code
-        mocker.patch("requests.get", return_value=mocker.Mock(status_code=404))
+        mocker.patch("requests.Session.get", return_value=mocker.Mock(status_code=404))
 
         # Call the function with a URL
         result = scrape_text("https://www.example.com")
@@ -87,7 +89,7 @@ class TestScrapeText:
         mock_response = mocker.Mock()
         mock_response.status_code = 200
         mock_response.text = html
-        mocker.patch("requests.get", return_value=mock_response)
+        mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function with a URL
         result = scrape_text("https://www.example.com")
