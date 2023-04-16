@@ -36,11 +36,9 @@ install_packages() {
 
 sudo apt install python3-pip
 { # try
-    echo "Installing missing packages..."
     install_packages # Install the required packages
 } || { # catch
     echo "An error occurred while installing the required packages."
-    echo "Installing missing packages..."
     sudo apt-get update
     sudo apt-get install python3-pip
     install_packages # Install the required packages
