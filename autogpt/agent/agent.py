@@ -3,8 +3,8 @@ from autogpt.app import execute_command, get_command
 
 from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
-from autogpt.json_fixes.master_json_fix_method import fix_json_using_multiple_techniques
-from autogpt.json_validation.validate_json import validate_json
+from autogpt.json_utils.auto_fix import fix_json_using_multiple_techniques
+from autogpt.json_utils.utilities import validate_json
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
