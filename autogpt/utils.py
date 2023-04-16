@@ -45,4 +45,3 @@ def translate(query,language_code):
         return ""
 
     return html.unescape(result[0])
-    
