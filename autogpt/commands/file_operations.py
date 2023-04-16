@@ -185,7 +185,7 @@ def append_to_file(filename: str, text: str, shouldLog: bool = True) -> str:
         filepath = safe_join(WORKING_DIRECTORY, filename)
         with open(filepath, "a") as f:
             f.write(text)
-        
+
         if shouldLog:
             log_operation("append", filename)
 
