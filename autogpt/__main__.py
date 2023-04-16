@@ -10,6 +10,8 @@ from autogpt.memory import get_memory
 
 from autogpt.prompt import construct_prompt
 
+from nr_openai_observability import monitor
+
 # Load environment variables from .env file
 
 
@@ -47,6 +49,7 @@ def main() -> None:
         user_input=user_input,
     )
     agent.start_interaction_loop()
+    monitor.initialization()
 
 
 if __name__ == "__main__":
