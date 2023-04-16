@@ -1,12 +1,12 @@
-from multigpt.multi_memory.local import LocalCache
-from autogpt.memory.no_memory import NoMemory
+from multigpt.memory.local import LocalCache
+from multigpt.memory.no_memory import NoMemory
 
 # List of supported memory backends
 # Add a backend to this list if the import attempt is successful
 supported_memory = ["local", "no_memory"]
 
 try:
-    from multigpt.multi_memory.redismem import RedisMemory
+    from multigpt.memory.redismem import RedisMemory
 
     supported_memory.append("redis")
 except ImportError:
@@ -14,7 +14,7 @@ except ImportError:
     RedisMemory = None
 
 try:
-    from multigpt.multi_memory.pinecone import PineconeMemory
+    from multigpt.memory.pinecone import PineconeMemory
 
     supported_memory.append("pinecone")
 except ImportError:
@@ -22,13 +22,13 @@ except ImportError:
     PineconeMemory = None
 
 try:
-    from multigpt.multi_memory.milvus import MilvusMemory
+    from multigpt.memory.milvus import MilvusMemory
 except ImportError:
     print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
 
 
-def get_memory(cfg, init=False):
+def get_memory(cfg, ai_key, init=False):
     memory = None
     if cfg.memory_backend == "pinecone":
         if not PineconeMemory:
@@ -37,7 +37,7 @@ def get_memory(cfg, init=False):
                 " to use Pinecone as a memory backend."
             )
         else:
-            memory = PineconeMemory(cfg)
+            memory = PineconeMemory(cfg, ai_key)
             if init:
                 memory.clear()
     elif cfg.memory_backend == "redis":
@@ -47,7 +47,7 @@ def get_memory(cfg, init=False):
                 " use Redis as a memory backend."
             )
         else:
-            memory = RedisMemory(cfg)
+            memory = RedisMemory(cfg, ai_key)
     elif cfg.memory_backend == "milvus":
         if not MilvusMemory:
             print(
@@ -55,12 +55,12 @@ def get_memory(cfg, init=False):
                 "Please install pymilvus to use Milvus as memory backend."
             )
         else:
-            memory = MilvusMemory(cfg)
+            memory = MilvusMemory(cfg, ai_key)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
     if memory is None:
-        memory = LocalCache(cfg)
+        memory = LocalCache(cfg, ai_key)
         if init:
             memory.clear()
     return memory

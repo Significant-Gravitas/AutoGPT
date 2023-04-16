@@ -2,19 +2,19 @@ import pinecone
 from colorama import Fore, Style
 
 from autogpt.logs import logger
-from autogpt.memory.base import MemoryProviderSingleton
+from multigpt.memory.base import MemoryProvider
 from autogpt.llm_utils import create_embedding_with_ada
 
 
-class PineconeMemory(MemoryProviderSingleton):
-    def __init__(self, cfg):
+class PineconeMemory(MemoryProvider):
+    def __init__(self, cfg, ai_key):
         pinecone_api_key = cfg.pinecone_api_key
         pinecone_region = cfg.pinecone_region
         pinecone.init(api_key=pinecone_api_key, environment=pinecone_region)
         dimension = 1536
         metric = "cosine"
         pod_type = "p1"
-        table_name = "auto-gpt"
+        table_name = f"auto-gpt-agent-id-{ai_key}"
         # this assumes we don't start with memory.
         # for now this works.
         # we'll need a more complicated and robust system if we want to start with
