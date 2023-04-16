@@ -447,6 +447,17 @@ HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 sudo Xvfb :10 -ac -screen 0 1024x768x24 & DISPLAY=:10 <YOUR_CLIENT>
 ```
 
+## EMail
+
+Set your sender email address and SMTP password in your `.env`. For GMail use the [App Password](https://myaccount.google.com/apppasswords) and when not using GMail adjust SMTP host and port.
+
+```bash
+EMAIL_ADDRESS=<YOUR_EMAIL_ADDRESS>
+EMAIL_PASSWORD=<PASSWORD>
+EMAIL_SMTP_HOST=smtp.gmail.com
+EMAIL_SMTP_PORT=587
+```
+
 ## ⚠️ Limitations
 
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:

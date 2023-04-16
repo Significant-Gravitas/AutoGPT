@@ -59,6 +59,11 @@ class Config(metaclass=Singleton):
         self.github_api_key = os.getenv("GITHUB_API_KEY")
         self.github_username = os.getenv("GITHUB_USERNAME")
 
+        self.email_address = os.getenv("EMAIL_ADDRESS")
+        self.email_password = os.getenv("EMAIL_PASSWORD")
+        self.email_smtp_host = os.getenv("EMAIL_SMTP_HOST")
+        self.email_smtp_port = os.getenv("EMAIL_SMTP_PORT")
+
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 

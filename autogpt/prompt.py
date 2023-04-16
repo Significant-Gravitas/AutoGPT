@@ -88,6 +88,11 @@ def get_prompt() -> str:
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
+        (
+            "Send Email",
+            "send_email",
+            {"recipient": "<recipient>", "subject": "<subject>", "message": "<message>"}
+        )
     ]
 
     # Only add the audio to text command if the model is specified
