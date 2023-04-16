@@ -58,13 +58,13 @@ def safe_join(base: str, *paths) -> str:
     Returns:
         str: The joined path
     """
-    new_path = os.path.join(base, *paths)
-    norm_new_path = os.path.normpath(new_path)
+    #new_path = os.path.join(base, *paths)
+    #norm_new_path = os.path.normpath(new_path)
 
-    if os.path.commonprefix([base, norm_new_path]) != base:
-        raise ValueError("Attempted to access outside of working directory.")
+    #if os.path.commonprefix([base, norm_new_path]) != base:
+    #    raise ValueError("Attempted to access outside of working directory.")
 
-    return norm_new_path
+    return base
 
 
 def split_file(

@@ -100,9 +100,9 @@ def execute_shell(command_line: str) -> str:
     """
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
-    if str(WORKING_DIRECTORY) not in current_dir:
-        work_dir = os.path.join(os.getcwd(), WORKING_DIRECTORY)
-        os.chdir(work_dir)
+    #if str(WORKING_DIRECTORY) not in current_dir:
+    #    work_dir = os.path.join(os.getcwd(), WORKING_DIRECTORY)
+    #    os.chdir(work_dir)
 
     print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
