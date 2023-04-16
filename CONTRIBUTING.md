@@ -1,64 +1,99 @@
+# Contributing to ProjectName
 
-To contribute to this GitHub project, you can follow these steps:
+First of all, thank you for considering contributing to our project! We appreciate your time and effort, and we value any contribution, whether it's reporting a bug, suggesting a new feature, or submitting a pull request.
 
-1. Fork the repository you want to contribute to by clicking the "Fork" button on the project page.
+This document provides guidelines and best practices to help you contribute effectively.
 
-2. Clone the repository to your local machine using the following command:
+## Table of Contents
 
+- [Code of Conduct](#code-of-conduct)
+- [Getting Started](#getting-started)
+- [How to Contribute](#how-to-contribute)
+  - [Reporting Bugs](#reporting-bugs)
+  - [Suggesting Enhancements](#suggesting-enhancements)
+  - [Submitting Pull Requests](#submitting-pull-requests)
+- [Style Guidelines](#style-guidelines)
+  - [Code Formatting](#code-formatting)
+  - [Pre-Commit Hooks](#pre-commit-hooks)
+
+## Code of Conduct
+
+By participating in this project, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md). Please read it to understand the expectations we have for everyone who contributes to this project.
+
+## Getting Started
+
+To start contributing, follow these steps:
+
+1. Fork the repository and clone your fork.
+2. Create a new branch for your changes (use a descriptive name, such as `fix-bug-123` or `add-new-feature`).
+3. Make your changes in the new branch.
+4. Test your changes thoroughly.
+5. Commit and push your changes to your fork.
+6. Create a pull request following the guidelines in the [Submitting Pull Requests](#submitting-pull-requests) section.
+
+## How to Contribute
+
+### Reporting Bugs
+
+If you find a bug in the project, please create an issue on GitHub with the following information:
+
+- A clear, descriptive title for the issue.
+- A description of the problem, including steps to reproduce the issue.
+- Any relevant logs, screenshots, or other supporting information.
+
+### Suggesting Enhancements
+
+If you have an idea for a new feature or improvement, please create an issue on GitHub with the following information:
+
+- A clear, descriptive title for the issue.
+- A detailed description of the proposed enhancement, including any benefits and potential drawbacks.
+- Any relevant examples, mockups, or supporting information.
+
+### Submitting Pull Requests
+
+When submitting a pull request, please ensure that your changes meet the following criteria:
+
+- Your pull request should be atomic and focus on a single change.
+- Your pull request should include tests for your change.
+- You should have thoroughly tested your changes with multiple different prompts.
+- You should have considered potential risks and mitigations for your changes.
+- You should have documented your changes clearly and comprehensively.
+- You should not include any unrelated or "extra" small tweaks or changes.
+
+## Style Guidelines
+
+### Code Formatting
+
+We use the `black` code formatter to maintain a consistent coding style across the project. Please ensure that your code is formatted using `black` before submitting a pull request. You can install `black` using `pip`:
+
+```bash
+pip install black
 ```
-git clone https://github.com/<YOUR-GITHUB-USERNAME>/Auto-GPT
+
+To format your code, run the following command in the project's root directory:
+
+```bash
+black .
 ```
-3. Install the project requirements
+### Pre-Commit Hooks
+We use pre-commit hooks to ensure that code formatting and other checks are performed automatically before each commit. To set up pre-commit hooks for this project, follow these steps:
+
+Install the pre-commit package using pip:
+```bash
+pip install pre-commit
 ```
-pip install -r requirements.txt
-```
-4. Install pre-commit hooks
-```
+
+Run the following command in the project's root directory to install the pre-commit hooks:
+```bash
 pre-commit install
 ```
-5. Create a new branch for your changes using the following command:
 
-```
-git checkout -b "branch-name"
-```
-6. Make your changes to the code or documentation.
-- Example: Improve User Interface or Add Documentation.
+Now, the pre-commit hooks will run automatically before each commit, checking your code formatting and other requirements.
 
+If you encounter any issues or have questions, feel free to reach out to the maintainers or open a new issue on GitHub. We're here to help and appreciate your efforts to contribute to the project.
 
-7. Add the changes to the staging area using the following command:
-```
-git add .
-```
+Happy coding, and once again, thank you for your contributions!
 
-8. Commit the changes with a meaningful commit message using the following command:
-```
-git commit -m "your commit message"
-```
-9. Push the changes to your forked repository using the following command:
-```
-git push origin branch-name
-```
-10. Go to the GitHub website and navigate to your forked repository.
+Maintainers will look at PR that have no merge conflicts when deciding what to add to the project. Make sure your PR shows up here:
 
-11. Click the "New pull request" button.
-
-12. Select the branch you just pushed to and the branch you want to merge into on the original repository.
-
-13. Add a description of your changes and click the "Create pull request" button.
-
-14. Wait for the project maintainer to review your changes and provide feedback.
-
-15. Make any necessary changes based on feedback and repeat steps 5-12 until your changes are accepted and merged into the main project.
-
-16. Once your changes are merged, you can update your forked repository and local copy of the repository with the following commands:
-
-```
-git fetch upstream
-git checkout master
-git merge upstream/master
-```
-Finally, delete the branch you created with the following command:
-```
-git branch -d branch-name
-```
-That's it you made it 🐣⭐⭐
+https://github.com/Torantulino/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-is%3Aconflict+
