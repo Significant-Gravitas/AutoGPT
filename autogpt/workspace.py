@@ -5,8 +5,7 @@ from pathlib import Path
 WORKSPACE_PATH = Path(os.getcwd()) / "auto_gpt_workspace"
 
 # Create the directory if it doesn't exist
-if not os.path.exists(WORKSPACE_PATH):
-    os.makedirs(WORKSPACE_PATH)
+os.makedirs(WORKSPACE_PATH, exist_ok=True)
 
 
 def path_in_workspace(relative_path: str | Path) -> Path:
@@ -32,6 +31,11 @@ def safe_path_join(base: Path, *paths: str | Path) -> Path:
         Path: The joined path
     """
     joined_path = base.joinpath(*paths).resolve()
+
+    if not os.path.commonpath([joined_path, WORKSPACE_PATH]) == WORKSPACE_PATH:
+        raise ValueError(f"Attempted to access path '{joined_path}' outside of working directory '{WORKSPACE_PATH}'.")
+
+    return joined_path
 
     if not joined_path.is_relative_to(base):
         raise ValueError(f"Attempted to access path '{joined_path}' outside of working directory '{base}'.")
