@@ -12,7 +12,7 @@ from autogpt.config import Config
 
 CFG = Config()
 
-WORKING_DIRECTORY = Path(__file__).parent.parent / "auto_gpt_workspace"
+WORKING_DIRECTORY = Path(__file__).parent.parent.parent / "auto_gpt_workspace"
 
 
 def generate_image(prompt: str) -> str:
