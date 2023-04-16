@@ -82,7 +82,6 @@ def google_official_search(query: str, num_results: int = 8) -> Union[str, List[
         # transalate query str if language_code != en
         if search_language_code!='en':
             query = translate(query,search_language_code)
-        
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)
 
