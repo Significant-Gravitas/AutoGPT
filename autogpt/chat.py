@@ -109,7 +109,7 @@ def chat_with_ai(
             current_tokens_used += token_counter.count_message_tokens(
                 [create_chat_message("user", user_input)], model
             )  # Account for user input (appended later)
-            
+
             while next_message_to_add_index >= 0:
                 # print (f"CURRENT TOKENS USED: {current_tokens_used}")
                 message_to_add = full_message_history[next_message_to_add_index]
@@ -147,13 +147,10 @@ def chat_with_ai(
                 )
                 if current_tokens_used + tokens_to_add > send_token_limit:
                     if cfg.debug_mode:
-                        print("Plugin response too long, skipping:",
-                              plugin_response)
+                        print("Plugin response too long, skipping:", plugin_response)
                         print("Plugins remaining at stop:", plugin_count - i)
                     break
-                current_context.append(
-                    create_chat_message("system", plugin_response)
-                )
+                current_context.append(create_chat_message("system", plugin_response))
 
             # Calculate remaining tokens
             tokens_remaining = token_limit - current_tokens_used
