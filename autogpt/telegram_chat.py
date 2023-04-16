@@ -80,7 +80,7 @@ class TelegramUtils:
 
         print("Response received from Telegram: " + response_text)
         return response_text
-    
+
     @staticmethod
     async def _poll_updates():
         global response_queue
