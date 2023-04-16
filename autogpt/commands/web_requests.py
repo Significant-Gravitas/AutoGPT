@@ -6,6 +6,7 @@ import requests
 from requests.compat import urljoin
 from requests import Response
 from bs4 import BeautifulSoup
+from lxml import etree
 
 from autogpt.config import Config
 from autogpt.memory import get_memory
@@ -168,3 +169,104 @@ def create_message(chunk, question):
         f' question: "{question}" -- if the question cannot be answered using the'
         " text, summarize the text.",
     }
+
+def get_xpath(element):
+    """Gets the full xpath of an element
+
+    Args:
+        element (lxml.etree._Element): The element to get the full XPath for
+
+    Returns:
+        A str of the full xpath of the element
+    """
+    parts = []
+    while element is not None:
+        parent = element.getparent()
+        if parent is None:
+            break
+        siblings = [sib for sib in parent if sib.tag == element.tag]
+        if len(siblings) > 1:
+            parts.insert(0, f"{element.tag}[{siblings.index(element) + 1}]")
+        else:
+            parts.insert(0, element.tag)
+        element = parent
+    return "/".join(parts)
+
+
+def scrape_buttons(url: str):
+    """Scrape buttons from a webpage
+    
+    Args:
+        url (str): The URL to scrape links from
+
+    Returns:
+        A 2D list of [str: button text, full xpath]
+    """
+
+    response, error_message = get_response(url)
+    if error_message:
+        return error_message
+    if not response:
+        return "Error: Could not get response"
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    buttons = soup.find_all("button")
+
+    button_data = []
+    for button in buttons:
+        button_name = button.text.strip()
+        button_element = etree.fromstring(str(button))
+        button_xpath = get_xpath(button_element)
+        button_data.append([button_name, button_xpath])
+
+    return button_data
+
+def scrape_input_text_fields(url: str):
+    """Scrape all input text fields from a website
+
+    Args:
+        url (str): The URL of the website to scrape
+
+    Returns:
+        List[List[str]]: A 2D array where each inner array is [input field name or id, full xpath to the input field]
+    """
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "lxml")
+    input_text_fields = soup.find_all("input", {"type": "text"})
+
+    field_data = []
+    for field in input_text_fields:
+        field_name = field.get("name", field.get("id", "Unnamed"))
+        field_element = etree.fromstring(str(field))
+        field_xpath = get_xpath(field_element)
+        field_data.append([field_name, field_xpath])
+
+    return field_data
+
+def scrape_select_input_fields(url: str):
+    """Scrape all select input fields and their options from a website
+
+    Args:
+        url (str): The URL of the website to scrape
+
+    Returns:
+        List[List[str]]: A 2D array where each inner array is [select input field name or id, full xpath to the select input field, list of option values]
+    """
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "lxml")
+    select_input_fields = soup.find_all("select")
+
+    field_data = []
+    for field in select_input_fields:
+        field_name = field.get("name", field.get("id", "Unnamed"))
+        field_element = etree.fromstring(str(field))
+        field_xpath = get_xpath(field_element)
+
+        options = []
+        for option in field.find_all("option"):
+            option_value = option.get("value")
+            options.append(option_value)
+
+        field_data.append([field_name, field_xpath, options])
+
+    return field_data

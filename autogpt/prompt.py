@@ -83,6 +83,9 @@ def get_prompt() -> str:
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
+        ("Click Button", "click_button", {"full_XPath": "<full_button_XPath>"}),
+        ("Input Text", "input_text", {"full_XPath": "<full_text_field_XPath>", "text": "<text_to_input>"}),
+        ("Select From Selector", "select_from_selector", {"full_XPath": "<full_selector_xpath>", "option_to_select": "<option_to_select>"}),
     ]
 
     # Only add the audio to text command if the model is specified
