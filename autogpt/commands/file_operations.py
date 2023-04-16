@@ -40,7 +40,7 @@ def log_operation(operation: str, filename: str) -> None:
         with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
             f.write("File Operation Logger ")
 
-    append_to_file(LOG_FILE, log_entry, shouldLog = False)
+    append_to_file(LOG_FILE, log_entry, shouldLog=False)
 
 
 def split_file(

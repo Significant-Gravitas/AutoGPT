@@ -53,7 +53,7 @@ class NoMemory(MemoryProviderSingleton):
         """
         return ""
 
-    def get_relevant(self, data: str, num_relevant: int = 5) ->list[Any] | None:
+    def get_relevant(self, data: str, num_relevant: int = 5) -> list[Any] | None:
         """
         Returns all the data in the memory that is relevant to the given data.
         NoMemory always returns None.
