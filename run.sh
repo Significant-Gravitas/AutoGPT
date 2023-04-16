@@ -1,5 +1,17 @@
 #!/bin/bash
-# This script checks if all the required packages are installed and installs them if not.
+
+# Create a password for the Redis server and update the .env file
+sed -e 's:^\(REDIS_PASSWORD\)=\(.*\)$:openssl rand -base64 32 | xargs echo \1=$1 | sed s," ",,g:e' .env
+
+if ! command -v python3 -m venv &> /dev/null    # Check if venv is installed and install it if not
+then
+echo "venv is not found. Installing venv..."
+sudo apt-get update
+sudo apt-get install python3-venv
+fi
+
+python3 -m venv env # Create a virtual environment
+source env/bin/activate # Activate the virtual environment
 
 set -e # Exit immediately if a command exits with a non-zero status.
 python scripts/check_requirements.py requirements.txt # Check if all the required packages are installed
