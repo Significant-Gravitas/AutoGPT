@@ -17,6 +17,12 @@ orjson
 Pillow
 selenium
 webdriver-manager
+jsonschema
+tweepy
+SpeechRecognition
+python-telegram-bot
+
+##Dev
 coverage
 flake8
 numpy
@@ -27,6 +33,3 @@ isort
 gitpython==3.1.31
 pytest
 pytest-mock
-tweepy
-SpeechRecognition
-python-telegram-bot
