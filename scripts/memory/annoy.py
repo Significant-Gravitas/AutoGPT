@@ -38,6 +38,9 @@ class AnnoyMemory(MemoryProviderSingleton):
             self.metadata = []
 
             # Ensure the directory for the index file and metadata file exists
+            index_dir = os.path.dirname(self.index_file)
+            if index_dir:
+                os.makedirs(index_dir, exist_ok=True)
             self.ensure_directory_exists_and_save_metadata()
 
             # Register save_on_exit function to be called when the program is closing
@@ -63,11 +66,8 @@ class AnnoyMemory(MemoryProviderSingleton):
 
     def ensure_directory_exists_and_save_metadata(self):
         """
-        Ensure the directories for the index file and metadata file exist, and save the metadata.
+        Ensure the directories for the metadata file exist, and save the metadata.
         """
-        index_dir = os.path.dirname(self.index_file)
-        if index_dir:
-            os.makedirs(index_dir, exist_ok=True)
         metadata_dir = os.path.dirname(self.metadata_file)
         if metadata_dir:
             os.makedirs(metadata_dir, exist_ok=True)
