@@ -48,7 +48,7 @@ body:
   - type: textarea
     attributes:
       label: Expected behavior 🤔
-      description: Describe what should happen.
+      description: Describe what should happen. /
   - type: textarea
     attributes:
       label: Your prompt 📝
