@@ -83,9 +83,9 @@ def get_prompt() -> str:
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
-        ("Query a PostgresSql database (must limit query to 25 result !)", "sql_query", {"database_name": "<database_name>", "sql_query": "<sql_query>"}),
-        ("Query the list of table names in the specified database", "database_table_names", {"database_name": "<database_name>"}),
-        ("Query the list of column names from a table in the specified database", "database_table_column_names", {"database_name": "<database_name>", "table": "<table>"}),
+        ("Query an external PostgresSql database (must limit query to 25 results !)", "sql_query", {"database_name": "<database_name>", "sql_query": "<sql_query>"}),
+        ("List of table names in the specified external database", "database_table_names", {"database_name": "<database_name>"}),
+        ("List of column names from a table in the specified external database", "database_table_column_names", {"database_name": "<database_name>", "table": "<table>"}),
         ("List of external databases available for connexion with sql_query command", "available_databases", {}),
     ]
 
