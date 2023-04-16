@@ -40,7 +40,9 @@ class Config(metaclass=Singleton):
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
-
+        self.working_directory_restricted = (
+            os.getenv("WORKING_DIRECTORY_RESTRICTED", "True") == "True"
+        )
         if self.use_azure:
             self.load_azure_config()
             openai.api_type = self.openai_api_type

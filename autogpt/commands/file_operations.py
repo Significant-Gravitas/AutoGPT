@@ -3,7 +3,8 @@ import os
 import os.path
 from pathlib import Path
 from typing import Generator, List
-
+from autogpt.config import Config
+CFG = Config()
 # Set a dedicated folder for file I/O
 WORKING_DIRECTORY = Path(os.getcwd()) / "auto_gpt_workspace"
 
@@ -58,13 +59,13 @@ def safe_join(base: str, *paths) -> str:
     Returns:
         str: The joined path
     """
-    new_path = os.path.join("/", *paths)
-    norm_new_path = os.path.normpath(new_path)
-
-    #if os.path.commonprefix([base, norm_new_path]) != base:
-    #    raise ValueError("Attempted to access outside of working directory.")
-
-    return norm_new_path
+    if CFG.working_directory_restricted:
+        new_path = os.path.normpath(os.path.join(base, *paths))
+        if os.path.commonprefix([base, new_path]) != base:
+            raise ValueError("Attempted to access outside of working directory.")
+    else:
+        new_path = os.path.normpath(os.path.join("/", *paths))
+    return new_path
 
 
 def split_file(
