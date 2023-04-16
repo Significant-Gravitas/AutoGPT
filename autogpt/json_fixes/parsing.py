@@ -4,6 +4,8 @@ import contextlib
 import json
 from typing import Any, Dict, Union
 
+import regex
+
 from autogpt.config import Config
 from autogpt.json_fixes.auto_fix import fix_json
 from autogpt.json_fixes.bracket_termination import balance_braces
@@ -45,6 +47,7 @@ def correct_json(json_to_load: str) -> str:
     try:
         if CFG.debug_mode:
             print("json", json_to_load)
+            
         json.loads(json_to_load)
         return json_to_load
     except json.JSONDecodeError as e:
@@ -85,6 +88,8 @@ def fix_and_parse_json(
 
     with contextlib.suppress(json.JSONDecodeError):
         json_to_load = json_to_load.replace("\t", "")
+        pattern = regex.compile(",\\n *}") # 80% of the returned json has commas after the last element of an array that disqualifies it as valid json.
+        json_to_load = pattern.sub(" }", json_to_load)
         return json.loads(json_to_load)
 
     with contextlib.suppress(json.JSONDecodeError):

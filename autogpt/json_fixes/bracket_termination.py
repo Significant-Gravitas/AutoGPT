@@ -11,6 +11,20 @@ from autogpt.speech import say_text
 
 CFG = Config()
 
+def contains_json(json_string: str):
+    json_pattern = regex.compile(r"\{(?:[^{}]|(?R))*\}")
+    json_match = json_pattern.search(json_string)
+    if json_match:
+         return (True, json_match.group(0))
+    else:
+        return (False, None)
+
+def is_valid_json(string):
+    try:
+        json.loads(string)
+        return True
+    except ValueError:
+        return False
 
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
     if CFG.speak_mode and CFG.debug_mode:
@@ -21,20 +35,25 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
     logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
 
     try:
-        json_pattern = regex.compile(r"\{(?:[^{}]|(?R))*\}")
-        json_match = json_pattern.search(json_string)
-
-        if json_match:
+        is_contains_json, the_json = contains_json(json_string)
+        if is_contains_json and is_valid_json(the_json):
             # Extract the valid JSON object from the string
-            json_string = json_match.group(0)
+            json_string = the_json
             logger.typewriter_log(
                 title="Apparently json was fixed.", title_color=Fore.GREEN
             )
             if CFG.speak_mode and CFG.debug_mode:
                 say_text("Apparently json was fixed.")
-        else:
-            raise ValueError("No valid JSON object found")
 
+        elif contains_json:
+            pattern = regex.compile(",\\n *}") # 80% of the returned json has commas after the last element of an array that disqualifies it as valid json.
+            json_string = pattern.sub(" }", the_json)
+            
+        else:
+            if CFG.speak_mode and CFG.debug_mode:
+                say_text("No valid JSON object found")
+            raise ValueError("No valid JSON object found")
+        
     except (json.JSONDecodeError, ValueError):
         if CFG.debug_mode:
             logger.error(f"Error: Invalid JSON: {json_string}\n")

@@ -5,6 +5,8 @@ from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
 from autogpt.json_fixes.bracket_termination import (
     attempt_to_fix_json_by_finding_outermost_brackets,
+    is_valid_json,
+    contains_json,
 )
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
@@ -75,8 +77,11 @@ class Agent:
 
             # Get command name and arguments
             try:
+                if not contains_json(assistant_reply) or not is_valid_json(assistant_reply):
+                    assistant_reply = attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
+
                 command_name, arguments = get_command(
-                    attempt_to_fix_json_by_finding_outermost_brackets(assistant_reply)
+                    assistant_reply
                 )
                 if cfg.speak_mode:
                     say_text(f"I want to execute {command_name}")
