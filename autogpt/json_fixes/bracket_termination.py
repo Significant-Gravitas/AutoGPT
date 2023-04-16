@@ -41,7 +41,7 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
         if CFG.speak_mode:
             say_text("Didn't work. I will have to ignore this response then.")
         logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
-        json_string = {}
+        json_string = "{}"
 
     return json_string
 
