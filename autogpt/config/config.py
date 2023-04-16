@@ -92,6 +92,12 @@ class Config(metaclass=Singleton):
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
+
+        self.twitter_consumer_key = os.environ.get("TW_CONSUMER_KEY")
+        self.twitter_consumer_secret= os.environ.get("TW_CONSUMER_SECRET")
+        self.twitter_access_token= os.environ.get("TW_ACCESS_TOKEN")
+        self.twitter_access_token_secret= os.environ.get("TW_ACCESS_TOKEN_SECRET")
+
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
