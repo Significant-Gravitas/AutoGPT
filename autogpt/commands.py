@@ -1,12 +1,12 @@
-import json
 import datetime
-import autogpt.agent_manager as agents
-from autogpt.config import Config
-from autogpt.json_parser import fix_and_parse_json
-from autogpt.image_gen import generate_image
+import json
+
 from duckduckgo_search import ddg
+
+import autogpt.agent_manager as agents
 from autogpt.ai_functions import evaluate_code, improve_code, write_tests
 from autogpt.browse import scrape_links, scrape_text, summarize_text
+from autogpt.config import Config
 from autogpt.execute_code import execute_python_file, execute_shell
 from autogpt.file_operations import (
     append_to_file,
@@ -15,10 +15,11 @@ from autogpt.file_operations import (
     search_files,
     write_to_file,
 )
+from autogpt.image_gen import generate_image
+from autogpt.json_parser import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.speak import say_text
 from autogpt.web import browse_website
-
 
 cfg = Config()
 

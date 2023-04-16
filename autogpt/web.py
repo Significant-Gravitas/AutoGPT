@@ -1,13 +1,15 @@
-from selenium import webdriver
-import autogpt.summary as summary
-from bs4 import BeautifulSoup
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.options import Options
 import logging
 from pathlib import Path
+
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
+
+import autogpt.summary as summary
 from autogpt.config import Config
 
 file_dir = Path(__file__).parent
@@ -32,7 +34,8 @@ def scrape_text_with_selenium(url):
 
     options = Options()
     options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/112.0.5615.49 Safari/537.36"
     )
     driver = webdriver.Chrome(
         executable_path=ChromeDriverManager().install(), options=options

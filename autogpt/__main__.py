@@ -5,9 +5,8 @@ import traceback
 
 from colorama import Fore, Style
 
-from autogpt import chat
+from autogpt import chat, speak, utils
 from autogpt import commands as cmd
-from autogpt import speak, utils
 from autogpt.ai_config import AIConfig
 from autogpt.config import Config
 from autogpt.json_parser import fix_and_parse_json
@@ -56,7 +55,7 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string):
         else:
             raise ValueError("No valid JSON object found")
 
-    except (json.JSONDecodeError, ValueError) as e:
+    except (json.JSONDecodeError, ValueError):
         if cfg.debug_mode:
             logger.error("Error: Invalid JSON: %s\n", json_string)
         if cfg.speak_mode:
@@ -75,7 +74,7 @@ def print_assistant_thoughts(assistant_reply):
         try:
             # Parse and print Assistant response
             assistant_reply_json = fix_and_parse_json(assistant_reply)
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
             assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
                 assistant_reply
@@ -87,7 +86,7 @@ def print_assistant_thoughts(assistant_reply):
         if isinstance(assistant_reply_json, str):
             try:
                 assistant_reply_json = json.loads(assistant_reply_json)
-            except json.JSONDecodeError as e:
+            except json.JSONDecodeError:
                 logger.error("Error: Invalid JSON\n", assistant_reply)
                 assistant_reply_json = (
                     attempt_to_fix_json_by_finding_outermost_brackets(
@@ -335,7 +334,7 @@ def parse_arguments():
     if args.memory_type:
         supported_memory = get_supported_memory_backends()
         chosen = args.memory_type
-        if not chosen in supported_memory:
+        if chosen not in supported_memory:
             logger.typewriter_log(
                 "ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ",
                 Fore.RED,

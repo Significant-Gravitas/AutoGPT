@@ -1,14 +1,12 @@
 import os
-
-import requests
-from playsound import playsound
-
-from autogpt.config import Config
-
 import threading
 from threading import Lock, Semaphore
 
 import gtts
+import requests
+from playsound import playsound
+
+from autogpt.config import Config
 
 cfg = Config()
 

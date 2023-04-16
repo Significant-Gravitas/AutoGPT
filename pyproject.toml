@@ -9,3 +9,40 @@ line-length = 88
 target-version = ['py310']
 include = '\.pyi?$'
 extend-exclude = ""
+
+[tool.ruff]
+select = ["E", "F", "I"]
+ignore = []
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["I"]
+unfixable = []
+
+# Same as Black.
+line-length = 120
+target-version = "py310"
+
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    "tests",  # Ignore tests for now as it has a lot of line length violations.
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]

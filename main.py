@@ -1,1 +1,1 @@
-from autogpt import main
+from autogpt import main  # noqa

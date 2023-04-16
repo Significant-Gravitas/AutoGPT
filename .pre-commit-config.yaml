@@ -14,20 +14,10 @@ repos:
       - id: check-merge-conflict
       - id: check-symlinks
       - id: debug-statements
-    
-  - repo: local
+
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    # Ruff version.
+    rev: 'v0.0.261'
     hooks:
-      - id: isort
-        name: isort-local
-        entry: isort
-        language: python
-        types: [ python ]
-        exclude: .+/(dist|.venv|venv|build)/.+
-        pass_filenames: true
-      - id: black
-        name: black-local
-        entry: black
-        language: python
-        types: [ python ]
-        exclude: .+/(dist|.venv|venv|build)/.+
-        pass_filenames: true
+      - id: ruff
+        args: [ '--fix' ]

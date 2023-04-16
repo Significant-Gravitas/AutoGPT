@@ -87,7 +87,8 @@ def main() -> None:
             print(f"Error while ingesting directory '{args.dir}': {str(e)}")
     else:
         print(
-            "Please provide either a file path (--file) or a directory name (--dir) inside the auto_gpt_workspace directory as input."
+            "Please provide either a file path (--file) or a directory name (--dir) "
+            "inside the auto_gpt_workspace directory as input."
         )
 
 

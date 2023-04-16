@@ -1,11 +1,11 @@
 import json
-import regex
 import traceback
 
+import regex
 from colorama import Fore, Style
 
-from autogpt.chat import chat_with_ai, create_chat_message
 import autogpt.commands as cmd
+from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
 from autogpt.json_parser import fix_and_parse_json
 from autogpt.logger import logger

@@ -1,5 +1,6 @@
 import os
 from typing import Type
+
 import yaml
 
 from autogpt.prompt import get_prompt

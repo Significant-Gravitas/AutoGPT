@@ -30,9 +30,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Lint with flake8
-      continue-on-error: false
-      run: flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
+    - name: Run Ruff
+      uses: chartboost/ruff-action@v1
+      with:
+        version: 0.0.261
 
     - name: Run unittest tests with coverage
       run: |
