@@ -1,6 +1,4 @@
 """Selenium web scraping module."""
-from __future__ import annotations
-
 from selenium import webdriver
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 import autogpt.processing.text as summary
@@ -14,15 +12,17 @@ from webdriver_manager.firefox import GeckoDriverManager
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.safari.options import Options as SafariOptions
+from selenium.webdriver.edge.options import Options as EdgeOptions
 import logging
 from pathlib import Path
 from autogpt.config import Config
+from typing import List, Tuple, Union
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
 
 
-def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
+def browse_website(url: str, question: str) -> Tuple[str, WebDriver]:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -44,7 +44,7 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     return f"Answer gathered from website: {summary_text} \n \n Links: {links}", driver
 
 
-def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
+def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
     """Scrape text from a website using selenium
 
     Args:
@@ -59,6 +59,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         "chrome": ChromeOptions,
         "safari": SafariOptions,
         "firefox": FirefoxOptions,
+        "edge": EdgeOptions,
     }
 
     options = options_available[CFG.selenium_web_browser]()
@@ -74,6 +75,8 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         # Requires a bit more setup on the users end
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
+    elif CFG.selenium_web_browser == "edge":
+        driver = webdriver.Edge(options=options)
     else:
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
@@ -98,7 +101,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     return driver, text
 
 
-def scrape_links_with_selenium(driver: WebDriver, url: str) -> list[str]:
+def scrape_links_with_selenium(driver: WebDriver, url: str) -> List[str]:
     """Scrape links from a website using selenium
 
     Args:
