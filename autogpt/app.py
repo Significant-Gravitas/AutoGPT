@@ -18,7 +18,7 @@ from autogpt.commands.file_operations import (
     search_files,
     write_to_file,
 )
-from autogpt.json_fixes.parsing import fix_and_parse_json
+from autogpt.json_utils.auto_fix import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text

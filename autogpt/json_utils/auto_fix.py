@@ -1,20 +1,19 @@
-"""Fix and parse JSON strings."""
+"""This module contains the function to fix JSON strings"""
 from __future__ import annotations
 
 import contextlib
 import json
-from typing import Any, Dict, Union
+import re
+from typing import Optional, Dict, Any
+
 from colorama import Fore
 from regex import regex
-from autogpt.config import Config
-from autogpt.json_fixes.auto_fix import fix_json
-from autogpt.json_fixes.bracket_termination import balance_braces
-from autogpt.json_fixes.escaping import fix_invalid_escape
-from autogpt.json_fixes.missing_quotes import add_quotes_to_property_names
+
+from autogpt.json_utils.utilities import extract_char_position
+from autogpt.llm_utils import call_ai_function
 from autogpt.logs import logger
 from autogpt.speech import say_text
-
-CFG = Config()
+from autogpt.config import Config
 
 JSON_SCHEMA = """
 {
@@ -34,6 +33,157 @@ JSON_SCHEMA = """
     }
 }
 """
+
+CFG = Config()
+
+
+def auto_fix_json(json_string: str, schema: str) -> str:
+    """Fix the given JSON string to make it parseable and fully compliant with
+        the provided schema using GPT-3.
+
+    Args:
+        json_string (str): The JSON string to fix.
+        schema (str): The schema to use to fix the JSON.
+    Returns:
+        str: The fixed JSON string.
+    """
+    # Try to fix the JSON using GPT:
+    function_string = "def fix_json(json_string: str, schema:str=None) -> str:"
+    args = [f"'''{json_string}'''", f"'''{schema}'''"]
+    description_string = (
+        "This function takes a JSON string and ensures that it"
+        " is parseable and fully compliant with the provided schema. If an object"
+        " or field specified in the schema isn't contained within the correct JSON,"
+        " it is omitted. The function also escapes any double quotes within JSON"
+        " string values to ensure that they are valid. If the JSON string contains"
+        " any None or NaN values, they are replaced with null before being parsed."
+    )
+
+    # If it doesn't already start with a "`", add one:
+    if not json_string.startswith("`"):
+        json_string = "```json\n" + json_string + "\n```"
+    result_string = call_ai_function(
+        function_string, args, description_string, model=CFG.fast_llm_model
+    )
+    logger.debug("------------ JSON FIX ATTEMPT ---------------")
+    logger.debug(f"Original JSON: {json_string}")
+    logger.debug("-----------")
+    logger.debug(f"Fixed JSON: {result_string}")
+    logger.debug("----------- END OF FIX ATTEMPT ----------------")
+
+    try:
+        json.loads(result_string)  # just check the validity
+        return result_string
+    except json.JSONDecodeError:  # noqa: E722
+        # Get the call stack:
+        # import traceback
+        # call_stack = traceback.format_exc()
+        # print(f"Failed to fix JSON: '{json_string}' "+call_stack)
+        return "failed"
+
+
+def fix_invalid_escape(json_to_load: str, error_message: str) -> str:
+    """Fix invalid escape sequences in JSON strings.
+
+    Args:
+        json_to_load (str): The JSON string.
+        error_message (str): The error message from the JSONDecodeError
+          exception.
+
+    Returns:
+        str: The JSON string with invalid escape sequences fixed.
+    """
+    while error_message.startswith("Invalid \\escape"):
+        bad_escape_location = extract_char_position(error_message)
+        json_to_load = (
+                json_to_load[:bad_escape_location] + json_to_load[bad_escape_location + 1:]
+        )
+        try:
+            json.loads(json_to_load)
+            return json_to_load
+        except json.JSONDecodeError as e:
+            if CFG.debug_mode:
+                print("json loads error - fix invalid escape", e)
+            error_message = str(e)
+    return json_to_load
+
+
+def balance_braces(json_string: str) -> Optional[str]:
+    """
+    Balance the braces in a JSON string.
+
+    Args:
+        json_string (str): The JSON string.
+
+    Returns:
+        str: The JSON string with braces balanced.
+    """
+
+    open_braces_count = json_string.count("{")
+    close_braces_count = json_string.count("}")
+
+    while open_braces_count > close_braces_count:
+        json_string += "}"
+        close_braces_count += 1
+
+    while close_braces_count > open_braces_count:
+        json_string = json_string.rstrip("}")
+        close_braces_count -= 1
+
+    with contextlib.suppress(json.JSONDecodeError):
+        json.loads(json_string)
+        return json_string
+
+
+def add_quotes_to_property_names(json_string: str) -> str:
+    """
+    Add quotes to property names in a JSON string.
+
+    Args:
+        json_string (str): The JSON string.
+
+    Returns:
+        str: The JSON string with quotes added to property names.
+    """
+
+    def replace_func(match: re.Match) -> str:
+        return f'"{match[1]}":'
+
+    property_name_pattern = re.compile(r"(\w+):")
+    corrected_json_string = property_name_pattern.sub(replace_func, json_string)
+
+    try:
+        json.loads(corrected_json_string)
+        return corrected_json_string
+    except json.JSONDecodeError as e:
+        raise e
+
+
+def fix_json_using_multiple_techniques(assistant_reply: str) -> Dict[Any, Any]:
+    """Fix the given JSON string to make it parseable and fully compliant with two techniques.
+
+    Args:
+        json_string (str): The JSON string to fix.
+
+    Returns:
+        str: The fixed JSON string.
+    """
+
+    # Parse and print Assistant response
+    assistant_reply_json = fix_and_parse_json(assistant_reply)
+    if assistant_reply_json == {}:
+        assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
+            assistant_reply
+        )
+
+    if assistant_reply_json != {}:
+        return assistant_reply_json
+
+    logger.error("Error: The following AI output couldn't be converted to a JSON:\n", assistant_reply)
+    if CFG.speak_mode:
+        say_text("I have received an invalid JSON response from the OpenAI API.")
+
+    return {}
 
 
 def correct_json(json_to_load: str) -> str:
@@ -134,7 +284,7 @@ def try_ai_fix(
             " slightly."
         )
     # Now try to fix this up using the ai_functions
-    ai_fixed_json = fix_json(json_to_load, JSON_SCHEMA)
+    ai_fixed_json = auto_fix_json(json_to_load, JSON_SCHEMA)
 
     if ai_fixed_json != "failed":
         return json.loads(ai_fixed_json)
