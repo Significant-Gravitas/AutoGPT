@@ -58,7 +58,10 @@ class AgentManager(metaclass=Singleton):
 
         self.agents[key] = (task, messages, model)
 
-        return key, plugins_reply
+        for plugin in self.cfg.plugins:
+            agent_reply = plugin.post_instruction(agent_reply)
+
+        return key, agent_reply
 
     def message_agent(self, key: Union[str, int], message: str) -> str:
         """Send a message to an agent and return its response
@@ -98,7 +101,10 @@ class AgentManager(metaclass=Singleton):
         if plugins_reply and plugins_reply != "":
             messages.append({"role": "assistant", "content": plugins_reply})
 
-        return plugins_reply
+        for plugin in self.cfg.plugins:
+            agent_reply = plugin.post_instruction(agent_reply)
+
+        return agent_reply
 
     def list_agents(self) -> List[Tuple[Union[str, int], str]]:
         """Return a list of all agents
