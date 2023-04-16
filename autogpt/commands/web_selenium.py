@@ -75,6 +75,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
     else:
+        options.add_argument("--no-sandbox")
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
