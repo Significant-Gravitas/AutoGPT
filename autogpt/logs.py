@@ -75,7 +75,7 @@ class Logger(metaclass=Singleton):
         self.logger.setLevel(logging.DEBUG)
 
     def typewriter_log(
-        self, title="", title_color="", content="", speak_text=False, level=logging.INFO
+            self, title="", title_color="", content="", speak_text=False, level=logging.INFO
     ):
         if speak_text and CFG.speak_mode:
             say_text(f"{title}. {content}")
@@ -91,18 +91,18 @@ class Logger(metaclass=Singleton):
         )
 
     def debug(
-        self,
-        message,
-        title="",
-        title_color="",
+            self,
+            message,
+            title="",
+            title_color="",
     ):
         self._log(title, title_color, message, logging.DEBUG)
 
     def warn(
-        self,
-        message,
-        title="",
-        title_color="",
+            self,
+            message,
+            title="",
+            title_color="",
     ):
         self._log(title, title_color, message, logging.WARN)
 
@@ -176,10 +176,10 @@ class AutoGptFormatter(logging.Formatter):
     def format(self, record: LogRecord) -> str:
         if hasattr(record, "color"):
             record.title_color = (
-                getattr(record, "color")
-                + getattr(record, "title")
-                + " "
-                + Style.RESET_ALL
+                    getattr(record, "color")
+                    + getattr(record, "title")
+                    + " "
+                    + Style.RESET_ALL
             )
         else:
             record.title_color = getattr(record, "title")
@@ -288,6 +288,7 @@ def print_assistant_thoughts(ai_name, assistant_reply):
     except Exception:
         call_stack = traceback.format_exc()
         logger.error("Error: \n", call_stack)
+
 
 def print_assistant_thoughts(ai_name: object, assistant_reply_json_valid: object) -> None:
     assistant_thoughts_reasoning = None
