@@ -1,10 +1,11 @@
+import json
 import os
 import sys
 import unittest
 from typing import cast
 
-import json
 from llama_index import GPTSimpleVectorIndex
+
 from autogpt.memory.llama_index import LlamaIndexMemory
 
 
@@ -30,7 +31,6 @@ class TestLlamaIndexMemory(unittest.TestCase):
         json.dump(query_kwargs, open(self.cfg.llamaindex_query_kwargs_path, "w"))
 
         self.memory = LlamaIndexMemory(self.cfg)
-        
 
     def test_add(self):
         text = "Sample text"
@@ -71,7 +71,6 @@ class TestLlamaIndexMemory(unittest.TestCase):
     def tearDown(self):
         os.remove(self.cfg.llamaindex_json_path)
         os.remove(self.cfg.llamaindex_query_kwargs_path)
-        
 
 
 if __name__ == "__main__":

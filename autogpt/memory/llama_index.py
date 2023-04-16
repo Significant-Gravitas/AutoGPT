@@ -1,14 +1,14 @@
 """LlamaIndex memory storage provider."""
-from llama_index.indices.vector_store.base import GPTVectorStoreIndex
-from llama_index.data_structs.node_v2 import Node, DocumentRelationship
-from llama_index.indices.registry import INDEX_STRUCT_TYPE_TO_INDEX_CLASS
-from typing import List, cast
 import json
 import uuid
+from typing import List, cast
 
-from autogpt.memory.base import MemoryProviderSingleton
-from autogpt.memory.base import get_ada_embedding
+from llama_index.data_structs.node_v2 import DocumentRelationship, Node
+from llama_index.indices.registry import INDEX_STRUCT_TYPE_TO_INDEX_CLASS
+from llama_index.indices.vector_store.base import GPTVectorStoreIndex
+
 from autogpt.config import Config
+from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 
 class LlamaIndexMemory(MemoryProviderSingleton):
@@ -35,10 +35,10 @@ class LlamaIndexMemory(MemoryProviderSingleton):
         self._index = cast(GPTVectorStoreIndex, index)
 
         if cfg.llamaindex_query_kwargs_path:
-            query_kwargs = json.load(open(cfg.llamaindex_query_kwargs_path, 'r'))
+            query_kwargs = json.load(open(cfg.llamaindex_query_kwargs_path, "r"))
         else:
             query_kwargs = {}
-            
+
         self._query_kwargs = query_kwargs
 
         self._node_ids = []
@@ -56,10 +56,10 @@ class LlamaIndexMemory(MemoryProviderSingleton):
         doc_id = str(uuid.uuid4())
         # NOTE: set a fixed ref_doc_id for now to get it working
         node = Node(
-            data, 
+            data,
             doc_id=doc_id,
-            embedding=get_ada_embedding(data), 
-            relationships={DocumentRelationship.SOURCE: doc_id}
+            embedding=get_ada_embedding(data),
+            relationships={DocumentRelationship.SOURCE: doc_id},
         )
         node_id = node.get_doc_id()
 
@@ -80,8 +80,8 @@ class LlamaIndexMemory(MemoryProviderSingleton):
         self._query_kwargs.update({"similarity_top_k": num_relevant})
 
         response = self._index.query(
-            data, 
-            mode="default", 
+            data,
+            mode="default",
             response_mode="no_text",
             **self._query_kwargs,
         )
@@ -99,14 +99,10 @@ class LlamaIndexMemory(MemoryProviderSingleton):
         self._node_ids = []
 
         return "Index cleared."
-        
 
     def get_stats(self) -> str:
         """
         Returns: The stats of the index.
 
         """
-        return (
-            "Number of nodes "
-            f"(if using in-memory index): {len(self._node_ids)}"
-        )
+        return "Number of nodes " f"(if using in-memory index): {len(self._node_ids)}"
