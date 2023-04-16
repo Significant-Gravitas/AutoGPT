@@ -10,7 +10,7 @@ try:
 
     supported_memory.append("redis")
 except ImportError:
-    print("Redis not installed. Skipping import.")
+    # print("Redis not installed. Skipping import.")
     RedisMemory = None
 
 try:
@@ -18,19 +18,19 @@ try:
 
     supported_memory.append("pinecone")
 except ImportError:
-    print("Pinecone not installed. Skipping import.")
+    # print("Pinecone not installed. Skipping import.")
     PineconeMemory = None
 
 try:
     from autogpt.memory.weaviate import WeaviateMemory
 except ImportError:
-    print("Weaviate not installed. Skipping import.")
+    # print("Weaviate not installed. Skipping import.")
     WeaviateMemory = None
 
 try:
     from autogpt.memory.milvus import MilvusMemory
 except ImportError:
-    print("pymilvus not installed. Skipping import.")
+    # print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
 
 
