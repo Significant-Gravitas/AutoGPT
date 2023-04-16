@@ -2,7 +2,10 @@
 import os
 from colorama import Fore
 
-from autogpt.config.singleton import Singleton
+try:
+    from autogpt.config.singleton import Singleton
+except:
+    from config.singleton import Singleton
 
 import openai
 import yaml

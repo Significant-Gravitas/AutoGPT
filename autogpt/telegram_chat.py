@@ -1,7 +1,8 @@
 import asyncio
-from queue import Queue
-
-from autogpt.config.config import Config
+try:
+    from autogpt.config.config import Config
+except ModuleNotFoundError:
+    from config import Config
 from telegram import Bot, Update
 from telegram.ext import CallbackContext, MessageHandler, filters
 import asyncio
@@ -15,20 +16,6 @@ def is_authorized_user(update: Update):
     return update.effective_user.id == int(cfg.telegram_chat_id)
 
 
-async def delete_old_messages():
-    bot = TelegramUtils.get_bot()
-    updates = await bot.get_updates(offset=0)
-    count = 0
-    for update in updates:
-        try:
-            print("Deleting message: " + update.message.text + " " + str(update.message.message_id))
-            await bot.delete_message(chat_id=update.message.chat.id, message_id=update.message.message_id)
-        except Exception as e:
-            print(f"Error while deleting message: {e} \n update: {update} \n {traceback.format_exc()}")
-        count += 1
-    if (count > 0):
-        print("Cleaned up old messages.")
-
 
 def handle_response(update: Update, context: CallbackContext):
     try:
@@ -41,6 +28,21 @@ def handle_response(update: Update, context: CallbackContext):
 
 
 class TelegramUtils:
+    @staticmethod
+    async def delete_old_messages():
+        bot = TelegramUtils.get_bot()
+        updates = await bot.get_updates(offset=0)
+        count = 0
+        for update in updates:
+            try:
+                print("Deleting message: " + update.message.text + " " + str(update.message.message_id))
+                await bot.delete_message(chat_id=update.message.chat.id, message_id=update.message.message_id)
+            except Exception as e:
+                print(f"Error while deleting message: {e} \n update: {update} \n {traceback.format_exc()}")
+            count += 1
+        if (count > 0):
+            print("Cleaned up old messages.")
+            
     @staticmethod
     def get_bot():
         bot_token = cfg.telegram_api_key
