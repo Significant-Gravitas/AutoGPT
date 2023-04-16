@@ -66,12 +66,25 @@ class Config(metaclass=Singleton):
         self.pinecone_api_key = getenv("PINECONE_API_KEY")
         self.pinecone_region = getenv("PINECONE_ENV")
 
+        self.weaviate_host  = getenv("WEAVIATE_HOST")
+        self.weaviate_port = getenv("WEAVIATE_PORT")
+        self.weaviate_protocol = getenv("WEAVIATE_PROTOCOL", "http")
+        self.weaviate_username = getenv("WEAVIATE_USERNAME", None)
+        self.weaviate_password = getenv("WEAVIATE_PASSWORD", None)
+        self.weaviate_scopes = getenv("WEAVIATE_SCOPES", None)
+        self.weaviate_embedded_path = getenv("WEAVIATE_EMBEDDED_PATH")
+        self.weaviate_api_key = getenv("WEAVIATE_API_KEY", None)
+        self.use_weaviate_embedded = getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
+
         # milvus configuration, e.g., localhost:19530.
         self.milvus_addr = getenv("MILVUS_ADDR", "localhost:19530")
         self.milvus_collection = getenv("MILVUS_COLLECTION", "autogpt")
 
         self.image_provider = getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = getenv("HUGGINGFACE_API_TOKEN")
+        self.huggingface_audio_to_text_model = getenv(
+            "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
+        )
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if
