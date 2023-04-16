@@ -22,7 +22,11 @@ FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
 
 
-@command("browse_website", "Browse Website", '"url": "<url>", "question": "<what_you_want_to_find_on_website>"')
+@command(
+    "browse_website",
+    "Browse Website",
+    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+)
 def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     """Browse a website and return the answer and links to the user
 
