@@ -3,6 +3,18 @@ from colorama import Fore, Style
 from autogpt import utils
 from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
+from yaml import load, FullLoader
+from os import path
+
+def log_ai_config(config_params) -> None:
+    """Log the AI config to the console
+
+    Args:
+        config_params (dict): The AI config parameters
+    """
+    logger.typewriter_log("Name :", Fore.GREEN, config_params["ai_name"])
+    logger.typewriter_log("Role :", Fore.GREEN, config_params["ai_role"])
+    logger.typewriter_log("Goals:", Fore.GREEN, f"{config_params['ai_goals']}")
 
 
 def prompt_user() -> AIConfig:
@@ -12,6 +24,18 @@ def prompt_user() -> AIConfig:
         AIConfig: The AIConfig object containing the user's input
     """
     ai_name = ""
+    # Load the default config
+    if path.exists("autogpt/config/initial.yaml"):
+        with open("autogpt/config/initial.yaml", encoding="utf-8") as file:
+            config_params = load(file, Loader=FullLoader)
+            ai_name = config_params["ai_name"]
+            ai_role = config_params["ai_role"]
+            ai_goals = config_params["ai_goals"]
+            log_ai_config(config_params)
+            return AIConfig(ai_name, ai_role, ai_goals)
+    else:
+        logger.typewriter_log("No default config found. Please enter the details below.")
+    
     # Construct the prompt
     logger.typewriter_log(
         "Welcome to Auto-GPT! ",
