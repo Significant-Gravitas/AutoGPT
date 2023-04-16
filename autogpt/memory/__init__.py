@@ -28,6 +28,14 @@ except ImportError:
     MilvusMemory = None
 
 
+try:
+    from autogpt.memory.llama_index import LlamaIndexMemory
+    supported_memory.append("llama_index")
+except ImportError:
+    print("llama-index not installed. Skipping import.")
+    LlamaIndexMemory = None
+
+
 def get_memory(cfg, init=False):
     memory = None
     if cfg.memory_backend == "pinecone":
@@ -56,6 +64,14 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "llama_index":
+        if not LlamaIndexMemory:
+            print(
+                "Error: Llama Index is not installed. Please install llama-index"
+                " to use Llama Index as a memory backend."
+            )
+        else:
+            memory = LlamaIndexMemory(cfg)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 

@@ -70,6 +70,17 @@ class Config(metaclass=Singleton):
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
 
+        # llamaindex configuration
+        self.llamaindex_json_path = os.getenv(
+            "LLAMAINDEX_JSON_PATH"
+        )
+        self.llamaindex_struct_type = os.getenv(
+            "LLAMAINDEX_STRUCT_TYPE"
+        )
+        self.llamaindex_query_kwargs_path = os.getenv(
+            "LLAMA_QUERY_KWARGS_PATH"
+        )
+
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
         self.huggingface_audio_to_text_model = os.getenv(
