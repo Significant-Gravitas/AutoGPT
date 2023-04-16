@@ -90,7 +90,9 @@ class AIConfig:
         with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
 
-    def construct_full_prompt(self, prompt_generator: Optional[PromptGenerator] = None) -> str:
+    def construct_full_prompt(
+        self, prompt_generator: Optional[PromptGenerator] = None
+    ) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
 
@@ -111,18 +113,20 @@ class AIConfig:
 
         from autogpt.prompts.prompt import build_default_prompt_generator
         from autogpt.config import Config
+
         cfg = Config()
-        # Construct full prompt
-        full_prompt = (
-            f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
-        )
-        for i, goal in enumerate(self.ai_goals):
-            full_prompt += f"{i+1}. {goal}\n"
         if prompt_generator is None:
             prompt_generator = build_default_prompt_generator()
         prompt_generator.goals = self.ai_goals
+        prompt_generator.name = self.ai_name
+        prompt_generator.role = self.ai_role
         for plugin in cfg.plugins:
             prompt_generator = plugin.post_prompt(prompt_generator)
+
+        # Construct full prompt
+        full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
+        for i, goal in enumerate(self.ai_goals):
+            full_prompt += f"{i+1}. {goal}\n"
         self.prompt_generator = prompt_generator
         full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
         return full_prompt
