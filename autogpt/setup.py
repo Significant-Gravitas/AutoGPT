@@ -6,6 +6,7 @@ from autogpt.logs import logger
 from yaml import load, FullLoader
 from os import path
 
+
 def log_ai_config(config_params) -> None:
     """Log the AI config to the console
 
