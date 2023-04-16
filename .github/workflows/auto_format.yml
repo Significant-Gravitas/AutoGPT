@@ -18,6 +18,6 @@ jobs:
       - name: Push changes
         if: steps.git-check.outputs.modified == 'true'
         run: |
-          git config --global user.name 'Torantulino'
+          git config --global user.name 'Significant-Gravitas'
           git config --global user.email 'toran.richards@gmail.com'
           git remote set

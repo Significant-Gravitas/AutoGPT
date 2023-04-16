@@ -56,7 +56,7 @@ class RedisMemory(MemoryProviderSingleton):
             logger.double_check(
                 "Please ensure you have setup and configured Redis properly for use. "
                 + f"You can check out {Fore.CYAN + Style.BRIGHT}"
-                f"https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL}"
+                f"https://github.com/Significant-Gravitas/Auto-GPT#redis-setup{Style.RESET_ALL}"
                 " to ensure you've set up everything correctly."
             )
             exit(1)
