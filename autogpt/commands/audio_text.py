@@ -23,7 +23,9 @@ def read_audio(audio):
     headers = {"Authorization": f"Bearer {api_token}"}
 
     if api_token is None:
-        raise ValueError("You need to set your Hugging Face API token in the config file.")
+        raise ValueError(
+            "You need to set your Hugging Face API token in the config file."
+        )
 
     response = requests.post(
         api_url,
@@ -31,5 +33,5 @@ def read_audio(audio):
         data=audio,
     )
 
-    text = json.loads(response.content.decode("utf-8"))['text']
+    text = json.loads(response.content.decode("utf-8"))["text"]
     return "The audio says: " + text

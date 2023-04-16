@@ -186,7 +186,7 @@ def execute_command(command_name: str, arguments):
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
         elif command_name == "send_tweet":
-            return send_tweet(arguments['text'])
+            return send_tweet(arguments["text"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":

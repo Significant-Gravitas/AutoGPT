@@ -2,15 +2,14 @@ from colorama import Fore
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.logs import logger
-from autogpt.promptgenerator import PromptGenerator
-from autogpt.config import Config
+from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
 CFG = Config()
 
 
-def get_prompt() -> str:
+def build_default_prompt_generator() -> PromptGenerator:
     """
     This function generates a prompt string that includes various constraints,
         commands, resources, and performance evaluations.
@@ -18,9 +17,6 @@ def get_prompt() -> str:
     Returns:
         str: The generated prompt string.
     """
-
-    # Initialize the Config object
-    cfg = Config()
 
     # Initialize the PromptGenerator object
     prompt_generator = PromptGenerator()
@@ -84,11 +80,10 @@ def get_prompt() -> str:
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
         ("Convert Audio to text", "read_audio_from_file", {"file": "<file>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
-
     ]
 
     # Only add shell command to the prompt if the AI is allowed to execute it
-    if cfg.execute_local_commands:
+    if CFG.execute_local_commands:
         commands.append(
             (
                 "Execute Shell Command, non-interactive commands only",
@@ -135,8 +130,7 @@ def get_prompt() -> str:
         " the least number of steps."
     )
 
-    # Generate the prompt string
-    return prompt_generator.generate_prompt_string()
+    return prompt_generator
 
 
 def construct_prompt() -> str:
@@ -170,9 +164,5 @@ Continue (y/n): """
     if not config.ai_name:
         config = prompt_user()
         config.save()
-
-    # Get rid of this global:
-    global ai_name
-    ai_name = config.ai_name
 
     return config.construct_full_prompt()
