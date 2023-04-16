@@ -1,6 +1,6 @@
 """ Command and Control """
 import json
-from typing import List, NoReturn, Union
+from typing import List, NoReturn, Union, Dict
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.google_search import google_official_search, google_search
@@ -47,11 +47,11 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response: str):
+def get_command(response_json: Dict):
     """Parse the response and return the command name and arguments
 
     Args:
-        response (str): The response from the user
+        response_json (json): The response from the AI
 
     Returns:
         tuple: The command name and arguments
@@ -62,8 +62,6 @@ def get_command(response: str):
         Exception: If any other error occurs
     """
     try:
-        response_json = fix_and_parse_json(response)
-
         if "command" not in response_json:
             return "Error:", "Missing 'command' object in JSON"
 
