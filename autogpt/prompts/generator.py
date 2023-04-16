@@ -19,6 +19,8 @@ class PromptGenerator:
         self.resources = []
         self.performance_evaluation = []
         self.goals = []
+        self.name = "Bob"
+        self.role = "AI"
         self.response_format = {
             "thoughts": {
                 "text": "thought",
