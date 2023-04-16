@@ -54,12 +54,12 @@ def main():
     TelegramUtils().send_message(
         "Hello! I need you to confirm with /start to start me. <3")
 
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     application = Application.builder().token(cfg.telegram_api_key).build()
     application.add_handler(CommandHandler("stop", stop))
     application.add_handler(CommandHandler("start", start))
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
         print("Check your Telegram chat to start Auto-GPT! ;-)")
         loop.run_until_complete(application.run_polling())
