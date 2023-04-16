@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import dataclasses
 import os
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import orjson
@@ -97,7 +99,7 @@ class LocalCache(MemoryProviderSingleton):
         self.data = CacheContent()
         return "Obliviated"
 
-    def get(self, data: str) -> Optional[List[Any]]:
+    def get(self, data: str) -> list[Any] | None:
         """
         Gets the data from the memory that is most relevant to the given data.
 
@@ -108,7 +110,7 @@ class LocalCache(MemoryProviderSingleton):
         """
         return self.get_relevant(data, 1)
 
-    def get_relevant(self, text: str, k: int) -> List[Any]:
+    def get_relevant(self, text: str, k: int) -> list[Any]:
         """ "
         matrix-vector mult to find score-for-each-row-of-matrix
          get indices for top-k winning scores
@@ -127,7 +129,7 @@ class LocalCache(MemoryProviderSingleton):
 
         return [self.data.texts[i] for i in top_k_indices]
 
-    def get_stats(self) -> Tuple[int, Tuple[int, ...]]:
+    def get_stats(self) -> tuple[int, tuple[int, ...]]:
         """
         Returns: The stats of the local cache.
         """

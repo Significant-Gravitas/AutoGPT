@@ -1,8 +1,10 @@
 """File operations for AutoGPT"""
+from __future__ import annotations
+
 import os
 import os.path
 from pathlib import Path
-from typing import Generator, List
+from typing import Generator
 
 # Set a dedicated folder for file I/O
 WORKING_DIRECTORY = Path(os.getcwd()) / "auto_gpt_workspace"
@@ -214,14 +216,14 @@ def delete_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
-def search_files(directory: str) -> List[str]:
+def search_files(directory: str) -> list[str]:
     """Search for files in a directory
 
     Args:
         directory (str): The directory to search in
 
     Returns:
-        List[str]: A list of files found in the directory
+        list[str]: A list of files found in the directory
     """
     found_files = []
 
