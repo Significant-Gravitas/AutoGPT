@@ -62,6 +62,7 @@ class Config(metaclass=Singleton):
 
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
+        self.search_language_code = os.getenv("SEARCH_LANGUAGE_CODE")
 
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
@@ -204,6 +205,10 @@ class Config(metaclass=Singleton):
     def set_custom_search_engine_id(self, value: str) -> None:
         """Set the custom search engine id value."""
         self.custom_search_engine_id = value
+
+    def set_search_language_code(self, value: str) -> None:
+        """Set the custom search engine id value."""
+        self.search_language_code = value
 
     def set_pinecone_api_key(self, value: str) -> None:
         """Set the Pinecone API key value."""
