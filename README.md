@@ -53,20 +53,25 @@ Development of this free, open-source project is made possible by all the <a hre
     - [Docker](#docker)
     - [Command Line Arguments](#command-line-arguments)
   - [🗣️ Speech Mode](#️-speech-mode)
+    - [List of IDs with names from eleven labs, you can use the name or ID:](#list-of-ids-with-names-from-eleven-labs-you-can-use-the-name-or-id)
+  - [OpenAI API Keys Configuration](#openai-api-keys-configuration)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
-  - [Memory Backend Setup](#memory-backend-setup)
+  - [Setting Your Cache Type](#setting-your-cache-type)
     - [Redis Setup](#redis-setup)
     - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
     - [Milvus Setup](#milvus-setup)
     - [Weaviate Setup](#weaviate-setup)
-    - [Setting up environment variables](#setting-up-environment-variables-1)
-  - [Setting Your Cache Type](#setting-your-cache-type)
+      - [Setting up environment variables](#setting-up-environment-variables-1)
+    - [Milvus Setup](#milvus-setup-1)
   - [View Memory Usage](#view-memory-usage)
   - [🧠 Memory pre-seeding](#-memory-pre-seeding)
+- [python autogpt/data\_ingestion.py -h](#python-autogptdata_ingestionpy--h)
+- [python autogpt/data\_ingestion.py --dir seed\_data --init --overlap 200 --max\_length 1000](#python-autogptdata_ingestionpy---dir-seed_data---init---overlap-200---max_length-1000)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#-image-generation)
+  - [Selenium](#selenium)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
@@ -86,7 +91,7 @@ Development of this free, open-source project is made possible by all the <a hre
 - environments(just choose one)
   - [vscode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): It has been configured in the .devcontainer folder and can be used directly
   - [Python 3.8 or later](https://www.tutorialspoint.com/how-to-install-python-in-windows)
-- [OpenAI API key](https://platform.openai.com/account/api-keys)
+- [OpenAI API key](https://platform.openai.com/account/api-keys) (Please ensure that you have a paid OpenAI account)
 
 Optional:
 
@@ -189,15 +194,15 @@ Here are some common arguments you can use when running Auto-GPT:
 > Replace anything in angled brackets (<>) to a value you want to specify
 * View all available command line arguments
 ```bash
-python scripts/main.py --help
+python -m autogpt --help
 ```
 * Run Auto-GPT with a different AI Settings file
 ```bash
-python scripts/main.py --ai-settings <filename>
+python -m autogpt --ai-settings <filename>
 ```
 * Specify one of 3 memory backends: `local`, `redis`, `pinecone` or `no_memory`
 ```bash
-python scripts/main.py --use-memory  <memory-backend>
+python -m autogpt --use-memory  <memory-backend>
 ```
 
 > **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python scripts/main.py --help` for more information
