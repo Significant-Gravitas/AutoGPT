@@ -1,4 +1,4 @@
-# Auto-GPT: An Autonomous GPT-4 Experiment
+# Multi-GPT: Multiple Collaborating ExpertGPTs
 ### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
 
 > This information takes precedence over any other information provided and should be followed accordingly.
@@ -6,11 +6,11 @@
 Our workflow has been improved, but please note that `master` branch may often be in a **broken** state.
 Please download the latest `stable` release from here: https://github.com/Torantulino/Auto-GPT/releases/latest.
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
-[![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)
+![GitHub Repo stars](https://img.shields.io/github/stars/rumpfmax/multi-gpt?style=social)
+[![Twitter Follow](https://img.shields.io/twitter/follow/md_rumpf?style=social)](https://twitter.com/md_rumpf)
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
-[![Unit Tests](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml)
 
+Multi-GPT is an experimental multi-agent system. 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
 ### Demo (30/03/2023):
@@ -41,7 +41,7 @@ Development of this free, open-source project is made possible by all the <a hre
 
 ## Table of Contents
 
-- [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
+- [Multi-GPT: Multiple Collaborating ExpertGPTs](#multi-gpt-multiple-collaborating-expertgpts)
     - [🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴](#----urgent-use-stable-not-master----)
     - [Demo (30/03/2023):](#demo-30032023)
   - [Table of Contents](#table-of-contents)
@@ -52,7 +52,6 @@ Development of this free, open-source project is made possible by all the <a hre
     - [Logs](#logs)
     - [Docker](#docker)
     - [Command Line Arguments](#command-line-arguments)
-  - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
   - [Memory Backend Setup](#memory-backend-setup)
@@ -63,10 +62,6 @@ Development of this free, open-source project is made possible by all the <a hre
     - [Setting up environment variables](#setting-up-environment-variables-1)
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
-  - [🧠 Memory pre-seeding](#-memory-pre-seeding)
-  - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
-  - [GPT3.5 ONLY Mode](#gpt35-only-mode)
-  - [🖼 Image Generation](#-image-generation)
   - [⚠️ Limitations](#️-limitations)
   - [🛡 Disclaimer](#-disclaimer)
   - [🐦 Connect with Us on Twitter](#-connect-with-us-on-twitter)
@@ -106,13 +101,13 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 2. Clone the repository: For this step, you need Git installed. Alternatively, you can download the zip file by clicking the button at the top of this page ☝️
 
 ```bash
-git clone https://github.com/Torantulino/Auto-GPT.git
+git clone https://github.com/rumpfmax/Multi-GPT.git
 ```
 
 3. Navigate to the directory where the repository was downloaded
 
 ```bash
-cd Auto-GPT
+cd Multi-GPT
 ```
 
 4. Install the required dependencies
@@ -148,10 +143,10 @@ pip install -r requirements.txt
 
 ## 🔧 Usage
 
-1. Run `autogpt` Python module in your terminal
+1. Run `multigpt` Python module in your terminal
 
 ```
-python -m autogpt
+python -m multigpt
 ```
 
 2. After each action, choose from options to authorize command(s),
@@ -168,7 +163,7 @@ Activity and error logs are located in the `./output/logs`
 To print out debug logs:
 
 ```
-python -m autogpt --debug
+python -m multigpt --debug
 ```
 
 ### Docker
@@ -184,43 +179,8 @@ You can pass extra arguments, for instance, running with `--gpt3only` and `--con
 ```
 docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt --gpt3only --continuous
 ```
-### Command Line Arguments
-Here are some common arguments you can use when running Auto-GPT:
-> Replace anything in angled brackets (<>) to a value you want to specify
-* View all available command line arguments
-```bash
-python -m autogpt --help
-```
-* Run Auto-GPT with a different AI Settings file
-```bash
-python -m autogpt --ai-settings <filename>
-```
-* Specify one of 3 memory backends: `local`, `redis`, `pinecone` or `no_memory`
-```bash
-python -m autogpt --use-memory  <memory-backend>
-```
 
 > **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python -m autogpt --help` for more information
-
-## 🗣️ Speech Mode
-
-Use this to use TTS _(Text-to-Speech)_ for Auto-GPT
-
-```bash
-python -m autogpt --speak
-```
-
-### List of IDs with names from eleven labs, you can use the name or ID:
-
-- Rachel : 21m00Tcm4TlvDq8ikWAM
-- Domi : AZnzlk1XvdvUeBnXmlld
-- Bella : EXAVITQu4vr4xnSDxMaL
-- Antoni : ErXwobaYiN019PkySvjV
-- Elli : MF3mGyEYCl7XYWbV9V6O
-- Josh : TxGEqnHWrfWFTfGW9XjX
-- Arnold : VR6AewLTigWG4xSOukaG
-- Adam : pNInz6obpgDQGcFmaJgB
-- Sam : yoZ06aMxZJJ28mfd3POQ
 
 
 ## OpenAI API Keys Configuration
@@ -430,7 +390,7 @@ Continuous mode is NOT recommended.
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorize.
 Use at your own risk.
 
-1. Run the `autogpt` python module in your terminal:
+1. Run the `multigpt` python module in your terminal:
 
 ```bash
 python -m autogpt --speak --continuous
@@ -489,16 +449,8 @@ By using Auto-GPT, you agree to indemnify, defend, and hold harmless the develop
 
 Stay up-to-date with the latest news, updates, and insights about Auto-GPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
 
-- **Developer**: Follow [@siggravitas](https://twitter.com/siggravitas) for insights into the development process, project updates, and related topics from the creator of Entrepreneur-GPT.
-- **Entrepreneur-GPT**: Join the conversation with the AI itself by following [@En_GPT](https://twitter.com/En_GPT). Share your experiences, discuss the AI's outputs, and engage with the growing community of users.
-
-We look forward to connecting with you and hearing your thoughts, ideas, and experiences with Auto-GPT. Join us on Twitter and let's explore the future of AI together!
-
-<p align="center">
-  <a href="https://star-history.com/#Torantulino/auto-gpt&Date">
-    <img src="https://api.star-history.com/svg?repos=Torantulino/auto-gpt&type=Date" alt="Star History Chart">
-  </a>
-</p>
+- **Developer**: Follow [@md_rumpf](https://twitter.com/md_rumpf) for insights and updates. Also follow [@SigGravitas](https://twitter.com/SigGravitas) for updates on AutoGPT.
+- **Sponsors**: Please also follow our founding sponsor [@try_sid](https://twitter.com/try_sid) on Twitter.
 
 ## Run tests
 
@@ -521,8 +473,8 @@ This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. We 
 To run the linter, run the following command:
 
 ```bash
-flake8 autogpt/ tests/
+flake8 multigpt/ autogpt/ tests/
 
 # Or, if you want to run flake8 with the same configuration as the CI:
-flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
+flake8 multigpt/ autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
 ```

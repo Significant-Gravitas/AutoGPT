@@ -25,7 +25,7 @@ MAX_EXPERTS = 6
 CONTINUOUS_LIMIT = 10
 EXPERT_PROMPT = """The task is: {task}.
 
-Help me determine which historical or renowned experts in various fields would be best suited to complete a given task, taking into account their specific expertise and access to the internet. Name between {min_experts} and {max_experts} experts and list three goals for them to help the overall task. Follow the format precisely: 
+Help me determine which historical or renowned experts in various fields would be best suited to complete a given task, taking into account their specific expertise and access to the internet. Name between {min_experts} and {max_experts} experts and list three goals for them to help the overall task. Follow the format precisely:
 1. [Name of the person]: [Description of how they are useful]
 1a) [Goal a]
 1b) [Goal b]
@@ -82,7 +82,6 @@ def create_expert_gpts(experts: List[Expert]):
         expert.save(filepath)
         # TODO: sometimes doesn't find the file, because it hasn't finished saving yet
         MULTIAGENTMANAGER.create_agent(expert)
-
 
 
 def main() -> None:
