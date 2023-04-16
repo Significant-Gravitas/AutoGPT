@@ -18,7 +18,7 @@ def inspect_zip_for_module(zip_path: str, debug: bool = False) -> Optional[str]:
     Returns:
         Optional[str]: The name of the module if found, else None.
     """
-    with zipfile.ZipFile(zip_path, 'r') as zfile:
+    with zipfile.ZipFile(zip_path, "r") as zfile:
         for name in zfile.namelist():
             if name.endswith("__init__.py"):
                 if debug:
@@ -68,7 +68,6 @@ def load_plugins(plugins_path: Path, debug: bool = False) -> List[Module]:
                 continue
             a_module = getattr(zipped_module, key)
             a_keys = dir(a_module)
-            if '_abc_impl' in a_keys and \
-                    a_module.__name__ != 'AutoGPTPluginTemplate':
+            if "_abc_impl" in a_keys and a_module.__name__ != "AutoGPTPluginTemplate":
                 plugin_modules.append(a_module)
     return plugin_modules
