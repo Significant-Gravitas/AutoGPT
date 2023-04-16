@@ -74,8 +74,8 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
     else:
-        options.add_argument("--remote-debugging-port=9222")  # this
-        options.add_argument("--headless=new") 
+        options.add_argument("--remote-debugging-port=9222") # Change remote chrome instance debugging port
+        options.add_argument("--headless=new") # Run the browser in an unattended environment without any visible UI
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
