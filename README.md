@@ -127,12 +127,12 @@ pip install -r requirements.txt
     - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID
   - Please specify all of these values as double-quoted strings
     > Replace string in angled brackets (<>) to your own ID
-  ```yaml
-  azure_model_map:
-    fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
-    ...
-  ```
-  - Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
+    ```yaml
+    azure_model_map:
+      fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
+      ...
+    ```
+    - Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
 
 ## 🔧 Usage
 
@@ -143,7 +143,7 @@ python -m autogpt
 ```
 
 2. After each action, choose from options to authorize command(s),
-   exit the program, or provide feedback to the AI.
+exit the program, or provide feedback to the AI.
    1. Authorize a single command, enter `y`
    2. Authorize a series of _N_ continuous commands, enter `y -N`
    3. Exit the program, enter `n`
