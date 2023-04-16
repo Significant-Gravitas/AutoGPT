@@ -12,7 +12,7 @@ def MockConfig():
             "debug_mode": False,
             "continuous_mode": False,
             "speak_mode": False,
-            "memory_index": "test",
+            "sqlite_index": "test",
             "memory_backend": "sqlite",
         },
     )

@@ -1,5 +1,6 @@
 import os
 import sys
+import unittest
 
 from autogpt.memory.local import LocalCache
 

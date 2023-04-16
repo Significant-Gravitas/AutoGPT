@@ -33,7 +33,7 @@ class SqliteMemory(MemoryProviderSingleton):
         Returns: None
         """
         # Store the index (table name) and the embedder name
-        self.index = cfg.memory_index
+        self.index = cfg.sqlite_index
         self.embedder_name = "ada"
 
         # Set database and embeddings to None
