@@ -1,10 +1,19 @@
+"""Check if all packages are installed"""
 import pkg_resources
 import sys
+import os
 
 
-def main():
+def main() -> None:
+    """Check if all packages are installed
+
+    Returns:
+        None
+    """
+    cwd = os.getcwd()
     requirements_file = sys.argv[1]
-    with open(requirements_file, "r") as f:
+    requirements_path = os.path.join(cwd, requirements_file)
+    with open(requirements_path, "r") as f:
         required_packages = [
             line.strip().split("#")[0].strip() for line in f.readlines()
         ]
