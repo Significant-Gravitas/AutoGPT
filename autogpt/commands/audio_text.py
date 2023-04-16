@@ -1,8 +1,9 @@
-import requests
 import json
 
-from autogpt.config import Config
+import requests
+
 from autogpt.commands.file_operations import safe_join
+from autogpt.config import Config
 
 cfg = Config()
 

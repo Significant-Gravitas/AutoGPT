@@ -3,11 +3,12 @@ import io
 import os.path
 import uuid
 from base64 import b64decode
+from pathlib import Path
 
 import openai
 import requests
 from PIL import Image
-from pathlib import Path
+
 from autogpt.config import Config
 
 CFG = Config()

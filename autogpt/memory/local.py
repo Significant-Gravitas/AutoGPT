@@ -5,8 +5,8 @@ from typing import Any, List, Optional, Tuple
 import numpy as np
 import orjson
 
-from autogpt.memory.base import MemoryProviderSingleton
 from autogpt.llm_utils import create_embedding_with_ada
+from autogpt.memory.base import MemoryProviderSingleton
 
 EMBED_DIM = 1536
 SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS

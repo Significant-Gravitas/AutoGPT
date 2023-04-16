@@ -1,6 +1,6 @@
-from ast import List
 import time
-from typing import Dict, Optional
+from ast import List
+from typing import Optional
 
 import openai
 from colorama import Fore
@@ -98,7 +98,7 @@ def create_chat_completion(
             if CFG.debug_mode:
                 print(
                     Fore.RED + "Error: ",
-                    f"Reached rate limit, passing..." + Fore.RESET,
+                    "Reached rate limit, passing..." + Fore.RESET,
                 )
         except APIError as e:
             if e.http_status == 502:

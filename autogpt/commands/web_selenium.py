@@ -1,21 +1,23 @@
 """Selenium web scraping module."""
-from selenium import webdriver
-from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
-import autogpt.processing.text as summary
-from bs4 import BeautifulSoup
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.firefox import GeckoDriverManager
-from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from selenium.webdriver.safari.options import Options as SafariOptions
 import logging
 from pathlib import Path
+from typing import List, Tuple
+
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.safari.options import Options as SafariOptions
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.firefox import GeckoDriverManager
+
+import autogpt.processing.text as summary
 from autogpt.config import Config
-from typing import List, Tuple, Union
+from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
@@ -62,7 +64,8 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
 
     options = options_available[CFG.selenium_web_browser]()
     options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/112.0.5615.49 Safari/537.36"
     )
 
     if CFG.selenium_web_browser == "firefox":

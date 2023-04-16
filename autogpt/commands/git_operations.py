@@ -1,5 +1,6 @@
 """Git operations for autogpt"""
 import git
+
 from autogpt.config import Config
 
 CFG = Config()

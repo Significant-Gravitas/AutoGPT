@@ -1,10 +1,10 @@
 """ Milvus memory storage provider."""
 from pymilvus import (
-    connections,
-    FieldSchema,
+    Collection,
     CollectionSchema,
     DataType,
-    Collection,
+    FieldSchema,
+    connections,
 )
 
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding

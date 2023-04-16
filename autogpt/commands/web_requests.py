@@ -1,11 +1,11 @@
 """Browse a webpage and summarize it using the LLM model"""
 from typing import List, Tuple, Union
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 import requests
-from requests.compat import urljoin
-from requests import Response
 from bs4 import BeautifulSoup
+from requests import Response
+from requests.compat import urljoin
 
 from autogpt.config import Config
 from autogpt.memory import get_memory

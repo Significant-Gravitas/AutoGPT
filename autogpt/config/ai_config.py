@@ -3,7 +3,8 @@
 A module that contains the AIConfig class object that contains the configuration
 """
 import os
-from typing import List, Optional, Type
+from typing import List, Optional
+
 import yaml
 
 

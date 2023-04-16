@@ -1,7 +1,7 @@
 """Execute code in a Docker container"""
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import docker
 from docker.errors import ImageNotFound

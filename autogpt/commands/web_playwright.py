@@ -5,9 +5,11 @@ except ImportError:
     print(
         "Playwright not installed. Please install it with 'pip install playwright' to use."
     )
-from bs4 import BeautifulSoup
-from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from typing import List, Union
+
+from bs4 import BeautifulSoup
+
+from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 
 
 def scrape_text(url: str) -> str:

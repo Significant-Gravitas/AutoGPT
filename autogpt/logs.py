@@ -5,13 +5,13 @@ import os
 import random
 import re
 import time
-from logging import LogRecord
 import traceback
+from logging import LogRecord
 
 from colorama import Fore, Style
 
-from autogpt.speech import say_text
 from autogpt.config import Config, Singleton
+from autogpt.speech import say_text
 
 CFG = Config()
 

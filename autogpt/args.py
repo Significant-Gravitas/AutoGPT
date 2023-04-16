@@ -2,6 +2,7 @@
 import argparse
 
 from colorama import Fore
+
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.logs import logger

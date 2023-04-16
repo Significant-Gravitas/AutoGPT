@@ -1,5 +1,5 @@
 """A class that does not store any data. This is the default memory provider."""
-from typing import Optional, List, Any
+from typing import Any, List, Optional
 
 from autogpt.memory.base import MemoryProviderSingleton
 
