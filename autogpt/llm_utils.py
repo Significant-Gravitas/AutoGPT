@@ -4,6 +4,7 @@ import time
 from typing import List, Optional
 
 import openai
+import tiktoken
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, Timeout
 
@@ -163,12 +164,19 @@ def get_ada_embedding(text):
 
 def create_embedding_with_ada(text) -> list:
     """Create an embedding with text-ada-002 using the OpenAI SDK"""
+    model = "text-embedding-ada-002"
     num_retries = 10
+
+    # Truncate to within token limit to avoid crashing
+    encoding = tiktoken.encoding_for_model(model)
+    tokens = encoding.encode(text)
+    text = encoding.decode(tokens[:8191])
+
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
             return api_manager.embedding_create(
-                text_list=[text], model="text-embedding-ada-002"
+                text_list=[text], model=model
             )
         except RateLimitError:
             pass
