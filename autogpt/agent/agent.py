@@ -60,7 +60,9 @@ class Agent:
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
                 break
-
+            if cfg.telegram_enabled:
+                telegramUtils = TelegramUtils()
+                telegramUtils.send_message("Thinking... \n")
             # Send message to AI, get response
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
