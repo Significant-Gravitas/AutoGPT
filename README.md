@@ -119,13 +119,19 @@ pip install -r requirements.txt
 ```
 
 5. Locate the file named `.env.template` in the main `/Auto-GPT` folder.
+   <<<<<<< HEAD
    Create a copy of this file, called `.env` by removing the `template` extension. The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`
    Open the `.env` file in a text editor. Note: Files starting with a dot might be hidden by your Operating System.
-   Find the line that says `OPENAI_API_KEY=`.
-   After the `"="`, enter your unique OpenAI API Key (without any quotes or spaces).
-   Enter any other API keys or Tokens for services you would like to utilize.
-   Save and close the `".env"` file.
-   By completing these steps, you have properly configured the API Keys for your project.
+   =======
+   Create a copy of this file, called `.env` by removing the `template` extension. The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`
+   Open the `.env` file in a text editor. Note: Files starting with a dot might be hidden by your Operating System.
+   > > > > > > > 36ade6a1cd750b145bb6d3f88346af025ac4e5f1
+   > > > > > > > Find the line that says `OPENAI_API_KEY=`.
+   > > > > > > > After the `"="`, enter your unique OpenAI API Key (without any quotes or spaces).
+   > > > > > > > Enter any other API keys or Tokens for services you would like to utilize.
+   > > > > > > > Save and close the `".env"` file.
+   > > > > > > > By completing these steps, you have properly configured the API Keys for your project.
+   > > > > > > > <<<<<<< HEAD
 
 - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
 - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
@@ -141,7 +147,18 @@ pip install -r requirements.txt
     fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
     ...
   ```
-  - Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
+  - # Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
+
+  - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
+  - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+  - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps: - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section: - `fast_llm_model_deployment_id` - your gpt-3.5-turbo or gpt-4 deployment ID - `smart_llm_model_deployment_id` - your gpt-4 deployment ID - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID - Please specify all of these values as double-quoted strings
+    `yaml
+    # Replace string in angled brackets (<>) to your own ID
+    azure_model_map:
+      fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
+      ...
+    ` - Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
+    > > > > > > > 36ade6a1cd750b145bb6d3f88346af025ac4e5f1
 
 ## 🔧 Usage
 
@@ -278,7 +295,7 @@ By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
 
 To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
 
-- `local` (default) uses a local JSON cache file
+- `local` (default) uses Chroma, which runs in-memory, with no setup needed
 - `pinecone` uses the Pinecone.io account you configured in your ENV settings
 - `redis` will use the redis cache that you configured
 - `milvus` will use the milvus cache that you configured
