@@ -1,0 +1,23 @@
+# Path: conf/initial.yaml
+# Initial configuration for Auto-GPT
+# This file is used to initialize the Auto-GPT model
+
+# The following parameters are used to initialize the Auto-GPT model
+---
+- ai:
+    model:
+      name: AutoGPT
+      goals:
+        - text_generation
+        - word_generation
+        - cross_word_generation
+        - cross_word_embedding
+        - cross_word_projection
+
+
+
+
+
+
+
+
