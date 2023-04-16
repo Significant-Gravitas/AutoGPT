@@ -4,6 +4,7 @@ FROM python:3.11-slim
 # Install git
 RUN apt-get -y update
 RUN apt-get -y install git
+RUN apt-get install -y libglib2.0 libnss3 libgconf-2-4 libfontconfig1 chromium-driver
 
 # Set environment variables
 ENV PIP_NO_CACHE_DIR=yes \
@@ -24,4 +25,4 @@ RUN pip install --no-cache-dir --user -r requirements-docker.txt
 COPY --chown=appuser:appuser autogpt/ ./autogpt
 
 # Set the entrypoint
-ENTRYPOINT ["python", "-m", "autogpt"]
+ENTRYPOINT ["python", "-m", "autogpt", "--debug"]
