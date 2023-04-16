@@ -1,7 +1,8 @@
 """Fix JSON brackets."""
+from __future__ import annotations
+
 import contextlib
 import json
-from typing import Optional
 import regex
 from colorama import Fore
 
@@ -46,7 +47,7 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
     return json_string
 
 
-def balance_braces(json_string: str) -> Optional[str]:
+def balance_braces(json_string: str) -> str | None:
     """
     Balance the braces in a JSON string.
 
