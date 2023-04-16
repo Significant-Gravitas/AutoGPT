@@ -22,18 +22,14 @@ class LocalCache(MemoryProviderSingleton):
             None
         """
 
-        self.persistence = cfg.memory_directory
         # switch chroma's logging defaults to error only
         logging.getLogger('chromadb').setLevel(logging.ERROR)
         
-        if self.persistence is not None and os.path.exists(self.persistence):
-            self.chromaClient = chromadb.Client(Settings(
-                chroma_db_impl="duckdb+parquet", # duckdb+parquet = persisted, duckdb = in-memory
-                persist_directory=self.persistence
-            ))
-        else:
-            # in memory
-            self.chromaClient = chromadb.Client()
+
+        self.chromaClient = chromadb.Client(Settings(
+            chroma_db_impl="duckdb+parquet", # this makes it persisted, comment out to be purely in-memory
+            persist_directory="localCache"
+        ))
         self.chromaCollection = self.chromaClient.create_collection(name="autogpt")
         # we will key off of cfg.openai_embeddings_model to determine if using sentence transformers or openai embeddings
         self.useOpenAIEmbeddings = True if (cfg.openai_embeddings_model) else False
