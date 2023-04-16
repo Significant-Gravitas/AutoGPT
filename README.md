@@ -173,16 +173,16 @@ python -m autogpt --debug
 
 ### Docker
 
-You can also build this into a docker image and run it:
+You can also build this into a docker image and run it ($PWD here works in Linux and Mac and just means path of working directory, e.g. current directory):
 
 ```
 docker build -t autogpt .
-docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/home/appuser/auto_gpt_workspace autogpt
 ```
 
 You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
 ```
-docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt --gpt3only --continuous
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/home/appuser/auto_gpt_workspace autogpt --gpt3only --continuous
 ```
 ### Command Line Arguments
 Here are some common arguments you can use when running Auto-GPT:
