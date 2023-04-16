@@ -6,10 +6,10 @@
 Our workflow has been improved, but please note that `master` branch may often be in a **broken** state.
 Please download the latest `stable` release from here: https://github.com/Torantulino/Auto-GPT/releases/latest.
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
+![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)
 [![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
-[![Unit Tests](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml)
+[![Unit Tests](https://github.com/Significant-Gravitaso/Auto-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/Significant-Gravitas/Auto-GPT/actions/workflows/ci.yml)
 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
@@ -21,7 +21,7 @@ https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-
 <p align="center">
 If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 Your support is greatly appreciated
-Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
+Development of this free, open-source project is made possible by all the <a href="https://github.com/Significant-Gravitas/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
 </p>
 
 
@@ -106,7 +106,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 2. Clone the repository: For this step, you need Git installed. Alternatively, you can download the zip file by clicking the button at the top of this page ☝️
 
 ```bash
-git clone https://github.com/Torantulino/Auto-GPT.git
+git clone https://github.com/Significant-Gravitas/Auto-GPT.git
 ```
 
 3. Navigate to the directory where the repository was downloaded
