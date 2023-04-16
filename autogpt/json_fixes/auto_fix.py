@@ -31,7 +31,7 @@ def fix_json(json_string: str, schema: str) -> str:
     )
 
     json_string = ensure_code_block(json_string)
-    
+
     result_string = call_ai_function(
         function_string, args, description_string, model=CFG.fast_llm_model
     )
