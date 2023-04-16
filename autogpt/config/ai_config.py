@@ -2,9 +2,11 @@
 """
 A module that contains the AIConfig class object that contains the configuration
 """
+from __future__ import annotations
+
 from os import path
-from typing import List, Optional, Type
-from yaml import load, dump, FullLoader
+from typing import Type
+from yaml import FullLoader, dump, load
 
 
 class AIConfig:
@@ -18,7 +20,7 @@ class AIConfig:
     """
 
     def __init__(
-        self, ai_name: str = "", ai_role: str = "", ai_goals: Optional[List] = None
+        self, ai_name: str = "", ai_role: str = "", ai_goals: list | None = None
     ) -> None:
         """
         Initialize a class instance
