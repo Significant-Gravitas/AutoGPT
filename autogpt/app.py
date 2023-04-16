@@ -107,7 +107,12 @@ def map_command_synonyms(command_name: str):
     return command_name
 
 
-def execute_command(command_registry: CommandRegistry, command_name: str, arguments, prompt: PromptGenerator):
+def execute_command(
+    command_registry: CommandRegistry,
+    command_name: str,
+    arguments,
+    prompt: PromptGenerator,
+):
     """Execute the command and return the result
 
     Args:
@@ -124,7 +129,7 @@ def execute_command(command_registry: CommandRegistry, command_name: str, argume
         # If the command is found, call it with the provided arguments
         if cmd:
             return cmd(**arguments)
-        
+
         # TODO: Remove commands below after they are moved to the command registry.
         command_name = map_command_synonyms(command_name)
         if command_name == "google":
@@ -191,15 +196,6 @@ def execute_command(command_registry: CommandRegistry, command_name: str, argume
             return write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
             return execute_python_file(arguments["file"])
-        elif command_name == "execute_shell":
-            if CFG.execute_local_commands:
-                return execute_shell(arguments["command_line"])
-            else:
-                return (
-                    "You are not allowed to run local shell commands. To execute"
-                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-                    "in your config. Do not attempt to bypass the restriction."
-                )
         elif command_name == "read_audio_from_file":
             return read_audio_from_file(arguments["file"])
         elif command_name == "generate_image":
@@ -256,7 +252,11 @@ def shutdown() -> NoReturn:
     quit()
 
 
-@command("start_agent", "Start GPT Agent", '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"')
+@command(
+    "start_agent",
+    "Start GPT Agent",
+    '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"',
+)
 def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
     """Start an agent with a given name, task, and prompt
 

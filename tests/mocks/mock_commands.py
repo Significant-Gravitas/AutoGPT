@@ -1,6 +1,6 @@
-from auto_gpt.commands import Command, command
+from autogpt.commands.command import command
 
 
-@command('function_based', 'Function-based test command')
+@command("function_based", "Function-based test command")
 def function_based(arg1: int, arg2: str) -> str:
-    return f'{arg1} - {arg2}'
+    return f"{arg1} - {arg2}"

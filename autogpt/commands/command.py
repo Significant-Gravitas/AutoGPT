@@ -2,7 +2,7 @@ import os
 import sys
 import importlib
 import inspect
-from typing import Callable, Any, List
+from typing import Callable, Any, List, Optional
 
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
@@ -17,13 +17,25 @@ class Command:
         signature (str): The signature of the function that the command executes. Defaults to None.
     """
 
-    def __init__(self, name: str, description: str, method: Callable[..., Any], signature: str = None):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        method: Callable[..., Any],
+        signature: str = None,
+        enabled: bool = True,
+        disabled_reason: Optional[str] = None,
+    ):
         self.name = name
         self.description = description
         self.method = method
         self.signature = signature if signature else str(inspect.signature(self.method))
+        self.enabled = enabled
+        self.disabled_reason = disabled_reason
 
     def __call__(self, *args, **kwargs) -> Any:
+        if not self.enabled:
+            return f"Command '{self.name}' is disabled: {self.disabled_reason}"
         return self.method(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -78,7 +90,9 @@ class CommandRegistry:
         """
         Returns a string representation of all registered `Command` objects for use in a prompt
         """
-        commands_list = [f"{idx + 1}. {str(cmd)}" for idx, cmd in enumerate(self.commands.values())]
+        commands_list = [
+            f"{idx + 1}. {str(cmd)}" for idx, cmd in enumerate(self.commands.values())
+        ]
         return "\n".join(commands_list)
 
     def import_commands(self, module_name: str) -> None:
@@ -99,18 +113,36 @@ class CommandRegistry:
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
             # Register decorated functions
-            if hasattr(attr, AUTO_GPT_COMMAND_IDENTIFIER) and getattr(attr, AUTO_GPT_COMMAND_IDENTIFIER):
+            if hasattr(attr, AUTO_GPT_COMMAND_IDENTIFIER) and getattr(
+                attr, AUTO_GPT_COMMAND_IDENTIFIER
+            ):
                 self.register(attr.command)
             # Register command classes
-            elif inspect.isclass(attr) and issubclass(attr, Command) and attr != Command:
+            elif (
+                inspect.isclass(attr) and issubclass(attr, Command) and attr != Command
+            ):
                 cmd_instance = attr()
                 self.register(cmd_instance)
 
 
-def command(name: str, description: str, signature: str = None) -> Callable[..., Any]:
+def command(
+    name: str,
+    description: str,
+    signature: str = None,
+    enabled: bool = True,
+    disabled_reason: Optional[str] = None,
+) -> Callable[..., Any]:
     """The command decorator is used to create Command objects from ordinary functions."""
+
     def decorator(func: Callable[..., Any]) -> Command:
-        cmd = Command(name=name, description=description, method=func, signature=signature)
+        cmd = Command(
+            name=name,
+            description=description,
+            method=func,
+            signature=signature,
+            enabled=enabled,
+            disabled_reason=disabled_reason,
+        )
 
         def wrapper(*args, **kwargs) -> Any:
             return func(*args, **kwargs)

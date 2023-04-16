@@ -87,16 +87,6 @@ def build_default_prompt_generator() -> PromptGenerator:
             ("Convert Audio to text", "read_audio_from_file", {"file": "<file>"}),
         )
 
-    # Only add shell command to the prompt if the AI is allowed to execute it
-    if CFG.execute_local_commands:
-        commands.append(
-            (
-                "Execute Shell Command, non-interactive commands only",
-                "execute_shell",
-                {"command_line": "<command_line>"},
-            ),
-        )
-
     # Add these command last.
     commands.append(
         ("Do Nothing", "do_nothing", {}),
