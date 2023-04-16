@@ -5,6 +5,7 @@ from typing import Literal
 from annoy import AnnoyIndex
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
+
 class AnnoyMemory(MemoryProviderSingleton):
     """
     AnnoyMemory is a memory provider singleton that leverages the Annoy library to create an index
@@ -13,7 +14,7 @@ class AnnoyMemory(MemoryProviderSingleton):
     def __init__(self, cfg):
         """
         Initialize the AnnoyMemory class.
-        
+
         :param cfg: A configuration object containing the index file and metadata file paths.
         """
         self.dimension = 1536
@@ -78,7 +79,7 @@ class AnnoyMemory(MemoryProviderSingleton):
     def add(self, data):
         """
         Add a data point to the Annoy index and update the metadata.
-        
+
         :param data: The data point to add.
         :return: A text string describing the insertion of the data point.
         """
@@ -93,7 +94,7 @@ class AnnoyMemory(MemoryProviderSingleton):
     def get(self, data):
         """
         Get the most relevant data point from the memory given an input data point.
-        
+
         :param data: The input data point.
         :return: The most relevant data point from the memory.
         """
@@ -102,7 +103,7 @@ class AnnoyMemory(MemoryProviderSingleton):
     def clear(self):
         """
         Remove the index file and metadata file, and reinitialize the index and metadata.
-        
+
         :return: A string indicating the memory has been cleared.
         """
         os.remove(self.index_file)
@@ -125,7 +126,7 @@ class AnnoyMemory(MemoryProviderSingleton):
     def get_stats(self):
         """
         Get the statistics of the Annoy index.
-        
+
         :return: A dictionary containing the number of items in the index.
         """
         return {"n_items": self.index.get_n_items()}

@@ -65,7 +65,7 @@ class Config(metaclass=Singleton):
 
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
-        
+
         self.annoy_index_file = os.getenv("ANNOY_INDEX_FILE")
         self.annoy_metadata_file = os.getenv("ANNOY_METADATA_FILE")
 
