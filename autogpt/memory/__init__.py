@@ -42,7 +42,7 @@ try:
     from autogpt.memory.llama_index import LlamaIndexMemory
     supported_memory.append("llama_index")
 except ImportError:
-    print("llama-index not installed. Skipping import.")
+    # print("llama-index not installed. Skipping import.")
     LlamaIndexMemory = None
 
 
