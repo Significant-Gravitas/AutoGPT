@@ -64,6 +64,12 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
+    options.add_argument(
+        '--no-sandbox'
+    )
+    options.add_argument(
+        '--headless'
+    )
 
     if CFG.selenium_web_browser == "firefox":
         driver = webdriver.Firefox(
@@ -74,10 +80,6 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
     else:
-        options.add_argument('--no-sandbox')
-        options.add_argument('--window-size=1420,1080')
-        options.add_argument('--headless')
-        options.add_argument('--disable-gpu')
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
