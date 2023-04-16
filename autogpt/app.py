@@ -125,10 +125,11 @@ def execute_command(command_name: str, arguments):
             key = CFG.google_api_key
             if key and key.strip() and key != "your-google-api-key":
                 google_result = google_official_search(arguments["input"])
+                return google_result
             else:
                 google_result = google_search(arguments["input"])
-            safe_message = google_result.encode("utf-8", "ignore")
-            return str(safe_message)
+                safe_message = google_result.encode("utf-8", "ignore")
+                return str(safe_message)
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
@@ -186,7 +187,7 @@ def execute_command(command_name: str, arguments):
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
         elif command_name == "send_tweet":
-            return send_tweet(arguments['text'])
+            return send_tweet(arguments["text"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
