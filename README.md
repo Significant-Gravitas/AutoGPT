@@ -115,7 +115,15 @@ cd Auto-GPT
 pip install -r requirements.txt
 ```
 
-5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVENLABS_API_KEY` as well.
+5. Locate the file named `.env.template` in the main `/Auto-GPT` folder.
+   Create a copy of this file, called `.env` by removing the `template` extension.  The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`
+   Open the `.env` file in a text editor.  Note: Files starting with a dot might be hidden by your Operating System.
+   Find the line that says `OPENAI_API_KEY=`.
+   After the `"="`, enter your unique OpenAI API Key (without any quotes or spaces).
+   Enter any other API keys or Tokens for services you would like to utilize.
+   Save and close the `".env"` file.
+   By completing these steps, you have properly configured the API Keys for your project.
+   
   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
