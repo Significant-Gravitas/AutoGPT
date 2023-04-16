@@ -17,6 +17,10 @@ orjson
 Pillow
 selenium
 webdriver-manager
+jsonschema
+tweepy
+
+##Dev
 coverage
 flake8
 numpy
@@ -25,7 +29,6 @@ black
 sourcery
 isort
 gitpython==3.1.31
-tweepy
 
 # Testing dependencies
 pytest
