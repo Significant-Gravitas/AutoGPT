@@ -1,9 +1,0 @@
-Dockerfile
-ai_settings.yaml*
-.DS_Store
-*.bak
-*.swp
-logs/*
-workspace/*
-cache/*
-.env
