@@ -9,9 +9,13 @@ services:
     build: ./
     env_file:
       - .env
+    environment:
+      MEMORY_BACKEND: redis
+      REDIS_HOST: redis
     volumes:
-      - "./autogpt:/app"
-      - ".env:/app/.env"
+      - ./logs:/app/logs
+      - ./auto_gpt_workspace/:/app/auto_gpt_workspace
+      - ./ai_settings.yaml:/app/ai_settings.yaml
     profiles: ["exclude-from-up"]
 
   redis:
