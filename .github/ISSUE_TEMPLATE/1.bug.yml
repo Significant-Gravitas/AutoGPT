@@ -36,7 +36,6 @@ body:
         the limitations of GPT-3.5
       options:
         - label: I am using Auto-GPT with GPT-3 (GPT-3.5)
-          required: true
   - type: textarea
     attributes:
       label: Steps to reproduce 🕹
