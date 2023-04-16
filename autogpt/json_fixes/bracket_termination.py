@@ -3,16 +3,20 @@ from __future__ import annotations
 
 import contextlib
 import json
+<<<<<<< HEAD
 import regex
 from colorama import Fore
 
 from autogpt.logs import logger
+=======
+from typing import Optional
+>>>>>>> 67f32105 (Remove deprecated function from bracket_termination.py)
 from autogpt.config import Config
-from autogpt.speech import say_text
 
 CFG = Config()
 
 
+<<<<<<< HEAD
 def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
     if CFG.speak_mode and CFG.debug_mode:
         say_text(
@@ -48,6 +52,9 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
 
 
 def balance_braces(json_string: str) -> str | None:
+=======
+def balance_braces(json_string: str) -> Optional[str]:
+>>>>>>> 67f32105 (Remove deprecated function from bracket_termination.py)
     """
     Balance the braces in a JSON string.
 
