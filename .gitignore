@@ -7,10 +7,12 @@ autogpt/auto_gpt_workspace
 package-lock.json
 *.pyc
 auto_gpt_workspace/*
+projects/*
 *.mpeg
 .env
 azure.yaml
 ai_settings.yaml
+ai_session.yaml
 last_run_ai_settings.yaml
 .vscode
 .idea/*
