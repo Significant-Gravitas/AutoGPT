@@ -9,11 +9,11 @@ if not os.path.exists(WORKSPACE_PATH):
     os.makedirs(WORKSPACE_PATH)
 
 
-def path_in_workspace(relative_path: str | Path) -> Path:
+def path_in_workspace(relative_path: str) -> Path:
     """Get full path for item in workspace
 
     Parameters:
-        relative_path (str | Path): Path to translate into the workspace
+        relative_path (str): Path to translate into the workspace
 
     Returns:
         Path: Absolute path for the given path in the workspace
@@ -21,7 +21,7 @@ def path_in_workspace(relative_path: str | Path) -> Path:
     return safe_path_join(WORKSPACE_PATH, relative_path)
 
 
-def safe_path_join(base: Path, *paths: str | Path) -> Path:
+def safe_path_join(base: Path, *paths: str) -> Path:
     """Join one or more path components, asserting the resulting path is within the workspace.
 
     Args:

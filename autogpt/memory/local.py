@@ -7,7 +7,7 @@ import logging
 from autogpt.memory.base import MemoryProviderSingleton
 from autogpt.llm_utils import create_embedding
 from chromadb.errors import NoIndexException
-
+from chromadb.config import Settings
 
 class LocalCache(MemoryProviderSingleton):
     """A class that stores the memory in a local file"""
