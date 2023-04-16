@@ -53,13 +53,6 @@ async def start(update: Update, context: CallbackContext):
             os.system("python -m autogpt {}".format(" ".join(sys.argv[1:])))
 
 
-def get_or_create_eventloop():
-    print("___.  Creating new event loop...")
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    return asyncio.get_event_loop()
-
-
 def main():
     print("Starting up...")
 
