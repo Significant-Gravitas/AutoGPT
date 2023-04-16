@@ -8,7 +8,7 @@ sudo apt-get update
 sudo apt-get install python3-venv
 fi
 
-python3 -m venv env # Create a virtual environment
+python3 -m venv venv # Create a virtual environment
 source env/bin/activate # Activate the virtual environment
 
 set -e # Exit immediately if a command exits with a non-zero status.
