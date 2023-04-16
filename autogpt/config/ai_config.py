@@ -4,7 +4,7 @@ A module that contains the AIConfig class object that contains the configuration
 """
 import os
 from pathlib import Path
-from typing import List, Optional, Type
+from typing import List, Optional
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
@@ -110,6 +110,8 @@ class AIConfig:
         )
 
         from autogpt.prompts.prompt import build_default_prompt_generator
+        from autogpt.config import Config
+        cfg = Config()
         # Construct full prompt
         full_prompt = (
             f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
@@ -119,6 +121,8 @@ class AIConfig:
         if prompt_generator is None:
             prompt_generator = build_default_prompt_generator()
         prompt_generator.goals = self.ai_goals
+        for plugin in cfg.plugins:
+            prompt_generator = plugin.post_prompt(prompt_generator)
         self.prompt_generator = prompt_generator
         full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
         return full_prompt
