@@ -13,10 +13,10 @@ working_directory = "auto_gpt_workspace"
 def summarize_image_from_file(image_path):
     """
     Summarize an image from a file path.
-    
+
     Args:
         image_path (str): The path to the image file.
-        
+
     Returns:
         str: The summary of the image.
     """
@@ -29,10 +29,10 @@ def summarize_image_from_file(image_path):
 def summarize_image(image):
     """
     Summarize a image as a binary.
-    
+
     Args:
         image (bytes): The image as a binary.
-        
+
     Returns:
         str: The summary of the image.
     """
