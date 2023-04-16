@@ -40,13 +40,16 @@ class AgentManager(metaclass=Singleton):
             messages=messages,
         )
 
-        plugins_reply = agent_reply
-        for plugin in self.cfg.plugins:
+        messages.append({"role": "assistant", "content": agent_reply})
+
+        plugins_reply = ""
+        for i, plugin in enumerate(self.cfg.plugins):
             plugin_result = plugin.on_instruction(messages)
             if plugin_result:
-                plugins_reply = f"{plugins_reply}\n{plugin_result}"
+                plugins_reply = f"{plugins_reply}{'' if not i else '\n'}{plugin_result}"
 
-        messages.append({"role": "assistant", "content": plugins_reply})
+        if plugins_reply and plugins_reply != "":
+            messages.append({"role": "assistant", "content": plugins_reply})
         key = self.next_key
         # This is done instead of len(agents) to make keys unique even if agents
         # are deleted
@@ -82,13 +85,16 @@ class AgentManager(metaclass=Singleton):
             messages=messages,
         )
 
+        messages.append({"role": "assistant", "content": agent_reply})
+
         plugins_reply = agent_reply
-        for plugin in self.cfg.plugins:
+        for i, plugin in enumerate(self.cfg.plugins):
             plugin_result = plugin.on_instruction(messages)
             if plugin_result:
-                plugins_reply = f"{plugins_reply}\n{plugin_result}"
+                plugins_reply = f"{plugins_reply}{'' if not i else '\n'}{plugin_result}"
         # Update full message history
-        messages.append({"role": "assistant", "content": plugins_reply})
+        if plugins_reply and plugins_reply != "":
+            messages.append({"role": "assistant", "content": plugins_reply})
 
         return plugins_reply
 
