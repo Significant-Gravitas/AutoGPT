@@ -7,10 +7,10 @@
 Our workflow has been improved, but please note that `master` branch may often be in a **broken** state.
 Please download the latest `stable` release from here: https://github.com/Torantulino/Auto-GPT/releases/latest.
 
-![GitHub Repo stars](https://img.shields.io/github/stars/Torantulino/auto-gpt?style=social)
+![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)
 [![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
-[![Unit Tests](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/Torantulino/Auto-GPT/actions/workflows/ci.yml)
+[![Unit Tests](https://github.com/Significant-Gravitaso/Auto-GPT/actions/workflows/ci.yml/badge.svg)](https://github.com/Significant-Gravitas/Auto-GPT/actions/workflows/ci.yml)
 
 Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
 
@@ -22,7 +22,7 @@ https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-
 <p align="center">
 If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 Your support is greatly appreciated
-Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
+Development of this free, open-source project is made possible by all the <a href="https://github.com/Significant-Gravitas/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
 </p>
 
 <h3 align="center">Enterprise Sponsors</h3>
@@ -103,7 +103,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 2. Clone the repository: For this step, you need Git installed. Alternatively, you can download the zip file by clicking the button at the top of this page ☝️
 
 ```bash
-git clone https://github.com/Torantulino/Auto-GPT.git
+git clone https://github.com/Significant-Gravitas/Auto-GPT.git
 ```
 
 3. Navigate to the directory where the repository was downloaded
@@ -136,17 +136,20 @@ pip install -r requirements.txt
 - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
 - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
 - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
+
   - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section:
     - `fast_llm_model_deployment_id` - your gpt-3.5-turbo or gpt-4 deployment ID
     - `smart_llm_model_deployment_id` - your gpt-4 deployment ID
     - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID
   - Please specify all of these values as double-quoted strings
+
   ```yaml
   # Replace string in angled brackets (<>) to your own ID
   azure_model_map:
     fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
     ...
   ```
+
   - # Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
 
   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
@@ -155,9 +158,9 @@ pip install -r requirements.txt
     `yaml
     # Replace string in angled brackets (<>) to your own ID
     azure_model_map:
-      fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
-      ...
-    ` - Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
+    fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
+    ...
+    `- Details can be found here: https://pypi.org/project/openai/ in the`Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
     > > > > > > > 36ade6a1cd750b145bb6d3f88346af025ac4e5f1
 
 ## 🔧 Usage
@@ -310,6 +313,8 @@ By default, AutoGPT also uses [Sentence Transformers](https://docs.trychroma.com
 ```
 OPENAI_EMBEDDINGS_MODEL=text-embedding-ada-002
 ```
+
+## Memory Backend Setup
 
 ### Redis Setup
 
