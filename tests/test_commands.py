@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from auto_gpt.commands import Command, CommandRegistry
+from autogpt.commands.command import Command, CommandRegistry
 
 
 class TestCommand:
@@ -12,7 +12,9 @@ class TestCommand:
         return f"{arg1} - {arg2}"
 
     def test_command_creation(self):
-        cmd = Command(name="example", description="Example command", method=self.example_function)
+        cmd = Command(
+            name="example", description="Example command", method=self.example_function
+        )
 
         assert cmd.name == "example"
         assert cmd.description == "Example command"
@@ -20,28 +22,38 @@ class TestCommand:
         assert cmd.signature == "(arg1: int, arg2: str) -> str"
 
     def test_command_call(self):
-        cmd = Command(name="example", description="Example command", method=self.example_function)
+        cmd = Command(
+            name="example", description="Example command", method=self.example_function
+        )
 
         result = cmd(arg1=1, arg2="test")
         assert result == "1 - test"
 
     def test_command_call_with_invalid_arguments(self):
-        cmd = Command(name="example", description="Example command", method=self.example_function)
+        cmd = Command(
+            name="example", description="Example command", method=self.example_function
+        )
 
         with pytest.raises(TypeError):
             cmd(arg1="invalid", does_not_exist="test")
 
     def test_command_default_signature(self):
-        cmd = Command(name="example", description="Example command", method=self.example_function)
+        cmd = Command(
+            name="example", description="Example command", method=self.example_function
+        )
 
         assert cmd.signature == "(arg1: int, arg2: str) -> str"
 
     def test_command_custom_signature(self):
         custom_signature = "custom_arg1: int, custom_arg2: str"
-        cmd = Command(name="example", description="Example command", method=self.example_function, signature=custom_signature)
+        cmd = Command(
+            name="example",
+            description="Example command",
+            method=self.example_function,
+            signature=custom_signature,
+        )
 
         assert cmd.signature == custom_signature
-
 
 
 class TestCommandRegistry:
@@ -52,7 +64,9 @@ class TestCommandRegistry:
     def test_register_command(self):
         """Test that a command can be registered to the registry."""
         registry = CommandRegistry()
-        cmd = Command(name="example", description="Example command", method=self.example_function)
+        cmd = Command(
+            name="example", description="Example command", method=self.example_function
+        )
 
         registry.register(cmd)
 
@@ -62,7 +76,9 @@ class TestCommandRegistry:
     def test_unregister_command(self):
         """Test that a command can be unregistered from the registry."""
         registry = CommandRegistry()
-        cmd = Command(name="example", description="Example command", method=self.example_function)
+        cmd = Command(
+            name="example", description="Example command", method=self.example_function
+        )
 
         registry.register(cmd)
         registry.unregister(cmd.name)
@@ -72,7 +88,9 @@ class TestCommandRegistry:
     def test_get_command(self):
         """Test that a command can be retrieved from the registry."""
         registry = CommandRegistry()
-        cmd = Command(name="example", description="Example command", method=self.example_function)
+        cmd = Command(
+            name="example", description="Example command", method=self.example_function
+        )
 
         registry.register(cmd)
         retrieved_cmd = registry.get_command(cmd.name)
@@ -89,7 +107,9 @@ class TestCommandRegistry:
     def test_call_command(self):
         """Test that a command can be called through the registry."""
         registry = CommandRegistry()
-        cmd = Command(name="example", description="Example command", method=self.example_function)
+        cmd = Command(
+            name="example", description="Example command", method=self.example_function
+        )
 
         registry.register(cmd)
         result = registry.call("example", arg1=1, arg2="test")
@@ -106,7 +126,9 @@ class TestCommandRegistry:
     def test_get_command_prompt(self):
         """Test that the command prompt is correctly formatted."""
         registry = CommandRegistry()
-        cmd = Command(name="example", description="Example command", method=self.example_function)
+        cmd = Command(
+            name="example", description="Example command", method=self.example_function
+        )
 
         registry.register(cmd)
         command_prompt = registry.command_prompt()
@@ -122,7 +144,10 @@ class TestCommandRegistry:
 
         assert "function_based" in registry.commands
         assert registry.commands["function_based"].name == "function_based"
-        assert registry.commands["function_based"].description == "Function-based test command"
+        assert (
+            registry.commands["function_based"].description
+            == "Function-based test command"
+        )
 
     def test_import_temp_command_file_module(self, tmp_path):
         """Test that the registry can import a command plugins module from a temp file."""
@@ -144,4 +169,7 @@ class TestCommandRegistry:
 
         assert "function_based" in registry.commands
         assert registry.commands["function_based"].name == "function_based"
-        assert registry.commands["function_based"].description == "Function-based test command"
+        assert (
+            registry.commands["function_based"].description
+            == "Function-based test command"
+        )

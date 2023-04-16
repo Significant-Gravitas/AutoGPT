@@ -47,11 +47,11 @@ def main() -> None:
     cfg.set_plugins(loaded_plugins)
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
-    command_registry.import_commands('scripts.ai_functions')
-    command_registry.import_commands('scripts.commands')
-    command_registry.import_commands('scripts.execute_code')
-    command_registry.import_commands('scripts.agent_manager')
-    command_registry.import_commands('scripts.file_operations')
+    command_registry.import_commands("scripts.ai_functions")
+    command_registry.import_commands("scripts.commands")
+    command_registry.import_commands("scripts.execute_code")
+    command_registry.import_commands("scripts.agent_manager")
+    command_registry.import_commands("scripts.file_operations")
     ai_name = ""
     ai_config = construct_main_ai_config()
     # print(prompt)

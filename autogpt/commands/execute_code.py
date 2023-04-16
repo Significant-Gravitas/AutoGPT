@@ -4,8 +4,11 @@ import subprocess
 
 import docker
 from docker.errors import ImageNotFound
+from autogpt.config import Config
 from autogpt.commands.command import command
 from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
+
+CFG = Config()
 
 
 @command("execute_python_file", "Execute Python File", '"file": "<file>"')
@@ -89,6 +92,15 @@ def execute_python_file(file: str):
         return f"Error: {str(e)}"
 
 
+@command(
+    "execute_shell",
+    "Execute Shell Command, non-interactive commands only",
+    '"command_line": "<command_line>"',
+    CFG.execute_local_commands,
+    "You are not allowed to run local shell commands. To execute"
+    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+    "in your config. Do not attempt to bypass the restriction.",
+)
 def execute_shell(command_line: str) -> str:
     """Execute a shell command and return the output
 
@@ -98,6 +110,13 @@ def execute_shell(command_line: str) -> str:
     Returns:
         str: The output of the command
     """
+
+    if not CFG.execute_local_commands:
+        return (
+            "You are not allowed to run local shell commands. To execute"
+            " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+            "in your config. Do not attempt to bypass the restriction."
+        )
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
     if str(WORKSPACE_PATH) not in current_dir:
