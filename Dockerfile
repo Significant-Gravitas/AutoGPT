@@ -20,8 +20,6 @@ USER appuser
 COPY --chown=appuser:appuser requirements-docker.txt .
 RUN pip install --no-cache-dir --user -r requirements-docker.txt
 
-COPY --chown=appuser:appuser auto-gpt.json .
-COPY --chown=appuser:appuser ai_settings.yaml .
 # Copy the application files
 COPY --chown=appuser:appuser autogpt/ ./autogpt
 
