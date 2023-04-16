@@ -10,7 +10,7 @@ git clone https://github.com/<YOUR-GITHUB-USERNAME>/Auto-GPT
 ```
 3. Install the project requirements
 ```
-pip install -r requirements.txt
+pip install -e .
 ```
 4. Install pre-commit hooks
 ```

@@ -12,9 +12,9 @@ WORKDIR /home/appuser
 RUN chown appuser:appuser /home/appuser
 USER appuser
 
-# Copy the requirements.txt file and install the requirements
-COPY --chown=appuser:appuser requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Copy the pyproject.toml file and install the requirements
+COPY --chown=appuser:appuser pyproject.toml .
+RUN pip install --no-cache-dir --user .
 
 # Copy the application files
 COPY --chown=appuser:appuser autogpt/ .

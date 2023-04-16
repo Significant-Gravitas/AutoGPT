@@ -1,11 +1,53 @@
+[build-system]
+requires = ["setuptools>=43.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["autogpt"]
+
 [project]
 name = "auto-gpt"
 version = "0.1.0"
 description = "A GPT based ai agent"
 readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "beautifulsoup4",
+    "colorama==0.4.6",
+    "openai==0.27.2",
+    "playsound==1.2.2",
+    "python-dotenv==1.0.0",
+    "pyyaml==6.0",
+    "readability-lxml==0.8.1",
+    "requests",
+    "tiktoken==0.3.3",
+    "gTTS==2.3.1",
+    "docker",
+    "duckduckgo-search",
+    "google-api-python-client", #(https://developers.google.com/custom-search/v1/overview)
+    "pinecone-client==2.2.1",
+    "redis",
+    "orjson",
+    "Pillow",
+    "selenium",
+    "webdriver-manager",
+    "coverage",
+    "flake8",
+    "numpy",
+    "pre-commit",
+    "black",
+    "sourcery",
+    "isort",
+]
+
+[project.scripts]
+autogpt = "autogpt.__main__:main"
 
 [tool.black]
 line-length = 88
 target-version = ['py310']
 include = '\.pyi?$'
 extend-exclude = ""
+
+[tool.isort]
+profile = "black"

@@ -35,13 +35,16 @@ Your support is greatly appreciated
 ## Table of Contents
 
 - [Auto-GPT: An Autonomous GPT-4 Experiment](#auto-gpt-an-autonomous-gpt-4-experiment)
-  - [Demo (30/03/2023):](#demo-30032023)
+    - [🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴](#----urgent-use-stable-not-master----)
+    - [Demo (30/03/2023):](#demo-30032023)
   - [Table of Contents](#table-of-contents)
   - [🚀 Features](#-features)
   - [📋 Requirements](#-requirements)
   - [💾 Installation](#-installation)
   - [🔧 Usage](#-usage)
     - [Logs](#logs)
+    - [Docker](#docker)
+    - [Command Line Arguments](#command-line-arguments)
   - [🗣️ Speech Mode](#️-speech-mode)
   - [🔍 Google API Keys Configuration](#-google-api-keys-configuration)
     - [Setting up environment variables](#setting-up-environment-variables)
@@ -50,7 +53,7 @@ Your support is greatly appreciated
     - [Setting up environment variables](#setting-up-environment-variables-1)
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
-  - [🧠 Memory pre-seeding](#memory-pre-seeding)
+  - [🧠 Memory pre-seeding](#-memory-pre-seeding)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#-image-generation)
@@ -107,7 +110,7 @@ cd 'Auto-GPT'
    _(Again, type this into your CMD window)_
 
 ```
-pip install -r requirements.txt
+pip install .
 ```
 
 5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVEN_LABS_API_KEY` as well.
@@ -123,11 +126,11 @@ pip install -r requirements.txt
 
 ## 🔧 Usage
 
-1. Run the `autogpt` Python module in your terminal:
+1. Run `autogpt` in your terminal after installing:
    _(Type this into your CMD window)_
 
 ```
-python -m autogpt
+autogpt
 ```
 
 2. After each of action, enter 'y' to authorise command, 'y -N' to run N continuous commands, 'n' to exit program, or enter additional feedback for the AI.
@@ -140,7 +143,7 @@ You will find activity and error logs in the folder `./output/logs`
 To output debug logs:
 
 ```
-python -m autogpt --debug
+autogpt --debug
 ```
 
 ### Docker
@@ -170,7 +173,7 @@ Here are some common arguments you can use when running Auto-GPT:
 Use this to use TTS for Auto-GPT
 
 ```
-python -m autogpt --speak
+autogpt --speak
 ```
 
 ## 🔍 Google API Keys Configuration
@@ -346,10 +349,10 @@ Continuous mode is not recommended.
 It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise.
 Use at your own risk.
 
-1. Run the `autogpt` python module in your terminal:
+1. Run the `autogpt` command in your terminal after installing:
 
 ```
-python -m autogpt --speak --continuous
+atutogpt --speak --continuous
 
 ```
 
@@ -360,7 +363,7 @@ python -m autogpt --speak --continuous
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 
 ```
-python -m autogpt --speak --gpt3only
+autogpt --speak --gpt3only
 ```
 
 It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
