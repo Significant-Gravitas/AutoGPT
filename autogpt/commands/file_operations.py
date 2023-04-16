@@ -5,13 +5,47 @@ from pathlib import Path
 from typing import Generator, List
 
 # Set a dedicated folder for file I/O
-WORKING_DIRECTORY = Path(__file__).parent.parent / "auto_gpt_workspace"
+WORKING_DIRECTORY = Path(os.getcwd()) / "auto_gpt_workspace"
 
 # Create the directory if it doesn't exist
 if not os.path.exists(WORKING_DIRECTORY):
     os.makedirs(WORKING_DIRECTORY)
 
+LOG_FILE = "file_logger.txt"
+LOG_FILE_PATH = WORKING_DIRECTORY / LOG_FILE
 WORKING_DIRECTORY = str(WORKING_DIRECTORY)
+
+
+def check_duplicate_operation(operation: str, filename: str) -> bool:
+    """Check if the operation has already been performed on the given file
+
+    Args:
+        operation (str): The operation to check for
+        filename (str): The name of the file to check for
+
+    Returns:
+        bool: True if the operation has already been performed on the file
+    """
+    log_content = read_file(LOG_FILE)
+    log_entry = f"{operation}: {filename}\n"
+    return log_entry in log_content
+
+
+def log_operation(operation: str, filename: str) -> None:
+    """Log the file operation to the file_logger.txt
+
+    Args:
+        operation (str): The operation to log
+        filename (str): The name of the file the operation was performed on
+    """
+    log_entry = f"{operation}: {filename}\n"
+
+    # Create the log file if it doesn't exist
+    if not os.path.exists(LOG_FILE_PATH):
+        with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
+            f.write("File Operation Logger ")
+
+    append_to_file(LOG_FILE, log_entry)
 
 
 def safe_join(base: str, *paths) -> str:
@@ -122,6 +156,8 @@ def write_to_file(filename: str, text: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
+    if check_duplicate_operation("write", filename):
+        return "Error: File has already been updated."
     try:
         filepath = safe_join(WORKING_DIRECTORY, filename)
         directory = os.path.dirname(filepath)
@@ -129,6 +165,7 @@ def write_to_file(filename: str, text: str) -> str:
             os.makedirs(directory)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(text)
+        log_operation("write", filename)
         return "File written to successfully."
     except Exception as e:
         return f"Error: {str(e)}"
@@ -148,6 +185,7 @@ def append_to_file(filename: str, text: str) -> str:
         filepath = safe_join(WORKING_DIRECTORY, filename)
         with open(filepath, "a") as f:
             f.write(text)
+        log_operation("append", filename)
         return "Text appended successfully."
     except Exception as e:
         return f"Error: {str(e)}"
@@ -162,9 +200,12 @@ def delete_file(filename: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
+    if check_duplicate_operation("delete", filename):
+        return "Error: File has already been deleted."
     try:
         filepath = safe_join(WORKING_DIRECTORY, filename)
         os.remove(filepath)
+        log_operation("delete", filename)
         return "File deleted successfully."
     except Exception as e:
         return f"Error: {str(e)}"
