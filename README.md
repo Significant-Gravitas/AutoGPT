@@ -19,20 +19,25 @@ https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-
 
 <h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
 <p align="center">
-If you can spare a coffee, you can help to cover the API costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
-A full day of development can easily cost as much as $20 in API costs, which for a free project is quite limiting.
+If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
 Your support is greatly appreciated
+Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
 </p>
 
+
+<h3 align="center">Enterprise Sponsors</h3>
 <p align="center">
- Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
+<a href="https://www.influxdata.com/"><img src="https://user-images.githubusercontent.com/22963551/232278272-24712932-7bb3-4fbe-b7e9-4b649b8104b2.png" height="40px" alt="InfluxData" /></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://roost.ai"><img src="https://roost.ai/hubfs/logos/Roost.ai-logo-gold.svg" height="40px" alt="Roost.AI" /></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://nuclei.ai/"><img src="https://nuclei.ai/images/nuclei_logo_with_text_white.svg" height="40px" alt="NucleiAI" /></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://www.algohash.org/"><img src="https://user-images.githubusercontent.com/22963551/232277567-78d642c1-ce21-4bcc-a209-c2a23495ab2d.png" height="40px" alt="AlgohashFe" /></a>&nbsp;&nbsp;&nbsp;&nbsp;</p>
 
 <h3 align="center">Individual Sponsors</h3>
 <p align="center">
 <a href="https://github.com/robinicus"><img src="https://github.com/robinicus.png" width="50px" alt="robinicus" /></a>&nbsp;&nbsp;<a href="https://github.com/prompthero"><img src="https://github.com/prompthero.png" width="50px" alt="prompthero" /></a>&nbsp;&nbsp;<a href="https://github.com/crizzler"><img src="https://github.com/crizzler.png" width="50px" alt="crizzler" /></a>&nbsp;&nbsp;<a href="https://github.com/tob-le-rone"><img src="https://github.com/tob-le-rone.png" width="50px" alt="tob-le-rone" /></a>&nbsp;&nbsp;<a href="https://github.com/FSTatSBS"><img src="https://github.com/FSTatSBS.png" width="50px" alt="FSTatSBS" /></a>&nbsp;&nbsp;<a href="https://github.com/toverly1"><img src="https://github.com/toverly1.png" width="50px" alt="toverly1" /></a>&nbsp;&nbsp;<a href="https://github.com/ddtarazona"><img src="https://github.com/ddtarazona.png" width="50px" alt="ddtarazona" /></a>&nbsp;&nbsp;<a href="https://github.com/Nalhos"><img src="https://github.com/Nalhos.png" width="50px" alt="Nalhos" /></a>&nbsp;&nbsp;<a href="https://github.com/Kazamario"><img src="https://github.com/Kazamario.png" width="50px" alt="Kazamario" /></a>&nbsp;&nbsp;<a href="https://github.com/pingbotan"><img src="https://github.com/pingbotan.png" width="50px" alt="pingbotan" /></a>&nbsp;&nbsp;<a href="https://github.com/indoor47"><img src="https://github.com/indoor47.png" width="50px" alt="indoor47" /></a>&nbsp;&nbsp;<a href="https://github.com/AuroraHolding"><img src="https://github.com/AuroraHolding.png" width="50px" alt="AuroraHolding" /></a>&nbsp;&nbsp;<a href="https://github.com/kreativai"><img src="https://github.com/kreativai.png" width="50px" alt="kreativai" /></a>&nbsp;&nbsp;<a href="https://github.com/hunteraraujo"><img src="https://github.com/hunteraraujo.png" width="50px" alt="hunteraraujo" /></a>&nbsp;&nbsp;<a href="https://github.com/Explorergt92"><img src="https://github.com/Explorergt92.png" width="50px" alt="Explorergt92" /></a>&nbsp;&nbsp;<a href="https://github.com/judegomila"><img src="https://github.com/judegomila.png" width="50px" alt="judegomila" /></a>&nbsp;&nbsp;
 <a href="https://github.com/thepok"><img src="https://github.com/thepok.png" width="50px" alt="thepok" /></a>
 &nbsp;&nbsp;<a href="https://github.com/SpacingLily"><img src="https://github.com/SpacingLily.png" width="50px" alt="SpacingLily" /></a>&nbsp;&nbsp;<a href="https://github.com/merwanehamadi"><img src="https://github.com/merwanehamadi.png" width="50px" alt="merwanehamadi" /></a>&nbsp;&nbsp;<a href="https://github.com/m"><img src="https://github.com/m.png" width="50px" alt="m" /></a>&nbsp;&nbsp;<a href="https://github.com/zkonduit"><img src="https://github.com/zkonduit.png" width="50px" alt="zkonduit" /></a>&nbsp;&nbsp;<a href="https://github.com/maxxflyer"><img src="https://github.com/maxxflyer.png" width="50px" alt="maxxflyer" /></a>&nbsp;&nbsp;<a href="https://github.com/tekelsey"><img src="https://github.com/tekelsey.png" width="50px" alt="tekelsey" /></a>&nbsp;&nbsp;<a href="https://github.com/digisomni"><img src="https://github.com/digisomni.png" width="50px" alt="digisomni" /></a>&nbsp;&nbsp;<a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="tjarmain" /></a>
-</p>
+<a href="https://github.com/Dradstone"><img src="https://github.com/Dradstone.png" width="50px" alt="Dradstone" /></a>&nbsp;&nbsp;<a href="https://github.com/CrypteorCapital"><img src="https://github.com/CrypteorCapital.png" width="50px" alt="CrypteorCapital" /></a>&nbsp;&nbsp;<a href="https://github.com/avy-ai"><img src="https://github.com/avy-ai.png" width="50px" alt="avy-ai" /></a>&nbsp;&nbsp;<a href="https://github.com/shawnharmsen"><img src="https://github.com/shawnharmsen.png" width="50px" alt="shawnharmsen" /></a>&nbsp;&nbsp;<a href="https://github.com/sunchongren"><img src="https://github.com/sunchongren.png" width="50px" alt="sunchongren" /></a>&nbsp;&nbsp;<a href="https://github.com/DailyBotHQ"><img src="https://github.com/DailyBotHQ.png" width="50px" alt="DailyBotHQ" /></a>&nbsp;&nbsp;<a href="https://github.com/mathewhawkins"><img src="https://github.com/mathewhawkins.png" width="50px" alt="mathewhawkins" /></a>&nbsp;&nbsp;<a href="https://github.com/MediConCenHK"><img src="https://github.com/MediConCenHK.png" width="50px" alt="MediConCenHK" /></a>&nbsp;&nbsp;<a href="https://github.com/kMag410"><img src="https://github.com/kMag410.png" width="50px" alt="kMag410" /></a>&nbsp;&nbsp;<a href="https://github.com/nicoguyon"><img src="https://github.com/nicoguyon.png" width="50px" alt="nicoguyon" /></a>&nbsp;&nbsp;<a href="https://github.com/Mobivs"><img src="https://github.com/Mobivs.png" width="50px" alt="Mobivs" /></a>&nbsp;&nbsp;<a href="https://github.com/jazgarewal"><img src="https://github.com/jazgarewal.png" width="50px" alt="jazgarewal" /></a>&nbsp;&nbsp;<a href="https://github.com/marv-technology"><img src="https://github.com/marv-technology.png" width="50px" alt="marv-technology" /></a>&nbsp;&nbsp;<a href="https://github.com/rapidstartup"><img src="https://github.com/rapidstartup.png" width="50px" alt="rapidstartup" /></a>&nbsp;&nbsp;<a href="https://github.com/Brodie0"><img src="https://github.com/Brodie0.png" width="50px" alt="Brodie0" /></a>&nbsp;&nbsp;<a href="https://github.com/lucas-chu"><img src="https://github.com/lucas-chu.png" width="50px" alt="lucas-chu" /></a>&nbsp;&nbsp;<a href="https://github.com/rejunity"><img src="https://github.com/rejunity.png" width="50px" alt="rejunity" /></a>&nbsp;&nbsp;<a href="https://github.com/comet-ml"><img src="https://github.com/comet-ml.png" width="50px" alt="comet-ml" /></a>&nbsp;&nbsp;<a href="https://github.com/ColinConwell"><img src="https://github.com/ColinConwell.png" width="50px" alt="ColinConwell" /></a>&nbsp;&nbsp;<a href="https://github.com/cfarquhar"><img src="https://github.com/cfarquhar.png" width="50px" alt="cfarquhar" /></a>&nbsp;&nbsp;<a href="https://github.com/ikarosai"><img src="https://github.com/ikarosai.png" width="50px" alt="ikarosai" /></a>&nbsp;&nbsp;<a href="https://github.com/ChrisDMT"><img src="https://github.com/ChrisDMT.png" width="50px" alt="ChrisDMT" /></a>&nbsp;&nbsp;<a href="https://github.com/Odin519Tomas"><img src="https://github.com/Odin519Tomas.png" width="50px" alt="Odin519Tomas" /></a>&nbsp;&nbsp;<a href="https://github.com/vkozacek"><img src="https://github.com/vkozacek.png" width="50px" alt="vkozacek" /></a>&nbsp;&nbsp;<a href="https://github.com/belharethsami"><img src="https://github.com/belharethsami.png" width="50px" alt="belharethsami" /></a>&nbsp;&nbsp;<a href="https://github.com/sultanmeghji"><img src="https://github.com/sultanmeghji.png" width="50px" alt="sultanmeghji" /></a>&nbsp;&nbsp;<a href="https://github.com/scryptedinc"><img src="https://github.com/scryptedinc.png" width="50px" alt="scryptedinc" /></a>&nbsp;&nbsp;<a href="https://github.com/johnculkin"><img src="https://github.com/johnculkin.png" width="50px" alt="johnculkin" /></a>&nbsp;&nbsp;<a href="https://github.com/RealChrisSean"><img src="https://github.com/RealChrisSean.png" width="50px" alt="RealChrisSean" /></a>&nbsp;&nbsp;<a href="https://github.com/fruition"><img src="https://github.com/fruition.png" width="50px" alt="fruition" /></a>&nbsp;&nbsp;<a href="https://github.com/jd3655"><img src="https://github.com/jd3655.png" width="50px" alt="jd3655" /></a>&nbsp;&nbsp;<a href="https://github.com/Web3Capital"><img src="https://github.com/Web3Capital.png" width="50px" alt="Web3Capital" /></a>&nbsp;&nbsp;<a href="https://github.com/allenstecat"><img src="https://github.com/allenstecat.png" width="50px" alt="allenstecat" /></a>&nbsp;&nbsp;<a href="https://github.com/tob-le-rone"><img src="https://github.com/tob-le-rone.png" width="50px" alt="tob-le-rone" /></a>&nbsp;&nbsp;<a href="https://github.com/SwftCoins"><img src="https://github.com/SwftCoins.png" width="50px" alt="SwftCoins" /></a>&nbsp;&nbsp;<a href="https://github.com/MetaPath01"><img src="https://github.com/MetaPath01.png" width="50px" alt="MetaPath01" /></a>&nbsp;&nbsp;<a href="https://github.com/joaomdmoura"><img src="https://github.com/joaomdmoura.png" width="50px" alt="joaomdmoura" /></a>&nbsp;&nbsp;<a href="https://github.com/ternary5"><img src="https://github.com/ternary5.png" width="50px" alt="ternary5" /></a>&nbsp;&nbsp;<a href="https://github.com/refinery1"><img src="https://github.com/refinery1.png" width="50px" alt="refinery1" /></a>&nbsp;&nbsp;<a href="https://github.com/josephcmiller2"><img src="https://github.com/josephcmiller2.png" width="50px" alt="josephcmiller2" /></a>&nbsp;&nbsp;<a href="https://github.com/webbcolton"><img src="https://github.com/webbcolton.png" width="50px" alt="webbcolton" /></a>&nbsp;&nbsp;<a href="https://github.com/tommygeee"><img src="https://github.com/tommygeee.png" width="50px" alt="tommygeee" /></a>&nbsp;&nbsp;<a href="https://github.com/lmaugustin"><img src="https://github.com/lmaugustin.png" width="50px" alt="lmaugustin" /></a>&nbsp;&nbsp;<a href="https://github.com/garythebat"><img src="https://github.com/garythebat.png" width="50px" alt="garythebat" /></a>&nbsp;&nbsp;<a href="https://github.com/Cameron-Fulton"><img src="https://github.com/Cameron-Fulton.png" width="50px" alt="Cameron-Fulton" /></a>&nbsp;&nbsp;<a href="https://github.com/angiaou"><img src="https://github.com/angiaou.png" width="50px" alt="angiaou" /></a>&nbsp;&nbsp;<a href="https://github.com/caitlynmeeks"><img src="https://github.com/caitlynmeeks.png" width="50px" alt="caitlynmeeks" /></a>&nbsp;&nbsp;<a href="https://github.com/MBassi91"><img src="https://github.com/MBassi91.png" width="50px" alt="MBassi91" /></a>&nbsp;&nbsp;<a href="https://github.com/Daniel1357"><img src="https://github.com/Daniel1357.png" width="50px" alt="Daniel1357" /></a>&nbsp;&nbsp;<a href="https://github.com/omphos"><img src="https://github.com/omphos.png" width="50px" alt="omphos" /></a>&nbsp;&nbsp;<a href="https://github.com/abhinav-pandey29"><img src="https://github.com/abhinav-pandey29.png" width="50px" alt="abhinav-pandey29" /></a>&nbsp;&nbsp;<a href="https://github.com/DataMetis"><img src="https://github.com/DataMetis.png" width="50px" alt="DataMetis" /></a>&nbsp;&nbsp;<a href="https://github.com/concreit"><img src="https://github.com/concreit.png" width="50px" alt="concreit" /></a>&nbsp;&nbsp;<a href="https://github.com/st617"><img src="https://github.com/st617.png" width="50px" alt="st617" /></a>&nbsp;&nbsp;<a href="https://github.com/RThaweewat"><img src="https://github.com/RThaweewat.png" width="50px" alt="RThaweewat" /></a>&nbsp;&nbsp;<a href="https://github.com/KiaArmani"><img src="https://github.com/KiaArmani.png" width="50px" alt="KiaArmani" /></a>&nbsp;&nbsp;<a href="https://github.com/Pythagora-io"><img src="https://github.com/Pythagora-io.png" width="50px" alt="Pythagora-io" /></a>&nbsp;&nbsp;<a href="https://github.com/AryaXAI"><img src="https://github.com/AryaXAI.png" width="50px" alt="AryaXAI" /></a>&nbsp;&nbsp;<a href="https://github.com/fabrietech"><img src="https://github.com/fabrietech.png" width="50px" alt="fabrietech" /></a>&nbsp;&nbsp;<a href="https://github.com/jun784"><img src="https://github.com/jun784.png" width="50px" alt="jun784" /></a>&nbsp;&nbsp;<a href="https://github.com/Mr-Bishop42"><img src="https://github.com/Mr-Bishop42.png" width="50px" alt="Mr-Bishop42" /></a>&nbsp;&nbsp;<a href="https://github.com/rickscode"><img src="https://github.com/rickscode.png" width="50px" alt="rickscode" /></a>&nbsp;&nbsp;<a href="https://github.com/projectonegames"><img src="https://github.com/projectonegames.png" width="50px" alt="projectonegames" /></a>&nbsp;&nbsp;<a href="https://github.com/rocks6"><img src="https://github.com/rocks6.png" width="50px" alt="rocks6" /></a>&nbsp;&nbsp;<a href="https://github.com/GalaxyVideoAgency"><img src="https://github.com/GalaxyVideoAgency.png" width="50px" alt="GalaxyVideoAgency" /></a>&nbsp;&nbsp;<a href="https://github.com/thisisjeffchen"><img src="https://github.com/thisisjeffchen.png" width="50px" alt="thisisjeffchen" /></a>&nbsp;&nbsp;<a href="https://github.com/TheStoneMX"><img src="https://github.com/TheStoneMX.png" width="50px" alt="TheStoneMX" /></a>&nbsp;&nbsp;<a href="https://github.com/txtr99"><img src="https://github.com/txtr99.png" width="50px" alt="txtr99" /></a>&nbsp;&nbsp;<a href="https://github.com/ZERO-A-ONE"><img src="https://github.com/ZERO-A-ONE.png" width="50px" alt="ZERO-A-ONE" /></a>&nbsp;&nbsp;</p>
+
+
+
 
 ## Table of Contents
 
@@ -54,6 +59,7 @@ Your support is greatly appreciated
     - [Redis Setup](#redis-setup)
     - [🌲 Pinecone API Key Setup](#-pinecone-api-key-setup)
     - [Milvus Setup](#milvus-setup)
+    - [Weaviate Setup](#weaviate-setup)
     - [Setting up environment variables](#setting-up-environment-variables-1)
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
@@ -115,7 +121,15 @@ cd Auto-GPT
 pip install -r requirements.txt
 ```
 
-5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVENLABS_API_KEY` as well.
+5. Locate the file named `.env.template` in the main `/Auto-GPT` folder.
+   Create a copy of this file, called `.env` by removing the `template` extension.  The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`
+   Open the `.env` file in a text editor.  Note: Files starting with a dot might be hidden by your Operating System.
+   Find the line that says `OPENAI_API_KEY=`.
+   After the `"="`, enter your unique OpenAI API Key (without any quotes or spaces).
+   Enter any other API keys or Tokens for services you would like to utilize.
+   Save and close the `".env"` file.
+   By completing these steps, you have properly configured the API Keys for your project.
+   
   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
@@ -124,8 +138,8 @@ pip install -r requirements.txt
       - `smart_llm_model_deployment_id` - your gpt-4 deployment ID
       - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID
     - Please specify all of these values as double-quoted strings
-    > Replace string in angled brackets (<>) to your own ID
     ```yaml
+    # Replace string in angled brackets (<>) to your own ID
     azure_model_map:
       fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
       ...
@@ -175,18 +189,18 @@ Here are some common arguments you can use when running Auto-GPT:
 > Replace anything in angled brackets (<>) to a value you want to specify
 * View all available command line arguments
 ```bash
-python scripts/main.py --help
+python -m autogpt --help
 ```
 * Run Auto-GPT with a different AI Settings file
 ```bash
-python scripts/main.py --ai-settings <filename>
+python -m autogpt --ai-settings <filename>
 ```
 * Specify one of 3 memory backends: `local`, `redis`, `pinecone` or `no_memory`
 ```bash
-python scripts/main.py --use-memory  <memory-backend>
+python -m autogpt --use-memory  <memory-backend>
 ```
 
-> **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python scripts/main.py --help` for more information
+> **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python -m autogpt --help` for more information
 
 ## 🗣️ Speech Mode
 
@@ -266,7 +280,31 @@ Drop the repo's zipfile in the plugins folder.
 
 If you add the plugins class name to the whitelist in the config.py you will not be prompted otherwise you'll be warned before loading the plugin.
 
-## Redis Setup
+## Plugins
+
+See https://github.com/Torantulino/Auto-GPT-Plugin-Template for the template of the plugins.
+
+⚠️💀 WARNING 💀⚠️: Review the code of any plugin you use, this allows for any Python to be executed and do malicious things. Like stealing your API keys.
+
+Drop the repo's zipfile in the plugins folder.
+
+![Download Zip](https://raw.githubusercontent.com/BillSchumacher/Auto-GPT/master/plugin.png)
+
+If you add the plugins class name to the whitelist in the config.py you will not be prompted otherwise you'll be warned before loading the plugin.
+
+## Setting Your Cache Type
+
+By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+
+To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
+
+* `local` (default) uses a local JSON cache file
+* `pinecone` uses the Pinecone.io account you configured in your ENV settings
+* `redis` will use the redis cache that you configured
+* `milvus` will use the milvus cache that you configured
+* `weaviate` will use the weaviate cache that you configured
+
+### Redis Setup
 > _**CAUTION**_ \
 This is not intended to be publicly accessible and lacks security measures. Therefore, avoid exposing Redis to the internet without a password or at all
 1. Install docker desktop
@@ -305,20 +343,6 @@ Pinecone enables the storage of vast amounts of vector-based memory, allowing fo
 2. Choose the `Starter` plan to avoid being charged.
 3. Find your API key and region under the default project in the left sidebar.
 
-### Milvus Setup
-
-[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
-
-- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
-  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
-  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
-- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
-- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
-- optional
-  - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
-
-### Setting up environment variables
-
 In the `.env` file set:
 - `PINECONE_API_KEY`
 - `PINECONE_ENV` (example: _"us-east4-gcp"_)
@@ -342,17 +366,40 @@ export PINECONE_ENV="<YOUR_PINECONE_REGION>" # e.g: "us-east4-gcp"
 export MEMORY_BACKEND="pinecone"
 ```
 
+### Milvus Setup
 
-## Setting Your Cache Type
+[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
 
-By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
+  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
+  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
+- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
+- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
+- optional
+  - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
 
-To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
 
-`local` (default) uses a local JSON cache file
-`pinecone` uses the Pinecone.io account you configured in your ENV settings
-`redis` will use the redis cache that you configured
+### Weaviate Setup
+[Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
+Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded) is supported which allows the Auto-GPT process itself to start a Weaviate instance. To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip install "weaviate-client>=3.15.4"`. 
 
+#### Setting up environment variables
+
+In your `.env` file set the following:
+
+```
+MEMORY_BACKEND=weaviate
+WEAVIATE_HOST="127.0.0.1" # the IP or domain of the running Weaviate instance
+WEAVIATE_PORT="8080" 
+WEAVIATE_PROTOCOL="http"
+WEAVIATE_USERNAME="your username"
+WEAVIATE_PASSWORD="your password"
+WEAVIATE_API_KEY="your weaviate API key if you have one"
+WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate" # this is optional and indicates where the data should be persisted when running an embedded instance
+USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
+MEMORY_INDEX="Autogpt" # name of the index to create for the application
+```
+ 
 ## View Memory Usage
 
 1. View memory usage by using the `--debug` flag :)

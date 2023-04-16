@@ -7,12 +7,10 @@ from base64 import b64decode
 import openai
 import requests
 from PIL import Image
-from pathlib import Path
 from autogpt.config import Config
+from autogpt.workspace import path_in_workspace
 
 CFG = Config()
-
-WORKING_DIRECTORY = Path(__file__).parent.parent / "auto_gpt_workspace"
 
 
 def generate_image(prompt: str) -> str:
@@ -65,7 +63,7 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
     image = Image.open(io.BytesIO(response.content))
     print(f"Image Generated for prompt:{prompt}")
 
-    image.save(os.path.join(WORKING_DIRECTORY, filename))
+    image.save(path_in_workspace(filename))
 
     return f"Saved to disk:{filename}"
 
@@ -93,7 +91,7 @@ def generate_image_with_dalle(prompt: str, filename: str) -> str:
 
     image_data = b64decode(response["data"][0]["b64_json"])
 
-    with open(f"{WORKING_DIRECTORY}/{filename}", mode="wb") as png:
+    with open(path_in_workspace(filename), mode="wb") as png:
         png.write(image_data)
 
     return f"Saved to disk:{filename}"
