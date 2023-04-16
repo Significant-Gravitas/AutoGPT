@@ -2,6 +2,7 @@
 import json
 from typing import List, NoReturn, Union
 from autogpt.agent.agent_manager import AgentManager
+from autogpt.commands.command import command, CommandRegistry
 from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.google_search import google_official_search, google_search
 from autogpt.commands.improve_code import improve_code
@@ -106,7 +107,7 @@ def map_command_synonyms(command_name: str):
     return command_name
 
 
-def execute_command(command_name: str, arguments, prompt: PromptGenerator):
+def execute_command(command_registry: CommandRegistry, command_name: str, arguments, prompt: PromptGenerator):
     """Execute the command and return the result
 
     Args:
@@ -118,6 +119,13 @@ def execute_command(command_name: str, arguments, prompt: PromptGenerator):
     memory = get_memory(CFG)
 
     try:
+        cmd = command_registry.commands.get(command_name)
+
+        # If the command is found, call it with the provided arguments
+        if cmd:
+            return cmd(**arguments)
+        
+        # TODO: Remove commands below after they are moved to the command registry.
         command_name = map_command_synonyms(command_name)
         if command_name == "google":
             # Check if the Google API key is set and use the official search method
@@ -248,6 +256,7 @@ def shutdown() -> NoReturn:
     quit()
 
 
+@command("start_agent", "Start GPT Agent", '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"')
 def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
     """Start an agent with a given name, task, and prompt
 
@@ -280,6 +289,7 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
 
+@command("message_agent", "Message GPT Agent", '"key": "<key>", "message": "<message>"')
 def message_agent(key: str, message: str) -> str:
     """Message an agent with a given key and message"""
     # Check if the key is a valid integer
@@ -294,6 +304,7 @@ def message_agent(key: str, message: str) -> str:
     return agent_response
 
 
+@command("list_agents", "List GPT Agents", "")
 def list_agents():
     """List all agents
 
@@ -305,6 +316,7 @@ def list_agents():
     )
 
 
+@command("delete_agent", "Delete GPT Agent", '"key": "<key>"')
 def delete_agent(key: str) -> str:
     """Delete an agent with a given key
 
