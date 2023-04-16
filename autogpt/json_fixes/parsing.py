@@ -3,14 +3,9 @@ from __future__ import annotations
 
 import contextlib
 import json
-<<<<<<< HEAD
-from typing import Any
-
-=======
 from typing import Any, Dict, Union
 from colorama import Fore
 from regex import regex
->>>>>>> d3d8253b (Refactor parsing module and move JSON fix function to appropriate location)
 from autogpt.config import Config
 from autogpt.json_fixes.auto_fix import fix_json
 from autogpt.json_fixes.bracket_termination import balance_braces
@@ -115,11 +110,7 @@ def fix_and_parse_json(
 
 def try_ai_fix(
     try_to_fix_with_gpt: bool, exception: Exception, json_to_load: str
-<<<<<<< HEAD
-) -> str | dict[Any, Any]:
-=======
 ) -> Dict[Any, Any]:
->>>>>>> d3d8253b (Refactor parsing module and move JSON fix function to appropriate location)
     """Try to fix the JSON with the AI
 
     Args:
