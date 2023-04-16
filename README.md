@@ -195,7 +195,7 @@ python -m autogpt --help
 ```bash
 python -m autogpt --ai-settings <filename>
 ```
-* Specify one of 3 memory backends: `local`, `redis`, `pinecone` or `no_memory`
+* Specify a memory backend
 ```bash
 python -m autogpt --use-memory  <memory-backend>
 ```

@@ -23,12 +23,16 @@ except ImportError:
 
 try:
     from autogpt.memory.weaviate import WeaviateMemory
+
+    supported_memory.append("weaviate")
 except ImportError:
     # print("Weaviate not installed. Skipping import.")
     WeaviateMemory = None
 
 try:
     from autogpt.memory.milvus import MilvusMemory
+
+    supported_memory.append("milvus")
 except ImportError:
     # print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
