@@ -207,7 +207,7 @@ class Config(metaclass=Singleton):
         self.custom_search_engine_id = value
 
     def set_search_language_code(self, value: str) -> None:
-        """Set the custom search engine id value."""
+        """Set the search language code value"""
         self.search_language_code = value
 
     def set_pinecone_api_key(self, value: str) -> None:
