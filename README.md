@@ -179,20 +179,15 @@ Here are some common arguments you can use when running Auto-GPT:
 
 > Replace anything in angled brackets (<>) to a value you want to specify
 
-- View all available command line arguments
-
+* View all available command line arguments
 ```bash
 python scripts/main.py --help
 ```
-
-- Run Auto-GPT with a different AI Settings file
-
+* Run Auto-GPT with a different AI Settings file
 ```bash
 python scripts/main.py --ai-settings <filename>
 ```
-
-- Specify one of 3 memory backends: `local`, `redis`, `pinecone` or `no_memory`
-
+* Specify one of 3 memory backends: `local`, `redis`, `pinecone` or `no_memory`
 ```bash
 python scripts/main.py --use-memory  <memory-backend>
 ```
@@ -390,12 +385,14 @@ usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVER
 Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
 
 options:
--h, --help show this help message and exit
---file FILE The file to ingest.
---dir DIR The directory containing the files to ingest.
---init Init the memory and wipe its content (default: False)
---overlap OVERLAP The overlap size between chunks when ingesting files (default: 200)
---max_length MAX_LENGTH The max_length of each chunk when ingesting files (default: 4000)
+```
+  -h, --help               show this help message and exit
+  --file FILE              The file to ingest.
+  --dir DIR                The directory containing the files to ingest.
+  --init                   Init the memory and wipe its content (default: False)
+  --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
+  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000)
+```
 
 # python autogpt/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
 
