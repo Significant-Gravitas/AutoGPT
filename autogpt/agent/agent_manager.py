@@ -1,5 +1,6 @@
 """Agent manager for managing GPT agents"""
-from typing import List, Tuple, Union
+from __future__ import annotations
+
 from autogpt.llm_utils import create_chat_completion
 from autogpt.config.config import Singleton, Config
 
@@ -15,7 +16,7 @@ class AgentManager(metaclass=Singleton):
     # Create new GPT agent
     # TODO: Centralise use of create_chat_completion() to globally enforce token limit
 
-    def create_agent(self, task: str, prompt: str, model: str) -> Tuple[int, str]:
+    def create_agent(self, task: str, prompt: str, model: str) -> tuple[int, str]:
         """Create a new agent and return its key
 
         Args:
@@ -64,7 +65,7 @@ class AgentManager(metaclass=Singleton):
 
         return key, agent_reply
 
-    def message_agent(self, key: Union[str, int], message: str) -> str:
+    def message_agent(self, key: str | int, message: str) -> str:
         """Send a message to an agent and return its response
 
         Args:
@@ -108,7 +109,7 @@ class AgentManager(metaclass=Singleton):
 
         return agent_reply
 
-    def list_agents(self) -> List[Tuple[Union[str, int], str]]:
+    def list_agents(self) -> list[tuple[str | int, str]]:
         """Return a list of all agents
 
         Returns:
@@ -118,7 +119,7 @@ class AgentManager(metaclass=Singleton):
         # Return a list of agent keys and their tasks
         return [(key, task) for key, (task, _, _) in self.agents.items()]
 
-    def delete_agent(self, key: Union[str, int]) -> bool:
+    def delete_agent(self, key: str | int) -> bool:
         """Delete an agent from the agent manager
 
         Args:

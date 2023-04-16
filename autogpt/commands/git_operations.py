@@ -16,5 +16,8 @@ def clone_repository(repo_url: str, clone_path: str) -> str:
         str: The result of the clone operation"""
     split_url = repo_url.split("//")
     auth_repo_url = f"//{CFG.github_username}:{CFG.github_api_key}@".join(split_url)
-    git.Repo.clone_from(auth_repo_url, clone_path)
-    return f"""Cloned {repo_url} to {clone_path}"""
+    try:
+        git.Repo.clone_from(auth_repo_url, clone_path)
+        return f"""Cloned {repo_url} to {clone_path}"""
+    except Exception as e:
+        return f"Error: {str(e)}"
