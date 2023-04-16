@@ -52,8 +52,6 @@ def get_prompt() -> str:
     prompt_generator.add_constraint("10 Showcase the integrated text.")
     prompt_generator.add_constraint("If instructed by the plan to use a specific commands, ALWAYS use the specific command")
     prompt_generator.add_constraint("You can only provide one command at a time in the plan")
-
-    
     prompt_generator.add_constraint(
         'Exclusively use the commands listed in double quotes e.g. "command name"'
     )
