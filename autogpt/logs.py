@@ -85,7 +85,7 @@ class Logger(metaclass=Singleton):
             telegramUtils = TelegramUtils()
             message = f"{title}. {content}"
             telegramUtils.send_message(message)
-        
+
         if content:
             if isinstance(content, list):
                 content = " ".join(content)
