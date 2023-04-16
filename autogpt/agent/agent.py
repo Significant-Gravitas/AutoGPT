@@ -73,6 +73,9 @@ class Agent:
                     cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
+            for plugin in cfg.plugins:
+                assistant_reply = plugin.post_planning(self, assistant_reply)
+
             # Print Assistant thoughts
             print_assistant_thoughts(self.ai_name, assistant_reply)
 
