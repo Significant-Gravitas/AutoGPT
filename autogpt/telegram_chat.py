@@ -42,7 +42,7 @@ class TelegramUtils:
             count += 1
         if (count > 0):
             print("Cleaned up old messages.")
-            
+
     @staticmethod
     def get_bot():
         bot_token = cfg.telegram_api_key
@@ -74,11 +74,20 @@ class TelegramUtils:
         #await delete_old_messages()
 
         print("Asking user: " + question)
-        TelegramUtils.send_message(question)
+        await TelegramUtils.send_message(question)
 
         print("Waiting for response on Telegram chat...")
         await TelegramUtils._poll_updates()
+        if response_queue is "/stop":
+            TelegramUtils.send_message("Stopping Auto-GPT now!")
+            exit(0)
+        if response_queue is "/start":
+            await TelegramUtils.send_message("I am already here... Please use /stop to stop me first.")
+            await TelegramUtils._poll_updates()
+
+            
         response_text = response_queue
+            
 
         print("Response received from Telegram: " + response_text)
         return response_text
