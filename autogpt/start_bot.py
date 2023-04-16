@@ -40,8 +40,13 @@ async def start(update: Update, context: CallbackContext):
     global main_started
     print("Starting Auto-GPT...")
     if is_authorized_user(update):
-        # check if main is still running
-        process = os.popen('ps -Af')
+        # Check if operating system is Windows
+        if os.name == 'nt':
+            # Check if main is still running
+            process = os.popen('tasklist')
+        else:
+            # check if main is still running
+            process = os.popen('ps -Af')
         output = process.read()
         process.close()
         if "python -m autogpt" in output:
