@@ -2,6 +2,7 @@
 import argparse
 
 from colorama import Fore
+
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -63,6 +64,32 @@ def parse_arguments() -> None:
         help="Specifies which ai_settings.yaml file to use, will also automatically"
         " skip the re-prompt.",
     )
+    parser.add_argument(
+        "--global-kill-switch",
+        type=str,
+        dest="global_kill_switch",
+        help="Defines the web page to check for the global kill switch",
+    )
+    parser.add_argument(
+        "--global-kill-switch-canary",
+        type=str,
+        dest="global_kill_switch_canary",
+        help="Defines the canary string to look for on the global kill switch page",
+        default="canary",
+    )
+    parser.add_argument(
+        "--local-kill-switch",
+        type=str,
+        dest="local_kill_switch",
+        help="Defines the web page to check for the local kill switch",
+    )
+    parser.add_argument(
+        "--local-kill-switch-canary",
+        type=str,
+        dest="local_kill_switch_canary",
+        help="Defines the canary string to look for on the local kill switch page",
+        default="canary",
+    )
     args = parser.parse_args()
 
     if args.debug:
@@ -78,6 +105,18 @@ def parse_arguments() -> None:
             " cause your AI to run forever or carry out actions you would not usually"
             " authorise. Use at your own risk.",
         )
+        # Provide an extra warning when continuous mode is used unlimited with no kill switch
+        if (
+            not args.continuous_limit
+            and not args.global_kill_switch
+            and not args.local_kill_switch
+        ):
+            logger.typewriter_log(
+                "WARNING: ",
+                Fore.RED,
+                "Continuous mode is being launched without a kill switch.",
+            )
+
         CFG.set_continuous_mode(True)
 
         if args.continuous_limit:
@@ -118,6 +157,15 @@ def parse_arguments() -> None:
     if args.skip_reprompt:
         logger.typewriter_log("Skip Re-prompt: ", Fore.GREEN, "ENABLED")
         CFG.skip_reprompt = True
+
+    if args.global_kill_switch:
+        CFG.global_kill_switch = args.global_kill_switch
+    if args.global_kill_switch_canary:
+        CFG.global_kill_switch_canary = args.global_kill_switch_canary
+    if args.local_kill_switch:
+        CFG.local_kill_switch = args.local_kill_switch
+    if args.local_kill_switch_canary:
+        CFG.local_kill_switch_canary = args.local_kill_switch_canary
 
     if args.ai_settings_file:
         file = args.ai_settings_file
