@@ -9,7 +9,8 @@ CFG = Config()
 
 
 def fix_json(json_string: str, schema: str) -> str:
-    """Fix the given JSON string to make it parseable and fully compliant with
+    """
+    Fix the given JSON string to make it parseable and fully compliant with
         the provided schema.
 
     Args:
