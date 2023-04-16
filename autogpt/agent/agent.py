@@ -31,6 +31,7 @@ class Agent:
         memory,
         full_message_history,
         next_action_count,
+        config,
         prompt,
         user_input,
     ):
@@ -38,6 +39,7 @@ class Agent:
         self.memory = memory
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
+        self.config = config
         self.prompt = prompt
         self.user_input = user_input
 
