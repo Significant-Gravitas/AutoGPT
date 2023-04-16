@@ -94,7 +94,6 @@ def google(input_str: str) -> str:
     return str(safe_message)
 
 
-
 def execute_shell_command(args: Dict[str, Any]) -> str:
     """
     Execute the shell command if local commands execution is allowed in the
@@ -156,11 +155,11 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response: str):
+def get_command(response_json: Dict):
     """Parse the response and return the command name and arguments
 
     Args:
-        response (str): The response from the user
+        response_json (json): The response from the AI
 
     Returns:
         tuple: The command name and arguments
@@ -171,8 +170,6 @@ def get_command(response: str):
         Exception: If any other error occurs
     """
     try:
-        response_json = fix_and_parse_json(response)
-
         if "command" not in response_json:
             return "Error:", "Missing 'command' object in JSON"
 
