@@ -48,7 +48,7 @@ class AgentManager(metaclass=Singleton):
         for i, plugin in enumerate(self.cfg.plugins):
             plugin_result = plugin.on_instruction(messages)
             if plugin_result:
-                sep = '' if not i else '\n'
+                sep = "" if not i else "\n"
                 plugins_reply = f"{plugins_reply}{sep}{plugin_result}"
 
         if plugins_reply and plugins_reply != "":
@@ -98,7 +98,7 @@ class AgentManager(metaclass=Singleton):
         for i, plugin in enumerate(self.cfg.plugins):
             plugin_result = plugin.on_instruction(messages)
             if plugin_result:
-                sep = '' if not i else '\n'
+                sep = "" if not i else "\n"
                 plugins_reply = f"{plugins_reply}{sep}{plugin_result}"
         # Update full message history
         if plugins_reply and plugins_reply != "":

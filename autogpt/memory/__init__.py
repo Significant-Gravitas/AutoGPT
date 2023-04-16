@@ -56,8 +56,10 @@ def get_memory(cfg, init=False):
             memory = RedisMemory(cfg)
     elif cfg.memory_backend == "weaviate":
         if not WeaviateMemory:
-            print("Error: Weaviate is not installed. Please install weaviate-client to"
-                  " use Weaviate as a memory backend.")
+            print(
+                "Error: Weaviate is not installed. Please install weaviate-client to"
+                " use Weaviate as a memory backend."
+            )
         else:
             memory = WeaviateMemory(cfg)
     elif cfg.memory_backend == "milvus":
@@ -89,5 +91,5 @@ __all__ = [
     "PineconeMemory",
     "NoMemory",
     "MilvusMemory",
-    "WeaviateMemory"
+    "WeaviateMemory",
 ]
