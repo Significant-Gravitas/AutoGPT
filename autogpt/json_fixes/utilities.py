@@ -3,7 +3,8 @@ import re
 
 
 def extract_char_position(error_message: str) -> int:
-    """Extract the character position from the JSONDecodeError message.
+    """
+    Extract the character position from the JSONDecodeError message.
 
     Args:
         error_message (str): The error message from the JSONDecodeError
