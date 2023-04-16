@@ -24,7 +24,6 @@ class LocalCache(MemoryProviderSingleton):
 
         # switch chroma's logging defaults to error only
         logging.getLogger('chromadb').setLevel(logging.ERROR)
-        
 
         self.chromaClient = chromadb.Client(Settings(
             chroma_db_impl="duckdb+parquet", # this makes it persisted, comment out to be purely in-memory
@@ -70,7 +69,7 @@ class LocalCache(MemoryProviderSingleton):
 
         Returns: A message indicating that the db has been cleared.
         """
-        
+
         chroma_client = self.chromaClient
         chroma_client.reset()
         self.chromaCollection = chroma_client.create_collection(name="autogpt")
@@ -101,7 +100,7 @@ class LocalCache(MemoryProviderSingleton):
 
     def get_relevant(self, text: str, k: int) -> List[Any]:
         results = None
-        try: 
+        try:
             if self.useOpenAIEmbeddings:
                 embeddings = create_embedding(text)
                 results = self.chromaCollection.query(

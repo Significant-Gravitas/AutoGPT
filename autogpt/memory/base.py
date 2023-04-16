@@ -5,6 +5,7 @@ import openai
 
 from autogpt.config import AbstractSingleton
 
+
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
     def add(self, data):
