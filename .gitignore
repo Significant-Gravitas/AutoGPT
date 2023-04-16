@@ -157,3 +157,4 @@ vicuna-*
 
 # mac
 .DS_Store
+/ai_settings_backup.yaml
