@@ -54,7 +54,7 @@ class LocalCache(MemoryProviderSingleton):
                 self.data = CacheContent()
         else:
             print(
-                f"Warning: The file '{self.filename}' does not exist."
+                f"Warning: The file '{self.filename}' does not exist. "
                 "Local memory would not be saved to a file."
             )
             self.data = CacheContent()
