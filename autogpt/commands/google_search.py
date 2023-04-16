@@ -79,13 +79,11 @@ def google_official_search(query: str, num_results: int = 8) -> Union[str, List[
             "message", ""
         ):
             return "Error: The provided Google API key is invalid or missing."
-        
         # Handle other types of errors
         elif error_details.get("error", {}).get(
             "message", ""
         ):
             return f"Error: {error_details['error']['message']}"
-        
         else:
             return f"Error: {e}"
 
