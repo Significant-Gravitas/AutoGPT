@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import time
-from ast import List
-
 import openai
-from colorama import Fore, Style
-from openai.error import APIError, RateLimitError
+from colorama import Fore
 
+from langchain.schema import BaseMessage, SystemMessage, HumanMessage
+from langchain.chat_models import ChatOpenAI, AzureChatOpenAI
+from langchain.embeddings import OpenAIEmbeddings
 from autogpt.config import Config
 from autogpt.logs import logger
 
@@ -39,21 +38,16 @@ def call_ai_function(
     # parse args to comma separated string
     args = ", ".join(args)
     messages = [
-        {
-            "role": "system",
-            "content": f"You are now the following python function: ```# {description}"
-            f"\n{function}```\n\nOnly respond with your `return` value.",
-        },
-        {"role": "user", "content": args},
+        SystemMessage(content=f"You are now the following python function: ```# {description}"
+            f"\n{function}```\n\nOnly respond with your `return` value."),
+        HumanMessage(content=args)
     ]
 
     return create_chat_completion(model=model, messages=messages, temperature=0)
 
 
-# Overly simple abstraction until we create something better
-# simple retry mechanism when getting a rate error or a bad gateway
 def create_chat_completion(
-    messages: list,  # type: ignore
+    messages: list[BaseMessage],
     model: str | None = None,
     temperature: float = CFG.temperature,
     max_tokens: int | None = None,
@@ -69,7 +63,6 @@ def create_chat_completion(
     Returns:
         str: The response from the chat completion
     """
-    response = None
     num_retries = 10
     warned_user = False
     if CFG.debug_mode:
@@ -78,95 +71,41 @@ def create_chat_completion(
             + f"Creating chat completion with model {model}, temperature {temperature},"
             f" max_tokens {max_tokens}" + Fore.RESET
         )
-    for attempt in range(num_retries):
-        backoff = 2 ** (attempt + 2)
-        try:
-            if CFG.use_azure:
-                response = openai.ChatCompletion.create(
-                    deployment_id=CFG.get_azure_deployment_id_for_model(model),
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            else:
-                response = openai.ChatCompletion.create(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            break
-        except RateLimitError:
-            if CFG.debug_mode:
-                print(
-                    Fore.RED + "Error: ",
-                    f"Reached rate limit, passing..." + Fore.RESET,
-                )
-            if not warned_user:
-                logger.double_check(
-                    f"Please double check that you have setup a {Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. "
-                    + f"You can read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
-                )
-                warned_user = True
-        except APIError as e:
-            if e.http_status == 502:
-                pass
-            else:
-                raise
-            if attempt == num_retries - 1:
-                raise
-        if CFG.debug_mode:
-            print(
-                Fore.RED + "Error: ",
-                f"API Bad gateway. Waiting {backoff} seconds..." + Fore.RESET,
-            )
-        time.sleep(backoff)
-    if response is None:
-        logger.typewriter_log(
-            "FAILED TO GET RESPONSE FROM OPENAI",
-            Fore.RED,
-            "Auto-GPT has failed to get a response from OpenAI's services. "
-            + f"Try running Auto-GPT again, and if the problem the persists try running it with `{Fore.CYAN}--debug{Fore.RESET}`.",
-        )
-        logger.double_check()
-        if CFG.debug_mode:
-            raise RuntimeError(f"Failed to get response after {num_retries} retries")
-        else:
-            quit(1)
 
-    return response.choices[0].message["content"]
+    chat = (
+        AzureChatOpenAI(
+            deployment_name=CFG.get_azure_deployment_id_for_model(model),
+            model_name=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_retries=num_retries
+        ) if CFG.use_azure else ChatOpenAI(
+            model_name=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            max_retries=num_retries
+        )
+    )
+
+    response = chat(messages)
+
+    return response.content
 
 
 def create_embedding_with_ada(text) -> list:
     """Create an embedding with text-ada-002 using the OpenAI SDK"""
     num_retries = 10
-    for attempt in range(num_retries):
-        backoff = 2 ** (attempt + 2)
-        try:
-            if CFG.use_azure:
-                return openai.Embedding.create(
-                    input=[text],
-                    engine=CFG.get_azure_deployment_id_for_model(
-                        "text-embedding-ada-002"
-                    ),
-                )["data"][0]["embedding"]
-            else:
-                return openai.Embedding.create(
-                    input=[text], model="text-embedding-ada-002"
-                )["data"][0]["embedding"]
-        except RateLimitError:
-            pass
-        except APIError as e:
-            if e.http_status == 502:
-                pass
-            else:
-                raise
-            if attempt == num_retries - 1:
-                raise
-        if CFG.debug_mode:
-            print(
-                Fore.RED + "Error: ",
-                f"API Bad gateway. Waiting {backoff} seconds..." + Fore.RESET,
-            )
-        time.sleep(backoff)
+
+    model_ada = "text-embedding-ada-002"
+    model = CFG.get_azure_deployment_id_for_model(model_ada) if CFG.use_azure else model_ada
+
+    embeddings = OpenAIEmbeddings(
+        model=model,
+        max_retries=num_retries
+    )
+
+    return embeddings.embed_query(text)
+
+
+def get_num_tokens_from_messages(model, messages):
+    return ChatOpenAI(model_name=model, openai_api_key=CFG.openai_api_key).get_num_tokens_from_messages(messages)

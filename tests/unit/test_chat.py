@@ -2,27 +2,21 @@
 import time
 import unittest
 from unittest.mock import patch
+from langchain.schema import (HumanMessage, AIMessage, SystemMessage)
 
-from autogpt.chat import create_chat_message, generate_context
+from autogpt.config import Config
+from autogpt.chat import generate_context
 
 
 class TestChat(unittest.TestCase):
-    # Tests that the function returns a dictionary with the correct keys and values when valid strings are provided for role and content.
-    def test_happy_path_role_content(self):
-        result = create_chat_message("system", "Hello, world!")
-        self.assertEqual(result, {"role": "system", "content": "Hello, world!"})
-
-    # Tests that the function returns a dictionary with the correct keys and values when empty strings are provided for role and content.
-    def test_empty_role_content(self):
-        result = create_chat_message("", "")
-        self.assertEqual(result, {"role": "", "content": ""})
-
     # Tests the behavior of the generate_context function when all input parameters are empty.
     @patch("time.strftime")
     def test_generate_context_empty_inputs(self, mock_strftime):
         # Mock the time.strftime function to return a fixed value
         mock_strftime.return_value = "Sat Apr 15 00:00:00 2023"
         # Arrange
+        CFG = Config()
+        CFG.openai_api_key = "test" # Needed to instantiate ChatOpenAI
         prompt = ""
         relevant_memory = ""
         full_message_history = []
@@ -37,15 +31,9 @@ class TestChat(unittest.TestCase):
             47,
             3,
             [
-                {"role": "system", "content": ""},
-                {
-                    "role": "system",
-                    "content": f"The current time and date is {time.strftime('%c')}",
-                },
-                {
-                    "role": "system",
-                    "content": f"This reminds you of these events from your past:\n\n\n",
-                },
+                SystemMessage(content=""),
+                SystemMessage(content=f"The current time and date is {time.strftime('%c')}"),
+                SystemMessage(content=f"This reminds you of these events from your past:\n\n\n"),
             ],
         )
         self.assertEqual(result, expected_result)
@@ -56,14 +44,11 @@ class TestChat(unittest.TestCase):
         prompt = "What is your favorite color?"
         relevant_memory = "You once painted your room blue."
         full_message_history = [
-            create_chat_message("user", "Hi there!"),
-            create_chat_message("assistant", "Hello! How can I assist you today?"),
-            create_chat_message("user", "Can you tell me a joke?"),
-            create_chat_message(
-                "assistant",
-                "Why did the tomato turn red? Because it saw the salad dressing!",
-            ),
-            create_chat_message("user", "Haha, that's funny."),
+            HumanMessage(content="Hi there!"),
+            AIMessage(content="Hello! How can I assist you today?"),
+            HumanMessage(content="Can you tell me a joke?"),
+            AIMessage(content="Why did the tomate turn red? Because it saw the salad dressing!"),
+            HumanMessage(content="Haha, that's funny."),
         ]
         model = "gpt-3.5-turbo-0301"
 

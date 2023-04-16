@@ -1,7 +1,9 @@
 from colorama import Fore, Style
 
+from langchain.schema import SystemMessage
+
 from autogpt.app import execute_command, get_command
-from autogpt.chat import chat_with_ai, create_chat_message
+from autogpt.chat import chat_with_ai
 from autogpt.config import Config
 from autogpt.json_fixes.master_json_fix_method import fix_json_using_multiple_techniques
 from autogpt.json_validation.validate_json import validate_json
@@ -186,12 +188,10 @@ class Agent:
             # Check if there's a result from the command append it to the message
             # history
             if result is not None:
-                self.full_message_history.append(create_chat_message("system", result))
+                self.full_message_history.append(SystemMessage(content=result))
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
             else:
-                self.full_message_history.append(
-                    create_chat_message("system", "Unable to execute command")
-                )
+                self.full_message_history.append(SystemMessage(content="Unable to execute command"))
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
