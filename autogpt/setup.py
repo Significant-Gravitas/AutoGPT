@@ -36,7 +36,6 @@ def prompt_user() -> AIConfig:
             return AIConfig(ai_name, ai_role, ai_goals)
     else:
         logger.typewriter_log("No default config found. Please enter the details below.")
-    
     # Construct the prompt
     logger.typewriter_log(
         "Welcome to Auto-GPT! ",
