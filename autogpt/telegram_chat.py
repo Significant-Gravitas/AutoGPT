@@ -125,7 +125,7 @@ class TelegramUtils:
             "Yes", "Okay", "Ok", "Sure", "Yeah", "Yup", "Yep"
         ]:
             response_text = "y"
-        if response_queue.capitalize() in [
+        elif response_queue.capitalize() in [
             "No", "Nope", "Nah", "N"
         ]:
             response_text = "n"
