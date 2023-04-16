@@ -16,7 +16,7 @@ from autogpt.commands.file_operations import (
     delete_file,
     read_file,
     search_files,
-    write_to_file,
+    create_new_file,
 )
 from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
@@ -93,8 +93,8 @@ def map_command_synonyms(command_name: str):
     string matches a list of common/known hallucinations
     """
     synonyms = [
-        ("write_file", "write_to_file"),
-        ("create_file", "write_to_file"),
+        ("write_file", "create_new_file"),
+        ("write_to_file", "append_to_file"),
         ("search", "google"),
     ]
     for seen_command, actual_command_name in synonyms:
@@ -156,8 +156,8 @@ def execute_command(command_name: str, arguments):
             )
         elif command_name == "read_file":
             return read_file(arguments["file"])
-        elif command_name == "write_to_file":
-            return write_to_file(arguments["file"], arguments["text"])
+        elif command_name == "create_new_file":
+            return create_new_file(arguments["file"], arguments["text"])
         elif command_name == "append_to_file":
             return append_to_file(arguments["file"], arguments["text"])
         elif command_name == "delete_file":

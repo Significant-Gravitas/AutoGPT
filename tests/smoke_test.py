@@ -9,9 +9,9 @@ from autogpt.commands.file_operations import delete_file, read_file
 
 
 @pytest.mark.integration_test
-def test_write_file() -> None:
+def test_create_file() -> None:
     """
-    Test case to check if the write_file command can successfully write 'Hello World' to a file
+    Test case to check if the create_new_file command can successfully write 'Hello World' to a file
     named 'hello_world.txt'.
 
     Read the current ai_settings.yaml file and store its content.
@@ -28,9 +28,9 @@ def test_write_file() -> None:
             # Clean up any existing 'hello_world.txt' file before testing.
             delete_file("hello_world.txt")
         # Prepare input data for the test.
-        input_data = """write_file-GPT
-an AI designed to use the write_file command to write 'Hello World' into a file named "hello_world.txt" and then use the task_complete command to complete the task.
-Use the write_file command to write 'Hello World' into a file named "hello_world.txt".
+        input_data = """create_new_file-GPT
+an AI designed to use the create_new_file command to write 'Hello World' into a file named "hello_world.txt" and then use the task_complete command to complete the task.
+Use the create_new_file command to write 'Hello World' into a file named "hello_world.txt".
 Use the task_complete command to complete the task.
 Do not use any other commands.
 

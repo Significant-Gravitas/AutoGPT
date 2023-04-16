@@ -64,7 +64,7 @@ def get_prompt() -> str:
             "clone_repository",
             {"repository_url": "<url>", "clone_path": "<directory>"},
         ),
-        ("Write to file", "write_to_file", {"file": "<file>", "text": "<text>"}),
+        ("Create a new file", "create_new_file", {"file": "<file>", "text": "<text>"}),
         ("Read file", "read_file", {"file": "<file>"}),
         ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
         ("Delete file", "delete_file", {"file": "<file>"}),

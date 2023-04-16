@@ -122,7 +122,7 @@ def ingest_file(
         print(f"Error while ingesting file '{filename}': {str(e)}")
 
 
-def write_to_file(filename: str, text: str) -> str:
+def create_new_file(filename: str, text: str) -> str:
     """Write text to a file
 
     Args:
@@ -133,7 +133,7 @@ def write_to_file(filename: str, text: str) -> str:
         str: A message indicating success or failure
     """
     if check_duplicate_operation("write", filename):
-        return "Error: File has already been updated."
+        return "ERROR. FILE ALREADY EXISTS."
     try:
         filepath = path_in_workspace(filename)
         directory = os.path.dirname(filepath)
