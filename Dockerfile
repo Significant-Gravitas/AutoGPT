@@ -3,8 +3,7 @@ FROM python:3.11-slim
 
 # Install git
 RUN apt-get -y update
-RUN apt-get -y install git
-RUN apt-get install -y libglib2.0 libnss3 libgconf-2-4 libfontconfig1 chromium-driver
+RUN apt-get -y install git chromium-driver
 
 # Set environment variables
 ENV PIP_NO_CACHE_DIR=yes \
