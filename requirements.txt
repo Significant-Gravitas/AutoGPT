@@ -28,3 +28,4 @@ gitpython==3.1.31
 googletrans==3.0.0
 pytest
 pytest-mock
+tweepy

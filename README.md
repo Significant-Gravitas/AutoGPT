@@ -115,7 +115,15 @@ cd Auto-GPT
 pip install -r requirements.txt
 ```
 
-5. Rename `.env.template` to `.env` and fill in your `OPENAI_API_KEY`. If you plan to use Speech Mode, fill in your `ELEVENLABS_API_KEY` as well.
+5. Locate the file named `.env.template` in the main `/Auto-GPT` folder.
+   Create a copy of this file, called `.env` by removing the `template` extension.  The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`
+   Open the `.env` file in a text editor.  Note: Files starting with a dot might be hidden by your Operating System.
+   Find the line that says `OPENAI_API_KEY=`.
+   After the `"="`, enter your unique OpenAI API Key (without any quotes or spaces).
+   Enter any other API keys or Tokens for services you would like to utilize.
+   Save and close the `".env"` file.
+   By completing these steps, you have properly configured the API Keys for your project.
+   
   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
   - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
@@ -124,8 +132,8 @@ pip install -r requirements.txt
       - `smart_llm_model_deployment_id` - your gpt-4 deployment ID
       - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID
     - Please specify all of these values as double-quoted strings
-    > Replace string in angled brackets (<>) to your own ID
     ```yaml
+    # Replace string in angled brackets (<>) to your own ID
     azure_model_map:
       fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
       ...
@@ -336,9 +344,9 @@ By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
 
 To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
 
-`local` (default) uses a local JSON cache file
-`pinecone` uses the Pinecone.io account you configured in your ENV settings
-`redis` will use the redis cache that you configured
+* `local` (default) uses a local JSON cache file
+* `pinecone` uses the Pinecone.io account you configured in your ENV settings
+* `redis` will use the redis cache that you configured
 
 ## View Memory Usage
 
