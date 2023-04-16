@@ -58,3 +58,5 @@ body:
         ```yaml
         # Paste your prompt here
         ```
+    validations:
+      required: true
