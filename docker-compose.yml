@@ -16,3 +16,9 @@ services:
 
   redis:
     image: "redis/redis-stack-server:latest"
+    command:
+    - /bin/sh
+    - -c
+    - redis-server --requirepass "$${REDIS_PASSWORD:?REDIS_PASSWORD variable is not set}"
+    env_file:
+      - ".env"
