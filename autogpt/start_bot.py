@@ -5,7 +5,7 @@ import traceback
 from threading import Lock, Semaphore
 
 from telegram import Update
-from telegram.ext import Application, CallbackContext, CommandHandler 
+from telegram.ext import Application, CallbackContext, CommandHandler
 
 try:
     from autogpt.config.config import Config

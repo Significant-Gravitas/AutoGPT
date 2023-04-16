@@ -16,7 +16,6 @@ def is_authorized_user(update: Update):
     return update.effective_user.id == int(cfg.telegram_chat_id)
 
 
-
 def handle_response(update: Update, context: CallbackContext):
     try:
         print("Received response: " + update.message.text)
@@ -35,10 +34,12 @@ class TelegramUtils:
         count = 0
         for update in updates:
             try:
-                print("Deleting message: " + update.message.text + " " + str(update.message.message_id))
+                print("Deleting message: " + update.message.text +
+                      " " + str(update.message.message_id))
                 await bot.delete_message(chat_id=update.message.chat.id, message_id=update.message.message_id)
             except Exception as e:
-                print(f"Error while deleting message: {e} \n update: {update} \n {traceback.format_exc()}")
+                print(
+                    f"Error while deleting message: {e} \n update: {update} \n {traceback.format_exc()}")
             count += 1
         if (count > 0):
             print("Cleaned up old messages.")
@@ -61,7 +62,7 @@ class TelegramUtils:
 
     @staticmethod
     async def _send_message(message):
-        print ("Sending message to Telegram.. ")
+        print("Sending message to Telegram.. ")
         recipient_chat_id = cfg.telegram_chat_id
         bot = TelegramUtils.get_bot()
         await bot.send_message(chat_id=recipient_chat_id, text=message)
@@ -71,7 +72,7 @@ class TelegramUtils:
         global response_queue
         question = prompt + " (reply to this message)"
 
-        #await delete_old_messages()
+        # await delete_old_messages()
 
         print("Asking user: " + question)
         TelegramUtils.send_message(question)
@@ -85,9 +86,7 @@ class TelegramUtils:
             await TelegramUtils.send_message("I am already here... Please use /stop to stop me first.")
             await TelegramUtils._poll_updates()
 
-            
         response_text = response_queue
-            
 
         print("Response received from Telegram: " + response_text)
         return response_text
@@ -107,13 +106,14 @@ class TelegramUtils:
                 for update in updates:
                     if update.message and update.message.text:
                         if is_authorized_user(update):
-                            response_queue =update.message.text
+                            response_queue = update.message.text
                             return
                     last_update_id = max(last_update_id, update.update_id)
             except Exception as e:
                 print(f"Error while polling updates: {e}")
 
             await asyncio.sleep(1)
+
     @staticmethod
     def ask_user(prompt):
         try:
