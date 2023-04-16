@@ -384,7 +384,9 @@ Use at your own risk.
 1. Run the `autogpt` python module in your terminal:
 
 ```bash
+
 python -m autogpt --speak --continuous
+
 ```
 
 2. To exit the program, press Ctrl + C
@@ -394,7 +396,9 @@ python -m autogpt --speak --continuous
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 
 ```bash
+
 python -m autogpt --speak --gpt3only
+
 ```
 
 It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
