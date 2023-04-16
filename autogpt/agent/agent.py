@@ -106,7 +106,7 @@ class Agent:
                     f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
                 print(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous "
+                    "Enter 'y' to authorize command, 'y -N' to run N continuous "
                     "commands, 'n' to exit program, or enter feedback for "
                     f"{self.ai_name}...",
                     flush=True,
@@ -141,7 +141,7 @@ class Agent:
 
                 if user_input == "GENERATE NEXT COMMAND JSON":
                     logger.typewriter_log(
-                        "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                        "-=-=-=-=-=-=-= COMMAND AUTHORIZED BY USER -=-=-=-=-=-=-=",
                         Fore.MAGENTA,
                         "",
                     )

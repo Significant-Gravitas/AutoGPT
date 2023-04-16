@@ -76,7 +76,7 @@ def parse_arguments() -> None:
             Fore.RED,
             "Continuous mode is not recommended. It is potentially dangerous and may"
             " cause your AI to run forever or carry out actions you would not usually"
-            " authorise. Use at your own risk.",
+            " authorize. Use at your own risk.",
         )
         CFG.set_continuous_mode(True)
 
