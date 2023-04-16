@@ -11,7 +11,7 @@ from sklearn.neighbors import NearestNeighbors
 
 from autogpt.logger import logger
 from autogpt.memory.base import MemoryProviderSingleton
-from autogpt.memory.base import get_ada_embedding as get_embedding 
+from autogpt.memory.base import get_ada_embedding as get_embedding
 
 CHUNK_SIZE = 1000
 EMBED_DIM = 1536
