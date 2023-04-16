@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 import json
-from typing import List
 
 from autogpt.llm_utils import call_ai_function
 
 
-def improve_code(suggestions: List[str], code: str) -> str:
+def improve_code(suggestions: list[str], code: str) -> str:
     """
     A function that takes in code and suggestions and returns a response from create
       chat completion api call.

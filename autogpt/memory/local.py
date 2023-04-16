@@ -76,7 +76,7 @@ class LocalCache(MemoryProviderSingleton):
         self.chromaCollection = chroma_client.create_collection(name="autogpt")
         return "Obliviated"
 
-    def get(self, data: str) -> Optional[List[Any]]:
+    def get(self, data: str) -> list[Any] | None:
         """
         Gets the data from the memory that is most relevant to the given data.
 
@@ -118,7 +118,7 @@ class LocalCache(MemoryProviderSingleton):
             pass
         return results
 
-    def get_stats(self) -> Tuple[int, Tuple[int, ...]]:
+    def get_stats(self) -> tuple[int, tuple[int, ...]]:
         """
         Returns: The number of items that have been added to the Chroma collection
         """

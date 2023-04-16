@@ -1,8 +1,11 @@
 """File operations for AutoGPT"""
+from __future__ import annotations
+
 import os
 import os.path
+from pathlib import Path
+from typing import Generator
 from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
-from typing import Generator, List
 
 LOG_FILE = "file_logger.txt"
 LOG_FILE_PATH = WORKSPACE_PATH / LOG_FILE
@@ -187,14 +190,14 @@ def delete_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
-def search_files(directory: str) -> List[str]:
+def search_files(directory: str) -> list[str]:
     """Search for files in a directory
 
     Args:
         directory (str): The directory to search in
 
     Returns:
-        List[str]: A list of files found in the directory
+        list[str]: A list of files found in the directory
     """
     found_files = []
 
