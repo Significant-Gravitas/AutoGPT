@@ -4,10 +4,11 @@ import subprocess
 
 import docker
 from docker.errors import ImageNotFound
-
+from autogpt.commands.command import command
 from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
 
 
+@command("execute_python_file", "Execute Python File", '"file": "<file>"')
 def execute_python_file(file: str):
     """Execute a Python file in a Docker container and return the output
 
