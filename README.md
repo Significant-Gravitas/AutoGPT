@@ -196,6 +196,19 @@ Use this to use TTS _(Text-to-Speech)_ for Auto-GPT
 python -m autogpt --speak
 ```
 
+### List of IDs with names from eleven labs, you can use the name or ID:
+
+- Rachel : 21m00Tcm4TlvDq8ikWAM
+- Domi : AZnzlk1XvdvUeBnXmlld
+- Bella : EXAVITQu4vr4xnSDxMaL
+- Antoni : ErXwobaYiN019PkySvjV
+- Elli : MF3mGyEYCl7XYWbV9V6O
+- Josh : TxGEqnHWrfWFTfGW9XjX
+- Arnold : VR6AewLTigWG4xSOukaG
+- Adam : pNInz6obpgDQGcFmaJgB
+- Sam : yoZ06aMxZJJ28mfd3POQ
+
+
 ## OpenAI API Keys Configuration
 
 Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
@@ -345,11 +358,9 @@ options:
   --dir DIR                The directory containing the files to ingest.
   --init                   Init the memory and wipe its content (default: False)
   --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
-  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000
+  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000)
 
 # python autogpt/data_ingestion.py --dir seed_data --init --overlap 200 --max_length 1000
-```
-
 This script located at autogpt/data_ingestion.py, allows you to ingest files into memory and pre-seed it before running Auto-GPT. 
 
 Memory pre-seeding is a technique that involves ingesting relevant documents or data into the AI's memory so that it can use this information to generate more informed and accurate responses.
