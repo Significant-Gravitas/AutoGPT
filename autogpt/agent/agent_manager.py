@@ -58,7 +58,11 @@ class AgentManager(metaclass=Singleton):
         Returns:
             The agent's response
         """
-        task, messages, model = self.agents[int(key)]
+
+        try:
+            task, messages, model = self.agents[int(key)]
+        except KeyError:
+            return f"KeyError {key} is unknown. Current list of agents: {self.list_agents()}"
 
         # Add user message to message history before sending to agent
         messages.append({"role": "user", "content": message})
