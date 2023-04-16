@@ -22,11 +22,26 @@ class ElevenLabsSpeech(VoiceBase):
 
         cfg = Config()
         default_voices = ["ErXwobaYiN019PkySvjV", "EXAVITQu4vr4xnSDxMaL"]
+        voice_options = {
+            "Rachel": "21m00Tcm4TlvDq8ikWAM",
+            "Domi": "AZnzlk1XvdvUeBnXmlld",
+            "Bella": "EXAVITQu4vr4xnSDxMaL",
+            "Antoni": "ErXwobaYiN019PkySvjV",
+            "Elli": "MF3mGyEYCl7XYWbV9V6O",
+            "Josh": "TxGEqnHWrfWFTfGW9XjX",
+            "Arnold": "VR6AewLTigWG4xSOukaG",
+            "Adam": "pNInz6obpgDQGcFmaJgB",
+            "Sam": "yoZ06aMxZJJ28mfd3POQ",
+        }
         self._headers = {
             "Content-Type": "application/json",
             "xi-api-key": cfg.elevenlabs_api_key,
         }
         self._voices = default_voices.copy()
+        if cfg.elevenlabs_voice_1_id in voice_options:
+            cfg.elevenlabs_voice_1_id = voice_options[cfg.elevenlabs_voice_1_id]
+        if cfg.elevenlabs_voice_2_id in voice_options:
+            cfg.elevenlabs_voice_2_id = voice_options[cfg.elevenlabs_voice_2_id]
         self._use_custom_voice(cfg.elevenlabs_voice_1_id, 0)
         self._use_custom_voice(cfg.elevenlabs_voice_2_id, 1)
 
