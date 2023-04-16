@@ -1,7 +1,4 @@
 """Main script for the autogpt package."""
-import argparse
-import asyncio
-import json
 import logging
 from colorama import Fore
 from autogpt.agent.agent import Agent
