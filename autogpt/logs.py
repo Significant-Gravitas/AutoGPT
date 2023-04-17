@@ -200,9 +200,10 @@ def remove_color_codes(s: str) -> str:
 logger = Logger()
 ai_output_language_code = CFG.ai_output_language_code
 
+
 def trans(text):
     lc = ai_output_language_code
-    return text if lc == 'en' else utils.translate(text,lc)
+    return text if lc == 'en' else utils.translate(text, lc)
 
 
 def print_assistant_thoughts(ai_name, assistant_reply):
@@ -253,7 +254,7 @@ def print_assistant_thoughts(ai_name, assistant_reply):
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
         logger.typewriter_log(
-            f"{ai_name.upper()} "+trans("THOUGHTS:"),Fore.YELLOW, f"{trans(assistant_thoughts_text)}"
+            f"{ai_name.upper()} "+trans("THOUGHTS:"), Fore.YELLOW, f"{trans(assistant_thoughts_text)}"
         )
         logger.typewriter_log(
             trans("REASONING:"), Fore.YELLOW, f"{trans(assistant_thoughts_reasoning)}"

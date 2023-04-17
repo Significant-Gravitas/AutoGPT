@@ -221,7 +221,7 @@ class Config(metaclass=Singleton):
     def set_search_language_code(self, value: str) -> None:
         """Set the search language code value"""
         self.search_language_code = value
-        
+
     def set_ai_output_language_code(self, value: str) -> None:
         """Set the ai output language code value"""
         self.ai_output_language_code = value

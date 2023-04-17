@@ -7,7 +7,6 @@ import yaml
 from colorama import Fore
 
 
-
 def clean_input(prompt: str = ""):
     try:
         return input(prompt)
@@ -33,10 +32,11 @@ def validate_yaml_file(file: str):
 
 
 GOOGLE_TRANSLATE_URL = 'http://translate.google.com/m?q=%s&tl=%s&sl=%s'
-def translate(query,language_code):
 
+
+def translate(query, language_code):
     text = parse.quote(query)
-    url = GOOGLE_TRANSLATE_URL % (text,language_code,'en')
+    url = GOOGLE_TRANSLATE_URL % (text, language_code, 'en')
     response = requests.get(url)
     data = response.text
     expr = r'(?s)class="(?:t0|result-container)">(.*?)<'
