@@ -78,7 +78,7 @@ class Config(metaclass=Singleton):
                     print(f"Removed {key} from {env_file}")
             else:
                 print("No changes in .env.template")
-    
+
     def __init__(self) -> None:
         """Initialize the Config class"""
         self.debug_mode = False
@@ -87,7 +87,6 @@ class Config(metaclass=Singleton):
         self.speak_mode = False
         self.skip_reprompt = False
         self.allow_downloads = False
-
 
         self.update_env_from_template()
 

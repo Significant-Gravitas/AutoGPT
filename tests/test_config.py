@@ -23,7 +23,7 @@ class TestConfig(TestCase):
         Set up the test environment by creating an instance of the Config class.
         """
         self.config = Config()
-     
+
     def setUp(self, mock_path, mock_unset_key, mock_set_key, mock_input,
               mock_dotenv_values, mock_load_dotenv):
         self.config = Config()
