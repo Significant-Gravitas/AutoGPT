@@ -9,6 +9,7 @@ A set of standardised benchmarks to assess the performance of Auto-GPTs.
 - [ ] Lower priority, but put this in a webserver backend so we have a good API
 - [ ] Get token counting data from the model Add scores to result files based on pricing associated with tokens and models used
 - [ ] Think about how this can be applied to other projects besides AutoGPT so we can be THE agent evaluation framework.
+- [ ] Figure our how the OpenAI Evals results are saved...
 
 
 ## Understanding OpenAI Evals
