@@ -13,7 +13,7 @@ from autogpt.workspace import path_in_workspace
 CFG = Config()
 
 
-def generate_image(prompt: str) -> str:
+def generate_image(prompt: str, image_size: str = "256x256") -> str:
     """Generate an image from a prompt.
 
     Args:
@@ -26,7 +26,7 @@ def generate_image(prompt: str) -> str:
 
     # DALL-E
     if CFG.image_provider == "dalle":
-        return generate_image_with_dalle(prompt, filename)
+        return generate_image_with_dalle(prompt, filename, image_size)
     elif CFG.image_provider == "sd":
         return generate_image_with_hf(prompt, filename)
     else:
@@ -60,6 +60,11 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
         },
     )
 
+    try:
+        image = Image.open(io.BytesIO(response.content))
+    except IOError:
+        return "Error: cannot identify image file"
+
     image = Image.open(io.BytesIO(response.content))
     print(f"Image Generated for prompt:{prompt}")
 
@@ -68,22 +73,28 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
     return f"Saved to disk:{filename}"
 
 
-def generate_image_with_dalle(prompt: str, filename: str) -> str:
+def generate_image_with_dalle(prompt: str, filename: str, image_size: str) -> str:
     """Generate an image with DALL-E.
 
     Args:
         prompt (str): The prompt to use
         filename (str): The filename to save the image to
+        image_size (str): The image_size
 
     Returns:
         str: The filename of the image
     """
     openai.api_key = CFG.openai_api_key
 
+    allowed_sizes = ["256x256", "512x512", "1024x1024"]
+
+    if image_size not in allowed_sizes:
+        image_size = "256x256"
+
     response = openai.Image.create(
         prompt=prompt,
         n=1,
-        size="256x256",
+        size=image_size,
         response_format="b64_json",
     )
 

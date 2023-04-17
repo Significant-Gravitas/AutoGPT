@@ -207,7 +207,7 @@ def execute_command(command_name: str, arguments):
         elif command_name == "read_audio_from_file":
             return read_audio_from_file(arguments["file"])
         elif command_name == "generate_image":
-            return generate_image(arguments["prompt"])
+            return generate_image(arguments["prompt"], arguments["image_size"])
         elif command_name == "send_tweet":
             return send_tweet(arguments["text"])
         elif command_name == "do_nothing":
