@@ -1,16 +1,15 @@
 import os
-
 import tweepy
-from dotenv import load_dotenv
+from autogpt.config import Config
 
-load_dotenv()
+CFG = Config()
 
 
 def send_tweet(tweet_text):
-    consumer_key = os.environ.get("TW_CONSUMER_KEY")
-    consumer_secret = os.environ.get("TW_CONSUMER_SECRET")
-    access_token = os.environ.get("TW_ACCESS_TOKEN")
-    access_token_secret = os.environ.get("TW_ACCESS_TOKEN_SECRET")
+    consumer_key = CFG.twitter_consumer_key
+    consumer_secret = CFG.twitter_consumer_secret
+    access_token =  CFG.twitter_access_token
+    access_token_secret =  CFG.twitter_access_token_secret
     # Authenticate to Twitter
     auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
     auth.set_access_token(access_token, access_token_secret)
