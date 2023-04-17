@@ -49,14 +49,12 @@ def log_operation(operation: str, filename: str) -> None:
 
     append_to_file(LOG_FILE, log_entry, shouldLog = False)
 
-
 def split_file(
     content: str, max_length: int = 4000, overlap: int = 0
 ) -> Generator[str, None, None]:
     """
     Split text into chunks of a specified maximum length with a specified overlap
     between chunks.
-
     :param content: The input text to be split into chunks
     :param max_length: The maximum length of each chunk,
         default is 4000 (about 1k token)
@@ -70,9 +68,14 @@ def split_file(
     while start < content_length:
         end = start + max_length
         if end + overlap < content_length:
-            chunk = content[start : end + overlap]
+            chunk = content[start : end + overlap - 1]
         else:
             chunk = content[start:content_length]
+
+            # Account for the case where the last chunk is shorter than the overlap, so it has already been consumed
+            if len(chunk) <= overlap:
+                break
+
         yield chunk
         start += max_length - overlap
 
