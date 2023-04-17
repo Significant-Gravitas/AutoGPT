@@ -19,9 +19,18 @@ class Agent:
         memory: The memory object to use.
         full_message_history: The full message history.
         next_action_count: The number of actions to execute.
-        prompt: The prompt to use.
-        user_input: The user input.
+        system_prompt: The system prompt is the initial prompt that defines everything the AI needs to know to achieve its task successfully.
+        Currently, the dynamic and customizable information in the system prompt are ai_name, description and goals.
 
+        triggering_prompt: The last sentence the AI will see before answering. For Auto-GPT, this prompt is:
+            Determine which next command to use, and respond using the format specified above:
+            The triggering prompt is not part of the system prompt because between the system prompt and the triggering
+            prompt we have contextual information that can distract the AI and make it forget that its goal is to find the next task to achieve.
+            SYSTEM PROMPT
+            CONTEXTUAL INFORMATION (memory, previous conversations, anything relevant)
+            TRIGGERING PROMPT
+
+        The triggering prompt reminds the AI about its short term meta task (defining the next task)
     """
 
     def __init__(
@@ -30,15 +39,15 @@ class Agent:
         memory,
         full_message_history,
         next_action_count,
-        prompt,
-        user_input,
+        system_prompt,
+        triggering_prompt,
     ):
         self.ai_name = ai_name
         self.memory = memory
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
-        self.prompt = prompt
-        self.user_input = user_input
+        self.system_prompt = system_prompt
+        self.triggering_prompt = triggering_prompt
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -46,6 +55,8 @@ class Agent:
         loop_count = 0
         command_name = None
         arguments = None
+        user_input = ""
+
         while True:
             # Discontinue if continuous limit is reached
             loop_count += 1
@@ -62,8 +73,8 @@ class Agent:
             # Send message to AI, get response
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
-                    self.prompt,
-                    self.user_input,
+                    self.system_prompt,
+                    self.triggering_prompt,
                     self.full_message_history,
                     self.memory,
                     cfg.fast_token_limit,
@@ -88,7 +99,6 @@ class Agent:
                 ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
-                self.user_input = ""
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
@@ -106,14 +116,14 @@ class Agent:
                         Fore.MAGENTA + "Input:" + Style.RESET_ALL
                     )
                     if console_input.lower().rstrip() == "y":
-                        self.user_input = "GENERATE NEXT COMMAND JSON"
+                        user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().startswith("y -"):
                         try:
                             self.next_action_count = abs(
                                 int(console_input.split(" ")[1])
                             )
-                            self.user_input = "GENERATE NEXT COMMAND JSON"
+                            user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             print(
                                 "Invalid input format. Please enter 'y -n' where n is"
@@ -122,20 +132,20 @@ class Agent:
                             continue
                         break
                     elif console_input.lower() == "n":
-                        self.user_input = "EXIT"
+                        user_input = "EXIT"
                         break
                     else:
-                        self.user_input = console_input
+                        user_input = console_input
                         command_name = "human_feedback"
                         break
 
-                if self.user_input == "GENERATE NEXT COMMAND JSON":
+                if user_input == "GENERATE NEXT COMMAND JSON":
                     logger.typewriter_log(
                         "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
                         Fore.MAGENTA,
                         "",
                     )
-                elif self.user_input == "EXIT":
+                elif user_input == "EXIT":
                     print("Exiting...", flush=True)
                     break
             else:
@@ -153,7 +163,7 @@ class Agent:
                     f"Command {command_name} threw the following error: {arguments}"
                 )
             elif command_name == "human_feedback":
-                result = f"Human feedback: {self.user_input}"
+                result = f"Human feedback: {user_input}"
             else:
                 result = (
                     f"Command {command_name} returned: "
@@ -165,7 +175,7 @@ class Agent:
             memory_to_add = (
                 f"Assistant Reply: {assistant_reply} "
                 f"\nResult: {result} "
-                f"\nHuman Feedback: {self.user_input} "
+                f"\nHuman Feedback: {user_input} "
             )
 
             self.memory.add(memory_to_add)
