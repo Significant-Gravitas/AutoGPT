@@ -1,7 +1,7 @@
 import unittest
 
 import tests.context
-from autogpt.json_utils.auto_fix import fix_and_parse_json
+from autogpt.json_utils.json_fix_llm import fix_and_parse_json
 
 
 class TestParseJson(unittest.TestCase):
