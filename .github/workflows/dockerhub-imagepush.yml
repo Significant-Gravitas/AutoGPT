@@ -19,6 +19,9 @@ jobs:
       run: |
         docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag ${{secrets.DOCKER_USER}}/auto-gpt:$(git describe --tags `git rev-list --tags --max-count=1`)
+      run: |
+        tag_v=$(git describe --tags $(git rev-list --tags --max-count=1))
+        tag=$(echo $tag_v | sed 's/v//')
+        docker build . --file Dockerfile --tag ${{secrets.DOCKER_USER}}/auto-gpt:${tag}
     - name: Docker Push
       run: docker push ${{secrets.DOCKER_USER}}/auto-gpt
