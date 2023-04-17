@@ -10,7 +10,11 @@ from autogpt.config import Config
 from autogpt.commands.image_gen import generate_image
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.web_requests import scrape_links, scrape_text
-from autogpt.commands.execute_code import execute_python_file, execute_shell
+from autogpt.commands.execute_code import (
+    execute_python_file,
+    execute_shell,
+    execute_shell_popen,
+)
 from autogpt.commands.file_operations import (
     append_to_file,
     delete_file,
@@ -62,6 +66,7 @@ COMMANDS = {
                                             args.get("focus")),
     "execute_python_file": lambda args: execute_python_file(args["file"]),
     "execute_shell": lambda args: execute_shell_command(args),
+    "execute_shell_popen": lambda args: execute_shell_popen_command(args),
     "read_audio_from_file": lambda args: read_audio_from_file(args["file"]),
     "generate_image": lambda args: generate_image(args["prompt"]),
     "send_tweet": lambda args: send_tweet(args["text"]),
@@ -129,6 +134,27 @@ def execute_shell_command(args: Dict[str, Any]) -> str:
         return (
             "You are not allowed to run local shell commands. To execute "
             "shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+            "in your config. Do not attempt to bypass the restriction."
+        )
+
+
+def execute_shell_popen_command(args: Dict[str, Any]) -> str:
+    """
+    Execute the shell command with Popen if local commands execution is
+    allowed in the configuration.
+
+    Args:
+        args (dict): The arguments containing the command line.
+
+    Returns:
+        str: The result of the shell command or a warning message.
+    """
+    if CFG.execute_local_commands:
+        return execute_shell_popen(args["command_line"])
+    else:
+        return (
+            "You are not allowed to run local shell commands. To execute"
+            " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
             "in your config. Do not attempt to bypass the restriction."
         )
 

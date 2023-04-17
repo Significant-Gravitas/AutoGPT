@@ -67,6 +67,18 @@ Development of this free, open-source project is made possible by all the <a hre
   - [Redis](https://redis.io)
 - ElevenLabs Key (If you want the AI to speak)
 
+## ⚠️ OpenAI API Keys Configuration ⚠️ 
+
+Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+
+To use OpenAI API key for Auto-GPT, you **NEED** to have billing set up (AKA paid account).
+
+You can set up paid account at https://platform.openai.com/account/billing/overview.
+
+![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./docs/imgs/openai-api-key-billing-paid-account.png)
+
+#### **PLEASE ENSURE YOU HAVE DONE THIS STEP BEFORE PROCEEDING, OTHERWISE NOTHING WILL WORK!**
+
 ## 💾 Installation
 
 To install Auto-GPT, follow these steps:
@@ -206,18 +218,6 @@ python -m autogpt --speak
 - Arnold : VR6AewLTigWG4xSOukaG
 - Adam : pNInz6obpgDQGcFmaJgB
 - Sam : yoZ06aMxZJJ28mfd3POQ
-
-
-## OpenAI API Keys Configuration
-
-Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
-
-To use OpenAI API key for Auto-GPT, you NEED to have billing set up (AKA paid account).
-
-You can set up paid account at https://platform.openai.com/account/billing/overview.
-
-![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./docs/imgs/openai-api-key-billing-paid-account.png)
-
 
 ## 🔍 Google API Keys Configuration
 
