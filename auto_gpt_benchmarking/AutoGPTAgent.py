@@ -33,6 +33,8 @@ class AutoGPTAgent:
             self.prompt_file.unlink()
         if self.output_file.exists():
             self.output_file.unlink()
+        if self.file_logger.exists():
+            self.file_logger.unlink()
 
     def _copy_ai_settings(self):
         self.ai_settings_dest.write_text(self.ai_settings_file.read_text())
@@ -67,6 +69,7 @@ class AutoGPTAgent:
         self.auto_workspace = self.auto_gpt_path / "auto_gpt_workspace"
         self.prompt_file = self.auto_workspace / "prompt.txt"
         self.output_file = self.auto_workspace / "output.txt"
+        self.file_logger = self.auto_workspace / "file_logger.txt"
         self.ai_settings_file = Path(__file__).parent / "AutoGPTData" / "ai_settings.yaml"
         self.ai_settings_dest = self.auto_workspace / "ai_settings.yaml"
         self.prompt = prompt
