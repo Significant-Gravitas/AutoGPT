@@ -36,11 +36,8 @@ class AgentManager(metaclass=Singleton):
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_pre_instruction():
                 continue
-            plugin_messages = plugin.pre_instruction(messages)
-            if plugin_messages:
-                for plugin_message in plugin_messages:
-                    messages.append(plugin_message)
-
+            if plugin_messages := plugin.pre_instruction(messages):
+                messages.extend(iter(plugin_messages))
         # Start GPT instance
         agent_reply = create_chat_completion(
             model=model,
@@ -53,9 +50,8 @@ class AgentManager(metaclass=Singleton):
         for i, plugin in enumerate(self.cfg.plugins):
             if not plugin.can_handle_on_instruction():
                 continue
-            plugin_result = plugin.on_instruction(messages)
-            if plugin_result:
-                sep = "" if not i else "\n"
+            if plugin_result := plugin.on_instruction(messages):
+                sep = "\n" if i else ""
                 plugins_reply = f"{plugins_reply}{sep}{plugin_result}"
 
         if plugins_reply and plugins_reply != "":
@@ -92,8 +88,7 @@ class AgentManager(metaclass=Singleton):
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_pre_instruction():
                 continue
-            plugin_messages = plugin.pre_instruction(messages)
-            if plugin_messages:
+            if plugin_messages := plugin.pre_instruction(messages):
                 for plugin_message in plugin_messages:
                     messages.append(plugin_message)
 
@@ -109,9 +104,8 @@ class AgentManager(metaclass=Singleton):
         for i, plugin in enumerate(self.cfg.plugins):
             if not plugin.can_handle_on_instruction():
                 continue
-            plugin_result = plugin.on_instruction(messages)
-            if plugin_result:
-                sep = "" if not i else "\n"
+            if plugin_result := plugin.on_instruction(messages):
+                sep = "\n" if i else ""
                 plugins_reply = f"{plugins_reply}{sep}{plugin_result}"
         # Update full message history
         if plugins_reply and plugins_reply != "":

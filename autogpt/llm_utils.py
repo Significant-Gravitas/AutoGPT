@@ -69,13 +69,10 @@ def create_chat_completion(
     Returns:
         str: The response from the chat completion
     """
-    response = None
     num_retries = 10
     if CFG.debug_mode:
         print(
-            Fore.GREEN
-            + f"Creating chat completion with model {model}, temperature {temperature},"
-            f" max_tokens {max_tokens}" + Fore.RESET
+            f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
         )
     for plugin in CFG.plugins:
         if plugin.can_handle_chat_completion(
@@ -84,13 +81,13 @@ def create_chat_completion(
             temperature=temperature,
             max_tokens=max_tokens,
         ):
-            response = plugin.handle_chat_completion(
+            return plugin.handle_chat_completion(
                 messages=messages,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            return response
+    response = None
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
@@ -112,21 +109,16 @@ def create_chat_completion(
             break
         except RateLimitError:
             if CFG.debug_mode:
-                print(
-                    Fore.RED + "Error: ",
-                    "Reached rate limit, passing..." + Fore.RESET,
-                )
+                print(f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}")
         except APIError as e:
-            if e.http_status == 502:
-                pass
-            else:
+            if e.http_status != 502:
                 raise
             if attempt == num_retries - 1:
                 raise
         if CFG.debug_mode:
             print(
-                Fore.RED + "Error: ",
-                f"API Bad gateway. Waiting {backoff} seconds..." + Fore.RESET,
+                f"{Fore.RED}Error: ",
+                f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
             )
         time.sleep(backoff)
     if response is None:
@@ -159,15 +151,13 @@ def create_embedding_with_ada(text) -> list:
         except RateLimitError:
             pass
         except APIError as e:
-            if e.http_status == 502:
-                pass
-            else:
+            if e.http_status != 502:
                 raise
             if attempt == num_retries - 1:
                 raise
         if CFG.debug_mode:
             print(
-                Fore.RED + "Error: ",
-                f"API Bad gateway. Waiting {backoff} seconds..." + Fore.RESET,
+                f"{Fore.RED}Error: ",
+                f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
             )
         time.sleep(backoff)
