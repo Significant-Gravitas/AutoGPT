@@ -29,6 +29,7 @@ black
 sourcery
 isort
 gitpython==3.1.31
+abstract-singleton
 
 # Testing dependencies
 pytest
