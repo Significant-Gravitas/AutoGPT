@@ -53,7 +53,7 @@ def get_ada_embedding(text):
     if cfg.use_azure:
         return openai.Embedding.create(input=[text], engine=cfg.get_azure_deployment_id_for_model("text-embedding-ada-002"))["data"][0]["embedding"]
     else:
-        if (len(text) > EMBEDDING_CTX_LENGTH):
+        if len(text) > EMBEDDING_CTX_LENGTH:
             return len_safe_get_embedding(text)
         else:
             return openai.Embedding.create(input=[text], model="text-embedding-ada-002")["data"][0]["embedding"]
