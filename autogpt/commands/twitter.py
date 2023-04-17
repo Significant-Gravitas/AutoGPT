@@ -24,3 +24,11 @@ def send_tweet(tweet_text):
         print("Tweet sent successfully!")
     except tweepy.TweepyException as e:
         print("Error sending tweet: {}".format(e.reason))
+
+def reply_tweet(tweet_text, tweet_id):
+    # Send reply via tweet_id
+    try:
+        api.update_status(tweet_text, in_reply_to_status_id=tweet_id, auto_populate_reply_metadata=True)
+        print("Reply sent successfully!")
+    except tweepy.TweepyException as e:
+        print("Error sending reply: {}".format(e.reason))
