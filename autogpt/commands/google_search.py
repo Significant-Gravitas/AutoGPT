@@ -1,6 +1,7 @@
 """Google search command for Autogpt."""
+from __future__ import annotations
+
 import json
-from typing import List, Union
 
 from duckduckgo_search import ddg
 
@@ -10,7 +11,7 @@ CFG = Config()
 
 
 def google_search(query: str, num_results: int = 8) -> str:
-    """Return the results of a google search
+    """Return the results of a Google search
 
     Args:
         query (str): The search query.
@@ -33,8 +34,8 @@ def google_search(query: str, num_results: int = 8) -> str:
     return json.dumps(search_results, ensure_ascii=False, indent=4)
 
 
-def google_official_search(query: str, num_results: int = 8) -> Union[str, List[str]]:
-    """Return the results of a google search using the official Google API
+def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
+    """Return the results of a Google search using the official Google API
 
     Args:
         query (str): The search query.

@@ -1,6 +1,6 @@
 """ Command and Control """
 import json
-from typing import List, NoReturn, Union
+from typing import List, NoReturn, Union, Dict
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.google_search import google_official_search, google_search
@@ -10,13 +10,18 @@ from autogpt.config import Config
 from autogpt.commands.image_gen import generate_image
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.web_requests import scrape_links, scrape_text
-from autogpt.commands.execute_code import execute_python_file, execute_shell
+from autogpt.commands.execute_code import (
+    execute_python_file,
+    execute_shell,
+    execute_shell_popen,
+)
 from autogpt.commands.file_operations import (
     append_to_file,
     delete_file,
     read_file,
     search_files,
     write_to_file,
+    download_file
 )
 from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
@@ -47,11 +52,11 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response: str):
+def get_command(response_json: Dict):
     """Parse the response and return the command name and arguments
 
     Args:
-        response (str): The response from the user
+        response_json (json): The response from the AI
 
     Returns:
         tuple: The command name and arguments
@@ -62,8 +67,6 @@ def get_command(response: str):
         Exception: If any other error occurs
     """
     try:
-        response_json = fix_and_parse_json(response)
-
         if "command" not in response_json:
             return "Error:", "Missing 'command' object in JSON"
 
@@ -113,11 +116,10 @@ def execute_command(command_name: str, arguments):
         arguments (dict): The arguments for the command
 
     Returns:
-        str: The result of the command"""
-    memory = get_memory(CFG)
-
+        str: The result of the command
+    """
     try:
-        command_name = map_command_synonyms(command_name)
+        command_name = map_command_synonyms(command_name.lower())
         if command_name == "google":
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial
@@ -125,11 +127,19 @@ def execute_command(command_name: str, arguments):
             key = CFG.google_api_key
             if key and key.strip() and key != "your-google-api-key":
                 google_result = google_official_search(arguments["input"])
+                return google_result
             else:
                 google_result = google_search(arguments["input"])
-            safe_message = google_result.encode("utf-8", "ignore")
-            return str(safe_message)
+
+            # google_result can be a list or a string depending on the search results
+            if isinstance(google_result, list):
+                safe_message = [google_result_single.encode('utf-8', 'ignore') for google_result_single in google_result]
+            else:
+                safe_message = google_result.encode('utf-8', 'ignore')
+
+            return safe_message.decode('utf-8')
         elif command_name == "memory_add":
+            memory = get_memory(CFG)
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
             return start_agent(
@@ -159,6 +169,10 @@ def execute_command(command_name: str, arguments):
             return delete_file(arguments["file"])
         elif command_name == "search_files":
             return search_files(arguments["directory"])
+        elif command_name == "download_file":
+            if not CFG.allow_downloads:
+                return "Error: You do not have user authorization to download files locally."
+            return download_file(arguments["url"], arguments["file"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
         # TODO: Change these to take in a file rather than pasted code, if
@@ -175,6 +189,15 @@ def execute_command(command_name: str, arguments):
         elif command_name == "execute_shell":
             if CFG.execute_local_commands:
                 return execute_shell(arguments["command_line"])
+            else:
+                return (
+                    "You are not allowed to run local shell commands. To execute"
+                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+                    "in your config. Do not attempt to bypass the restriction."
+                )
+        elif command_name == "execute_shell_popen":
+            if CFG.execute_local_commands:
+                return execute_shell_popen(arguments["command_line"])
             else:
                 return (
                     "You are not allowed to run local shell commands. To execute"
@@ -202,7 +225,7 @@ def execute_command(command_name: str, arguments):
 
 
 def get_text_summary(url: str, question: str) -> str:
-    """Return the results of a google search
+    """Return the results of a Google search
 
     Args:
         url (str): The url to scrape
@@ -217,7 +240,7 @@ def get_text_summary(url: str, question: str) -> str:
 
 
 def get_hyperlinks(url: str) -> Union[str, List[str]]:
-    """Return the results of a google search
+    """Return the results of a Google search
 
     Args:
         url (str): The url to scrape
