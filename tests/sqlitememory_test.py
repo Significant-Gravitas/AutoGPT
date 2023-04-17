@@ -1,6 +1,4 @@
-import os
-import sys
-
+import unittest
 from autogpt.memory.sqlitemem import SqliteMemory
 
 
@@ -33,7 +31,7 @@ class TestSqliteMemory(unittest.TestCase):
 
         with self.memory.sql_conn as conn:
             conn.row_factory = lambda cur, row: row[0]
-            res = conn.execute(f"SELECT data FROM {self.cfg.memory_index};").fetchall()
+            res = conn.execute(f"SELECT data FROM {self.cfg.sqlite_index};").fetchall()
         self.assertIn(text, res)
 
     def test_clear(self):
@@ -42,7 +40,7 @@ class TestSqliteMemory(unittest.TestCase):
         self.memory.clear()
 
         with self.memory.sql_conn as conn:
-            res = conn.execute(f"SELECT * FROM {self.cfg.memory_index}").fetchall()
+            res = conn.execute(f"SELECT * FROM {self.cfg.sqlite_index}").fetchall()
         self.assertEqual(res, [])
 
     def test_get(self):
@@ -67,7 +65,7 @@ class TestSqliteMemory(unittest.TestCase):
 
         stats = self.memory.get_stats()
         self.assertEqual(
-            stats, {"num_memories": 1, "index": self.cfg.memory_index, "embedder": "ada"}
+            stats, {"num_memories": 1, "index": self.cfg.sqlite_index, "embedder": "ada"}
         )
 
 

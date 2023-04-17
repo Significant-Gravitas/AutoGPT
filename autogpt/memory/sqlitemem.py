@@ -9,9 +9,8 @@ import zarr
 from colorama import Fore, Style
 from sklearn.neighbors import NearestNeighbors
 
-from autogpt.logger import logger
-from autogpt.memory.base import MemoryProviderSingleton
-from autogpt.memory.base import get_ada_embedding as get_embedding
+from autogpt.logs import logger
+from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 CHUNK_SIZE = 1000
 EMBED_DIM = 1536
@@ -200,7 +199,7 @@ class SqliteMemory(MemoryProviderSingleton):
                 index, text = row
 
                 # Generate the embedding
-                embedding = get_embedding(text)
+                embedding = get_ada_embedding(text)
                 embedding = np.expand_dims(embedding, axis=0)
 
                 # Store the embedding
@@ -244,8 +243,7 @@ class SqliteMemory(MemoryProviderSingleton):
 
         # For each data point, get the embedding and add it to the new embeddings array
         for index, data, timestamp in rows:
-            # embedding = get_embedding(data)
-            embedding = get_embedding(data)
+            embedding = get_ada_embedding(data)
             embedding = np.expand_dims(embedding, axis=0)
             self.embeddings[index] = embedding
 
@@ -265,7 +263,7 @@ class SqliteMemory(MemoryProviderSingleton):
         Returns: Message indicating that the data has been added.
         """
         # Create the data embedding
-        embedding = get_embedding(data)
+        embedding = get_ada_embedding(data)
         embedding = np.expand_dims(embedding, axis=0)
 
         # Get the embedding index (index of the next vector is the same as the number of vectors)
@@ -331,7 +329,7 @@ class SqliteMemory(MemoryProviderSingleton):
             return []
 
         # Create the data embedding
-        embedding = get_embedding(data)
+        embedding = get_ada_embedding(data)
         embedding = np.expand_dims(embedding, axis=0)
 
         # Get the nearest neighbors

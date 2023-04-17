@@ -1,10 +1,11 @@
 """HTML processing functions"""
+from __future__ import annotations
+
 from requests.compat import urljoin
-from typing import List, Tuple
 from bs4 import BeautifulSoup
 
 
-def extract_hyperlinks(soup: BeautifulSoup, base_url: str) -> List[Tuple[str, str]]:
+def extract_hyperlinks(soup: BeautifulSoup, base_url: str) -> list[tuple[str, str]]:
     """Extract hyperlinks from a BeautifulSoup object
 
     Args:
@@ -20,7 +21,7 @@ def extract_hyperlinks(soup: BeautifulSoup, base_url: str) -> List[Tuple[str, st
     ]
 
 
-def format_hyperlinks(hyperlinks: List[Tuple[str, str]]) -> List[str]:
+def format_hyperlinks(hyperlinks: list[tuple[str, str]]) -> list[str]:
     """Format hyperlinks to be displayed to the user
 
     Args:
