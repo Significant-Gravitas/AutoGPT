@@ -76,6 +76,8 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         driver = webdriver.Safari(options=options)
     else:
         options.add_argument("--no-sandbox")
+        options.add_argument('--headless')
+        options.add_argument('--disable-gpu')
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
