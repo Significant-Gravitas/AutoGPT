@@ -131,6 +131,16 @@ class Agent:
                             )
                             continue
                         break
+                    elif console_input.strip().isdigit():
+                        try:
+                            self.next_action_count = int(console_input)
+                            user_input = "GENERATE NEXT COMMAND JSON"
+                        except Exception:
+                            print(
+                                "Invalid number. Please enter 'n' where n is"
+                                " the number of continuous tasks."
+                            )
+                        break
                     elif console_input.lower() == "n":
                         user_input = "EXIT"
                         break
