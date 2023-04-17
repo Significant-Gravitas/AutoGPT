@@ -1,11 +1,13 @@
 """Google search command for Autogpt."""
+
 import re
 import html
 from urllib import parse
 import requests
 
+from __future__ import annotations
+
 import json
-from typing import List, Union
 
 from duckduckgo_search import ddg
 
@@ -61,7 +63,8 @@ def translate(query, language_code):
     return html.unescape(result[0])
 
 
-def google_official_search(query: str, num_results: int = 8) -> Union[str, List[str]]:
+
+def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
     """Return the results of a google search using the official Google API
 
     Args:
