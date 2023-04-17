@@ -70,9 +70,14 @@ def split_file(
     while start < content_length:
         end = start + max_length
         if end + overlap < content_length:
-            chunk = content[start : end + overlap]
+            chunk = content[start : end + overlap - 1]
         else:
             chunk = content[start:content_length]
+
+            # Account for the case where the last chunk is shorter than the overlap, so it has already been consumed
+            if len(chunk) <= overlap:
+                break
+
         yield chunk
         start += max_length - overlap
 
