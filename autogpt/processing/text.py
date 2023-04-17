@@ -26,23 +26,34 @@ def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
     for paragraph in paragraphs:
         paragraph_length = len(paragraph)
 
+        # If the paragraph length exceeds max_length, split it into smaller chunks
         while paragraph_length > max_length:
+            # Create a sub_paragraph of length max_length from the original paragraph
             sub_paragraph = paragraph[:max_length]
+
+            # Update the remaining part of the paragraph
             paragraph = paragraph[max_length:]
+
+            # Update the paragraph_length with the length of the remaining part of the paragraph
             paragraph_length = len(paragraph)
 
+            # Check if adding sub_paragraph to current_chunk would exceed max_length
             if current_length + len(sub_paragraph) + 1 <= max_length:
+                # If not, append sub_paragraph to current_chunk and update current_length
                 current_chunk.append(sub_paragraph)
                 current_length += len(sub_paragraph) + 1
             else:
+                # If it would exceed max_length, yield the current_chunk and reset current_chunk
                 yield "\n".join(current_chunk)
                 current_chunk = [sub_paragraph]
                 current_length = len(sub_paragraph) + 1
 
+        # If the remaining paragraph length fits within max_length, append it to current_chunk
         if current_length + paragraph_length + 1 <= max_length:
             current_chunk.append(paragraph)
             current_length += paragraph_length + 1
         else:
+            # If not, yield the current_chunk and reset current_chunk with the remaining paragraph
             yield "\n".join(current_chunk)
             current_chunk = [paragraph]
             current_length = paragraph_length + 1
