@@ -109,6 +109,7 @@ class Config(metaclass=Singleton):
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins = []
+        self.plugins_openai = []
         self.plugins_whitelist = []
         self.plugins_blacklist = []
 

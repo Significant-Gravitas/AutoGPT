@@ -157,3 +157,5 @@ vicuna-*
 
 # mac
 .DS_Store
+
+openai/
