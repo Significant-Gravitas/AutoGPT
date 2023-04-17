@@ -17,6 +17,7 @@ from autogpt.commands.file_operations import (
     read_file,
     search_files,
     write_to_file,
+    download_file
 )
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
@@ -163,6 +164,10 @@ def execute_command(command_name: str, arguments):
             return delete_file(arguments["file"])
         elif command_name == "search_files":
             return search_files(arguments["directory"])
+        elif command_name == "download_file":
+            if not CFG.allow_downloads:
+                return "Error: You do not have user authorization to download files locally."
+            return download_file(arguments["url"], arguments["file"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
         # TODO: Change these to take in a file rather than pasted code, if
