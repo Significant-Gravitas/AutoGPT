@@ -112,11 +112,10 @@ def execute_command(command_name: str, arguments):
         arguments (dict): The arguments for the command
 
     Returns:
-        str: The result of the command"""
-    memory = get_memory(CFG)
-
+        str: The result of the command
+    """
     try:
-        command_name = map_command_synonyms(command_name)
+        command_name = map_command_synonyms(command_name.lower())
         if command_name == "google":
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial
@@ -136,6 +135,7 @@ def execute_command(command_name: str, arguments):
 
             return str(safe_message)
         elif command_name == "memory_add":
+            memory = get_memory(CFG)
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
             return start_agent(
