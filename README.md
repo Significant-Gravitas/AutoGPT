@@ -426,6 +426,18 @@ python -m autogpt --speak --gpt3only
 
 It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
 
+## Save Model Memory
+
+To save the model's local memory, create an empty `auto-gpt.json` file in the root directory.
+
+You can create this file by running:
+
+```bash
+echo '{}' > auto-gpt.json
+```
+
+Adding this file will prevent the warning and save the model's local memory.
+
 ## 🖼 Image Generation
 
 By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [Hugging Face API Token](https://huggingface.co/settings/tokens) is required.
