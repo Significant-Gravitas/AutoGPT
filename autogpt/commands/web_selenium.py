@@ -67,12 +67,6 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
 
-    # Add linux specific flags
-    if platform == "linux" or platform == "linux2":
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--remote-debugging-port=9222")
-
 
     if CFG.selenium_web_browser == "firefox":
         driver = webdriver.Firefox(
@@ -83,6 +77,9 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
     else:
+        if platform == "linux" or platform == "linux2":
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--remote-debugging-port=9222")
         options.add_argument("--no-sandbox")
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
