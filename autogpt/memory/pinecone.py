@@ -2,7 +2,8 @@ import pinecone
 from colorama import Fore, Style
 
 from autogpt.logs import logger
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton
+from autogpt.llm_utils import create_embedding_with_ada
 
 
 class PineconeMemory(MemoryProviderSingleton):
@@ -43,7 +44,7 @@ class PineconeMemory(MemoryProviderSingleton):
         self.index = pinecone.Index(table_name)
 
     def add(self, data):
-        vector = get_ada_embedding(data)
+        vector = create_embedding_with_ada(data)
         # no metadata here. We may wish to change that long term.
         self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})])
         _text = f"Inserting data into memory at index: {self.vec_num}:\n data: {data}"
@@ -63,7 +64,7 @@ class PineconeMemory(MemoryProviderSingleton):
         :param data: The data to compare to.
         :param num_relevant: The number of relevant data to return. Defaults to 5
         """
-        query_embedding = get_ada_embedding(data)
+        query_embedding = create_embedding_with_ada(data)
         results = self.index.query(
             query_embedding, top_k=num_relevant, include_metadata=True
         )

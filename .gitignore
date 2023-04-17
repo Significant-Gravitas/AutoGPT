@@ -3,6 +3,7 @@ autogpt/keys.py
 autogpt/*json
 autogpt/node_modules/
 autogpt/__pycache__/keys.cpython-310.pyc
+autogpt/auto_gpt_workspace
 package-lock.json
 *.pyc
 auto_gpt_workspace/*
@@ -18,6 +19,8 @@ auto-gpt.json
 log.txt
 log-ingestion.txt
 logs
+*.log
+*.mp3
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -127,10 +130,9 @@ celerybeat.pid
 .env
 .venv
 env/
-venv/
+venv*/
 ENV/
 env.bak/
-venv.bak/
 
 # Spyder project settings
 .spyderproject
@@ -151,3 +153,6 @@ dmypy.json
 .pyre/
 llama-*
 vicuna-*
+
+# mac
+.DS_Store

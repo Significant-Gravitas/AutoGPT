@@ -1,5 +1,6 @@
 """Agent manager for managing GPT agents"""
-from typing import List, Tuple, Union
+from __future__ import annotations
+
 from autogpt.llm_utils import create_chat_completion
 from autogpt.config.config import Singleton
 
@@ -47,7 +48,7 @@ class AgentManager(metaclass=Singleton):
 
         return key, agent_reply
 
-    def message_agent(self, key: Union[str, int], message: str) -> str:
+    def message_agent(self, key: str | int, message: str) -> str:
         """Send a message to an agent and return its response
 
         Args:
@@ -73,7 +74,7 @@ class AgentManager(metaclass=Singleton):
 
         return agent_reply
 
-    def list_agents(self) -> List[Tuple[Union[str, int], str]]:
+    def list_agents(self) -> list[tuple[str | int, str]]:
         """Return a list of all agents
 
         Returns:

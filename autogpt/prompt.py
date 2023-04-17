@@ -3,6 +3,7 @@ from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.logs import logger
 from autogpt.promptgenerator import PromptGenerator
+from autogpt.config import Config
 from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
@@ -17,6 +18,9 @@ def get_prompt() -> str:
     Returns:
         str: The generated prompt string.
     """
+
+    # Initialize the Config object
+    cfg = Config()
 
     # Initialize the PromptGenerator object
     prompt_generator = PromptGenerator()
@@ -55,6 +59,11 @@ def get_prompt() -> str:
         ),
         ("List GPT Agents", "list_agents", {}),
         ("Delete GPT Agent", "delete_agent", {"key": "<key>"}),
+        (
+            "Clone Repository",
+            "clone_repository",
+            {"repository_url": "<url>", "clone_path": "<directory>"},
+        ),
         ("Write to file", "write_to_file", {"file": "<file>", "text": "<text>"}),
         ("Read file", "read_file", {"file": "<file>"}),
         ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
@@ -72,15 +81,47 @@ def get_prompt() -> str:
             {"code": "<full_code_string>", "focus": "<list_of_focus_areas>"},
         ),
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
-        (
-            "Execute Shell Command, non-interactive commands only",
-            "execute_shell",
-            {"command_line": "<command_line>"},
-        ),
-        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
-        ("Do Nothing", "do_nothing", {}),
+        ("Send Tweet", "send_tweet", {"text": "<text>"}),
     ]
+
+    # Only add the audio to text command if the model is specified
+    if cfg.huggingface_audio_to_text_model:
+        commands.append(
+            (
+                "Convert Audio to text",
+                "read_audio_from_file",
+                {"file": "<file>"}
+            ),
+        )
+
+    # Only add shell command to the prompt if the AI is allowed to execute it
+    if cfg.execute_local_commands:
+        commands.append(
+            (
+                "Execute Shell Command, non-interactive commands only",
+                "execute_shell",
+                {"command_line": "<command_line>"},
+            ),
+        )
+
+    # Only add the download file command if the AI is allowed to execute it
+    if cfg.allow_downloads:
+        commands.append(
+            (
+                "Downloads a file from the internet, and stores it locally",
+                "download_file",
+                {"url": "<file_url>", "file": "<saved_filename>"}
+            ),
+        )
+
+    # Add these command last.
+    commands.append(
+        ("Do Nothing", "do_nothing", {}),
+    )
+    commands.append(
+        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
+    )
 
     # Add commands to the PromptGenerator object
     for command_label, command_name, args in commands:
@@ -146,7 +187,7 @@ Continue (y/n): """
 
     if not config.ai_name:
         config = prompt_user()
-        config.save()
+        config.save(CFG.ai_settings_file)
 
     # Get rid of this global:
     global ai_name

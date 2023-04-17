@@ -1,13 +1,16 @@
 """Browse a webpage and summarize it using the LLM model"""
-from typing import List, Tuple, Union
+from __future__ import annotations
+
 from urllib.parse import urljoin, urlparse
 
 import requests
+from requests.compat import urljoin
 from requests import Response
 from bs4 import BeautifulSoup
 
 from autogpt.config import Config
 from autogpt.memory import get_memory
+from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 
 CFG = Config()
 memory = get_memory(CFG)
@@ -64,7 +67,7 @@ def check_local_file_access(url: str) -> bool:
 
 def get_response(
     url: str, timeout: int = 10
-) -> Union[Tuple[None, str], Tuple[Response, None]]:
+) -> tuple[None, str] | tuple[Response, None]:
     """Get the response from a URL
 
     Args:
@@ -134,44 +137,14 @@ def scrape_text(url: str) -> str:
     return text
 
 
-def extract_hyperlinks(soup: BeautifulSoup) -> List[Tuple[str, str]]:
-    """Extract hyperlinks from a BeautifulSoup object
-
-    Args:
-        soup (BeautifulSoup): The BeautifulSoup object
-
-    Returns:
-        List[Tuple[str, str]]: The extracted hyperlinks
-    """
-    hyperlinks = []
-    for link in soup.find_all("a", href=True):
-        hyperlinks.append((link.text, link["href"]))
-    return hyperlinks
-
-
-def format_hyperlinks(hyperlinks: List[Tuple[str, str]]) -> List[str]:
-    """Format hyperlinks into a list of strings
-
-    Args:
-        hyperlinks (List[Tuple[str, str]]): The hyperlinks to format
-
-    Returns:
-        List[str]: The formatted hyperlinks
-    """
-    formatted_links = []
-    for link_text, link_url in hyperlinks:
-        formatted_links.append(f"{link_text} ({link_url})")
-    return formatted_links
-
-
-def scrape_links(url: str) -> Union[str, List[str]]:
+def scrape_links(url: str) -> str | list[str]:
     """Scrape links from a webpage
 
     Args:
         url (str): The URL to scrape links from
 
     Returns:
-        Union[str, List[str]]: The scraped links
+       str | list[str]: The scraped links
     """
     response, error_message = get_response(url)
     if error_message:
@@ -183,7 +156,7 @@ def scrape_links(url: str) -> Union[str, List[str]]:
     for script in soup(["script", "style"]):
         script.extract()
 
-    hyperlinks = extract_hyperlinks(soup)
+    hyperlinks = extract_hyperlinks(soup, url)
 
     return format_hyperlinks(hyperlinks)
 
@@ -192,7 +165,7 @@ def create_message(chunk, question):
     """Create a message for the user to summarize a chunk of text"""
     return {
         "role": "user",
-        "content": f'"""{chunk}""" Using the above text, please answer the following'
+        "content": f'"""{chunk}""" Using the above text, answer the following'
         f' question: "{question}" -- if the question cannot be answered using the'
-        " text, please summarize the text.",
+        " text, summarize the text.",
     }
