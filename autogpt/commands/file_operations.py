@@ -13,12 +13,6 @@ from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
 
-# Set a dedicated folder for file I/O
-WORKING_DIRECTORY = Path(__file__).parent.parent / "auto_gpt_workspace"
-
-# Create the directory if it doesn't exist
-if not os.path.exists(WORKING_DIRECTORY):
-    os.makedirs(WORKING_DIRECTORY)
 
 LOG_FILE = "file_logger.txt"
 LOG_FILE_PATH = WORKSPACE_PATH / LOG_FILE
@@ -235,7 +229,7 @@ def download_file(url, filename):
         url (str): URL of the file to download
         filename (str): Filename to save the file as
     """
-    safe_filename = safe_join(WORKING_DIRECTORY, filename)
+    safe_filename = path_in_workspace(filename)
     try:
         message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
         with Spinner(message) as spinner:
