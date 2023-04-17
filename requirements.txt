@@ -1,3 +1,4 @@
+aiohttp[speedups]
 beautifulsoup4>=4.12.2
 colorama==0.4.6
 distro==1.8.0
