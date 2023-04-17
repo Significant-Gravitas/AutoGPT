@@ -43,6 +43,6 @@ class ChromaMemory(MemoryProviderSingleton):
     def clear(self):
         self.db.reset()
         return "Cleared"
-    
+
     def get_stats(self):
         return self.collection.count()
