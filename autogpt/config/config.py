@@ -32,6 +32,8 @@ class Config(metaclass=Singleton):
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+        self.response_token_reserve = int(os.getenv("RESPONSE_TOKEN_RESERVE", 1000))
+        self.token_upper_limit = int(os.getenv("TOKEN_UPPER_LIMIT", 2500))
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
         self.browse_summary_max_token = int(os.getenv("BROWSE_SUMMARY_MAX_TOKEN", 300))
 
