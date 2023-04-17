@@ -24,7 +24,9 @@ class Config(metaclass=Singleton):
         self.continuous_limit = 0
         self.speak_mode = False
         self.skip_reprompt = False
+        self.allow_downloads = False
 
+        self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -56,14 +58,34 @@ class Config(metaclass=Singleton):
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
 
+        self.github_api_key = os.getenv("GITHUB_API_KEY")
+        self.github_username = os.getenv("GITHUB_USERNAME")
+
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
 
+        self.weaviate_host  = os.getenv("WEAVIATE_HOST")
+        self.weaviate_port = os.getenv("WEAVIATE_PORT")
+        self.weaviate_protocol = os.getenv("WEAVIATE_PROTOCOL", "http")
+        self.weaviate_username = os.getenv("WEAVIATE_USERNAME", None)
+        self.weaviate_password = os.getenv("WEAVIATE_PASSWORD", None)
+        self.weaviate_scopes = os.getenv("WEAVIATE_SCOPES", None)
+        self.weaviate_embedded_path = os.getenv("WEAVIATE_EMBEDDED_PATH")
+        self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
+        self.use_weaviate_embedded = os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
+
+        # milvus configuration, e.g., localhost:19530.
+        self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
+        self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
+
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
+        self.huggingface_audio_to_text_model = os.getenv(
+            "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
+        )
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if
@@ -127,14 +149,10 @@ class Config(metaclass=Singleton):
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
         except FileNotFoundError:
             config_params = {}
-        self.openai_api_type = os.getenv(
-            "OPENAI_API_TYPE", config_params.get("azure_api_type", "azure")
-        )
-        self.openai_api_base = os.getenv(
-            "OPENAI_AZURE_API_BASE", config_params.get("azure_api_base", "")
-        )
-        self.openai_api_version = os.getenv(
-            "OPENAI_AZURE_API_VERSION", config_params.get("azure_api_version", "")
+        self.openai_api_type = config_params.get("azure_api_type") or "azure"
+        self.openai_api_base = config_params.get("azure_api_base") or ""
+        self.openai_api_version = (
+            config_params.get("azure_api_version") or "2023-03-15-preview"
         )
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", [])
 

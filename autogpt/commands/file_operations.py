@@ -1,36 +1,53 @@
 """File operations for AutoGPT"""
+from __future__ import annotations
+
 import os
 import os.path
 from pathlib import Path
 from typing import Generator, List
-
-# Set a dedicated folder for file I/O
-WORKING_DIRECTORY = Path(__file__).parent.parent / "auto_gpt_workspace"
-
-# Create the directory if it doesn't exist
-if not os.path.exists(WORKING_DIRECTORY):
-    os.makedirs(WORKING_DIRECTORY)
-
-WORKING_DIRECTORY = str(WORKING_DIRECTORY)
+import requests
+from requests.adapters import HTTPAdapter
+from requests.adapters import Retry
+from colorama import Fore, Back
+from autogpt.spinner import Spinner
+from autogpt.utils import readable_file_size
+from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
 
 
-def safe_join(base: str, *paths) -> str:
-    """Join one or more path components intelligently.
+LOG_FILE = "file_logger.txt"
+LOG_FILE_PATH = WORKSPACE_PATH / LOG_FILE
+
+
+def check_duplicate_operation(operation: str, filename: str) -> bool:
+    """Check if the operation has already been performed on the given file
 
     Args:
-        base (str): The base path
-        *paths (str): The paths to join to the base path
+        operation (str): The operation to check for
+        filename (str): The name of the file to check for
 
     Returns:
-        str: The joined path
+        bool: True if the operation has already been performed on the file
     """
-    new_path = os.path.join(base, *paths)
-    norm_new_path = os.path.normpath(new_path)
+    log_content = read_file(LOG_FILE)
+    log_entry = f"{operation}: {filename}\n"
+    return log_entry in log_content
 
-    if os.path.commonprefix([base, norm_new_path]) != base:
-        raise ValueError("Attempted to access outside of working directory.")
 
-    return norm_new_path
+def log_operation(operation: str, filename: str) -> None:
+    """Log the file operation to the file_logger.txt
+
+    Args:
+        operation (str): The operation to log
+        filename (str): The name of the file the operation was performed on
+    """
+    log_entry = f"{operation}: {filename}\n"
+
+    # Create the log file if it doesn't exist
+    if not os.path.exists(LOG_FILE_PATH):
+        with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
+            f.write("File Operation Logger ")
+
+    append_to_file(LOG_FILE, log_entry, shouldLog = False)
 
 
 def split_file(
@@ -40,7 +57,7 @@ def split_file(
     Split text into chunks of a specified maximum length with a specified overlap
     between chunks.
 
-    :param text: The input text to be split into chunks
+    :param content: The input text to be split into chunks
     :param max_length: The maximum length of each chunk,
         default is 4000 (about 1k token)
     :param overlap: The number of overlapping characters between chunks,
@@ -70,7 +87,7 @@ def read_file(filename: str) -> str:
         str: The contents of the file
     """
     try:
-        filepath = safe_join(WORKING_DIRECTORY, filename)
+        filepath = path_in_workspace(filename)
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
         return content
@@ -122,19 +139,22 @@ def write_to_file(filename: str, text: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
+    if check_duplicate_operation("write", filename):
+        return "Error: File has already been updated."
     try:
-        filepath = safe_join(WORKING_DIRECTORY, filename)
+        filepath = path_in_workspace(filename)
         directory = os.path.dirname(filepath)
         if not os.path.exists(directory):
             os.makedirs(directory)
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(text)
+        log_operation("write", filename)
         return "File written to successfully."
     except Exception as e:
         return f"Error: {str(e)}"
 
 
-def append_to_file(filename: str, text: str) -> str:
+def append_to_file(filename: str, text: str, shouldLog: bool = True) -> str:
     """Append text to a file
 
     Args:
@@ -145,9 +165,13 @@ def append_to_file(filename: str, text: str) -> str:
         str: A message indicating success or failure
     """
     try:
-        filepath = safe_join(WORKING_DIRECTORY, filename)
+        filepath = path_in_workspace(filename)
         with open(filepath, "a") as f:
             f.write(text)
+
+        if shouldLog:
+            log_operation("append", filename)
+
         return "Text appended successfully."
     except Exception as e:
         return f"Error: {str(e)}"
@@ -162,35 +186,78 @@ def delete_file(filename: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
+    if check_duplicate_operation("delete", filename):
+        return "Error: File has already been deleted."
     try:
-        filepath = safe_join(WORKING_DIRECTORY, filename)
+        filepath = path_in_workspace(filename)
         os.remove(filepath)
+        log_operation("delete", filename)
         return "File deleted successfully."
     except Exception as e:
         return f"Error: {str(e)}"
 
 
-def search_files(directory: str) -> List[str]:
+def search_files(directory: str) -> list[str]:
     """Search for files in a directory
 
     Args:
         directory (str): The directory to search in
 
     Returns:
-        List[str]: A list of files found in the directory
+        list[str]: A list of files found in the directory
     """
     found_files = []
 
     if directory in {"", "/"}:
-        search_directory = WORKING_DIRECTORY
+        search_directory = WORKSPACE_PATH
     else:
-        search_directory = safe_join(WORKING_DIRECTORY, directory)
+        search_directory = path_in_workspace(directory)
 
     for root, _, files in os.walk(search_directory):
         for file in files:
             if file.startswith("."):
                 continue
-            relative_path = os.path.relpath(os.path.join(root, file), WORKING_DIRECTORY)
+            relative_path = os.path.relpath(os.path.join(root, file), WORKSPACE_PATH)
             found_files.append(relative_path)
 
     return found_files
+
+
+def download_file(url, filename):
+    """Downloads a file
+    Args:
+        url (str): URL of the file to download
+        filename (str): Filename to save the file as
+    """
+    safe_filename = path_in_workspace(filename)
+    try:
+        message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
+        with Spinner(message) as spinner:
+            session = requests.Session()
+            retry = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
+            adapter = HTTPAdapter(max_retries=retry)
+            session.mount('http://', adapter)
+            session.mount('https://', adapter)
+
+            total_size = 0
+            downloaded_size = 0
+
+            with session.get(url, allow_redirects=True, stream=True) as r:
+                r.raise_for_status()
+                total_size = int(r.headers.get('Content-Length', 0))
+                downloaded_size = 0
+
+                with open(safe_filename, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+
+                         # Update the progress message
+                        progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
+                        spinner.update_message(f"{message} {progress}")
+
+            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(total_size)})'
+    except requests.HTTPError as e:
+        return f"Got an HTTP Error whilst trying to download file: {e}"
+    except Exception as e:
+        return "Error: " + str(e)
