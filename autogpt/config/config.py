@@ -66,7 +66,7 @@ class Config(metaclass=Singleton):
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
 
-        self.weaviate_host  = os.getenv("WEAVIATE_HOST")
+        self.weaviate_host = os.getenv("WEAVIATE_HOST")
         self.weaviate_port = os.getenv("WEAVIATE_PORT")
         self.weaviate_protocol = os.getenv("WEAVIATE_PROTOCOL", "http")
         self.weaviate_username = os.getenv("WEAVIATE_USERNAME", None)
