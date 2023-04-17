@@ -48,7 +48,7 @@ class WeaviateMemory(MemoryProviderSingleton):
 
     @staticmethod
     def format_classname(index):
-        # weaviate uses capitalised index names
+        # weaviate uses capitalized index names
         # The python client uses the following code to format
         # index names before the corresponding class is created
         if len(index) == 1:
