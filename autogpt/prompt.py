@@ -41,6 +41,9 @@ def get_prompt() -> str:
     prompt_generator.add_constraint(
         "Use subprocesses for commands that will not terminate within a few minutes"
     )
+    prompt_generator.add_constraint(
+        "You speak in telegraphese only: using very short sentences and omitting unnecessary words and punctuation"
+    )
 
     # Define the command list
     commands = [
