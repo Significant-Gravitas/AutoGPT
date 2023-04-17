@@ -243,23 +243,23 @@ def download_file(url, filename):
             session = requests.Session()
             retry = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
             adapter = HTTPAdapter(max_retries=retry)
-            session.mount('http://', adapter)
-            session.mount('https://', adapter)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
 
             total_size = 0
             downloaded_size = 0
 
             with session.get(url, allow_redirects=True, stream=True) as r:
                 r.raise_for_status()
-                total_size = int(r.headers.get('Content-Length', 0))
+                total_size = int(r.headers.get("Content-Length", 0))
                 downloaded_size = 0
 
-                with open(safe_filename, 'wb') as f:
+                with open(safe_filename, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
                         downloaded_size += len(chunk)
 
-                         # Update the progress message
+                        # Update the progress message
                         progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
                         spinner.update_message(f"{message} {progress}")
 

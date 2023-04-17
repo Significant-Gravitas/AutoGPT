@@ -12,7 +12,7 @@ from autogpt.commands.file_operations import (
     read_file,
     search_files,
     write_to_file,
-    download_file
+    download_file,
 )
 from autogpt.commands.git_operations import clone_repository
 from autogpt.commands.google_search import google_official_search, google_search
@@ -141,7 +141,7 @@ def execute_command(
             if not CFG.allow_downloads:
                 return "Error: You do not have user authorization to download files locally."
             return download_file(arguments["url"], arguments["file"])
-        
+
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again

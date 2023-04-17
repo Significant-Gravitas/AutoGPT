@@ -89,10 +89,9 @@ class Agent:
             for plugin in cfg.plugins:
                 assistant_reply_json = plugin.post_planning(self, assistant_reply_json)
 
-
             # Print Assistant thoughts
             if assistant_reply_json != {}:
-                validate_json(assistant_reply_json, 'llm_response_format_1')
+                validate_json(assistant_reply_json, "llm_response_format_1")
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(self.ai_name, assistant_reply_json)
@@ -199,7 +198,9 @@ class Agent:
                 # Check if there's a result from the command append it to the message
                 # history
                 if result is not None:
-                    self.full_message_history.append(create_chat_message("system", result))
+                    self.full_message_history.append(
+                        create_chat_message("system", result)
+                    )
                     logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
                 else:
                     self.full_message_history.append(
