@@ -1,7 +1,12 @@
+# sourcery skip: do-not-use-staticmethod
+"""
+A module that contains the AIConfig class object that contains the configuration
+"""
+
 from pathlib import Path
 from typing import List, Optional, Type
 import yaml
-
+from __future__ import annotations
 
 class AIConfig:
     """
@@ -14,7 +19,7 @@ class AIConfig:
     """
 
     def __init__(
-        self, ai_name: str = "", ai_role: str = "", ai_goals: Optional[List] = None
+        self, ai_name: str = "", ai_role: str = "", ai_goals: list | None = None
     ) -> None:
         """
         Initialize a class instance
@@ -96,7 +101,7 @@ class AIConfig:
 
         prompt_start = (
             "Your decisions must always be made independently without"
-            "seeking user assistance. Play to your strengths as an LLM and pursue"
+            " seeking user assistance. Play to your strengths as an LLM and pursue"
             " simple strategies with no legal complications."
             ""
         )

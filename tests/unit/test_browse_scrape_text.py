@@ -50,7 +50,9 @@ class TestScrapeText:
     # Tests that the function returns an error message when an invalid or unreachable url is provided.
     def test_invalid_url(self, mocker):
         # Mock the requests.get() method to raise an exception
-        mocker.patch("requests.Session.get", side_effect=requests.exceptions.RequestException)
+        mocker.patch(
+            "requests.Session.get", side_effect=requests.exceptions.RequestException
+        )
 
         # Call the function with an invalid URL and assert that it returns an error message
         url = "http://www.invalidurl.com"

@@ -1,12 +1,11 @@
 """Execute code in a Docker container"""
 import os
-from pathlib import Path
 import subprocess
 
 import docker
 from docker.errors import ImageNotFound
 
-WORKING_DIRECTORY = Path(__file__).parent.parent / "auto_gpt_workspace"
+from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
 
 
 def execute_python_file(file: str):
@@ -19,12 +18,12 @@ def execute_python_file(file: str):
         str: The output of the file
     """
 
-    print(f"Executing file '{file}' in workspace '{WORKING_DIRECTORY}'")
+    print(f"Executing file '{file}' in workspace '{WORKSPACE_PATH}'")
 
     if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    file_path = os.path.join(WORKING_DIRECTORY, file)
+    file_path = path_in_workspace(file)
 
     if not os.path.isfile(file_path):
         return f"Error: File '{file}' does not exist."
@@ -65,7 +64,7 @@ def execute_python_file(file: str):
             image_name,
             f"python {file}",
             volumes={
-                os.path.abspath(WORKING_DIRECTORY): {
+                os.path.abspath(WORKSPACE_PATH): {
                     "bind": "/workspace",
                     "mode": "ro",
                 }
@@ -100,9 +99,8 @@ def execute_shell(command_line: str) -> str:
     """
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
-    if str(WORKING_DIRECTORY) not in current_dir:
-        work_dir = os.path.join(os.getcwd(), WORKING_DIRECTORY)
-        os.chdir(work_dir)
+    if str(WORKSPACE_PATH) not in current_dir:
+        os.chdir(WORKSPACE_PATH)
 
     print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
