@@ -43,5 +43,4 @@ pytest-mock
 
 # Database query
 Unidecode~=1.3.6
-regex~=2023.3.23
 psycopg2-binary
