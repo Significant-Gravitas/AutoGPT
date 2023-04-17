@@ -1,4 +1,5 @@
 import shutil
+import os
 import sys
 from pathlib import Path
 
@@ -155,7 +156,7 @@ class TestCommandRegistry:
         registry = CommandRegistry()
 
         # Create a temp command file
-        src = Path("mocks/mock_commands.py")
+        src = Path(os.getcwd()) / "tests/mocks/mock_commands.py"
         temp_commands_file = tmp_path / "mock_commands.py"
         shutil.copyfile(src, temp_commands_file)
 
