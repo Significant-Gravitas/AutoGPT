@@ -46,7 +46,7 @@ class MilvusMemory(MemoryProviderSingleton):
         self.collection.load()
 
     def add(self, data) -> str:
-        """Add a embedding of data into memory.
+        """Add an embedding of data into memory.
 
         Args:
             data (str): The raw text to construct embedding index.
