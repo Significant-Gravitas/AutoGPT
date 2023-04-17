@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-#Grab keys from .env file
+# Grab keys from .env file
 consumer_key = os.environ.get("TW_CONSUMER_KEY")
 consumer_secret = os.environ.get("TW_CONSUMER_SECRET")
 access_token = os.environ.get("TW_ACCESS_TOKEN")
@@ -25,16 +25,20 @@ def send_tweet(tweet_text):
     except tweepy.TweepyException as e:
         print("Error sending tweet: {}".format(e.reason))
 
+
 def reply_tweet(tweet_text, tweet_id):
     # Send reply via tweet_id
     try:
-        api.update_status(tweet_text, in_reply_to_status_id=tweet_id, auto_populate_reply_metadata=True)
+        api.update_status(tweet_text,
+                          in_reply_to_status_id=tweet_id,
+                          auto_populate_reply_metadata=True)
         print("Reply sent successfully!")
     except tweepy.TweepyException as e:
         print("Error sending reply: {}".format(e.reason))
 
+
 def get_twitter_mentions():
-    #Get list of recent mentions and return with @ name, tweet_text, and tweet_id
+    # Get list of recent mentions and return with @ name, tweet_text, and tweet_id
     try:
         mentions = api.mentions_timeline()
         mention_list = []
