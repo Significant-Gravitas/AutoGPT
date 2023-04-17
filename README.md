@@ -132,7 +132,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 2. After each action, choose from options to authorize command(s),
 exit the program, or provide feedback to the AI.
    1. Authorize a single command, enter `y`
-   2. Authorize a series of _N_ continuous commands, enter `y -N`
+   2. Authorize a series of _N_ continuous commands, enter `y -N` or `N` by itself where N is the number of continuous commands the bot should run before continuing to request for consent.
    3. Exit the program, enter `n`
 
 
