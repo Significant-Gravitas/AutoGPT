@@ -24,7 +24,7 @@ def main() -> None:
     check_openai_api_key()
     parse_arguments()
     logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
-    cfg.set_plugins(load_plugins(cfg))
+    cfg.set_plugins(load_plugins(cfg, cfg.debug_mode))
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
     command_registry.import_commands("scripts.ai_functions")
