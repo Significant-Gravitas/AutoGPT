@@ -180,6 +180,8 @@ class Agent:
                 result = f"Human feedback: {user_input}"
             else:
                 for plugin in cfg.plugins:
+                    if not plugin.can_handle_pre_command():
+                        continue
                     command_name, arguments = plugin.pre_command(
                         command_name, arguments
                     )
@@ -192,6 +194,8 @@ class Agent:
                 result = f"Command {command_name} returned: " f"{command_result}"
 
                 for plugin in cfg.plugins:
+                    if not plugin.can_handle_post_command():
+                        continue
                     result = plugin.post_command(command_name, result)
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
