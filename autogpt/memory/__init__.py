@@ -11,7 +11,7 @@ try:
 
     supported_memory.append("redis")
 except ImportError:
-    print("Redis not installed. Skipping import.")
+    # print("Redis not installed. Skipping import.")
     RedisMemory = None
 
 try:
@@ -19,13 +19,23 @@ try:
 
     supported_memory.append("pinecone")
 except ImportError:
-    print("Pinecone not installed. Skipping import.")
+    # print("Pinecone not installed. Skipping import.")
     PineconeMemory = None
 
 try:
-    from memory.milvus import MilvusMemory
+    from autogpt.memory.weaviate import WeaviateMemory
+
+    supported_memory.append("weaviate")
 except ImportError:
-    print("pymilvus not installed. Skipping import.")
+    # print("Weaviate not installed. Skipping import.")
+    WeaviateMemory = None
+
+try:
+    from autogpt.memory.milvus import MilvusMemory
+
+    supported_memory.append("milvus")
+except ImportError:
+    # print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
 
 try:
@@ -57,14 +67,22 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = RedisMemory(cfg)
-    elif cfg.memory_backend == "no_memory":
-        memory = NoMemory(cfg)
+    elif cfg.memory_backend == "weaviate":
+        if not WeaviateMemory:
+            print("Error: Weaviate is not installed. Please install weaviate-client to"
+                  " use Weaviate as a memory backend.")
+        else:
+            memory = WeaviateMemory(cfg)
     elif cfg.memory_backend == "milvus":
         if not MilvusMemory:
-            print("Error: Milvus sdk is not installed."
-                  "Please install pymilvus to use Milvus as memory backend.")
+            print(
+                "Error: Milvus sdk is not installed."
+                "Please install pymilvus to use Milvus as memory backend."
+            )
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "no_memory":
+        memory = NoMemory(cfg)
 
     if memory is None:
         memory = LocalCache(cfg)
@@ -77,4 +95,12 @@ def get_supported_memory_backends():
     return supported_memory
 
 
-__all__ = ["get_memory", "LocalCache", "RedisMemory", "PineconeMemory", "NoMemory", "MilvusMemory"]
+__all__ = [
+    "get_memory",
+    "LocalCache",
+    "RedisMemory",
+    "PineconeMemory",
+    "NoMemory",
+    "MilvusMemory",
+    "WeaviateMemory"
+]

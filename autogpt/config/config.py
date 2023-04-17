@@ -70,6 +70,17 @@ class Config(metaclass=Singleton):
         self.chroma_db_directory = os.getenv("CHROMA_DB_DIRECTORY")
         self.chroma_server_host = os.getenv("CHROMA_SERVER_HOST")
         self.chroma_server_port = os.getenv("CHROMA_SERVER_PORT")
+        
+        #weaviate configuration
+        self.weaviate_host  = os.getenv("WEAVIATE_HOST")
+        self.weaviate_port = os.getenv("WEAVIATE_PORT")
+        self.weaviate_protocol = os.getenv("WEAVIATE_PROTOCOL", "http")
+        self.weaviate_username = os.getenv("WEAVIATE_USERNAME", None)
+        self.weaviate_password = os.getenv("WEAVIATE_PASSWORD", None)
+        self.weaviate_scopes = os.getenv("WEAVIATE_SCOPES", None)
+        self.weaviate_embedded_path = os.getenv("WEAVIATE_EMBEDDED_PATH")
+        self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
+        self.use_weaviate_embedded = os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
 
         # milvus configuration, e.g., localhost:19530.
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
@@ -77,6 +88,9 @@ class Config(metaclass=Singleton):
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
+        self.huggingface_audio_to_text_model = os.getenv(
+            "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
+        )
 
         # User agent headers to use when browsing web
         # Some websites might just completely deny request with an error code if
@@ -93,9 +107,7 @@ class Config(metaclass=Singleton):
         self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
-        self.memory_backend = os.getenv("MEMORY_BACKEND", 'local')
-        self.memory_embedder = os.getenv("MEMORY_EMBEDDER", 'ada')
-
+        self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
@@ -144,7 +156,9 @@ class Config(metaclass=Singleton):
             config_params = {}
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
-        self.openai_api_version = config_params.get("azure_api_version") or "2023-03-15-preview"
+        self.openai_api_version = (
+            config_params.get("azure_api_version") or "2023-03-15-preview"
+        )
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", [])
 
     def set_continuous_mode(self, value: bool) -> None:

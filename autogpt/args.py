@@ -54,7 +54,7 @@ def parse_arguments() -> None:
         "--use-browser",
         "-b",
         dest="browser_name",
-        help="Specifies which web-browser to use when using selenium to scrape the web."
+        help="Specifies which web-browser to use when using selenium to scrape the web.",
     )
     parser.add_argument(
         "--ai-settings",
