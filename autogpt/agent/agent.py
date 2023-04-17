@@ -1,3 +1,4 @@
+import os
 from colorama import Fore, Style
 from autogpt.app import execute_command, get_command
 
@@ -45,10 +46,9 @@ class Agent:
         self.ai_name = ai_name
         self.memory = memory
         self.full_message_history = full_message_history
-        self.next_action_count = next_action_count
+        self.next_action_count = int(next_action_count)
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
-
     def start_interaction_loop(self):
         # Interaction Loop
         cfg = Config()
@@ -92,8 +92,45 @@ class Agent:
                         say_text(f"I want to execute {command_name}")
                 except Exception as e:
                     logger.error("Error: \n", str(e))
-
-            if not cfg.continuous_mode and self.next_action_count == 0:
+                        ## Else if statement if default authorisations is set to true
+            if cfg.default_authorisation and self.next_action_count == 0:
+                default_authorisation_count = int(os.environ.get("DEFAULT_AUTHORISATION_COUNT", 1))
+                print(
+                    f"Enter 'y' to authorise the next {default_authorisation_count} commands, "
+                    "'y -N' to run N continuous commands, "
+                    "'n' to exit the program, or enter feedback for "
+                    f"{self.ai_name}...",
+                    flush=True,
+                )
+                while True:
+                    console_input = clean_input(
+                        Fore.MAGENTA + "Input:" + Style.RESET_ALL
+                    )
+                    if console_input.lower().rstrip() == "y":
+                        user_input = "GENERATE NEXT COMMAND JSON"
+                        self.next_action_count = default_authorisation_count
+                        break
+                    elif console_input.lower().startswith("y -"):
+                        try:
+                            # Set self.next_action_count equal to n
+                            self.next_action_count = abs(
+                                int(console_input.split(" ")[1])
+                            )
+                        except ValueError:
+                            print(
+                                "Invalid input format. Please enter 'y -n' where n is"
+                                " the number of continuous tasks."
+                            )
+                            continue
+                        break
+                    elif console_input.lower() == "n":
+                        user_input = "EXIT"
+                        break
+                    else:
+                        user_input = console_input
+                        command_name = "human_feedback"
+                        break
+            elif not cfg.continuous_mode and self.next_action_count == 0:    
                 ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -158,6 +195,7 @@ class Agent:
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
+                self.next_action_count = int(self.next_action_count)
                 result = (
                     f"Command {command_name} threw the following error: {arguments}"
                 )
@@ -168,7 +206,7 @@ class Agent:
                     f"Command {command_name} returned: "
                     f"{execute_command(command_name, arguments)}"
                 )
-                if self.next_action_count > 0:
+                if int(self.next_action_count) > 0:
                     self.next_action_count -= 1
 
             memory_to_add = (

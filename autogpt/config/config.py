@@ -24,7 +24,8 @@ class Config(metaclass=Singleton):
         self.continuous_limit = 0
         self.speak_mode = False
         self.skip_reprompt = False
-
+        self.default_authorisation = os.getenv("DEFAULT_AUTHORISATION") == "True"
+        self.default_authorisation_count = int(os.getenv("DEFAULT_AUTHORISATION_COUNT", 0))
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
