@@ -74,10 +74,10 @@ def chat_with_ai(
             str: The AI's response.
             """
             model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
-            # Reserve 1000 tokens for the response
-
+            
+            # Reserve tokens for the response (1000 by default)
             logger.debug(f"Token limit: {token_limit}")
-            send_token_limit = token_limit - 1000
+            send_token_limit = token_limit - cfg.response_token_reserve
 
             relevant_memory = (
                 ""
@@ -94,8 +94,8 @@ def chat_with_ai(
                 current_context,
             ) = generate_context(prompt, relevant_memory, full_message_history, model)
 
-            while current_tokens_used > 2500:
-                # remove memories until we are under 2500 tokens
+            while current_tokens_used > cfg.token_upper_limit:
+                # remove memories until we are under upper token limit (2500 tokens by default)
                 relevant_memory = relevant_memory[:-1]
                 (
                     next_message_to_add_index,
