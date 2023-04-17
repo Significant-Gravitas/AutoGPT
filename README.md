@@ -65,6 +65,7 @@ Development of this free, open-source project is made possible by all the <a hre
   - [Pinecone](https://www.pinecone.io/)
   - [Milvus](https://milvus.io/)
   - [Redis](https://redis.io)
+  - [Weaviate](https://weaviate.io)
 - ElevenLabs Key (If you want the AI to speak)
 
 ## ⚠️ OpenAI API Keys Configuration ⚠️ 
@@ -340,6 +341,14 @@ export MEMORY_BACKEND="pinecone"
 ### Weaviate Setup
 [Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
 Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded) is supported which allows the Auto-GPT process itself to start a Weaviate instance. To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip install "weaviate-client>=3.15.4"`. 
+
+#### Install the Weaviate client
+
+Install the Weaviate client before usage.
+
+```
+$ pip install weaviate-client
+```
 
 #### Setting up environment variables
 
