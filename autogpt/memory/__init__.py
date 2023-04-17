@@ -37,6 +37,14 @@ except ImportError:
     # print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
 
+try:
+    from autogpt.memory.qdrant import QdrantMemory
+
+    supported_memory.append("qdrant")
+except ImportError:
+    print("Qdrant not installed. Skipping import.")
+    QdrantMemory = None
+
 
 def get_memory(cfg, init=False):
     memory = None
@@ -48,6 +56,16 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = PineconeMemory(cfg)
+            if init:
+                memory.clear()
+    elif cfg.memory_backend == "qdrant":
+        if not QdrantMemory:
+            print(
+                "Error: Qdrant is not installed. Please install qdrant"
+                " to use Qdrant as a memory backend."
+            )
+        else:
+            memory = QdrantMemory(cfg)
             if init:
                 memory.clear()
     elif cfg.memory_backend == "redis":
@@ -93,6 +111,7 @@ __all__ = [
     "LocalCache",
     "RedisMemory",
     "PineconeMemory",
+    "QdrantMemory",
     "NoMemory",
     "MilvusMemory",
     "WeaviateMemory",
