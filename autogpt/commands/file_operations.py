@@ -49,6 +49,7 @@ def log_operation(operation: str, filename: str) -> None:
 
     append_to_file(LOG_FILE, log_entry, shouldLog = False)
 
+
 def split_file(
     content: str, max_length: int = 4000, overlap: int = 0
 ) -> Generator[str, None, None]:
