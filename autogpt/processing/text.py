@@ -1,5 +1,5 @@
 """Text processing functions"""
-from typing import Generator, Optional, Dict
+from typing import Generator, Optional, Dict, List
 from selenium.webdriver.remote.webdriver import WebDriver
 from autogpt.memory import get_memory
 from autogpt.config import Config
@@ -10,53 +10,32 @@ MEMORY = get_memory(CFG)
 
 
 def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
-    """Split text into chunks of a maximum length
-
-    Args:
-        text (str): The text to split
-        max_length (int, optional): The maximum length of each chunk. Defaults to 8192.
-
-    Yields:
-        str: The next chunk of text
-    """
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
 
+    def split_long_paragraph(paragraph: str, max_length: int) -> List[str]:
+        return [
+            paragraph[i : i + max_length] for i in range(0, len(paragraph), max_length)
+        ]
+
     for paragraph in paragraphs:
-        paragraph_length = len(paragraph)
+        if len(paragraph) > max_length:
+            long_paragraph_chunks = split_long_paragraph(paragraph, max_length)
+            for long_chunk in long_paragraph_chunks[:-1]:
+                if current_chunk:
+                    yield "\n".join(current_chunk)
+                    current_chunk = []
+                yield long_chunk
+            paragraph = long_paragraph_chunks[-1]
 
-        # If the paragraph length exceeds max_length, split it into smaller chunks
-        while paragraph_length > max_length:
-            # Create a sub_paragraph of length max_length from the original paragraph
-            sub_paragraph = paragraph[:max_length]
-
-            # Update the remaining part of the paragraph
-            paragraph = paragraph[max_length:]
-
-            # Update the paragraph_length with the length of the remaining part of the paragraph
-            paragraph_length = len(paragraph)
-
-            # Check if adding sub_paragraph to current_chunk would exceed max_length
-            if current_length + len(sub_paragraph) + 1 <= max_length:
-                # If not, append sub_paragraph to current_chunk and update current_length
-                current_chunk.append(sub_paragraph)
-                current_length += len(sub_paragraph) + 1
-            else:
-                # If it would exceed max_length, yield the current_chunk and reset current_chunk
-                yield "\n".join(current_chunk)
-                current_chunk = [sub_paragraph]
-                current_length = len(sub_paragraph) + 1
-
-        # If the remaining paragraph length fits within max_length, append it to current_chunk
-        if current_length + paragraph_length + 1 <= max_length:
+        if current_length + len(paragraph) + 1 <= max_length:
             current_chunk.append(paragraph)
-            current_length += paragraph_length + 1
+            current_length += len(paragraph) + 1
         else:
-            # If not, yield the current_chunk and reset current_chunk with the remaining paragraph
             yield "\n".join(current_chunk)
             current_chunk = [paragraph]
-            current_length = paragraph_length + 1
+            current_length = len(paragraph) + 1
 
     if current_chunk:
         yield "\n".join(current_chunk)
