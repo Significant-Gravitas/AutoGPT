@@ -14,5 +14,5 @@ services:
       - ".env:/app/.env"
     profiles: ["exclude-from-up"]
 
-  redis:
+  redis-stack-server:
     image: "redis/redis-stack-server:latest"
