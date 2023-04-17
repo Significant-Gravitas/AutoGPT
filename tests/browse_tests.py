@@ -1,6 +1,6 @@
-import unittest
 import os
 import sys
+import unittest
 
 from bs4 import BeautifulSoup
 

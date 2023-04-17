@@ -7,6 +7,7 @@ from base64 import b64decode
 import openai
 import requests
 from PIL import Image
+
 from autogpt.config import Config
 from autogpt.workspace import path_in_workspace
 
