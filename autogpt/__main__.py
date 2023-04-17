@@ -24,27 +24,7 @@ def main() -> None:
     check_openai_api_key()
     parse_arguments()
     logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
-    plugins_found = load_plugins(Path(os.getcwd()) / "plugins")
-    loaded_plugins = []
-    for plugin in plugins_found:
-        if plugin.__name__ in cfg.plugins_blacklist:
-            continue
-        if plugin.__name__ in cfg.plugins_whitelist:
-            loaded_plugins.append(plugin())
-        else:
-            ack = input(
-                f"WARNNG Plugin {plugin.__name__} found. But not in the"
-                " whitelist... Load? (y/n): "
-            )
-            if ack.lower() == "y":
-                loaded_plugins.append(plugin())
-
-    if loaded_plugins:
-        print(f"\nPlugins found: {len(loaded_plugins)}\n" "--------------------")
-    for plugin in loaded_plugins:
-        print(f"{plugin._name}: {plugin._version} - {plugin._description}")
-
-    cfg.set_plugins(loaded_plugins)
+    cfg.set_plugins(load_plugins(cfg))
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
     command_registry.import_commands("scripts.ai_functions")
