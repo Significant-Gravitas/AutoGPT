@@ -31,15 +31,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -143,15 +143,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -222,15 +222,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -373,15 +373,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -458,15 +458,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -515,10 +515,10 @@ Entrepreneur-GTP:
 }
 """
 -----------------------------------------------------------------------
-Developer NOTE: I have interviened here to reccomend an alternative platform, since I know substack will make the process far more painless for me. 
+Developer NOTE: I have interviened here to reccomend an alternative platform, since I know substack will make the process far more painless for me.
 USER:
 """
-Recommendation: 
+Recommendation:
 """ Use https://substack.com instead of WordPress for simplicity. """
 """
 -----------------------------------------------------------------------
@@ -670,15 +670,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -758,15 +758,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -917,15 +917,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -1080,15 +1080,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
@@ -1210,10 +1210,10 @@ Quora
 https://www.quora.com › How-do-you-promote-a-new-fi...
 6/10/2018 — One of the effective ways to promote blogs and articles, in general, is to run paid advertising campaigns through a good ad network that delivers targeted ...
 2 answers
- 
+
 ·
- 
-3 votes: 
+
+3 votes:
 Promoting your new blog may be difficult if you’re a newbie. But trust me, you’d ...
 How to start a personal finance blog when I have no ...
 3 answers
@@ -1331,15 +1331,15 @@ These are the commands available from you:
 
 Your response must ALWAYS be in JSON format, in the following format:
 {
-    "command": 
+    "command":
     {
         "name": "command name",
-        "arguments": 
+        "arguments":
         {
             "argument name": "argument value"
         }
-    }, 
-    "Thoughts": 
+    },
+    "Thoughts":
     {
         "text": "thought",
         "reasoning": "reasoning",
