@@ -130,7 +130,7 @@ class Config(metaclass=Singleton):
         else:
             return ""
 
-    AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "azure.yaml")
+    AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "azure.yaml")
 
     def load_azure_config(self, config_file: str = AZURE_CONFIG_FILE) -> None:
         """
@@ -138,7 +138,7 @@ class Config(metaclass=Singleton):
           path as a yaml file.
 
         Parameters:
-            config_file(str): The path to the config yaml file. DEFAULT: "../azure.yaml"
+            config_file(str): The path to the config yaml file. DEFAULT: "../../azure.yaml"
 
         Returns:
             None
