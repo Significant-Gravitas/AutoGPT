@@ -103,7 +103,6 @@ class AIConfig:
         """
         from autogpt.prompt import get_prompt
 
-
         prompt_start = (
             "Your decisions must always be made independently without"
             " seeking user assistance. Play to your strengths as an LLM and pursue"

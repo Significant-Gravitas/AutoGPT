@@ -11,6 +11,7 @@ from autogpt.utils import clean_input
 
 CFG = Config()
 
+
 def get_prompt(requested_tools: List[Tool]) -> str:
     """
     This function generates a prompt string that includes various constraints,
