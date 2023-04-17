@@ -64,6 +64,7 @@ Development of this free, open-source project is made possible by all the <a hre
   - [Setting Your Cache Type](#setting-your-cache-type)
   - [View Memory Usage](#view-memory-usage)
   - [🧠 Memory pre-seeding](#-memory-pre-seeding)
+  - [Default Actions Mode](#default-actions-mode)
   - [💀 Continuous Mode ⚠️](#-continuous-mode-️)
   - [GPT3.5 ONLY Mode](#gpt35-only-mode)
   - [🖼 Image Generation](#-image-generation)
@@ -434,6 +435,16 @@ Use at your own risk.
 python -m autogpt --speak --continuous
 ```
 
+2. To exit the program, press Ctrl + C
+
+## Default Actions Mode
+
+Run the AI with a default number of actions before prompting the user for input (default: 5).
+
+1. Modify the `DEFAULT_AUTHORISATION` variable in your `.env` file to be set to `True`.
+2. Modify the `DEFAULT_AUTHORISATION_COUNT` variable in your `.env` file to be set to the number of actions you want the AI to take before prompting the user for input.
+  Running in this mode if you input just `y` it will rerun with the default number of actions before prompting the user
+  again
 2. To exit the program, press Ctrl + C
 
 ## GPT3.5 ONLY Mode
