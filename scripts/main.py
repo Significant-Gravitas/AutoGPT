@@ -428,7 +428,7 @@ class Agent:
                     print("Exiting...", flush=True)
                     break
             else:
-                spinner_message = "Hold Shift & press 'P' twice to give feedback to the AI"
+                spinner_message = "Thinking... Hold Shift & press 'P' twice to give feedback to the AI"
                 # start listening to the keyboard and only record actions for Shift + P
                 listener = Listener(on_press=self.on_press)
                 listener.start()
