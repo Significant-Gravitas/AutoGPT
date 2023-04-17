@@ -35,7 +35,7 @@ def safe_path_join(base: Path, *paths: str | Path) -> Path:
     """
     joined_path = base.joinpath(*paths).resolve()
 
-    if not joined_path.is_relative_to(base):
+    if not str(joined_path.absolute()).startswith(str(base.absolute())):
         raise ValueError(
             f"Attempted to access path '{joined_path}' outside of working directory '{base}'."
         )
