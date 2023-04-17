@@ -10,7 +10,11 @@ from autogpt.config import Config
 from autogpt.commands.image_gen import generate_image
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.web_requests import scrape_links, scrape_text
-from autogpt.commands.execute_code import execute_python_file, execute_shell
+from autogpt.commands.execute_code import (
+    execute_python_file,
+    execute_shell,
+    execute_shell_popen,
+)
 from autogpt.commands.file_operations import (
     append_to_file,
     delete_file,
@@ -185,6 +189,15 @@ def execute_command(command_name: str, arguments):
         elif command_name == "execute_shell":
             if CFG.execute_local_commands:
                 return execute_shell(arguments["command_line"])
+            else:
+                return (
+                    "You are not allowed to run local shell commands. To execute"
+                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+                    "in your config. Do not attempt to bypass the restriction."
+                )
+        elif command_name == "execute_shell_popen":
+            if CFG.execute_local_commands:
+                return execute_shell_popen(arguments["command_line"])
             else:
                 return (
                     "You are not allowed to run local shell commands. To execute"
