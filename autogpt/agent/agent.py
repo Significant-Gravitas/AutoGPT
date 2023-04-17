@@ -63,6 +63,8 @@ class Agent:
         loop_count = 0
         command_name = None
         arguments = None
+        user_input = ""
+
         while True:
             # Discontinue if continuous limit is reached
             loop_count += 1
@@ -146,7 +148,6 @@ class Agent:
                 # GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
-                user_input = ""
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
