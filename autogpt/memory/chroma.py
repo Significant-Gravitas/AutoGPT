@@ -7,6 +7,7 @@ from datetime import datetime
 import random
 from memory.base import MemoryProviderSingleton
 
+
 class ChromaMemory(MemoryProviderSingleton):
     def __init__(self, cfg):
         if cfg.chroma_db_directory is not None:
@@ -38,7 +39,7 @@ class ChromaMemory(MemoryProviderSingleton):
         except Exception as e:
             print(f"Error querying ChromaDB: {e}")
             return None
-        return results   
+        return results
 
     def clear(self):
         self.db.reset()

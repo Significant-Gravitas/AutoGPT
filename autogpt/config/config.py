@@ -70,7 +70,7 @@ class Config(metaclass=Singleton):
         self.chroma_db_directory = os.getenv("CHROMA_DB_DIRECTORY")
         self.chroma_server_host = os.getenv("CHROMA_SERVER_HOST")
         self.chroma_server_port = os.getenv("CHROMA_SERVER_PORT")
-        
+
         #weaviate configuration
         self.weaviate_host  = os.getenv("WEAVIATE_HOST")
         self.weaviate_port = os.getenv("WEAVIATE_PORT")
