@@ -2,15 +2,13 @@ import requests
 import json
 
 from autogpt.config import Config
-from autogpt.commands.file_operations import safe_join
+from autogpt.workspace import path_in_workspace
 
 cfg = Config()
 
-working_directory = "auto_gpt_workspace"
-
 
 def read_audio_from_file(audio_path):
-    audio_path = safe_join(working_directory, audio_path)
+    audio_path = path_in_workspace(audio_path)
     with open(audio_path, "rb") as audio_file:
         audio = audio_file.read()
     return read_audio(audio)
@@ -23,7 +21,9 @@ def read_audio(audio):
     headers = {"Authorization": f"Bearer {api_token}"}
 
     if api_token is None:
-        raise ValueError("You need to set your Hugging Face API token in the config file.")
+        raise ValueError(
+            "You need to set your Hugging Face API token in the config file."
+        )
 
     response = requests.post(
         api_url,
@@ -31,5 +31,5 @@ def read_audio(audio):
         data=audio,
     )
 
-    text = json.loads(response.content.decode("utf-8"))['text']
+    text = json.loads(response.content.decode("utf-8"))["text"]
     return "The audio says: " + text

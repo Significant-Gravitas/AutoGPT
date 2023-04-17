@@ -1,4 +1,6 @@
 """Selenium web scraping module."""
+from __future__ import annotations
+
 import os
 import platform
 from selenium import webdriver
@@ -17,7 +19,6 @@ from selenium.webdriver.safari.options import Options as SafariOptions
 import logging
 from pathlib import Path
 from autogpt.config import Config
-from typing import List, Tuple, Union
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
@@ -59,7 +60,7 @@ def browse_website(url: str, question: str) -> Tuple[str, WebDriver]:
     return f"Answer gathered from website: {summary_text} \n \n Links: {links}", driver
 
 
-def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
+def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     """Scrape text from a website using selenium
 
     Args:
@@ -98,6 +99,7 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
             driver_path = CFG.custom_webdriver_path
         else:
             driver_path = ChromeDriverManager().install()
+        options.add_argument("--no-sandbox")
         driver = webdriver.Chrome(
             executable_path=driver_path, options=options
         )
@@ -121,7 +123,7 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
     return driver, text
 
 
-def scrape_links_with_selenium(driver: WebDriver, url: str) -> List[str]:
+def scrape_links_with_selenium(driver: WebDriver, url: str) -> list[str]:
     """Scrape links from a website using selenium
 
     Args:

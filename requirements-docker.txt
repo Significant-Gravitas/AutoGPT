@@ -23,3 +23,5 @@ numpy
 pre-commit
 black
 isort
+gitpython==3.1.31
+tweepy
