@@ -1,19 +1,27 @@
 import openai
-from config import Config
-from token_counter import count_message_tokens
-import llm_utils
+from autogpt.config import Config
+import openai
 
 cfg = Config()
 openai.api_key = cfg.openai_api_key
 print_total_cost = True
 
 # Define the cost per token for each model
+# TODO: make this a json file that we can update separate from the code
 COSTS = {
     "gpt-3.5-turbo": {
         "prompt": 0.002,
         "completion": 0.002
     },
+    "gpt-3.5-turbo-0301": {
+        "prompt": 0.002,
+        "completion": 0.002
+    },
     "gpt-4-0314": {
+        "prompt": 0.03,
+        "completion": 0.06
+    },
+    "gpt-4": {
         "prompt": 0.03,
         "completion": 0.06
     }
@@ -27,7 +35,12 @@ class ApiManager:
         self.total_completion_tokens = 0
         self.total_cost = 0
 
-    def create_chat_completion(self, messages, model=None, temperature=None, max_tokens=None) -> str:
+    def create_chat_completion(self,
+    messages: list,  # type: ignore
+    model: str | None = None,
+    temperature: float = cfg.temperature,
+    max_tokens: int | None = None, 
+    deployment_id=None) -> str:
         """
         Create a chat completion and update the cost.
 
@@ -40,9 +53,23 @@ class ApiManager:
         Returns:
         str: The AI's response.
         """
-        response = llm_utils.create_chat_completion(messages, model, temperature, max_tokens)
-        prompt_tokens = count_message_tokens(messages, model)
-        completion_tokens = count_message_tokens([{"role": "assistant", "content": response}], model)
+        if deployment_id is not None:
+            response = openai.ChatCompletion.create(
+                        deployment_id=deployment_id,
+                        model=model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+        else:
+            response = openai.ChatCompletion.create(
+                        model=model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+        prompt_tokens = response.usage.prompt_tokens
+        completion_tokens = response.usage.completion_tokens
         self.update_cost(prompt_tokens, completion_tokens, model)
         return response
 

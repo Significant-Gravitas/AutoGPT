@@ -9,6 +9,7 @@ from colorama import Fore, Style
 
 from autogpt.config import Config
 from autogpt.logs import logger
+from autogpt.api_manager import api_manager
 
 CFG = Config()
 
@@ -82,7 +83,7 @@ def create_chat_completion(
         backoff = 2 ** (attempt + 2)
         try:
             if CFG.use_azure:
-                response = openai.ChatCompletion.create(
+                response = api_manager.create_chat_completion(
                     deployment_id=CFG.get_azure_deployment_id_for_model(model),
                     model=model,
                     messages=messages,
@@ -90,7 +91,7 @@ def create_chat_completion(
                     max_tokens=max_tokens,
                 )
             else:
-                response = openai.ChatCompletion.create(
+                response = api_manager.create_chat_completion(
                     model=model,
                     messages=messages,
                     temperature=temperature,
