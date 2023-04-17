@@ -38,7 +38,7 @@ COMMANDS = {
                                             args["prompt"]),
     "message_agent": lambda args: message_agent(args["key"],
                                                 args["message"]),
-    "list_agents": lambda: list_agents(),
+    "list_agents": lambda _: list_agents(),
     "delete_agent": lambda args: delete_agent(args["key"]),
     "get_text_summary": lambda args: get_text_summary(args["url"],
                                                       args["question"]),
@@ -65,7 +65,7 @@ COMMANDS = {
     "read_audio_from_file": lambda args: read_audio_from_file(args["file"]),
     "generate_image": lambda args: generate_image(args["prompt"]),
     "send_tweet": lambda args: send_tweet(args["text"]),
-    "do_nothing": lambda: "No action performed.",
+    "do_nothing": lambda _: "No action performed.",
     "task_complete": lambda: shutdown()
 }
 
