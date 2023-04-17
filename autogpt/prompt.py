@@ -105,6 +105,16 @@ def get_prompt() -> str:
             ),
         )
 
+    # Only add the download file command if the AI is allowed to execute it
+    if cfg.allow_downloads:
+        commands.append(
+            (
+                "Downloads a file from the internet, and stores it locally",
+                "download_file",
+                {"url": "<file_url>", "file": "<saved_filename>"}
+            ),
+        )
+
     # Add these command last.
     commands.append(
         ("Do Nothing", "do_nothing", {}),
@@ -177,7 +187,7 @@ Continue (y/n): """
 
     if not config.ai_name:
         config = prompt_user()
-        config.save()
+        config.save(CFG.ai_settings_file)
 
     # Get rid of this global:
     global ai_name
