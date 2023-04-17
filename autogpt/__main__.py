@@ -2,17 +2,17 @@
 import logging
 import os
 from pathlib import Path
+
 from colorama import Fore
+
 from autogpt.agent.agent import Agent
 from autogpt.args import parse_arguments
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config, check_openai_api_key
 from autogpt.logs import logger
 from autogpt.memory import get_memory
-
-from autogpt.prompts.prompt import construct_main_ai_config
 from autogpt.plugins import load_plugins
-
+from autogpt.prompts.prompt import construct_main_ai_config
 
 # Load environment variables from .env file
 
@@ -47,13 +47,20 @@ def main() -> None:
     cfg.set_plugins(loaded_plugins)
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
-    command_registry.import_commands("scripts.ai_functions")
-    command_registry.import_commands("scripts.commands")
-    command_registry.import_commands("scripts.execute_code")
-    command_registry.import_commands("scripts.agent_manager")
-    command_registry.import_commands("scripts.file_operations")
+    command_registry.import_commands("autogpt.commands.audio_text")
+    command_registry.import_commands("autogpt.commands.evaluate_code")
+    command_registry.import_commands("autogpt.commands.execute_code")
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.commands.git_operations")
+    command_registry.import_commands("autogpt.commands.google_search")
+    command_registry.import_commands("autogpt.commands.image_gen")
+    command_registry.import_commands("autogpt.commands.twitter")
+    command_registry.import_commands("autogpt.commands.web_selenium")
+    command_registry.import_commands("autogpt.commands.write_tests")
+    command_registry.import_commands("autogpt.app")
     ai_name = ""
     ai_config = construct_main_ai_config()
+    ai_config.command_registry = command_registry
     # print(prompt)
     # Initialize variables
     full_message_history = []
@@ -70,6 +77,9 @@ def main() -> None:
         f"Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
     logger.typewriter_log(f"Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
+    prompt = ai_config.construct_full_prompt()
+    if cfg.debug_mode:
+        logger.typewriter_log("Prompt:", Fore.GREEN, prompt)
     agent = Agent(
         ai_name=ai_name,
         memory=memory,
@@ -77,7 +87,7 @@ def main() -> None:
         next_action_count=next_action_count,
         command_registry=command_registry,
         config=ai_config,
-        prompt=ai_config.construct_full_prompt(),
+        prompt=prompt,
         user_input=user_input,
     )
     agent.start_interaction_loop()

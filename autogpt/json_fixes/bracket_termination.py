@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import contextlib
 import json
+
 import regex
 from colorama import Fore
 
-from autogpt.logs import logger
 from autogpt.config import Config
+from autogpt.logs import logger
 from autogpt.speech import say_text
 
 CFG = Config()

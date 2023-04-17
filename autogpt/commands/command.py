@@ -1,8 +1,8 @@
-import os
-import sys
 import importlib
 import inspect
-from typing import Callable, Any, List, Optional
+import os
+import sys
+from typing import Any, Callable, List, Optional
 
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"

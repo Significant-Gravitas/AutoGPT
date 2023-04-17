@@ -1,9 +1,9 @@
 """This module contains the function to fix JSON strings using GPT-3."""
 import json
 
+from autogpt.config import Config
 from autogpt.llm_utils import call_ai_function
 from autogpt.logs import logger
-from autogpt.config import Config
 
 CFG = Config()
 
