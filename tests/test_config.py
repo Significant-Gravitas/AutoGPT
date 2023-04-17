@@ -1,8 +1,4 @@
 from unittest import TestCase
-from unittest.mock import patch, call
-import os
-import tempfile
-from _pytest import pathlib
 from autogpt.config import Config
 
 

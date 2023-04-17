@@ -1,7 +1,6 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-import openai
-import yaml
+from colorama import Fore
 from dotenv import load_dotenv, dotenv_values, set_key, unset_key
 from pathlib import Path
 
