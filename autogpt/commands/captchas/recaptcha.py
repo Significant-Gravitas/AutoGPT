@@ -28,7 +28,7 @@ class ChallengeStyle:
 
 
 class ArmorUtils:
-    """判断遇见 reCAPTCHA 的各种断言方法"""
+    """Various Assertion Methods for Judging Encounter reCAPTCHA"""
 
     @staticmethod
     def fall_in_captcha_login(page: Page) -> Optional[bool]:
@@ -80,7 +80,7 @@ class BaseReCaptcha:
 
     def captcha_screenshot(self, page: Union[Page, Locator], name_screenshot: str = None):
         """
-        保存挑战截图，需要在 get_label 之后执行
+        Save the challenge screenshot, which needs to be done after get_label
         :param page:
         :param name_screenshot: filename of the Challenge image
         :return:
@@ -132,7 +132,7 @@ class BaseReCaptcha:
         return True
 
     def anti_recaptcha(self, page: Page):
-        """人机挑战的执行流"""
+        """Execution flow for human-machine challenges"""
         # [⚔] Activate the reCAPTCHA and switch to
         # <voiceprint verification mode> or <visual verification mode>
         try:
@@ -478,7 +478,6 @@ class _VisualChallenger(BaseReCaptcha):
                 )
                 prompt_obj.wait_for(timeout=1000)
             except TimeoutError:
-                # self.log("挑战成功")
                 return self.CHALLENGE_SUCCESS
 
         prompts = prompt_obj.text_content()
