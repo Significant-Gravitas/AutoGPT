@@ -2,7 +2,7 @@
 import json
 from typing import List, NoReturn, Union, Dict
 from autogpt.agent.agent_manager import AgentManager
-from autogpt.commands.evaluate_code import evaluate_code
+from autogpt.commands.analyze_code import analyze_code
 from autogpt.commands.google_search import google_official_search, google_search
 from autogpt.commands.improve_code import improve_code
 from autogpt.commands.write_tests import write_tests
@@ -178,8 +178,8 @@ def execute_command(command_name: str, arguments):
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
-        elif command_name == "evaluate_code":
-            return evaluate_code(arguments["code"])
+        elif command_name == "analyze_code":
+            return analyze_code(arguments["code"])
         elif command_name == "improve_code":
             return improve_code(arguments["suggestions"], arguments["code"])
         elif command_name == "write_tests":
