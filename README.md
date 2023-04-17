@@ -22,6 +22,8 @@ Auto-GPT is an experimental open-source application showcasing the capabilities 
 
 https://user-images.githubusercontent.com/70048414/232352935-55c6bf7c-3958-406e-8610-0913475a0b05.mp4
 
+Demo made by <a href=https://twitter.com/BlakeWerlinger>Blake Werlinger</a>
+
 <h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
 <p align="center">
 If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
