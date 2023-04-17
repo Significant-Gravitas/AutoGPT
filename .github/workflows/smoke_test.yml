@@ -1,12 +1,17 @@
-name: benchmark
+name: Smoke Test
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment: benchmark
+
     strategy:
       matrix:
         python-version: [3.8]
@@ -24,8 +29,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-    - name: benchmark
+
+    - name: Generate coverage report
       run: |
-         python benchmark/benchmark_entrepeneur_gpt_with_difficult_user.py
-      env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        coverage run --source=autogpt -m pytest -s -k tests/paid_integration/test_smoke_test.py
