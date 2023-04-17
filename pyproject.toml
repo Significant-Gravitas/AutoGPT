@@ -36,4 +36,5 @@ skip = '''
     .venv/*
     reports/*
     dist/*
+
 '''
