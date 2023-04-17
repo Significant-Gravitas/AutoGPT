@@ -199,6 +199,9 @@ def execute_command(command_name: str, arguments):
             return send_tweet(arguments["text"])
         elif command_name == "do_nothing":
             return "No action performed."
+        elif command_name in [t.name for t in CFG.tools]:
+            tool = next(t for t in CFG.tools if t.name == command_name)
+            return tool.run(arguments)
         elif command_name == "task_complete":
             shutdown()
         else:

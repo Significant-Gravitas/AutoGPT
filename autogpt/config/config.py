@@ -3,31 +3,10 @@ import os
 from colorama import Fore
 
 from autogpt.config.singleton import Singleton
+from autogpt import tools
 
 import openai
 import yaml
-<<<<<<< HEAD:autogpt/config.py
-from autogpt import tools
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
-
-
-class Singleton(abc.ABCMeta, type):
-    """
-    Singleton metaclass for ensuring only one instance of a class.
-    """
-
-    _instances = {}
-
-    def __call__(cls, *args, **kwargs):
-        """Call method for the singleton metaclass."""
-        if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
-        return cls._instances[cls]
-=======
->>>>>>> d47466ddf949d72787d3a04db3959b5a579a702d:autogpt/config/config.py
 
 from dotenv import load_dotenv
 

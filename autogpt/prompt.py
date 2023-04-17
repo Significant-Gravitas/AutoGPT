@@ -84,7 +84,8 @@ def get_prompt(requested_tools: List[Tool]) -> str:
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
-    ]
+    ] + [(t.name, t.description, t.args) for t in requested_tools]
+    print(requested_tools)
 
     # Only add the audio to text command if the model is specified
     if cfg.huggingface_audio_to_text_model:

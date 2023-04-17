@@ -19,7 +19,7 @@ def main() -> None:
     logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
     ai_name = ""
     system_prompt = construct_prompt(cfg.tools)
-    # print(prompt)
+    print(system_prompt)
     # Initialize variables
     full_message_history = []
     next_action_count = 0
