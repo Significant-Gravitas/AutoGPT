@@ -1,7 +1,6 @@
 """ Command and Control """
 import json
-from typing import List, NoReturn, Union
-
+from typing import List, NoReturn, Union, Dict
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.command import CommandRegistry, command
@@ -13,6 +12,7 @@ from autogpt.commands.file_operations import (
     read_file,
     search_files,
     write_to_file,
+    download_file
 )
 from autogpt.commands.git_operations import clone_repository
 from autogpt.commands.google_search import google_official_search, google_search
@@ -49,11 +49,11 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response: str):
+def get_command(response_json: Dict):
     """Parse the response and return the command name and arguments
 
     Args:
-        response (str): The response from the user
+        response_json (json): The response from the AI
 
     Returns:
         tuple: The command name and arguments
@@ -64,8 +64,6 @@ def get_command(response: str):
         Exception: If any other error occurs
     """
     try:
-        response_json = fix_and_parse_json(response)
-
         if "command" not in response_json:
             return "Error:", "Missing 'command' object in JSON"
 
@@ -139,6 +137,11 @@ def execute_command(
             return get_text_summary(arguments["url"], arguments["question"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
+        elif command_name == "download_file":
+            if not CFG.allow_downloads:
+                return "Error: You do not have user authorization to download files locally."
+            return download_file(arguments["url"], arguments["file"])
+        
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
