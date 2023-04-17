@@ -34,6 +34,7 @@ class ApiManager:
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
         self.total_cost = 0
+        self.total_budget = 0
 
     def create_chat_completion(self,
     messages: list,  # type: ignore
@@ -89,6 +90,15 @@ class ApiManager:
         if print_total_cost:
             print(f"Total running cost: ${self.total_cost:.3f}")
 
+    def set_total_budget(self, total_budget):
+        """
+        Sets the total user-defined budget for API calls.
+
+        Args:
+        prompt_tokens (int): The number of tokens used in the prompt.
+        """
+        self.total_budget = total_budget
+
     def get_total_prompt_tokens(self):
         """
         Get the total number of prompt tokens.
@@ -115,5 +125,14 @@ class ApiManager:
         float: The total cost of API calls.
         """
         return self.total_cost
+
+    def get_total_budget(self):
+        """
+        Get the total user-defined budget for API calls.
+
+        Returns:
+        float: The total budget for API calls.
+        """
+        return self.total_budget
 
 api_manager = ApiManager()
