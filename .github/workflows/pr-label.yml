@@ -11,6 +11,9 @@ on:
 jobs:
   conflicts:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Update PRs with conflict labels
         uses: eps1lon/actions-label-merge-conflict@releases/2.x
