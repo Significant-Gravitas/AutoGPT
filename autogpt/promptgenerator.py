@@ -1,6 +1,8 @@
 """ A module for generating custom prompt strings."""
+from __future__ import annotations
+
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 
 class PromptGenerator:
@@ -61,7 +63,7 @@ class PromptGenerator:
 
         self.commands.append(command)
 
-    def _generate_command_string(self, command: Dict[str, Any]) -> str:
+    def _generate_command_string(self, command: dict[str, Any]) -> str:
         """
         Generate a formatted string representation of a command.
 
@@ -94,7 +96,7 @@ class PromptGenerator:
         """
         self.performance_evaluation.append(evaluation)
 
-    def _generate_numbered_list(self, items: List[Any], item_type="list") -> str:
+    def _generate_numbered_list(self, items: list[Any], item_type="list") -> str:
         """
         Generate a numbered list from given items based on the item_type.
 
