@@ -353,7 +353,7 @@ in various ways.
 
 Querying an index/graph will both retrieve the set of relevant
 data from the knowledge corpus as well as (optionally) synthesize
-the final answer. 
+the final answer.
 
 **Simple Setup**
 - Specify `LLAMA_INDEX_STRUCT_TYPE` to "simple_dict" (see [here](https://gpt-index.readthedocs.io/en/latest/reference/indices/composability_query.html#gpt_index.data_structs.struct_type.IndexStructType) for a full description of all structure types). 
