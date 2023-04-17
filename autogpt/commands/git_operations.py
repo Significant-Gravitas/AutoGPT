@@ -7,7 +7,7 @@ CFG = Config()
 
 
 def clone_repository(repo_url: str, clone_path: str) -> str:
-    """Clone a github repository locally
+    """Clone a GitHub repository locally
 
     Args:
         repo_url (str): The URL of the repository to clone

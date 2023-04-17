@@ -78,7 +78,6 @@ def summarize_text(
         summary = create_chat_completion(
             model=CFG.fast_llm_model,
             messages=messages,
-            max_tokens=CFG.browse_summary_max_token,
         )
         summaries.append(summary)
         print(f"Added chunk {i + 1} summary to memory")
@@ -95,7 +94,6 @@ def summarize_text(
     return create_chat_completion(
         model=CFG.fast_llm_model,
         messages=messages,
-        max_tokens=CFG.browse_summary_max_token,
     )
 
 
