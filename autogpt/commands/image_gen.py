@@ -14,8 +14,7 @@ from autogpt.workspace import path_in_workspace
 CFG = Config()
 
 
-@command("generate_image", "Generate Image", '"prompt": "<prompt>"',
-         CFG.image_provider)
+@command("generate_image", "Generate Image", '"prompt": "<prompt>"', CFG.image_provider)
 def generate_image(prompt: str) -> str:
     """Generate an image from a prompt.
 
