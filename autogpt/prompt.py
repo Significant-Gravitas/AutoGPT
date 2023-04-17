@@ -87,6 +87,22 @@ def get_prompt() -> str:
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
+        (
+            "Query an external PostgresSql database (must limit query to 25 results !)",
+            "sql_query",
+            {"database_name": "<database_name>", "sql_query": "<sql_query>"}
+        ),
+        (
+            "List of table names in the specified external database",
+            "database_table_names",
+            {"database_name": "<database_name>"}
+        ),
+        (
+            "List of column names from a table in the specified external database",
+            "database_table_column_names",
+            {"database_name": "<database_name>", "table": "<table>"}
+         ),
+        ("List of external databases available for connexion with sql_query command", "available_databases", {}),
     ]
 
     # Only add the audio to text command if the model is specified
