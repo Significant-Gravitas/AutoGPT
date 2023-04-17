@@ -3,11 +3,9 @@
 import requests
 
 from autogpt.config import Config
-from autogpt.commands.file_operations import safe_join
+from autogpt.workspace import path_in_workspace
 
 cfg = Config()
-
-working_directory = "auto_gpt_workspace"
 
 
 def summarize_image_from_file(image_path):
@@ -20,7 +18,7 @@ def summarize_image_from_file(image_path):
     Returns:
         str: The summary of the image.
     """
-    image_path = safe_join(working_directory, image_path)
+    image_path = path_in_workspace(image_path)
     with open(image_path, "rb") as image_file:
         image = image_file.read()
     return summarize_image(image)
@@ -42,7 +40,9 @@ def summarize_image(image):
     headers = {"Authorization": f"Bearer {api_token}"}
 
     if api_token is None:
-        raise ValueError("You need to set your Hugging Face API token in the config file.")
+        raise ValueError(
+            "You need to set your Hugging Face API token in the config file."
+        )
 
     response = requests.post(
         api_url,
