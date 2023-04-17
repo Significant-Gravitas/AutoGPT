@@ -184,7 +184,9 @@ def extract_longest_curly_braces_content(string):
                     if content_len > longest_len:
                         longest_len = content_len
                         longest_content = content
-    return f"{{{longest_content}}}"
+    if len(longest_content) > 0:
+        return f"{{{longest_content}}}"
+    return string
 
 
 def try_ai_fix(
