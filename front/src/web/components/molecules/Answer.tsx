@@ -9,6 +9,7 @@ import { Card } from "../atom/Card"
 import Details from "../atom/Details"
 import CardContent from "../atom/CardContent"
 import LineSeparatorWithTitle from "./LineSeparatorWithTitle"
+import { Avatar } from "@mui/material"
 
 const SFileCopy = colored(styled(FileCopy)`
   color: var(--color) !important;
@@ -38,77 +39,108 @@ export const AnswerContainer = styled.div`
   width: fit-content;
 `
 
+export const SAvatar = styled(Avatar)`
+  border: 1px solid var(--primary300);
+  border-radius: 50%;
+  width: 3rem;
+  height: 3rem;
+`
+
 const Answer = ({
-  answer,
-  isAnswerLast,
-  playing,
+	answer,
+	isAnswerLast,
+	playing,
 }: {
-  answer: IAnswer
-  isAnswerLast: boolean
-  playing: boolean
+	answer: IAnswer
+	isAnswerLast: boolean
+	playing: boolean
 }) => {
-  switch (answer.internalType) {
-    case InternalType.THINKING:
-      if (isAnswerLast && playing) {
-        return (
-          <ThinkingContainer>
-            <Details $color="grey100">
-              <Flex align="center" gap={0.5}>
-                <RotatingArrow />
-                <div>Thinking</div>
-              </Flex>
-            </Details>
-          </ThinkingContainer>
-        )
-      }
-      return null
-    case InternalType.PLAN:
-      return (
-        <>
-          <LineSeparatorWithTitle title={answer.title} />
-          <AnswerContainer>
-            <Flex direction="column" gap={0.5}>
-              {answer.content.split("-").map((item, index) => (
-                <div key={index}>- {item}</div>
-              ))}
-            </Flex>
-          </AnswerContainer>
-        </>
-      )
-    case InternalType.WRITE_FILE:
-      return (
-        <>
-          <LineSeparatorWithTitle title={answer.title} />
-          <Card
-            $fitContent
-            $borderColor="primary"
-            $textColor="primary300"
-            $color="grey700"
-            $noPadding
-            onClick={() => {
-              const content = JSON.parse(answer.content.replaceAll("'", '"'))
-              AutoGPTAPI.downloadFile(content.file)
-            }}
-          >
-            <CardContent>
-              <Flex gap={0.5} align="center">
-                <SFileCopy $color="primary" />
-                <Details $color="primary">
-                  {JSON.parse(answer.content.replaceAll("'", '"')).file}
-                </Details>
-              </Flex>
-            </CardContent>
-          </Card>
-        </>
-      )
-    default:
-      return (
-        <>
-          <LineSeparatorWithTitle title={answer.title} />
-          <AnswerContainer>{answer.content ?? answer.title}</AnswerContainer>
-        </>
-      )
-  }
+	switch (answer.internalType) {
+		case InternalType.THINKING:
+			if (isAnswerLast && playing) {
+				return (
+					<Flex gap={1}>
+						<SAvatar
+							src="/images/autoctopus.png"
+							sx={{ width: 42, height: 42 }}
+						/>
+						<ThinkingContainer>
+							<Details $color="grey100">
+								<Flex align="center" gap={0.5}>
+									<RotatingArrow />
+									<div>Thinking</div>
+								</Flex>
+							</Details>
+						</ThinkingContainer>
+					</Flex>
+				)
+			}
+			return null
+		case InternalType.PLAN:
+			return (
+				<>
+					<LineSeparatorWithTitle title={answer.title} />
+					<Flex gap={1}>
+						<SAvatar
+							src="/images/autoctopus.png"
+							sx={{ width: 42, height: 42 }}
+						/>
+						<AnswerContainer>
+							<Flex direction="column" gap={0.5}>
+								{answer.content.split("-").map((item, index) => (
+									<div key={index}>- {item}</div>
+								))}
+							</Flex>
+						</AnswerContainer>
+					</Flex>
+				</>
+			)
+		case InternalType.WRITE_FILE:
+			return (
+				<>
+					<LineSeparatorWithTitle title={answer.title} />
+					<Flex gap={1}>
+						<SAvatar
+							src="/images/autoctopus.png"
+							sx={{ width: 42, height: 42 }}
+						/>
+						<Card
+							$fitContent
+							$borderColor="primary"
+							$textColor="primary300"
+							$color="grey700"
+							$noPadding
+							onClick={() => {
+								const content = JSON.parse(answer.content.replaceAll("'", '"'))
+								AutoGPTAPI.downloadFile(content.file)
+							}}
+						>
+							<CardContent>
+								<Flex gap={0.5} align="center">
+									<SFileCopy $color="primary" />
+									<Details $color="primary">
+										{JSON.parse(answer.content.replaceAll("'", '"')).file}
+									</Details>
+								</Flex>
+							</CardContent>
+						</Card>
+					</Flex>
+				</>
+			)
+		default:
+			return (
+				<>
+					<LineSeparatorWithTitle title={answer.title} />
+					<Flex gap={1}>
+						<SAvatar
+							src="/images/autoctopus.png"
+							sx={{ width: 42, height: 42 }}
+						/>
+						<AnswerContainer>{answer.content ?? answer.title}</AnswerContainer>
+					</Flex>
+				</>
+			)
+	}
 }
 
 export default Answer

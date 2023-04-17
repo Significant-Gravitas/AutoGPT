@@ -3,7 +3,7 @@ import styled from "styled-components"
 
 export const Grid = styled.div`
   display: grid;
-  grid-template-columns: var(--ai-list-width) 3fr 1fr;
+  grid-template-columns: var(--ai-list-width) 1fr 300px;
   width: 100%;
   grid-gap: 1rem;
 `
@@ -26,7 +26,7 @@ export const Container = styled.div`
   width: 100%;
 `
 
-export const CardTask = styled(Paper) <{ $active?: boolean }>`
+export const CardTask = styled(Paper)<{ $active?: boolean }>`
   color: var(--grey100) !important;
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
