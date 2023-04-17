@@ -2,7 +2,7 @@ import yaml
 import os
 from typing import List
 from autogpt.config.ai_config import AIConfig
-from multi_agent_manager import MULTIAGENTMANAGER
+from multigpt.multi_agent_manager import MULTIAGENTMANAGER
 
 class Expert(AIConfig):
     def to_yaml(self) -> str:
