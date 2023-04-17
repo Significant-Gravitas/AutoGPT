@@ -74,9 +74,9 @@ def main() -> None:
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(cfg, init=True)
     logger.typewriter_log(
-        f"Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
+        "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
-    logger.typewriter_log(f"Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
+    logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
     system_prompt = ai_config.construct_full_prompt()
     if cfg.debug_mode:
         logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
