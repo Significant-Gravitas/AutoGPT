@@ -26,6 +26,7 @@ from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.git_operations import clone_repository
 from autogpt.commands.twitter import send_tweet
 from autogpt.commands.twitter import reply_tweet
+from autogpt.commands.twitter import get_twitter_mentions
 
 CFG = Config()
 AGENT_MANAGER = AgentManager()
@@ -194,6 +195,8 @@ def execute_command(command_name: str, arguments):
             return send_tweet(arguments["text"])
         elif command_name == "reply_tweet":
             return reply_tweet(arguments["text"], arguments["tweet_id"])
+        elif command_name == "get_twitter_mentions":
+            return get_twitter_mentions()
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":

@@ -32,3 +32,16 @@ def reply_tweet(tweet_text, tweet_id):
         print("Reply sent successfully!")
     except tweepy.TweepyException as e:
         print("Error sending reply: {}".format(e.reason))
+
+def get_twitter_mentions():
+    #Get list of recent mentions and return with @ name, tweet_text, and tweet_id
+    try:
+        mentions = api.mentions_timeline()
+        mention_list = []
+        for mention in mentions:
+            mention_list.append([mention.user.screen_name , mention.text, mention.id])
+        print("Mentions retrieved successfully!")
+        return mention_list
+    except tweepy.TweepyException as e:
+        print("Error getting mentions: {}".format(e.reason))
+
