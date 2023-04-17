@@ -63,7 +63,6 @@ def translate(query, language_code):
     return html.unescape(result[0])
 
 
-
 def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
     """Return the results of a google search using the official Google API
 
