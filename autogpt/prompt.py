@@ -38,6 +38,9 @@ def get_prompt() -> str:
     prompt_generator.add_constraint(
         'Exclusively use the commands listed in double quotes e.g. "command name"'
     )
+    prompt_generator.add_constraint(
+        "Use subprocesses for commands that will not terminate within a few minutes"
+    )
 
     # Define the command list
     commands = [
@@ -81,8 +84,20 @@ def get_prompt() -> str:
             {"code": "<full_code_string>", "focus": "<list_of_focus_areas>"},
         ),
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
+        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
+        ("Send Tweet", "send_tweet", {"text": "<text>"}),
     ]
+
+    # Only add the audio to text command if the model is specified
+    if cfg.huggingface_audio_to_text_model:
+        commands.append(
+            (
+                "Convert Audio to text",
+                "read_audio_from_file",
+                {"file": "<file>"}
+            ),
+        )
 
     # Only add shell command to the prompt if the AI is allowed to execute it
     if cfg.execute_local_commands:
@@ -91,6 +106,23 @@ def get_prompt() -> str:
                 "Execute Shell Command, non-interactive commands only",
                 "execute_shell",
                 {"command_line": "<command_line>"},
+            ),
+        )
+        commands.append(
+            (
+                "Execute Shell Command Popen, non-interactive commands only",
+                "execute_shell_popen",
+                {"command_line": "<command_line>"}
+            ),
+        )
+
+    # Only add the download file command if the AI is allowed to execute it
+    if cfg.allow_downloads:
+        commands.append(
+            (
+                "Downloads a file from the internet, and stores it locally",
+                "download_file",
+                {"url": "<file_url>", "file": "<saved_filename>"}
             ),
         )
 
@@ -166,7 +198,7 @@ Continue (y/n): """
 
     if not config.ai_name:
         config = prompt_user()
-        config.save()
+        config.save(CFG.ai_settings_file)
 
     # Get rid of this global:
     global ai_name

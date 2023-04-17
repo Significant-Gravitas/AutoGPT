@@ -45,7 +45,11 @@ def fix_json(json_string: str, schema: str) -> str:
     try:
         json.loads(result_string)  # just check the validity
         return result_string
-    except json.JSONDecodeError:  # noqa: E722
+    except json.JSONDecodeError:
+        # Get the call stack:
+        # import traceback
+        # call_stack = traceback.format_exc()
+        # print(f"Failed to fix JSON: '{json_string}' "+call_stack)
         return "failed"
 
 

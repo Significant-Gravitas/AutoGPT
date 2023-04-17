@@ -31,3 +31,9 @@ repos:
         types: [ python ]
         exclude: .+/(dist|.venv|venv|build)/.+
         pass_filenames: true
+      - id: pytest-check
+        name: pytest-check
+        entry: pytest --cov=autogpt --without-integration --without-slow-integration
+        language: system
+        pass_filenames: false
+        always_run: true
