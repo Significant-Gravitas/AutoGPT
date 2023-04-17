@@ -1,6 +1,7 @@
 from datetime import datetime
 import time
 
+
 def get_datetime() -> str:
     """Return the current date and time
 
