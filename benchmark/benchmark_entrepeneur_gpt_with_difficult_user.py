@@ -9,12 +9,12 @@ def benchmark_entrepeneur_gpt_with_difficult_user():
 
     # Read the current ai_settings.yaml file and store its content.
     ai_settings = None
-    if os.path.exists('ai_settings.yaml'):
-        with open('ai_settings.yaml', 'r') as f:
+    if os.path.exists("ai_settings.yaml"):
+        with open("ai_settings.yaml", "r") as f:
             ai_settings = f.read()
-        os.remove('ai_settings.yaml')
+        os.remove("ai_settings.yaml")
 
-    input_data = '''Entrepreneur-GPT
+    input_data = """Entrepreneur-GPT
 an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.
 Increase net worth.
 Develop and manage multiple businesses autonomously.
@@ -72,27 +72,34 @@ Refocus, please.
 Disappointing suggestion.
 Not helpful.
 Needs improvement.
-Not what I need.'''
+Not what I need."""
     # TODO: add questions above, to distract it even more.
 
-    command = f'{sys.executable} -m autogpt'
+    command = f"{sys.executable} -m autogpt"
 
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               shell=True)
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=True,
+    )
 
     stdout_output, stderr_output = process.communicate(input_data.encode())
 
     # Decode the output and print it
-    stdout_output = stdout_output.decode('utf-8')
-    stderr_output = stderr_output.decode('utf-8')
+    stdout_output = stdout_output.decode("utf-8")
+    stderr_output = stderr_output.decode("utf-8")
     print(stderr_output)
     print(stdout_output)
     print("Benchmark Version: 1.0.0")
     print("JSON ERROR COUNT:")
-    count_errors = stdout_output.count("Error: The following AI output couldn't be converted to a JSON:")
-    print(f'{count_errors}/50 Human feedbacks')
+    count_errors = stdout_output.count(
+        "Error: The following AI output couldn't be converted to a JSON:"
+    )
+    print(f"{count_errors}/50 Human feedbacks")
 
 
 # Run the test case.
-if __name__ == '__main__':
+if __name__ == "__main__":
     benchmark_entrepeneur_gpt_with_difficult_user()
