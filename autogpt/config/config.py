@@ -7,7 +7,6 @@ from autogpt.config.singleton import Singleton
 import openai
 import yaml
 from dotenv import load_dotenv
-
 load_dotenv(verbose=True)
 
 
