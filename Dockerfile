@@ -31,8 +31,11 @@ COPY --chown=appuser:appuser requirements.txt .
 RUN sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
 	pip install --no-cache-dir --user -r requirements.txt
 
-# Copy the application files
-COPY --chown=appuser:appuser autogpt/ ./autogpt
+# Copy the entire repo to /app instead of to the home directory of appuser
+COPY --chown=appuser:appuser ./ /app
+
+# Set the working directory to /app
+WORKDIR /app
 
 # Set the entrypoint
 ENTRYPOINT ["python", "-m", "autogpt"]

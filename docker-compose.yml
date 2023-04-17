@@ -9,10 +9,17 @@ services:
     build: ./
     env_file:
       - .env
-    volumes:
-      - "./autogpt:/app"
-      - ".env:/app/.env"
+    # Only uncomment this if you really want to expose the host directory to container via bind mount (less safe)
+    # Note that any changes to files within the container need to be copied out via docker cp
+    # volumes:
+    #   - ".:/app"
     profiles: ["exclude-from-up"]
 
   redis:
-    image: "redis/redis-stack-server:latest"
+    # Use redis-stack instead of redis-stack-server as it also includes RedInsight which is useful for debugging (als see https://hub.docker.com/r/redis/redis-stack)
+    image: "redis/redis-stack:latest"
+    # Make redis container better identifiable for auto-gpt container.
+    hostname: "redis"
+    ports:
+      - "6379:6379" # Expose Redis
+      - "8001:8001" # Expose RedInsight
