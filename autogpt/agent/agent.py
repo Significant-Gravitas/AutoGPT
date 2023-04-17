@@ -94,6 +94,8 @@ class Agent:
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
             for plugin in cfg.plugins:
+                if not plugin.can_handle_post_planning():
+                    continue
                 assistant_reply_json = plugin.post_planning(self, assistant_reply_json)
 
             # Print Assistant thoughts
