@@ -70,9 +70,3 @@ def database_query(database_name: str, sql_query: str) -> str:
         return result
 
     return "Database does not exist"
-
-
-if __name__ == '__main__':
-    print(available_databases())
-    # for key, value in EXTERNAL_DATABASE.items():
-    #     print(key, value)
