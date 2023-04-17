@@ -115,8 +115,11 @@ class Agent:
                     console_input = clean_input(
                         Fore.MAGENTA + "Input:" + Style.RESET_ALL
                     )
-                    if console_input.lower().rstrip() == "y":
+                    if console_input.lower().strip() == "y":
                         user_input = "GENERATE NEXT COMMAND JSON"
+                        break
+                    elif console_input.lower().strip() == "":
+                        print("Invalid input format.")
                         break
                     elif console_input.lower().startswith("y -"):
                         try:
