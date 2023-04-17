@@ -5,7 +5,7 @@ import subprocess
 import docker
 from docker.errors import ImageNotFound
 
-from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
+from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
 
 
 def execute_python_file(file: str) -> str:
