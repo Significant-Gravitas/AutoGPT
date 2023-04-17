@@ -17,6 +17,7 @@ from selenium.webdriver.safari.options import Options as SafariOptions
 import logging
 from pathlib import Path
 from autogpt.config import Config
+from sys import platform
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
@@ -65,6 +66,13 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
+
+    # Add linux specific flags
+    if platform == "linux" or platform == "linux2":
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--remote-debugging-port=9222")
+
 
     if CFG.selenium_web_browser == "firefox":
         driver = webdriver.Firefox(
