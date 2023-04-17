@@ -15,6 +15,7 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.safari.options import Options as SafariOptions
 import logging
+import platform
 from pathlib import Path
 from autogpt.config import Config
 
@@ -76,8 +77,9 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         driver = webdriver.Safari(options=options)
     else:
         options.add_argument("--no-sandbox")
-        options.add_argument('--headless')
-        options.add_argument('--disable-gpu')
+        if platform.system() == 'Linux':
+            options.add_argument('--headless')
+            options.add_argument('--disable-gpu')
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
