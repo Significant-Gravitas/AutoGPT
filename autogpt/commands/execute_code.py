@@ -83,7 +83,11 @@ def execute_python_file(file: str):
         # print(f"Logs: {logs}")
 
         return logs
-
+    
+    except docker.errors.DockerException as e:
+        print("Docker ran into an error. If you haven't already, please install Docker https://docs.docker.com")
+        return f"Docker error: {str(e)}"
+    
     except Exception as e:
         return f"Error: {str(e)}"
 
