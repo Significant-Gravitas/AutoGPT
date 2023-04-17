@@ -46,7 +46,9 @@ class Logger(metaclass=Singleton):
         self.console_handler.setFormatter(console_formatter)
 
         # Info handler in activity.log
-        self.file_handler = logging.FileHandler(os.path.join(log_dir, log_file))
+        self.file_handler = logging.FileHandler(
+            os.path.join(log_dir, log_file), 'a', 'utf-8'
+        )
         self.file_handler.setLevel(logging.DEBUG)
         info_formatter = AutoGptFormatter(
             "%(asctime)s %(levelname)s %(title)s %(message_no_color)s"
@@ -54,7 +56,9 @@ class Logger(metaclass=Singleton):
         self.file_handler.setFormatter(info_formatter)
 
         # Error handler error.log
-        error_handler = logging.FileHandler(os.path.join(log_dir, error_file))
+        error_handler = logging.FileHandler(
+            os.path.join(log_dir, error_file), 'a', 'utf-8'
+        )
         error_handler.setLevel(logging.ERROR)
         error_formatter = AutoGptFormatter(
             "%(asctime)s %(levelname)s %(module)s:%(funcName)s:%(lineno)d %(title)s"

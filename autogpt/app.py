@@ -10,13 +10,18 @@ from autogpt.config import Config
 from autogpt.commands.image_gen import generate_image
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.web_requests import scrape_links, scrape_text
-from autogpt.commands.execute_code import execute_python_file, execute_shell
+from autogpt.commands.execute_code import (
+    execute_python_file,
+    execute_shell,
+    execute_shell_popen,
+)
 from autogpt.commands.file_operations import (
     append_to_file,
     delete_file,
     read_file,
     search_files,
     write_to_file,
+    download_file
 )
 from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
@@ -164,6 +169,10 @@ def execute_command(command_name: str, arguments):
             return delete_file(arguments["file"])
         elif command_name == "search_files":
             return search_files(arguments["directory"])
+        elif command_name == "download_file":
+            if not CFG.allow_downloads:
+                return "Error: You do not have user authorization to download files locally."
+            return download_file(arguments["url"], arguments["file"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
         # TODO: Change these to take in a file rather than pasted code, if
@@ -180,6 +189,15 @@ def execute_command(command_name: str, arguments):
         elif command_name == "execute_shell":
             if CFG.execute_local_commands:
                 return execute_shell(arguments["command_line"])
+            else:
+                return (
+                    "You are not allowed to run local shell commands. To execute"
+                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+                    "in your config. Do not attempt to bypass the restriction."
+                )
+        elif command_name == "execute_shell_popen":
+            if CFG.execute_local_commands:
+                return execute_shell_popen(arguments["command_line"])
             else:
                 return (
                     "You are not allowed to run local shell commands. To execute"
