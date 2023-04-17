@@ -120,7 +120,7 @@ class Agent:
                         break
                     elif console_input.lower().strip() == "":
                         print("Invalid input format.")
-                        break
+                        continue
                     elif console_input.lower().startswith("y -"):
                         try:
                             self.next_action_count = abs(
