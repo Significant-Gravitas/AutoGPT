@@ -402,7 +402,7 @@ By using Auto-GPT, you agree to indemnify, defend, and hold harmless the develop
 
 ## 🐦 Connect with Us on Twitter
 
-Stay up-to-date with the latest news, updates, and insights about Auto-GPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
+Stay up-to-date with the latest news, updates, and insights about Multi-GPT by following our Twitter accounts. Engage with the developer and the AI's own account for interesting discussions, project updates, and more.
 
 - **Developer**: Follow [@md_rumpf](https://twitter.com/md_rumpf) for insights and updates. Also follow [@SigGravitas](https://twitter.com/SigGravitas) for updates on AutoGPT.
 - **Sponsors**: Please also follow our founding sponsor [@try_sid](https://twitter.com/try_sid) on Twitter.
