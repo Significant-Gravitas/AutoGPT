@@ -1,0 +1,33 @@
+repos:
+  - repo: https://github.com/sourcery-ai/sourcery
+    rev: v1.1.0 # Get the latest tag from https://github.com/sourcery-ai/sourcery/tags
+    hooks:
+      - id: sourcery
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v0.9.2
+    hooks:
+      - id: check-added-large-files
+        args: [ '--maxkb=500' ]
+      - id: check-byte-order-marker
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: debug-statements
+    
+  - repo: local
+    hooks:
+      - id: isort
+        name: isort-local
+        entry: isort
+        language: python
+        types: [ python ]
+        exclude: .+/(dist|.venv|venv|build)/.+
+        pass_filenames: true
+      - id: black
+        name: black-local
+        entry: black
+        language: python
+        types: [ python ]
+        exclude: .+/(dist|.venv|venv|build)/.+
+        pass_filenames: true
