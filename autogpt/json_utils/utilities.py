@@ -9,6 +9,7 @@ from autogpt.config import Config
 
 CFG = Config()
 
+
 def extract_char_position(error_message: str) -> int:
     """Extract the character position from the JSONDecodeError message.
 
@@ -40,7 +41,8 @@ def validate_json(json_object: object, schema_name: object) -> object:
     if errors := sorted(validator.iter_errors(json_object), key=lambda e: e.path):
         logger.error("The JSON object is invalid.")
         if CFG.debug_mode:
-            logger.error(json.dumps(json_object, indent=4))   # Replace 'json_object' with the variable containing the JSON data
+            logger.error(
+                json.dumps(json_object, indent=4))  # Replace 'json_object' with the variable containing the JSON data
             logger.error("The following issues were found:")
 
             for error in errors:
