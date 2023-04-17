@@ -20,6 +20,7 @@ try:
             },
         )
 
+    @pytest.mark.integration_test
     class TestMilvusMemory(unittest.TestCase):
         """Tests for the MilvusMemory class."""
 
@@ -69,3 +70,7 @@ try:
 
 except ImportError as err:
     print(f"Skipping tests for MilvusMemory: {err}")
+except:
+    print(
+        "Skipping tests/integration/test_milvus_memory_alt.py as Milvus is not installed."
+    )

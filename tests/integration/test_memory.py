@@ -1,6 +1,7 @@
 import random
 import string
 import sys
+import pytest
 import unittest
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from autogpt.config import Config
 from autogpt.memory.local import LocalCache
 
 
+@pytest.mark.integration_test
 class TestLocalCache(unittest.TestCase):
     def generate_random_string(self, length):
         return "".join(random.choice(string.ascii_letters) for _ in range(length))

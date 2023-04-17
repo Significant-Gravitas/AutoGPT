@@ -4,11 +4,11 @@ import random
 import string
 import unittest
 
-from autogpt.config import Config
-from autogpt.memory.milvus import MilvusMemory
-
 try:
+    from autogpt.config import Config
+    from autogpt.memory.milvus import MilvusMemory
 
+    @pytest.mark.integration_test
     class TestMilvusMemory(unittest.TestCase):
         """Unit tests for the MilvusMemory class."""
 
@@ -51,5 +51,5 @@ try:
 
 except:
     print(
-        "Skipping tests/integration/milvus_memory_tests.py as Milvus is not installed."
+        "Skipping tests/integration/test_milvus_memory.py as Milvus is not installed."
     )
