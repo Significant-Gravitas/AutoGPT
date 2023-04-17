@@ -3,6 +3,7 @@ import json
 from typing import Dict, List, NoReturn, Union
 
 from autogpt.agent.agent_manager import AgentManager
+from autogpt.commands.db_search import available_databases, sql_query, database_table_names, database_table_column_names
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.execute_code import (
@@ -213,6 +214,14 @@ def execute_command(command_name: str, arguments):
             return generate_image(arguments["prompt"])
         elif command_name == "send_tweet":
             return send_tweet(arguments["text"])
+        elif command_name == 'available_databases':
+            return available_databases()
+        elif command_name == "sql_query":
+            return sql_query(arguments["database_name"], arguments["sql_query"])
+        elif command_name == "database_table_names":
+            return database_table_names(arguments["database_name"])
+        elif command_name == "database_table_column_names":
+            return database_table_column_names(arguments["database_name"], arguments["table"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
