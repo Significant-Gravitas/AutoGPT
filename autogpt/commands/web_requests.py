@@ -4,9 +4,9 @@ from __future__ import annotations
 from urllib.parse import urljoin, urlparse
 
 import requests
-from requests.compat import urljoin
-from requests import Response
 from bs4 import BeautifulSoup
+from requests import Response
+from requests.compat import urljoin
 
 from autogpt.config import Config
 from autogpt.memory import get_memory
@@ -58,9 +58,28 @@ def check_local_file_access(url: str) -> bool:
     """
     local_prefixes = [
         "file:///",
+        "file://localhost/",
         "file://localhost",
         "http://localhost",
+        "http://localhost/",
         "https://localhost",
+        "https://localhost/",
+        "http://2130706433",
+        "http://2130706433/",
+        "https://2130706433",
+        "https://2130706433/",
+        "http://127.0.0.1/",
+        "http://127.0.0.1",
+        "https://127.0.0.1/",
+        "https://127.0.0.1",
+        "https://0.0.0.0/",
+        "https://0.0.0.0",
+        "http://0.0.0.0/",
+        "http://0.0.0.0",
+        "http://0000",
+        "http://0000/",
+        "https://0000",
+        "https://0000/",
     ]
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
