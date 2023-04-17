@@ -1,6 +1,6 @@
 """ Command and Control """
 import json
-from typing import List, NoReturn, Union
+from typing import List, NoReturn, Union, Dict
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.google_search import google_official_search, google_search
@@ -17,6 +17,7 @@ from autogpt.commands.file_operations import (
     read_file,
     search_files,
     write_to_file,
+    download_file
 )
 from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
@@ -47,11 +48,11 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response: str):
+def get_command(response_json: Dict):
     """Parse the response and return the command name and arguments
 
     Args:
-        response (str): The response from the user
+        response_json (json): The response from the AI
 
     Returns:
         tuple: The command name and arguments
@@ -62,8 +63,6 @@ def get_command(response: str):
         Exception: If any other error occurs
     """
     try:
-        response_json = fix_and_parse_json(response)
-
         if "command" not in response_json:
             return "Error:", "Missing 'command' object in JSON"
 
@@ -128,8 +127,14 @@ def execute_command(command_name: str, arguments):
                 return google_result
             else:
                 google_result = google_search(arguments["input"])
-                safe_message = google_result.encode("utf-8", "ignore")
-                return str(safe_message)
+
+            # google_result can be a list or a string depending on the search results
+            if isinstance(google_result, list):
+                safe_message = [google_result_single.encode('utf-8', 'ignore') for google_result_single in google_result]
+            else:
+                safe_message = google_result.encode('utf-8', 'ignore')
+
+            return str(safe_message)
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
@@ -160,6 +165,10 @@ def execute_command(command_name: str, arguments):
             return delete_file(arguments["file"])
         elif command_name == "search_files":
             return search_files(arguments["directory"])
+        elif command_name == "download_file":
+            if not CFG.allow_downloads:
+                return "Error: You do not have user authorization to download files locally."
+            return download_file(arguments["url"], arguments["file"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
         # TODO: Change these to take in a file rather than pasted code, if
