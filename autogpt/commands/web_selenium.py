@@ -13,6 +13,7 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.safari.options import Options as SafariOptions
 import logging
+from autogpt.logs import logger
 from pathlib import Path
 from autogpt.config import Config
 from typing import List, Tuple, Union
@@ -64,12 +65,20 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
-    options.add_argument(
-        '--no-sandbox'
-    )
-    options.add_argument(
-        '--headless'
-    )
+    if CFG.selenium_no_sandbox == True:
+        logger.debug("Setting no sandbox for selenium")
+        options.add_argument(
+            '--no-sandbox'
+        )
+    else:
+        logger.debug("no sandbox for selenium was False")    
+    if CFG.selenium_headless == True:
+        logger.debug("Setting headless for selenium")
+        options.add_argument(
+            '--headless'
+        )
+    else:
+        logger.debug("headless for selenium was False")      
 
     if CFG.selenium_web_browser == "firefox":
         driver = webdriver.Firefox(
