@@ -137,7 +137,7 @@ def execute_command(command_name: str, arguments):
             else:
                 safe_message = google_result.encode('utf-8', 'ignore')
 
-            return str(safe_message)
+            return safe_message.decode('utf-8')
         elif command_name == "memory_add":
             memory = get_memory(CFG)
             return memory.add(arguments["string"])
