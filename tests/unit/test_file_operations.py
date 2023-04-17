@@ -16,6 +16,7 @@ from autogpt.commands.file_operations import (
 
 from autogpt.workspace import path_in_workspace
 
+
 class TestFileOperations(unittest.TestCase):
     """
     This set of unit tests is designed to test the file operations that autoGPT has access to.
@@ -32,6 +33,7 @@ class TestFileOperations(unittest.TestCase):
         if os.path.exists(LOG_FILE_PATH):
             os.remove(LOG_FILE_PATH)
 
+
     def tearDown(self):
         if os.path.exists(path_in_workspace(self.test_file)):
             os.remove(path_in_workspace(self.test_file))
@@ -39,9 +41,11 @@ class TestFileOperations(unittest.TestCase):
         if os.path.exists(self.test_directory):
             shutil.rmtree(self.test_directory)
 
+
     def test_check_duplicate_operation(self):
         log_operation("write", self.test_file)
         self.assertTrue(check_duplicate_operation("write", self.test_file))
+
 
     # Test logging a file operation
     def test_log_operation(self):
@@ -52,6 +56,7 @@ class TestFileOperations(unittest.TestCase):
         with open(LOG_FILE_PATH, "r") as f:
             content = f.read()
         self.assertIn("log_test: test_file.txt", content)
+
 
     # Test splitting a file into chunks
     def test_split_file(self):
@@ -64,9 +69,11 @@ class TestFileOperations(unittest.TestCase):
         ]
         self.assertEqual(chunks, expected)
 
+
     def test_read_file(self):
         content = read_file(self.test_file)
         self.assertEqual(content, self.file_content)
+
 
     def test_write_to_file(self):
         new_content = "This is new content.\n"
@@ -74,6 +81,7 @@ class TestFileOperations(unittest.TestCase):
         with open(path_in_workspace(self.test_file), "r") as f:
             content = f.read()
         self.assertEqual(content, new_content)
+
 
     def test_append_to_file(self):
         with open(path_in_workspace(self.test_file), "r") as f:
@@ -85,6 +93,7 @@ class TestFileOperations(unittest.TestCase):
             content = f.read()
 
         self.assertEqual(content, content_before + append_text)
+
 
     def test_delete_file(self):
         delete_file(self.test_file)
@@ -123,6 +132,7 @@ class TestFileOperations(unittest.TestCase):
         non_existent_file = "non_existent_file.txt"
         files = search_files("")
         self.assertNotIn(non_existent_file, files)
-        
+
+
 if __name__ == '__main__':
     unittest.main()
