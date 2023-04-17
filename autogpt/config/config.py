@@ -1,13 +1,12 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from colorama import Fore
-
-from autogpt.config.singleton import Singleton
 
 import openai
 import yaml
-
+from colorama import Fore
 from dotenv import load_dotenv
+
+from autogpt.config.singleton import Singleton
 
 load_dotenv(verbose=True)
 
@@ -24,6 +23,7 @@ class Config(metaclass=Singleton):
         self.continuous_limit = 0
         self.speak_mode = False
         self.skip_reprompt = False
+        self.allow_downloads = False
 
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
@@ -66,7 +66,7 @@ class Config(metaclass=Singleton):
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
 
-        self.weaviate_host  = os.getenv("WEAVIATE_HOST")
+        self.weaviate_host = os.getenv("WEAVIATE_HOST")
         self.weaviate_port = os.getenv("WEAVIATE_PORT")
         self.weaviate_protocol = os.getenv("WEAVIATE_PROTOCOL", "http")
         self.weaviate_username = os.getenv("WEAVIATE_USERNAME", None)
@@ -74,22 +74,18 @@ class Config(metaclass=Singleton):
         self.weaviate_scopes = os.getenv("WEAVIATE_SCOPES", None)
         self.weaviate_embedded_path = os.getenv("WEAVIATE_EMBEDDED_PATH")
         self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
-        self.use_weaviate_embedded = os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
+        self.use_weaviate_embedded = (
+            os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
+        )
 
         # milvus configuration, e.g., localhost:19530.
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
 
         # llamaindex configuration
-        self.llamaindex_json_path = os.getenv(
-            "LLAMAINDEX_JSON_PATH"
-        )
-        self.llamaindex_struct_type = os.getenv(
-            "LLAMAINDEX_STRUCT_TYPE"
-        )
-        self.llamaindex_query_kwargs_path = os.getenv(
-            "LLAMA_QUERY_KWARGS_PATH"
-        )
+        self.llamaindex_json_path = os.getenv("LLAMAINDEX_JSON_PATH")
+        self.llamaindex_struct_type = os.getenv("LLAMAINDEX_STRUCT_TYPE")
+        self.llamaindex_query_kwargs_path = os.getenv("LLAMA_QUERY_KWARGS_PATH")
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
