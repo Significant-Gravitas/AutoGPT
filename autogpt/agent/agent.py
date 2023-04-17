@@ -3,7 +3,7 @@ from autogpt.app import execute_command, get_command
 
 from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
-from autogpt.json_utils.auto_fix import fix_json_using_multiple_techniques
+from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import validate_json
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
