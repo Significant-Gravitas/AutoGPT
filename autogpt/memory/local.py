@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 import dataclasses
 import os
-from typing import Any, List, Optional
+from typing import Any
 
 import numpy as np
 import orjson
 
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton
+from autogpt.llm_utils import create_embedding_with_ada
 
 EMBED_DIM = 1536
 SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
@@ -24,8 +27,17 @@ class CacheContent:
 
 
 class LocalCache(MemoryProviderSingleton):
-    # on load, load our database
+    """A class that stores the memory in a local file"""
+
     def __init__(self, cfg) -> None:
+        """Initialize a class instance
+
+        Args:
+            cfg: Config object
+
+        Returns:
+            None
+        """
         self.filename = f"{cfg.memory_index}.json"
         if os.path.exists(self.filename):
             try:
@@ -42,7 +54,8 @@ class LocalCache(MemoryProviderSingleton):
                 self.data = CacheContent()
         else:
             print(
-                f"Warning: The file '{self.filename}' does not exist. Local memory would not be saved to a file."
+                f"Warning: The file '{self.filename}' does not exist. "
+                "Local memory would not be saved to a file."
             )
             self.data = CacheContent()
 
@@ -60,7 +73,7 @@ class LocalCache(MemoryProviderSingleton):
             return ""
         self.data.texts.append(text)
 
-        embedding = get_ada_embedding(text)
+        embedding = create_embedding_with_ada(text)
 
         vector = np.array(embedding).astype(np.float32)
         vector = vector[np.newaxis, :]
@@ -86,7 +99,7 @@ class LocalCache(MemoryProviderSingleton):
         self.data = CacheContent()
         return "Obliviated"
 
-    def get(self, data: str) -> Optional[List[Any]]:
+    def get(self, data: str) -> list[Any] | None:
         """
         Gets the data from the memory that is most relevant to the given data.
 
@@ -97,7 +110,7 @@ class LocalCache(MemoryProviderSingleton):
         """
         return self.get_relevant(data, 1)
 
-    def get_relevant(self, text: str, k: int) -> List[Any]:
+    def get_relevant(self, text: str, k: int) -> list[Any]:
         """ "
         matrix-vector mult to find score-for-each-row-of-matrix
          get indices for top-k winning scores
@@ -108,7 +121,7 @@ class LocalCache(MemoryProviderSingleton):
 
         Returns: List[str]
         """
-        embedding = get_ada_embedding(text)
+        embedding = create_embedding_with_ada(text)
 
         scores = np.dot(self.data.embeddings, embedding)
 
@@ -116,7 +129,7 @@ class LocalCache(MemoryProviderSingleton):
 
         return [self.data.texts[i] for i in top_k_indices]
 
-    def get_stats(self):
+    def get_stats(self) -> tuple[int, tuple[int, ...]]:
         """
         Returns: The stats of the local cache.
         """

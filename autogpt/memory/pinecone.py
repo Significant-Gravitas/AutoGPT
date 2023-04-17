@@ -1,9 +1,9 @@
 import pinecone
 from colorama import Fore, Style
 
-from autogpt.config import Config, Singleton
-from autogpt.logger import logger
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.logs import logger
+from autogpt.memory.base import MemoryProviderSingleton
+from autogpt.llm_utils import create_embedding_with_ada
 
 
 class PineconeMemory(MemoryProviderSingleton):
@@ -17,7 +17,8 @@ class PineconeMemory(MemoryProviderSingleton):
         table_name = "auto-gpt"
         # this assumes we don't start with memory.
         # for now this works.
-        # we'll need a more complicated and robust system if we want to start with memory.
+        # we'll need a more complicated and robust system if we want to start with
+        #  memory.
         self.vec_num = 0
 
         try:
@@ -29,8 +30,10 @@ class PineconeMemory(MemoryProviderSingleton):
                 Style.BRIGHT + str(e) + Style.RESET_ALL,
             )
             logger.double_check(
-                "Please ensure you have setup and configured Pinecone properly for use. "
-                + f"You can check out {Fore.CYAN + Style.BRIGHT}https://github.com/Torantulino/Auto-GPT#-pinecone-api-key-setup{Style.RESET_ALL} to ensure you've set up everything correctly."
+                "Please ensure you have setup and configured Pinecone properly for use."
+                + f"You can check out {Fore.CYAN + Style.BRIGHT}"
+                "https://github.com/Torantulino/Auto-GPT#-pinecone-api-key-setup"
+                f"{Style.RESET_ALL} to ensure you've set up everything correctly."
             )
             exit(1)
 
@@ -41,9 +44,9 @@ class PineconeMemory(MemoryProviderSingleton):
         self.index = pinecone.Index(table_name)
 
     def add(self, data):
-        vector = get_ada_embedding(data)
+        vector = create_embedding_with_ada(data)
         # no metadata here. We may wish to change that long term.
-        resp = self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})])
+        self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})])
         _text = f"Inserting data into memory at index: {self.vec_num}:\n data: {data}"
         self.vec_num += 1
         return _text
@@ -61,7 +64,7 @@ class PineconeMemory(MemoryProviderSingleton):
         :param data: The data to compare to.
         :param num_relevant: The number of relevant data to return. Defaults to 5
         """
-        query_embedding = get_ada_embedding(data)
+        query_embedding = create_embedding_with_ada(data)
         results = self.index.query(
             query_embedding, top_k=num_relevant, include_metadata=True
         )

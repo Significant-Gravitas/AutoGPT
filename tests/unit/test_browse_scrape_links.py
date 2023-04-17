@@ -4,7 +4,7 @@
 # pip install pytest-mock
 import pytest
 
-from scripts.browse import scrape_links
+from autogpt.commands.web_requests import scrape_links
 
 """
 Code Analysis
@@ -55,7 +55,7 @@ class TestScrapeLinks:
         mock_response.text = (
             "<html><body><a href='https://www.google.com'>Google</a></body></html>"
         )
-        mocker.patch("requests.get", return_value=mock_response)
+        mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function with a valid URL
         result = scrape_links("https://www.example.com")
@@ -68,7 +68,7 @@ class TestScrapeLinks:
         # Mock the requests.get() function to return an HTTP error response
         mock_response = mocker.Mock()
         mock_response.status_code = 404
-        mocker.patch("requests.get", return_value=mock_response)
+        mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function with an invalid URL
         result = scrape_links("https://www.invalidurl.com")
@@ -82,7 +82,7 @@ class TestScrapeLinks:
         mock_response = mocker.Mock()
         mock_response.status_code = 200
         mock_response.text = "<html><body><p>No hyperlinks here</p></body></html>"
-        mocker.patch("requests.get", return_value=mock_response)
+        mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function with a URL containing no hyperlinks
         result = scrape_links("https://www.example.com")
@@ -105,7 +105,7 @@ class TestScrapeLinks:
                 </body>
             </html>
         """
-        mocker.patch("requests.get", return_value=mock_response)
+        mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function being tested
         result = scrape_links("https://www.example.com")

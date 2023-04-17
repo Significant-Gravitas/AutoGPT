@@ -1,20 +1,25 @@
-from typing import Dict, List
+"""Functions for counting the number of tokens in a message or string."""
+from __future__ import annotations
 
 import tiktoken
 
+from autogpt.logs import logger
+
 
 def count_message_tokens(
-    messages: List[Dict[str, str]], model: str = "gpt-3.5-turbo-0301"
+    messages: list[dict[str, str]], model: str = "gpt-3.5-turbo-0301"
 ) -> int:
     """
     Returns the number of tokens used by a list of messages.
 
     Args:
-    messages (list): A list of messages, each of which is a dictionary containing the role and content of the message.
-    model (str): The name of the model to use for tokenization. Defaults to "gpt-3.5-turbo-0301".
+        messages (list): A list of messages, each of which is a dictionary
+            containing the role and content of the message.
+        model (str): The name of the model to use for tokenization.
+            Defaults to "gpt-3.5-turbo-0301".
 
     Returns:
-    int: The number of tokens used by the list of messages.
+        int: The number of tokens used by the list of messages.
     """
     try:
         encoding = tiktoken.encoding_for_model(model)
@@ -22,7 +27,8 @@ def count_message_tokens(
         logger.warn("Warning: model not found. Using cl100k_base encoding.")
         encoding = tiktoken.get_encoding("cl100k_base")
     if model == "gpt-3.5-turbo":
-        # !Node: gpt-3.5-turbo may change over time. Returning num tokens assuming gpt-3.5-turbo-0301.")
+        # !Note: gpt-3.5-turbo may change over time.
+        # Returning num tokens assuming gpt-3.5-turbo-0301.")
         return count_message_tokens(messages, model="gpt-3.5-turbo-0301")
     elif model == "gpt-4":
         # !Note: gpt-4 may change over time. Returning num tokens assuming gpt-4-0314.")
@@ -37,7 +43,9 @@ def count_message_tokens(
         tokens_per_name = 1
     else:
         raise NotImplementedError(
-            f"""num_tokens_from_messages() is not implemented for model {model}. See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens."""
+            f"num_tokens_from_messages() is not implemented for model {model}.\n"
+            " See https://github.com/openai/openai-python/blob/main/chatml.md for"
+            " information on how messages are converted to tokens."
         )
     num_tokens = 0
     for message in messages:
@@ -55,12 +63,11 @@ def count_string_tokens(string: str, model_name: str) -> int:
     Returns the number of tokens in a text string.
 
     Args:
-    string (str): The text string.
-    model_name (str): The name of the encoding to use. (e.g., "gpt-3.5-turbo")
+        string (str): The text string.
+        model_name (str): The name of the encoding to use. (e.g., "gpt-3.5-turbo")
 
     Returns:
-    int: The number of tokens in the text string.
+        int: The number of tokens in the text string.
     """
     encoding = tiktoken.encoding_for_model(model_name)
-    num_tokens = len(encoding.encode(string))
-    return num_tokens
+    return len(encoding.encode(string))
