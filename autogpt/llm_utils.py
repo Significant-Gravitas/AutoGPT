@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from ast import List
 import time
+from ast import List
 
 import openai
-from openai.error import APIError, RateLimitError
 from colorama import Fore
+from openai.error import APIError, RateLimitError
 
 from autogpt.config import Config
 

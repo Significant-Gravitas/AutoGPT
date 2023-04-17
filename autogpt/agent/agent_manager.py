@@ -1,8 +1,8 @@
 """Agent manager for managing GPT agents"""
 from __future__ import annotations
 
-from autogpt.llm_utils import create_chat_completion
 from autogpt.config.config import Singleton
+from autogpt.llm_utils import create_chat_completion
 
 
 class AgentManager(metaclass=Singleton):

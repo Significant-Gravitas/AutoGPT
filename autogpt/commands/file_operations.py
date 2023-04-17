@@ -5,14 +5,14 @@ import os
 import os.path
 from pathlib import Path
 from typing import Generator, List
+
 import requests
-from requests.adapters import HTTPAdapter
-from requests.adapters import Retry
-from colorama import Fore, Back
+from colorama import Back, Fore
+from requests.adapters import HTTPAdapter, Retry
+
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
-from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
-
+from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
 
 LOG_FILE = "file_logger.txt"
 LOG_FILE_PATH = WORKSPACE_PATH / LOG_FILE

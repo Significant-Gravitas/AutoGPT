@@ -1,13 +1,12 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from colorama import Fore
-
-from autogpt.config.singleton import Singleton
 
 import openai
 import yaml
-
+from colorama import Fore
 from dotenv import load_dotenv
+
+from autogpt.config.singleton import Singleton
 
 load_dotenv(verbose=True)
 
