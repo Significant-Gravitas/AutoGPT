@@ -1,0 +1,2 @@
+auto_gpt_completion_fn:
+  class: auto_gpt_benchmarking.CompletionFn:AutoGPTCompletionFn
