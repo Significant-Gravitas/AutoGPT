@@ -126,6 +126,8 @@ class AIConfig:
         prompt_generator.role = self.ai_role
         prompt_generator.command_registry = self.command_registry
         for plugin in cfg.plugins:
+            if not plugin.can_handle_post_prompt():
+                continue
             prompt_generator = plugin.post_prompt(prompt_generator)
 
         # Construct full prompt
