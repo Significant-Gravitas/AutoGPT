@@ -1,7 +1,8 @@
-import autogpt.agent.agent_manager as agent_manager
-from autogpt.app import start_agent, list_agents, execute_command
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import autogpt.agent.agent_manager as agent_manager
+from autogpt.app import execute_command, list_agents, start_agent
 
 
 class TestCommands(unittest.TestCase):

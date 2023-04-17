@@ -1,10 +1,10 @@
 """Handles loading of plugins."""
 
-from ast import Module
 import zipfile
+from ast import Module
 from pathlib import Path
-from zipimport import zipimporter
 from typing import List, Optional, Tuple
+from zipimport import zipimporter
 
 
 def inspect_zip_for_module(zip_path: str, debug: bool = False) -> Optional[str]:

@@ -5,7 +5,7 @@ from autogpt.commands.command import command
 from autogpt.llm_utils import call_ai_function
 
 
-@command("evaluate_code", "Evaluate Code", '"code": "<full _code_string>"')
+@command("evaluate_code", "Evaluate Code", '"code": "<full_code_string>"')
 def evaluate_code(code: str) -> list[str]:
     """
     A function that takes in a string and returns a response from create chat
