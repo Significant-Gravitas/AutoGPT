@@ -15,4 +15,8 @@ services:
     profiles: ["exclude-from-up"]
 
   redis:
-    image: "redis/redis-stack-server:latest"
+    image: "redis/redis-stack:latest"
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_ARGS=--requirepass redis-stack
