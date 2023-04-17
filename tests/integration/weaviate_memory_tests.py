@@ -12,17 +12,10 @@ from autogpt.memory.weaviate import WeaviateMemory
 from autogpt.memory.base import get_ada_embedding
 
 
-@mock.patch.dict(os.environ, {
-    "WEAVIATE_HOST": "127.0.0.1",
-    "WEAVIATE_PROTOCOL": "http",
-    "WEAVIATE_PORT": "8080",
-    "WEAVIATE_USERNAME": "",
-    "WEAVIATE_PASSWORD": "",
-    "MEMORY_INDEX": "AutogptTests"
-})
 class TestWeaviateMemory(unittest.TestCase):
     cfg = None
     client = None
+    index = None
 
     @classmethod
     def setUpClass(cls):
@@ -40,6 +33,8 @@ class TestWeaviateMemory(unittest.TestCase):
         else:
             cls.client = Client(f"{cls.cfg.weaviate_protocol}://{cls.cfg.weaviate_host}:{self.cfg.weaviate_port}")
 
+        cls.index = WeaviateMemory.format_classname(cls.cfg.memory_index)
+
     """
     In order to run these tests you will need a local instance of
     Weaviate running. Refer to https://weaviate.io/developers/weaviate/installation/docker-compose
@@ -51,7 +46,7 @@ class TestWeaviateMemory(unittest.TestCase):
     """
     def setUp(self):
         try:
-            self.client.schema.delete_class(self.cfg.memory_index)
+            self.client.schema.delete_class(self.index)
         except:
             pass
 
@@ -60,8 +55,8 @@ class TestWeaviateMemory(unittest.TestCase):
     def test_add(self):
         doc = 'You are a Titan name Thanos and you are looking for the Infinity Stones'
         self.memory.add(doc)
-        result = self.client.query.get(self.cfg.memory_index, ['raw_text']).do()
-        actual = result['data']['Get'][self.cfg.memory_index]
+        result = self.client.query.get(self.index, ['raw_text']).do()
+        actual = result['data']['Get'][self.index]
 
         self.assertEqual(len(actual), 1)
         self.assertEqual(actual[0]['raw_text'], doc)
@@ -73,7 +68,7 @@ class TestWeaviateMemory(unittest.TestCase):
             batch.add_data_object(
                 uuid=get_valid_uuid(uuid4()),
                 data_object={'raw_text': doc},
-                class_name=self.cfg.memory_index,
+                class_name=self.index,
                 vector=get_ada_embedding(doc)
             )
 
