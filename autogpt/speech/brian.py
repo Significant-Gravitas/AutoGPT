@@ -9,9 +9,7 @@ from autogpt.speech.vocode_base import VocodeVoiceBase
 
 
 class BrianSpeech(VocodeVoiceBase):
-    """Brian speech module for autogpt"""
+    """Speak text using Brian with the streamelements API"""
 
     def _create_synthesizer(self) -> StreamElementsSynthesizer:
         return StreamElementsSynthesizer(voice="Brian")
-
-

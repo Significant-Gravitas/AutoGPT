@@ -18,7 +18,7 @@ class ElevenLabsSpeech(VocodeVoiceBase):
     """ElevenLabs speech class"""
 
     def _setup(self) -> None:
-        """Setup the voices, API key, etc.
+        """Set up the voices, API key, etc.
 
         Returns:
             None: None
