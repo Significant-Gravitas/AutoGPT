@@ -8,7 +8,7 @@ from docker.errors import ImageNotFound
 from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
 
 
-def execute_python_file(file: str):
+def execute_python_file(file: str) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
@@ -114,7 +114,7 @@ def execute_shell(command_line: str) -> str:
     return output
 
 
-def execute_shell_popen(command_line):
+def execute_shell_popen(command_line) -> str:
     """Execute a shell command with Popen and returns an english description
     of the event and the process id
 
