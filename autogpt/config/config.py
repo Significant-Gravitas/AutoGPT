@@ -27,8 +27,8 @@ class Config(metaclass=Singleton):
     def update_env_from_template(self):
         """Updates a configuration file `.env` from a template file `.env.template`."""
         # get paths to .env and .env.template files
-        env_file = Path(__file__).resolve().parent.parent / '.env'
-        template_file = Path(__file__).resolve().parent.parent / '.env.template'
+        env_file = Path('.env').resolve()
+        template_file = Path('.env.template').resolve()
 
         if not template_file.is_file():
             print("\033[31m" + "Error: \".env.template\" not found!" + "\033[0m")
@@ -79,7 +79,7 @@ class Config(metaclass=Singleton):
             else:
                 print("No changes in .env.template")
 
-    def __init__(self) -> None:
+    def __init__(self, run_env_setup=True) -> None:
         """Initialize the Config class"""
         self.debug_mode = False
         self.continuous_mode = False
@@ -88,23 +88,43 @@ class Config(metaclass=Singleton):
         self.skip_reprompt = False
         self.allow_downloads = False
 
-        self.update_env_from_template()
+        if run_env_setup:
+            self.update_env_from_template()
 
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
-        self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
-        self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
-        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
-        self.browse_summary_max_token = int(os.getenv("BROWSE_SUMMARY_MAX_TOKEN", 300))
+
+        try:
+            self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
+        except ValueError:
+            self.fast_token_limit = 4000
+
+        try:
+            self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+        except ValueError:
+            self.smart_token_limit = 8000
+
+        try:
+            self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
+        except ValueError:
+            self.browse_chunk_max_length = 8192
+
+        try:
+            self.browse_summary_max_token = int(os.getenv("BROWSE_SUMMARY_MAX_TOKEN", 300))
+        except ValueError:
+            self.browse_summary_max_token = 300
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.temperature = float(os.getenv("TEMPERATURE", "1"))
+
+        try:
+            self.temperature = float(os.getenv("TEMPERATURE", "1"))
+        except ValueError:
+            self.temperature = 1.0
+
         self.use_azure = os.getenv("USE_AZURE") == "True"
-        self.execute_local_commands = (
-            os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
-        )
+        self.execute_local_commands = os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
 
         if self.use_azure:
             self.load_azure_config()
