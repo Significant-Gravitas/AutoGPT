@@ -137,6 +137,8 @@ def chat_with_ai(
 
             plugin_count = len(cfg.plugins)
             for i, plugin in enumerate(cfg.plugins):
+                if not plugin.can_handle_on_planning():
+                    continue
                 plugin_response = plugin.on_planning(
                     agent.prompt_generator, current_context
                 )
