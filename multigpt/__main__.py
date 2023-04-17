@@ -21,7 +21,7 @@ from multigpt.multi_agent_manager import MULTIAGENTMANAGER, CFG
 from multigpt.expert import Expert
 
 MIN_EXPERTS = 2
-MAX_EXPERTS = 3
+MAX_EXPERTS = 5
 CONTINUOUS_LIMIT = 10
 EXPERT_PROMPT = """The task is: {task}.
 
@@ -30,7 +30,6 @@ Help me determine which historical or renowned experts in various fields would b
 1a) [Goal a]
 1b) [Goal b]
 1c) [Goal c]"""
-
 
 
 def parse_experts(experts: str) -> List[Expert]:
@@ -60,6 +59,7 @@ def parse_experts(experts: str) -> List[Expert]:
             res.append(Expert(name, description, goals))
         except:
             print("Error parsing expert")
+    # TODO: assert res length is not larger than MAX_EXPERTS
     return res
 
 

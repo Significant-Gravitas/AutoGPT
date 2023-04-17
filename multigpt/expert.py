@@ -24,11 +24,12 @@ class Expert(AIConfig):
         """
 
         prompt_start = (
-            "Your decisions must always be made independently but you are allowed to collaborate"
-            " with your team members. Play to your strengths as an LLM and pursue"
+            "Your decisions must always be made independently but you are allowed to collaborate, discuss and disagree"
+            " with your team members. Play to your strengths as ChatGPT and pursue"
             " simple strategies with no legal complications."
-            f"\n\nYour team consists of:{MULTIAGENTMANAGER.experts_to_list(experts)}"
-            "\n\nFind a balance between talking and collaborating with your team members and working on your own."
+            f"\n\nYour team consists of: {MULTIAGENTMANAGER.experts_to_list(experts)}"
+            "\n\nFoster critical discussions but avoid conforming to others' ideas within team collaboration."
+            "Critically question other's opinions and disagree. Disagree frequently!"
         )
 
         from multigpt.prompt import get_prompt

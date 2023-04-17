@@ -1,52 +1,20 @@
 # Multi-GPT: Multiple Collaborating ExpertGPTs
 
 > ***”Individually, we are one drop. Together, we are an ocean.”*** - Ryunosuke Satoro
-> 
-### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
-
-> This information takes precedence over any other information provided and should be followed accordingly.
-
-Our workflow has been improved, but please note that `master` branch may often be in a **broken** state.
-Please download the latest `stable` release from here: https://github.com/Torantulino/Auto-GPT/releases/latest.
+>
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/rumpfmax/multi-gpt?style=social)
 [![Twitter Follow](https://img.shields.io/twitter/follow/md_rumpf?style=social)](https://twitter.com/md_rumpf)
-[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
 
-Multi-GPT is an experimental multi-agent system. 
-Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model. This program, driven by GPT-4, chains together LLM "thoughts", to autonomously achieve whatever goal you set. As one of the first examples of GPT-4 running fully autonomously, Auto-GPT pushes the boundaries of what is possible with AI.
+Multi-GPT is an experimental multi-agent system. Multiple "expertGPTs" collaborate to perform a task. Each with their own short and long-term memory and the ability to communicate with each other.
+### Demo (17/04/2023):
 
-### Demo (30/03/2023):
-
-https://user-images.githubusercontent.com/22963551/228855501-2f5777cf-755b-4407-a643-c7299e5b6419.mp4
-
-<h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
-<p align="center">
-If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
-Your support is greatly appreciated
-Development of this free, open-source project is made possible by all the <a href="https://github.com/Torantulino/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
-</p>
-
-
-<h3 align="center">Enterprise Sponsors</h3>
-<p align="center">
-<a href="https://www.influxdata.com/"><img src="https://user-images.githubusercontent.com/22963551/232278272-24712932-7bb3-4fbe-b7e9-4b649b8104b2.png" height="40px" alt="InfluxData" /></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://roost.ai"><img src="https://roost.ai/hubfs/logos/Roost.ai-logo-gold.svg" height="40px" alt="Roost.AI" /></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://nuclei.ai/"><img src="https://nuclei.ai/images/nuclei_logo_with_text_white.svg" height="40px" alt="NucleiAI" /></a>&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://www.algohash.org/"><img src="https://user-images.githubusercontent.com/22963551/232277567-78d642c1-ce21-4bcc-a209-c2a23495ab2d.png" height="40px" alt="AlgohashFe" /></a>&nbsp;&nbsp;&nbsp;&nbsp;</p>
-
-<h3 align="center">Individual Sponsors</h3>
-<p align="center">
-<a href="https://github.com/robinicus"><img src="https://github.com/robinicus.png" width="50px" alt="robinicus" /></a>&nbsp;&nbsp;<a href="https://github.com/prompthero"><img src="https://github.com/prompthero.png" width="50px" alt="prompthero" /></a>&nbsp;&nbsp;<a href="https://github.com/crizzler"><img src="https://github.com/crizzler.png" width="50px" alt="crizzler" /></a>&nbsp;&nbsp;<a href="https://github.com/tob-le-rone"><img src="https://github.com/tob-le-rone.png" width="50px" alt="tob-le-rone" /></a>&nbsp;&nbsp;<a href="https://github.com/FSTatSBS"><img src="https://github.com/FSTatSBS.png" width="50px" alt="FSTatSBS" /></a>&nbsp;&nbsp;<a href="https://github.com/toverly1"><img src="https://github.com/toverly1.png" width="50px" alt="toverly1" /></a>&nbsp;&nbsp;<a href="https://github.com/ddtarazona"><img src="https://github.com/ddtarazona.png" width="50px" alt="ddtarazona" /></a>&nbsp;&nbsp;<a href="https://github.com/Nalhos"><img src="https://github.com/Nalhos.png" width="50px" alt="Nalhos" /></a>&nbsp;&nbsp;<a href="https://github.com/Kazamario"><img src="https://github.com/Kazamario.png" width="50px" alt="Kazamario" /></a>&nbsp;&nbsp;<a href="https://github.com/pingbotan"><img src="https://github.com/pingbotan.png" width="50px" alt="pingbotan" /></a>&nbsp;&nbsp;<a href="https://github.com/indoor47"><img src="https://github.com/indoor47.png" width="50px" alt="indoor47" /></a>&nbsp;&nbsp;<a href="https://github.com/AuroraHolding"><img src="https://github.com/AuroraHolding.png" width="50px" alt="AuroraHolding" /></a>&nbsp;&nbsp;<a href="https://github.com/kreativai"><img src="https://github.com/kreativai.png" width="50px" alt="kreativai" /></a>&nbsp;&nbsp;<a href="https://github.com/hunteraraujo"><img src="https://github.com/hunteraraujo.png" width="50px" alt="hunteraraujo" /></a>&nbsp;&nbsp;<a href="https://github.com/Explorergt92"><img src="https://github.com/Explorergt92.png" width="50px" alt="Explorergt92" /></a>&nbsp;&nbsp;<a href="https://github.com/judegomila"><img src="https://github.com/judegomila.png" width="50px" alt="judegomila" /></a>&nbsp;&nbsp;
-<a href="https://github.com/thepok"><img src="https://github.com/thepok.png" width="50px" alt="thepok" /></a>
-&nbsp;&nbsp;<a href="https://github.com/SpacingLily"><img src="https://github.com/SpacingLily.png" width="50px" alt="SpacingLily" /></a>&nbsp;&nbsp;<a href="https://github.com/merwanehamadi"><img src="https://github.com/merwanehamadi.png" width="50px" alt="merwanehamadi" /></a>&nbsp;&nbsp;<a href="https://github.com/m"><img src="https://github.com/m.png" width="50px" alt="m" /></a>&nbsp;&nbsp;<a href="https://github.com/zkonduit"><img src="https://github.com/zkonduit.png" width="50px" alt="zkonduit" /></a>&nbsp;&nbsp;<a href="https://github.com/maxxflyer"><img src="https://github.com/maxxflyer.png" width="50px" alt="maxxflyer" /></a>&nbsp;&nbsp;<a href="https://github.com/tekelsey"><img src="https://github.com/tekelsey.png" width="50px" alt="tekelsey" /></a>&nbsp;&nbsp;<a href="https://github.com/digisomni"><img src="https://github.com/digisomni.png" width="50px" alt="digisomni" /></a>&nbsp;&nbsp;<a href="https://github.com/nocodeclarity"><img src="https://github.com/nocodeclarity.png" width="50px" alt="nocodeclarity" /></a>&nbsp;&nbsp;<a href="https://github.com/tjarmain"><img src="https://github.com/tjarmain.png" width="50px" alt="tjarmain" /></a>
-<a href="https://github.com/Dradstone"><img src="https://github.com/Dradstone.png" width="50px" alt="Dradstone" /></a>&nbsp;&nbsp;<a href="https://github.com/CrypteorCapital"><img src="https://github.com/CrypteorCapital.png" width="50px" alt="CrypteorCapital" /></a>&nbsp;&nbsp;<a href="https://github.com/avy-ai"><img src="https://github.com/avy-ai.png" width="50px" alt="avy-ai" /></a>&nbsp;&nbsp;<a href="https://github.com/shawnharmsen"><img src="https://github.com/shawnharmsen.png" width="50px" alt="shawnharmsen" /></a>&nbsp;&nbsp;<a href="https://github.com/sunchongren"><img src="https://github.com/sunchongren.png" width="50px" alt="sunchongren" /></a>&nbsp;&nbsp;<a href="https://github.com/DailyBotHQ"><img src="https://github.com/DailyBotHQ.png" width="50px" alt="DailyBotHQ" /></a>&nbsp;&nbsp;<a href="https://github.com/mathewhawkins"><img src="https://github.com/mathewhawkins.png" width="50px" alt="mathewhawkins" /></a>&nbsp;&nbsp;<a href="https://github.com/MediConCenHK"><img src="https://github.com/MediConCenHK.png" width="50px" alt="MediConCenHK" /></a>&nbsp;&nbsp;<a href="https://github.com/kMag410"><img src="https://github.com/kMag410.png" width="50px" alt="kMag410" /></a>&nbsp;&nbsp;<a href="https://github.com/nicoguyon"><img src="https://github.com/nicoguyon.png" width="50px" alt="nicoguyon" /></a>&nbsp;&nbsp;<a href="https://github.com/Mobivs"><img src="https://github.com/Mobivs.png" width="50px" alt="Mobivs" /></a>&nbsp;&nbsp;<a href="https://github.com/jazgarewal"><img src="https://github.com/jazgarewal.png" width="50px" alt="jazgarewal" /></a>&nbsp;&nbsp;<a href="https://github.com/marv-technology"><img src="https://github.com/marv-technology.png" width="50px" alt="marv-technology" /></a>&nbsp;&nbsp;<a href="https://github.com/rapidstartup"><img src="https://github.com/rapidstartup.png" width="50px" alt="rapidstartup" /></a>&nbsp;&nbsp;<a href="https://github.com/Brodie0"><img src="https://github.com/Brodie0.png" width="50px" alt="Brodie0" /></a>&nbsp;&nbsp;<a href="https://github.com/lucas-chu"><img src="https://github.com/lucas-chu.png" width="50px" alt="lucas-chu" /></a>&nbsp;&nbsp;<a href="https://github.com/rejunity"><img src="https://github.com/rejunity.png" width="50px" alt="rejunity" /></a>&nbsp;&nbsp;<a href="https://github.com/comet-ml"><img src="https://github.com/comet-ml.png" width="50px" alt="comet-ml" /></a>&nbsp;&nbsp;<a href="https://github.com/ColinConwell"><img src="https://github.com/ColinConwell.png" width="50px" alt="ColinConwell" /></a>&nbsp;&nbsp;<a href="https://github.com/cfarquhar"><img src="https://github.com/cfarquhar.png" width="50px" alt="cfarquhar" /></a>&nbsp;&nbsp;<a href="https://github.com/ikarosai"><img src="https://github.com/ikarosai.png" width="50px" alt="ikarosai" /></a>&nbsp;&nbsp;<a href="https://github.com/ChrisDMT"><img src="https://github.com/ChrisDMT.png" width="50px" alt="ChrisDMT" /></a>&nbsp;&nbsp;<a href="https://github.com/Odin519Tomas"><img src="https://github.com/Odin519Tomas.png" width="50px" alt="Odin519Tomas" /></a>&nbsp;&nbsp;<a href="https://github.com/vkozacek"><img src="https://github.com/vkozacek.png" width="50px" alt="vkozacek" /></a>&nbsp;&nbsp;<a href="https://github.com/belharethsami"><img src="https://github.com/belharethsami.png" width="50px" alt="belharethsami" /></a>&nbsp;&nbsp;<a href="https://github.com/sultanmeghji"><img src="https://github.com/sultanmeghji.png" width="50px" alt="sultanmeghji" /></a>&nbsp;&nbsp;<a href="https://github.com/scryptedinc"><img src="https://github.com/scryptedinc.png" width="50px" alt="scryptedinc" /></a>&nbsp;&nbsp;<a href="https://github.com/johnculkin"><img src="https://github.com/johnculkin.png" width="50px" alt="johnculkin" /></a>&nbsp;&nbsp;<a href="https://github.com/RealChrisSean"><img src="https://github.com/RealChrisSean.png" width="50px" alt="RealChrisSean" /></a>&nbsp;&nbsp;<a href="https://github.com/fruition"><img src="https://github.com/fruition.png" width="50px" alt="fruition" /></a>&nbsp;&nbsp;<a href="https://github.com/jd3655"><img src="https://github.com/jd3655.png" width="50px" alt="jd3655" /></a>&nbsp;&nbsp;<a href="https://github.com/Web3Capital"><img src="https://github.com/Web3Capital.png" width="50px" alt="Web3Capital" /></a>&nbsp;&nbsp;<a href="https://github.com/allenstecat"><img src="https://github.com/allenstecat.png" width="50px" alt="allenstecat" /></a>&nbsp;&nbsp;<a href="https://github.com/tob-le-rone"><img src="https://github.com/tob-le-rone.png" width="50px" alt="tob-le-rone" /></a>&nbsp;&nbsp;<a href="https://github.com/SwftCoins"><img src="https://github.com/SwftCoins.png" width="50px" alt="SwftCoins" /></a>&nbsp;&nbsp;<a href="https://github.com/MetaPath01"><img src="https://github.com/MetaPath01.png" width="50px" alt="MetaPath01" /></a>&nbsp;&nbsp;<a href="https://github.com/joaomdmoura"><img src="https://github.com/joaomdmoura.png" width="50px" alt="joaomdmoura" /></a>&nbsp;&nbsp;<a href="https://github.com/ternary5"><img src="https://github.com/ternary5.png" width="50px" alt="ternary5" /></a>&nbsp;&nbsp;<a href="https://github.com/refinery1"><img src="https://github.com/refinery1.png" width="50px" alt="refinery1" /></a>&nbsp;&nbsp;<a href="https://github.com/josephcmiller2"><img src="https://github.com/josephcmiller2.png" width="50px" alt="josephcmiller2" /></a>&nbsp;&nbsp;<a href="https://github.com/webbcolton"><img src="https://github.com/webbcolton.png" width="50px" alt="webbcolton" /></a>&nbsp;&nbsp;<a href="https://github.com/tommygeee"><img src="https://github.com/tommygeee.png" width="50px" alt="tommygeee" /></a>&nbsp;&nbsp;<a href="https://github.com/lmaugustin"><img src="https://github.com/lmaugustin.png" width="50px" alt="lmaugustin" /></a>&nbsp;&nbsp;<a href="https://github.com/garythebat"><img src="https://github.com/garythebat.png" width="50px" alt="garythebat" /></a>&nbsp;&nbsp;<a href="https://github.com/Cameron-Fulton"><img src="https://github.com/Cameron-Fulton.png" width="50px" alt="Cameron-Fulton" /></a>&nbsp;&nbsp;<a href="https://github.com/angiaou"><img src="https://github.com/angiaou.png" width="50px" alt="angiaou" /></a>&nbsp;&nbsp;<a href="https://github.com/caitlynmeeks"><img src="https://github.com/caitlynmeeks.png" width="50px" alt="caitlynmeeks" /></a>&nbsp;&nbsp;<a href="https://github.com/MBassi91"><img src="https://github.com/MBassi91.png" width="50px" alt="MBassi91" /></a>&nbsp;&nbsp;<a href="https://github.com/Daniel1357"><img src="https://github.com/Daniel1357.png" width="50px" alt="Daniel1357" /></a>&nbsp;&nbsp;<a href="https://github.com/omphos"><img src="https://github.com/omphos.png" width="50px" alt="omphos" /></a>&nbsp;&nbsp;<a href="https://github.com/abhinav-pandey29"><img src="https://github.com/abhinav-pandey29.png" width="50px" alt="abhinav-pandey29" /></a>&nbsp;&nbsp;<a href="https://github.com/DataMetis"><img src="https://github.com/DataMetis.png" width="50px" alt="DataMetis" /></a>&nbsp;&nbsp;<a href="https://github.com/concreit"><img src="https://github.com/concreit.png" width="50px" alt="concreit" /></a>&nbsp;&nbsp;<a href="https://github.com/st617"><img src="https://github.com/st617.png" width="50px" alt="st617" /></a>&nbsp;&nbsp;<a href="https://github.com/RThaweewat"><img src="https://github.com/RThaweewat.png" width="50px" alt="RThaweewat" /></a>&nbsp;&nbsp;<a href="https://github.com/KiaArmani"><img src="https://github.com/KiaArmani.png" width="50px" alt="KiaArmani" /></a>&nbsp;&nbsp;<a href="https://github.com/Pythagora-io"><img src="https://github.com/Pythagora-io.png" width="50px" alt="Pythagora-io" /></a>&nbsp;&nbsp;<a href="https://github.com/AryaXAI"><img src="https://github.com/AryaXAI.png" width="50px" alt="AryaXAI" /></a>&nbsp;&nbsp;<a href="https://github.com/fabrietech"><img src="https://github.com/fabrietech.png" width="50px" alt="fabrietech" /></a>&nbsp;&nbsp;<a href="https://github.com/jun784"><img src="https://github.com/jun784.png" width="50px" alt="jun784" /></a>&nbsp;&nbsp;<a href="https://github.com/Mr-Bishop42"><img src="https://github.com/Mr-Bishop42.png" width="50px" alt="Mr-Bishop42" /></a>&nbsp;&nbsp;<a href="https://github.com/rickscode"><img src="https://github.com/rickscode.png" width="50px" alt="rickscode" /></a>&nbsp;&nbsp;<a href="https://github.com/projectonegames"><img src="https://github.com/projectonegames.png" width="50px" alt="projectonegames" /></a>&nbsp;&nbsp;<a href="https://github.com/rocks6"><img src="https://github.com/rocks6.png" width="50px" alt="rocks6" /></a>&nbsp;&nbsp;<a href="https://github.com/GalaxyVideoAgency"><img src="https://github.com/GalaxyVideoAgency.png" width="50px" alt="GalaxyVideoAgency" /></a>&nbsp;&nbsp;<a href="https://github.com/thisisjeffchen"><img src="https://github.com/thisisjeffchen.png" width="50px" alt="thisisjeffchen" /></a>&nbsp;&nbsp;<a href="https://github.com/TheStoneMX"><img src="https://github.com/TheStoneMX.png" width="50px" alt="TheStoneMX" /></a>&nbsp;&nbsp;<a href="https://github.com/txtr99"><img src="https://github.com/txtr99.png" width="50px" alt="txtr99" /></a>&nbsp;&nbsp;<a href="https://github.com/ZERO-A-ONE"><img src="https://github.com/ZERO-A-ONE.png" width="50px" alt="ZERO-A-ONE" /></a>&nbsp;&nbsp;</p>
-
-
-
+https://www.loom.com/share/b6bec93065794eb8a47e2109697afa39
 
 ## Table of Contents
 
 - [Multi-GPT: Multiple Collaborating ExpertGPTs](#multi-gpt-multiple-collaborating-expertgpts)
-    - [🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴](#----urgent-use-stable-not-master----)
-    - [Demo (30/03/2023):](#demo-30032023)
+    - [Demo (17/04/2023):](#demo-17042023)
   - [Table of Contents](#table-of-contents)
   - [🚀 Features](#-features)
   - [📋 Requirements](#-requirements)
@@ -73,6 +41,7 @@ Development of this free, open-source project is made possible by all the <a hre
 
 ## 🚀 Features
 
+- 🤯 Set a task and watch the experts get to work.
 - 🌐 Internet access for searches and information gathering
 - 💾 Long-Term and Short-Term memory management
 - 🧠 GPT-4 instances for text generation
@@ -95,7 +64,7 @@ Optional:
 
 ## 💾 Installation
 
-To install Auto-GPT, follow these steps:
+To install Multi-GPT, follow these steps:
 
 1. Make sure you have all the **requirements** listed above, if not, install/get them
 
@@ -168,23 +137,6 @@ To print out debug logs:
 ```
 python -m multigpt --debug
 ```
-
-### Docker
-
-You can also build this into a docker image and run it:
-
-```
-docker build -t autogpt .
-docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt
-```
-
-You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
-```
-docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt --gpt3only --continuous
-```
-
-> **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python -m autogpt --help` for more information
-
 
 ## OpenAI API Keys Configuration
 
@@ -336,7 +288,7 @@ WEAVIATE_PASSWORD="your password"
 WEAVIATE_API_KEY="your weaviate API key if you have one"
 WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate" # this is optional and indicates where the data should be persisted when running an embedded instance
 USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
-MEMORY_INDEX="Autogpt" # name of the index to create for the application
+MEMORY_INDEX="multigpt" # name of the index to create for the application
 ```
  
 ## View Memory Usage
@@ -396,7 +348,7 @@ Use at your own risk.
 1. Run the `multigpt` python module in your terminal:
 
 ```bash
-python -m autogpt --speak --continuous
+python -m multigpt --speak --continuous
 ```
 
 2. To exit the program, press Ctrl + C
@@ -406,7 +358,7 @@ python -m autogpt --speak --continuous
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 
 ```bash
-python -m autogpt --speak --gpt3only
+python -m multigpt --speak --gpt3only
 ```
 
 It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.

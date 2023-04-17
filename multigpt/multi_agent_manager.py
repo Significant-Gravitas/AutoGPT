@@ -52,7 +52,7 @@ class MultiAgentManager(metaclass=Singleton):
         self.agents.append(agent)
 
     @staticmethod
-    def experts_to_list(experts=None):
+    def experts_to_list(experts=None) -> str:
         expert_str = ""
         if experts is None:
             print("Warning. Expert List empty.")
