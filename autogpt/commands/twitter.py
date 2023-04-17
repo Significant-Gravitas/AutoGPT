@@ -18,7 +18,6 @@ def send_tweet(tweet_text):
     Raises:
         tweepy.TweepyException: If there is an error during the authentication process or while sending the tweet.
     """
-    
     consumer_key = os.environ.get("TW_CONSUMER_KEY")
     consumer_secret = os.environ.get("TW_CONSUMER_SECRET")
     access_token = os.environ.get("TW_ACCESS_TOKEN")
