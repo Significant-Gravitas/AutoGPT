@@ -26,6 +26,7 @@ try:
     class TestWeaviateMemory(unittest.TestCase):
         cfg = None
         client = None
+        index = None
 
         @classmethod
         def setUpClass(cls):
@@ -43,18 +44,19 @@ try:
             else:
                 cls.client = Client(f"{cls.cfg.weaviate_protocol}://{cls.cfg.weaviate_host}:{self.cfg.weaviate_port}")
 
+            cls.index = WeaviateMemory.format_classname(cls.cfg.memory_index)
+
         """
         In order to run these tests you will need a local instance of
         Weaviate running. Refer to https://weaviate.io/developers/weaviate/installation/docker-compose
         for creating local instances using docker.
         Alternatively in your .env file set the following environmental variables to run Weaviate embedded (see: https://weaviate.io/developers/weaviate/installation/embedded):
-
             USE_WEAVIATE_EMBEDDED=True
             WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate"
         """
         def setUp(self):
             try:
-                self.client.schema.delete_class(self.cfg.memory_index)
+                self.client.schema.delete_class(self.index)
             except:
                 pass
 
@@ -63,8 +65,8 @@ try:
         def test_add(self):
             doc = 'You are a Titan name Thanos and you are looking for the Infinity Stones'
             self.memory.add(doc)
-            result = self.client.query.get(self.cfg.memory_index, ['raw_text']).do()
-            actual = result['data']['Get'][self.cfg.memory_index]
+            result = self.client.query.get(self.index, ['raw_text']).do()
+            actual = result['data']['Get'][self.index]
 
             self.assertEqual(len(actual), 1)
             self.assertEqual(actual[0]['raw_text'], doc)
@@ -76,7 +78,7 @@ try:
                 batch.add_data_object(
                     uuid=get_valid_uuid(uuid4()),
                     data_object={'raw_text': doc},
-                    class_name=self.cfg.memory_index,
+                    class_name=self.index,
                     vector=get_ada_embedding(doc)
                 )
 
