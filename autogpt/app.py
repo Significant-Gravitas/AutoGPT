@@ -199,6 +199,8 @@ def execute_command(command_name: str, arguments):
             return send_tweet(arguments["text"])
         elif command_name == "do_nothing":
             return "No action performed."
+        elif command_name == "wait_seconds":
+            return wait_seconds(arguments["seconds"])
         elif command_name == "task_complete":
             shutdown()
         else:

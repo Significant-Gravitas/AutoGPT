@@ -83,6 +83,7 @@ def get_prompt() -> str:
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
+        ("Wait seconds", "wait_seconds", {"seconds": "<int>"}),
     ]
 
     # Only add the audio to text command if the model is specified
