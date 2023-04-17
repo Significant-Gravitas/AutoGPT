@@ -57,7 +57,7 @@ class Config(metaclass=Singleton):
 
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
-        
+
         self.azure_speech_key = os.getenv("AZURE_SPEECH_KEY")
         self.azure_speech_region = os.getenv("AZURE_SPEECH_REGION")
 

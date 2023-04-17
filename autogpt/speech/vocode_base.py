@@ -1,4 +1,3 @@
-
 import abc
 from autogpt.speech.base import VoiceBase
 from vocode.turn_based.synthesizer.base_synthesizer import BaseSynthesizer
@@ -6,7 +5,6 @@ from vocode.turn_based.output_device.speaker_output import SpeakerOutput
 
 
 class VocodeVoiceBase(VoiceBase):
-    
     def _setup(self) -> None:
         self.output_device = SpeakerOutput.from_default_device()
         self.synthesizer = self._create_synthesizer()
