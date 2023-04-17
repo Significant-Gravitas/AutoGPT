@@ -19,18 +19,25 @@ class Agent:
         memory: The memory object to use.
         full_message_history: The full message history.
         next_action_count: The number of actions to execute.
-        system_prompt: The system prompt is the initial prompt that defines everything the AI needs to know to achieve its task successfully.
-        Currently, the dynamic and customizable information in the system prompt are ai_name, description and goals.
+        system_prompt: The system prompt is the initial prompt that defines everything
+          the AI needs to know to achieve its task successfully.
+        Currently, the dynamic and customizable information in the system prompt are
+          ai_name, description and goals.
 
-        triggering_prompt: The last sentence the AI will see before answering. For Auto-GPT, this prompt is:
-            Determine which next command to use, and respond using the format specified above:
-            The triggering prompt is not part of the system prompt because between the system prompt and the triggering
-            prompt we have contextual information that can distract the AI and make it forget that its goal is to find the next task to achieve.
+        triggering_prompt: The last sentence the AI will see before answering.
+            For Auto-GPT, this prompt is:
+            Determine which next command to use, and respond using the format specified
+              above:
+            The triggering prompt is not part of the system prompt because between the
+              system prompt and the triggering
+            prompt we have contextual information that can distract the AI and make it
+              forget that its goal is to find the next task to achieve.
             SYSTEM PROMPT
             CONTEXTUAL INFORMATION (memory, previous conversations, anything relevant)
             TRIGGERING PROMPT
 
-        The triggering prompt reminds the AI about its short term meta task (defining the next task)
+        The triggering prompt reminds the AI about its short term meta task
+        (defining the next task)
     """
 
     def __init__(
@@ -96,14 +103,13 @@ class Agent:
                 try:
                     print_assistant_thoughts(self.ai_name, assistant_reply_json)
                     command_name, arguments = get_command(assistant_reply_json)
-                    # command_name, arguments = assistant_reply_json_valid["command"]["name"], assistant_reply_json_valid["command"]["args"]
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
             if not cfg.continuous_mode and self.next_action_count == 0:
-                ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+                # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 logger.typewriter_log(
@@ -177,10 +183,13 @@ class Agent:
                     command_name, arguments = plugin.pre_command(
                         command_name, arguments
                     )
-                result = (
-                    f"Command {command_name} returned: "
-                    f"{execute_command(self.command_registry, command_name, arguments, self.config.prompt_generator)}"
+                command_result = execute_command(
+                    self.command_registry,
+                    command_name,
+                    arguments,
+                    self.config.prompt_generator,
                 )
+                result = f"Command {command_name} returned: " f"{command_result}"
 
                 for plugin in cfg.plugins:
                     result = plugin.post_command(command_name, result)
