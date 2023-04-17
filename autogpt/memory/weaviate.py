@@ -37,8 +37,17 @@ class WeaviateMemory(MemoryProviderSingleton):
         else:
             self.client = Client(url, auth_client_secret=auth_credentials)
 
-        self.index = cfg.memory_index
+        self.index = WeaviateMemory.format_classname(cfg.memory_index)
         self._create_schema()
+
+    @staticmethod
+    def format_classname(index):
+        # weaviate uses capitalised index names
+        # The python client uses the following code to format
+        # index names before the corresponding class is created
+        if len(index) == 1:
+            return index.capitalize()
+        return index[0].capitalize() + index[1:]
 
     def _create_schema(self):
         schema = default_schema(self.index)
