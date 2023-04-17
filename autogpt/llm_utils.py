@@ -121,7 +121,7 @@ def create_chat_completion(
 
 
 def create_embedding_with_ada(text) -> list:
-    """Create a embedding with text-ada-002 using the OpenAI SDK"""
+    """Create an embedding with text-ada-002 using the OpenAI SDK"""
     num_retries = 10
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
