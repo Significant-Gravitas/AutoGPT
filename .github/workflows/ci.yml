@@ -32,7 +32,7 @@ jobs:
 
     - name: Lint with flake8
       continue-on-error: false
-      run: flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
+      run: python -m flake8 . --ignore E266,E402,E501,E722,W503,W504,F
 
     - name: Run unittest tests with coverage
       run: |

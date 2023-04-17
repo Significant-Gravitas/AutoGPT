@@ -47,7 +47,7 @@ def log_operation(operation: str, filename: str) -> None:
         with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
             f.write("File Operation Logger ")
 
-    append_to_file(LOG_FILE, log_entry, shouldLog = False)
+    append_to_file(LOG_FILE, log_entry, shouldLog=False)
 
 
 def split_file(
@@ -257,7 +257,7 @@ def download_file(url, filename):
                         f.write(chunk)
                         downloaded_size += len(chunk)
 
-                         # Update the progress message
+                        # Update the progress message
                         progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
                         spinner.update_message(f"{message} {progress}")
 

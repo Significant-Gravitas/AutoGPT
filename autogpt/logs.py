@@ -180,10 +180,10 @@ class AutoGptFormatter(logging.Formatter):
     def format(self, record: LogRecord) -> str:
         if hasattr(record, "color"):
             record.title_color = (
-                    getattr(record, "color")
-                    + getattr(record, "title")
-                    + " "
-                    + Style.RESET_ALL
+                getattr(record, "color")
+                + getattr(record, "title")
+                + " "
+                + Style.RESET_ALL
             )
         else:
             record.title_color = getattr(record, "title")
