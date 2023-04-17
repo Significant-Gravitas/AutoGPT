@@ -133,7 +133,7 @@ def execute_command(command_name: str, arguments):
             else:
                 safe_message = google_result.encode('utf-8', 'ignore')
 
-            return str(safe_message)
+            return safe_message.decode('utf-8')
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
         elif command_name == "start_agent":
