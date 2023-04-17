@@ -531,3 +531,5 @@ python -m autogpt --gpt3only
 To enable the Chrome instance invoked by Auto-GPT to access the Internet, it is recommended to set `USE_DEFAULT_USER_DATA=True` in the `.env` file, so that Chrome instance can use your daily proxy config.
 
 Their is also a `CUSTOM_WEBDRIVER_PATH` environment in the `.env` file when your script cannot download WebDriver directly from the Internet. Follow the guidelines at https://sites.google.com/chromium.org/driver/downloads to manually download the WebDriver and set the `CUSTOM_WEBDRIVER_PATH` environment properly.
+
+It is recommended to use MacOS/Linux for proxy with commandline tools. If you are using Windows, Windows Linux Subsystem (WSL) can save your day.
