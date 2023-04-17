@@ -8,7 +8,7 @@ if __name__ == "__main__":
     cov.start()
 
     # Load all tests from the 'autogpt/tests' package
-    suite = unittest.defaultTestLoader.discover("./tests")
+    suite = unittest.defaultTestLoader.discover("autogpt/tests")
 
     # Run the tests
     unittest.TextTestRunner().run(suite)
