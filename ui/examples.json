@@ -1,0 +1,28 @@
+[
+    [
+        "Entrepreneur-GPT",
+        "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth",
+        [
+            ["Increase net worth"],
+            ["Grow Twitter Account"],
+            ["Develop and manage multiple businesses autonomously"]
+        ]
+    ],
+    [
+        "JobFinder-GPT",
+        "An AI that finds the most relevant job postings for a UI designer on LinkedIn and Glassdoor and applies for you.",
+        [
+            ["Collect my existing credentials from https://www.linkedin.com/in/satyanadella."],
+            ["Find companies that have been hiring for UI designer roles on LinkedIn."],
+            ["Apply for the jobs."]
+        ]
+    ],
+    [
+        "PaperReader-GPT",
+        "An AI that finds the latest AI papers on arXiV and gives one sentences summaries.",
+        [
+            ["Find the top papers on AI on arXiv."],
+            ["Summarize their abstracts into a single line."]
+        ]
+    ]
+]
