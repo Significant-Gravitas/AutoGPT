@@ -11,6 +11,7 @@ to the value that you want:
 * `redis` will use the redis cache that you configured
 * `milvus` will use the milvus cache that you configured
 * `weaviate` will use the weaviate cache that you configured
+* `gptcache` use the gptcache, the usage is the same as local, no embedding openai, no additional settings
 
 ## Memory Backend Setup
 
@@ -20,6 +21,7 @@ Links to memory backends
 - [Milvus](https://milvus.io/) &ndash; [self-hosted](https://milvus.io/docs), or managed with [Zilliz Cloud](https://zilliz.com/)
 - [Redis](https://redis.io)
 - [Weaviate](https://weaviate.io)
+- [GPTCache](https://github.com/zilliztech/GPTCache)
 
 ### Redis Setup
 
