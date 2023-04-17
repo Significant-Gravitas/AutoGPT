@@ -1,8 +1,11 @@
 """Agent manager for managing GPT agents"""
 from __future__ import annotations
+from typing import List
 
 from autogpt.config.config import Config, Singleton
 from autogpt.llm_utils import create_chat_completion
+
+from plugin_template import Message
 
 
 class AgentManager(metaclass=Singleton):
@@ -27,7 +30,7 @@ class AgentManager(metaclass=Singleton):
         Returns:
             The key of the new agent
         """
-        messages = [
+        messages: List[Message] = [
             {"role": "user", "content": prompt},
         ]
         for plugin in self.cfg.plugins:
@@ -36,7 +39,7 @@ class AgentManager(metaclass=Singleton):
             plugin_messages = plugin.pre_instruction(messages)
             if plugin_messages:
                 for plugin_message in plugin_messages:
-                    messages.append({"role": "system", "content": plugin_message})
+                    messages.append(plugin_message)
 
         # Start GPT instance
         agent_reply = create_chat_completion(
@@ -92,7 +95,7 @@ class AgentManager(metaclass=Singleton):
             plugin_messages = plugin.pre_instruction(messages)
             if plugin_messages:
                 for plugin_message in plugin_messages:
-                    messages.append({"role": "system", "content": plugin_message})
+                    messages.append(plugin_message)
 
         # Start GPT instance
         agent_reply = create_chat_completion(
