@@ -29,5 +29,12 @@ black
 sourcery
 isort
 gitpython==3.1.31
+
+# Testing dependencies
 pytest
+asynctest
+pytest-asyncio
+pytest-benchmark
+pytest-cov
+pytest-integration
 pytest-mock

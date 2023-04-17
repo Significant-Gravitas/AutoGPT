@@ -17,6 +17,7 @@ from autogpt.commands.file_operations import (
     read_file,
     search_files,
     write_to_file,
+    download_file
 )
 from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
@@ -51,6 +52,7 @@ COMMANDS = {
                                                   args["text"]),
     "delete_file": lambda args: delete_file(args["file"]),
     "search_files": lambda args: search_files(args["directory"]),
+    "download_file": lambda args: do_download_file(args["url"]),
     "browse_website": lambda args: browse_website(args["url"],
                                                   args["question"]),
     "evaluate_code": lambda args: evaluate_code(args["code"]),
@@ -92,6 +94,22 @@ def google(input_str: str) -> str:
     else:
         safe_message = google_result.encode('utf-8', 'ignore')
     return str(safe_message)
+
+
+def do_download_file(url: str) -> str:
+    """
+    Download a file from a URL and return the result.
+
+    Args:
+        url (str): The URL of the file to download.
+
+    Returns:
+        str: The result of the download.
+    """
+    if CFG.allow_downloads:
+        return download_file(url)
+    else:
+        return "Error: You do not have user authorization to download files locally."
 
 
 def execute_shell_command(args: Dict[str, Any]) -> str:
