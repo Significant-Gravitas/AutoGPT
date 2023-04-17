@@ -1,6 +1,6 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from colorama import Fore
+from colorama import Fore, Back, Style
 
 from autogpt.config.singleton import Singleton
 
@@ -40,6 +40,10 @@ class Config(metaclass=Singleton):
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
+        self.allow_downloads = os.getenv("ALLOW_DOWNLOADS", "False") == "True"
+
+        if self.allow_downloads:
+            print("Downloads are allowed.")
 
         if self.use_azure:
             self.load_azure_config()
