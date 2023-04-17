@@ -10,7 +10,8 @@ from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from multigpt.multi_agent import MultiAgent
-from multigpt.expert import Expert
+from typing import List
+from autogpt.config import Config
 
 
 class MultiAgentManager(metaclass=Singleton):
@@ -20,13 +21,17 @@ class MultiAgentManager(metaclass=Singleton):
         self.agents = []
         self.agent_counter = 0
         self.next_action_count = 0
+        self.experts = []
 
-    def create_agent(self, expert: Expert):
+    def set_experts(self, experts):
+        self.experts = experts
+
+    def create_agent(self, expert):
         user_input = (
             "Determine which next command to use, and respond using the"
             " format specified above:"
         )
-        prompt = expert.construct_full_prompt()
+        prompt = expert.construct_full_prompt(self.experts)
 
         agent_id = self.agent_counter
         self.agent_counter += 1
@@ -46,8 +51,25 @@ class MultiAgentManager(metaclass=Singleton):
         )
         self.agents.append(agent)
 
+    @staticmethod
+    def experts_to_list(experts=None):
+        expert_str = ""
+        if experts is None:
+            print("Warning. Expert List empty.")
+        else:
+            for expert in experts:
+                expert_str += f"\nName: {expert.ai_name}\n"
+                expert_str += f"Role: {expert.ai_role}\n"
+        return expert_str
+
     def get_active_agent(self, loop_count):
         return self.agents[loop_count % len(self.agents)]
+
+    def send_message_to_all_agents(self, speaker=None, message=None):
+        if speaker is None or message is None:
+            return
+        for agent in self.agents:
+            agent.send_message(speaker, message)
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -70,16 +92,30 @@ class MultiAgentManager(metaclass=Singleton):
 
             # Send message to AI, get response
             with Spinner("Thinking... "):
+                conversation_input = ""
+                if len(active_agent.auditory_buffer) > 0:
+                    conversation_input += "DISCUSSION:\n\n"
+                while len(active_agent.auditory_buffer) > 0:
+                    agent_name, message = active_agent.auditory_buffer.pop(0)
+                    conversation_input += f"{agent_name}: {message}\n"
+                conversation_input += active_agent.user_input
                 assistant_reply = chat_with_ai(
                     active_agent.prompt,
-                    active_agent.user_input,
+                    conversation_input,
                     active_agent.full_message_history,
                     active_agent.memory,
                     self.cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             # Print Assistant thoughts
-            print_assistant_thoughts(active_agent.ai_name, assistant_reply)
+
+            assistant_reply_object = print_assistant_thoughts(active_agent.ai_name, assistant_reply)
+            if assistant_reply_object['thoughts']['speak']:
+                if assistant_reply_object is not None:
+                    speak_value = assistant_reply_object.get('thoughts', {}).get('speak')
+                    if speak_value is not None:
+                        self.send_message_to_all_agents(speaker=active_agent, message=speak_value)
+                        active_agent.auditory_buffer.pop()  #
 
             # Get command name and arguments
             try:
@@ -189,3 +225,7 @@ class MultiAgentManager(metaclass=Singleton):
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
+
+
+CFG = Config()
+MULTIAGENTMANAGER = MultiAgentManager(CFG)

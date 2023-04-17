@@ -22,11 +22,11 @@ class PromptGenerator:
         self.performance_evaluation = []
         self.response_format = {
             "thoughts": {
-                "text": "thought",
+                "text": "Thoughts you keep to yourself. They are NOT shared with your team.",
                 "reasoning": "reasoning",
                 "plan": "- short bulleted\n- list that conveys\n- long-term plan",
                 "criticism": "constructive self-criticism",
-                "speak": "thoughts summary to say to user",
+                "speak": "Thoughts you say out loud. They ARE shared with your team."
             },
             "command": {"name": "command name", "args": {"arg name": "value"}},
         }

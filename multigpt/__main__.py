@@ -17,11 +17,11 @@ from autogpt.memory import get_memory
 
 from autogpt.prompt import construct_prompt
 from autogpt.spinner import Spinner
+from multigpt.multi_agent_manager import MULTIAGENTMANAGER, CFG
 from multigpt.expert import Expert
-from multigpt.multi_agent_manager import MultiAgentManager
 
 MIN_EXPERTS = 2
-MAX_EXPERTS = 6
+MAX_EXPERTS = 3
 CONTINUOUS_LIMIT = 10
 EXPERT_PROMPT = """The task is: {task}.
 
@@ -31,8 +31,6 @@ Help me determine which historical or renowned experts in various fields would b
 1b) [Goal b]
 1c) [Goal c]"""
 
-CFG = Config()
-MULTIAGENTMANAGER = MultiAgentManager(CFG)
 
 
 def parse_experts(experts: str) -> List[Expert]:
@@ -89,9 +87,9 @@ def main() -> None:
     # DONE: generate expert list from tasks
     # OPTIONAL: budget experts
     # DONE: generate ai_settings.yaml for each expert -- engineering the prompt
-    # create autoGPTs
-    # access results of instances -- message passing
-    # start_autogpt()
+    # DONE create autoGPTs
+    # DONE access results of instances -- message passing
+    # DONE start_autogpt()
 
     check_openai_api_key()
     parse_arguments()
@@ -119,7 +117,7 @@ def main() -> None:
         experts_string = create_chat_completion(messages=messages, model=CFG.smart_llm_model, max_tokens=1000)
 
     experts = parse_experts(experts_string)
-
+    MULTIAGENTMANAGER.set_experts(experts)
     logger.typewriter_log(f"Using Browser:", Fore.GREEN, CFG.selenium_web_browser)
 
     create_expert_gpts(experts)

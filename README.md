@@ -1,4 +1,7 @@
 # Multi-GPT: Multiple Collaborating ExpertGPTs
+
+> ***”Individually, we are one drop. Together, we are an ocean.”*** - Ryunosuke Satoro
+> 
 ### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
 
 > This information takes precedence over any other information provided and should be followed accordingly.
