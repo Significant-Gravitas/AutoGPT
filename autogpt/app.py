@@ -1,16 +1,10 @@
 """ Command and Control """
 import json
-from typing import List, NoReturn, Union, Dict
+from typing import Dict, List, NoReturn, Union
+
 from autogpt.agent.agent_manager import AgentManager
-from autogpt.commands.db_search import available_databases, sql_query, database_table_names, database_table_column_names
-from autogpt.commands.evaluate_code import evaluate_code
-from autogpt.commands.google_search import google_official_search, google_search
-from autogpt.commands.improve_code import improve_code
-from autogpt.commands.write_tests import write_tests
-from autogpt.config import Config
-from autogpt.commands.image_gen import generate_image
 from autogpt.commands.audio_text import read_audio_from_file
-from autogpt.commands.web_requests import scrape_links, scrape_text
+from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.execute_code import (
     execute_python_file,
     execute_shell,
@@ -19,19 +13,24 @@ from autogpt.commands.execute_code import (
 from autogpt.commands.file_operations import (
     append_to_file,
     delete_file,
+    download_file,
     read_file,
     search_files,
     write_to_file,
-    download_file
 )
+from autogpt.commands.git_operations import clone_repository
+from autogpt.commands.google_search import google_official_search, google_search
+from autogpt.commands.image_gen import generate_image
+from autogpt.commands.improve_code import improve_code
+from autogpt.commands.twitter import send_tweet
+from autogpt.commands.web_requests import scrape_links, scrape_text
+from autogpt.commands.web_selenium import browse_website
+from autogpt.commands.write_tests import write_tests
+from autogpt.config import Config
 from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
-from autogpt.commands.web_selenium import browse_website
-from autogpt.commands.git_operations import clone_repository
-from autogpt.commands.twitter import send_tweet
-
 
 CFG = Config()
 AGENT_MANAGER = AgentManager()
@@ -134,11 +133,14 @@ def execute_command(command_name: str, arguments):
 
             # google_result can be a list or a string depending on the search results
             if isinstance(google_result, list):
-                safe_message = [google_result_single.encode('utf-8', 'ignore') for google_result_single in google_result]
+                safe_message = [
+                    google_result_single.encode("utf-8", "ignore")
+                    for google_result_single in google_result
+                ]
             else:
-                safe_message = google_result.encode('utf-8', 'ignore')
+                safe_message = google_result.encode("utf-8", "ignore")
 
-            return safe_message.decode('utf-8')
+            return safe_message.decode("utf-8")
         elif command_name == "memory_add":
             memory = get_memory(CFG)
             return memory.add(arguments["string"])
@@ -211,14 +213,6 @@ def execute_command(command_name: str, arguments):
             return generate_image(arguments["prompt"])
         elif command_name == "send_tweet":
             return send_tweet(arguments["text"])
-        elif command_name == 'available_databases':
-            return available_databases()
-        elif command_name == "sql_query":
-            return sql_query(arguments["database_name"], arguments["sql_query"])
-        elif command_name == "database_table_names":
-            return database_table_names(arguments["database_name"])
-        elif command_name == "database_table_column_names":
-            return database_table_column_names(arguments["database_name"], arguments["table"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
