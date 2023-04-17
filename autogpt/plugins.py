@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from zipimport import zipimporter
 
+from plugin_template import AutoGPTPluginTemplate
+
 
 def inspect_zip_for_module(zip_path: str, debug: bool = False) -> Optional[str]:
     """
@@ -45,7 +47,9 @@ def scan_plugins(plugins_path: Path, debug: bool = False) -> List[Tuple[str, Pat
     return plugins
 
 
-def load_plugins(plugins_path: Path, debug: bool = False) -> List[Module]:
+def load_plugins(
+    plugins_path: Path, debug: bool = False
+) -> List[AutoGPTPluginTemplate]:
     """Load plugins from the plugins directory.
 
     Args:

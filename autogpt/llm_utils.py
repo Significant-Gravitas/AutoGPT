@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import time
+from typing import List, Optional
 
 import openai
 from colorama import Fore
 from openai.error import APIError, RateLimitError
 
 from autogpt.config import Config
+from plugin_template import Message
 
 CFG = Config()
 
@@ -35,8 +37,8 @@ def call_ai_function(
     # For each arg, if any are None, convert to "None":
     args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma separated string
-    args = ", ".join(args)
-    messages = [
+    args: str = ", ".join(args)
+    messages: List[Message] = [
         {
             "role": "system",
             "content": f"You are now the following python function: ```# {description}"
@@ -51,15 +53,15 @@ def call_ai_function(
 # Overly simple abstraction until we create something better
 # simple retry mechanism when getting a rate error or a bad gateway
 def create_chat_completion(
-    messages: list,  # type: ignore
-    model: str | None = None,
+    messages: List[Message],  # type: ignore
+    model: Optional[str] = None,
     temperature: float = CFG.temperature,
-    max_tokens: int | None = None,
+    max_tokens: Optional[int] = None,
 ) -> str:
     """Create a chat completion using the OpenAI API
 
     Args:
-        messages (list[dict[str, str]]): The messages to send to the chat completion
+        messages (List[Message]): The messages to send to the chat completion
         model (str, optional): The model to use. Defaults to None.
         temperature (float, optional): The temperature to use. Defaults to 0.9.
         max_tokens (int, optional): The max tokens to use. Defaults to None.
