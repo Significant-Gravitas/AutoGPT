@@ -34,7 +34,7 @@ def validate_json(json_object: object, schema_name: object) -> object:
     :param schema_name:
     :type json_object: object
     """
-    with open(f"autogpt/json_schemas/{schema_name}.json", "r") as f:
+    with open(f"autogpt/json_utils/{schema_name}.json", "r") as f:
         schema = json.load(f)
     validator = Draft7Validator(schema)
 
