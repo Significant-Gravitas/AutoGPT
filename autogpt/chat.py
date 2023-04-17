@@ -7,10 +7,12 @@ from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
 
+from plugin_template import Message
+
 cfg = Config()
 
 
-def create_chat_message(role, content):
+def create_chat_message(role, content) -> Message:
     """
     Create a chat message with the given role and content.
 
@@ -145,7 +147,7 @@ def chat_with_ai(
                 if not plugin_response or plugin_response == "":
                     continue
                 tokens_to_add = token_counter.count_message_tokens(
-                    [plugin_response], model
+                    [create_chat_message("system", plugin_response)], model
                 )
                 if current_tokens_used + tokens_to_add > send_token_limit:
                     if cfg.debug_mode:
