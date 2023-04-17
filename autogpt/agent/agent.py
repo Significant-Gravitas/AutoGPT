@@ -1,6 +1,6 @@
 from colorama import Fore, Style
-from autogpt.app import execute_command, get_command
 
+from autogpt.app import execute_command, get_command
 from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
 from autogpt.json_fixes.bracket_termination import (
