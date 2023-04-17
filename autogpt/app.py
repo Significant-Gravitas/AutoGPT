@@ -212,7 +212,7 @@ def execute_command(command_name: str, arguments):
 
 
 def get_text_summary(url: str, question: str) -> str:
-    """Return the results of a google search
+    """Return the results of a Google search
 
     Args:
         url (str): The url to scrape
@@ -227,7 +227,7 @@ def get_text_summary(url: str, question: str) -> str:
 
 
 def get_hyperlinks(url: str) -> Union[str, List[str]]:
-    """Return the results of a google search
+    """Return the results of a Google search
 
     Args:
         url (str): The url to scrape

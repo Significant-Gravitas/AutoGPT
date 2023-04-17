@@ -30,4 +30,4 @@ By following these guidelines, your PRs are more likely to be merged quickly aft
 
 <!-- If you haven't added tests, please explain why. If you have, check the appropriate box. If you've ensured your PR is atomic and well-documented, check the corresponding boxes. -->
 
-<!-- By submitting this, I agree that my pull request should be closed if I do not fill this out or follow the guide lines. -->
+<!-- By submitting this, I agree that my pull request should be closed if I do not fill this out or follow the guidelines. -->
