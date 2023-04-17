@@ -19,7 +19,8 @@ def validate_json(json_object: object, schema_name: object) -> object:
     if errors := sorted(validator.iter_errors(json_object), key=lambda e: e.path):
         logger.error("The JSON object is invalid.")
         if CFG.debug_mode:
-            logger.error(json.dumps(json_object, indent=4))   # Replace 'json_object' with the variable containing the JSON data
+            # Replace 'json_object' with the variable containing the JSON data
+            logger.error(json.dumps(json_object, indent=4))
             logger.error("The following issues were found:")
 
             for error in errors:

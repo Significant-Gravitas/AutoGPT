@@ -77,8 +77,13 @@ Not what I need.'''
 
     command = f'{sys.executable} -m autogpt'
 
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               shell=True)
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=True
+    )
 
     stdout_output, stderr_output = process.communicate(input_data.encode())
 

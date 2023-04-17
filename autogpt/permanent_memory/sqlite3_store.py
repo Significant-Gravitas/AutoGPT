@@ -19,11 +19,13 @@ class MemoryDB:
                 self.db_file = ":memory:"
             self.cnx = sqlite3.connect(self.db_file)
             self.cnx.execute(
-                "CREATE VIRTUAL TABLE \
-                IF NOT EXISTS text USING FTS5 \
-                (session, \
-                 key, \
-                 block);"
+                """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS text USING FTS5(
+                        session,
+                        key,
+                        block
+                    );
+                """
             )
             self.session_id = int(self.get_max_session_id()) + 1
             self.cnx.commit()
