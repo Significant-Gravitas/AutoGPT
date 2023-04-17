@@ -17,8 +17,7 @@ let python = null as any
 let dataToSend = ""
 
 app.get("/api/start", (_, res) => {
-  python = spawn("python", ["../scripts/main.py"])
-
+  python = spawn("sh", ["./run-web.sh"])
   python.stdout.on("data", function (data: string) {
     console.log(data.toString())
     dataToSend = dataToSend + data.toString()
@@ -26,6 +25,10 @@ app.get("/api/start", (_, res) => {
 
   python.on("close", (code: string) => {
     console.log(`child process close all stdio with code ${code}`)
+  })
+  // error
+  python.stderr.on("data", (data: string) => {
+    console.log(`stderr: ${data}`)
   })
 
   console.log("Python script started")
@@ -35,7 +38,7 @@ app.get("/api/start", (_, res) => {
 
 
 app.post("/api/download", (req, res) => {
-  const file = `./auto_gpt_workspace/${req.body.filename}`;
+  const file = `../auto_gpt_workspace/${req.body.filename}`;
   res.download(file); // Set disposition and send it.
 });
 
