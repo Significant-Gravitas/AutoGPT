@@ -7,6 +7,9 @@ on:
   # In `pull_request` we wouldn't be able to change labels of fork PRs
   pull_request_target:
     types: [opened, synchronize]
+concurrency:
+  group: ${{ github.event_name == 'pull_request_target' && format('pr-label-{0}', github.event.pull_request.number) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' || '' }}
 
 jobs:
   conflicts:
