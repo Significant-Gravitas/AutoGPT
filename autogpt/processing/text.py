@@ -18,22 +18,34 @@ def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
 
     Yields:
         str: The next chunk of text
-
-    Raises:
-        ValueError: If the text is longer than the maximum length
     """
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
 
     for paragraph in paragraphs:
-        if current_length + len(paragraph) + 1 <= max_length:
+        paragraph_length = len(paragraph)
+
+        while paragraph_length > max_length:
+            sub_paragraph = paragraph[:max_length]
+            paragraph = paragraph[max_length:]
+            paragraph_length = len(paragraph)
+
+            if current_length + len(sub_paragraph) + 1 <= max_length:
+                current_chunk.append(sub_paragraph)
+                current_length += len(sub_paragraph) + 1
+            else:
+                yield "\n".join(current_chunk)
+                current_chunk = [sub_paragraph]
+                current_length = len(sub_paragraph) + 1
+
+        if current_length + paragraph_length + 1 <= max_length:
             current_chunk.append(paragraph)
-            current_length += len(paragraph) + 1
+            current_length += paragraph_length + 1
         else:
             yield "\n".join(current_chunk)
             current_chunk = [paragraph]
-            current_length = len(paragraph) + 1
+            current_length = paragraph_length + 1
 
     if current_chunk:
         yield "\n".join(current_chunk)
