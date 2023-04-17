@@ -31,7 +31,6 @@ def validate_yaml_file(file: str):
     return (True, f"Successfully validated {Fore.CYAN}`{file}`{Fore.RESET}!")
 
 
-
 GOOGLE_TRANSLATE_URL = 'http://translate.google.com/m?q=%s&tl=%s&sl=%s'
 
 
