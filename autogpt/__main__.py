@@ -66,7 +66,7 @@ def main() -> None:
     full_message_history = []
     next_action_count = 0
     # Make a constant:
-    user_input = (
+    triggering_prompt = (
         "Determine which next command to use, and respond using the"
         " format specified above:"
     )
@@ -77,9 +77,9 @@ def main() -> None:
         f"Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
     logger.typewriter_log(f"Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
-    prompt = ai_config.construct_full_prompt()
+    system_prompt = ai_config.construct_full_prompt()
     if cfg.debug_mode:
-        logger.typewriter_log("Prompt:", Fore.GREEN, prompt)
+        logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
     agent = Agent(
         ai_name=ai_name,
         memory=memory,
@@ -87,8 +87,8 @@ def main() -> None:
         next_action_count=next_action_count,
         command_registry=command_registry,
         config=ai_config,
-        prompt=prompt,
-        user_input=user_input,
+        system_prompt=system_prompt,
+        triggering_prompt=triggering_prompt,
     )
     agent.start_interaction_loop()
 
