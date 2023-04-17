@@ -102,6 +102,10 @@ class Config(metaclass=Singleton):
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
+
+        self.telegram_token = os.getenv("TELEGRAM_TOKEN")
+        self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 

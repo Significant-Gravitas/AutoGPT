@@ -30,6 +30,14 @@ from autogpt.speech import say_text
 from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.git_operations import clone_repository
 from autogpt.commands.twitter import send_tweet
+from autogpt.commands.telegram import (
+    send_telegram_message,
+    send_telegram_photo,
+    send_telegram_document,
+    send_telegram_video,
+    send_telegram_audio,
+    send_telegram_location
+)
 
 
 CFG = Config()
@@ -210,6 +218,18 @@ def execute_command(command_name: str, arguments):
             return generate_image(arguments["prompt"])
         elif command_name == "send_tweet":
             return send_tweet(arguments["text"])
+        elif command_name == "send_telegram_message":
+            return send_telegram_message(arguments["text"])
+        elif command_name == "send_telegram_photo":
+            return send_telegram_photo(arguments["file"])
+        elif command_name == "send_telegram_document":
+            return send_telegram_document(arguments["file"]) 
+        elif command_name == "send_telegram_video":
+            return send_telegram_video(arguments["file"])  
+        elif command_name == "send_telegram_audio":
+            return send_telegram_audio(arguments["file"])
+        elif command_name == "send_telegram_location":
+            return send_telegram_location(arguments["location"])  
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
