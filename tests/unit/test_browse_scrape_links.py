@@ -114,6 +114,7 @@ class TestScrapeLinks:
         assert result[2] == "CodiumAI (https://www.codium.ai)"
 
     def test_extract_hyperlinks(self):
+        # Create a BeautifulSoup object from a sample HTML containing hyperlinks
         body = """
         <body>
         <a href="https://google.com">Google</a>
@@ -122,8 +123,12 @@ class TestScrapeLinks:
         </body>
         """
         soup = BeautifulSoup(body, "html.parser")
+
+        # Call the function being tested
         links = extract_hyperlinks(soup, "http://example.com")
-        self.assertEqual(
-            links,
-            [("Google", "https://google.com"), ("Foo", "http://example.com/foo.html")],
-        )
+
+        # Assert that the function returns a list of tuples containing the link text and the link URL
+        assert links == [
+            ("Google", "https://google.com"),
+            ("Foo", "http://example.com/foo.html"),
+        ]
