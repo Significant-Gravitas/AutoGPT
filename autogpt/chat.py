@@ -73,7 +73,8 @@ def chat_with_ai(
             Returns:
             str: The AI's response.
             """
-            model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
+            # TODO: Change model from hardcode to argument
+            model = cfg.fast_llm_model
             
             # Reserve tokens for the response (1000 by default)
             logger.debug(f"Token limit: {token_limit}")
