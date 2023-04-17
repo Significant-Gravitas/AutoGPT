@@ -1,7 +1,9 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
 
+from typing import List
 import openai
+from plugin_template import AutoGPTPluginTemplate
 import yaml
 from colorama import Fore
 from dotenv import load_dotenv
@@ -107,7 +109,7 @@ class Config(metaclass=Singleton):
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
-        self.plugins = []
+        self.plugins: List[AutoGPTPluginTemplate] = []
         self.plugins_whitelist = []
         self.plugins_blacklist = []
 
