@@ -4,5 +4,5 @@ if errorlevel 1 (
     echo Installing missing packages...
     pip install -r requirements.txt
 )
-python scripts/main.py %1
+python -m autogpt %*
 pause
