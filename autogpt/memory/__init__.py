@@ -34,6 +34,12 @@ try:
 except ImportError:
     MilvusMemory = None
 
+try:
+    from autogpt.memory.analyticdb import AnalyticDBMemory
+except ImportError:
+    print("psycopg2cffi not installed. Skipping import.")
+    AnalyticDBMemory = None
+
 
 def get_memory(cfg, init=False):
     memory = None
@@ -71,6 +77,14 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "analyticdb":
+        if not AnalyticDBMemory:
+            print(
+                "Error: AnalyticDB is not installed."
+                "Please install psycopg2cffi to use AnalyticDB as memory backend."
+            )
+        else:
+            memory = AnalyticDBMemory(cfg)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
@@ -90,6 +104,7 @@ __all__ = [
     "LocalCache",
     "RedisMemory",
     "PineconeMemory",
+    "AnalyticDBMemory",
     "NoMemory",
     "MilvusMemory",
     "WeaviateMemory",

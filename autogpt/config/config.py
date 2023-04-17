@@ -106,6 +106,14 @@ class Config(metaclass=Singleton):
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
         self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
 
+        # PostgresSQL or AnalyticDB configuration
+        self.pg_host = os.environ.get("PG_HOST", "localhost")
+        self.pg_port = int(os.environ.get("PG_PORT", "5432"))
+        self.pg_database = os.environ.get("PG_DATABASE", "postgres")
+        self.pg_user = os.environ.get("PG_USER", "user")
+        self.pg_password = os.environ.get("PG_PASSWORD", "password")
+        self.pg_relation = os.environ.get("PG_RELATION", "autogpt")
+
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
