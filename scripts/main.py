@@ -382,12 +382,12 @@ class Agent:
                         command_name = "human_feedback"
                         break
 
-                if self.user_input == "GENERATE NEXT COMMAND JSON":
+                #if self.user_input == "GENERATE NEXT COMMAND JSON":
                     # logger.typewriter_log(
                     #     "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
                     #     Fore.MAGENTA,
                     #     "")
-                elif self.user_input == "EXIT":
+                if self.user_input == "EXIT":
                     print("Exiting...", flush=True)
                     break
             else:
