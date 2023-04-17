@@ -30,5 +30,14 @@ black
 sourcery
 isort
 gitpython==3.1.31
+
+# Items below this point will not be included in the Docker Image
+
+# Testing dependencies
 pytest
+asynctest
+pytest-asyncio
+pytest-benchmark
+pytest-cov
+pytest-integration
 pytest-mock

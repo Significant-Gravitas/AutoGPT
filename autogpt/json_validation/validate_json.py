@@ -24,7 +24,7 @@ def validate_json(json_object: object, schema_name: object) -> object:
 
             for error in errors:
                 logger.error(f"Error: {error.message}")
-    else:
+    elif CFG.debug_mode:
         print("The JSON object is valid.")
 
     return json_object
