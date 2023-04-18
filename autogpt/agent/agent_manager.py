@@ -1,9 +1,7 @@
 """Agent manager for managing GPT agents"""
 from __future__ import annotations
 
-from typing import Union
-
-from autogpt.config.config import Singleton
+from autogpt.config import Singleton
 from autogpt.llm_utils import create_chat_completion
 
 
@@ -41,7 +39,7 @@ class AgentManager(metaclass=Singleton):
         # Update full message history
         messages.append({"role": "assistant", "content": agent_reply})
 
-        key = self.next_key
+        key = str(self.next_key)
         # This is done instead of len(agents) to make keys unique even if agents
         # are deleted
         self.next_key += 1
@@ -50,7 +48,7 @@ class AgentManager(metaclass=Singleton):
 
         return key, agent_reply
 
-    def message_agent(self, key: str | int, message: str) -> str:
+    def message_agent(self, key: str, message: str) -> str:
         """Send a message to an agent and return its response
 
         Args:
@@ -60,7 +58,7 @@ class AgentManager(metaclass=Singleton):
         Returns:
             The agent's response
         """
-        task, messages, model = self.agents[int(key)]
+        task, messages, model = self.agents[key]
 
         # Add user message to message history before sending to agent
         messages.append({"role": "user", "content": message})
@@ -76,7 +74,7 @@ class AgentManager(metaclass=Singleton):
 
         return agent_reply
 
-    def list_agents(self) -> list[tuple[str | int, str]]:
+    def list_agents(self) -> list[tuple[str, str]]:
         """Return a list of all agents
 
         Returns:
@@ -86,7 +84,7 @@ class AgentManager(metaclass=Singleton):
         # Return a list of agent keys and their tasks
         return [(key, task) for key, (task, _, _) in self.agents.items()]
 
-    def delete_agent(self, key: Union[str, int]) -> bool:
+    def delete_agent(self, key: str) -> bool:
         """Delete an agent from the agent manager
 
         Args:
@@ -97,7 +95,7 @@ class AgentManager(metaclass=Singleton):
         """
 
         try:
-            del self.agents[int(key)]
+            del self.agents[key]
             return True
         except KeyError:
             return False
