@@ -2,6 +2,8 @@
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 from typing import TypeVar
 
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
+
 PromptGenerator = TypeVar("PromptGenerator")
 
 
@@ -10,9 +12,9 @@ class Message(TypedDict):
     content: str
 
 
-class BaseOpenAIPlugin:
+class BaseOpenAIPlugin(AutoGPTPluginTemplate):
     """
-    This is a template for Auto-GPT plugins.
+    This is a BaseOpenAIPlugin class for generating Auto-GPT plugins.
     """
 
     def __init__(self, manifests_specs_clients: dict):
@@ -20,9 +22,9 @@ class BaseOpenAIPlugin:
         self._name = manifests_specs_clients["manifest"]["name_for_model"]
         self._version = manifests_specs_clients["manifest"]["schema_version"]
         self._description = manifests_specs_clients["manifest"]["description_for_model"]
-        self.client = manifests_specs_clients["client"]
-        self.manifest = manifests_specs_clients["manifest"]
-        self.openapi_spec = manifests_specs_clients["openapi_spec"]
+        self._client = manifests_specs_clients["client"]
+        self._manifest = manifests_specs_clients["manifest"]
+        self._openapi_spec = manifests_specs_clients["openapi_spec"]
 
     def can_handle_on_response(self) -> bool:
         """This method is called to check that the plugin can
@@ -196,4 +198,3 @@ class BaseOpenAIPlugin:
             str: The resulting response.
         """
         pass
-

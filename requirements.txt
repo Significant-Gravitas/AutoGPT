@@ -30,7 +30,7 @@ pytest-mock
 tweepy
 
 
-# OpenAI plugins import
+# OpenAI and Generic plugins import
 openapi-python-client==0.13.4
 abstract-singleton
-auto-vicuna
+auto-gpt-plugin-template
