@@ -40,3 +40,9 @@ pytest-benchmark
 pytest-cov
 pytest-integration
 pytest-mock
+
+
+# OpenAI and Generic plugins import
+openapi-python-client==0.13.4
+abstract-singleton
+auto-gpt-plugin-template

@@ -109,7 +109,9 @@ class Config(metaclass=Singleton):
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
+        self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
+        self.plugins_openai = []
         self.plugins_whitelist = []
         self.plugins_blacklist = []
 
