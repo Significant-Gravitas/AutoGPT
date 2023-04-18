@@ -2,6 +2,15 @@ name: Bug report 🐛
 description: Create a bug report for Auto-GPT.
 labels: ['status: needs triage']
 body:
+  - type: checkboxes
+    attributes:
+      label: ⚠️ Search for existing issues first ⚠️
+      description: >
+        Please [search the history](https://github.com/Torantulino/Auto-GPT/issues)
+        to see if an issue already exists for the same problem.
+      options:
+        - label: I have searched the existing issues, and there is no existing issue for my problem
+          required: true
   - type: markdown
     attributes:
       value: |
@@ -19,14 +28,14 @@ body:
           - Provide commit-hash (`git rev-parse HEAD` gets it)
           - If it's a pip/packages issue, provide pip version, python version
           - If it's a crash, provide traceback.
-        
   - type: checkboxes
     attributes:
-      label: Duplicates
-      description: Please [search the history](https://github.com/Torantulino/Auto-GPT/issues) to see if an issue already exists for the same problem.
+      label: GPT-3 or GPT-4
+      description: >
+        If you are using Auto-GPT with `--gpt3only`, your problems may be caused by
+        the limitations of GPT-3.5
       options:
-        - label: I have searched the existing issues
-          required: true
+        - label: I am using Auto-GPT with GPT-3 (GPT-3.5)
   - type: textarea
     attributes:
       label: Steps to reproduce 🕹
