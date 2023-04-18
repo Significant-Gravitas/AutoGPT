@@ -1,24 +1,95 @@
 """Main script for the autogpt package."""
 import logging
 
+import click
 from colorama import Fore
 
 from autogpt.agent.agent import Agent
-from autogpt.args import parse_arguments
 from autogpt.config import Config, check_openai_api_key
+from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.prompt import construct_prompt
 
-# Load environment variables from .env file
 
-
+@click.group()
 def main() -> None:
-    """Main function for the script"""
+    """
+    Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
+    """
+    pass
+
+
+@main.command()
+@click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
+@click.option(
+    "--skip-reprompt",
+    "-y",
+    is_flag=True,
+    help="Skips the re-prompting messages at the beginning of the script",
+)
+@click.option(
+    "--ai-settings",
+    "-C",
+    help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
+)
+@click.option(
+    "-l",
+    "--continuous-limit",
+    type=int,
+    help="Defines the number of times to run in continuous mode",
+)
+@click.option("--speak", is_flag=True, help="Enable Speak Mode")
+@click.option("--debug", is_flag=True, help="Enable Debug Mode")
+@click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
+@click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
+@click.option(
+    "--use-memory",
+    "-m",
+    "memory_type",
+    type=str,
+    help="Defines which Memory backend to use",
+)
+@click.option(
+    "-b",
+    "--browser-name",
+    help="Specifies which web-browser to use when using selenium to scrape the web.",
+)
+@click.option(
+    "--allow-downloads",
+    is_flag=True,
+    help="Dangerous: Allows Auto-GPT to download files natively.",
+)
+def start(
+    continuous: bool,
+    continuous_limit: int,
+    ai_settings: str,
+    skip_reprompt: bool,
+    speak: bool,
+    debug: bool,
+    gpt3only: bool,
+    gpt4only: bool,
+    memory_type: str,
+    browser_name: str,
+    allow_downloads: bool,
+) -> None:
+    """Start an Auto-GPT assistant"""
     cfg = Config()
     # TODO: fill in llm values here
     check_openai_api_key()
-    parse_arguments()
+    create_config(
+        continuous,
+        continuous_limit,
+        ai_settings,
+        skip_reprompt,
+        speak,
+        debug,
+        gpt3only,
+        gpt4only,
+        memory_type,
+        browser_name,
+        allow_downloads,
+    )
     logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
     ai_name = ""
     system_prompt = construct_prompt()
@@ -35,9 +106,9 @@ def main() -> None:
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(cfg, init=True)
     logger.typewriter_log(
-        f"Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
+        "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
-    logger.typewriter_log(f"Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
+    logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
     agent = Agent(
         ai_name=ai_name,
         memory=memory,
