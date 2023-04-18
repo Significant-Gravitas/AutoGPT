@@ -49,10 +49,6 @@ class Prompt:
     )
 =======
     @staticmethod
-    def create_prompt_from_ai_config(ai_config):
-        return Prompt(system_prompt=ai_config.construct_full_prompt())
-
-    @staticmethod
     def get_prompt() -> str:
         """
         This function generates a prompt string that includes various constraints,
@@ -63,6 +59,7 @@ class Prompt:
         """
 >>>>>>> 947347b (Remove unused import in prompt.py):autogpt/prompt.py
 
+<<<<<<< HEAD
 <<<<<<< HEAD
     # Define the command list
     commands = [
@@ -115,9 +112,10 @@ class Prompt:
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
     ]
 =======
+=======
+>>>>>>> 30837be8 (solve conflicts)
         # Initialize the Config object
         cfg = Config()
->>>>>>> 2cfc1d38 (Remove unused import in prompt.py)
 
         # Initialize the PromptGenerator object
         prompt_generator = PromptGenerator()
@@ -169,7 +167,7 @@ class Prompt:
             ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
             ("Delete file", "delete_file", {"file": "<file>"}),
             ("Search Files", "search_files", {"directory": "<directory>"}),
-            ("Evaluate Code", "evaluate_code", {"code": "<full_code_string>"}),
+            ("Analyze Code", "analyze_code", {"code": "<full_code_string>"}),
             (
                 "Get Improved Code",
                 "improve_code",

@@ -70,12 +70,15 @@ def main(
     """
     # Put imports inside function to avoid importing everything when starting the CLI
 <<<<<<< HEAD
+<<<<<<< HEAD
     import logging
     import sys
 =======
 >>>>>>> 4ad6e7b (Refactor main function and imports in cli.py)
+=======
+    import logging
+>>>>>>> 52cc322 (solve conflicts)
 
-<<<<<<< HEAD
     from colorama import Fore
 
     from autogpt.agent.agent import Agent
@@ -84,9 +87,18 @@ def main(
     from autogpt.configurator import create_config
     from autogpt.logs import logger
     from autogpt.memory import get_memory
+<<<<<<< HEAD
     from autogpt.plugins import scan_plugins
     from autogpt.prompts.prompt import construct_main_ai_config
+=======
+<<<<<<< HEAD
+    from autogpt.prompt import construct_prompt
+>>>>>>> 52cc322 (solve conflicts)
     from autogpt.utils import get_current_git_branch, get_latest_bulletin
+=======
+    from autogpt.prompt import Prompt
+    from autogpt.utils import get_latest_bulletin
+>>>>>>> 79ca0bc5 (solve conflicts)
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -112,6 +124,7 @@ def main(
             motd = get_latest_bulletin()
             if motd:
                 logger.typewriter_log("NEWS: ", Fore.GREEN, motd)
+<<<<<<< HEAD
             git_branch = get_current_git_branch()
             if git_branch and git_branch != "stable":
                 logger.typewriter_log(
@@ -158,8 +171,12 @@ def main(
             "Determine which next command to use, and respond using the"
             " format specified above:"
         )
+=======
+        prompt = Prompt()
+
+>>>>>>> 79ca0bc5 (solve conflicts)
         # Initialize memory and make sure it is empty.
-        # this is particularly important for indexing and referencing pinecone memory
+        # this is particularly important for indexing and referencing memory
         memory = get_memory(cfg, init=True)
         logger.typewriter_log(
             "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
@@ -171,21 +188,20 @@ def main(
         agent = Agent(
             ai_name=ai_name,
             memory=memory,
+<<<<<<< HEAD
             full_message_history=full_message_history,
             next_action_count=next_action_count,
             command_registry=command_registry,
             config=ai_config,
             system_prompt=system_prompt,
             triggering_prompt=triggering_prompt,
-        )
 =======
-    from autogpt.agent.agent_utils import create_agent
-    from autogpt.prompt import Prompt
-
-    if ctx.invoked_subcommand is None:
-        prompt = Prompt()
-        agent = create_agent(prompt)
->>>>>>> 1b0a03c0 (Refactor main function and imports in cli.py)
+            full_message_history=[],
+            next_action_count=0,
+            system_prompt=prompt.system_prompt,
+            triggering_prompt=prompt.triggering_prompt,
+>>>>>>> 52cc322 (solve conflicts)
+        )
         agent.start_interaction_loop()
 
 
