@@ -11,7 +11,7 @@ from autogpt.commands.file_operations import (
     append_to_file,
     delete_file,
     search_files,
-    LOG_FILE_PATH
+    LOG_FILE_PATH,
 )
 
 from autogpt.workspace import path_in_workspace
@@ -21,6 +21,7 @@ class TestFileOperations(unittest.TestCase):
     """
     This set of unit tests is designed to test the file operations that autoGPT has access to.
     """
+
     def setUp(self):
         self.test_file = "test_file.txt"
         self.test_directory = "test_directory"
@@ -58,11 +59,7 @@ class TestFileOperations(unittest.TestCase):
     def test_split_file(self):
         content = "abcdefghij"
         chunks = list(split_file(content, max_length=4, overlap=1))
-        expected = [
-            "abcd",
-            "defg",
-            "ghij"
-        ]
+        expected = ["abcd", "defg", "ghij"]
         self.assertEqual(chunks, expected)
 
     def test_read_file(self):
@@ -106,7 +103,9 @@ class TestFileOperations(unittest.TestCase):
         if not os.path.exists(path_in_workspace(self.test_directory)):
             os.makedirs(path_in_workspace(self.test_directory))
 
-        with open(path_in_workspace(os.path.join(self.test_directory, file_a)), "w") as f:
+        with open(
+            path_in_workspace(os.path.join(self.test_directory, file_a)), "w"
+        ) as f:
             f.write("This is file A in the subdirectory.")
 
         files = search_files(path_in_workspace(""))
@@ -126,5 +125,5 @@ class TestFileOperations(unittest.TestCase):
         self.assertNotIn(non_existent_file, files)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
