@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import json
 from typing import Optional
+
 from autogpt.config import Config
 
 CFG = Config()
