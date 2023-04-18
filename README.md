@@ -54,6 +54,14 @@ Install the requirements with
 
 `pip install -r requirements.txt`
 
+You must have a docker container built corresponding to the submodule below or the docker run command starting the agent will fail.
+
+Cd into the AutoGPT submodule and build/tag the dockerfile so the agent can be instantiated.
+`cd auto_gpt_benchmarks/Auto-GPT`
+
+Build the container so we can run it procedurally!
+`docker build -t autogpt .`
+
 ## Running the tests
 
 EVALS_THREADS=1 EVALS_THREAD_TIMEOUT=600 oaieval auto_gpt_completion_fn test-match --registry_path $PWD/auto_gpt_benchmarking
