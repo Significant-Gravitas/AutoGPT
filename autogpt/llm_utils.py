@@ -149,7 +149,7 @@ def create_chat_completion(
     if CFG.llm_provider == "openai":
         return response.choices[0].message["content"]
     if CFG.llm_provider == "anthropic":
-        return response['completion'][0]
+        return response['completion']
 
 
 def create_embedding_with_ada(text) -> list:
