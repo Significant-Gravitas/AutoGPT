@@ -58,6 +58,8 @@ class Spinner:
             delay: Delay in seconds before updating the message
         """
         time.sleep(delay)
-        sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")  # Clear the current message
+        sys.stdout.write(
+            f"\r{' ' * (len(self.message) + 2)}\r"
+        )  # Clear the current message
         sys.stdout.flush()
         self.message = new_message

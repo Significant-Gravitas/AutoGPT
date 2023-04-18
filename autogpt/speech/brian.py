@@ -1,5 +1,4 @@
 """ Brian speech module for autogpt """
-from autogpt.speech.base import VoiceBase
 from vocode.turn_based.output_device.speaker_output import SpeakerOutput
 from vocode.turn_based.synthesizer.stream_elements_synthesizer import (
     StreamElementsSynthesizer,

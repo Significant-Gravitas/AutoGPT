@@ -1,9 +1,6 @@
 """ElevenLabs speech module"""
 import os
 import typing
-from playsound import playsound
-
-import requests
 
 from autogpt.config import Config
 from autogpt.speech.base import VoiceBase
