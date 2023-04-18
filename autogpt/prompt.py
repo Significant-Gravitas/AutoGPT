@@ -1,28 +1,18 @@
-from colorama import Fore
-
-from autogpt.config import Config
-from autogpt.config.ai_config import AIConfig
-from autogpt.config.config import Config
-from autogpt.logs import logger
+from autogpt.config import AIConfig, Config
 from autogpt.promptgenerator import PromptGenerator
-from autogpt.setup import prompt_user
-from autogpt.utils import clean_input
-
-CFG = Config()
 
 
-def get_prompt() -> str:
+def get_base_prompt(cfg: Config) -> str:
     """
     This function generates a prompt string that includes various constraints,
         commands, resources, and performance evaluations.
 
+    Parameters:
+        cfg (Config): System configuration class object.
+
     Returns:
         str: The generated prompt string.
     """
-
-    # Initialize the Config object
-    cfg = Config()
-
     # Initialize the PromptGenerator object
     prompt_generator = PromptGenerator()
 
@@ -165,40 +155,30 @@ def get_prompt() -> str:
     return prompt_generator.generate_prompt_string()
 
 
-def construct_prompt() -> str:
-    """Construct the prompt for the AI to respond to
+def construct_full_prompt(cfg: Config, ai_config: AIConfig) -> str:
+    """
+    Returns a prompt to the user with the class information in an organized fashion.
+
+    Parameters:
+        cfg (Config): System configuration class object.
+        ai_config (AIConfig): AIConfig class object that contains the configuration information for the AI.
 
     Returns:
-        str: The prompt string
+        str: A string containing the initial prompt for the user
+             including the ai_name, ai_role and ai_goals.
     """
-    config = AIConfig.load(CFG.ai_settings_file)
-    if CFG.skip_reprompt and config.ai_name:
-        logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
-        logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
-        logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
-    elif config.ai_name:
-        logger.typewriter_log(
-            "Welcome back! ",
-            Fore.GREEN,
-            f"Would you like me to return to being {config.ai_name}?",
-            speak_text=True,
-        )
-        should_continue = clean_input(
-            f"""Continue with the last settings?
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}
-Continue (y/n): """
-        )
-        if should_continue.lower() == "n":
-            config = AIConfig()
 
-    if not config.ai_name:
-        config = prompt_user()
-        config.save(CFG.ai_settings_file)
+    prompt_start = (
+        "Your decisions must always be made independently without"
+        " seeking user assistance. Play to your strengths as an LLM and pursue"
+        " simple strategies with no legal complications."
+        ""
+    )
 
-    # Get rid of this global:
-    global ai_name
-    ai_name = config.ai_name
+    # Construct full prompt
+    full_prompt = f"You are {ai_config.ai_name}, {ai_config.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+    for i, goal in enumerate(ai_config.ai_goals):
+        full_prompt += f"{i+1}. {goal}\n"
 
-    return config.construct_full_prompt()
+    full_prompt += f"\n\n{get_base_prompt(cfg)}"
+    return full_prompt

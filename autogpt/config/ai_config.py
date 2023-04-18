@@ -1,4 +1,3 @@
-# sourcery skip: do-not-use-staticmethod
 """
 A module that contains the AIConfig class object that contains the configuration
 """
@@ -43,20 +42,19 @@ class AIConfig:
     SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "ai_settings.yaml")
 
     @staticmethod
-    def load(config_file: str = SAVE_FILE) -> "AIConfig":
+    def load(config_file: str = SAVE_FILE) -> AIConfig:
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from
           yaml file if yaml file exists,
         else returns class with no parameters.
 
         Parameters:
-           config_file (int): The path to the config yaml file.
+           config_file (str): The path to the config yaml file.
              DEFAULT: "../ai_settings.yaml"
 
         Returns:
             cls (object): An instance of given cls object
         """
-
         try:
             with open(config_file, encoding="utf-8") as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
@@ -74,7 +72,7 @@ class AIConfig:
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
         Parameters:
-            config_file(str): The path to the config yaml file.
+            config_file (str): The path to the config yaml file.
               DEFAULT: "../ai_settings.yaml"
 
         Returns:
@@ -88,34 +86,3 @@ class AIConfig:
         }
         with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
-
-    def construct_full_prompt(self) -> str:
-        """
-        Returns a prompt to the user with the class information in an organized fashion.
-
-        Parameters:
-            None
-
-        Returns:
-            full_prompt (str): A string containing the initial prompt for the user
-              including the ai_name, ai_role and ai_goals.
-        """
-
-        prompt_start = (
-            "Your decisions must always be made independently without"
-            " seeking user assistance. Play to your strengths as an LLM and pursue"
-            " simple strategies with no legal complications."
-            ""
-        )
-
-        from autogpt.prompt import get_prompt
-
-        # Construct full prompt
-        full_prompt = (
-            f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
-        )
-        for i, goal in enumerate(self.ai_goals):
-            full_prompt += f"{i+1}. {goal}\n"
-
-        full_prompt += f"\n\n{get_prompt()}"
-        return full_prompt
