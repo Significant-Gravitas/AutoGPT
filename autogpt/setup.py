@@ -1,5 +1,6 @@
-"""Setup the AI and its goals"""
+"""Set up the AI and its goals"""
 from colorama import Fore, Style
+
 from autogpt import utils
 from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
