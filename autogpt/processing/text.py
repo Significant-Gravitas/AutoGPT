@@ -11,6 +11,15 @@ MEMORY = get_memory(CFG)
 
 
 def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
+    """Split text into chunks of a maximum length
+    Args:
+        text (str): The text to split
+        max_length (int, optional): The maximum length of each chunk. Defaults to 8192.
+    Yields:
+        str: The next chunk of text
+    Raises:
+        ValueError: If the text is longer than the maximum length
+    """
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
