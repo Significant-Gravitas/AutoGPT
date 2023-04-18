@@ -10,9 +10,8 @@ CFG = Config()
 def fix_json_using_multiple_techniques(assistant_reply: str) -> Dict[Any, Any]:
     from autogpt.json_fixes.parsing import (
         attempt_to_fix_json_by_finding_outermost_brackets,
+        fix_and_parse_json,
     )
-
-    from autogpt.json_fixes.parsing import fix_and_parse_json
 
     # Parse and print Assistant response
     assistant_reply_json = fix_and_parse_json(assistant_reply)

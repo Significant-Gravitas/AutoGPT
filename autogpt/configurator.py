@@ -1,7 +1,7 @@
-"""This module contains the argument parsing logic for the script."""
-import argparse
+"""Configurator module."""
+import click
+from colorama import Back, Fore, Style
 
-from colorama import Fore, Back, Style
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -10,72 +10,45 @@ from autogpt.memory import get_supported_memory_backends
 CFG = Config()
 
 
-def parse_arguments() -> None:
-    """Parses the arguments passed to the script
+def create_config(
+    continuous: bool,
+    continuous_limit: int,
+    ai_settings_file: str,
+    skip_reprompt: bool,
+    speak: bool,
+    debug: bool,
+    gpt3only: bool,
+    gpt4only: bool,
+    memory_type: str,
+    browser_name: str,
+    allow_downloads: bool,
+    skip_news: bool,
+) -> None:
+    """Updates the config object with the given arguments.
 
-    Returns:
-        None
+    Args:
+        continuous (bool): Whether to run in continuous mode
+        continuous_limit (int): The number of times to run in continuous mode
+        ai_settings_file (str): The path to the ai_settings.yaml file
+        skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
+        speak (bool): Whether to enable speak mode
+        debug (bool): Whether to enable debug mode
+        gpt3only (bool): Whether to enable GPT3.5 only mode
+        gpt4only (bool): Whether to enable GPT4 only mode
+        memory_type (str): The type of memory backend to use
+        browser_name (str): The name of the browser to use when using selenium to scrape the web
+        allow_downloads (bool): Whether to allow Auto-GPT to download files natively
+        skips_news (bool): Whether to suppress the output of latest news on startup
     """
     CFG.set_debug_mode(False)
     CFG.set_continuous_mode(False)
     CFG.set_speak_mode(False)
 
-    parser = argparse.ArgumentParser(description="Process arguments.")
-    parser.add_argument(
-        "--continuous", "-c", action="store_true", help="Enable Continuous Mode"
-    )
-    parser.add_argument(
-        "--continuous-limit",
-        "-l",
-        type=int,
-        dest="continuous_limit",
-        help="Defines the number of times to run in continuous mode",
-    )
-    parser.add_argument("--speak", action="store_true", help="Enable Speak Mode")
-    parser.add_argument("--debug", action="store_true", help="Enable Debug Mode")
-    parser.add_argument(
-        "--gpt3only", action="store_true", help="Enable GPT3.5 Only Mode"
-    )
-    parser.add_argument("--gpt4only", action="store_true", help="Enable GPT4 Only Mode")
-    parser.add_argument(
-        "--use-memory",
-        "-m",
-        dest="memory_type",
-        help="Defines which Memory backend to use",
-    )
-    parser.add_argument(
-        "--skip-reprompt",
-        "-y",
-        dest="skip_reprompt",
-        action="store_true",
-        help="Skips the re-prompting messages at the beginning of the script",
-    )
-    parser.add_argument(
-        "--use-browser",
-        "-b",
-        dest="browser_name",
-        help="Specifies which web-browser to use when using selenium to scrape the web.",
-    )
-    parser.add_argument(
-        "--ai-settings",
-        "-C",
-        dest="ai_settings_file",
-        help="Specifies which ai_settings.yaml file to use, will also automatically"
-        " skip the re-prompt.",
-    )
-    parser.add_argument(
-        "--allow-downloads",
-        action="store_true",
-        dest="allow_downloads",
-        help="Dangerous: Allows Auto-GPT to download files natively.",
-    )
-    args = parser.parse_args()
-
-    if args.debug:
+    if debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_debug_mode(True)
 
-    if args.continuous:
+    if continuous:
         logger.typewriter_log("Continuous Mode: ", Fore.RED, "ENABLED")
         logger.typewriter_log(
             "WARNING: ",
@@ -86,31 +59,31 @@ def parse_arguments() -> None:
         )
         CFG.set_continuous_mode(True)
 
-        if args.continuous_limit:
+        if continuous_limit:
             logger.typewriter_log(
-                "Continuous Limit: ", Fore.GREEN, f"{args.continuous_limit}"
+                "Continuous Limit: ", Fore.GREEN, f"{continuous_limit}"
             )
-            CFG.set_continuous_limit(args.continuous_limit)
+            CFG.set_continuous_limit(continuous_limit)
 
     # Check if continuous limit is used without continuous mode
-    if args.continuous_limit and not args.continuous:
-        parser.error("--continuous-limit can only be used with --continuous")
+    if continuous_limit and not continuous:
+        raise click.UsageError("--continuous-limit can only be used with --continuous")
 
-    if args.speak:
+    if speak:
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_speak_mode(True)
 
-    if args.gpt3only:
+    if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_smart_llm_model(CFG.fast_llm_model)
 
-    if args.gpt4only:
+    if gpt4only:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_fast_llm_model(CFG.smart_llm_model)
 
-    if args.memory_type:
+    if memory_type:
         supported_memory = get_supported_memory_backends()
-        chosen = args.memory_type
+        chosen = memory_type
         if chosen not in supported_memory:
             logger.typewriter_log(
                 "ONLY THE FOLLOWING MEMORY BACKENDS ARE SUPPORTED: ",
@@ -121,12 +94,12 @@ def parse_arguments() -> None:
         else:
             CFG.memory_backend = chosen
 
-    if args.skip_reprompt:
+    if skip_reprompt:
         logger.typewriter_log("Skip Re-prompt: ", Fore.GREEN, "ENABLED")
         CFG.skip_reprompt = True
 
-    if args.ai_settings_file:
-        file = args.ai_settings_file
+    if ai_settings_file:
+        file = ai_settings_file
 
         # Validate file
         (validated, message) = utils.validate_yaml_file(file)
@@ -139,7 +112,7 @@ def parse_arguments() -> None:
         CFG.ai_settings_file = file
         CFG.skip_reprompt = True
 
-    if args.allow_downloads:
+    if allow_downloads:
         logger.typewriter_log("Native Downloading:", Fore.GREEN, "ENABLED")
         logger.typewriter_log(
             "WARNING: ",
@@ -154,5 +127,8 @@ def parse_arguments() -> None:
         )
         CFG.allow_downloads = True
 
-    if args.browser_name:
-        CFG.selenium_web_browser = args.browser_name
+    if skip_news:
+        CFG.skip_news = True
+
+    if browser_name:
+        CFG.selenium_web_browser = browser_name

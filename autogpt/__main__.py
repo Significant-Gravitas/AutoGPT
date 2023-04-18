@@ -1,3 +1,10 @@
+"""Auto-GPT: A GPT powered AI Assistant"""
+import autogpt.cli
+
+if __name__ == "__main__":
+    autogpt.cli.main()
+
+
 """Main script for the autogpt package."""
 import logging
 
@@ -71,7 +78,3 @@ def main() -> None:
         triggering_prompt=triggering_prompt,
     )
     agent.start_interaction_loop()
-
-
-if __name__ == "__main__":
-    main()

@@ -58,9 +58,28 @@ def check_local_file_access(url: str) -> bool:
     """
     local_prefixes = [
         "file:///",
+        "file://localhost/",
         "file://localhost",
         "http://localhost",
+        "http://localhost/",
         "https://localhost",
+        "https://localhost/",
+        "http://2130706433",
+        "http://2130706433/",
+        "https://2130706433",
+        "https://2130706433/",
+        "http://127.0.0.1/",
+        "http://127.0.0.1",
+        "https://127.0.0.1/",
+        "https://127.0.0.1",
+        "https://0.0.0.0/",
+        "https://0.0.0.0",
+        "http://0.0.0.0/",
+        "http://0.0.0.0",
+        "http://0000",
+        "http://0000/",
+        "https://0000",
+        "https://0000/",
     ]
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
