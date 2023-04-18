@@ -1,24 +1,32 @@
 import os
 import re
+
 from pdfminer.high_level import extract_text
 
 """
 author wangqi
 """
 
+
 def filter_text(text):
-    text = re.sub(r"(?i)^\s*REFERENCES\s*$[\s\S]*", "", text, flags=re.MULTILINE)  # Remove text after "REFERENCES" (case-insensitive)
-    paragraphs = re.split(r'\n\s*\n', text)
-    filtered_paragraphs = [p for p in paragraphs if not re.match(r"\s*\[\d+\]", p.strip())]
+    text = re.sub(
+        r"(?i)^\s*REFERENCES\s*$[\s\S]*", "", text, flags=re.MULTILINE
+    )  # Remove text after "REFERENCES" (case-insensitive)
+    paragraphs = re.split(r"\n\s*\n", text)
+    filtered_paragraphs = [
+        p for p in paragraphs if not re.match(r"\s*\[\d+\]", p.strip())
+    ]
     return "\n\n".join(filtered_paragraphs)
+
 
 def remove_duplicate_lines(text):
     lines = text.splitlines()
     unique_lines = list(dict.fromkeys(lines))
     return "\n".join(unique_lines)
 
+
 def split_text(text, char_limit):
-    paragraphs = re.split(r'\n\s*\n', text)
+    paragraphs = re.split(r"\n\s*\n", text)
     chunks = []
     current_chunk = ""
 
@@ -34,6 +42,7 @@ def split_text(text, char_limit):
 
     return chunks
 
+
 def print_chunks(file_path, char_limit):
     raw_text = extract_text(file_path)
     filtered_text = filter_text(raw_text)
@@ -46,9 +55,10 @@ def print_chunks(file_path, char_limit):
         print("\n" + "=" * 40 + "\n")
 
     file_path = os.path.join("auto_gpt_workspace", "agent.txt")
-    with open(file_path, 'w') as out_file:
+    with open(file_path, "w") as out_file:
         for chunk in chunks:
             out_file.write(chunk)
+
 
 if __name__ == "__main__":
     file_path = os.path.join("auto_gpt_workspace", "agent.pdf")

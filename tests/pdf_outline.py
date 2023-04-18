@@ -1,15 +1,18 @@
 import os
-from pdfminer.pdfparser import PDFParser
-from pdfminer.pdfdocument import PDFDocument
-from pdfminer.pdfpage import PDFPage
-from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from io import StringIO
+
 from pdfminer.converter import TextConverter
 from pdfminer.layout import LAParams
-from io import StringIO
+from pdfminer.pdfdocument import PDFDocument
+from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
+from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfparser import PDFParser
 
 """
 author wangqi
 """
+
+
 class Outline:
     def __init__(self, title, level, content):
         self.title = title
@@ -37,7 +40,7 @@ def extract_text_from_page(document, page_number):
 
 
 def extract_outlines(file_path):
-    with open(file_path, 'rb') as file:
+    with open(file_path, "rb") as file:
         parser = PDFParser(file)
         document = PDFDocument(parser)
 
@@ -49,8 +52,8 @@ def extract_outlines(file_path):
         try:
             raw_outlines = document.get_outlines()
             for level, title, dest, _, _ in raw_outlines:
-                if dest is not None and 'PageNumber' in dest:
-                    page_number = dest['PageNumber']
+                if dest is not None and "PageNumber" in dest:
+                    page_number = dest["PageNumber"]
                     content = extract_text_from_page(document, page_number)
                 else:
                     content = ""
