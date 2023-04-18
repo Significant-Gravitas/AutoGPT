@@ -1,5 +1,4 @@
 """Handles loading of plugins."""
-import zipfile
 from typing import Any, Dict, List, Optional, Tuple, TypedDict
 from typing import TypeVar
 
@@ -11,7 +10,7 @@ class Message(TypedDict):
     content: str
 
 
-class BaseOpenAIPluginClient():
+class BaseOpenAIPlugin:
     """
     This is a template for Auto-GPT plugins.
     """
