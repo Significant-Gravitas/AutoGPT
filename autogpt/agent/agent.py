@@ -12,6 +12,41 @@ from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 
 
+def should_prompt_user(continuous_mode, next_action_count):
+    return not continuous_mode and next_action_count == 0
+
+
+def generate_user_feedback_message(ai_name):
+    return "Enter 'y' to authorise command, 'y -N' to run N continuous commands," \
+           "'n' to exit program, or enter feedback for " \
+           f"{ai_name}... "
+
+
+def calculate_next_command_from_user_input(console_input):
+    command_name = None
+    next_action_count = 0
+
+    if console_input.lower().rstrip() == "y":
+        user_input = "GENERATE NEXT COMMAND JSON"
+    elif console_input.lower().startswith("y -"):
+        try:
+            next_action_count = abs(
+                int(console_input.split(" ")[1])
+            )
+            user_input = "GENERATE NEXT COMMAND JSON"
+        except ValueError:
+            command_name = "input error"
+            user_input = "Invalid input format. Please enter 'y -n' where n is" \
+                " the number of continuous tasks."
+    elif console_input.lower() == "n":
+        user_input = "EXIT"
+    else:
+        user_input = console_input
+        command_name = "human_feedback"
+
+    return command_name, next_action_count, user_input
+
+
 class Agent:
     """Agent class for interacting with Auto-GPT.
 
@@ -83,7 +118,7 @@ class Agent:
             except Exception as e:
                 logger.error("Error: \n", str(e))
 
-            if not cfg.continuous_mode and self.next_action_count == 0:
+            if should_prompt_user(cfg.continuous_mode, self.next_action_count):
                 ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -94,39 +129,25 @@ class Agent:
                     f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
                     f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
+                user_feedback_message = generate_user_feedback_message(self.ai_name)
+
                 print(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous "
-                    "commands, 'n' to exit program, or enter feedback for "
-                    f"{self.ai_name}...",
+                    user_feedback_message,
                     flush=True,
                 )
                 while True:
                     console_input = clean_input(
                         Fore.MAGENTA + "Input:" + Style.RESET_ALL
                     )
-                    if console_input.lower().rstrip() == "y":
-                        self.user_input = "GENERATE NEXT COMMAND JSON"
-                        break
-                    elif console_input.lower().startswith("y -"):
-                        try:
-                            self.next_action_count = abs(
-                                int(console_input.split(" ")[1])
-                            )
-                            self.user_input = "GENERATE NEXT COMMAND JSON"
-                        except ValueError:
-                            print(
-                                "Invalid input format. Please enter 'y -n' where n is"
-                                " the number of continuous tasks."
-                            )
-                            continue
-                        break
-                    elif console_input.lower() == "n":
-                        self.user_input = "EXIT"
-                        break
-                    else:
-                        self.user_input = console_input
-                        command_name = "human_feedback"
-                        break
+                    new_command_name, self.next_action_count, self.user_input = \
+                        calculate_next_command_from_user_input(console_input)
+                    # If there was a parsing error, go back to the prompt
+                    # Otherwise if new command name is not None, update command name
+                    if new_command_name == "input error":
+                        print(self.user_input)
+                        continue
+                    elif new_command_name is not None:
+                        command_name = new_command_name
 
                 if self.user_input == "GENERATE NEXT COMMAND JSON":
                     logger.typewriter_log(
