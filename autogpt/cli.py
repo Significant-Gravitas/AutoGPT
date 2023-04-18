@@ -42,6 +42,11 @@ import click
     is_flag=True,
     help="Dangerous: Allows Auto-GPT to download files natively.",
 )
+@click.option(
+    "--skip-news",
+    is_flag=True,
+    help="Specifies whether to suppress the output of latest news on startup.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -56,6 +61,7 @@ def main(
     memory_type: str,
     browser_name: str,
     allow_downloads: bool,
+    skip_news: bool
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -73,6 +79,7 @@ def main(
     from autogpt.logs import logger
     from autogpt.memory import get_memory
     from autogpt.prompt import construct_prompt
+    from autogpt.utils import get_latest_bulletin
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -90,9 +97,14 @@ def main(
             memory_type,
             browser_name,
             allow_downloads,
+            skip_news
         )
         logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
         ai_name = ""
+        if not cfg.skip_news:
+            motd = get_latest_bulletin()
+            if motd:
+                logger.typewriter_log("NEWS: ", Fore.GREEN, motd)
         system_prompt = construct_prompt()
         # print(prompt)
         # Initialize variables
