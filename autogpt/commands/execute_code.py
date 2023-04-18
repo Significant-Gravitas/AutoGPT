@@ -5,10 +5,10 @@ import subprocess
 import docker
 from docker.errors import ImageNotFound
 
-from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
+from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
 
 
-def execute_python_file(file: str):
+def execute_python_file(file: str) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
@@ -40,10 +40,10 @@ def execute_python_file(file: str):
     try:
         client = docker.from_env()
 
-        # You can replace 'python:3.8' with the desired Python image/version
+        # You can replace this with the desired Python image/version
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
-        image_name = "python:3.10"
+        image_name = "python:3-alpine"
         try:
             client.images.get(image_name)
             print(f"Image '{image_name}' found locally")
@@ -112,6 +112,36 @@ def execute_shell(command_line: str) -> str:
     os.chdir(current_dir)
 
     return output
+
+
+def execute_shell_popen(command_line) -> str:
+    """Execute a shell command with Popen and returns an english description
+    of the event and the process id
+
+    Args:
+        command_line (str): The command line to execute
+
+    Returns:
+        str: Description of the fact that the process started and its id
+    """
+    current_dir = os.getcwd()
+
+    if WORKING_DIRECTORY not in current_dir:  # Change dir into workspace if necessary
+        work_dir = os.path.join(os.getcwd(), WORKING_DIRECTORY)
+        os.chdir(work_dir)
+
+    print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
+
+    do_not_show_output = subprocess.DEVNULL
+    process = subprocess.Popen(
+        command_line, shell=True, stdout=do_not_show_output, stderr=do_not_show_output
+    )
+
+    # Change back to whatever the prior working dir was
+
+    os.chdir(current_dir)
+
+    return f"Subprocess started with PID:'{str(process.pid)}'"
 
 
 def we_are_running_in_a_docker_container() -> bool:

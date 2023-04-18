@@ -1,12 +1,15 @@
 """Main script for the autogpt package."""
 import logging
+
 from colorama import Fore
+
 from autogpt.agent.agent import Agent
 from autogpt.args import parse_arguments
 from autogpt.config import Config, check_openai_api_key
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.prompt import construct_prompt
+
 # Load environment variables from .env file
 
 

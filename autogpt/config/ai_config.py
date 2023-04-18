@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 from typing import Type, List
+
 import yaml
 
 from autogpt import tools
