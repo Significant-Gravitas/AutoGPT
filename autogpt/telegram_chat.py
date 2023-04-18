@@ -96,7 +96,7 @@ class TelegramUtils:
     @staticmethod
     async def ask_user_async(prompt):
         global response_queue
-        question = prompt + " (reply to this message)"
+        question = prompt + " (reply to this message) \n Confirm: /yes     Decline: /no"
 
         response_queue = ""
         # await delete_old_messages()
@@ -119,8 +119,10 @@ class TelegramUtils:
             exit(0)
         elif response_queue == "/yes":
             response_text = "yes"
+            response_queue = "yes"
         elif response_queue == "/no":
             response_text = "no"
+            response_queue = "no"
         if response_queue.capitalize() in [
             "Yes", "Okay", "Ok", "Sure", "Yeah", "Yup", "Yep"
         ]:

@@ -54,8 +54,20 @@ async def start(update: Update, context: CallbackContext):
             return
         else:
             TelegramUtils.send_message("Auto-GPT is starting now!")
-            os.system("python -m autogpt {}".format(" ".join(sys.argv[1:])))
-
+            # check if python is installed, using python3 if not
+            if os.name == 'nt':
+                # Check if main is still running
+                process = os.popen('where python')
+            else:
+                # check if main is still running
+                process = os.popen('which python')
+            output = process.read()
+            process.close
+            print(output)
+            if "python" in output:
+                os.system("python -m autogpt {}".format(" ".join(sys.argv[1:])))
+            else:
+                os.system("python3 -m autogpt {}".format(" ".join(sys.argv[1:])))
 
 def main():
     print("Starting up...")
