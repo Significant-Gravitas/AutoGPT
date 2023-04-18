@@ -97,13 +97,19 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
     cd Auto-GPT
     ```
 
-4. Install the required dependencies
+4. Checkout the stable branch
+
+    ```bash
+    git checkout stable
+    ```
+
+5. Install the required dependencies
 
     ```bash
     pip install -r requirements.txt
     ```
 
-5. Configure Auto-GPT
+6. Configure Auto-GPT
    1. Locate the file named `.env.template` in the main `/Auto-GPT` folder.
    2. Create a copy of this file, called `.env` by removing the `template` extension.  The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`.
    3. Open the `.env` file in a text editor.  _Note: Files starting with a dot might be hidden by your Operating System._
