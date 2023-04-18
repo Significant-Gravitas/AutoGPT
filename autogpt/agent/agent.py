@@ -148,6 +148,7 @@ class Agent:
                         continue
                     elif new_command_name is not None:
                         command_name = new_command_name
+                    break
 
                 if self.user_input == "GENERATE NEXT COMMAND JSON":
                     logger.typewriter_log(
