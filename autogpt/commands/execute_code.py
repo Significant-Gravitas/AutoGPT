@@ -85,7 +85,7 @@ def execute_python_file(file: str):
         return logs
     
     except docker.errors.DockerException as e:
-        print("Docker ran into an error. If you haven't already, please install Docker https://docs.docker.com")
+        print("Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/")
         return f"Error: {str(e)}"
     
     except Exception as e:
