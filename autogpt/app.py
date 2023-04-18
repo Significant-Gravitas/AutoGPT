@@ -1,14 +1,20 @@
 """ Command and Control """
 import json
-from typing import List, NoReturn, Union, Dict
+from typing import Dict, List, NoReturn, Union
+
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.evaluate_code import evaluate_code
-from autogpt.commands.execute_code import execute_python_file, execute_shell
+from autogpt.commands.execute_code import (
+    execute_python_file,
+    execute_shell,
+    execute_shell_popen,
+)
 from autogpt.commands.file_operations import (
     append_to_file,
     delete_file,
+    download_file,
     read_file,
     search_files,
     write_to_file,
@@ -118,9 +124,8 @@ def execute_command(
         arguments (dict): The arguments for the command
 
     Returns:
-        str: The result of the command"""
-    memory = get_memory(CFG)
-
+        str: The result of the command
+    """
     try:
         cmd = command_registry.commands.get(command_name)
 
@@ -129,7 +134,7 @@ def execute_command(
             return cmd(**arguments)
 
         # TODO: Remove commands below after they are moved to the command registry.
-        command_name = map_command_synonyms(command_name)
+        command_name = map_command_synonyms(command_name.lower())
 
         if command_name == "memory_add":
             return memory.add(arguments["string"])
@@ -141,7 +146,15 @@ def execute_command(
             if not CFG.allow_downloads:
                 return "Error: You do not have user authorization to download files locally."
             return download_file(arguments["url"], arguments["file"])
-
+        elif command_name == "execute_shell_popen":
+            if CFG.execute_local_commands:
+                return execute_shell_popen(arguments["command_line"])
+            else:
+                return (
+                    "You are not allowed to run local shell commands. To execute"
+                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+                    "in your config. Do not attempt to bypass the restriction."
+                )
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
@@ -163,7 +176,7 @@ def execute_command(
 
 
 def get_text_summary(url: str, question: str) -> str:
-    """Return the results of a google search
+    """Return the results of a Google search
 
     Args:
         url (str): The url to scrape
@@ -178,7 +191,7 @@ def get_text_summary(url: str, question: str) -> str:
 
 
 def get_hyperlinks(url: str) -> Union[str, List[str]]:
-    """Return the results of a google search
+    """Return the results of a Google search
 
     Args:
         url (str): The url to scrape

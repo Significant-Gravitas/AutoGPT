@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
-from typing import Any
+from typing import Any, List
 
 import numpy as np
 import orjson
