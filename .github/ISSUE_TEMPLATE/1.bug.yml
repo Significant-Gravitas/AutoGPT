@@ -108,6 +108,6 @@ body:
         ```
         </details>
       value: |
-        ```
+        ```log
         <insert your logs here>
         ```
