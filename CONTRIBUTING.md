@@ -20,6 +20,12 @@ This document provides guidelines and best practices to help you contribute effe
 
 By participating in this project, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md). Please read it to understand the expectations we have for everyone who contributes to this project.
 
+## 📢 A Quick Word
+Right now we will not be accepting any Contributions that add non-essential commands to Auto-GPT.
+
+However, you absolutely can still add these commands to Auto-GPT in the form of plugins. Please check out this [template](https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template).
+> Please note that the plugins framework has still not been finalized just yet, but stay tuned. You can follow PR #757 for more updates!
+
 ## Getting Started
 
 To start contributing, follow these steps:

@@ -1,3 +1,9 @@
+<!-- ⚠️ At the moment any non-essential commands are not being merged.
+Please create your Pull Request as a plugin instead.
+Resources:
+* https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template
+-->
+
 <!-- 📢 Announcement
 We've recently noticed an increase in pull requests focusing on combining multiple changes. While the intentions behind these PRs are appreciated, it's essential to maintain a clean and manageable git history. To ensure the quality of our repository, we kindly ask you to adhere to the following guidelines when submitting PRs:
 
