@@ -1,4 +1,8 @@
+""" A module for generating custom prompt strings."""
+from __future__ import annotations
+
 import json
+from typing import Any
 
 
 class PromptGenerator:
@@ -7,7 +11,7 @@ class PromptGenerator:
         resources, and performance evaluations.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize the PromptGenerator object with empty lists of constraints,
             commands, resources, and performance evaluations.
@@ -27,7 +31,7 @@ class PromptGenerator:
             "command": {"name": "command name", "args": {"arg name": "value"}},
         }
 
-    def add_constraint(self, constraint):
+    def add_constraint(self, constraint: str) -> None:
         """
         Add a constraint to the constraints list.
 
@@ -36,7 +40,7 @@ class PromptGenerator:
         """
         self.constraints.append(constraint)
 
-    def add_command(self, command_label, command_name, args=None):
+    def add_command(self, command_label: str, command_name: str, args=None) -> None:
         """
         Add a command to the commands list with a label, name, and optional arguments.
 
@@ -59,7 +63,7 @@ class PromptGenerator:
 
         self.commands.append(command)
 
-    def _generate_command_string(self, command):
+    def _generate_command_string(self, command: dict[str, Any]) -> str:
         """
         Generate a formatted string representation of a command.
 
@@ -92,7 +96,7 @@ class PromptGenerator:
         """
         self.performance_evaluation.append(evaluation)
 
-    def _generate_numbered_list(self, items, item_type="list") -> str:
+    def _generate_numbered_list(self, items: list[Any], item_type="list") -> str:
         """
         Generate a numbered list from given items based on the item_type.
 
@@ -130,5 +134,5 @@ class PromptGenerator:
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
             "You should only respond in JSON format as described below \nResponse"
             f" Format: \n{formatted_response_format} \nEnsure the response can be"
-            "parsed by Python json.loads"
+            " parsed by Python json.loads"
         )

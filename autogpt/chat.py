@@ -5,7 +5,7 @@ from openai.error import RateLimitError
 from autogpt import token_counter
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
-from autogpt.logger import logger
+from autogpt.logs import logger
 
 cfg = Config()
 
@@ -96,7 +96,7 @@ def chat_with_ai(
 
             while current_tokens_used > 2500:
                 # remove memories until we are under 2500 tokens
-                relevant_memory = relevant_memory[1:]
+                relevant_memory = relevant_memory[:-1]
                 (
                     next_message_to_add_index,
                     current_tokens_used,
