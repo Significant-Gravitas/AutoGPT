@@ -118,7 +118,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 
    By completing these steps, you have properly configured the API Keys for your project.
    
-   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
+   - See [OpenAI API Keys Configuration](#%EF%B8%8F-openai-api-keys-configuration-%EF%B8%8F) to obtain your OpenAI API key.
    - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
    - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
      - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section:
