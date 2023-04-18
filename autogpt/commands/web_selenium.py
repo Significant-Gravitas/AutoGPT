@@ -91,6 +91,10 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         EC.presence_of_element_located((By.TAG_NAME, "body"))
     )
 
+    # Check if "captcha" or "i am not a robot" is in the page source
+    if "captcha" in driver.page_source.lower() or "i am not a robot" in driver.page_source.lower():
+        input("Please complete the CAPTCHA or 'I am not a robot' check and press Enter to continue...")
+
     # Get the HTML content directly from the browser's DOM
     page_source = driver.execute_script("return document.body.outerHTML;")
     soup = BeautifulSoup(page_source, "html.parser")
