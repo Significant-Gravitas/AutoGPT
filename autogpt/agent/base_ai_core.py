@@ -49,6 +49,7 @@ class BaseAICore(abc.ABC):
         master_mind_channel: typing.Tuple[
             trio.MemorySendChannel, trio.MemoryReceiveChannel
         ] = (None, None),
+        debug: bool = False,
     ):
         """
         Initialize a class instance.
@@ -72,6 +73,7 @@ class BaseAICore(abc.ABC):
         self.is_sub_mind = master_mind_id is not None
         self.master_mind_id = master_mind_id
         self.master_send_channel, self.master_receive_channel = master_mind_channel
+        self.debug = debug
 
     async def send_event(self, event: Event) -> None:
         """Send an event to the event channel.
@@ -86,14 +88,14 @@ class BaseAICore(abc.ABC):
         Receive a command from the command channel and sends it for processing
         """
         command = await self.command_receive_channel.receive()
-        self.process_commands(command)
+        await self.process_commands(command)
 
     async def receive_command_from_master(self) -> None:
         """
         Receive a command from the master mind's command channel and sends it for processing
         """
         command = await self.master_receive_channel.receive()
-        self.process_commands(command)
+        await self.process_commands(command)
 
     async def send_report_to_master(self, command: Command) -> None:
         """
@@ -111,17 +113,20 @@ class BaseAICore(abc.ABC):
         """
         pass
 
-    @abc.abstractmethod
     async def run(self) -> None:
         """The main loop of the AI core."""
-        pass
+        keep_running = True
+        while keep_running:
+            await self.receive_command()
+            if self.is_sub_mind:
+                await self.receive_command_from_master()
 
-    async def spawn_sub_mind(self, ai_core: BaseAICore) -> None:
-        """
-        Spawn a sub mind.
+    # async def spawn_sub_mind(self, ai_core: BaseAICore) -> None:
+    #     """
+    #     Spawn a sub mind.
 
-        Args:
-            ai_core (BaseAICore): The AI core to be spawned.
-        """
-        async with trio.open_nursery() as nursery:
-            nursery.start_soon(ai_core.run)
+    #     Args:
+    #         ai_core (BaseAICore): The AI core to be spawned.
+    #     """
+    #     async with trio.open_nursery() as nursery:
+    #         nursery.start_soon(ai_core.run)

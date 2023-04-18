@@ -1,5 +1,5 @@
 """Agent module."""
-import click
+import asyncclick as click
 
 from autogpt.agent.agent import Agent
 from autogpt.agent.agent_manager import AgentManager
@@ -14,11 +14,12 @@ def agent() -> None:
 
 
 @agent.command()
-def v2() -> None:
+async def v2() -> None:
     """Command for running the v2 Auto-GPT agent."""
+    import tracemalloc
+
     import trio
 
-    import autogpt.agent.autogpt_core
+    import autogpt.agent.agent_manager
 
-    # run the agent
-    trio.run(AgentManager.run, autogpt.agent.autogpt_core.AutoGptCore)
+    trio.run(autogpt.agent.agent_manager.async_agent_manager)

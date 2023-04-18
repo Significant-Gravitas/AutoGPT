@@ -4,6 +4,7 @@ import trio
 from autogpt.agent.base_ai_core import Abilities, Ability, BaseAICore
 from autogpt.agent.LLM.openai_provider import OpenAIProvider
 from autogpt.agent.memory.local_memory_provider import LocalMemoryProvider
+from autogpt.agent.messages import Command, Event
 
 
 class AutoGptCore(BaseAICore):
@@ -16,9 +17,10 @@ class AutoGptCore(BaseAICore):
         abilities: list[Ability],
         command_channel: tuple[trio.MemorySendChannel, trio.MemoryReceiveChannel],
         event_channel: tuple[trio.MemorySendChannel, trio.MemoryReceiveChannel],
-        master_mind_id: str | None = None,
-        master_mind_channel: tuple[trio.MemorySendChannel, trio.MemoryReceiveChannel]
-        | None = None,
+        master_mind_id: str = None,
+        master_mind_channel: tuple[
+            trio.MemorySendChannel, trio.MemoryReceiveChannel
+        ] = (None, None),
     ):
         super().__init__(
             memory_provider,
@@ -34,7 +36,18 @@ class AutoGptCore(BaseAICore):
         """Run the AI core."""
 
         while True:
-            command = await self.command_receive_channel.receive()
             # wait 1 second
+            await self.receive_command()
             await trio.sleep(1)
-            print(command)
+
+    async def process_commands(self, command: Command) -> None:
+        """Process a command."""
+        if command.command == "test":
+            await self.send_event(
+                Event(
+                    ai_core_id="user",
+                    event="test",
+                    data={"message": "received Command: test"},
+                )
+            )
+        print(command)

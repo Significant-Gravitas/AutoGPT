@@ -1,5 +1,5 @@
 """Main script for the autogpt package."""
-import click
+import asyncclick as click
 
 # Importing agent subcommands
 import autogpt.agent
