@@ -177,10 +177,8 @@ def instantiate_openai_plugin_clients(manifests_specs_clients: dict, cfg: Config
     return plugins
 
 
-def load_plugins(
-    plugins_path: Path, debug: bool = False
-) -> List[AutoGPTPluginTemplate]:
-    """Load plugins from the plugins directory.
+def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate]:
+    """Scan the plugins directory for plugins and loads them.
 
     Args:
         cfg (Config): Config instance including plugins config
