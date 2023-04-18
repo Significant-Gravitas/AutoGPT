@@ -296,7 +296,7 @@ def message_agent(key: str, message: str) -> str:
     """Message an agent with a given key and message"""
     # Check if the key is a valid integer
     if is_valid_int(key):
-        agent_response = AGENT_MANAGER.message_agent(int(key), message)
+        agent_response = AGENT_MANAGER.message_agent(key, message)
     else:
         return "Invalid key, must be an integer."
 
