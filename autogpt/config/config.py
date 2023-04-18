@@ -24,6 +24,7 @@ class Config(metaclass=Singleton):
         self.speak_mode = False
         self.skip_reprompt = False
         self.allow_downloads = False
+        self.use_chatgpt = False
 
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
@@ -34,6 +35,7 @@ class Config(metaclass=Singleton):
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_chatgpt_access_token = os.getenv("OPENAI_CHATGPT_ACCESS_TOKEN")
         self.temperature = float(os.getenv("TEMPERATURE", "1"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (

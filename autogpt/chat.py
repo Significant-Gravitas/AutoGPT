@@ -157,6 +157,7 @@ def chat_with_ai(
             # TODO: use a model defined elsewhere, so that model can contain
             # temperature and other settings we care about
             assistant_reply = create_chat_completion(
+                use_chatgpt=cfg.use_chatgpt,
                 model=model,
                 messages=current_context,
                 max_tokens=tokens_remaining,
