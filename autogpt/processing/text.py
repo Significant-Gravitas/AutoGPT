@@ -1,5 +1,5 @@
 """Text processing functions"""
-from typing import Generator, Optional, Dict, List
+from typing import Dict, Generator, Optional, List
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from autogpt.config import Config
