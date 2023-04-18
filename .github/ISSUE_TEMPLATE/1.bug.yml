@@ -55,6 +55,7 @@ body:
         - Devcontainer / Codespace
         - Windows Subsystem for Linux (WSL)
         - Other (Please specify in your problem)
+    validations:
       required: true
   - type: dropdown
     attributes:
@@ -65,6 +66,7 @@ body:
       options:
         - GPT-3.5
         - GPT-4
+    validations:
       required: true
   - type: textarea
     attributes:
