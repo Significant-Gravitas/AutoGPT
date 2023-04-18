@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import time
+from typing import List, Optional
 
 import openai
 from colorama import Fore
 from openai.error import APIError, RateLimitError
 
 from autogpt.config import Config
+from autogpt.types.openai import Message
 
 CFG = Config()
 
@@ -35,8 +37,8 @@ def call_ai_function(
     # For each arg, if any are None, convert to "None":
     args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma separated string
-    args = ", ".join(args)
-    messages = [
+    args: str = ", ".join(args)
+    messages: List[Message] = [
         {
             "role": "system",
             "content": f"You are now the following python function: ```# {description}"
@@ -51,15 +53,15 @@ def call_ai_function(
 # Overly simple abstraction until we create something better
 # simple retry mechanism when getting a rate error or a bad gateway
 def create_chat_completion(
-    messages: list,  # type: ignore
-    model: str | None = None,
+    messages: List[Message],  # type: ignore
+    model: Optional[str] = None,
     temperature: float = CFG.temperature,
-    max_tokens: int | None = None,
+    max_tokens: Optional[int] = None,
 ) -> str:
     """Create a chat completion using the OpenAI API
 
     Args:
-        messages (list[dict[str, str]]): The messages to send to the chat completion
+        messages (List[Message]): The messages to send to the chat completion
         model (str, optional): The model to use. Defaults to None.
         temperature (float, optional): The temperature to use. Defaults to 0.9.
         max_tokens (int, optional): The max tokens to use. Defaults to None.
@@ -67,13 +69,10 @@ def create_chat_completion(
     Returns:
         str: The response from the chat completion
     """
-    response = None
     num_retries = 10
     if CFG.debug_mode:
         print(
-            Fore.GREEN
-            + f"Creating chat completion with model {model}, temperature {temperature},"
-            f" max_tokens {max_tokens}" + Fore.RESET
+            f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
         )
     for plugin in CFG.plugins:
         if plugin.can_handle_chat_completion(
@@ -82,13 +81,13 @@ def create_chat_completion(
             temperature=temperature,
             max_tokens=max_tokens,
         ):
-            response = plugin.handle_chat_completion(
+            return plugin.handle_chat_completion(
                 messages=messages,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            return response
+    response = None
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
@@ -111,20 +110,17 @@ def create_chat_completion(
         except RateLimitError:
             if CFG.debug_mode:
                 print(
-                    Fore.RED + "Error: ",
-                    "Reached rate limit, passing..." + Fore.RESET,
+                    f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"
                 )
         except APIError as e:
-            if e.http_status == 502:
-                pass
-            else:
+            if e.http_status != 502:
                 raise
             if attempt == num_retries - 1:
                 raise
         if CFG.debug_mode:
             print(
-                Fore.RED + "Error: ",
-                f"API Bad gateway. Waiting {backoff} seconds..." + Fore.RESET,
+                f"{Fore.RED}Error: ",
+                f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
             )
         time.sleep(backoff)
     if response is None:
@@ -157,15 +153,13 @@ def create_embedding_with_ada(text) -> list:
         except RateLimitError:
             pass
         except APIError as e:
-            if e.http_status == 502:
-                pass
-            else:
+            if e.http_status != 502:
                 raise
             if attempt == num_retries - 1:
                 raise
         if CFG.debug_mode:
             print(
-                Fore.RED + "Error: ",
-                f"API Bad gateway. Waiting {backoff} seconds..." + Fore.RESET,
+                f"{Fore.RED}Error: ",
+                f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
             )
         time.sleep(backoff)
