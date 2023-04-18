@@ -7,7 +7,7 @@ body:
       value: |
         ⚠️ ### Before you continue
         Before you create this issue please join the [discord](https://discord.gg/autogpt) to discuss with our incredible members
-        about your issue. You are more than to specify your issue in the [tech-support](https://discord.com/channels/1092243196446249134/1092275629602394184) channel.
+        about your issue. You are more than welcome to specify your issue in the [tech-support](https://discord.com/channels/1092243196446249134/1092275629602394184) channel.
   - type: checkboxes
     attributes:
       label: ⚠️ Search for existing issues first ⚠️
