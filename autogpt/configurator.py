@@ -13,6 +13,7 @@ CFG = Config()
 def create_config(
     continuous: bool,
     continuous_limit: int,
+    risk_avoidance: bool,
     ai_settings_file: str,
     skip_reprompt: bool,
     speak: bool,
