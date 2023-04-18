@@ -5,14 +5,15 @@ from typing import Union
 
 from autogpt.config.config import Singleton
 from autogpt.llm_utils import create_chat_completion
-
+from collections import defaultdict
 
 class AgentManager(metaclass=Singleton):
     """Agent manager for managing GPT agents"""
 
     def __init__(self):
         self.next_key = 0
-        self.agents = {}  # key, (task, full_message_history, model)
+        self.agents = defaultdict(tuple)  # key, (task, full_message_history, model)
+
 
     # Create new GPT agent
     # TODO: Centralise use of create_chat_completion() to globally enforce token limit
