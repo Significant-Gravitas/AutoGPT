@@ -4,9 +4,11 @@ try:
     from autogpt.config.config import Config
 except ModuleNotFoundError:
     from config import Config
+
+import traceback
+
 from telegram import Bot, Update
 from telegram.ext import CallbackContext
-import traceback
 
 cfg = Config()
 response_queue = ""

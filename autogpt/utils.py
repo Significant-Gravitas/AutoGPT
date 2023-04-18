@@ -1,10 +1,11 @@
-from autogpt.telegram_chat import TelegramUtils
-import speech_recognition as sr
-import autogpt.speech.say as speak
-import traceback
 import asyncio
+import traceback
 
+import speech_recognition as sr
+
+import autogpt.speech.say as speak
 from autogpt.config.config import Config
+from autogpt.telegram_chat import TelegramUtils
 
 cfg = Config()
 

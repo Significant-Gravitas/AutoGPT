@@ -78,9 +78,10 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
     else:
-        if platform == "linux" or platform == "linux2":
+        if platform == "linux" or platform == "linux2" or platform == "darwin":
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--remote-debugging-port=9222")
+            options.add_argument("--headless")
         options.add_argument("--no-sandbox")
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
