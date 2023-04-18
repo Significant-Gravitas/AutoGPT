@@ -1,0 +1,8 @@
+# TODO delete this and put all this into a config
+from multigpt.agent_selection import AgentSelection
+
+MIN_EXPERTS = 2
+MAX_EXPERTS = 3
+CONTINUOUS_LIMIT = 10
+NEXTAGENTSELECTION = AgentSelection.SMART_SELECTION  ## USE THIS TO SPECIFY THE SELECTION ALGORITHM THAT DEFINES IN WHICH ORDER THE EXPERTS GET TO SPEAK
+CHAT_ONLY_MODE = True

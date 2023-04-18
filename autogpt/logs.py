@@ -12,7 +12,7 @@ from colorama import Fore, Style
 
 from autogpt.speech import say_text
 from autogpt.config import Config, Singleton
-
+from multigpt.constants import CHAT_ONLY_MODE
 CFG = Config()
 
 
@@ -245,35 +245,40 @@ def print_assistant_thoughts(ai_name, assistant_reply):
             assistant_thoughts_criticism = assistant_thoughts.get("criticism")
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
-        logger.typewriter_log(
-            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
-        )
-        logger.typewriter_log(
-            "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
-        )
+        if CHAT_ONLY_MODE:
+            if len(assistant_thoughts_speak) > 0:
+                logger.typewriter_log(f"{ai_name.upper()}:", Fore.YELLOW, f"{assistant_thoughts_speak}")
 
-        if assistant_thoughts_plan:
-            logger.typewriter_log("PLAN:", Fore.YELLOW, "")
-            # If it's a list, join it into a string
-            if isinstance(assistant_thoughts_plan, list):
-                assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
-            elif isinstance(assistant_thoughts_plan, dict):
-                assistant_thoughts_plan = str(assistant_thoughts_plan)
-
-            # Split the input_string using the newline character and dashes
-            lines = assistant_thoughts_plan.split("\n")
-            for line in lines:
-                line = line.lstrip("- ")
-                logger.typewriter_log("- ", Fore.GREEN, line.strip())
-
-        logger.typewriter_log(
-            "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
-        )
-        # Speak the assistant's thoughts
-        if CFG.speak_mode and assistant_thoughts_speak:
-            say_text(assistant_thoughts_speak)
         else:
-            logger.typewriter_log("SPEAK:", Fore.LIGHTBLUE_EX, f"{assistant_thoughts_speak}")
+            logger.typewriter_log(
+                f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
+            )
+            logger.typewriter_log(
+                "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
+            )
+
+            if assistant_thoughts_plan:
+                logger.typewriter_log("PLAN:", Fore.YELLOW, "")
+                # If it's a list, join it into a string
+                if isinstance(assistant_thoughts_plan, list):
+                    assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
+                elif isinstance(assistant_thoughts_plan, dict):
+                    assistant_thoughts_plan = str(assistant_thoughts_plan)
+
+                # Split the input_string using the newline character and dashes
+                lines = assistant_thoughts_plan.split("\n")
+                for line in lines:
+                    line = line.lstrip("- ")
+                    logger.typewriter_log("- ", Fore.GREEN, line.strip())
+
+            logger.typewriter_log(
+                "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
+            )
+            # Speak the assistant's thoughts
+            if CFG.speak_mode and assistant_thoughts_speak:
+                say_text(assistant_thoughts_speak)
+            else:
+                logger.typewriter_log("SPEAK:", Fore.LIGHTBLUE_EX, f"{assistant_thoughts_speak}")
 
         return assistant_reply_json
     except json.decoder.JSONDecodeError:

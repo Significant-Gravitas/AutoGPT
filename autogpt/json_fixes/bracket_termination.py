@@ -9,7 +9,7 @@ from colorama import Fore
 from autogpt.logs import logger
 from autogpt.config import Config
 from autogpt.speech import say_text
-
+from multigpt.constants import CHAT_ONLY_MODE
 CFG = Config()
 
 
@@ -19,7 +19,8 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
             "I have received an invalid JSON response from the OpenAI API. "
             "Trying to fix it now."
         )
-    logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
+    if not CHAT_ONLY_MODE:
+        logger.typewriter_log("Attempting to fix JSON by finding outermost brackets\n")
 
     try:
         json_pattern = regex.compile(r"\{(?:[^{}]|(?R))*\}")
@@ -28,9 +29,10 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
         if json_match:
             # Extract the valid JSON object from the string
             json_string = json_match.group(0)
-            logger.typewriter_log(
-                title="Apparently json was fixed.", title_color=Fore.GREEN
-            )
+            if not CHAT_ONLY_MODE:
+                logger.typewriter_log(
+                    title="Apparently json was fixed.", title_color=Fore.GREEN
+                )
             if CFG.speak_mode and CFG.debug_mode:
                 say_text("Apparently json was fixed.")
         else:

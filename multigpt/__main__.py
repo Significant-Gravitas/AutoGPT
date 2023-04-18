@@ -15,14 +15,11 @@ from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 
-from autogpt.prompt import construct_prompt
 from autogpt.spinner import Spinner
-from multigpt.multi_agent_manager import MULTIAGENTMANAGER, CFG
 from multigpt.expert import Expert
+from multigpt.multi_agent_manager import MultiAgentManager
+from constants import MIN_EXPERTS, MAX_EXPERTS, CONTINUOUS_LIMIT
 
-MIN_EXPERTS = 2
-MAX_EXPERTS = 5
-CONTINUOUS_LIMIT = 10
 EXPERT_PROMPT = """The task is: {task}.
 
 Help me determine which historical or renowned experts in various fields would be best suited to complete a given task, taking into account their specific expertise and access to the internet. Name between {min_experts} and {max_experts} experts and list three goals for them to help the overall task. Follow the format precisely:
@@ -30,6 +27,17 @@ Help me determine which historical or renowned experts in various fields would b
 1a) [Goal a]
 1b) [Goal b]
 1c) [Goal c]"""
+
+EXPERT_TRAITS_PROMPT = """
+    Rate {name} on a scale from 0 (extremly low degree of) to 10 (extremly high degree of) on the following five traits: Openness, Agreeableness, Conscientiousness, Emotional Stability and Assertiveness. Follow the format precisely:
+    [Name of Person]
+    Openness: [0-10]
+    Agreeableness: [0-10]
+    Conscientiousness: [0-10]
+    Emotional Stability: [0-10]
+    Assertiveness: [0-10]
+    [Short description of personality traits of {name}]
+"""
 
 
 def parse_experts(experts: str) -> List[Expert]:
@@ -63,37 +71,13 @@ def parse_experts(experts: str) -> List[Expert]:
     return res
 
 
-def create_expert_gpts(experts: List[Expert]):
-    # create expertGPTs
-    for expert in experts:
-        slugified_filename = slugify(expert.ai_name, separator="_", lowercase=True) + "_settings.yaml"
-
-        saved_agents_directory = os.path.join(os.path.dirname(__file__), "saved_agents")
-        if not os.path.exists(saved_agents_directory):
-            print(
-                "saved_agents directory does not exist yet."
-                f"Creating saved_agents..."
-            )
-            os.mkdir(saved_agents_directory)
-
-        filepath = os.path.join(saved_agents_directory, f"{slugified_filename}")
-        expert.save(filepath)
-        # TODO: sometimes doesn't find the file, because it hasn't finished saving yet
-        MULTIAGENTMANAGER.create_agent(expert)
-
-
 def main() -> None:
-    # DONE: Ask user for task description
-    # DONE: generate expert list from tasks
-    # OPTIONAL: budget experts
-    # DONE: generate ai_settings.yaml for each expert -- engineering the prompt
-    # DONE create autoGPTs
-    # DONE access results of instances -- message passing
-    # DONE start_autogpt()
-
+    cfg = Config()
     check_openai_api_key()
     parse_arguments()
-    logger.set_level(logging.DEBUG if CFG.debug_mode else logging.INFO)
+    multi_agent_manager = MultiAgentManager(cfg)
+
+    logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
     ai_name = "AI Orchestrator"
 
     logger.typewriter_log(
@@ -113,15 +97,25 @@ def main() -> None:
 
     messages = [{"role": "system", "content": EXPERT_PROMPT.format(task=task, min_experts=MIN_EXPERTS,
                                                                    max_experts=MAX_EXPERTS)}]
-    with Spinner("Thinking... "):
-        experts_string = create_chat_completion(messages=messages, model=CFG.smart_llm_model, max_tokens=1000)
+    with Spinner("Gathering group of experts... "):
+        experts_string = create_chat_completion(messages=messages, model=cfg.smart_llm_model, max_tokens=1000)
 
     experts = parse_experts(experts_string)
-    MULTIAGENTMANAGER.set_experts(experts)
-    logger.typewriter_log(f"Using Browser:", Fore.GREEN, CFG.selenium_web_browser)
+    multi_agent_manager.set_experts(experts)
+    logger.typewriter_log(f"Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
 
-    create_expert_gpts(experts)
-    MULTIAGENTMANAGER.start_interaction_loop()
+    for expert in experts:
+        messages = [{"role": "system", "content": EXPERT_TRAITS_PROMPT.format(name=expert.ai_name)}]
+        with Spinner(f"Generating trait profile for {expert.ai_name}... "):
+            expert_traits = create_chat_completion(messages=messages, model=cfg.smart_llm_model, max_tokens=1000)
+        expert.set_traits(expert_traits)
+        logger.typewriter_log(
+            "\nTrait profile:", Fore.RED,
+            expert_traits, speak_text=True
+        )
+        multi_agent_manager.create_agent(expert)
+
+    multi_agent_manager.start_interaction_loop()
 
 
 if __name__ == "__main__":
