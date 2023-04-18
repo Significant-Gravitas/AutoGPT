@@ -3,7 +3,6 @@ import json
 from typing import Dict, List, NoReturn, Union
 
 from autogpt.agent.agent_manager import AgentManager
-from autogpt.commands.image_text import summarize_image_from_file
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.execute_code import (
@@ -22,6 +21,7 @@ from autogpt.commands.file_operations import (
 from autogpt.commands.git_operations import clone_repository
 from autogpt.commands.google_search import google_official_search, google_search
 from autogpt.commands.image_gen import generate_image
+from autogpt.commands.image_text import summarize_image_from_file
 from autogpt.commands.improve_code import improve_code
 from autogpt.commands.twitter import send_tweet
 from autogpt.commands.web_requests import scrape_links, scrape_text
