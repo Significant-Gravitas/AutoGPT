@@ -96,7 +96,11 @@ class Agent:
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
-            if not cfg.continuous_mode and self.next_action_count == 0 and not cfg.risk_avoidance_mode: #default mode
+            if (
+                not cfg.continuous_mode
+                and self.next_action_count == 0
+                and not cfg.risk_avoidance_mode
+            ):  # default mode
                 ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -162,7 +166,7 @@ class Agent:
 
                 risk_value, risk_reason = evaluate_risk(command_name, arguments)
 
-                if (risk_value > cfg.risk_threshold):
+                if risk_value > cfg.risk_threshold:
                     logger.typewriter_log(
                         "Risk evaluation: ",
                         Fore.RED,
@@ -172,9 +176,8 @@ class Agent:
 
                     while True:
                         logger.typewriter_log(
-                        "Awaiting user authorisation (y/n)...",
-                        Fore.RED
-                    )
+                            "Awaiting user authorisation (y/n)...", Fore.RED
+                        )
                         console_input = clean_input(
                             Fore.MAGENTA + "Input: " + Style.RESET_ALL
                         )

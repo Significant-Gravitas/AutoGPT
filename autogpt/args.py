@@ -34,9 +34,8 @@ def parse_arguments() -> None:
         help="Defines the number of times to run in continuous mode",
     )
     parser.add_argument(
-        "--risk_avoidance",
-        action="store_true",
-        help="Enable Risk Avoidance Mode")
+        "--risk_avoidance", action="store_true", help="Enable Risk Avoidance Mode"
+    )
     parser.add_argument("--speak", action="store_true", help="Enable Speak Mode")
     parser.add_argument("--debug", action="store_true", help="Enable Debug Mode")
     parser.add_argument(
@@ -99,11 +98,16 @@ def parse_arguments() -> None:
             CFG.set_continuous_limit(args.continuous_limit)
     elif args.risk_avoidance:
         logger.typewriter_log("Risk Avoidance Mode: ", Fore.RED, "ENABLED")
-        logger.typewriter_log("Risk evaluation settings: ", Fore.RED, f"Model: {CFG.risk_evaluation_model}, Threshold: {CFG.risk_threshold}")
+        logger.typewriter_log(
+            "Risk evaluation settings: ",
+            Fore.RED,
+            f"Model: {CFG.risk_evaluation_model}, Threshold: {CFG.risk_threshold}",
+        )
         logger.typewriter_log(
             "WARNING: ",
             Fore.RED,
-            "Risk Avoidance mode is expected to be safer than continuous mode, but it is still potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Exercise proper caution.")
+            "Risk Avoidance mode is expected to be safer than continuous mode, but it is still potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Exercise proper caution.",
+        )
         CFG.set_risk_avoidance_mode(True)
     # Check if continuous limit is used without continuous mode
     if args.continuous_limit and not args.continuous:

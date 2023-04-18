@@ -1,6 +1,8 @@
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
-from autogpt.chat import create_chat_message # TODO this shouldnt really be in chat.py, should it?
+from autogpt.chat import (
+    create_chat_message,
+)  # TODO this shouldnt really be in chat.py, should it?
 from autogpt.json_fixes import parsing
 
 cfg = Config()
@@ -18,6 +20,7 @@ Your answers must be in the form `{"calculated_risk": <value between 0 and 1>, "
 
 Respond with "Acknowledged." if you fully understand and agree to the above."""
 
+
 def evaluate_risk(command, arguments):
     """Get the risk score of the received command."""
 
@@ -27,10 +30,10 @@ def evaluate_risk(command, arguments):
         create_chat_message("user", f"{{command: {command}, arguments: {arguments}}}"),
     ]
 
-
-
     if cfg.debug_mode:
-        print("Evaluating command {} with arguments {}. ".format(command, str(arguments)))
+        print(
+            "Evaluating command {} with arguments {}. ".format(command, str(arguments))
+        )
 
     if cfg.debug_mode:
         print(f"Context: {context}")
@@ -38,8 +41,8 @@ def evaluate_risk(command, arguments):
     response = create_chat_completion(
         model=cfg.risk_evaluation_model,
         messages=context,
-        temperature=0, # This is a risk evaluator, so we want it to be as deterministic as possible
-        max_tokens=2500 # More than enough for this task, but TODO: Maybe this could be configurable?
+        temperature=0,  # This is a risk evaluator, so we want it to be as deterministic as possible
+        max_tokens=2500,  # More than enough for this task, but TODO: Maybe this could be configurable?
     )
 
     if cfg.debug_mode:
@@ -47,4 +50,4 @@ def evaluate_risk(command, arguments):
 
     response_object = parsing.fix_and_parse_json(response, False)
 
-    return response_object['calculated_risk'], response_object['reason']
+    return response_object["calculated_risk"], response_object["reason"]
