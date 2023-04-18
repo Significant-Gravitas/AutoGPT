@@ -1,11 +1,8 @@
 """Selenium web scraping module."""
 from __future__ import annotations
 
-import os
-from selenium import webdriver
-from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
-import autogpt.processing.text as summary
 import logging
+import os
 from pathlib import Path
 from sys import platform
 
