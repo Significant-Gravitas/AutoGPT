@@ -22,6 +22,8 @@ def parse_arguments() -> None:
     CFG.set_speak_mode(False)
 
     parser = argparse.ArgumentParser(description="Process arguments.")
+    parser.add_argument("--debug", action="store_true", help="Enable Debug Mode")
+
     parser.add_argument(
         "--continuous", "-c", action="store_true", help="Enable Continuous Mode"
     )
@@ -32,18 +34,21 @@ def parse_arguments() -> None:
         dest="continuous_limit",
         help="Defines the number of times to run in continuous mode",
     )
+
     parser.add_argument("--speak", action="store_true", help="Enable Speak Mode")
-    parser.add_argument("--debug", action="store_true", help="Enable Debug Mode")
+
     parser.add_argument(
         "--gpt3only", action="store_true", help="Enable GPT3.5 Only Mode"
     )
     parser.add_argument("--gpt4only", action="store_true", help="Enable GPT4 Only Mode")
+
     parser.add_argument(
         "--use-memory",
         "-m",
         dest="memory_type",
         help="Defines which Memory backend to use",
     )
+
     parser.add_argument(
         "--skip-reprompt",
         "-y",
@@ -51,18 +56,19 @@ def parse_arguments() -> None:
         action="store_true",
         help="Skips the re-prompting messages at the beginning of the script",
     )
+
+    parser.add_argument(
+        "--ai-settings",
+        "-C",
+        dest="ai_settings_file",
+        help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
+    )
+
     parser.add_argument(
         "--use-browser",
         "-b",
         dest="browser_name",
         help="Specifies which web-browser to use when using selenium to scrape the web.",
-    )
-    parser.add_argument(
-        "--ai-settings",
-        "-C",
-        dest="ai_settings_file",
-        help="Specifies which ai_settings.yaml file to use, will also automatically"
-        " skip the re-prompt.",
     )
     parser.add_argument(
         "--allow-downloads",
@@ -104,7 +110,6 @@ def parse_arguments() -> None:
     if args.gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_smart_llm_model(CFG.fast_llm_model)
-
     if args.gpt4only:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_fast_llm_model(CFG.smart_llm_model)
@@ -140,6 +145,9 @@ def parse_arguments() -> None:
         CFG.ai_settings_file = file
         CFG.skip_reprompt = True
 
+    if args.browser_name:
+        CFG.selenium_web_browser = args.browser_name
+
     if args.allow_downloads:
         logger.typewriter_log("Native Downloading:", Fore.GREEN, "ENABLED")
         logger.typewriter_log(
@@ -154,6 +162,3 @@ def parse_arguments() -> None:
             f"{Back.RED + Style.BRIGHT}ALWAYS REMEMBER TO NEVER OPEN FILES YOU AREN'T SURE OF!{Style.RESET_ALL}",
         )
         CFG.allow_downloads = True
-
-    if args.browser_name:
-        CFG.selenium_web_browser = args.browser_name
