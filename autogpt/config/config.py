@@ -1,13 +1,12 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from colorama import Fore
-
-from autogpt.config.singleton import Singleton
 
 import openai
 import yaml
-
+from colorama import Fore
 from dotenv import load_dotenv
+
+from autogpt.config.singleton import Singleton
 
 load_dotenv(verbose=True)
 
@@ -24,6 +23,7 @@ class Config(metaclass=Singleton):
         self.continuous_limit = 0
         self.speak_mode = False
         self.skip_reprompt = False
+        self.allow_downloads = False
 
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")

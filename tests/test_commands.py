@@ -1,8 +1,10 @@
 import shutil
+import os
 import sys
 from pathlib import Path
 
 import pytest
+
 from autogpt.commands.command import Command, CommandRegistry
 
 
@@ -138,7 +140,7 @@ class TestCommandRegistry:
     def test_import_mock_commands_module(self):
         """Test that the registry can import a module with mock command plugins."""
         registry = CommandRegistry()
-        mock_commands_module = "auto_gpt.tests.mocks.mock_commands"
+        mock_commands_module = "tests.mocks.mock_commands"
 
         registry.import_commands(mock_commands_module)
 
@@ -154,7 +156,7 @@ class TestCommandRegistry:
         registry = CommandRegistry()
 
         # Create a temp command file
-        src = Path("/app/auto_gpt/tests/mocks/mock_commands.py")
+        src = Path(os.getcwd()) / "tests/mocks/mock_commands.py"
         temp_commands_file = tmp_path / "mock_commands.py"
         shutil.copyfile(src, temp_commands_file)
 

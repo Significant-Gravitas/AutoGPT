@@ -1,11 +1,5 @@
 """ Milvus memory storage provider."""
-from pymilvus import (
-    connections,
-    FieldSchema,
-    CollectionSchema,
-    DataType,
-    Collection,
-)
+from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
 
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 

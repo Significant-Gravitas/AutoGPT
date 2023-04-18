@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Type, Optional
+from typing import Optional, Type
+
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
@@ -41,6 +42,7 @@ class AIConfig:
         self.ai_role = ai_role
         self.ai_goals = ai_goals
         self.prompt_generator = None
+        self.command_registry = None
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
     SAVE_FILE = Path(os.getcwd()) / "ai_settings.yaml"
@@ -113,8 +115,8 @@ class AIConfig:
             ""
         )
 
-        from autogpt.prompts.prompt import build_default_prompt_generator
         from autogpt.config import Config
+        from autogpt.prompts.prompt import build_default_prompt_generator
 
         cfg = Config()
         if prompt_generator is None:
@@ -122,7 +124,10 @@ class AIConfig:
         prompt_generator.goals = self.ai_goals
         prompt_generator.name = self.ai_name
         prompt_generator.role = self.ai_role
+        prompt_generator.command_registry = self.command_registry
         for plugin in cfg.plugins:
+            if not plugin.can_handle_post_prompt():
+                continue
             prompt_generator = plugin.post_prompt(prompt_generator)
 
         # Construct full prompt

@@ -1,15 +1,15 @@
+import os
+import sys
 import unittest
 from unittest import mock
-import sys
-import os
+from uuid import uuid4
 
 from weaviate import Client
 from weaviate.util import get_valid_uuid
-from uuid import uuid4
 
 from autogpt.config import Config
-from autogpt.memory.weaviate import WeaviateMemory
 from autogpt.memory.base import get_ada_embedding
+from autogpt.memory.weaviate import WeaviateMemory
 
 
 @mock.patch.dict(
