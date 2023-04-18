@@ -13,8 +13,19 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
+<<<<<<< HEAD
     env:
+<<<<<<< HEAD
       min-python-version: "3.10"
+=======
+      min-python-version: '3.10'
+=======
+
+    strategy:
+      matrix:
+        python-version: '3.10'
+>>>>>>> c23e7b76 (solve conflicts)
+>>>>>>> 52cc322 (solve conflicts)
 
     steps:
       - name: Check out repository
