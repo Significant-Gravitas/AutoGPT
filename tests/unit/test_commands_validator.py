@@ -1,8 +1,7 @@
-import unittest
-import pytest
 import logging
+import unittest
 
-from unittest.mock import MagicMock
+import pytest
 
 from autogpt.commands.validators import CommandsValidator
 from autogpt.logs import logger
