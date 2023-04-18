@@ -133,12 +133,11 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 ## 🔧 Usage
 
 1. Run `autogpt` Python module in your terminal.
-  On linux or mac:
     ```bash
-    # On Linux of Mac:
-   ./run.sh start
-   # On Windows:
-   ./run.bat start
+    # On Linux Or Mac Use This Command:
+    ./run.sh start
+    # Or If Your On Windows Use This Command:
+    run.bat start
    ```
    Running with `--help` after `start` lists all the possible command line arguments you can pass.
 
