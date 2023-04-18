@@ -251,9 +251,19 @@ class Config(metaclass=Singleton):
         """Set the debug mode value."""
         self.debug_mode = value
 
+<<<<<<< HEAD
     def set_plugins(self, value: list) -> None:
         """Set the plugins value."""
         self.plugins = value
+=======
+    def set_temperature(self, value: int) -> None:
+        """Set the temperature value."""
+        self.temperature = value
+
+    def set_memory_backend(self, value: int) -> None:
+        """Set the temperature value."""
+        self.memory_backend = value
+>>>>>>> 20dca7b (Add set_temperature and set_memory_backend methods in config.py)
 
     def set_temperature(self, value: int) -> None:
         """Set the temperature value."""
