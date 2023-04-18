@@ -39,6 +39,9 @@ class Config(metaclass=Singleton):
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
+        self.restrict_to_workspace = (
+            os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True"
+        )
 
         if self.use_azure:
             self.load_azure_config()
