@@ -15,4 +15,10 @@ services:
     profiles: ["exclude-from-up"]
 
   redis:
-    image: "redis/redis-stack-server:latest"
+    # Use image redis-stack instead of redis-stack-server as it also includes RedInsight which is useful for debugging (also see https://hub.docker.com/r/redis/redis-stack)
+    image: "redis/redis-stack:latest"
+    # Make redis container better identifiable for auto-gpt container.
+    hostname: "redis"
+    ports:
+      - "6379:6379" # Expose Redis
+      - "8001:8001" # Expose RedInsight
