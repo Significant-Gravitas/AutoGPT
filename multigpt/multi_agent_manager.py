@@ -18,7 +18,7 @@ from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from multigpt.multi_agent import MultiAgent
 from multigpt.agent_selection import AgentSelection
-from constants import CHAT_ONLY_MODE, NEXTAGENTSELECTION
+from multigpt.constants import CHAT_ONLY_MODE, NEXTAGENTSELECTION
 
 
 class MultiAgentManager(metaclass=Singleton):

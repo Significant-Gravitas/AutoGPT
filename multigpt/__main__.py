@@ -18,7 +18,7 @@ from autogpt.memory import get_memory
 from autogpt.spinner import Spinner
 from multigpt.expert import Expert
 from multigpt.multi_agent_manager import MultiAgentManager
-from constants import MIN_EXPERTS, MAX_EXPERTS, CONTINUOUS_LIMIT
+from multigpt.constants import MIN_EXPERTS, MAX_EXPERTS, CONTINUOUS_LIMIT
 
 EXPERT_PROMPT = """The task is: {task}.
 
