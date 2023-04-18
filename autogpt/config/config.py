@@ -1,13 +1,12 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from colorama import Fore
-
-from autogpt.config.singleton import Singleton
 
 import openai
 import yaml
-
+from colorama import Fore
 from dotenv import load_dotenv
+
+from autogpt.config.singleton import Singleton
 
 load_dotenv(verbose=True)
 
@@ -24,6 +23,8 @@ class Config(metaclass=Singleton):
         self.continuous_limit = 0
         self.speak_mode = False
         self.skip_reprompt = False
+        self.allow_downloads = False
+        self.skip_news = False
 
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
@@ -32,7 +33,6 @@ class Config(metaclass=Singleton):
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
-        self.browse_summary_max_token = int(os.getenv("BROWSE_SUMMARY_MAX_TOKEN", 300))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "1"))
@@ -40,9 +40,10 @@ class Config(metaclass=Singleton):
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
-        self.working_directory_restricted = (
-            os.getenv("WORKING_DIRECTORY_RESTRICTED", "True") == "True"
+        self.restrict_to_workspace = (
+            os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True"
         )
+
         if self.use_azure:
             self.load_azure_config()
             openai.api_type = self.openai_api_type
@@ -68,7 +69,7 @@ class Config(metaclass=Singleton):
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
 
-        self.weaviate_host  = os.getenv("WEAVIATE_HOST")
+        self.weaviate_host = os.getenv("WEAVIATE_HOST")
         self.weaviate_port = os.getenv("WEAVIATE_PORT")
         self.weaviate_protocol = os.getenv("WEAVIATE_PROTOCOL", "http")
         self.weaviate_username = os.getenv("WEAVIATE_USERNAME", None)
@@ -76,7 +77,9 @@ class Config(metaclass=Singleton):
         self.weaviate_scopes = os.getenv("WEAVIATE_SCOPES", None)
         self.weaviate_embedded_path = os.getenv("WEAVIATE_EMBEDDED_PATH")
         self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
-        self.use_weaviate_embedded = os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
+        self.use_weaviate_embedded = (
+            os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
+        )
 
         # milvus configuration, e.g., localhost:19530.
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
@@ -189,10 +192,6 @@ class Config(metaclass=Singleton):
         """Set the browse_website command chunk max length value."""
         self.browse_chunk_max_length = value
 
-    def set_browse_summary_max_token(self, value: int) -> None:
-        """Set the browse_website command summary max token value."""
-        self.browse_summary_max_token = value
-
     def set_openai_api_key(self, value: str) -> None:
         """Set the OpenAI API key value."""
         self.openai_api_key = value
@@ -238,5 +237,5 @@ def check_openai_api_key() -> None:
             Fore.RED
             + "Please set your OpenAI API key in .env or as an environment variable."
         )
-        print("You can get your key from https://beta.openai.com/account/api-keys")
+        print("You can get your key from https://platform.openai.com/account/api-keys")
         exit(1)

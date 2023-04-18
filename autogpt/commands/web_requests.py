@@ -1,11 +1,12 @@
 """Browse a webpage and summarize it using the LLM model"""
-from typing import List, Tuple, Union
+from __future__ import annotations
+
 from urllib.parse import urljoin, urlparse
 
 import requests
-from requests.compat import urljoin
-from requests import Response
 from bs4 import BeautifulSoup
+from requests import Response
+from requests.compat import urljoin
 
 from autogpt.config import Config
 from autogpt.memory import get_memory
@@ -57,16 +58,35 @@ def check_local_file_access(url: str) -> bool:
     """
     local_prefixes = [
         "file:///",
+        "file://localhost/",
         "file://localhost",
         "http://localhost",
+        "http://localhost/",
         "https://localhost",
+        "https://localhost/",
+        "http://2130706433",
+        "http://2130706433/",
+        "https://2130706433",
+        "https://2130706433/",
+        "http://127.0.0.1/",
+        "http://127.0.0.1",
+        "https://127.0.0.1/",
+        "https://127.0.0.1",
+        "https://0.0.0.0/",
+        "https://0.0.0.0",
+        "http://0.0.0.0/",
+        "http://0.0.0.0",
+        "http://0000",
+        "http://0000/",
+        "https://0000",
+        "https://0000/",
     ]
     return any(url.startswith(prefix) for prefix in local_prefixes)
 
 
 def get_response(
     url: str, timeout: int = 10
-) -> Union[Tuple[None, str], Tuple[Response, None]]:
+) -> tuple[None, str] | tuple[Response, None]:
     """Get the response from a URL
 
     Args:
@@ -74,7 +94,7 @@ def get_response(
         timeout (int): The timeout for the HTTP request
 
     Returns:
-        Tuple[None, str] | Tuple[Response, None]: The response and error message
+        tuple[None, str] | tuple[Response, None]: The response and error message
 
     Raises:
         ValueError: If the URL is invalid
@@ -136,14 +156,14 @@ def scrape_text(url: str) -> str:
     return text
 
 
-def scrape_links(url: str) -> Union[str, List[str]]:
+def scrape_links(url: str) -> str | list[str]:
     """Scrape links from a webpage
 
     Args:
         url (str): The URL to scrape links from
 
     Returns:
-        Union[str, List[str]]: The scraped links
+       str | list[str]: The scraped links
     """
     response, error_message = get_response(url)
     if error_message:

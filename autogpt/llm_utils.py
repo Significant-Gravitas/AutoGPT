@@ -1,12 +1,14 @@
-from ast import List
+from __future__ import annotations
+
 import time
-from typing import Dict, Optional
+from ast import List
 
 import openai
+from colorama import Fore, Style
 from openai.error import APIError, RateLimitError
-from colorama import Fore
 
 from autogpt.config import Config
+from autogpt.logs import logger
 
 CFG = Config()
 
@@ -14,7 +16,7 @@ openai.api_key = CFG.openai_api_key
 
 
 def call_ai_function(
-    function: str, args: List, description: str, model: Optional[str] = None
+    function: str, args: list, description: str, model: str | None = None
 ) -> str:
     """Call an AI function
 
@@ -51,15 +53,15 @@ def call_ai_function(
 # Overly simple abstraction until we create something better
 # simple retry mechanism when getting a rate error or a bad gateway
 def create_chat_completion(
-    messages: List,  # type: ignore
-    model: Optional[str] = None,
+    messages: list,  # type: ignore
+    model: str | None = None,
     temperature: float = CFG.temperature,
-    max_tokens: Optional[int] = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Create a chat completion using the OpenAI API
 
     Args:
-        messages (List[Dict[str, str]]): The messages to send to the chat completion
+        messages (list[dict[str, str]]): The messages to send to the chat completion
         model (str, optional): The model to use. Defaults to None.
         temperature (float, optional): The temperature to use. Defaults to 0.9.
         max_tokens (int, optional): The max tokens to use. Defaults to None.
@@ -69,6 +71,7 @@ def create_chat_completion(
     """
     response = None
     num_retries = 10
+    warned_user = False
     if CFG.debug_mode:
         print(
             Fore.GREEN
@@ -100,6 +103,12 @@ def create_chat_completion(
                     Fore.RED + "Error: ",
                     f"Reached rate limit, passing..." + Fore.RESET,
                 )
+            if not warned_user:
+                logger.double_check(
+                    f"Please double check that you have setup a {Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. "
+                    + f"You can read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
+                )
+                warned_user = True
         except APIError as e:
             if e.http_status == 502:
                 pass
@@ -114,13 +123,23 @@ def create_chat_completion(
             )
         time.sleep(backoff)
     if response is None:
-        raise RuntimeError(f"Failed to get response after {num_retries} retries")
+        logger.typewriter_log(
+            "FAILED TO GET RESPONSE FROM OPENAI",
+            Fore.RED,
+            "Auto-GPT has failed to get a response from OpenAI's services. "
+            + f"Try running Auto-GPT again, and if the problem the persists try running it with `{Fore.CYAN}--debug{Fore.RESET}`.",
+        )
+        logger.double_check()
+        if CFG.debug_mode:
+            raise RuntimeError(f"Failed to get response after {num_retries} retries")
+        else:
+            quit(1)
 
     return response.choices[0].message["content"]
 
 
 def create_embedding_with_ada(text) -> list:
-    """Create a embedding with text-ada-002 using the OpenAI SDK"""
+    """Create an embedding with text-ada-002 using the OpenAI SDK"""
     num_retries = 10
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
