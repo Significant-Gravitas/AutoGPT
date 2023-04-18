@@ -165,7 +165,7 @@ You can also build this into a docker image and run it:
 
 ```bash
 docker build -t autogpt .
-docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/home/appuser/auto_gpt_workspace autogpt
 ```
 
 Or if you have `docker-compose`:
@@ -175,7 +175,7 @@ docker-compose run --build --rm auto-gpt
 
 You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
 ```bash
-docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt --gpt3only --continuous
+docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/home/appuser/auto_gpt_workspace autogpt --gpt3only --continuous
 ```
 ```bash
 docker-compose run --build --rm auto-gpt --gpt3only --continuous
