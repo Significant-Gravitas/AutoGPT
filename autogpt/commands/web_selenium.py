@@ -85,12 +85,13 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
 
         # Remove the 'https_proxy' env var
         # Otherwise, webdriver.Chrome() method will get stuck
-        if 'https_proxy' in os.environ:
-            https_proxy = os.getenv('https_proxy')
+        http_proxy = os.getenv('http_proxy')
+        https_proxy = os.getenv('https_proxy')
+        if https_proxy != "":
             del os.environ['https_proxy']
             # set proxy for webdriver
             options.add_argument(f"--proxy-server={https_proxy}")
-        if 'http_proxy' in os.environ:
+        if http_proxy != "":
             http_proxy = os.getenv('http_proxy')
             del os.environ['http_proxy']
 
