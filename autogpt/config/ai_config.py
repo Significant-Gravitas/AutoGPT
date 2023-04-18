@@ -117,6 +117,7 @@ class AIConfig:
             ""
         )
 
+<<<<<<< HEAD
         from autogpt.config import Config
         from autogpt.prompts.prompt import build_default_prompt_generator
 
@@ -142,11 +143,19 @@ class AIConfig:
             )
 
             prompt_start += f"\nThe OS you are running on is: {os_info}"
+=======
+        from autogpt.prompt import Prompt
+>>>>>>> cc69c09 (Update import statement in ai_config.py)
 
         # Construct full prompt
         full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
+<<<<<<< HEAD
         self.prompt_generator = prompt_generator
         full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
+=======
+
+        full_prompt += f"\n\n{Prompt.get_prompt()}"
+>>>>>>> cc69c09 (Update import statement in ai_config.py)
         return full_prompt
