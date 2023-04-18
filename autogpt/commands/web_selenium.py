@@ -21,6 +21,9 @@ import autogpt.processing.text as summary
 from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 
+import os
+from datetime import datetime
+
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
 
@@ -36,6 +39,12 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
     """
     driver, text = scrape_text_with_selenium(url)
+
+    #Make a Screenshot
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    screenshot_filename = f"screenshot-{timestamp}.png"
+    save_screenshot(driver, screenshot_filename)
+
     add_header(driver)
     summary_text = summary.summarize_text(url, text, question, driver)
     links = scrape_links_with_selenium(driver, url)
@@ -81,7 +90,8 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         if platform == "linux" or platform == "linux2":
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--remote-debugging-port=9222")
-        options.add_argument("--no-sandbox")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--headless") 
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
@@ -147,3 +157,26 @@ def add_header(driver: WebDriver) -> None:
         None
     """
     driver.execute_script(open(f"{FILE_DIR}/js/overlay.js", "r").read())
+
+
+def save_screenshot(driver: WebDriver, filename: str) -> None:
+    """Save a screenshot of the entire browser content
+
+    Args:
+        driver (WebDriver): The webdriver to use to take the screenshot
+        filename (str): The filename to save the screenshot
+
+    Returns:
+        None
+    """
+    # Get the dimensions of the web page
+    scroll_width = driver.execute_script("return document.body.scrollWidth;")
+    scroll_height = driver.execute_script("return document.body.scrollHeight;")
+    
+    # Resize the browser window to the dimensions of the web page
+    driver.set_window_size(scroll_width, scroll_height)
+
+    workspace_path = "auto_gpt_workspace"
+    os.makedirs(workspace_path, exist_ok=True)
+    screenshot_path = os.path.join(workspace_path, filename)
+    driver.save_screenshot(screenshot_path)
