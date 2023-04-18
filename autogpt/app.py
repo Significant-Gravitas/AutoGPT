@@ -232,7 +232,7 @@ def execute_command(command_name: str, arguments):
         elif command_name == "send_telegram_audio":
             return send_telegram_audio(arguments["file"])
         elif command_name == "send_telegram_location":
-            return send_telegram_location(arguments["location"])
+            return send_telegram_location(arguments["latitude"], arguments["longitude"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":

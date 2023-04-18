@@ -89,11 +89,11 @@ def get_prompt() -> str:
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
         ("Send Telegram Message", "send_telegram_message", {"text": "<text>"}),
-        ("Send Telegram Photo", "send_telegram_photo", {"file": "<file>"}),
-        ("Send Telegram Document", "send_telegram_document", {"file": "<file>"}),
-        ("Send Telegram Video", "send_telegram_video", {"file": "<file>"}),
-        ("Send Telegram Audio", "send_telegram_audio", {"file": "<file>"}),
-        ("Send Telegram Location", "send_telegram_location", {"location": "<location>"}),
+        ("Send Telegram Photo", "send_telegram_photo", {"file": "<file-path>"}),
+        ("Send Telegram Document", "send_telegram_document", {"file": "<file-path>"}),
+        ("Send Telegram Video", "send_telegram_video", {"file": "<file-path>"}),
+        ("Send Telegram Audio", "send_telegram_audio", {"file": "<file-path>"}),
+        ("Send Telegram Location", "send_telegram_location", {"latitude": "<latitude>", "longitude": "<longitude>"}),
     ]
 
     # Only add the audio to text command if the model is specified
