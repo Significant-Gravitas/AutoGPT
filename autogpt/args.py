@@ -33,7 +33,10 @@ def parse_arguments() -> None:
         dest="continuous_limit",
         help="Defines the number of times to run in continuous mode",
     )
-    parser.add_argument("--risk_avoidance", action="store_true", help="Enable Risk Avoidance Mode")
+    parser.add_argument(
+        "--risk_avoidance",
+        action="store_true",
+        help="Enable Risk Avoidance Mode")
     parser.add_argument("--speak", action="store_true", help="Enable Speak Mode")
     parser.add_argument("--debug", action="store_true", help="Enable Debug Mode")
     parser.add_argument(
@@ -94,7 +97,14 @@ def parse_arguments() -> None:
                 "Continuous Limit: ", Fore.GREEN, f"{args.continuous_limit}"
             )
             CFG.set_continuous_limit(args.continuous_limit)
-
+    elif args.risk_avoidance:
+        print_to_console("Risk Avoidance Mode: ", Fore.RED, "ENABLED")
+        print_to_console("Risk evaluation settings: ", Fore.RED, f"Model: {cfg.risk_evaluation_model}, Threshold: {cfg.risk_threshold}")
+        print_to_console(
+            "WARNING: ",
+            Fore.RED,
+            "Risk Avoidance mode is expected to be safer than continuous mode, but it is still potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Exercise proper caution.")
+        cfg.set_risk_avoidance_mode(True)
     # Check if continuous limit is used without continuous mode
     if args.continuous_limit and not args.continuous:
         parser.error("--continuous-limit can only be used with --continuous")
