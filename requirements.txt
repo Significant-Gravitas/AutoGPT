@@ -19,6 +19,7 @@ selenium
 webdriver-manager
 jsonschema
 tweepy
+click
 
 ##Dev
 coverage

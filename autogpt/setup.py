@@ -17,6 +17,13 @@ def prompt_user() -> AIConfig:
     logger.typewriter_log(
         "Welcome to Auto-GPT! ",
         Fore.GREEN,
+        "run with '--help' for more information.",
+        speak_text=True,
+    )
+
+    logger.typewriter_log(
+        "Create an AI-Assistant:",
+        Fore.GREEN,
         "Enter the name of your AI and its role below. Entering nothing will load"
         " defaults.",
         speak_text=True,
