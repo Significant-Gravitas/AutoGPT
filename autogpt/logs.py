@@ -246,7 +246,7 @@ def print_assistant_thoughts(ai_name, assistant_reply):
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
         if CHAT_ONLY_MODE:
-            if len(assistant_thoughts_speak) > 0:
+            if assistant_thoughts_speak is not None and len(assistant_thoughts_speak) > 0:
                 logger.typewriter_log(f"{ai_name.upper()}:", Fore.YELLOW, f"{assistant_thoughts_speak}")
 
         else:

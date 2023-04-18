@@ -109,7 +109,7 @@ class MultiAgentManager(metaclass=Singleton):
             self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
 
         elif NEXTAGENTSELECTION == AgentSelection.SMART_SELECTION:
-            if self.last_active_agent is None:  # If last agent is None, fallback to random select
+            if self.last_active_agent is None and len(self.agents) > 0:  # If last agent is None, fallback to random select
                 self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
             else:
                 try:
