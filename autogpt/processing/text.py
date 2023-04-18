@@ -1,5 +1,6 @@
 """Text processing functions"""
 from typing import Dict, Generator, Optional, List
+import textwrap
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from autogpt.config import Config
@@ -11,6 +12,9 @@ CFG = Config()
 def get_memory_instance():
     return get_memory(CFG)
 
+
+def split_long_paragraph(paragraph: str, max_length: int) -> List[str]:
+    return textwrap.wrap(paragraph, max_length)
 
 def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
     """Split text into chunks of a maximum length
