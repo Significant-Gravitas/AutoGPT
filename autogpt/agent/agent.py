@@ -161,7 +161,7 @@ class Agent:
                 )
 
                 risk_value, risk_reason = evaluate_risk(command_name, arguments)
-            
+
                 if (risk_value > cfg.risk_threshold):
                     logger.typewriter_log(
                         "Risk evaluation: ",
@@ -191,7 +191,7 @@ class Agent:
                             user_input = console_input
                             command_name = "human_feedback"
                             break
-                        
+
                     if user_input == "GENERATE NEXT COMMAND JSON":
                         logger.typewriter_log(
                             "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",

@@ -27,11 +27,11 @@ def evaluate_risk(command, arguments):
         create_chat_message("user", f"{{command: {command}, arguments: {arguments}}}"),
     ]
 
-    
-    
+
+
     if cfg.debug_mode:
         print("Evaluating command {} with arguments {}. ".format(command, str(arguments)))
-    
+
     if cfg.debug_mode:
         print(f"Context: {context}")
 
