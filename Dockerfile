@@ -27,7 +27,7 @@ RUN sed -i '/Items below this point will not be included in the Docker Image/,$d
 	pip install --no-cache-dir -r requirements.txt
 
 # Create a non-root user
-RUN useradd -u 1000 appuser
+RUN useradd -u 1000 --create-home appuser
 USER appuser
 
 # Copy the application files
