@@ -18,17 +18,17 @@ def validate_yaml_file(file: str):
     except FileNotFoundError:
         return (
             False,
-            f"The file {Fore.CYAN}`{file}`{Fore.RESET} wasn't found!"
+            f"The file {Fore.CYAN}`{file}`{Fore.RESET} wasn't found!",
         )
     except yaml.YAMLError as e:
         return (
             False,
-            f"There was an issue while trying to read with the file {Fore.CYAN}`{file}`{Fore.RESET}: {e}"
+            f"There was an issue while trying to read with the file {Fore.CYAN}`{file}`{Fore.RESET}: {e}",
         )
 
     return (
         True,
-        f"Successfully validated {Fore.CYAN}`{file}`{Fore.RESET}!"
+        f"Successfully validated {Fore.CYAN}`{file}`{Fore.RESET}!",
     )
 
 
