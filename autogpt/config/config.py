@@ -26,7 +26,6 @@ class Config(metaclass=Singleton):
         self.allow_downloads = False
         self.skip_news = False
 
-        self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -88,7 +87,11 @@ class Config(metaclass=Singleton):
             "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
         )
 
-        # User agent headers to use when browsing web
+        # Selenium browser settings
+        self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
+        self.selenium_headless = os.getenv("HEADLESS_BROWSER", "True") == "True"
+
+        # User agent header to use when making HTTP requests
         # Some websites might just completely deny request with an error code if
         # no user agent was found.
         self.user_agent = os.getenv(
@@ -96,6 +99,7 @@ class Config(metaclass=Singleton):
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36"
             " (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
         )
+
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
         self.redis_port = os.getenv("REDIS_PORT", "6379")
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
