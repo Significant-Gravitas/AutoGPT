@@ -444,9 +444,22 @@ Once you have a token, set these variables in your `.env`:
 ```bash
 IMAGE_PROVIDER=sd
 HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
-HUGGINGFACE_API_URL="YOUR_HUGGINGFACE_MODEL_API_URL"
 ```
 
+You can also add a custom stable diffusion model
+
+In your `.env` file set the following:
+```bash
+HUGGINGFACE_API_URL="YOUR_HUGGINGFACE_MODEL_API_URL"
+```
+View examples and more : [https://huggingface.co/docs/diffusers/v0.15.0/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline](https://huggingface.co/docs/diffusers/v0.15.0/en/api/pipelines/stable_diffusion/text2img#diffusers.StableDiffusionPipeline)
+
+- stable-diffusion-v1-4 (512x512 resolution) [CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4)
+- stable-diffusion-v1-5 (512x512 resolution) [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)
+- stable-diffusion-2-base (512x512 resolution): [stabilityai/stable-diffusion-2-base](https://huggingface.co/stabilityai/stable-diffusion-2-base)
+- stable-diffusion-2 (768x768 resolution): [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2)
+- stable-diffusion-2-1-base (512x512 resolution) [stabilityai/stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base)
+- stable-diffusion-2-1 (768x768 resolution): [stabilityai/stable-diffusion-2-1](https://huggingface.co/stabilityai/stable-diffusion-2-1)
 ## Selenium
 ```bash
 sudo Xvfb :10 -ac -screen 0 1024x768x24 & DISPLAY=:10 <YOUR_CLIENT>
