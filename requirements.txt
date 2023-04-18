@@ -49,3 +49,5 @@ pytest-benchmark
 pytest-cov
 pytest-integration
 pytest-mock
+vcrpy
+pytest-vcr
