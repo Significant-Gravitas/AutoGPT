@@ -23,7 +23,7 @@ def validate_yaml_file(file: str):
     except yaml.YAMLError as e:
         return (
             False,
-            f"There was an issue while trying to read with the file `{file}`: {e}",
+            f"There was an issue while trying to read with the file {Fore.CYAN}`{file}`{Fore.RESET}: {e}"
         )
 
     return (
