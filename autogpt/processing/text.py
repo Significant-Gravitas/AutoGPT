@@ -12,10 +12,6 @@ CFG = Config()
 def get_memory_instance():
     return get_memory(CFG)
 
-
-def split_long_paragraph(paragraph: str, max_length: int) -> List[str]:
-    return textwrap.wrap(paragraph, max_length)
-
 def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
     """Split text into chunks of a maximum length
     Args:
@@ -32,7 +28,7 @@ def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
 
     for paragraph in paragraphs:
         if len(paragraph) > max_length:
-            long_paragraph_chunks = split_long_paragraph(paragraph, max_length)
+            long_paragraph_chunks = textwrap.wrap(paragraph, max_length)
             for long_chunk in long_paragraph_chunks[:-1]:
                 if current_chunk:
                     yield "\n".join(current_chunk)
