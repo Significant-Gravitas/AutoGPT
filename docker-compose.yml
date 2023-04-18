@@ -13,6 +13,13 @@ services:
       - "./autogpt:/app"
       - ".env:/app/.env"
     profiles: ["exclude-from-up"]
+    networks:
+      - testnet
 
   redis:
-    image: "redis/redis-stack-server:latest"
+    image: "redis"
+    networks:
+      - testnet
+
+networks:
+  testnet:
