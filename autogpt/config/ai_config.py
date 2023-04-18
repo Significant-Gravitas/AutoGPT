@@ -4,9 +4,10 @@ A module that contains the AIConfig class object that contains the configuration
 """
 from __future__ import annotations
 
-from os import path
+import os
 from typing import Type
-from yaml import FullLoader, dump, load
+
+import yaml
 
 
 class AIConfig:
@@ -39,7 +40,7 @@ class AIConfig:
         self.ai_goals = ai_goals
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = path.join(path.dirname(__file__), "..", "ai_settings.yaml")
+    SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "ai_settings.yaml")
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
@@ -58,7 +59,7 @@ class AIConfig:
 
         try:
             with open(config_file, encoding="utf-8") as file:
-                config_params = load(file, Loader=FullLoader)
+                config_params = yaml.load(file, Loader=yaml.FullLoader)
         except FileNotFoundError:
             config_params = {}
 
@@ -86,7 +87,7 @@ class AIConfig:
             "ai_goals": self.ai_goals,
         }
         with open(config_file, "w", encoding="utf-8") as file:
-            dump(config, file, allow_unicode=True)
+            yaml.dump(config, file, allow_unicode=True)
 
     def construct_full_prompt(self) -> str:
         """

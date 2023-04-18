@@ -19,6 +19,7 @@ selenium
 webdriver-manager
 jsonschema
 tweepy
+click
 
 ##Dev
 coverage
@@ -29,6 +30,8 @@ black
 sourcery
 isort
 gitpython==3.1.31
+
+# Items below this point will not be included in the Docker Image
 
 # Testing dependencies
 pytest
