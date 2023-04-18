@@ -31,17 +31,22 @@ CFG = Config()
 
 def get_chrome_user_data_directory() -> str:
     import platform
-    operating_system = platform.system()
-    user_home = os.path.expanduser('~')
 
-    if operating_system == 'Windows':
-        return os.path.join(user_home, 'AppData', 'Local', 'Google', 'Chrome', 'User Data')
-    elif operating_system == 'Darwin':  # macOS
-        return os.path.join(user_home, 'Library', 'Application Support', 'Google', 'Chrome')
-    elif operating_system == 'Linux':
-        return os.path.join(user_home, '.config', 'google-chrome')
+    operating_system = platform.system()
+    user_home = os.path.expanduser("~")
+
+    if operating_system == "Windows":
+        return os.path.join(
+            user_home, "AppData", "Local", "Google", "Chrome", "User Data"
+        )
+    elif operating_system == "Darwin":  # macOS
+        return os.path.join(
+            user_home, "Library", "Application Support", "Google", "Chrome"
+        )
+    elif operating_system == "Linux":
+        return os.path.join(user_home, ".config", "google-chrome")
     else:
-        raise ValueError(f'Unsupported operating system: {operating_system}')
+        raise ValueError(f"Unsupported operating system: {operating_system}")
 
 
 def browse_website(url: str, question: str) -> Tuple[str, WebDriver]:
@@ -99,8 +104,8 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     else:
         if CFG.use_default_user_data:
             chrome_user_data_directory = get_chrome_user_data_directory()
-            options.add_argument(f'--user-data-dir={chrome_user_data_directory}')
-        driver_path = ''
+            options.add_argument(f"--user-data-dir={chrome_user_data_directory}")
+        driver_path = ""
         if os.path.exists(CFG.custom_webdriver_path):
             driver_path = CFG.custom_webdriver_path
         else:
@@ -109,9 +114,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--remote-debugging-port=9222")
         options.add_argument("--no-sandbox")
-        driver = webdriver.Chrome(
-            executable_path=driver_path, options=options
-        )
+        driver = webdriver.Chrome(executable_path=driver_path, options=options)
     driver.get(url)
 
     WebDriverWait(driver, 10).until(
