@@ -1,5 +1,5 @@
-from datetime import datetime
 import time
+from datetime import datetime
 
 
 def get_datetime() -> str:
