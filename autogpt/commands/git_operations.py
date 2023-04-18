@@ -1,5 +1,6 @@
 """Git operations for autogpt"""
 import git
+
 from autogpt.config import Config
 from autogpt.workspace import path_in_workspace
 
@@ -7,7 +8,7 @@ CFG = Config()
 
 
 def clone_repository(repo_url: str, clone_path: str) -> str:
-    """Clone a github repository locally
+    """Clone a GitHub repository locally
 
     Args:
         repo_url (str): The URL of the repository to clone
