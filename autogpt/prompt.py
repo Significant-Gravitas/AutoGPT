@@ -40,8 +40,17 @@ def get_prompt() -> str:
     )
 
     # Define the command list
-    commands = [
-        ("Google Search", "google", {"input": "<search>"}),
+    commands = []
+    if cfg.use_google_api:
+        commands.append(
+            (
+                "Google Search",
+                "google",
+                {"input": "<search>"},
+            )
+        )
+
+    commands += [
         (
             "Browse Website",
             "browse_website",
