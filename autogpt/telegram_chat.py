@@ -1,4 +1,5 @@
 import asyncio
+
 try:
     from autogpt.config.config import Config
 except ModuleNotFoundError:
@@ -33,18 +34,22 @@ class TelegramUtils:
         count = 0
         for update in updates:
             try:
-                print("Deleting message: " + update.message.text +
-                      " " + str(update.message.message_id))
+                print(
+                    "Deleting message: "
+                    + update.message.text
+                    + " "
+                    + str(update.message.message_id)
+                )
                 await bot.delete_message(
-                    chat_id=update.message.chat.id,
-                    message_id=update.message.message_id
+                    chat_id=update.message.chat.id, message_id=update.message.message_id
                 )
             except Exception as e:
                 print(
                     f"Error while deleting message: {e} \n"
-                    + f" update: {update} \n {traceback.format_exc()}")
+                    + f" update: {update} \n {traceback.format_exc()}"
+                )
             count += 1
-        if (count > 0):
+        if count > 0:
             print("Cleaned up old messages.")
 
     @staticmethod
@@ -59,13 +64,15 @@ class TelegramUtils:
 
     @staticmethod
     async def set_commands(bot):
-        await bot.set_my_commands([
-            ('start', 'Start Auto-GPT'),
-            ('stop', 'Stop Auto-GPT'),
-            ('help', 'Show help'),
-            ('yes', 'Confirm'),
-            ('no', 'Deny')
-        ])
+        await bot.set_my_commands(
+            [
+                ("start", "Start Auto-GPT"),
+                ("stop", "Stop Auto-GPT"),
+                ("help", "Show help"),
+                ("yes", "Confirm"),
+                ("no", "Deny"),
+            ]
+        )
 
     @staticmethod
     def send_message(message):
@@ -82,7 +89,8 @@ class TelegramUtils:
     def send_voice(voice_file):
         try:
             TelegramUtils.get_bot().send_voice(
-                chat_id=cfg.telegram_chat_id, voice=open(voice_file, 'rb'))
+                chat_id=cfg.telegram_chat_id, voice=open(voice_file, "rb")
+            )
         except RuntimeError:
             print("Error while sending voice message")
 
@@ -109,10 +117,12 @@ class TelegramUtils:
 
         if response_queue == "/start":
             response_queue = await TelegramUtils.ask_user(
-                "I am already here... \n Please use /stop to stop me first.")
+                "I am already here... \n Please use /stop to stop me first."
+            )
         if response_queue == "/help":
             response_queue = await TelegramUtils.ask_user(
-                "You can use /stop to stop me \n and /start to start me again.")
+                "You can use /stop to stop me \n and /start to start me again."
+            )
 
         if response_queue == "/stop":
             TelegramUtils.send_message("Stopping Auto-GPT now!")
@@ -124,12 +134,16 @@ class TelegramUtils:
             response_text = "no"
             response_queue = "no"
         if response_queue.capitalize() in [
-            "Yes", "Okay", "Ok", "Sure", "Yeah", "Yup", "Yep"
+            "Yes",
+            "Okay",
+            "Ok",
+            "Sure",
+            "Yeah",
+            "Yup",
+            "Yep",
         ]:
             response_text = "y"
-        elif response_queue.capitalize() in [
-            "No", "Nope", "Nah", "N"
-        ]:
+        elif response_queue.capitalize() in ["No", "Nope", "Nah", "N"]:
             response_text = "n"
         else:
             response_text = response_queue

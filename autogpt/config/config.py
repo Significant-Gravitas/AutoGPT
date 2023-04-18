@@ -59,10 +59,10 @@ class Config(metaclass=Singleton):
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
 
-        self.telegram_enabled = os.getenv("TELEGRAM_ENABLED") == 'True'
+        self.telegram_enabled = os.getenv("TELEGRAM_ENABLED") == "True"
         self.telegram_api_key = os.getenv("TELEGRAM_API_KEY")
         self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
-        self.telegram_voice_enabled = os.getenv("TELEGRAM_VOICE_ENABLED") == 'False'
+        self.telegram_voice_enabled = os.getenv("TELEGRAM_VOICE_ENABLED") == "False"
 
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")

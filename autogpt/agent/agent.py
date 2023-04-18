@@ -110,9 +110,9 @@ class Agent:
                 if cfg.telegram_enabled:
                     telegramUtils = TelegramUtils()
                     telegramUtils.send_message(
-                        "NEXT ACTION: \n "
-                        + f"COMMAND = {command_name} \n "
-                        f"ARGUMENTS = {arguments}")
+                        "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
+                        f"ARGUMENTS = {arguments}"
+                    )
                 else:
                     logger.typewriter_log(
                         "NEXT ACTION: ",
@@ -131,7 +131,8 @@ class Agent:
                     if cfg.telegram_enabled:
                         telegramUtils = TelegramUtils()
                         console_input = telegramUtils.ask_user(
-                            "Enter 'y' to authorise command, 'y -N' to run N continuous \n commands, 'n' to exit program, or enter feedback for me.")
+                            "Enter 'y' to authorise command, 'y -N' to run N continuous \n commands, 'n' to exit program, or enter feedback for me."
+                        )
                     else:
                         console_input = clean_input(
                             Fore.MAGENTA + "Input:" + Style.RESET_ALL
@@ -180,9 +181,9 @@ class Agent:
                 if cfg.telegram_enabled:
                     telegramUtils = TelegramUtils()
                     telegramUtils.send_message(
-                        "NEXT ACTION: \n "
-                        +f"COMMAND = {command_name} \n "
-                    f"ARGUMENTS = {arguments}")
+                        "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
+                        f"ARGUMENTS = {arguments}"
+                    )
                 else:
                     logger.typewriter_log(
                         "NEXT ACTION: ",

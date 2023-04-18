@@ -86,6 +86,7 @@ class Logger(metaclass=Singleton):
 
         if CFG.telegram_enabled:
             from autogpt.telegram_chat import TelegramUtils
+
             telegramUtils = TelegramUtils()
             message = f"{title}. {content}"
             telegramUtils.send_message(message)

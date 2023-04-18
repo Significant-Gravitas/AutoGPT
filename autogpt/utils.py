@@ -5,12 +5,13 @@ import traceback
 import asyncio
 
 from autogpt.config.config import Config
+
 cfg = Config()
 
 
 def clean_input(prompt: str = "", talk=False):
     try:
-        if talk and cfg.use_mac_os_voice_input == 'True':
+        if talk and cfg.use_mac_os_voice_input == "True":
             try:
                 return voice_input(prompt)
             except:
@@ -24,17 +25,39 @@ def clean_input(prompt: str = "", talk=False):
                 telegramUtils = TelegramUtils()
                 chat_answer = telegramUtils.ask_user(prompt=prompt)
                 print("Telegram answer: " + chat_answer)
-                if chat_answer in ["yes", "yeah", "yep", "yup", "y", "ok", "okay", "sure", "affirmative", "aye", "aye aye", "alright", "alrighty"]:
+                if chat_answer in [
+                    "yes",
+                    "yeah",
+                    "yep",
+                    "yup",
+                    "y",
+                    "ok",
+                    "okay",
+                    "sure",
+                    "affirmative",
+                    "aye",
+                    "aye aye",
+                    "alright",
+                    "alrighty",
+                ]:
                     return "y"
-                elif chat_answer in ["no", "nope", "n", "nah", "negative", "nay", "nay nay"]:
+                elif chat_answer in [
+                    "no",
+                    "nope",
+                    "n",
+                    "nah",
+                    "negative",
+                    "nay",
+                    "nay nay",
+                ]:
                     return "n"
                 return chat_answer
 
             # ask for input, default when just pressing Enter is y
             print("Asking user via keyboard...")
-            answer = input(prompt + ' [y/n] or press Enter for default (y): ')
-            if answer == '':
-                answer = 'y'
+            answer = input(prompt + " [y/n] or press Enter for default (y): ")
+            if answer == "":
+                answer = "y"
             return answer
     except KeyboardInterrupt:
         print("You interrupted Auto-GPT from utils.py")
@@ -47,7 +70,8 @@ def voice_input(prompt: str = "", voice_prompt_counter: int = 0):
 
     if voice_prompt_counter > 3:
         speak.macos_tts_speech(
-            "I'm sorry, I didn't understand that. Please use the keyboard.")
+            "I'm sorry, I didn't understand that. Please use the keyboard."
+        )
         return clean_input(prompt, talk=False)
 
     voice_prompt_counter += 1
@@ -59,16 +83,47 @@ def voice_input(prompt: str = "", voice_prompt_counter: int = 0):
         try:
             user_input = recognizer.recognize_sphinx(audio)
 
-            if user_input in ["yes", "yeah", "yep", "yup", "y", "ok", "okay", "sure", "affirmative", "aye", "aye aye", "alright", "alrighty"]:
+            if user_input in [
+                "yes",
+                "yeah",
+                "yep",
+                "yup",
+                "y",
+                "ok",
+                "okay",
+                "sure",
+                "affirmative",
+                "aye",
+                "aye aye",
+                "alright",
+                "alrighty",
+            ]:
                 return "y"
             elif user_input in ["no", "nope", "n", "nah", "negative", "nay", "nay nay"]:
                 return "n"
-            elif user_input in ["quit", "exit", "stop", "end", "terminate", "cancel", "break", "halt", "die", "kill", "terminate"]:
+            elif user_input in [
+                "quit",
+                "exit",
+                "stop",
+                "end",
+                "terminate",
+                "cancel",
+                "break",
+                "halt",
+                "die",
+                "kill",
+                "terminate",
+            ]:
                 speak.macos_tts_speech("Okay then.. Goodbye!")
                 print("You interrupted Auto-GPT")
                 print("Quitting...")
                 exit(0)
-            elif user_input in ["do what you want", "keep going", "keep on going", "keep on"]:
+            elif user_input in [
+                "do what you want",
+                "keep going",
+                "keep on going",
+                "keep on",
+            ]:
                 return "y -15"
             else:
                 print("You said: " + user_input)
