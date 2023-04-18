@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from zipimport import zipimporter
 
-from plugin_template import AutoGPTPluginTemplate
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
 
 
 def inspect_zip_for_module(zip_path: str, debug: bool = False) -> Optional[str]:
