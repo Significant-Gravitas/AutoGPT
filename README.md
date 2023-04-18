@@ -2,6 +2,7 @@
 [![Unit Tests](https://img.shields.io/github/actions/workflow/status/Significant-Gravitas/Auto-GPT/ci.yml?label=unit%20tests)](https://github.com/Significant-Gravitas/Auto-GPT/actions/workflows/ci.yml)
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
 [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)](https://github.com/Significant-Gravitas/Auto-GPT/stargazers)
+[![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/2859)](https://ossrank.com/p/2859)
 [![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)
 
 ## 💡 Get help - [Q&A](https://github.com/Significant-Gravitas/Auto-GPT/discussions/categories/q-a) or [Discord 💬](https://discord.gg/autogpt)
