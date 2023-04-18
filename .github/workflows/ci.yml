@@ -17,7 +17,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: [3.8]
+        python-version: [3.10]
 
     steps:
     - name: Check out repository
