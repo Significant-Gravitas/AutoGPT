@@ -3,7 +3,7 @@ import os
 
 from typing import List
 import openai
-from plugin_template import AutoGPTPluginTemplate
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
 import yaml
 from colorama import Fore
 from dotenv import load_dotenv

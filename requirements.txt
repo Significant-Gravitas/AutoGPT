@@ -30,6 +30,7 @@ sourcery
 isort
 gitpython==3.1.31
 abstract-singleton
+auto-gpt-plugin-template
 
 # Testing dependencies
 pytest

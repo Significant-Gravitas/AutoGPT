@@ -8,7 +8,7 @@ from colorama import Fore
 from openai.error import APIError, RateLimitError
 
 from autogpt.config import Config
-from plugin_template import Message
+from autogpt.types.openai import Message
 
 CFG = Config()
 
@@ -109,7 +109,9 @@ def create_chat_completion(
             break
         except RateLimitError:
             if CFG.debug_mode:
-                print(f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}")
+                print(
+                    f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"
+                )
         except APIError as e:
             if e.http_status != 502:
                 raise

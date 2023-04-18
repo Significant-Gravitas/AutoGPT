@@ -4,8 +4,7 @@ from typing import List
 
 from autogpt.config.config import Config, Singleton
 from autogpt.llm_utils import create_chat_completion
-
-from plugin_template import Message
+from autogpt.types.openai import Message
 
 
 class AgentManager(metaclass=Singleton):
