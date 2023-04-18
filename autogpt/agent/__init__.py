@@ -14,10 +14,8 @@ def agent() -> None:
 
 
 @agent.command()
-async def v2() -> None:
+async def v1() -> None:
     """Command for running the v2 Auto-GPT agent."""
-    import tracemalloc
-
     import trio
 
     import autogpt.agent.agent_manager

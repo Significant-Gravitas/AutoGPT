@@ -1,5 +1,15 @@
 """Messages that the agent can send and receive."""
+import enum
+
 import pydantic
+
+
+class AgentCommands(enum.Enum):
+    """The commands that the agent can send to the AI."""
+
+    ping = "ping"
+    shutdown = "shutdown"
+    test = "test"
 
 
 class Command(pydantic.BaseModel):
