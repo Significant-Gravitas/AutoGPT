@@ -266,18 +266,6 @@ Drop the repo's zipfile in the plugins folder.
 
 If you add the plugins class name to the whitelist in the config.py you will not be prompted otherwise you'll be warned before loading the plugin.
 
-## Plugins
-
-See https://github.com/Torantulino/Auto-GPT-Plugin-Template for the template of the plugins.
-
-⚠️💀 WARNING 💀⚠️: Review the code of any plugin you use, this allows for any Python to be executed and do malicious things. Like stealing your API keys.
-
-Drop the repo's zipfile in the plugins folder.
-
-![Download Zip](https://raw.githubusercontent.com/BillSchumacher/Auto-GPT/master/plugin.png)
-
-If you add the plugins class name to the whitelist in the config.py you will not be prompted otherwise you'll be warned before loading the plugin.
-
 ## Setting Your Cache Type
 
 By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
