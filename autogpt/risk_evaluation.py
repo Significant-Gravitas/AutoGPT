@@ -1,9 +1,9 @@
-from autogpt.config import Config
-from autogpt.llm_utils import create_chat_completion
-from autogpt.chat import (
+from autogpt.chat import (  # TODO this shouldnt really be in chat.py, should it?
     create_chat_message,
-)  # TODO this shouldnt really be in chat.py, should it?
+)
+from autogpt.config import Config
 from autogpt.json_fixes import parsing
+from autogpt.llm_utils import create_chat_completion
 
 cfg = Config()
 
