@@ -6,7 +6,7 @@ A set of standardised benchmarks to assess the performance of Auto-GPTs.
 - [ ] Build longer form tasks, (code fix backed by testing)
 - [ ] Explicitly note the common failure modes in the test harness and fix them. Most of these appear to be failure modes with the core AutoGPT project
 - [ ] Switch to a ubuntu container so it can do more things (git, bash, etc)
-- [ ] Lower priority, but put this in a webserver backend so we have a good API
+- [ ] Lower priority, but put this in a webserver backend so we have a good API rather than doing container and file management for our interface between evals and our agent.
 - [ ] Get token counting data from the model Add scores to result files based on pricing associated with tokens and models used
 - [ ] Think about how this can be applied to other projects besides AutoGPT so we can be THE agent evaluation framework.
 - [ ] Figure our how the OpenAI Evals results are saved...
