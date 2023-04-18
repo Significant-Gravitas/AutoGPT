@@ -17,6 +17,7 @@ from autogpt.commands.file_operations import (
     read_file,
     search_files,
     search_folders,
+    rename_files,
     write_to_file,
 )
 from autogpt.commands.git_operations import clone_repository
@@ -175,6 +176,8 @@ def execute_command(command_name: str, arguments):
             return search_files(arguments["directory"])
         elif command_name == "search_folders":
             return search_folders(arguments["directory"])
+        elif command_name == "rename_files":
+            return rename_files(arguments["directory"], arguments["old_name"], arguments["new_name"])
         elif command_name == "download_file":
             if not CFG.allow_downloads:
                 return "Error: You do not have user authorization to download files locally."

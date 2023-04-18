@@ -74,6 +74,7 @@ def get_prompt() -> str:
         ("Delete file", "delete_file", {"file": "<file>"}),
         ("Search Files", "search_files", {"directory": "<directory>"}),
         ("Search Folders", "search_folders", {"directory": "<directory>"}),
+        ("Rename Files", "rename_files", {"directory": "<directory>", "old_name": "<text>", "new_name": "<text>"}),
         ("Evaluate Code", "evaluate_code", {"code": "<full_code_string>"}),
         (
             "Get Improved Code",
