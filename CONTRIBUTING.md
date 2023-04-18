@@ -24,7 +24,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
 Right now we will not be accepting any Contributions that add non-essential commands to Auto-GPT.
 
 However, you absolutely can still add these commands to Auto-GPT in the form of plugins. Please check out this [template](https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template).
-> Please note that the plugins framework has still not been finalized just yet, but stay tuned. You can follow PR #757 for more updates!
+> ⚠️ Plugin support is expected to ship within the week. You can follow PR #757 for more updates!
 
 ## Getting Started
 

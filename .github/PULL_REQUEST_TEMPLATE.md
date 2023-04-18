@@ -1,5 +1,6 @@
 <!-- ⚠️ At the moment any non-essential commands are not being merged.
-Please create your Pull Request as a plugin instead.
+If you want to add non-essential commands to Auto-GPT, please create a plugin instead.
+We are expecting to ship plugin support within the week (PR #757).
 Resources:
 * https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template
 -->
