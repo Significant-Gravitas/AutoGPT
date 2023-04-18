@@ -225,7 +225,7 @@ class Config(metaclass=Singleton):
         self.debug_mode = value
 
 
-def check_openai_api_key() -> None:
+def check_openai_api_key() -> bool:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     cfg = Config()
     if not cfg.openai_api_key:
@@ -234,4 +234,7 @@ def check_openai_api_key() -> None:
             + "Please set your OpenAI API key in .env or as an environment variable."
         )
         print("You can get your key from https://platform.openai.com/account/api-keys")
-        exit(1)
+        openaikey = input("Enter OpenAI API key:\n")
+        cfg.set_openai_api_key(openaikey)
+        return True
+    return False
