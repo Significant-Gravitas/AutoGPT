@@ -41,7 +41,7 @@ class TestCommandsValidator(unittest.TestCase):
         cv.validate_command()
         # assert that no exception was raised
 
-    def test_validate_command_skip_validation(self,caplog):
+    def test_validate_command_skip_validation(self, caplog):
         logger.set_level(logging.DEBUG)
         with caplog.at_leve(logging.DEBUG):
             cv = CommandsValidator("other_command", {})
