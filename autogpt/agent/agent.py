@@ -103,7 +103,7 @@ class Agent:
                     "NEXT ACTION: ",
                     Fore.CYAN,
                     f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                    f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                    "ARGUMENTS = "+''.join([f"{Fore.CYAN}{key}:{Style.RESET_ALL} {value}," for key, value in arguments.items()]),
                 )
                 print(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous "
