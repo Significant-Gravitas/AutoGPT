@@ -16,9 +16,11 @@ body:
         [discussions]: https://github.com/Significant-Gravitas/Auto-GPT/discussions
         [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
         [existing issues]: https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue
+  - type: markdown
+    attributes:
+      value: '### ⚠️ Search for existing issues first ⚠️'
   - type: checkboxes
     attributes:
-      label: '### ⚠️ Search for existing issues first!'
       description: >
         Please [search the history](https://github.com/Torantulino/Auto-GPT/issues)
         to see if an issue already exists for the same problem.
@@ -55,6 +57,7 @@ body:
         - Devcontainer / Codespace
         - Windows Subsystem for Linux (WSL)
         - Other (Please specify in your problem)
+      required: true
   - type: dropdown
     attributes:
       label: GPT-3 or GPT-4?
@@ -64,6 +67,7 @@ body:
       options:
         - GPT-3.5
         - GPT-4
+      required: true
   - type: textarea
     attributes:
       label: Steps to reproduce 🕹
