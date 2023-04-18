@@ -11,7 +11,7 @@ from autogpt.logs import logger
 from autogpt.memory import get_memory
 
 from autogpt.prompts.prompt import construct_main_ai_config
-from autogpt.plugins import load_plugins
+from autogpt.plugins import scan_plugins
 
 
 # Load environment variables from .env file
@@ -24,7 +24,7 @@ def main() -> None:
     check_openai_api_key()
     parse_arguments()
     logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
-    cfg.set_plugins(load_plugins(cfg, cfg.debug_mode))
+    cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
     command_registry.import_commands("scripts.ai_functions")
