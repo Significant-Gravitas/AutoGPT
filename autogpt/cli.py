@@ -74,15 +74,14 @@ def main(
     from colorama import Fore
 
     from autogpt.agent.agent import Agent
-
     from autogpt.commands.command import CommandRegistry
     from autogpt.config import Config, check_openai_api_key
     from autogpt.configurator import create_config
     from autogpt.logs import logger
     from autogpt.memory import get_memory
+    from autogpt.plugins import scan_plugins
     from autogpt.prompts.prompt import construct_main_ai_config
     from autogpt.utils import get_latest_bulletin
-    from autogpt.plugins import scan_plugins
     if ctx.invoked_subcommand is None:
         cfg = Config()
         # TODO: fill in llm values here

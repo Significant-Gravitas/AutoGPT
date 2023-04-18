@@ -1,6 +1,5 @@
 """Handles loading of plugins."""
-from typing import Any, Dict, List, Optional, Tuple, TypedDict
-from typing import TypeVar
+from typing import Any, Dict, List, Optional, Tuple, TypedDict, TypeVar
 
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 

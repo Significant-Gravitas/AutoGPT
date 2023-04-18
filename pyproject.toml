@@ -14,6 +14,7 @@ extend-exclude = '.+/(dist|.venv|venv|build)/.+'
 
 [tool.isort]
 profile = "black"
+skip = venv,env,node_modules,.env,.venv,dist
 multi_line_output = 3
 include_trailing_comma = true
 force_grid_wrap = 0
