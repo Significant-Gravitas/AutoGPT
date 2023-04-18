@@ -1,6 +1,7 @@
 """File operations for AutoGPT"""
 from __future__ import annotations
 
+import importlib
 import os
 import os.path
 from pathlib import Path
@@ -13,6 +14,7 @@ from requests.adapters import HTTPAdapter, Retry
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
+from autogpt.commands.file import *
 
 LOG_FILE = "file_logger.txt"
 LOG_FILE_PATH = WORKSPACE_PATH / LOG_FILE
@@ -93,9 +95,11 @@ def read_file(filename: str) -> str:
     """
     try:
         filepath = path_in_workspace(filename)
-        with open(filepath, "r", encoding="utf-8") as f:
-            content = f.read()
-        return content
+        _, file_extension = os.path.splitext(filename)
+        file_extension = file_extension.lower()[1:]  # Remove the dot from the extension
+        processor_module = importlib.import_module(f'autogpt.commands.file.{file_extension}_file')
+        text = processor_module.read_file(filepath)
+        return text
     except Exception as e:
         return f"Error: {str(e)}"
 
