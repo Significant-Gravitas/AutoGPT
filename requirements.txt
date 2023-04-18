@@ -21,6 +21,7 @@ jsonschema
 tweepy
 zarr
 scikit-learn
+click
 
 ##Dev
 coverage
