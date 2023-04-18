@@ -76,13 +76,9 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
-<<<<<<< HEAD
-logs/
-startgpt.sh
-
 # For Macs Dev Environs: ignoring .Desktop Services_Store
 .DS_Store
-=======
+
 # Translations
 *.mo
 *.pot
@@ -161,10 +157,4 @@ dmypy.json
 .pyre/
 llama-*
 vicuna-*
-<<<<<<< HEAD
->>>>>>> master
-=======
 
-# mac
-.DS_Store
->>>>>>> master
