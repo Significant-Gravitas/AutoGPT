@@ -3,6 +3,7 @@ import json
 from typing import Dict, List, NoReturn, Union
 
 from autogpt.agent.agent_manager import AgentManager
+from autogpt.commands.image_text import summarize_image_from_file
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.execute_code import (
@@ -211,6 +212,8 @@ def execute_command(command_name: str, arguments):
             return read_audio_from_file(arguments["file"])
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
+        elif command_name == "summarize_image_from_file":
+            return summarize_image_from_file(arguments["image"])
         elif command_name == "send_tweet":
             return send_tweet(arguments["text"])
         elif command_name == "do_nothing":

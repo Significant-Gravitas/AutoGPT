@@ -87,6 +87,8 @@ def get_prompt() -> str:
         ("Execute Python File", "execute_python_file", {"file": "<file>"}),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
         ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
+        ("Describe Image", "summarize_image_from_file", {"image": "<file>"}),
+        ("Convert Audio to text", "read_audio_from_file", {"file": "<file>"}),
         ("Send Tweet", "send_tweet", {"text": "<text>"}),
     ]
 
