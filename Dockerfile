@@ -1,16 +1,16 @@
 # Use an official Python base image from the Docker Hub
 FROM python:3.11-slim
 
-# Install git
+# Install git, Xvfb, Firefox, Chromium and other dependencies for headless browser testing
 RUN apt-get update \
-    && apt-get -y install git chromium-driver
-# Install Xvfb and other dependencies for headless browser testing
-    && apt-get install -y git wget gnupg2 libgtk-3-0 libdbus-glib-1-2 dbus-x11 xvfb ca-certificates \
-# Install Firefox / Chromium
+    && apt-get -y install git chromium-driver \
+    # Install Xvfb and other dependencies for headless browser testing
+    && apt-get install -y wget gnupg2 libgtk-3-0 libdbus-glib-1-2 dbus-x11 xvfb ca-certificates \
+    # Install Firefox / Chromium
     && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
     && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
-    && apt-get install -y chromium firefox-esr \
+    && apt-get install -y chromium firefox-esr
 
 
 # Set environment variables
