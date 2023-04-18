@@ -1,6 +1,6 @@
 from colorama import Fore, Style
-from autogpt.app import execute_command, get_command
 
+from autogpt.app import execute_command, get_command
 from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
 from autogpt.json_fixes.master_json_fix_method import fix_json_using_multiple_techniques
@@ -84,7 +84,7 @@ class Agent:
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
-                validate_json(assistant_reply_json, 'llm_response_format_1')
+                validate_json(assistant_reply_json, "llm_response_format_1")
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(self.ai_name, assistant_reply_json)
@@ -115,9 +115,12 @@ class Agent:
                     console_input = clean_input(
                         Fore.MAGENTA + "Input:" + Style.RESET_ALL
                     )
-                    if console_input.lower().rstrip() == "y":
+                    if console_input.lower().strip() == "y":
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
+                    elif console_input.lower().strip() == "":
+                        print("Invalid input format.")
+                        continue
                     elif console_input.lower().startswith("y -"):
                         try:
                             self.next_action_count = abs(
