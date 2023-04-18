@@ -13,18 +13,17 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.10']
+    env:
+      min-python-version: '3.10'
 
     steps:
     - name: Check out repository
       uses: actions/checkout@v3
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python ${{ env.min-python-version }}
       uses: actions/setup-python@v2
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: ${{ env.min-python-version }}
 
     - name: Install dependencies
       run: |
@@ -46,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10']
+        python-version: ['3.10', '3.11']
 
     steps:
     - name: Check out repository
