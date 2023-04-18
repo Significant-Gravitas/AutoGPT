@@ -56,8 +56,7 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
             "You need to set your Hugging Face API token in the config file."
         )
     headers = {
-        "Authorization": f"Bearer {CFG.huggingface_api_token}", 
-        "X-Wait-For-Model": "true", 
+        "Authorization": f"Bearer {CFG.huggingface_api_token}",
         "X-Use-Cache": "false"
     }
 
