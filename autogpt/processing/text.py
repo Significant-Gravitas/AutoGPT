@@ -7,7 +7,9 @@ from autogpt.llm_utils import create_chat_completion
 from autogpt.memory import get_memory
 
 CFG = Config()
-MEMORY = get_memory(CFG)
+
+def get_memory_instance():
+    return get_memory(CFG)
 
 
 def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
@@ -23,11 +25,6 @@ def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
     paragraphs = text.split("\n")
     current_length = 0
     current_chunk = []
-
-    def split_long_paragraph(paragraph: str, max_length: int) -> List[str]:
-        return [
-            paragraph[i : i + max_length] for i in range(0, len(paragraph), max_length)
-        ]
 
     for paragraph in paragraphs:
         if len(paragraph) > max_length:
@@ -67,6 +64,7 @@ def summarize_text(
     """
     if not text:
         return "Error: No text to summarize"
+    MEMORY = get_memory_instance()
 
     text_length = len(text)
     print(f"Text length: {text_length} characters")
