@@ -19,6 +19,7 @@ def parse_arguments() -> None:
     """
     CFG.set_debug_mode(False)
     CFG.set_continuous_mode(False)
+    CFG.set_risk_avoidance_mode(False)
     CFG.set_speak_mode(False)
 
     parser = argparse.ArgumentParser(description="Process arguments.")
@@ -32,6 +33,7 @@ def parse_arguments() -> None:
         dest="continuous_limit",
         help="Defines the number of times to run in continuous mode",
     )
+    parser.add_argument("--risk_avoidance", action="store_true", help="Enable Risk Avoidance Mode")
     parser.add_argument("--speak", action="store_true", help="Enable Speak Mode")
     parser.add_argument("--debug", action="store_true", help="Enable Debug Mode")
     parser.add_argument(
