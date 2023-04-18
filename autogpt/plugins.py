@@ -196,7 +196,7 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
             module = Path(module)
             if debug:
                 print(f"Plugin: {plugin} Module: {module}")
-            zipped_package = zipimporter(plugin)
+            zipped_package = zipimporter(str(plugin))
             zipped_module = zipped_package.load_module(str(module.parent))
             for key in dir(zipped_module):
                 if key.startswith("__"):
