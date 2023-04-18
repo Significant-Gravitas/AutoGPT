@@ -253,6 +253,7 @@ def search_folders(directory: str) -> list[str]:
 
     return found_folders
 
+
 def download_file(url, filename):
     """Downloads a file
     Args:
