@@ -18,12 +18,12 @@ A set of standardised benchmarks to assess the performance of Auto-GPTs.
 
 The Evals docs are here and very good: https://github.com/openai/evals/tree/main/docs
 
-The basic idea is this though:
+The basic idea is this:
 1. Use a completion function to point to the language model or in our case AutoGPT, the model you want to test.
 2. Register that completion function with the evals framework with a yaml in a `completion_fns` dir.
 3. Run the evals against the completion function.
 
-Then you can make more also, yaml defined evals and run them against the completion function as needed.
+Then you can make more yaml defined evals and run them against the completion function as needed.
 
 ### Completions Functions
 
@@ -61,7 +61,7 @@ EVALS_THREADS=1 EVALS_THREAD_TIMEOUT=600 oaieval auto_gpt_completion_fn test-mat
 
 # Example final output:
 
-~/AGI/Auto-GPT-Benchmarks-fork$ cat /tmp/evallogs/230417220821DPM75QNS_auto_gpt_completion_fn_test-match.jsonl
+/Auto-GPT-Benchmarks-fork$ cat /tmp/evallogs/230417220821DPM75QNS_auto_gpt_completion_fn_test-match.jsonl
 {"spec": {"completion_fns": ["auto_gpt_completion_fn"], "eval_name": "test-match.s1.simple-v0", "base_eval": "test-match", "split": "s1", "run_config": {"completion_fns": ["auto_gpt_completion_fn"], "eval_spec": {"cls": "evals.elsuite.basic.match:Match", "args": {"samples_jsonl": "test_match/samples.jsonl"}, "key": "test-match.s1.simple-v0", "group": "test-basic"}, "seed": 20220722, "max_samples": null, "command": "/home/douglas/AGI/Auto-GPT-Benchmarks-fork/venv/bin/oaieval auto_gpt_completion_fn test-match --registry_path /home/douglas/AGI/Auto-GPT-Benchmarks-fork/auto_gpt_benchmarking", "initial_settings": {"visible": true}}, "created_by": "", "run_id": "230417220821DPM75QNS", "created_at": "2023-04-17 22:08:21.904498"}}
 {"final_report": {"accuracy": 0.3333333333333333}}
 {"run_id": "230417220821DPM75QNS", "event_id": 0, "sample_id": "test-match.s1.2", "type": "sampling", "data": {"prompt": "Complete the phrase as concisely as possible.\nUser: OpenAI was founded in 20\nAssistant: ", "sampled": "OpenAI was founded in 2015.2015"}, "created_by": "", "created_at": "2023-04-17 22:10:13.127375+00:00"}
