@@ -228,6 +228,32 @@ def search_files(directory: str) -> list[str]:
     return found_files
 
 
+def search_folders(directory: str) -> list[str]:
+    """Search for folders in a directory
+
+    Args:
+        directory (str): The directory to search in
+
+    Returns:
+        list[str]: A list of folder names found in the directory
+    """
+    found_folders = []
+
+    if directory in {"", "/"}:
+        search_directory = WORKSPACE_PATH
+    else:
+        search_directory = path_in_workspace(directory)
+
+    for root, dirs, _ in os.walk(search_directory):
+        for dir in dirs:
+            if dir.startswith("."):
+                continue
+            relative_path = os.path.relpath(os.path.join(root, dir), WORKSPACE_PATH)
+            found_folders.append(relative_path)
+
+    return found_folders
+
+
 def download_file(url, filename):
     """Downloads a file
     Args:
