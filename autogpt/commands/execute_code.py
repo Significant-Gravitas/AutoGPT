@@ -125,10 +125,9 @@ def execute_shell_popen(command_line) -> str:
         str: Description of the fact that the process started and its id
     """
     current_dir = os.getcwd()
-
-    if WORKING_DIRECTORY not in current_dir:  # Change dir into workspace if necessary
-        work_dir = os.path.join(os.getcwd(), WORKING_DIRECTORY)
-        os.chdir(work_dir)
+    # Change dir into workspace if necessary
+    if str(WORKSPACE_PATH) not in current_dir:
+        os.chdir(WORKSPACE_PATH)
 
     print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
