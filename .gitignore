@@ -157,3 +157,6 @@ vicuna-*
 
 # mac
 .DS_Store
+
+# news
+CURRENT_BULLETIN.md
