@@ -38,23 +38,28 @@ class MilvusMemory(MemoryProviderSingleton):
                 index_name="embeddings",
             )
         self.collection.load()
-
+        
+        # Initialize buffer list for batch insertions
+        self.buffer = []
     def add(self, data) -> str:
         """Add an embedding of data into memory.
-
         Args:
             data (str): The raw text to construct embedding index.
-
         Returns:
             str: log.
         """
         embedding = get_ada_embedding(data)
-        result = self.collection.insert([[embedding], [data]])
-        _text = (
-            "Inserting data into memory at primary key: "
-            f"{result.primary_keys[0]}:\n data: {data}"
-        )
-        return _text
+        self.buffer.append([embedding, data])
+
+        # Batch insert when buffer size reaches a threshold
+        if len(self.buffer) >= 100:
+            result = self.collection.insert(self.buffer)
+            self.buffer.clear()
+            _text = (
+                f"Batch inserting {len(result.primary_keys)} data items into memory "
+                f"at primary key: {result.primary_keys}:\n data: {self.buffer}"
+            )
+            return _text
 
     def get(self, data):
         """Return the most relevant data in memory.
