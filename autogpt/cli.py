@@ -1,6 +1,9 @@
 """Main script for the autogpt package."""
 import click
 
+# Importing agent subcommands
+import autogpt.agent
+
 
 @click.group(invoke_without_command=True)
 @click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
@@ -119,6 +122,10 @@ def main(
             triggering_prompt=triggering_prompt,
         )
         agent.start_interaction_loop()
+
+
+# Add the agent subcommands
+main.add_command(autogpt.agent.agent)
 
 
 if __name__ == "__main__":
