@@ -1,5 +1,6 @@
 """This module contains the argument parsing logic for the script."""
 import argparse
+
 from colorama import Back, Fore, Style
 
 from autogpt import utils
