@@ -1,6 +1,8 @@
 import pytest
-from autogpt.plugins import inspect_zip_for_module, scan_plugins, blacklist_whitelist_check
+
 from autogpt.config import Config
+from autogpt.plugins import (blacklist_whitelist_check, inspect_zip_for_module,
+                             scan_plugins)
 
 PLUGINS_TEST_DIR = "tests/unit/data/test_plugins"
 PLUGIN_TEST_ZIP_FILE = "Auto-GPT-Plugin-Test-master.zip"
