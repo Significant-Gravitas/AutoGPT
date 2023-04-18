@@ -444,6 +444,7 @@ Once you have a token, set these variables in your `.env`:
 ```bash
 IMAGE_PROVIDER=sd
 HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
+HUGGINGFACE_API_URL="YOUR_HUGGINGFACE_MODEL_API_URL"
 ```
 
 ## Selenium

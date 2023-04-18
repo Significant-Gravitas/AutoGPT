@@ -44,9 +44,7 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
     Returns:
         str: The filename of the image
     """
-    API_URL = (
-        "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
-    )
+    API_URL = CFG.huggingface_api_url or "https://api-inference.huggingface.co/models/CompVis/stable-diffusion-v1-4"
     if CFG.huggingface_api_token is None:
         raise ValueError(
             "You need to set your Hugging Face API token in the config file."
