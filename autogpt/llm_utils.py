@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 from ast import List
 
-import openai
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError
 
@@ -12,8 +11,12 @@ from autogpt.logs import logger
 
 CFG = Config()
 
-openai.api_key = CFG.openai_api_key
-
+if CFG.llm_provider == 'openai':
+    import openai
+    openai.api_key = CFG.openai_api_key
+if CFG.llm_provider == 'anthropic':
+    import anthropic
+    anthropic_client = anthropic.Client(CFG.anthropic_api_key)
 
 def call_ai_function(
     function: str, args: list, description: str, model: str | None = None
@@ -81,20 +84,28 @@ def create_chat_completion(
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
-            if CFG.use_azure:
-                response = openai.ChatCompletion.create(
-                    deployment_id=CFG.get_azure_deployment_id_for_model(model),
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            else:
-                response = openai.ChatCompletion.create(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
+            if CFG.llm_provider == "openai":
+                if CFG.use_azure:
+                    response = openai.ChatCompletion.create(
+                        deployment_id=CFG.get_azure_deployment_id_for_model(model),
+                        model=model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                else:
+                    response = openai.ChatCompletion.create(
+                        model=model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+            if CFG.llm_provider == "anthropic":
+                response = anthropic_client.completion(
+                    prompt=f"{anthropic.HUMAN_PROMPT} {messages} {anthropic.AI_PROMPT}",
+                    stop_sequences = [anthropic.HUMAN_PROMPT],
+                    model="claude-v1.3",
+                    max_tokens_to_sample=10000000000,
                 )
             break
         except RateLimitError:
@@ -135,7 +146,10 @@ def create_chat_completion(
         else:
             quit(1)
 
-    return response.choices[0].message["content"]
+    if CFG.llm_provider == "openai":
+        return response.choices[0].message["content"]
+    if CFG.llm_provider == "anthropic":
+        return response['completion'][0]
 
 
 def create_embedding_with_ada(text) -> list:

@@ -77,7 +77,9 @@ def main(
     if ctx.invoked_subcommand is None:
         cfg = Config()
         # TODO: fill in llm values here
-        check_openai_api_key()
+        if cfg.llm_provider == 'openai':
+            check_openai_api_key()
+
         create_config(
             continuous,
             continuous_limit,
