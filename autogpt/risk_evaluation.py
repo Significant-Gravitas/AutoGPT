@@ -1,7 +1,7 @@
-from config import Config
-from llm_utils import create_chat_completion
-from chat import create_chat_message # TODO this shouldnt really be in chat.py, should it?
-import json_parser
+from autogpt.config import Config
+from autogpt.llm_utils import create_chat_completion
+from autogpt.chat import create_chat_message # TODO this shouldnt really be in chat.py, should it?
+from autogpt.json_fixes import parsing
 
 cfg = Config()
 
@@ -45,6 +45,6 @@ def evaluate_risk(command, arguments):
     if cfg.debug_mode:
         print(f"Risk evaluator response: {response}")
 
-    response_object = json_parser.fix_and_parse_json(response, False)
+    response_object = parsing.fix_and_parse_json(response, False)
 
-    return response_object['calculated_risk'], response_object['reason'] # TODO: temporary, this always exits
+    return response_object['calculated_risk'], response_object['reason']
