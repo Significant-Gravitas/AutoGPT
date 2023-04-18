@@ -96,6 +96,7 @@ def parse_arguments() -> None:
         dest="allow_downloads",
         help="Dangerous: Allows Auto-GPT to download files natively.",
     )
+
     args = parser.parse_args()
 
     if args.debug:

@@ -6,7 +6,10 @@ on:
       - master
   pull_request:
     branches:
-      - master
+      - '**'
+  pull_request_target:
+    branches:
+      - '**'
 
 jobs:
   build:
@@ -32,7 +35,15 @@ jobs:
 
     - name: Lint with flake8
       continue-on-error: false
-      run: flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
+      run: flake8
+
+    - name: Check black formatting
+      continue-on-error: false
+      run: black . --check
+
+    - name: Check isort formatting
+      continue-on-error: false
+      run: isort . --check
 
     - name: Run unittest tests with coverage
       run: |
