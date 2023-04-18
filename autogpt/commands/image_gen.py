@@ -1,12 +1,12 @@
 """ Image Generation Module for AutoGPT."""
 import io
-import os.path
 import uuid
 from base64 import b64decode
 
 import openai
 import requests
 from PIL import Image
+
 from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.workspace import path_in_workspace
@@ -14,7 +14,7 @@ from autogpt.workspace import path_in_workspace
 CFG = Config()
 
 
-@command("generate_image", "Generate Image", '"prompt": "<prompt>"')
+@command("generate_image", "Generate Image", '"prompt": "<prompt>"', CFG.image_provider)
 def generate_image(prompt: str) -> str:
     """Generate an image from a prompt.
 

@@ -3,17 +3,18 @@ from __future__ import annotations
 
 import contextlib
 import json
-from typing import Any
-
+from typing import Any, Dict, Union
+from colorama import Fore
+from regex import regex
 from autogpt.config import Config
 from autogpt.json_fixes.auto_fix import fix_json
 from autogpt.json_fixes.bracket_termination import balance_braces
 from autogpt.json_fixes.escaping import fix_invalid_escape
 from autogpt.json_fixes.missing_quotes import add_quotes_to_property_names
 from autogpt.logs import logger
+from autogpt.speech import say_text
 
 CFG = Config()
-
 
 JSON_SCHEMA = """
 {
@@ -38,7 +39,6 @@ JSON_SCHEMA = """
 def correct_json(json_to_load: str) -> str:
     """
     Correct common JSON errors.
-
     Args:
         json_to_load (str): The JSON string.
     """
@@ -72,7 +72,7 @@ def correct_json(json_to_load: str) -> str:
 
 def fix_and_parse_json(
     json_to_load: str, try_to_fix_with_gpt: bool = True
-) -> str | dict[Any, Any]:
+) -> Dict[Any, Any]:
     """Fix and parse JSON string
 
     Args:
@@ -110,7 +110,7 @@ def fix_and_parse_json(
 
 def try_ai_fix(
     try_to_fix_with_gpt: bool, exception: Exception, json_to_load: str
-) -> str | dict[Any, Any]:
+) -> Dict[Any, Any]:
     """Try to fix the JSON with the AI
 
     Args:
@@ -126,13 +126,13 @@ def try_ai_fix(
     """
     if not try_to_fix_with_gpt:
         raise exception
-
-    logger.warn(
-        "Warning: Failed to parse AI output, attempting to fix."
-        "\n If you see this warning frequently, it's likely that"
-        " your prompt is confusing the AI. Try changing it up"
-        " slightly."
-    )
+    if CFG.debug_mode:
+        logger.warn(
+            "Warning: Failed to parse AI output, attempting to fix."
+            "\n If you see this warning frequently, it's likely that"
+            " your prompt is confusing the AI. Try changing it up"
+            " slightly."
+        )
     # Now try to fix this up using the ai_functions
     ai_fixed_json = fix_json(json_to_load, JSON_SCHEMA)
 
@@ -140,5 +140,39 @@ def try_ai_fix(
         return json.loads(ai_fixed_json)
     # This allows the AI to react to the error message,
     #   which usually results in it correcting its ways.
-    logger.error("Failed to fix AI output, telling the AI.")
-    return json_to_load
+    # logger.error("Failed to fix AI output, telling the AI.")
+    return {}
+
+
+def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
+    if CFG.speak_mode and CFG.debug_mode:
+        say_text(
+            "I have received an invalid JSON response from the OpenAI API. "
+            "Trying to fix it now."
+        )
+        logger.error("Attempting to fix JSON by finding outermost brackets\n")
+
+    try:
+        json_pattern = regex.compile(r"\{(?:[^{}]|(?R))*\}")
+        json_match = json_pattern.search(json_string)
+
+        if json_match:
+            # Extract the valid JSON object from the string
+            json_string = json_match.group(0)
+            logger.typewriter_log(
+                title="Apparently json was fixed.", title_color=Fore.GREEN
+            )
+            if CFG.speak_mode and CFG.debug_mode:
+                say_text("Apparently json was fixed.")
+        else:
+            return {}
+
+    except (json.JSONDecodeError, ValueError):
+        if CFG.debug_mode:
+            logger.error(f"Error: Invalid JSON: {json_string}\n")
+        if CFG.speak_mode:
+            say_text("Didn't work. I will have to ignore this response then.")
+        logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
+        json_string = {}
+
+    return fix_and_parse_json(json_string)

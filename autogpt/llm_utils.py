@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from ast import List
 import time
 
 import openai
-from openai.error import APIError, RateLimitError
 from colorama import Fore
+from openai.error import APIError, RateLimitError
 
 from autogpt.config import Config
 
@@ -76,6 +75,20 @@ def create_chat_completion(
             + f"Creating chat completion with model {model}, temperature {temperature},"
             f" max_tokens {max_tokens}" + Fore.RESET
         )
+    for plugin in CFG.plugins:
+        if plugin.can_handle_chat_completion(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            response = plugin.handle_chat_completion(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return response
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
@@ -99,7 +112,7 @@ def create_chat_completion(
             if CFG.debug_mode:
                 print(
                     Fore.RED + "Error: ",
-                    f"Reached rate limit, passing..." + Fore.RESET,
+                    "Reached rate limit, passing..." + Fore.RESET,
                 )
         except APIError as e:
             if e.http_status == 502:
@@ -118,6 +131,8 @@ def create_chat_completion(
         raise RuntimeError(f"Failed to get response after {num_retries} retries")
     resp = response.choices[0].message["content"]
     for plugin in CFG.plugins:
+        if not plugin.can_handle_on_response():
+            continue
         resp = plugin.on_response(resp)
     return resp
 

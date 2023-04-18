@@ -19,6 +19,7 @@ class PromptGenerator:
         self.resources = []
         self.performance_evaluation = []
         self.goals = []
+        self.command_registry = None
         self.name = "Bob"
         self.role = "AI"
         self.response_format = {
@@ -119,10 +120,16 @@ class PromptGenerator:
             str: The formatted numbered list.
         """
         if item_type == "command":
-            return "\n".join(
-                f"{i+1}. {self._generate_command_string(item)}"
-                for i, item in enumerate(items)
-            )
+            command_strings = []
+            if self.command_registry:
+                command_strings += [
+                    str(item)
+                    for item in self.command_registry.commands.values()
+                    if item.enabled
+                ]
+            # These are the commands that are added manually, do_nothing and terminate
+            command_strings += [self._generate_command_string(item) for item in items]
+            return "\n".join(f"{i+1}. {item}" for i, item in enumerate(command_strings))
         else:
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
 
