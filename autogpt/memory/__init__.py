@@ -6,20 +6,20 @@ from autogpt.memory.no_memory import NoMemory
 supported_memory = ["local", "no_memory"]
 
 try:
-    from autogpt.memory.redismem import RedisMemory
-
-    supported_memory.append("redis")
-except ImportError:
-    # print("Redis not installed. Skipping import.")
-    RedisMemory = None
-
-try:
     from autogpt.memory.pinecone import PineconeMemory
 
     supported_memory.append("pinecone")
 except ImportError:
     # print("Pinecone not installed. Skipping import.")
     PineconeMemory = None
+
+try:
+    from autogpt.memory.redismem import RedisMemory
+
+    supported_memory.append("redis")
+except ImportError:
+    # print("Redis not installed. Skipping import.")
+    RedisMemory = None
 
 try:
     from autogpt.memory.weaviate import WeaviateMemory
@@ -40,41 +40,43 @@ except ImportError:
 
 def get_memory(cfg, init=False):
     memory = None
-    if cfg.memory_backend == "pinecone":
+    # memory_backend convert to lowercase
+    memory_backend = cfg.memory_backend.lower()
+    if memory_backend == "pinecone":
         if not PineconeMemory:
             print(
-                "Error: Pinecone is not installed. Please install pinecone"
-                " to use Pinecone as a memory backend."
+                "Error: Pinecone is not installed."
+                "Please install pinecone to use Pinecone as a memory backend."
             )
         else:
             memory = PineconeMemory(cfg)
             if init:
                 memory.clear()
-    elif cfg.memory_backend == "redis":
+    elif memory_backend == "redis":
         if not RedisMemory:
             print(
-                "Error: Redis is not installed. Please install redis-py to"
-                " use Redis as a memory backend."
+                "Error: Redis is not installed."
+                "Please install redis-py to use Redis as a memory backend."
             )
         else:
             memory = RedisMemory(cfg)
-    elif cfg.memory_backend == "weaviate":
+    elif memory_backend == "weaviate":
         if not WeaviateMemory:
             print(
-                "Error: Weaviate is not installed. Please install weaviate-client to"
-                " use Weaviate as a memory backend."
+                "Error: Weaviate is not installed."
+                "Please install weaviate-client to use Weaviate as a memory backend."
             )
         else:
             memory = WeaviateMemory(cfg)
-    elif cfg.memory_backend == "milvus":
+    elif memory_backend == "milvus":
         if not MilvusMemory:
             print(
-                "Error: Milvus sdk is not installed."
-                "Please install pymilvus to use Milvus as memory backend."
+                "Error: Milvus is not installed."
+                "Please install pymilvus to use Milvus as a memory backend."
             )
         else:
             memory = MilvusMemory(cfg)
-    elif cfg.memory_backend == "no_memory":
+    elif memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
     if memory is None:
@@ -89,11 +91,12 @@ def get_supported_memory_backends():
 
 
 __all__ = [
-    "get_memory",
     "LocalCache",
-    "RedisMemory",
-    "PineconeMemory",
     "NoMemory",
+    "PineconeMemory",
+    "RedisMemory",
     "MilvusMemory",
     "WeaviateMemory",
+    "get_memory",
+    "get_supported_memory_backends",
 ]
