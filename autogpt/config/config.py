@@ -53,6 +53,10 @@ class Config(metaclass=Singleton):
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
 
+        self.google_speak_key_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+        self.google_voice_1_id = os.getenv("GOOGLE_VOICE_1_ID")
+        self.google_voice_2_id = os.getenv("GOOGLE_VOICE_2_ID")
+
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
 

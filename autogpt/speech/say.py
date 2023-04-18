@@ -7,11 +7,14 @@ from autogpt.speech.brian import BrianSpeech
 from autogpt.speech.eleven_labs import ElevenLabsSpeech
 from autogpt.speech.gtts import GTTSVoice
 from autogpt.speech.macos_tts import MacOSTTS
+from autogpt.speech.google_speak import GoogleSpeech
 
 CFG = Config()
 DEFAULT_VOICE_ENGINE = GTTSVoice()
 VOICE_ENGINE = None
-if CFG.elevenlabs_api_key:
+if CFG.google_speak_key_path:
+    VOICE_ENGINE = GoogleSpeech()
+elif CFG.elevenlabs_api_key:
     VOICE_ENGINE = ElevenLabsSpeech()
 elif CFG.use_mac_os_tts == "True":
     VOICE_ENGINE = MacOSTTS()

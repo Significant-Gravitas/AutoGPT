@@ -216,6 +216,17 @@ python -m autogpt --speak
 - Adam : pNInz6obpgDQGcFmaJgB
 - Sam : yoZ06aMxZJJ28mfd3POQ
 
+#####
+### if you want to use google text to speech instead:
+# 1. Visit cloud.google.com libraries and activate google text to speech API
+
+# 2. Generate a client_secrets or service_account.json file from "api's and services" -> "credentials", save the generated file on your computer.
+
+# 3. Specify env variable GOOGLE_SERVICE_ACCOUNT_JSON={path_to_client_secret_or_service_account.json} this should be a path to the credentials file. 
+
+# 4. Run "python -m autogpt --speak" as normal.
+#####
+
 ## 🔍 Google API Keys Configuration
 
 This section is optional, use the official google api if you are having issues with error 429 when running a google search.
