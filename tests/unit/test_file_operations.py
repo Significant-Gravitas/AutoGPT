@@ -1,19 +1,19 @@
-import unittest
 import os
 import shutil
+import unittest
 from pathlib import Path
-from autogpt.commands.file_operations import (
-    check_duplicate_operation,
-    log_operation,
-    split_file,
-    read_file,
-    write_to_file,
-    append_to_file,
-    delete_file,
-    search_files,
-    LOG_FILE_PATH,
-)
 
+from autogpt.commands.file_operations import (
+    LOG_FILE_PATH,
+    append_to_file,
+    check_duplicate_operation,
+    delete_file,
+    log_operation,
+    read_file,
+    search_files,
+    split_file,
+    write_to_file,
+)
 from autogpt.workspace import path_in_workspace
 
 
