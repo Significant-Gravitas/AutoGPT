@@ -11,6 +11,29 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  labeler:
+    permissions:
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    name: Label the PR size
+    steps:
+      - uses: codelytv/pr-size-labeler@v1.7.0
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          s_label: 'size/s'
+          s_max_size: '10'
+          m_label: 'size/m'
+          m_max_size: '50'
+          l_label: 'size/l'
+          l_max_size: '200'
+          xl_label: 'size/xl'
+          fail_if_xl: 'false'
+          message_if_xl: >
+            This PR exceeds the recommended size of 200 lines.
+            Please make sure you are NOT addressing multiple issues with one PR.
+            Note this PR might be rejected due to its size.
+          github_api_url: 'api.github.com'
   lint:
     runs-on: ubuntu-latest
     strategy:
