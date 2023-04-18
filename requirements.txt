@@ -41,3 +41,6 @@ pytest-benchmark
 pytest-cov
 pytest-integration
 pytest-mock
+
+# Data Validation
+cerberus==1.3.4
