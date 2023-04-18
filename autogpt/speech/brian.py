@@ -1,5 +1,6 @@
 """ Brian speech module for autogpt """
 import os
+
 import requests
 from playsound import playsound
 
@@ -13,7 +14,7 @@ class BrianSpeech(VoiceBase):
         """Setup the voices, API key, etc."""
         pass
 
-    def _speech(self, text: str) -> bool:
+    def _speech(self, text: str, _: int = 0) -> bool:
         """Speak text using Brian with the streamelements API
 
         Args:

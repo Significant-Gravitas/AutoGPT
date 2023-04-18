@@ -1,9 +1,11 @@
 """Text processing functions"""
-from typing import Generator, Optional, Dict
+from typing import Dict, Generator, Optional
+
 from selenium.webdriver.remote.webdriver import WebDriver
-from autogpt.memory import get_memory
+
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
+from autogpt.memory import get_memory
 
 CFG = Config()
 MEMORY = get_memory(CFG)
@@ -78,7 +80,6 @@ def summarize_text(
         summary = create_chat_completion(
             model=CFG.fast_llm_model,
             messages=messages,
-            max_tokens=CFG.browse_summary_max_token,
         )
         summaries.append(summary)
         print(f"Added chunk {i + 1} summary to memory")
@@ -95,7 +96,6 @@ def summarize_text(
     return create_chat_completion(
         model=CFG.fast_llm_model,
         messages=messages,
-        max_tokens=CFG.browse_summary_max_token,
     )
 
 
