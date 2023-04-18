@@ -53,7 +53,6 @@ async def start(update: Update, context: CallbackContext):
             await update.message.reply_text("Already started!")
             return
         else:
-            TelegramUtils.send_message("Auto-GPT is starting now!")
             # check if python is installed, using python3 if not
             if os.name == 'nt':
                 # Check if main is still running
