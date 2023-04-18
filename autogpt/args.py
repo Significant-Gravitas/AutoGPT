@@ -1,7 +1,8 @@
 """This module contains the argument parsing logic for the script."""
 import argparse
 
-from colorama import Fore, Back, Style
+from colorama import Back, Fore, Style
+
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -64,10 +65,10 @@ def parse_arguments() -> None:
         " skip the re-prompt.",
     )
     parser.add_argument(
-        '--allow-downloads',
-        action='store_true',
-        dest='allow_downloads',
-        help='Dangerous: Allows Auto-GPT to download files natively.'
+        "--allow-downloads",
+        action="store_true",
+        dest="allow_downloads",
+        help="Dangerous: Allows Auto-GPT to download files natively.",
     )
     args = parser.parse_args()
 
@@ -141,10 +142,17 @@ def parse_arguments() -> None:
 
     if args.allow_downloads:
         logger.typewriter_log("Native Downloading:", Fore.GREEN, "ENABLED")
-        logger.typewriter_log("WARNING: ", Fore.YELLOW,
-                              f"{Back.LIGHTYELLOW_EX}Auto-GPT will now be able to download and save files to your machine.{Back.RESET} " +
-                              "It is recommended that you monitor any files it downloads carefully.")
-        logger.typewriter_log("WARNING: ", Fore.YELLOW, f"{Back.RED + Style.BRIGHT}ALWAYS REMEMBER TO NEVER OPEN FILES YOU AREN'T SURE OF!{Style.RESET_ALL}")
+        logger.typewriter_log(
+            "WARNING: ",
+            Fore.YELLOW,
+            f"{Back.LIGHTYELLOW_EX}Auto-GPT will now be able to download and save files to your machine.{Back.RESET} "
+            + "It is recommended that you monitor any files it downloads carefully.",
+        )
+        logger.typewriter_log(
+            "WARNING: ",
+            Fore.YELLOW,
+            f"{Back.RED + Style.BRIGHT}ALWAYS REMEMBER TO NEVER OPEN FILES YOU AREN'T SURE OF!{Style.RESET_ALL}",
+        )
         CFG.allow_downloads = True
 
     if args.browser_name:
