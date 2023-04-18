@@ -1,27 +1,50 @@
 import unittest
-from autogpt.processing.text import split_long_paragraph
+from autogpt.processing.text import split_text
 
-
-class TestSplitLongParagraph(unittest.TestCase):
-    def test_split_long_paragraph(self):
-        paragraph = "This is a sample paragraph to test the functionality of the split_long_paragraph function. It should split this paragraph into smaller chunks of text based on the specified maximum length, ensuring that the splits occur at whitespace or other non-word characters."
-
-        # Test case 1: max_length >= len(paragraph)
-        result = split_long_paragraph(paragraph, max_length=300)
-        self.assertEqual(result, [paragraph])
-
-        # Test case 2: max_length < len(paragraph) and splits on whitespace
-        max_length = 26
-        result = split_long_paragraph(paragraph, max_length=max_length)
-        for chunk in result:
+class TestSplitText(unittest.TestCase):
+    def check_chunk_lengths(self, chunks, max_length):
+        for chunk in chunks:
             self.assertLessEqual(len(chunk), max_length)
 
-        # Test case 3: max_length is small, but still larger than the longest word
+    def test_empty_string(self):
+        text = ""
+        result = list(split_text(text))
+        self.check_chunk_lengths(result, 8192)
+
+    def test_no_split_required(self):
+        text = "Hello, world!"
+        max_length = 20
+        result = list(split_text(text, max_length=max_length))
+        self.check_chunk_lengths(result, max_length)
+
+    def test_split_required(self):
+        text = "Hello, world!\nHow are you today?"
+        max_length = 15
+        result = list(split_text(text, max_length=max_length))
+        self.check_chunk_lengths(result, max_length)
+
+    def test_long_paragraph_split(self):
+        text = "This is a very long paragraph that needs to be split into smaller chunks."
         max_length = 10
-        result = split_long_paragraph(paragraph, max_length=max_length)
-        for chunk in result:
-            self.assertLessEqual(len(chunk), max_length)
+        result = list(split_text(text, max_length=max_length))
+        self.check_chunk_lengths(result, max_length)
 
+    def test_split_with_whitespace(self):
+        text = "This is a test\n\nwith extra whitespace."
+        max_length = 15
+        result = list(split_text(text, max_length=max_length))
+        self.check_chunk_lengths(result, max_length)
+
+    def test_value_error(self):
+        text = "This is a very long paragraph that needs to be split into smaller chunks."
+        with self.assertRaises(ValueError):
+            list(split_text(text, max_length=0))
+
+    def test_max_length_larger_than_text(self):
+        text = "Hello, world!"
+        max_length = 10000
+        result = list(split_text(text, max_length=max_length))
+        self.check_chunk_lengths(result, max_length)
 
 if __name__ == "__main__":
     unittest.main()
