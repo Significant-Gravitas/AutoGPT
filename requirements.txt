@@ -8,6 +8,7 @@ readability-lxml==0.8.1
 requests
 tiktoken==0.3.3
 gTTS==2.3.1
+google-cloud-texttospeech==2.14.1
 docker
 duckduckgo-search
 google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
