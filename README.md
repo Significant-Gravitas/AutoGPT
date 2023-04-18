@@ -9,9 +9,8 @@ A set of standardised benchmarks to assess the performance of Auto-GPTs.
 - [ ] Lower priority, but put this in a webserver backend so we have a good API rather than doing container and file management for our interface between evals and our agent.
 - [ ] Get token counting data from the model Add scores to result files based on pricing associated with tokens and models used
 - [ ] Think about how this can be applied to other projects besides AutoGPT so we can be THE agent evaluation framework.
-- [ ] Figure our how the OpenAI Evals results are saved...
+- [ ] Copy the OpenAI Eval files from the tmp file they are saved to somewhere we can track the results
 - [ ] Support multi-threaded evals. OpenAI has great support for this. The docker system built here doesn't.
-- [ ] Make the file logger/duplicate op checker more robust. It's not great right now.
 
 
 ## Understanding OpenAI Evals
