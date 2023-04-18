@@ -12,15 +12,7 @@ from autogpt.memory import get_memory
 from autogpt.prompt import construct_prompt
 
 
-@click.group()
-def main() -> None:
-    """
-    Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
-    """
-    pass
-
-
-@main.command()
+@click.group(invoke_without_command=True)
 @click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
 @click.option(
     "--skip-reprompt",
@@ -60,7 +52,9 @@ def main() -> None:
     is_flag=True,
     help="Dangerous: Allows Auto-GPT to download files natively.",
 )
-def start(
+@click.pass_context
+def main(
+    ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
     ai_settings: str,
@@ -73,51 +67,56 @@ def start(
     browser_name: str,
     allow_downloads: bool,
 ) -> None:
-    """Start an Auto-GPT assistant"""
-    cfg = Config()
-    # TODO: fill in llm values here
-    check_openai_api_key()
-    create_config(
-        continuous,
-        continuous_limit,
-        ai_settings,
-        skip_reprompt,
-        speak,
-        debug,
-        gpt3only,
-        gpt4only,
-        memory_type,
-        browser_name,
-        allow_downloads,
-    )
-    logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
-    ai_name = ""
-    system_prompt = construct_prompt()
-    # print(prompt)
-    # Initialize variables
-    full_message_history = []
-    next_action_count = 0
-    # Make a constant:
-    triggering_prompt = (
-        "Determine which next command to use, and respond using the"
-        " format specified above:"
-    )
-    # Initialize memory and make sure it is empty.
-    # this is particularly important for indexing and referencing pinecone memory
-    memory = get_memory(cfg, init=True)
-    logger.typewriter_log(
-        "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
-    )
-    logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
-    agent = Agent(
-        ai_name=ai_name,
-        memory=memory,
-        full_message_history=full_message_history,
-        next_action_count=next_action_count,
-        system_prompt=system_prompt,
-        triggering_prompt=triggering_prompt,
-    )
-    agent.start_interaction_loop()
+    """
+    Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
+
+    Start an Auto-GPT assistant.
+    """
+    if ctx.invoked_subcommand is None:
+        cfg = Config()
+        # TODO: fill in llm values here
+        check_openai_api_key()
+        create_config(
+            continuous,
+            continuous_limit,
+            ai_settings,
+            skip_reprompt,
+            speak,
+            debug,
+            gpt3only,
+            gpt4only,
+            memory_type,
+            browser_name,
+            allow_downloads,
+        )
+        logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
+        ai_name = ""
+        system_prompt = construct_prompt()
+        # print(prompt)
+        # Initialize variables
+        full_message_history = []
+        next_action_count = 0
+        # Make a constant:
+        triggering_prompt = (
+            "Determine which next command to use, and respond using the"
+            " format specified above:"
+        )
+        # Initialize memory and make sure it is empty.
+        # this is particularly important for indexing and referencing pinecone memory
+        memory = get_memory(cfg, init=True)
+        logger.typewriter_log(
+            "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
+        )
+        logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
+        agent = Agent(
+            ai_name=ai_name,
+            memory=memory,
+            full_message_history=full_message_history,
+            next_action_count=next_action_count,
+            system_prompt=system_prompt,
+            triggering_prompt=triggering_prompt,
+        )
+        agent.start_interaction_loop()
 
 
 if __name__ == "__main__":
