@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from sys import platform
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -83,7 +84,15 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
     else:
+        if platform == "linux" or platform == "linux2":
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--remote-debugging-port=9222")
+
         options.add_argument("--no-sandbox")
+        if CFG.selenium_headless:
+            options.add_argument("--headless")
+            options.add_argument("--disable-gpu")
+
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )

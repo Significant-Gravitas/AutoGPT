@@ -1,5 +1,7 @@
 import json
+
 from jsonschema import Draft7Validator
+
 from autogpt.config import Config
 from autogpt.logs import logger
 

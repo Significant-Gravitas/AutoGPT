@@ -1,4 +1,4 @@
-"""Setup the AI and its goals"""
+"""Set up the AI and its goals"""
 from colorama import Fore, Style
 
 from autogpt import utils
@@ -16,6 +16,13 @@ def prompt_user() -> AIConfig:
     # Construct the prompt
     logger.typewriter_log(
         "Welcome to Auto-GPT! ",
+        Fore.GREEN,
+        "run with '--help' for more information.",
+        speak_text=True,
+    )
+
+    logger.typewriter_log(
+        "Create an AI-Assistant:",
         Fore.GREEN,
         "Enter the name of your AI and its role below. Entering nothing will load"
         " defaults.",

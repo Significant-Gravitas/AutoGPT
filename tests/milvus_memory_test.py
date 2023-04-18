@@ -26,7 +26,7 @@ try:
 
         def setUp(self) -> None:
             """Set up the test environment"""
-            self.cfg = MockConfig()
+            self.cfg = mock_config()
             self.memory = MilvusMemory(self.cfg)
 
         def test_add(self) -> None:

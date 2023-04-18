@@ -2,6 +2,9 @@
 from __future__ import annotations
 from typing import List
 
+from typing import Union
+
+
 from autogpt.config.config import Config, Singleton
 from autogpt.llm_utils import create_chat_completion
 from autogpt.types.openai import Message

@@ -19,6 +19,7 @@ selenium
 webdriver-manager
 jsonschema
 tweepy
+click
 
 ##Dev
 coverage
@@ -31,6 +32,8 @@ isort
 gitpython==3.1.31
 abstract-singleton
 auto-gpt-plugin-template
+
+# Items below this point will not be included in the Docker Image
 
 # Testing dependencies
 pytest
