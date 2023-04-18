@@ -2,6 +2,12 @@ name: Bug report 🐛
 description: Create a bug report for Auto-GPT.
 labels: ['status: needs triage']
 body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ ### Before you continue
+        Before you create this issue please join the [discord](https://discord.gg/autogpt) to discuss with our incredible members
+        about your issue. You are more than to specify your issue in the [tech-support](https://discord.com/channels/1092243196446249134/1092275629602394184) channel.
   - type: checkboxes
     attributes:
       label: ⚠️ Search for existing issues first ⚠️
@@ -28,14 +34,25 @@ body:
           - Provide commit-hash (`git rev-parse HEAD` gets it)
           - If it's a pip/packages issue, provide pip version, python version
           - If it's a crash, provide traceback.
-  - type: checkboxes
+  - type: dropdown
+    attributes:
+      label: Which Operating System are you using?
+      description: >
+        Please select the operating system you were using to run Auto-GPT when this problem occurred.
+      options:
+        - Windows
+        - Linux
+        - MacOS
+        - Other (Please specify in your problem)
+  - type: dropdown
     attributes:
       label: GPT-3 or GPT-4
       description: >
         If you are using Auto-GPT with `--gpt3only`, your problems may be caused by
-        the limitations of GPT-3.5
+        the limitations of GPT-3.5. 
       options:
-        - label: I am using Auto-GPT with GPT-3 (GPT-3.5)
+        - GPT-3.5
+        - GPT-4
   - type: textarea
     attributes:
       label: Steps to reproduce 🕹
@@ -53,8 +70,18 @@ body:
     attributes:
       label: Your prompt 📝
       description: |
-        If applicable please provide the prompt you are using. You can find your last-used prompt in last_run_ai_settings.yaml.
+        If applicable please provide the prompt you are using. Your prompt is stored in your `ai_settings.yaml` file.
       value: |
         ```yaml
         # Paste your prompt here
+        ```
+  - type: textarea
+    attributes:
+      label: Your Logs 📒
+      description: |
+        If applicable please include your error logs. You can find them at `logs/error.log`.
+        This will help us understand your issue better!
+      value: |
+        ```
+        <insert your logs here>
         ```
