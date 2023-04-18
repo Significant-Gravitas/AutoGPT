@@ -158,3 +158,5 @@ dmypy.json
 llama-*
 vicuna-*
 
+# news
+CURRENT_BULLETIN.md
