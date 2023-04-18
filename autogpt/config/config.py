@@ -1,13 +1,12 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from colorama import Fore
-
-from autogpt.config.singleton import Singleton
 
 import openai
 import yaml
-
+from colorama import Fore
 from dotenv import load_dotenv
+
+from autogpt.config.singleton import Singleton
 
 load_dotenv(verbose=True)
 
@@ -25,6 +24,7 @@ class Config(metaclass=Singleton):
         self.speak_mode = False
         self.skip_reprompt = False
         self.allow_downloads = False
+        self.skip_news = False
 
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
@@ -77,7 +77,9 @@ class Config(metaclass=Singleton):
         self.weaviate_scopes = os.getenv("WEAVIATE_SCOPES", None)
         self.weaviate_embedded_path = os.getenv("WEAVIATE_EMBEDDED_PATH")
         self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
-        self.use_weaviate_embedded = os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
+        self.use_weaviate_embedded = (
+            os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
+        )
 
         # milvus configuration, e.g., localhost:19530.
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
