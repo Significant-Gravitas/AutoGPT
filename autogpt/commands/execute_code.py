@@ -4,9 +4,10 @@ import subprocess
 
 import docker
 from docker.errors import ImageNotFound
-from autogpt.config import Config
+
 from autogpt.commands.command import command
-from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
+from autogpt.config import Config
+from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
 
 CFG = Config()
 

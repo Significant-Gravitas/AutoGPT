@@ -1,5 +1,6 @@
 """ Brian speech module for autogpt """
 import os
+
 import requests
 from playsound import playsound
 

@@ -1,8 +1,8 @@
 """Agent manager for managing GPT agents"""
 from __future__ import annotations
 
+from autogpt.config.config import Config, Singleton
 from autogpt.llm_utils import create_chat_completion
-from autogpt.config.config import Singleton, Config
 
 
 class AgentManager(metaclass=Singleton):
@@ -31,6 +31,8 @@ class AgentManager(metaclass=Singleton):
             {"role": "user", "content": prompt},
         ]
         for plugin in self.cfg.plugins:
+            if not plugin.can_handle_pre_instruction():
+                continue
             plugin_messages = plugin.pre_instruction(messages)
             if plugin_messages:
                 for plugin_message in plugin_messages:
@@ -46,6 +48,8 @@ class AgentManager(metaclass=Singleton):
 
         plugins_reply = ""
         for i, plugin in enumerate(self.cfg.plugins):
+            if not plugin.can_handle_on_instruction():
+                continue
             plugin_result = plugin.on_instruction(messages)
             if plugin_result:
                 sep = "" if not i else "\n"
@@ -61,6 +65,8 @@ class AgentManager(metaclass=Singleton):
         self.agents[key] = (task, messages, model)
 
         for plugin in self.cfg.plugins:
+            if not plugin.can_handle_post_instruction():
+                continue
             agent_reply = plugin.post_instruction(agent_reply)
 
         return key, agent_reply
@@ -81,6 +87,8 @@ class AgentManager(metaclass=Singleton):
         messages.append({"role": "user", "content": message})
 
         for plugin in self.cfg.plugins:
+            if not plugin.can_handle_pre_instruction():
+                continue
             plugin_messages = plugin.pre_instruction(messages)
             if plugin_messages:
                 for plugin_message in plugin_messages:
@@ -96,6 +104,8 @@ class AgentManager(metaclass=Singleton):
 
         plugins_reply = agent_reply
         for i, plugin in enumerate(self.cfg.plugins):
+            if not plugin.can_handle_on_instruction():
+                continue
             plugin_result = plugin.on_instruction(messages)
             if plugin_result:
                 sep = "" if not i else "\n"
@@ -105,6 +115,8 @@ class AgentManager(metaclass=Singleton):
             messages.append({"role": "assistant", "content": plugins_reply})
 
         for plugin in self.cfg.plugins:
+            if not plugin.can_handle_post_instruction():
+                continue
             agent_reply = plugin.post_instruction(agent_reply)
 
         return agent_reply

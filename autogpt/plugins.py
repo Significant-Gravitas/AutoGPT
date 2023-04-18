@@ -1,18 +1,18 @@
 """Handles loading of plugins."""
+
 import importlib
 import json
 import os
 import zipfile
+import openapi_python_client
+import requests
+
 from pathlib import Path
 from typing import List, Tuple, Optional
 from urllib.parse import urlparse
 from zipimport import zipimporter
 
-import openapi_python_client
-import requests
-from abstract_singleton import AbstractSingleton
 from openapi_python_client.cli import Config as OpenAPIConfig
-
 from autogpt.config import Config
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
@@ -39,7 +39,7 @@ def inspect_zip_for_module(zip_path: str, debug: bool = False) -> Optional[str]:
     return None
 
 
-def write_dict_to_json_file(data: dict, file_path: str):
+def write_dict_to_json_file(data: dict, file_path: str) -> None:
     """
     Write a dictionary to a JSON file.
     Args:
@@ -175,7 +175,7 @@ def instantiate_openai_plugin_clients(manifests_specs_clients: dict, cfg: Config
     return plugins
 
 
-def scan_plugins(cfg: Config, debug: bool = False) -> List[Tuple[str, Path]]:
+def scan_plugins(cfg: Config, debug: bool = False) -> List[object]:
     """Scan the plugins directory for plugins and loads them.
 
     Args:
@@ -202,9 +202,9 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[Tuple[str, Path]]:
                 a_module = getattr(zipped_module, key)
                 a_keys = dir(a_module)
                 if (
-                    "_abc_impl" in a_keys
-                    and a_module.__name__ != "AutoGPTPluginTemplate"
-                    and blacklist_whitelist_check(a_module.__name__, cfg)
+                        "_abc_impl" in a_keys
+                        and a_module.__name__ != "AutoGPTPluginTemplate"
+                        and blacklist_whitelist_check(a_module.__name__, cfg)
                 ):
                     loaded_plugins.append(a_module())
     # OpenAI plugins
@@ -222,6 +222,7 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[Tuple[str, Path]]:
     for plugin in loaded_plugins:
         print(f"{plugin._name}: {plugin._version} - {plugin._description}")
     return loaded_plugins
+
 
 def blacklist_whitelist_check(plugin_name: str, cfg: Config) -> bool:
     """Check if the plugin is in the whitelist or blacklist.
