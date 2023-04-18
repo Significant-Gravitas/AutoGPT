@@ -100,14 +100,33 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
     ```bash
     cd Auto-GPT
     ```
+4. Create a virtual environment
 
-4. Install the required dependencies
+    ```bash
+    python -m venv venv
+    ```
+
+5. Activate the virtual environment
+
+    **Windows**
+
+    ```bash
+    venv\Scripts\activate
+    ```
+
+    **Linux/MacOS**
+
+    ```bash
+    source venv/bin/activate
+    ```
+
+6. Install the required dependencies
 
     ```bash
     pip install -r requirements.txt
     ```
 
-5. Configure Auto-GPT
+7. Configure Auto-GPT
    1. Locate the file named `.env.template` in the main `/Auto-GPT` folder.
    2. Create a copy of this file, called `.env` by removing the `template` extension.  The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`.
    3. Open the `.env` file in a text editor.  _Note: Files starting with a dot might be hidden by your Operating System._
