@@ -13,13 +13,13 @@ class Spinner:
 
         Args:
             message (str): The message to display.
-            delay (float): The delay between each spinner update.
+            delay (float): The delay in seconds between each spinner update.
         """
-        self.spinner = itertools.cycle(["-", "/", "|", "\\"])
-        self.delay = delay
         self.message = message
+        self.delay = delay
         self.running = False
         self.spinner_thread = None
+        self.spinner = itertools.cycle(["-", "\\", "|", "/"])
 
     def spin(self) -> None:
         """Spin the spinner"""
@@ -54,12 +54,11 @@ class Spinner:
     def update_message(self, new_message, delay=0.1):
         """Update the spinner message
         Args:
-            new_message (str): New message to display
-            delay: Delay in seconds before updating the message
+            new_message (str): New message to display.
+            delay: Delay in seconds before updating the message.
         """
         time.sleep(delay)
-        sys.stdout.write(
-            f"\r{' ' * (len(self.message) + 2)}\r"
-        )  # Clear the current message
+        # Clear the current message
+        sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
         sys.stdout.flush()
         self.message = new_message
