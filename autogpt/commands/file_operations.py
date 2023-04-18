@@ -10,12 +10,10 @@ import requests
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
 
+from autogpt.commands.command import command
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
-
-from autogpt.commands.command import command
 from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
-
 
 LOG_FILE = "file_logger.txt"
 LOG_FILE_PATH = WORKSPACE_PATH / LOG_FILE

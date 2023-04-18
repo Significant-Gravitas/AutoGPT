@@ -1,6 +1,9 @@
-import pytest
 from typing import Any, Dict, List, Optional, Tuple
-from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin, Message, PromptGenerator
+
+import pytest
+
+from autogpt.models.base_open_ai_plugin import (BaseOpenAIPlugin, Message,
+                                                PromptGenerator)
 
 
 class DummyPlugin(BaseOpenAIPlugin):

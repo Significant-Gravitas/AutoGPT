@@ -1,9 +1,7 @@
 """Agent manager for managing GPT agents"""
 from __future__ import annotations
-from typing import List
 
-from typing import Union
-
+from typing import List, Union
 
 from autogpt.config.config import Config, Singleton
 from autogpt.llm_utils import create_chat_completion

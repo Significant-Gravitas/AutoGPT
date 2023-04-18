@@ -17,8 +17,8 @@ from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 
-from autogpt.commands.command import command
 import autogpt.processing.text as summary
+from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 

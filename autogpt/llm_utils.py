@@ -8,8 +8,8 @@ from colorama import Fore, Style
 from openai.error import APIError, RateLimitError
 
 from autogpt.config import Config
-from autogpt.types.openai import Message
 from autogpt.logs import logger
+from autogpt.types.openai import Message
 
 CFG = Config()
 

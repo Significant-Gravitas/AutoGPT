@@ -4,19 +4,18 @@ import importlib
 import json
 import os
 import zipfile
-import openapi_python_client
-import requests
-
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 from zipimport import zipimporter
 
+import openapi_python_client
+import requests
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from openapi_python_client.cli import Config as OpenAPIConfig
+
 from autogpt.config import Config
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
-
-from auto_gpt_plugin_template import AutoGPTPluginTemplate
 
 
 def inspect_zip_for_module(zip_path: str, debug: bool = False) -> Optional[str]:
