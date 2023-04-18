@@ -16,10 +16,8 @@ body:
         [discussions]: https://github.com/Significant-Gravitas/Auto-GPT/discussions
         [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
         [existing issues]: https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue
-  - type: markdown
-    attributes:
-      value: '### ⚠️ Search for existing issues first ⚠️'
   - type: checkboxes
+    label: ⚠️ Search for existing issues first ⚠️
     attributes:
       description: >
         Please [search the history](https://github.com/Torantulino/Auto-GPT/issues)
