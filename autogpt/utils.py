@@ -1,5 +1,6 @@
 import yaml
 from colorama import Fore
+import requests
 
 
 def clean_input(prompt: str = ""):
@@ -37,3 +38,11 @@ def readable_file_size(size, decimal_places=2):
             break
         size /= 1024.0
     return f"{size:.{decimal_places}f} {unit}"
+
+def get_latest_bulletin() -> str:
+    try:
+        response = requests.get('https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md')
+        if response.status_code == 200:
+            return response.text
+    except:
+        return ""
