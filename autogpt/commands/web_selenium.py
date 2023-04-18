@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from sys import platform
 
@@ -81,10 +82,28 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         if platform == "linux" or platform == "linux2":
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--remote-debugging-port=9222")
+
+        # Remove the 'https_proxy' env var
+        # Otherwise, webdriver.Chrome() method will get stuck
+        if 'https_proxy' in os.environ:
+            https_proxy = os.getenv('https_proxy')
+            del os.environ['https_proxy']
+            # set proxy for webdriver
+            options.add_argument(f"--proxy-server={https_proxy}")
+        if 'http_proxy' in os.environ:
+            http_proxy = os.getenv('http_proxy')
+            del os.environ['http_proxy']
+
         options.add_argument("--no-sandbox")
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
+
+        # restore the 'https_proxy' env var
+        if https_proxy != "":
+            os.environ['https_proxy'] = https_proxy
+        if http_proxy != "":
+            os.environ['http_proxy'] = http_proxy
     driver.get(url)
 
     WebDriverWait(driver, 10).until(
