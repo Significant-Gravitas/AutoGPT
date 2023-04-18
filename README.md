@@ -65,7 +65,20 @@ Development of this free, open-source project is made possible by all the <a hre
   - [Pinecone](https://www.pinecone.io/)
   - [Milvus](https://milvus.io/)
   - [Redis](https://redis.io)
+  - [Weaviate](https://weaviate.io)
 - ElevenLabs Key (If you want the AI to speak)
+
+## ⚠️ OpenAI API Keys Configuration ⚠️ 
+
+Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+
+To use OpenAI API key for Auto-GPT, you **NEED** to have billing set up (AKA paid account).
+
+You can set up paid account at https://platform.openai.com/account/billing/overview.
+
+![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./docs/imgs/openai-api-key-billing-paid-account.png)
+
+#### **PLEASE ENSURE YOU HAVE DONE THIS STEP BEFORE PROCEEDING, OTHERWISE NOTHING WILL WORK!**
 
 ## 💾 Installation
 
@@ -207,18 +220,6 @@ python -m autogpt --speak
 - Adam : pNInz6obpgDQGcFmaJgB
 - Sam : yoZ06aMxZJJ28mfd3POQ
 
-
-## OpenAI API Keys Configuration
-
-Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
-
-To use OpenAI API key for Auto-GPT, you NEED to have billing set up (AKA paid account).
-
-You can set up paid account at https://platform.openai.com/account/billing/overview.
-
-![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./docs/imgs/openai-api-key-billing-paid-account.png)
-
-
 ## 🔍 Google API Keys Configuration
 
 This section is optional, use the official google api if you are having issues with error 429 when running a google search.
@@ -325,7 +326,7 @@ export MEMORY_BACKEND="pinecone"
 
 ### Milvus Setup
 
-[Milvus](https://milvus.io/) is a open-source, high scalable vector database to storage huge amount of vector-based memory and provide fast relevant search.
+[Milvus](https://milvus.io/) is an open-source, highly scalable vector database to store huge amounts of vector-based memory and provide fast relevant search.
 
 - setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
   - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
@@ -340,6 +341,14 @@ export MEMORY_BACKEND="pinecone"
 ### Weaviate Setup
 [Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
 Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded) is supported which allows the Auto-GPT process itself to start a Weaviate instance. To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip install "weaviate-client>=3.15.4"`. 
+
+#### Install the Weaviate client
+
+Install the Weaviate client before usage.
+
+```
+$ pip install weaviate-client
+```
 
 #### Setting up environment variables
 
