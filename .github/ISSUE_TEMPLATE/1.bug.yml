@@ -17,8 +17,8 @@ body:
         [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
         [existing issues]: https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue
   - type: checkboxes
-    label: ⚠️ Search for existing issues first ⚠️
     attributes:
+      label: ⚠️ Search for existing issues first ⚠️
       description: >
         Please [search the history](https://github.com/Torantulino/Auto-GPT/issues)
         to see if an issue already exists for the same problem.
