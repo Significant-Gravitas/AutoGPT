@@ -7,10 +7,16 @@ on:
   # In `pull_request` we wouldn't be able to change labels of fork PRs
   pull_request_target:
     types: [opened, synchronize]
+concurrency:
+  group: ${{ format('pr-label-{0}', github.event.pull_request.number || github.sha) }}
+  cancel-in-progress: true
 
 jobs:
   conflicts:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Update PRs with conflict labels
         uses: eps1lon/actions-label-merge-conflict@releases/2.x
