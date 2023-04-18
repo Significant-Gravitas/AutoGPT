@@ -22,7 +22,7 @@ def create_config(
     memory_type: str,
     browser_name: str,
     allow_downloads: bool,
-    skip_news: bool
+    skip_news: bool,
 ) -> None:
     """Updates the config object with the given arguments.
 

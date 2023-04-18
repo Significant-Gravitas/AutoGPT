@@ -61,7 +61,7 @@ def main(
     memory_type: str,
     browser_name: str,
     allow_downloads: bool,
-    skip_news: bool
+    skip_news: bool,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -97,7 +97,7 @@ def main(
             memory_type,
             browser_name,
             allow_downloads,
-            skip_news
+            skip_news,
         )
         logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
         ai_name = ""
