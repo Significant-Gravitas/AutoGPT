@@ -10,7 +10,6 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.10', '3.11']
-
     steps:
     - name: Check out repository
       uses: actions/checkout@v3
@@ -26,6 +25,6 @@ jobs:
         pip install -r requirements.txt
     - name: benchmark
       run: |
-         python benchmark/benchmark_entrepeneur_gpt_with_undecisive_user.py
+         python benchmark/benchmark_entrepeneur_gpt_with_difficult_user.py
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
