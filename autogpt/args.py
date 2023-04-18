@@ -98,13 +98,13 @@ def parse_arguments() -> None:
             )
             CFG.set_continuous_limit(args.continuous_limit)
     elif args.risk_avoidance:
-        print_to_console("Risk Avoidance Mode: ", Fore.RED, "ENABLED")
-        print_to_console("Risk evaluation settings: ", Fore.RED, f"Model: {cfg.risk_evaluation_model}, Threshold: {cfg.risk_threshold}")
-        print_to_console(
+        logger.typewriter_log("Risk Avoidance Mode: ", Fore.RED, "ENABLED")
+        logger.typewriter_log("Risk evaluation settings: ", Fore.RED, f"Model: {CFG.risk_evaluation_model}, Threshold: {CFG.risk_threshold}")
+        logger.typewriter_log(
             "WARNING: ",
             Fore.RED,
             "Risk Avoidance mode is expected to be safer than continuous mode, but it is still potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Exercise proper caution.")
-        cfg.set_risk_avoidance_mode(True)
+        CFG.set_risk_avoidance_mode(True)
     # Check if continuous limit is used without continuous mode
     if args.continuous_limit and not args.continuous:
         parser.error("--continuous-limit can only be used with --continuous")
