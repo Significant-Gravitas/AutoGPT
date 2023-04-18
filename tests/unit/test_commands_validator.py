@@ -7,16 +7,16 @@ from unittest.mock import MagicMock
 from autogpt.commands.validators import CommandsValidator
 from autogpt.logs import logger
 
+
 @pytest.mark.integration_test
 class TestCommandsValidator(unittest.TestCase):
-
     def setUp(self):
         logger.set_level(logging.DEBUG)
 
     def test_browse_site_command_valid_url(self):
         cv = CommandsValidator("browse_site", {"url": "https://www.example.com"})
         cv.validate_browse_site_command()
-        cv=CommandsValidator("browse_site", {"url": "http://www.example.com"})
+        cv = CommandsValidator("browse_site", {"url": "http://www.example.com"})
         cv.validate_browse_site_command()
         # assert that no exception was raised
 
@@ -27,10 +27,8 @@ class TestCommandsValidator(unittest.TestCase):
         error_message = str(cm.exception)
         self.assertEqual(error_message, "argument url must be a valid url")
 
-
-
     def test_browse_site_command_invalid_key(self):
-        cv=CommandsValidator("browse_site", {"invalid_key": "not_a_valid_url"})
+        cv = CommandsValidator("browse_site", {"invalid_key": "not_a_valid_url"})
         with self.assertRaises(Exception) as cm:
             cv.validate_browse_site_command()
         error_message = str(cm.exception)
@@ -47,5 +45,3 @@ class TestCommandsValidator(unittest.TestCase):
             cv = CommandsValidator("other_command", {})
             cv.validate_command()
             assert "skipping validation for command: other_command" in caplog.text
-
-

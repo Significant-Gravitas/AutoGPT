@@ -2,6 +2,7 @@ from cerberus import Validator
 
 from autogpt.logs import logger
 
+
 class CommandsValidator:
     command_name: str
     arguments: any
@@ -10,16 +11,19 @@ class CommandsValidator:
         self.command_name = command_name
         self.arguments = arguments
 
-
     def validate_browse_site_command(self) -> None:
         """Validate the browse_site command."""
 
-        url_schema = {'url': {'type': 'string', 'regex': '^(https?|ftp)://[^ \t\n\r\f\v/$.?#].[^ \t\n\r\f\v]*$'}}
-        v=Validator(url_schema)
+        url_schema = {
+            "url": {
+                "type": "string",
+                "regex": "^(https?|ftp)://[^ \t\n\r\f\v/$.?#].[^ \t\n\r\f\v]*$",
+            }
+        }
+        v = Validator(url_schema)
         if not v.validate(self.arguments):
-            logger.warn('arguments error: %s', str(v.errors))
+            logger.warn("arguments error: %s", str(v.errors))
             raise Exception("argument url must be a valid url")
-
 
     def validate_command(self) -> None:
         """Validate the command."""
