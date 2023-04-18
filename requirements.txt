@@ -21,6 +21,7 @@ jsonschema
 tweepy
 SpeechRecognition
 python-telegram-bot
+click
 
 ##Dev
 coverage
