@@ -6,8 +6,8 @@ from ast import List
 
 import openai
 from colorama import Fore, Style
-from revChatGPT.V1 import Chatbot
 from openai.error import APIError, RateLimitError
+from revChatGPT.V1 import Chatbot
 
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -18,7 +18,7 @@ openai.api_key = CFG.openai_api_key
 
 
 def call_ai_function(
-        function: str, args: list, description: str, model: str | None = None
+    function: str, args: list, description: str, model: str | None = None
 ) -> str:
     """Call an AI function
 
@@ -44,7 +44,7 @@ def call_ai_function(
         {
             "role": "system",
             "content": f"You are now the following python function: ```# {description}"
-                       f"\n{function}```\n\nOnly respond with your `return` value.",
+            f"\n{function}```\n\nOnly respond with your `return` value.",
         },
         {"role": "user", "content": args},
     ]
@@ -55,11 +55,11 @@ def call_ai_function(
 # Overly simple abstraction until we create something better
 # simple retry mechanism when getting a rate error or a bad gateway
 def create_chat_completion(
-        messages: list,  # type: ignore
-        use_chatgpt: bool | False = False,
-        model: str | None = None,
-        temperature: float = CFG.temperature,
-        max_tokens: int | None = None,
+    messages: list,  # type: ignore
+    use_chatgpt: bool | False = False,
+    model: str | None = None,
+    temperature: float = CFG.temperature,
+    max_tokens: int | None = None,
 ) -> str:
     """Create a chat completion using the OpenAI API
 
@@ -80,13 +80,15 @@ def create_chat_completion(
         print(
             Fore.GREEN
             + f"Creating chat completion with model {model}, temperature {temperature},"
-              f" max_tokens {max_tokens}" + Fore.RESET
+            f" max_tokens {max_tokens}" + Fore.RESET
         )
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
             if use_chatgpt:
-                chatgpt = Chatbot(config={"access_token": CFG.openai_chatgpt_access_token})
+                chatgpt = Chatbot(
+                    config={"access_token": CFG.openai_chatgpt_access_token}
+                )
                 for i in range(len(messages)):
                     message = messages[i]
                     role = message.get("role", "user")
@@ -104,9 +106,9 @@ def create_chat_completion(
                             "content": {"content_type": "text", "parts": [content]},
                         }
 
-                for data in chatgpt.post_messages(messages, model=model):
+                for data in chatgpt.post_messages(messages=messages, model=model):
                     response = data["message"]
-            if CFG.use_azure:
+            elif CFG.use_azure:
                 response = openai.ChatCompletion.create(
                     deployment_id=CFG.get_azure_deployment_id_for_model(model),
                     model=model,
@@ -160,7 +162,7 @@ def create_chat_completion(
         else:
             quit(1)
 
-    return response if chatgpt else response.choices[0].message["content"]
+    return response if use_chatgpt else response.choices[0].message["content"]
 
 
 def create_embedding_with_ada(text) -> list:

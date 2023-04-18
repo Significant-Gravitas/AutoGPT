@@ -20,6 +20,7 @@ webdriver-manager
 jsonschema
 tweepy
 click
+revChatGPT
 
 ##Dev
 coverage

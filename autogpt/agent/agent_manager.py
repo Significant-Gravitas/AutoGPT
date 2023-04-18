@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from typing import Union
 
-from autogpt.config.config import Singleton, Config
+from autogpt.config.config import Config, Singleton
 from autogpt.llm_utils import create_chat_completion
 
 cfg = Config()
+
 
 class AgentManager(metaclass=Singleton):
     """Agent manager for managing GPT agents"""
