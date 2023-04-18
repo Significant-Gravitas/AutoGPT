@@ -2,7 +2,7 @@
 import abc
 
 
-class LLMProvider(abc.ABC):
+class BaseLLMProvider(abc.ABC):
     """The base class for all LLM providers."""
 
     def __init__(self, url: str, api_key: str) -> None:

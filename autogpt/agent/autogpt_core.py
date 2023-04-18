@@ -1,34 +1,23 @@
 """The AutoGPT core."""
-import autogpt.agent.base_ai_core
-from autogpt.agent.base_ai_core import (
-    Abilities,
-    Ability,
-    BaseAICore,
-    Command,
-    Event,
-    LLMProvider,
-    MemoryProvider,
-)
+import trio
+
+from autogpt.agent.base_ai_core import Abilities, Ability, BaseAICore
+from autogpt.agent.LLM.openai_provider import OpenAIProvider
+from autogpt.agent.memory.local_memory_provider import LocalMemoryProvider
 
 
-class AutoGptCore(autogpt.agent.base_ai_core.BaseAICore):
+class AutoGptCore(BaseAICore):
     """The AutoGPT core."""
 
     def __init__(
         self,
-        memory_provider: autogpt.agent.memory_provider.MemoryProvider,
-        llm_provider: autogpt.agent.llm_provider.LLMProvider,
-        abilities: list[autogpt.agent.ability.Ability],
-        command_channel: tuple[
-            autogpt.agent.channel.Channel, autogpt.agent.channel.Channel
-        ],
-        event_channel: tuple[
-            autogpt.agent.channel.Channel, autogpt.agent.channel.Channel
-        ],
+        memory_provider: LocalMemoryProvider,
+        llm_provider: OpenAIProvider,
+        abilities: list[Ability],
+        command_channel: tuple[trio.MemorySendChannel, trio.MemoryReceiveChannel],
+        event_channel: tuple[trio.MemorySendChannel, trio.MemoryReceiveChannel],
         master_mind_id: str | None = None,
-        master_mind_channel: tuple[
-            autogpt.agent.channel.Channel, autogpt.agent.channel.Channel
-        ]
+        master_mind_channel: tuple[trio.MemorySendChannel, trio.MemoryReceiveChannel]
         | None = None,
     ):
         super().__init__(
@@ -43,4 +32,9 @@ class AutoGptCore(autogpt.agent.base_ai_core.BaseAICore):
 
     async def run(self) -> None:
         """Run the AI core."""
-        pass
+
+        while True:
+            command = await self.command_receive_channel.receive()
+            # wait 1 second
+            await trio.sleep(1)
+            print(command)

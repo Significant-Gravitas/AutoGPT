@@ -4,25 +4,31 @@ The base class for all AI cores.
 The BaseAICore class is the base class for all AI cores. 
 It provides the framework for building an autonomous AI agent.
 """
+from __future__ import annotations
+
 import abc
 import typing
 
 import pydantic
 import trio
 
+from autogpt.agent.LLM.base_llm_provider import BaseLLMProvider
+from autogpt.agent.memory.base_memory_provider import BaseMemoryProvider
+from autogpt.agent.messages import Command, Event
+
 
 class Ability(pydantic.BaseModel):
     """A ability that the AI can execute."""
 
     name: str
-    function: callable
-    arguments: dict[str, str]
+    function: typing.Callable
+    arguments: typing.Dict[str, str]
 
 
 class Abilities(pydantic.BaseModel):
     """A list of abilities that the AI can execute."""
 
-    abilities: list[Ability]
+    abilities: typing.List[Ability]
 
 
 class BaseAICore(abc.ABC):
@@ -30,8 +36,8 @@ class BaseAICore(abc.ABC):
 
     def __init__(
         self,
-        memory_provider: MemoryProvider,
-        llm_provider: LLMProvider,
+        memory_provider: BaseLLMProvider,
+        llm_provider: BaseMemoryProvider,
         abilities: Abilities,
         command_channel: typing.Tuple[
             trio.MemorySendChannel, trio.MemoryReceiveChannel

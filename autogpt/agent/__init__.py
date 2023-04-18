@@ -16,4 +16,9 @@ def agent() -> None:
 @agent.command()
 def v2() -> None:
     """Command for running the v2 Auto-GPT agent."""
-    pass
+    import trio
+
+    import autogpt.agent.autogpt_core
+
+    # run the agent
+    trio.run(AgentManager.run, autogpt.agent.autogpt_core.AutoGptCore)
