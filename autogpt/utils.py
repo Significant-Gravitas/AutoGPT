@@ -1,6 +1,6 @@
+import requests
 import yaml
 from colorama import Fore
-import requests
 
 
 def clean_input(prompt: str = ""):
