@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Type
+from typing import Type, Optional
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator

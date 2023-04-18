@@ -14,7 +14,7 @@ from abstract_singleton import AbstractSingleton
 from openapi_python_client.cli import Config as OpenAPIConfig
 
 from autogpt.config import Config
-from autogpt.models.base_open_ai_plugin import BaseOpenAIPluginClient
+from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
 
 def inspect_zip_for_module(zip_path: str, debug: bool = False) -> Optional[str]:
@@ -160,18 +160,18 @@ def initialize_openai_plugins(manifests_specs: dict, cfg: Config, debug: bool = 
 
 def instantiate_openai_plugin_clients(manifests_specs_clients: dict, cfg: Config, debug: bool = False) -> dict:
     """
-    Instantiates BaseOpenAIPluginClient instances for each OpenAI plugin.
+    Instantiates BaseOpenAIPlugin instances for each OpenAI plugin.
     Args:
         manifests_specs_clients (dict): per url dictionary of manifest, spec and client.
         cfg (Config): Config instance including plugins config
         debug (bool, optional): Enable debug logging. Defaults to False.
     Returns:
-          plugins (dict): per url dictionary of BaseOpenAIPluginClient instances.
+          plugins (dict): per url dictionary of BaseOpenAIPlugin instances.
 
     """
     plugins = {}
     for url, manifest_spec_client in manifests_specs_clients.items():
-        plugins[url] = BaseOpenAIPluginClient(manifest_spec_client)
+        plugins[url] = BaseOpenAIPlugin(manifest_spec_client)
     return plugins
 
 
@@ -197,7 +197,7 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[Tuple[str, Path]]:
         if manifests_specs.keys():
             manifests_specs_clients = initialize_openai_plugins(manifests_specs, cfg, debug)
             for url, openai_plugin_meta in manifests_specs_clients.items():
-                plugin = BaseOpenAIPluginClient(openai_plugin_meta)
+                plugin = BaseOpenAIPlugin(openai_plugin_meta)
                 plugins.append((plugin, url))
     return plugins
 
