@@ -25,15 +25,8 @@ def prompt_user() -> AIConfig:
     logger.typewriter_log(
         "Welcome to Auto-GPT! ",
         Fore.GREEN,
+        "You can create a full project with multiple AI workers or a stand-alone AI, "
         "run with '--help' for more information.",
-        speak_text=True,
-    )
-
-    # Get user desire
-    logger.typewriter_log(
-        "Create an AI-Assistant:",
-        Fore.GREEN,
-        "input '--manual' to enter manual mode.",
         speak_text=True,
     )
 
