@@ -25,6 +25,7 @@ from autogpt.commands.improve_code import improve_code
 from autogpt.commands.twitter import send_tweet
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.commands.web_selenium import browse_website
+from autogpt.commands.wikipedia_search import wikipedia_search
 from autogpt.commands.write_tests import write_tests
 from autogpt.config import Config
 from autogpt.json_fixes.parsing import fix_and_parse_json
@@ -213,6 +214,8 @@ def execute_command(command_name: str, arguments):
             return generate_image(arguments["prompt"])
         elif command_name == "send_tweet":
             return send_tweet(arguments["text"])
+        elif command_name == "wikipedia_search":
+            return wikipedia_search(arguments["input"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
