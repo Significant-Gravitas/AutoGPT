@@ -1,3 +1,5 @@
+import os
+
 import requests
 import yaml
 from colorama import Fore
@@ -40,12 +42,26 @@ def readable_file_size(size, decimal_places=2):
     return f"{size:.{decimal_places}f} {unit}"
 
 
-def get_latest_bulletin() -> str:
+def get_bulletin_from_web() -> str:
     try:
         response = requests.get(
-            "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md"
+            "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/CONTRIBUTING.md"
         )
         if response.status_code == 200:
             return response.text
     except:
         return ""
+
+
+def get_latest_bulletin() -> str:
+    exists = os.path.exists("CURRENT_BULLETIN.md")
+    current_bulletin = ""
+    if exists:
+        current_bulletin = open("CURRENT_BULLETIN.md", "r", encoding="utf-8").read()
+    new_bulletin = get_bulletin_from_web()
+    is_new_news = new_bulletin != current_bulletin
+
+    if new_bulletin and is_new_news:
+        open("CURRENT_BULLETIN.md", "w", encoding="utf-8").write(new_bulletin)
+        return f" {Fore.RED}::UPDATED:: {Fore.CYAN}{new_bulletin}{Fore.RESET}"
+    return current_bulletin
