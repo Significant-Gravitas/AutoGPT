@@ -20,6 +20,7 @@ class Config(metaclass=Singleton):
         """Initialize the Config class"""
         self.debug_mode = False
         self.continuous_mode = False
+        self.risk_avoidance_mode = False
         self.continuous_limit = 0
         self.speak_mode = False
         self.skip_reprompt = False
@@ -29,8 +30,10 @@ class Config(metaclass=Singleton):
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
+        self.risk_evaluation_model = os.getenv("RISK_EVALUATION_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+        self.risk_threshold = float(os.getenv("RISK_THRESHOLD", 0.5))
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -223,6 +226,10 @@ class Config(metaclass=Singleton):
     def set_debug_mode(self, value: bool) -> None:
         """Set the debug mode value."""
         self.debug_mode = value
+
+    def set_risk_avoidance_mode(self, value: bool):
+        """Set the risk avoidance mode value."""
+        self.risk_avoidance_mode = value
 
 
 def check_openai_api_key() -> None:

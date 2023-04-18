@@ -4,6 +4,7 @@ import click
 
 @click.group(invoke_without_command=True)
 @click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
+@click.option("--risk_avoidance", is_flag=True, help="Enable Risk Avoidance Mode")
 @click.option(
     "--skip-reprompt",
     "-y",
@@ -47,6 +48,7 @@ def main(
     ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
+    risk_avoidance: bool,
     ai_settings: str,
     skip_reprompt: bool,
     speak: bool,
@@ -81,6 +83,7 @@ def main(
         create_config(
             continuous,
             continuous_limit,
+            risk_avoidance,
             ai_settings,
             skip_reprompt,
             speak,

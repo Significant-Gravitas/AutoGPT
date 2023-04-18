@@ -13,6 +13,7 @@ CFG = Config()
 def create_config(
     continuous: bool,
     continuous_limit: int,
+    risk_avoidance: bool,
     ai_settings_file: str,
     skip_reprompt: bool,
     speak: bool,
@@ -40,6 +41,7 @@ def create_config(
 
     """
     CFG.set_debug_mode(False)
+    CFG.set_risk_avoidance_mode(False)
     CFG.set_continuous_mode(False)
     CFG.set_speak_mode(False)
 
@@ -64,6 +66,19 @@ def create_config(
             )
             CFG.set_continuous_limit(continuous_limit)
 
+    elif risk_avoidance:
+        logger.typewriter_log("Risk Avoidance Mode: ", Fore.RED, "ENABLED")
+        logger.typewriter_log(
+            "Risk evaluation settings: ",
+            Fore.RED,
+            f"Model: {CFG.risk_evaluation_model}, Threshold: {CFG.risk_threshold}",
+        )
+        logger.typewriter_log(
+            "WARNING: ",
+            Fore.RED,
+            "Risk Avoidance mode is expected to be safer than continuous mode, but it is still potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorise. Exercise proper caution.",
+        )
+        CFG.set_risk_avoidance_mode(True)
     # Check if continuous limit is used without continuous mode
     if continuous_limit and not continuous:
         raise click.UsageError("--continuous-limit can only be used with --continuous")
