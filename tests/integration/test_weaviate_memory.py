@@ -1,18 +1,17 @@
+import os
+import sys
 import unittest
 from unittest import mock
-import sys
-import os
-
 from uuid import uuid4
 
 from autogpt.config import Config
 from autogpt.memory.base import get_ada_embedding
 
 try:
-    from autogpt.memory.weaviate import WeaviateMemory
-
     from weaviate import Client
     from weaviate.util import get_valid_uuid
+
+    from autogpt.memory.weaviate import WeaviateMemory
 
     @pytest.mark.integration_test
     @mock.patch.dict(

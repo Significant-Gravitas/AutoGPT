@@ -1,9 +1,10 @@
 import random
 import string
 import sys
-import pytest
 import unittest
 from pathlib import Path
+
+import pytest
 
 from autogpt.config import Config
 from autogpt.memory.local import LocalCache

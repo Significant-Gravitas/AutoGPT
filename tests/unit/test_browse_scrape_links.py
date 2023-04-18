@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup
-from autogpt.commands.web_requests import scrape_links, extract_hyperlinks
+
+from autogpt.commands.web_requests import extract_hyperlinks, scrape_links
 
 """
 Code Analysis

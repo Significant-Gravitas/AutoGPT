@@ -2,6 +2,7 @@
 
 import pytest
 import requests
+
 from autogpt.commands.web_requests import scrape_text
 
 """
