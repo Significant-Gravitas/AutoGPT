@@ -132,11 +132,15 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 
 ## 🔧 Usage
 
-1. Run `autogpt` Python module in your terminal
-
-    ```
-    python -m autogpt
-    ```
+1. Run `autogpt` Python module in your terminal.
+  On linux or mac:
+    ```bash
+    # On Linux of Mac:
+   ./run.sh start
+   # On Windows:
+   ./run.bat start
+   ```
+   Running with `--help` after `start` lists all the possible command line arguments you can pass.
 
 2. After each action, choose from options to authorize command(s),
 exit the program, or provide feedback to the AI.
