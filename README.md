@@ -34,7 +34,7 @@ That points to the AutoGPT model we want to test which is spun up dynamically in
 
 ## Setup
 
-You must add the auto_gpt_bencchmarking dir to the python path
+You must add the auto_gpt_benchmarking dir to the python path
 Do this with a path file in your venv. OpenAI evals needs to import it. 
 
 Create a venv with
