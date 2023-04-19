@@ -27,7 +27,7 @@ def fix_invalid_escape(json_to_load: str, error_message: str) -> str:
     while error_message.startswith("Invalid \\escape"):
         bad_escape_location = extract_char_position(error_message)
         json_to_load = (
-                json_to_load[:bad_escape_location] + json_to_load[bad_escape_location + 1:]
+            json_to_load[:bad_escape_location] + json_to_load[bad_escape_location + 1 :]
         )
         try:
             json.loads(json_to_load)
@@ -109,7 +109,7 @@ def correct_json(json_to_load: str) -> str:
         if error_message.startswith("Invalid \\escape"):
             json_to_load = fix_invalid_escape(json_to_load, error_message)
         if error_message.startswith(
-                "Expecting property name enclosed in double quotes"
+            "Expecting property name enclosed in double quotes"
         ):
             json_to_load = add_quotes_to_property_names(json_to_load)
             try:
