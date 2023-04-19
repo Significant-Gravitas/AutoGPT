@@ -8,6 +8,7 @@ except ModuleNotFoundError:
 import traceback
 
 from telegram import Bot, Update
+from telegram.error import BadRequest
 from telegram.ext import CallbackContext
 
 cfg = Config()
@@ -101,7 +102,16 @@ class TelegramUtils:
         print("Sending message to Telegram.. ")
         recipient_chat_id = cfg.telegram_chat_id
         bot = await TelegramUtils.get_bot()
-        await bot.send_message(chat_id=recipient_chat_id, text=message)
+        try:
+            await bot.send_message(chat_id=recipient_chat_id, text=message)
+        except BadRequest as e:
+            if "Message is too long" in str(e):
+                await bot.send_message(
+                    chat_id=recipient_chat_id,
+                    text=message[:75] + ".... Message was too long.",
+                )
+            print(f"Error while sending message: {e}")
+            print(f"Message: {message}")
 
     @staticmethod
     async def ask_user_async(prompt):

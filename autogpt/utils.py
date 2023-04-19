@@ -1,14 +1,12 @@
 import asyncio
+import os
 import traceback
 
-import os
-
 import requests
+import speech_recognition as sr
 import yaml
 from colorama import Fore
 from git import Repo
-
-import speech_recognition as sr
 
 import autogpt.speech.say as speak
 from autogpt.config.config import Config
