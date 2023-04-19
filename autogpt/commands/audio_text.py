@@ -1,5 +1,6 @@
-import requests
 import json
+
+import requests
 
 from autogpt.config import Config
 from autogpt.workspace import path_in_workspace
