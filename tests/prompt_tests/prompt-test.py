@@ -53,9 +53,7 @@ def run_test(test_subdirectory):
     prompt_path = os.path.join(test_path, config["yaml_prompt"])
 
     # Copy the yaml prompt to the current directory and rename it to ai_settings.yaml
-    shutil.copy(prompt_path, "ai_settings.yaml")
-    #command = ["python3", config["exec"]["command"]] + config["exec"]["arguments"]
-    command = ["python3",  "-m" , "autogpt"] + config["exec"]["arguments"]
+    command = ["python3",  "-m" , "autogpt", "---ai-settings", prompt_path] + config["exec"]["arguments"]
 
     # Start with our environment and update with any environment variables from the config
     env = os.environ.copy()
