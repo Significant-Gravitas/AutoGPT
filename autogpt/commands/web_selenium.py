@@ -5,6 +5,11 @@ import logging
 from pathlib import Path
 from sys import platform
 
+import collections
+import collections.abc
+
+collections.Callable = collections.abc.Callable
+
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
