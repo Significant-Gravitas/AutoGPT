@@ -31,7 +31,7 @@ tasks:
   start:continuous:
     desc: runs the AutoGPT program continuously
     cmds:
-      - ./run.sh --continuous
+      - ./run_continuous.sh
 
   start:gpt3:
     desc: runs the AutoGPT program with gpt3.5
