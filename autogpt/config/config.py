@@ -37,7 +37,7 @@ class Config(metaclass=Singleton):
         )
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.temperature = float(os.getenv("TEMPERATURE", "1"))
+        self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
@@ -148,7 +148,7 @@ class Config(metaclass=Singleton):
         else:
             return ""
 
-    AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "azure.yaml")
+    AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
 
     def load_azure_config(self, config_file: str = AZURE_CONFIG_FILE) -> None:
         """
@@ -171,7 +171,7 @@ class Config(metaclass=Singleton):
         self.openai_api_version = (
             config_params.get("azure_api_version") or "2023-03-15-preview"
         )
-        self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", [])
+        self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", {})
 
     def set_continuous_mode(self, value: bool) -> None:
         """Set the continuous mode value."""
