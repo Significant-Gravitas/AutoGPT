@@ -26,6 +26,11 @@ class LocalCache(MemoryProviderSingleton):
         # switch chroma's logging defaults to error only
         logging.getLogger('chromadb').setLevel(logging.ERROR)
 
+        # disable huggingface/tokenizers warning
+        import os
+        os.environ['TOKENIZERS_PARALLELISM'] = "True"
+
+
         self.chromaClient = chromadb.Client(Settings(
             chroma_db_impl="duckdb+parquet", # this makes it persisted, comment out to be purely in-memory
             persist_directory="localCache"
@@ -97,7 +102,7 @@ class LocalCache(MemoryProviderSingleton):
                 query_texts=[data],
                 n_results=1
             )
-        return results
+        return results['documents']
 
     def get_relevant(self, text: str, k: int) -> List[Any]:
         results = None
@@ -116,7 +121,7 @@ class LocalCache(MemoryProviderSingleton):
         except NoIndexException:
             # print("No index found - suppressed because this is a common issue for first-run users")
             pass
-        return results
+        return results['documents']
 
     def get_stats(self) -> tuple[int, tuple[int, ...]]:
         """
