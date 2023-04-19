@@ -73,8 +73,6 @@ def get_prompt() -> str:
         ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
         ("Delete file", "delete_file", {"file": "<file>"}),
         ("Search Files", "search_files", {"directory": "<directory>"}),
-        ("Rename Files", "rename_files", {"directory": "<directory>", "old_name": "<text>", "new_name": "<text>"}),
-        ("Search Folders", "search_folders", {"directory": "<directory>"}),
         ("Evaluate Code", "evaluate_code", {"code": "<full_code_string>"}),
         (
             "Get Improved Code",
