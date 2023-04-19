@@ -9,6 +9,8 @@ from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
+from pynput.keyboard import Key, Listener, KeyCode
+from win32gui import GetWindowText, GetForegroundWindow
 
 
 class Agent:
@@ -46,8 +48,27 @@ class Agent:
         self.memory = memory
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
+        self.pause_count = 0
+        self.pause_loop = False
+        self.code_window_name = GetWindowText(GetForegroundWindow())  # Get the code execution window name
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
+        self.shift_pressed = False
+
+    def on_press(self, key):
+        current_window = GetWindowText(GetForegroundWindow())  # Get the current window name
+
+        if current_window == self.code_window_name:  # Check if the current window matches the original code window name
+            if key == KeyCode.from_char('P') and self.shift_pressed:
+                if self.pause_count >= 2:
+                    print("FEEDBACK REQUEST DETECTED. You will be able to give feedback on the next loop. Please wait.")
+                self.pause_count += 1
+            elif key == Key.shift:
+                self.shift_pressed = True
+
+    def on_release(self, key):
+        if key == Key.shift:
+            self.shift_pressed = False
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -56,6 +77,7 @@ class Agent:
         command_name = None
         arguments = None
         user_input = ""
+        spinner_message = "Thinking... "
 
         while True:
             # Discontinue if continuous limit is reached
@@ -71,7 +93,7 @@ class Agent:
                 break
 
             # Send message to AI, get response
-            with Spinner("Thinking... "):
+            with Spinner(spinner_message):
                 assistant_reply = chat_with_ai(
                     self.system_prompt,
                     self.triggering_prompt,
@@ -152,6 +174,25 @@ class Agent:
                     print("Exiting...", flush=True)
                     break
             else:
+                spinner_message = "Thinking... Hold Shift & press 'P' twice to give feedback to the AI"
+                # start listening to the keyboard and only record actions for Shift + P
+                listener = Listener(on_press=self.on_press)
+                listener.start()
+
+                # If pause_loop is false - continue the automatic commands
+                if not self.pause_loop and self.pause_count <= 1:
+                    self.user_input = "GENERATE NEXT COMMAND JSON"
+                    self.pause_loop = True
+
+                # Check if pause_count is equal to 2 & take human feedback if so
+                if self.pause_count >= 2:
+                    listener.stop()
+                    self.pause_loop = False
+                    self.pause_count = 0
+                    console_input = input("Enter your comments: ")
+                    user_input = console_input
+                    command_name = "human_feedback"
+
                 # Print command
                 logger.typewriter_log(
                     "NEXT ACTION: ",
