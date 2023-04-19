@@ -60,7 +60,11 @@ class Agent:
         while True:
             # Discontinue if continuous limit is reached
             loop_count += 1
-            if cfg.continuous_mode and loop_count > cfg.continuous_limit > 0:
+            if (
+                cfg.continuous_mode
+                and cfg.continuous_limit > 0
+                and loop_count > cfg.continuous_limit
+            ):
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
@@ -74,7 +78,7 @@ class Agent:
                     self.full_message_history,
                     self.memory,
                     cfg.fast_token_limit,
-                )
+                )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
 
@@ -87,23 +91,22 @@ class Agent:
                     command_name, arguments = get_command(assistant_reply_json)
                     # command_name converted to lowercase
                     command_name = command_name.lower().strip()
+                    # command_name, arguments = assistant_reply_json_valid["command"]["name"], assistant_reply_json_valid["command"]["args"]
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
-
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
-            # Print command
-            logger.typewriter_log(
-                "NEXT ACTION: ",
-                Fore.CYAN,
-                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-            )
-
             if not cfg.continuous_mode and self.next_action_count == 0:
-                # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
-                # Get key press: Prompt the user to press enter to continue or escape to exit
+                ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+                # Get key press: Prompt the user to press enter to continue or escape
+                # to exit
+                logger.typewriter_log(
+                    "NEXT ACTION: ",
+                    Fore.CYAN,
+                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+                    f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                )
                 print(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous "
                     "commands, 'n' to exit program, or enter feedback for "
@@ -114,18 +117,16 @@ class Agent:
                     console_input = clean_input(
                         Fore.MAGENTA + "Input:" + Style.RESET_ALL
                     )
-                    # user input command converted to lowercase
-                    console_command = console_input.lower().strip()
-                    if console_command == "y":
+                    if console_input.lower().strip() == "y":
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
-                    elif console_command == "":
+                    elif console_input.lower().strip() == "":
                         print("Invalid input format.")
                         continue
-                    elif console_command.startswith("y -"):
+                    elif console_input.lower().startswith("y -"):
                         try:
                             self.next_action_count = abs(
-                                int(console_command.split(" ")[1])
+                                int(console_input.split(" ")[1])
                             )
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
@@ -135,7 +136,7 @@ class Agent:
                             )
                             continue
                         break
-                    elif console_command == "n":
+                    elif console_input.lower() == "n":
                         user_input = "EXIT"
                         break
                     else:
@@ -152,9 +153,17 @@ class Agent:
                 elif user_input == "EXIT":
                     print("Exiting...", flush=True)
                     break
+            else:
+                # Print command
+                logger.typewriter_log(
+                    "NEXT ACTION: ",
+                    Fore.CYAN,
+                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
+                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                )
 
             # Execute command
-            if command_name.startswith("error"):
+            if command_name is not None and command_name.lower().startswith("error"):
                 result = (
                     f"Command {command_name} threw the following error: {arguments}"
                 )
@@ -176,7 +185,8 @@ class Agent:
 
             self.memory.add(memory_to_add)
 
-            # Check if there's a result from the command append it to the message history
+            # Check if there's a result from the command append it to the message
+            # history
             if result is not None:
                 self.full_message_history.append(create_chat_message("system", result))
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
