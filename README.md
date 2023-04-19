@@ -40,6 +40,7 @@ Development of this free, open-source project is made possible by all the <a hre
 &nbsp;&nbsp;&nbsp;&nbsp;
 <a href="https://www.algohash.org/"><img src="https://user-images.githubusercontent.com/22963551/233061211-9a9ec216-9fc0-46fd-a124-bf951057207c.png" height="40px" alt="AlgohashFe" style="border: 1px solid black;"/></a>&nbsp;&nbsp;&nbsp;&nbsp;
 <a href="https://www.turintech.ai/"><img src="https://miro.medium.com/v2/resize:fit:444/1*esrNX1hPdZ2Ww84fExGdOg.png" height="40px" alt="TurinTechAI" style="border: 1px solid black;"/></a>&nbsp;&nbsp;&nbsp;&nbsp;
+<a href="https://www.typingmind.com/?utm_source=autogpt"><img src="https://user-images.githubusercontent.com/22963551/233202971-61e77209-58a0-47d9-9f7e-dd081111437b.png" height="40px" alt="TypingMind" style="border: 1px solid black;"/></a>&nbsp;&nbsp;&nbsp;&nbsp;
 </p>
 
 <p align="center">
@@ -143,7 +144,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 1. Run `autogpt` Python module in your terminal.
   On linux or mac:
     ```bash
-    # On Linux of Mac:
+    # On Linux or Mac:
    ./run.sh start
    # On Windows:
    .\run.bat
