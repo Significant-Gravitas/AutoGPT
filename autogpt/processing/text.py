@@ -1,6 +1,5 @@
 """Text processing functions"""
 from typing import Dict, Generator, Optional, List
-import textwrap
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from autogpt.config import Config
@@ -12,40 +11,29 @@ CFG = Config()
 def get_memory_instance():
     return get_memory(CFG)
 
-def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
-    """Split text into chunks of a maximum length
-    Args:
-        text (str): The text to split
-        max_length (int, optional): The maximum length of each chunk. Defaults to 8192.
-    Yields:
-        str: The next chunk of text
-    Raises:
-        ValueError: If the text is longer than the maximum length
-    """
-    paragraphs = text.split("\n")
-    current_length = 0
-    current_chunk = []
+def split_text(text: str, max_length: int = 50) -> Generator[str, None, None]:
+    if max_length <= 0:
+        raise ValueError("max_length should be greater than 0")
 
-    for paragraph in paragraphs:
-        if len(paragraph) > max_length:
-            long_paragraph_chunks = textwrap.wrap(paragraph, max_length)
-            for long_chunk in long_paragraph_chunks[:-1]:
-                if current_chunk:
-                    yield "\n".join(current_chunk)
-                    current_chunk = []
-                yield long_chunk
-            paragraph = long_paragraph_chunks[-1]
+    if not text:
+        return
 
-        if current_length + len(paragraph) + 1 <= max_length:
-            current_chunk.append(paragraph)
-            current_length += len(paragraph) + 1
-        else:
-            yield "\n".join(current_chunk)
-            current_chunk = [paragraph]
-            current_length = len(paragraph) + 1
+    lines = text.split("\n")
 
-    if current_chunk:
-        yield "\n".join(current_chunk)
+    for line in lines:
+        words = line.split()
+        current_line = []
+
+        for word in words:
+            if len(" ".join(current_line)) + len(word) + 1 > max_length:
+                yield " ".join(current_line)
+                current_line = [word]
+            else:
+                current_line.append(word)
+
+        if current_line:
+            yield " ".join(current_line)
+
 
 
 def summarize_text(
