@@ -1,25 +1,50 @@
 """Base class for memory providers."""
 import abc
 
-import openai
-
 from autogpt.config import AbstractSingleton, Config
+from autogpt.llm_utils import create_embedding_with_ada
 
 cfg = Config()
 
 
-def get_ada_embedding(text):
-    text = text.replace("\n", " ")
-    if cfg.use_azure:
-        return openai.Embedding.create(
-            input=[text],
-            engine=cfg.get_azure_deployment_id_for_model("text-embedding-ada-002"),
-        )["data"][0]["embedding"]
-    else:
-        return openai.Embedding.create(input=[text], model="text-embedding-ada-002")[
-            "data"
-        ][0]["embedding"]
+EMBED_DIM = {
+    "ada": 1536,
+    "sbert": 768
+}.get(cfg.memory_embeder, 1536)
 
+
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    SentenceTransformer = None
+    if cfg.memory_embedder == "sbert":
+        print("Error: Sentence Transformers is not installed. Please install sentence_transformers to use sBERT as an embedder. Defaulting to Ada.")
+        cfg.memory_embeder = "ada"
+
+
+def get_embedding(text: str) -> list:
+    """Get the embedding for a given text.
+
+    Args:
+        text (str): Text to get embedding for.
+
+    Returns:
+        list: Embedding for the given text.
+    """
+    text = text.replace("\n", " ")
+
+    if cfg.memory_embeder == "sbert":
+        # sBERT model
+        embedding = get_sbert_embedding(text)
+    else:
+        # Ada model
+        embedding = create_embedding_with_ada(text)
+
+    return embedding
+
+
+def get_sbert_embedding(text):
+    return SentenceTransformer("sentence-transformers/all-mpnet-base-v2", device="cpu").encode(text, show_progress_bar=False)
 
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
