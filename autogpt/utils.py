@@ -1,4 +1,5 @@
 import os
+import json
 
 import requests
 import yaml
@@ -75,3 +76,18 @@ def get_latest_bulletin() -> str:
         open("CURRENT_BULLETIN.md", "w", encoding="utf-8").write(new_bulletin)
         return f" {Fore.RED}::UPDATED:: {Fore.CYAN}{new_bulletin}{Fore.RESET}"
     return current_bulletin
+
+def load_chat_history_file(file: str):
+    if not os.path.exists(file):
+        # create file
+        open(file, "w", encoding="utf-8").close()
+        return []
+    with open(file, "r", encoding="utf-8") as fp:
+        return [json.loads(line.strip()) for line in fp.readlines()]
+    
+def update_chat_history_file(file: str, message):
+    with open(file, "a", encoding="utf-8") as fp:
+        fp.write(json.dumps(message) + "\n")
+
+def clear_chat_history_file(file: str):
+    open(file, "w", encoding="utf-8").close()
