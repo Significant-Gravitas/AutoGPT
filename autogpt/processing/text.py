@@ -14,7 +14,7 @@ def get_memory_instance():
     return get_memory(CFG)
 
 
-def split_text(text: str, max_length: int = 50) -> Generator[str, None, None]:
+def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
     """Split text into chunks of a maximum length.
 
     This function takes a text string and splits it into smaller chunks of a maximum length,
