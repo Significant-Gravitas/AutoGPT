@@ -68,7 +68,10 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
         },
     )
 
-    image = Image.open(io.BytesIO(response.content))
+    try:
+        image = Image.open(io.BytesIO(response.content))
+    except IOError as e:
+        raise ValueError("Cannot identify image file")
     print(f"Image Generated for prompt:{prompt}")
 
     image.save(path_in_workspace(filename))
