@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import contextlib
 import json
-from typing import Dict, Any
+from typing import Any, Dict
 
 from colorama import Fore
 from regex import regex
 
+from autogpt.config import Config
 from autogpt.json_utils.json_fix_general import correct_json
 from autogpt.llm_utils import call_ai_function
 from autogpt.logs import logger
 from autogpt.speech import say_text
-from autogpt.config import Config
 
 JSON_SCHEMA = """
 {
@@ -102,7 +102,10 @@ def fix_json_using_multiple_techniques(assistant_reply: str) -> Dict[Any, Any]:
     if assistant_reply_json != {}:
         return assistant_reply_json
 
-    logger.error("Error: The following AI output couldn't be converted to a JSON:\n", assistant_reply)
+    logger.error(
+        "Error: The following AI output couldn't be converted to a JSON:\n",
+        assistant_reply,
+    )
     if CFG.speak_mode:
         say_text("I have received an invalid JSON response from the OpenAI API.")
 

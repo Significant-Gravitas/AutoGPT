@@ -4,8 +4,8 @@ import re
 
 from jsonschema import Draft7Validator
 
-from autogpt.logs import logger
 from autogpt.config import Config
+from autogpt.logs import logger
 
 CFG = Config()
 
