@@ -254,6 +254,22 @@ export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
 export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 ```
 
+## Plugins
+
+See https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template for the template of the plugins.
+
+⚠️💀 WARNING 💀⚠️: Review the code of any plugin you use, this allows for any Python to be executed and do malicious things. Like stealing your API keys.
+
+Drop the repo's zipfile in the plugins folder.
+
+![Download Zip](https://raw.githubusercontent.com/BillSchumacher/Auto-GPT/master/plugin.png)
+
+If you add the plugins class name to the `ALLOWLISTED_PLUGINS` in the `.env` you will not be prompted otherwise you'll be warned before loading the plugin:
+
+```
+ALLOWLISTED_PLUGINS=example-plugin1,example-plugin2,example-plugin3
+```
+
 ## Setting Your Cache Type
 
 By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
