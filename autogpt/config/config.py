@@ -34,7 +34,7 @@ class Config(metaclass=Singleton):
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.temperature = float(os.getenv("TEMPERATURE", "1"))
+        self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
