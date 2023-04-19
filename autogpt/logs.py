@@ -234,6 +234,8 @@ def print_assistant_thoughts(ai_name, assistant_reply):
         assistant_thoughts_plan = None
         assistant_thoughts_speak = None
         assistant_thoughts_criticism = None
+        assistant_thoughts_essence = None
+        assistant_thoughts_progress_report = None
         if not isinstance(assistant_reply_json, dict):
             assistant_reply_json = {}
         assistant_thoughts = assistant_reply_json.get("thoughts", {})
@@ -244,7 +246,15 @@ def print_assistant_thoughts(ai_name, assistant_reply):
             assistant_thoughts_plan = assistant_thoughts.get("plan")
             assistant_thoughts_criticism = assistant_thoughts.get("criticism")
             assistant_thoughts_speak = assistant_thoughts.get("speak")
+            assistant_thoughts_essence = assistant_thoughts.get("essence")
+            assistant_thoughts_progress_report = assistant_thoughts.get("progress report")
 
+        if (assistant_thoughts_essence):
+            logger.typewriter_log("ESSENCE:", Fore.YELLOW, f"{assistant_thoughts_essence}")
+
+        if (assistant_thoughts_progress_report):
+            logger.typewriter_log("PROGRESS REPORT:", Fore.YELLOW, f"{assistant_thoughts_progress_report}")
+            
         logger.typewriter_log(
             f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
         )

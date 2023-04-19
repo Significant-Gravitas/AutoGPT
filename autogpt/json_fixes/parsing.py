@@ -30,6 +30,8 @@ JSON_SCHEMA = """
         "plan": "- short bulleted\n- list that conveys\n- long-term plan",
         "criticism": "constructive self-criticism",
         "speak": "thoughts summary to say to user"
+        "essence": "a couple relevant words ranked by importance (1-10)",
+        "progress report": "progress towards goals."
     }
 }
 """

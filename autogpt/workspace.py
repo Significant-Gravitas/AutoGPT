@@ -11,6 +11,12 @@ if not os.path.exists(WORKSPACE_PATH):
     os.makedirs(WORKSPACE_PATH)
 
 
+CONTEXTS_PATH = WORKSPACE_PATH / "contexts"
+# Create the contexts directory if it doesn't exist
+if not os.path.exists(WORKSPACE_PATH / "contexts"):
+    os.makedirs(WORKSPACE_PATH / "contexts")
+
+
 def path_in_workspace(relative_path: str | Path) -> Path:
     """Get full path for item in workspace
 

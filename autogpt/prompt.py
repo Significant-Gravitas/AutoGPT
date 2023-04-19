@@ -1,6 +1,9 @@
+import os
+from pathlib import Path
 from colorama import Fore
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
+from autogpt.contexts.contextualize import ContextManager
 from autogpt.logs import logger
 from autogpt.promptgenerator import PromptGenerator
 from autogpt.config import Config
@@ -27,16 +30,34 @@ def get_prompt() -> str:
 
     # Add constraints to the PromptGenerator object
     prompt_generator.add_constraint(
-        "~4000 word limit for short term memory. Your short term memory is short, so"
+        "~4000 word limit for short term memory. Short term memory is short, so"
         " immediately save important information to files."
     )
     prompt_generator.add_constraint(
-        "If you are unsure how you previously did something or want to recall past"
-        " events, thinking about similar events will help you remember."
+        "If you are unsure of past events, thinking about similar events will help you remember."
     )
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint(
         'Exclusively use the commands listed in double quotes e.g. "command name"'
+    )
+    prompt_generator.add_constraint(
+        "You don't have to be in a context all the time, but you cannot be in multiple contexts at once."
+    )
+
+    context_directory = Path(os.getcwd()) / "auto_gpt_workspace/contexts"
+    context_template_file = Path(os.getcwd()) / "auto_gpt_workspace/contexts/context_template.md"
+    context_manager = ContextManager(context_directory, context_template_file)
+    context_template = context_manager.context_template
+    prompt_generator.add_constraint(
+        "When creating a context, you must use the Context template written in Markdown. Do not omit any headers:"
+        f"{context_template}\n"
+        "Fill in the template with relevant data and use the command \"create_context\" to create the context, passing the markdown text through as a string. Contexts should a portion of the larger task, and should be created as needed."
+    )
+    prompt_generator.add_constraint(
+        "Only write to markdown (.md) files with clear headings, bullet points, summaries, and sources/references as appropriate."
+    )
+    prompt_generator.add_constraint(
+        "No code. No Command Line. Exclusively Text."
     )
 
     # Define the command list
@@ -57,32 +78,16 @@ def get_prompt() -> str:
             "message_agent",
             {"key": "<key>", "message": "<message>"},
         ),
+        ("Create Context", "create_context", {"context_name": "<name>", "context_data": "<context_data>"}),
         ("List GPT Agents", "list_agents", {}),
         ("Delete GPT Agent", "delete_agent", {"key": "<key>"}),
-        (
-            "Clone Repository",
-            "clone_repository",
-            {"repository_url": "<url>", "clone_path": "<directory>"},
-        ),
         ("Write to file", "write_to_file", {"file": "<file>", "text": "<text>"}),
         ("Read file", "read_file", {"file": "<file>"}),
         ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
         ("Delete file", "delete_file", {"file": "<file>"}),
         ("Search Files", "search_files", {"directory": "<directory>"}),
-        ("Evaluate Code", "evaluate_code", {"code": "<full_code_string>"}),
-        (
-            "Get Improved Code",
-            "improve_code",
-            {"suggestions": "<list_of_suggestions>", "code": "<full_code_string>"},
-        ),
-        (
-            "Write Tests",
-            "write_tests",
-            {"code": "<full_code_string>", "focus": "<list_of_focus_areas>"},
-        ),
-        ("Execute Python File", "execute_python_file", {"file": "<file>"}),
-        ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
-        ("Send Tweet", "send_tweet", {"text": "<text>"}),
+        # ("Represent Files", "represent_files", {}),
+        # ("Shuffle Filesystem", "shuffle_filesystem", {}),
     ]
 
     # Only add the audio to text command if the model is specified
@@ -107,7 +112,7 @@ def get_prompt() -> str:
 
     # Add these command last.
     commands.append(
-        ("Do Nothing", "do_nothing", {}),
+        ("Evaluate Context", "evaluate_context", {}),
     )
     commands.append(
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
@@ -118,19 +123,22 @@ def get_prompt() -> str:
         prompt_generator.add_command(command_label, command_name, args)
 
     # Add resources to the PromptGenerator object
-    prompt_generator.add_resource(
-        "Internet access for searches and information gathering."
-    )
+    prompt_generator.add_resource("Reading, writing, appending to, and reorganizing files, which is your primary goal.")
     prompt_generator.add_resource("Long Term memory management.")
+    prompt_generator.add_resource("Context creation and management for staying on task.")
     prompt_generator.add_resource(
         "GPT-3.5 powered Agents for delegation of simple tasks."
     )
-    prompt_generator.add_resource("File output.")
+    prompt_generator.add_resource(
+        "Internet access for searches, sourcing, and information gathering."
+    )
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation(
-        "Continuously review and analyze your actions to ensure you are performing to"
-        " the best of your abilities."
+        "Continuously review both your actions and the file system to stay on track."
+    )
+    prompt_generator.add_performance_evaluation(
+        "Evaluate your current context regularly and keep the context file up to date in clean markdown formatting."
     )
     prompt_generator.add_performance_evaluation(
         "Constructively self-criticize your big-picture behavior constantly."
@@ -139,8 +147,7 @@ def get_prompt() -> str:
         "Reflect on past decisions and strategies to refine your approach."
     )
     prompt_generator.add_performance_evaluation(
-        "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
-        " the least number of steps."
+        "Every command has a cost, so be smart and efficient without sacrificing quality."
     )
 
     # Generate the prompt string

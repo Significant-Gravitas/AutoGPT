@@ -18,6 +18,7 @@ from autogpt.commands.file_operations import (
     search_files,
     write_to_file,
 )
+from autogpt.contexts.contextualize import ContextManager
 from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
@@ -25,6 +26,7 @@ from autogpt.speech import say_text
 from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.git_operations import clone_repository
 from autogpt.commands.twitter import send_tweet
+from autogpt.workspace import CONTEXTS_PATH
 
 
 CFG = Config()
@@ -138,6 +140,16 @@ def execute_command(command_name: str, arguments):
             return str(safe_message)
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
+        elif command_name == "create_context":
+            context_name = arguments["context_name"]
+            context_data = arguments["context_data"]
+            context_directory = CONTEXTS_PATH
+            context_template_file = CONTEXTS_PATH / "context_template.md"
+            
+            context_manager = ContextManager(context_directory, context_template_file)
+            context_manager.create_new_context(context_name, context_data)
+    
+            return f"Context '{context_name}' has been created successfully."
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"], arguments["task"], arguments["prompt"]
@@ -194,7 +206,7 @@ def execute_command(command_name: str, arguments):
             return generate_image(arguments["prompt"])
         elif command_name == "send_tweet":
             return send_tweet(arguments["text"])
-        elif command_name == "do_nothing":
+        elif command_name == "evaluate_context":
             return "No action performed."
         elif command_name == "task_complete":
             shutdown()

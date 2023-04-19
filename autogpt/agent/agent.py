@@ -1,3 +1,5 @@
+import json
+from autogpt.contexts.contextualize import ContextManager
 from colorama import Fore, Style
 from autogpt.app import execute_command, get_command
 
@@ -33,6 +35,7 @@ class Agent:
         next_action_count,
         prompt,
         user_input,
+        context_file=None,
     ):
         self.ai_name = ai_name
         self.memory = memory
@@ -40,8 +43,14 @@ class Agent:
         self.next_action_count = next_action_count
         self.prompt = prompt
         self.user_input = user_input
+        self.context_file = context_file
+        self.context_manager = ContextManager()
 
     def start_interaction_loop(self):
+        # Load context data
+        if self.context_file:
+            self.context_manager.load_context_from_file(self.context_file)
+
         # Interaction Loop
         cfg = Config()
         loop_count = 0
@@ -59,6 +68,15 @@ class Agent:
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
                 break
+
+
+            context_data = self.context_manager.get_context()
+            if context_data:
+                context_message = {
+                    "role": "context",
+                    "content": json.dumps(context_data)
+                }
+                self.full_message_history.insert(0, context_message)
 
             # Send message to AI, get response
             with Spinner("Thinking... "):
@@ -168,6 +186,11 @@ class Agent:
             )
 
             self.memory.add(memory_to_add)
+
+            if self.context_file:
+                self.context_manager.update_context("last_command", command_name)
+                self.context_manager.update_context("last_arguments", arguments)
+                self.context_manager.save_context_to_file(self.context_file)
 
             # Check if there's a result from the command append it to the message
             # history

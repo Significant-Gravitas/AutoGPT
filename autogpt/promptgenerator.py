@@ -22,11 +22,13 @@ class PromptGenerator:
         self.performance_evaluation = []
         self.response_format = {
             "thoughts": {
-                "text": "thought",
-                "reasoning": "reasoning",
+                "text": "brief thought",
+                "reasoning": "brief reasoning",
                 "plan": "- short bulleted\n- list that conveys\n- long-term plan",
-                "criticism": "constructive self-criticism",
-                "speak": "thoughts summary to say to user",
+                "criticism": "brief constructive self-criticism",
+                "speak": "brief summary or quip for the user",
+                "essence": "a couple relevant words each ranked by importance (1-10)",
+                "progress report": "progress towards goals.",
             },
             "command": {"name": "command name", "args": {"arg name": "value"}},
         }
