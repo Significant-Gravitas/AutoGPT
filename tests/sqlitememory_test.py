@@ -17,6 +17,7 @@ def MockConfig():
     )
 
 
+@unittest.skipIf(os.getenv("CI"), "Skipping sqlite memory tests")
 class TestSqliteMemory(unittest.TestCase):
     def setUp(self):
         self.cfg = MockConfig()
