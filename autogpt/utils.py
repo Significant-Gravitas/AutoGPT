@@ -89,7 +89,7 @@ def load_chat_history_file(file: str) -> list:
         open(file, "w", encoding="utf-8").close()
         return []
     with open(file, "r", encoding="utf-8") as fp:
-        return [json.loads(line.strip()) for line in fp.readlines()]
+        return [json.loads(line.strip()) for line in fp.readlines()][-9:]
     
 def update_chat_history_file(file: str, message):
     """ Appends a message to the chat history file
