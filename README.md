@@ -328,9 +328,8 @@ export MEMORY_BACKEND="pinecone"
 
 [Milvus](https://milvus.io/) is an open-source, highly scalable vector database to store huge amounts of vector-based memory and provide fast relevant search.
 
-- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
-  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
-  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
+- Run `pip3 install pymilvus` to install client. more detail at [pymilvus](https://github.com/milvus-io/pymilvus)
+- [Install and deploy Milvus](https://milvus.io/docs/install_standalone-operator.md)
 - set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
 - set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
 
