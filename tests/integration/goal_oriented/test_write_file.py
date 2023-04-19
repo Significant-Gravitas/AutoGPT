@@ -1,7 +1,5 @@
 import concurrent
-import json
 import os
-import re
 import unittest
 
 import vcr

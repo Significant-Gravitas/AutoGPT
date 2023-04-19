@@ -41,6 +41,7 @@ class Config(metaclass=Singleton):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
+
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
@@ -48,11 +49,11 @@ class Config(metaclass=Singleton):
             os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True"
         )
 
-        # if self.use_azure:
-        #     self.load_azure_config()
-        #     openai.api_type = self.openai_api_type
-        #     openai.api_base = self.openai_api_base
-        #     openai.api_version = self.openai_api_version
+        if self.use_azure:
+            self.load_azure_config()
+            openai.api_type = self.openai_api_type
+            openai.api_base = self.openai_api_base
+            openai.api_version = self.openai_api_version
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
@@ -262,7 +263,6 @@ class Config(metaclass=Singleton):
     def set_memory_backend(self, value: int) -> None:
         """Set the temperature value."""
         self.memory_backend = value
-
 
 def check_openai_api_key() -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
