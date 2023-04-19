@@ -264,7 +264,11 @@ Drop the repo's zipfile in the plugins folder.
 
 ![Download Zip](https://raw.githubusercontent.com/BillSchumacher/Auto-GPT/master/plugin.png)
 
-If you add the plugins class name to the whitelist in the config.py you will not be prompted otherwise you'll be warned before loading the plugin.
+If you add the plugins class name to the `ALLOWLISTED_PLUGINS` in the `.env` you will not be prompted otherwise you'll be warned before loading the plugin:
+
+```
+ALLOWLISTED_PLUGINS=example-plugin1,example-plugin2,example-plugin3
+```
 
 ## Setting Your Cache Type
 

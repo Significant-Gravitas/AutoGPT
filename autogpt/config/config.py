@@ -116,7 +116,13 @@ class Config(metaclass=Singleton):
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
         self.plugins_openai = []
-        self.plugins_whitelist = []
+
+        plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
+        if plugins_allowlist:
+            plugins_allowlist=plugins_allowlist.split(",")
+            self.plugins_whitelist = plugins_allowlist
+        else:
+            self.plugins_whitelist = []
         self.plugins_blacklist = []
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
