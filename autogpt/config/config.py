@@ -34,6 +34,7 @@ class Config(metaclass=Singleton):
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_proxy = os.getenv("OPENAI_PROXY", None)
         self.temperature = float(os.getenv("TEMPERATURE", "1"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
@@ -119,6 +120,7 @@ class Config(metaclass=Singleton):
         self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
+        openai.proxy = self.openai_proxy
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
@@ -205,6 +207,10 @@ class Config(metaclass=Singleton):
     def set_openai_api_key(self, value: str) -> None:
         """Set the OpenAI API key value."""
         self.openai_api_key = value
+        
+    def set_openai_proxy(self, value: str) -> None:
+        """Set the OpenAI proxy value."""
+        self.openai_proxy = value
 
     def set_elevenlabs_api_key(self, value: str) -> None:
         """Set the ElevenLabs API key value."""
