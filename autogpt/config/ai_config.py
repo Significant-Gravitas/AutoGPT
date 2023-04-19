@@ -5,6 +5,7 @@ A module that contains the AIConfig class object that contains the configuration
 from __future__ import annotations
 
 import os
+import platform
 from typing import Type
 
 import yaml
@@ -107,12 +108,14 @@ class AIConfig:
             " simple strategies with no legal complications."
             ""
         )
+        os_name = platform.system()
+        os_version = platform.release()
 
         from autogpt.prompt import get_prompt
 
         # Construct full prompt
         full_prompt = (
-            f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
+            f"You are {self.ai_name}, {self.ai_role}\nThe OS you are running on is {os_name} {os_version}\n{prompt_start}\n\nGOALS:\n\n"
         )
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"

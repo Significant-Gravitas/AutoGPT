@@ -22,7 +22,6 @@ from autogpt.commands.git_operations import clone_repository
 from autogpt.commands.google_search import google_official_search, google_search
 from autogpt.commands.image_gen import generate_image
 from autogpt.commands.improve_code import improve_code
-from autogpt.commands.system import get_current_os
 from autogpt.commands.twitter import send_tweet
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.commands.web_selenium import browse_website
@@ -186,8 +185,6 @@ def execute_command(command_name: str, arguments):
             return analyze_code(arguments["code"])
         elif command_name == "improve_code":
             return improve_code(arguments["suggestions"], arguments["code"])
-        elif command_name == "get_current_os":
-            return get_current_os()
         elif command_name == "write_tests":
             return write_tests(arguments["code"], arguments.get("focus"))
         elif command_name == "execute_python_file":  # Add this command
