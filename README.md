@@ -1,3 +1,44 @@
+# Auto-GPT with Goodies
+
+## Requirements
+
+- macos
+- homebrew
+- go
+- go-task
+- python
+
+## How to Use?
+
+**Install and Start AutoGPT**
+
+1. Duplicate `.env.default` -> `.env`
+2. Add config variables to `.env`
+3. Add AutoGPT program config to `ai_settings.yaml` (Optional)
+4. Run the following commands to run AutoGPT program
+
+      ```bash
+      task install
+      task start
+      ```
+
+**Available tasks for this project:**
+
+```bash
+- docker:down:          stops docker container
+- docker:restart:       restarts docker container
+- docker:up:            starts docker container
+- install:              installs all deps and stuff to run application locally (must have ZSH)
+- install:m2:           installs all deps and stuff to run application locally on arm64 (must have ZSH)
+- shell:                starts a python/pipenv shell - pipenv shell
+- start:                runs the AutoGPT program
+- start:continuous:     runs the AutoGPT program continuously
+- start:gpt3:           runs the AutoGPT program with gpt3.5
+- test:                 run tests
+- test:coverage:        run test coverage report
+```
+
+---
 # Auto-GPT: An Autonomous GPT-4 Experiment
 [![Unit Tests](https://img.shields.io/github/actions/workflow/status/Significant-Gravitas/Auto-GPT/ci.yml?label=unit%20tests)](https://github.com/Significant-Gravitas/Auto-GPT/actions/workflows/ci.yml)
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
@@ -64,7 +105,7 @@ Development of this free, open-source project is made possible by all the <a hre
   - [Weaviate](https://weaviate.io)
 - ElevenLabs Key (If you want the AI to speak)
 
-## ⚠️ OpenAI API Keys Configuration ⚠️ 
+## ⚠️ OpenAI API Keys Configuration ⚠️
 
 Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
 
@@ -113,7 +154,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
    7. Save and close the `.env` file.
 
    By completing these steps, you have properly configured the API Keys for your project.
-   
+
    - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
    - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
    - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
@@ -339,8 +380,8 @@ export MEMORY_BACKEND="pinecone"
 
 
 ### Weaviate Setup
-[Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
-Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded) is supported which allows the Auto-GPT process itself to start a Weaviate instance. To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip install "weaviate-client>=3.15.4"`. 
+[Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart).
+Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded) is supported which allows the Auto-GPT process itself to start a Weaviate instance. To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip install "weaviate-client>=3.15.4"`.
 
 #### Install the Weaviate client
 
@@ -357,7 +398,7 @@ In your `.env` file set the following:
 ```
 MEMORY_BACKEND=weaviate
 WEAVIATE_HOST="127.0.0.1" # the IP or domain of the running Weaviate instance
-WEAVIATE_PORT="8080" 
+WEAVIATE_PORT="8080"
 WEAVIATE_PROTOCOL="http"
 WEAVIATE_USERNAME="your username"
 WEAVIATE_PASSWORD="your password"
@@ -366,7 +407,7 @@ WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate" # this is optional and i
 USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
 MEMORY_INDEX="Autogpt" # name of the index to create for the application
 ```
- 
+
 ## View Memory Usage
 
 View memory usage by using the `--debug` flag :)
@@ -376,7 +417,7 @@ View memory usage by using the `--debug` flag :)
 Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.
 
 ```bash
-# python data_ingestion.py -h 
+# python data_ingestion.py -h
 usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
 
 Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
@@ -406,7 +447,7 @@ Memory pre-seeding is a technique for improving AI accuracy by ingesting relevan
 
 ⚠️ If you use Redis as your memory, make sure to run Auto-GPT with the `WIPE_REDIS_ON_START=False` in your `.env` file.
 
-⚠️For other memory backend, we currently forcefully wipe the memory when starting Auto-GPT. To ingest data with those memory backend, you can call the `data_ingestion.py` script anytime during an Auto-GPT run. 
+⚠️For other memory backend, we currently forcefully wipe the memory when starting Auto-GPT. To ingest data with those memory backend, you can call the `data_ingestion.py` script anytime during an Auto-GPT run.
 
 Memories will be available to the AI immediately as they are ingested, even if ingested while Auto-GPT is running.
 
@@ -492,7 +533,7 @@ We look forward to connecting with you and hearing your thoughts, ideas, and exp
 To run all tests, run the following command:
 
 ```bash
-pytest 
+pytest
 
 ```
 
