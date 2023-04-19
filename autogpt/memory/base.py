@@ -7,10 +7,7 @@ from autogpt.llm_utils import create_embedding_with_ada
 cfg = Config()
 
 
-EMBED_DIM = {
-    "ada": 1536,
-    "sbert": 768
-}.get(cfg.memory_embeder, 1536)
+EMBED_DIM = {"ada": 1536, "sbert": 768}.get(cfg.memory_embeder, 1536)
 
 
 try:
@@ -18,7 +15,9 @@ try:
 except ImportError:
     SentenceTransformer = None
     if cfg.memory_embedder == "sbert":
-        print("Error: Sentence Transformers is not installed. Please install sentence_transformers to use sBERT as an embedder. Defaulting to Ada.")
+        print(
+            "Error: Sentence Transformers is not installed. Please install sentence_transformers to use sBERT as an embedder. Defaulting to Ada."
+        )
         cfg.memory_embeder = "ada"
 
 
@@ -44,7 +43,9 @@ def get_embedding(text: str) -> list:
 
 
 def get_sbert_embedding(text):
-    return SentenceTransformer("sentence-transformers/all-mpnet-base-v2", device="cpu").encode(text, show_progress_bar=False)
+    return SentenceTransformer(
+        "sentence-transformers/all-mpnet-base-v2", device="cpu"
+    ).encode(text, show_progress_bar=False)
 
 
 class MemoryProviderSingleton(AbstractSingleton):
