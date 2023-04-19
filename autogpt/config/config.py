@@ -27,19 +27,26 @@ class Config(metaclass=Singleton):
         self.default_authorisation = os.getenv("DEFAULT_AUTHORISATION") == "True"
         self.default_authorisation_count = int(os.getenv("DEFAULT_AUTHORISATION_COUNT", 0))
         self.allow_downloads = False
-        self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
+        self.skip_news = False
+
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
-        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
+        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 3000))
+        self.browse_spacy_language_model = os.getenv(
+            "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
+        )
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.temperature = float(os.getenv("TEMPERATURE", "1"))
+        self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
+        )
+        self.restrict_to_workspace = (
+            os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True"
         )
 
         if self.use_azure:
@@ -84,12 +91,22 @@ class Config(metaclass=Singleton):
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
+        self.image_size = int(os.getenv("IMAGE_SIZE", 256))
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
+        self.huggingface_image_model = os.getenv(
+            "HUGGINGFACE_IMAGE_MODEL", "CompVis/stable-diffusion-v1-4"
+        )
         self.huggingface_audio_to_text_model = os.getenv(
             "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
         )
+        self.sd_webui_url = os.getenv("SD_WEBUI_URL", "http://localhost:7860")
+        self.sd_webui_auth = os.getenv("SD_WEBUI_AUTH")
 
-        # User agent headers to use when browsing web
+        # Selenium browser settings
+        self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
+        self.selenium_headless = os.getenv("HEADLESS_BROWSER", "True") == "True"
+
+        # User agent header to use when making HTTP requests
         # Some websites might just completely deny request with an error code if
         # no user agent was found.
         self.user_agent = os.getenv(
@@ -97,6 +114,7 @@ class Config(metaclass=Singleton):
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36"
             " (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
         )
+
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
         self.redis_port = os.getenv("REDIS_PORT", "6379")
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
@@ -133,7 +151,7 @@ class Config(metaclass=Singleton):
         else:
             return ""
 
-    AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "azure.yaml")
+    AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
 
     def load_azure_config(self, config_file: str = AZURE_CONFIG_FILE) -> None:
         """
@@ -156,7 +174,7 @@ class Config(metaclass=Singleton):
         self.openai_api_version = (
             config_params.get("azure_api_version") or "2023-03-15-preview"
         )
-        self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", [])
+        self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", {})
 
     def set_continuous_mode(self, value: bool) -> None:
         """Set the continuous mode value."""
