@@ -1,9 +1,11 @@
 """Text processing functions"""
-from typing import Generator, Optional
+from typing import Dict, Generator, Optional
+
 from selenium.webdriver.remote.webdriver import WebDriver
-from autogpt.memory import get_memory
+
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
+from autogpt.memory import get_memory
 
 CFG = Config()
 MEMORY = get_memory(CFG)
@@ -60,7 +62,7 @@ def summarize_text(
     print(f"Text length: {text_length} characters")
 
     summaries = []
-    chunks = list(split_text(text))
+    chunks = list(split_text(text, CFG.browse_chunk_max_length))
     scroll_ratio = 1 / len(chunks)
 
     for i, chunk in enumerate(chunks):
@@ -78,7 +80,6 @@ def summarize_text(
         summary = create_chat_completion(
             model=CFG.fast_llm_model,
             messages=messages,
-            max_tokens=CFG.browse_summary_max_token,
         )
         summaries.append(summary)
         print(f"Added chunk {i + 1} summary to memory")
@@ -95,7 +96,6 @@ def summarize_text(
     return create_chat_completion(
         model=CFG.fast_llm_model,
         messages=messages,
-        max_tokens=CFG.browse_summary_max_token,
     )
 
 
@@ -114,7 +114,7 @@ def scroll_to_percentage(driver: WebDriver, ratio: float) -> None:
     driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {ratio});")
 
 
-def create_message(chunk: str, question: str) -> dict[str, str]:
+def create_message(chunk: str, question: str) -> Dict[str, str]:
     """Create a message for the chat completion
 
     Args:
@@ -122,11 +122,11 @@ def create_message(chunk: str, question: str) -> dict[str, str]:
         question (str): The question to answer
 
     Returns:
-        dict[str, str]: The message to send to the chat completion
+        Dict[str, str]: The message to send to the chat completion
     """
     return {
         "role": "user",
-        "content": f'"""{chunk}""" Using the above text, please answer the following'
+        "content": f'"""{chunk}""" Using the above text, answer the following'
         f' question: "{question}" -- if the question cannot be answered using the text,'
-        " please summarize the text.",
+        " summarize the text.",
     }
