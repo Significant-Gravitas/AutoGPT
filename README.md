@@ -324,6 +324,10 @@ export PINECONE_ENV="<YOUR_PINECONE_REGION>" # e.g: "us-east4-gcp"
 export MEMORY_BACKEND="pinecone"
 ```
 
+### MyScale Setup
+
+// FIXME @ fangrui : write this
+
 ### Milvus Setup
 
 [Milvus](https://milvus.io/) is an open-source, highly scalable vector database to store huge amounts of vector-based memory and provide fast relevant search.

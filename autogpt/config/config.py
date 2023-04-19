@@ -79,6 +79,13 @@ class Config(metaclass=Singleton):
         self.use_weaviate_embedded = (
             os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
         )
+        
+        self.myscale_host = os.getenv("MYSCALE_HOST")
+        self.myscale_port = os.getenv("MYSCALE_PORT")
+        self.myscale_username = os.getenv("MYSCALE_USERNAME")
+        self.myscale_password = os.getenv("MYSCALE_PASSWORD")
+        self.myscale_database = os.getenv("MYSCALE_PASSWORD", "default")
+        self.myscale_index_type = os.getenv("MYSCALE_INDEX_TYPE", "IVFFLAT")
 
         # milvus configuration, e.g., localhost:19530.
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
