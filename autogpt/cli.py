@@ -88,6 +88,7 @@ def main(
     from autogpt.logs import logger
     from autogpt.memory import get_memory
 <<<<<<< HEAD
+<<<<<<< HEAD
     from autogpt.plugins import scan_plugins
     from autogpt.prompts.prompt import construct_main_ai_config
 =======
@@ -96,9 +97,10 @@ def main(
 >>>>>>> 52cc322 (solve conflicts)
     from autogpt.utils import get_current_git_branch, get_latest_bulletin
 =======
+=======
+>>>>>>> 45f409c (solve conflicts in cli.py)
     from autogpt.prompt import Prompt
-    from autogpt.utils import get_latest_bulletin
->>>>>>> 79ca0bc5 (solve conflicts)
+    from autogpt.utils import get_current_git_branch, get_latest_bulletin
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -124,7 +126,6 @@ def main(
             motd = get_latest_bulletin()
             if motd:
                 logger.typewriter_log("NEWS: ", Fore.GREEN, motd)
-<<<<<<< HEAD
             git_branch = get_current_git_branch()
             if git_branch and git_branch != "stable":
                 logger.typewriter_log(
@@ -133,6 +134,7 @@ def main(
                     f"You are running on `{git_branch}` branch "
                     "- this is not a supported branch.",
                 )
+<<<<<<< HEAD
             if sys.version_info < (3, 10):
                 logger.typewriter_log(
                     "WARNING: ",
@@ -162,21 +164,15 @@ def main(
         ai_name = ""
         ai_config = construct_main_ai_config()
         ai_config.command_registry = command_registry
+=======
+        prompt = Prompt()
+>>>>>>> 45f409c (solve conflicts in cli.py)
         # print(prompt)
         # Initialize variables
         full_message_history = []
         next_action_count = 0
-        # Make a constant:
-        triggering_prompt = (
-            "Determine which next command to use, and respond using the"
-            " format specified above:"
-        )
-=======
-        prompt = Prompt()
-
->>>>>>> 79ca0bc5 (solve conflicts)
         # Initialize memory and make sure it is empty.
-        # this is particularly important for indexing and referencing memory
+        # this is particularly important for indexing and referencing pinecone memory
         memory = get_memory(cfg, init=True)
         logger.typewriter_log(
             "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
@@ -189,6 +185,7 @@ def main(
             ai_name=ai_name,
             memory=memory,
 <<<<<<< HEAD
+<<<<<<< HEAD
             full_message_history=full_message_history,
             next_action_count=next_action_count,
             command_registry=command_registry,
@@ -198,6 +195,10 @@ def main(
 =======
             full_message_history=[],
             next_action_count=0,
+=======
+            full_message_history=full_message_history,
+            next_action_count=next_action_count,
+>>>>>>> 45f409c (solve conflicts in cli.py)
             system_prompt=prompt.system_prompt,
             triggering_prompt=prompt.triggering_prompt,
 >>>>>>> 52cc322 (solve conflicts)

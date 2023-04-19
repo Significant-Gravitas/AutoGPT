@@ -1,7 +1,5 @@
 import concurrent
-import json
 import os
-import re
 import unittest
 
 import pytest
@@ -13,31 +11,7 @@ from autogpt.config import AIConfig, Config, check_openai_api_key
 from autogpt.memory import get_memory
 from autogpt.prompt import Prompt
 from autogpt.workspace import WORKSPACE_PATH
-
-
-def replace_timestamp_in_request(request):
-    # Check if the request body contains a JSON object
-
-    try:
-        if not request.body:
-            return request
-        body = json.loads(request.body)
-    except ValueError:
-        return request
-
-    if "messages" not in body:
-        return request
-
-    for message in body["messages"]:
-        if "content" in message and "role" in message and message["role"] == "system":
-            timestamp_regex = re.compile(r"\w{3} \w{3} \d{2} \d{2}:\d{2}:\d{2} \d{4}")
-            message["content"] = timestamp_regex.sub(
-                "Tue Jan 01 00:00:00 2000", message["content"]
-            )
-
-    request.body = json.dumps(body)
-    return request
-
+from tests.integration.goal_oriented.vcr_utils import replace_timestamp_in_request
 
 current_file_dir = os.path.dirname(os.path.abspath(__file__))
 # tests_directory = os.path.join(current_file_dir, 'tests')
@@ -47,7 +21,6 @@ my_vcr = vcr.VCR(
     record_mode="once",
     before_record_request=replace_timestamp_in_request,
 )
-
 
 CFG = Config()
 
@@ -113,8 +86,8 @@ def create_writer_agent():
     CFG.set_continuous_mode(True)
     CFG.set_memory_backend("no_memory")
     CFG.set_temperature(0)
+    os.environ["TIKTOKEN_CACHE_DIR"] = ""
 
-    CFG.set_openai_api_key("dummy_api_key")
     CFG.set_use_azure(False)
     return agent
 
