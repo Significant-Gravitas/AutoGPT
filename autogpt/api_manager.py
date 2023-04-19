@@ -6,7 +6,7 @@ cfg = Config()
 openai.api_key = cfg.openai_api_key
 print_total_cost = True
 
-# Define the cost per token for each model
+# Define the cost per thousand tokens for each model
 # TODO: make this a json file that we can update separate from the code
 COSTS = {
     "gpt-3.5-turbo": {
