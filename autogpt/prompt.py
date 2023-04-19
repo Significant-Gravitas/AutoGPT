@@ -62,6 +62,7 @@ def get_prompt() -> str:
             {"key": "<key>", "message": "<message>"},
         ),
         ("List GPT Agents", "list_agents", {}),
+        ("Add to Memory", "memory_add", {"string": "<string_to_be_saved>"}),
         ("Delete GPT Agent", "delete_agent", {"key": "<key>"}),
         (
             "Clone Repository",
