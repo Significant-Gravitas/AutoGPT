@@ -52,7 +52,9 @@ def run_test(test_subdirectory):
     prompt_path = os.path.join(test_path, config["yaml_prompt"])
 
     # Copy the yaml prompt to the current directory and rename it to ai_settings.yaml
-    command = ["python3",  "-m" , "autogpt", "--ai-settings", prompt_path] + config["exec"]["arguments"]
+    command = ["python3", "-m", "autogpt", "--ai-settings", prompt_path] + config[
+        "exec"
+    ]["arguments"]
 
     # Start with our environment and update with any environment variables from the config
     env = os.environ.copy()
@@ -89,7 +91,9 @@ def check_output_files(output_files_list):
 def list_tests():
     for test_subdirectory in os.listdir(os.path.join("tests", "prompt_tests")):
         if os.path.isdir(os.path.join("tests", "prompt_tests", test_subdirectory)):
-            config_path = os.path.join("tests", "prompt_tests", test_subdirectory, "test.json")
+            config_path = os.path.join(
+                "tests", "prompt_tests", test_subdirectory, "test.json"
+            )
             with open(config_path, "r") as config_file:
                 config = json.load(config_file)
             print(f"{test_subdirectory}: {config['name']}")
@@ -97,7 +101,9 @@ def list_tests():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test", choices=["all"] + os.listdir(os.path.join("tests", "prompt_tests")))
+    parser.add_argument(
+        "--test", choices=["all"] + os.listdir(os.path.join("tests", "prompt_tests"))
+    )
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
 
