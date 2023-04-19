@@ -24,28 +24,4 @@ def path_in_workspace(relative_path: str | Path) -> Path:
     Returns:
         Path: Absolute path for the given path in the workspace
     """
-    return safe_path_join(WORKSPACE_PATH, relative_path)
-
-
-def safe_path_join(base: Path, *paths: str | Path) -> Path:
-    """Join one or more path components, asserting the resulting path is within the workspace.
-
-    Args:
-        base (Path): The base path
-        *paths (str): The paths to join to the base path
-
-    Returns:
-        Path: The joined path
-    """
-    joined_path = base.joinpath(*paths).resolve()
-
-    is_not_joined_path_relative = (
-        callable(getattr(Path, "is_relative_to", None))
-        and not joined_path.is_relative_to(base)
-    ) or not joined_path.relative_to(base)
-    if CFG.restrict_to_workspace and is_not_joined_path_relative:
-        raise ValueError(
-            f"Attempted to access path '{joined_path}' outside of workspace '{base}'."
-        )
-
-    return joined_path
+    return WORKSPACE_PATH.joinpath(relative_path)
