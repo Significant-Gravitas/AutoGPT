@@ -3,8 +3,7 @@ from __future__ import annotations
 
 import os
 import os.path
-from pathlib import Path
-from typing import Generator, List
+from typing import Generator
 
 import requests
 from colorama import Back, Fore
