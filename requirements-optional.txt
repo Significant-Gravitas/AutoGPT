@@ -1,0 +1,8 @@
+# CONFIG_OPTION
+# [config_option=value] package(==version)
+
+# MEMORY_BACKEND
+[memory_backend=redis] redis
+[memory_backend=pinecone] pinecone-client
+[memory_backend=weaviate] weaviate-client
+[memory_backend=milvus] pymilvus
