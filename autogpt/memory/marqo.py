@@ -14,7 +14,7 @@ class MarqoMemory(MemoryProviderSingleton):
         """Construct a marqo memory storage object.
 
         Args:
-            cfg (Config): Aito-GPT global config.
+            cfg (Config): Auto-GPT global config.
         """
         url = cfg.marqo_url
         api_key = cfg.marqo_api_key
@@ -42,7 +42,7 @@ class MarqoMemory(MemoryProviderSingleton):
         return f"Inserting data into memory with id: {resp['items'][0]['_id']}:\n data: {data}"
 
     def get(self, data: str) -> List[str]:
-        """Get the top most relevant piece of data.
+        """Get the single most relevant piece of data.
 
         Args:
             data (str): The data to search with.

@@ -335,7 +335,7 @@ export MEMORY_BACKEND="pinecone"
 
 ### Marqo Setup
 
-[Marqo](https://marqo.ai/) is an open-source, highly scalable vector database with an included inference engine which allows it to operate directly on text and images. There is no need to provide your own embeddings or use a separate API for them. Marqo offers fast indexing and retrival of raw documents by more closely coupling inference and storage. Marqo can run on CPU and GPU, locally or in the cloud.
+[Marqo](https://marqo.ai/) is an open-source, highly scalable vector database with an included inference engine allowing it to operate directly on text and images. There is no need to provide your own embeddings or use a separate API for them. Marqo offers fast indexing and retrieval of raw documents by closely coupling inference and storage. Marqo can run on CPU and GPU, locally or in the cloud.
 
 Install the marqo python client:
 ```
@@ -343,11 +343,11 @@ pip install marqo
 ```
 
 Setup the Marqo database, keep your py-marqo and marqo versions compatible to avoid issues.
-- Setup with open source [Install Marqo](https://docs.marqo.ai/latest/)
-- or setup with the [Marqo Cloud](https://www.marqo.ai/pricing).
+- Setup with open source [by following our getting started guide](https://docs.marqo.ai/latest/)
+- or setup with the [Marqo Cloud](https://www.marqo.ai/pricing)
 
 In the `.env` set:
-- `MARQO_URL` to your marqo url (the default for local docker images is `http://localhost:8882`).
+- `MARQO_URL` to your marqo url (the default for a local docker image is `http://localhost:8882`).
 
 **Optional:**
 - Set `MARQO_INDEX_NAME` in the `.env` to change the index name, `autogpt` is the default name.
