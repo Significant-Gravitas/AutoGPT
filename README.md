@@ -135,7 +135,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 1. Run `autogpt` Python module in your terminal.
   On linux or mac:
     ```bash
-    # On Linux of Mac:
+    # On Linux or Mac:
    ./run.sh start
    # On Windows:
    .\run.bat
