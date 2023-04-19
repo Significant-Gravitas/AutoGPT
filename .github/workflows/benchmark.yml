@@ -9,7 +9,7 @@ jobs:
     environment: benchmark
     strategy:
       matrix:
-        python-version: ['3.10']
+        python-version: ['3.10', '3.11']
 
     steps:
     - name: Check out repository
