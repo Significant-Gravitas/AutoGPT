@@ -1,5 +1,6 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
+import re
 
 import openai
 import yaml
@@ -248,4 +249,14 @@ def check_openai_api_key() -> None:
             + "Please set your OpenAI API key in .env or as an environment variable."
         )
         print("You can get your key from https://platform.openai.com/account/api-keys")
-        exit(1)
+        openai_api_key = input(
+            "If you do have the key, please enter your OpenAI API key now:\n"
+        )
+        key_pattern = r"^sk-\w{48}"
+        openai_api_key = openai_api_key.strip()
+        if re.search(key_pattern, openai_api_key):
+            os.environ["OPENAI_API_KEY"] = openai_api_key
+            cfg.set_openai_api_key(openai_api_key)
+        else:
+            print("Invalid OpenAI API key!")
+            exit(1)
