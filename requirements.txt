@@ -20,6 +20,8 @@ webdriver-manager
 jsonschema
 tweepy
 click
+spacy
+en_core_web_sm
 
 ##Dev
 coverage
