@@ -1,7 +1,7 @@
 """Tests for different embeders"""
 
-import unittest
 import os
+import unittest
 
 from autogpt.memory.base import get_embedding
 
