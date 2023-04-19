@@ -1,7 +1,5 @@
 import curses
-import subprocess
-import sys
-import os
+
 
 def safe_addstr(stdscr, y, x, text, attr=0):
     max_y, max_x = stdscr.getmaxyx()
