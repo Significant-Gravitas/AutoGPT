@@ -23,6 +23,7 @@ def create_config(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
+    chat_history_file: str,
 ) -> None:
     """Updates the config object with the given arguments.
 
@@ -111,6 +112,11 @@ def create_config(
         logger.typewriter_log("Using AI Settings File:", Fore.GREEN, file)
         CFG.ai_settings_file = file
         CFG.skip_reprompt = True
+        
+    if chat_history_file:
+        file = chat_history_file
+        logger.typewriter_log("Using Chat History File:", Fore.GREEN, file)
+        CFG.chat_history_file = file
 
     if allow_downloads:
         logger.typewriter_log("Native Downloading:", Fore.GREEN, "ENABLED")
