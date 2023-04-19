@@ -14,9 +14,9 @@ try:
     from sentence_transformers import SentenceTransformer
 except ImportError:
     SentenceTransformer = None
-    if cfg.memory_embedder == "sbert":
+    if cfg.memory_embeder == "sbert":
         print(
-            "Error: Sentence Transformers is not installed. Please install sentence_transformers to use sBERT as an embedder. Defaulting to Ada."
+            "Error: Sentence Transformers is not installed. Please install sentence_transformers to use sBERT as an embeder. Defaulting to Ada."
         )
         cfg.memory_embeder = "ada"
 
