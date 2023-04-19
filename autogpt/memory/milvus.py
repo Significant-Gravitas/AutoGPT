@@ -1,7 +1,7 @@
 """ Milvus memory storage provider."""
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
 
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton, get_embedding, EMBED_DIM
 
 
 class MilvusMemory(MemoryProviderSingleton):
@@ -17,7 +17,7 @@ class MilvusMemory(MemoryProviderSingleton):
         connections.connect(address=cfg.milvus_addr)
         fields = [
             FieldSchema(name="pk", dtype=DataType.INT64, is_primary=True, auto_id=True),
-            FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=1536),
+            FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=EMBED_DIM),
             FieldSchema(name="raw_text", dtype=DataType.VARCHAR, max_length=65535),
         ]
 
@@ -48,7 +48,7 @@ class MilvusMemory(MemoryProviderSingleton):
         Returns:
             str: log.
         """
-        embedding = get_ada_embedding(data)
+        embedding = get_embedding(data)
         result = self.collection.insert([[embedding], [data]])
         _text = (
             "Inserting data into memory at primary key: "
@@ -94,7 +94,7 @@ class MilvusMemory(MemoryProviderSingleton):
             list: The top-k relevant data.
         """
         # search the embedding and return the most relevant text.
-        embedding = get_ada_embedding(data)
+        embedding = get_embedding(data)
         search_params = {
             "metrics_type": "IP",
             "params": {"nprobe": 8},

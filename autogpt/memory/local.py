@@ -7,10 +7,8 @@ from typing import Any, List
 import numpy as np
 import orjson
 
-from autogpt.llm_utils import create_embedding_with_ada
-from autogpt.memory.base import MemoryProviderSingleton
+from autogpt.memory.base import MemoryProviderSingleton, get_embedding, EMBED_DIM
 
-EMBED_DIM = 1536
 SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
 
 
@@ -73,7 +71,7 @@ class LocalCache(MemoryProviderSingleton):
             return ""
         self.data.texts.append(text)
 
-        embedding = create_embedding_with_ada(text)
+        embedding = get_embedding(text)
 
         vector = np.array(embedding).astype(np.float32)
         vector = vector[np.newaxis, :]
@@ -121,7 +119,7 @@ class LocalCache(MemoryProviderSingleton):
 
         Returns: List[str]
         """
-        embedding = create_embedding_with_ada(text)
+        embedding = get_embedding(text)
 
         scores = np.dot(self.data.embeddings, embedding)
 
