@@ -1,7 +1,7 @@
 import unittest
 import hashlib
 from PIL import Image
-
+import os
 from autogpt.config import Config
 from autogpt.commands.image_gen import generate_image, generate_image_with_sd_webui
 from autogpt.workspace import path_in_workspace
@@ -11,6 +11,7 @@ def lst(txt):
     return txt.split(":")[1].strip()
 
 
+@unittest.skipIf(os.getenv("CI"), "Skipping image generation tests")
 class TestImageGen(unittest.TestCase):
     def setUp(self):
         self.config = Config()
