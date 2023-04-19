@@ -2,8 +2,10 @@
 from colorama import Fore, Style
 
 from autogpt import utils
+from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
+from autogpt.utils import clean_input
 
 
 def prompt_user() -> AIConfig:
@@ -16,6 +18,13 @@ def prompt_user() -> AIConfig:
     # Construct the prompt
     logger.typewriter_log(
         "Welcome to Auto-GPT! ",
+        Fore.GREEN,
+        "run with '--help' for more information.",
+        speak_text=True,
+    )
+
+    logger.typewriter_log(
+        "Create an AI-Assistant:",
         Fore.GREEN,
         "Enter the name of your AI and its role below. Entering nothing will load"
         " defaults.",
@@ -68,3 +77,41 @@ def prompt_user() -> AIConfig:
         ]
 
     return AIConfig(ai_name, ai_role, ai_goals)
+
+
+def get_ai_config() -> AIConfig:
+    """
+    Get AIConfig class object that contains the configuration information for the AI
+
+    Returns:
+        AIConfig: The AIConfig object
+    """
+    CFG = Config()
+
+    ai_config = AIConfig.load(CFG.ai_settings_file)
+    if CFG.skip_reprompt and ai_config.ai_name:
+        logger.typewriter_log("Name :", Fore.GREEN, ai_config.ai_name)
+        logger.typewriter_log("Role :", Fore.GREEN, ai_config.ai_role)
+        logger.typewriter_log("Goals:", Fore.GREEN, f"{ai_config.ai_goals}")
+    elif ai_config.ai_name:
+        logger.typewriter_log(
+            "Welcome back! ",
+            Fore.GREEN,
+            f"Would you like me to return to being {ai_config.ai_name}?",
+            speak_text=True,
+        )
+        should_continue = clean_input(
+            f"""Continue with the last settings?
+Name:  {ai_config.ai_name}
+Role:  {ai_config.ai_role}
+Goals: {ai_config.ai_goals}
+Continue (y/n): """
+        )
+        if should_continue.lower() == "n":
+            ai_config = AIConfig()
+
+    if not ai_config.ai_name:
+        ai_config = prompt_user()
+        ai_config.save(CFG.ai_settings_file)
+
+    return ai_config

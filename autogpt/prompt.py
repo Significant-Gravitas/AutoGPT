@@ -2,17 +2,18 @@ from autogpt.config import AIConfig, Config
 from autogpt.promptgenerator import PromptGenerator
 
 
-def get_base_prompt(cfg: Config) -> str:
+def get_prompt() -> str:
     """
     This function generates a prompt string that includes various constraints,
         commands, resources, and performance evaluations.
 
-    Parameters:
-        cfg (Config): System configuration class object.
-
     Returns:
         str: The generated prompt string.
     """
+
+    # Initialize the Config object
+    cfg = Config()
+
     # Initialize the PromptGenerator object
     prompt_generator = PromptGenerator()
 
@@ -155,17 +156,16 @@ def get_base_prompt(cfg: Config) -> str:
     return prompt_generator.generate_prompt_string()
 
 
-def construct_full_prompt(cfg: Config, ai_config: AIConfig) -> str:
+def construct_full_prompt(ai_config: AIConfig) -> str:
     """
     Returns a prompt to the user with the class information in an organized fashion.
 
     Parameters:
-        cfg (Config): System configuration class object.
         ai_config (AIConfig): AIConfig class object that contains the configuration information for the AI.
 
     Returns:
-        str: A string containing the initial prompt for the user
-             including the ai_name, ai_role and ai_goals.
+        full_prompt (str): A string containing the initial prompt for the user
+          including the ai_name, ai_role and ai_goals.
     """
 
     prompt_start = (
@@ -180,5 +180,5 @@ def construct_full_prompt(cfg: Config, ai_config: AIConfig) -> str:
     for i, goal in enumerate(ai_config.ai_goals):
         full_prompt += f"{i+1}. {goal}\n"
 
-    full_prompt += f"\n\n{get_base_prompt(cfg)}"
+    full_prompt += f"\n\n{get_prompt()}"
     return full_prompt

@@ -1,3 +1,4 @@
+# sourcery skip: do-not-use-staticmethod
 """
 A module that contains the AIConfig class object that contains the configuration
 """
@@ -55,6 +56,7 @@ class AIConfig:
         Returns:
             cls (object): An instance of given cls object
         """
+
         try:
             with open(config_file, encoding="utf-8") as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
