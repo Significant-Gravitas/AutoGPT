@@ -87,7 +87,9 @@ class Config(metaclass=Singleton):
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
-        self.huggingface_image_model = os.getenv("HUGGINGFACE_IMAGE_MODEL", "CompVis/stable-diffusion-v1-4")
+        self.huggingface_image_model = os.getenv(
+            "HUGGINGFACE_IMAGE_MODEL", "CompVis/stable-diffusion-v1-4"
+        )
         self.huggingface_audio_to_text_model = os.getenv(
             "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
         )
