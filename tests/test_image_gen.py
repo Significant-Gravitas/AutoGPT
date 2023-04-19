@@ -1,9 +1,11 @@
-import unittest
 import hashlib
-from PIL import Image
 import os
-from autogpt.config import Config
+import unittest
+
+from PIL import Image
+
 from autogpt.commands.image_gen import generate_image, generate_image_with_sd_webui
+from autogpt.config import Config
 from autogpt.workspace import path_in_workspace
 
 
@@ -67,7 +69,14 @@ class TestImageGen(unittest.TestCase):
         image_path.unlink()
 
         # Test using size 64 and negative prompt
-        result = lst(generate_image_with_sd_webui("astronaut riding a horse", negative_prompt="horse", size=64, extra={"seed": 123}))
+        result = lst(
+            generate_image_with_sd_webui(
+                "astronaut riding a horse",
+                negative_prompt="horse",
+                size=64,
+                extra={"seed": 123},
+            )
+        )
         image_path = path_in_workspace(result)
         with Image.open(image_path) as img:
             self.assertEqual(img.size, (64, 64))
@@ -75,7 +84,11 @@ class TestImageGen(unittest.TestCase):
         image_path.unlink()
 
         # Same test as above but without the negative prompt
-        result = lst(generate_image_with_sd_webui("astronaut riding a horse", image_size=64, size=1, extra={"seed": 123}))
+        result = lst(
+            generate_image_with_sd_webui(
+                "astronaut riding a horse", image_size=64, size=1, extra={"seed": 123}
+            )
+        )
         image_path = path_in_workspace(result)
         with Image.open(image_path) as img:
             self.assertEqual(img.size, (64, 64))

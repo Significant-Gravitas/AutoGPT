@@ -57,7 +57,7 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
         )
     headers = {
         "Authorization": f"Bearer {CFG.huggingface_api_token}",
-        "X-Use-Cache": "false"
+        "X-Use-Cache": "false",
     }
 
     response = requests.post(
@@ -91,7 +91,9 @@ def generate_image_with_dalle(prompt: str, filename: str) -> str:
     # Check for supported image sizes
     if size not in [256, 512, 1024]:
         closest = min([256, 512, 1024], key=lambda x: abs(x - size))
-        print(f"DALL-E only supports image sizes of 256x256, 512x512, or 1024x1024. Setting to {closest}, was {size}.")
+        print(
+            f"DALL-E only supports image sizes of 256x256, 512x512, or 1024x1024. Setting to {closest}, was {size}."
+        )
         size = closest
 
     response = openai.Image.create(
@@ -111,7 +113,13 @@ def generate_image_with_dalle(prompt: str, filename: str) -> str:
     return f"Saved to disk:{filename}"
 
 
-def generate_image_with_sd_webui(prompt: str, filename: str, size: int = 512, negative_prompt: str = "", extra: dict = {}) -> str:
+def generate_image_with_sd_webui(
+    prompt: str,
+    filename: str,
+    size: int = 512,
+    negative_prompt: str = "",
+    extra: dict = {},
+) -> str:
     """Generate an image with Stable Diffusion webui.
     Args:
         prompt (str): The prompt to use
