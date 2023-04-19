@@ -159,3 +159,6 @@ vicuna-*
 
 # news
 CURRENT_BULLETIN.md
+
+# MEMORY_BACKEND 
+AutoGpt.json
