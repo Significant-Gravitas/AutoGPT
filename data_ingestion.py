@@ -27,7 +27,7 @@ def ingest_directory(directory, memory, args):
     :param memory: An object with an add() method to store the chunks in memory
     """
     try:
-        files = search_files(directory)
+        files = search_files(directory, args.ignore)
         for file in files:
             ingest_file(file, memory, args.max_length, args.overlap)
     except Exception as e:
@@ -45,6 +45,13 @@ def main() -> None:
     group.add_argument("--file", type=str, help="The file to ingest.")
     group.add_argument(
         "--dir", type=str, help="The directory containing the files to ingest."
+    )
+    parser.add_argument(
+        "--ignore",
+        nargs="*",
+        type=str,
+        help="List of directories to ignore in combination with --dir, e.g. --ignore .git node_modules",
+        default=[],
     )
     parser.add_argument(
         "--init",

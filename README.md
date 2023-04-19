@@ -412,6 +412,7 @@ options:
   -h, --help               show this help message and exit
   --file FILE              The file to ingest.
   --dir DIR                The directory containing the files to ingest.
+  --ignore                 For use in combination with --dir, a list of directories to ignore
   --init                   Init the memory and wipe its content (default: False)
   --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
   --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000)

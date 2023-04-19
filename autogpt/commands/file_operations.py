@@ -210,12 +210,13 @@ def delete_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
-@command("search_files", "Search Files", '"directory": "<directory>"')
-def search_files(directory: str) -> list[str]:
+@command("search_files", "Search Files", '"directory": "<directory>", "ignore_list": "<list_of_directories_to_ignore>')
+def search_files(directory: str, ignore_list: list[str]) -> list[str]:
     """Search for files in a directory
 
     Args:
         directory (str): The directory to search in
+        ignore (list[str]): A list of directories to ignore
 
     Returns:
         list[str]: A list of files found in the directory
@@ -227,7 +228,10 @@ def search_files(directory: str) -> list[str]:
     else:
         search_directory = path_in_workspace(directory)
 
-    for root, _, files in os.walk(search_directory):
+    for root, dirs, files in os.walk(search_directory):
+        # Remove ignored directories from traversal
+        dirs[:] = [d for d in dirs if d not in ignore_list]
+
         for file in files:
             if file.startswith("."):
                 continue
