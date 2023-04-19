@@ -12,6 +12,9 @@ import yaml
 
 from autogpt.prompts.generator import PromptGenerator
 
+# Soon this will go in a folder where it remembers more stuff about the run(s)
+SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
+
 
 class AIConfig:
     """
@@ -44,8 +47,6 @@ class AIConfig:
         self.prompt_generator = None
         self.command_registry = None
 
-    # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = Path(os.getcwd()) / "ai_settings.yaml"
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":

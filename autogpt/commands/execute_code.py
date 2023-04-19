@@ -12,17 +12,17 @@ from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
 CFG = Config()
 
 
-@command("execute_python_file", "Execute Python File", '"file": "<file>"')
-def execute_python_file(file: str) -> str:
+@command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
+def execute_python_file(filename: str) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
-        file (str): The name of the file to execute
+        filename (str): The name of the file to execute
 
     Returns:
         str: The output of the file
     """
-
+    file = filename
     print(f"Executing file '{file}' in workspace '{WORKSPACE_PATH}'")
 
     if not file.endswith(".py"):
@@ -138,9 +138,16 @@ def execute_shell(command_line: str) -> str:
 
     os.chdir(current_dir)
 
-    return output
 
-
+@command(
+    "execute_shell_popen",
+    "Execute Shell Command, non-interactive commands only",
+    '"command_line": "<command_line>"',
+    CFG.execute_local_commands,
+    "You are not allowed to run local shell commands. To execute"
+    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+    "in your config. Do not attempt to bypass the restriction.",
+)
 def execute_shell_popen(command_line) -> str:
     """Execute a shell command with Popen and returns an english description
     of the event and the process id

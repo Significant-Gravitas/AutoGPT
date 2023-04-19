@@ -3,33 +3,9 @@ import json
 from typing import Dict, List, NoReturn, Union
 
 from autogpt.agent.agent_manager import AgentManager
-from autogpt.commands.analyze_code import analyze_code
-from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.command import CommandRegistry, command
-from autogpt.commands.evaluate_code import evaluate_code
-from autogpt.commands.execute_code import (
-    execute_python_file,
-    execute_shell,
-    execute_shell_popen,
-)
-from autogpt.commands.file_operations import (
-    append_to_file,
-    delete_file,
-    download_file,
-    read_file,
-    search_files,
-    write_to_file,
-)
-from autogpt.commands.git_operations import clone_repository
-from autogpt.commands.google_search import google_official_search, google_search
-from autogpt.commands.image_gen import generate_image
-from autogpt.commands.improve_code import improve_code
-from autogpt.commands.twitter import send_tweet
 from autogpt.commands.web_requests import scrape_links, scrape_text
-from autogpt.commands.web_selenium import browse_website
-from autogpt.commands.write_tests import write_tests
 from autogpt.config import Config
-from autogpt.json_utils.json_fix_llm import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.generator import PromptGenerator
@@ -137,26 +113,8 @@ def execute_command(
         command_name = map_command_synonyms(command_name.lower())
 
         if command_name == "memory_add":
-            return memory.add(arguments["string"])
-        elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"], arguments["question"])
-        elif command_name == "get_hyperlinks":
-            return get_hyperlinks(arguments["url"])
-        elif command_name == "analyze_code":
-            return analyze_code(arguments["code"])
-        elif command_name == "download_file":
-            if not CFG.allow_downloads:
-                return "Error: You do not have user authorization to download files locally."
-            return download_file(arguments["url"], arguments["file"])
-        elif command_name == "execute_shell_popen":
-            if CFG.execute_local_commands:
-                return execute_shell_popen(arguments["command_line"])
-            else:
-                return (
-                    "You are not allowed to run local shell commands. To execute"
-                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-                    "in your config. Do not attempt to bypass the restriction."
-                )
+            return get_memory(CFG).add(arguments["string"])
+
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
@@ -177,6 +135,7 @@ def execute_command(
         return f"Error: {str(e)}"
 
 
+@command("get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"')
 def get_text_summary(url: str, question: str) -> str:
     """Return the results of a Google search
 
@@ -192,6 +151,7 @@ def get_text_summary(url: str, question: str) -> str:
     return f""" "Result" : {summary}"""
 
 
+@command("get_hyperlinks", "Get text summary", '"url": "<url>"')
 def get_hyperlinks(url: str) -> Union[str, List[str]]:
     """Return the results of a Google search
 
