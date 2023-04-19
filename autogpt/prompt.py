@@ -1,6 +1,5 @@
 from colorama import Fore
 from autogpt.config.ai_config import AIConfig
-from autogpt.config.config import Config
 from autogpt.logs import logger
 from autogpt.promptgenerator import PromptGenerator
 from autogpt.config import Config
@@ -42,6 +41,11 @@ def get_prompt() -> str:
     # Define the command list
     commands = [
         ("Google Search", "google", {"input": "<search>"}),
+        (
+            "Search HackerNews",
+            "search_hackernews",
+            {"input": "<search>"}
+        ),
         (
             "Browse Website",
             "browse_website",

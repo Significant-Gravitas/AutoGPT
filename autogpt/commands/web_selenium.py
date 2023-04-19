@@ -32,7 +32,8 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     Returns:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
     """
-    driver, text = scrape_text_with_selenium(url)
+    driver = build_driver()
+    text = scrape_text_with_selenium(driver, url)
     add_header(driver)
     summary_text = summary.summarize_text(url, text, question, driver)
     links = scrape_links_with_selenium(driver, url)
@@ -44,17 +45,7 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     return f"Answer gathered from website: {summary_text} \n \n Links: {links}", driver
 
 
-def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
-    """Scrape text from a website using selenium
-
-    Args:
-        url (str): The url of the website to scrape
-
-    Returns:
-        Tuple[WebDriver, str]: The webdriver and the text scraped from the website
-    """
-    logging.getLogger("selenium").setLevel(logging.CRITICAL)
-
+def build_driver() -> WebDriver:
     options_available = {
         "chrome": ChromeOptions,
         "safari": SafariOptions,
@@ -67,17 +58,30 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     )
 
     if CFG.selenium_web_browser == "firefox":
-        driver = webdriver.Firefox(
+        return webdriver.Firefox(
             executable_path=GeckoDriverManager().install(), options=options
         )
     elif CFG.selenium_web_browser == "safari":
         # Requires a bit more setup on the users end
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
-        driver = webdriver.Safari(options=options)
+        return webdriver.Safari(options=options)
     else:
-        driver = webdriver.Chrome(
+        return webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
+
+
+def scrape_text_with_selenium(driver: WebDriver, url: str) -> str:
+    """Scrape text from a website using selenium
+
+    Args:
+        url (str): The url of the website to scrape
+
+    Returns:
+        Tuple[WebDriver, str]: The webdriver and the text scraped from the website
+    """
+    logging.getLogger("selenium").setLevel(logging.CRITICAL)
+
     driver.get(url)
 
     WebDriverWait(driver, 10).until(
@@ -95,7 +99,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     lines = (line.strip() for line in text.splitlines())
     chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
     text = "\n".join(chunk for chunk in chunks if chunk)
-    return driver, text
+    return text
 
 
 def scrape_links_with_selenium(driver: WebDriver, url: str) -> list[str]:
