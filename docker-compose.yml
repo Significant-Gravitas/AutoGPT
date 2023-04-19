@@ -10,8 +10,8 @@ services:
     env_file:
       - .env
     environment:
-      MEMORY_BACKEND: redis
-      REDIS_HOST: redis
+      MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
+      REDIS_HOST: ${REDIS_HOST:-redis}
     volumes:
       - ./logs:/app/logs
       - ./auto_gpt_workspace/:/app/auto_gpt_workspace
