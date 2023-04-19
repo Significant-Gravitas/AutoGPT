@@ -78,7 +78,6 @@ def main(
     from autogpt.configurator import create_config
     from autogpt.logs import logger
     from autogpt.memory import get_memory
-
     from autogpt.prompt import construct_full_prompt
     from autogpt.setup import get_ai_config
     from autogpt.utils import get_current_git_branch, get_latest_bulletin
