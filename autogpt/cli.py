@@ -79,7 +79,7 @@ def main(
     from autogpt.logs import logger
     from autogpt.memory import get_memory
     from autogpt.prompt import construct_prompt
-    from autogpt.utils import get_latest_bulletin
+    from autogpt.utils import get_current_git_branch, get_latest_bulletin
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -105,6 +105,14 @@ def main(
             motd = get_latest_bulletin()
             if motd:
                 logger.typewriter_log("NEWS: ", Fore.GREEN, motd)
+            git_branch = get_current_git_branch()
+            if git_branch and git_branch != "stable":
+                logger.typewriter_log(
+                    "WARNING: ",
+                    Fore.RED,
+                    f"You are running on `{git_branch}` branch "
+                    "- this is not a supported branch.",
+                )
         system_prompt = construct_prompt()
         # print(prompt)
         # Initialize variables
