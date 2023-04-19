@@ -2,7 +2,7 @@ import pinecone
 from colorama import Fore, Style
 
 from autogpt.logs import logger
-from autogpt.memory.base import MemoryProviderSingleton, get_embedding, EMBED_DIM
+from autogpt.memory.base import EMBED_DIM, MemoryProviderSingleton, get_embedding
 
 
 class PineconeMemory(MemoryProviderSingleton):

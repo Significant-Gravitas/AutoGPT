@@ -1,7 +1,7 @@
 """ Milvus memory storage provider."""
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
 
-from autogpt.memory.base import MemoryProviderSingleton, get_embedding, EMBED_DIM
+from autogpt.memory.base import EMBED_DIM, MemoryProviderSingleton, get_embedding
 
 
 class MilvusMemory(MemoryProviderSingleton):

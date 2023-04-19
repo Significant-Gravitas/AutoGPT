@@ -6,7 +6,7 @@ from weaviate.embedded import EmbeddedOptions
 from weaviate.util import generate_uuid5
 
 from autogpt.config import Config
-from autogpt.memory.base import MemoryProviderSingleton, get_embedding, EMBED_DIM
+from autogpt.memory.base import EMBED_DIM, MemoryProviderSingleton, get_embedding
 
 
 def default_schema(weaviate_index):

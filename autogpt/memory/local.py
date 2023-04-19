@@ -7,7 +7,7 @@ from typing import Any, List
 import numpy as np
 import orjson
 
-from autogpt.memory.base import MemoryProviderSingleton, get_embedding, EMBED_DIM
+from autogpt.memory.base import EMBED_DIM, MemoryProviderSingleton, get_embedding
 
 SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
 
