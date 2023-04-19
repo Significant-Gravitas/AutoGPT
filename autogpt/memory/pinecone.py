@@ -11,7 +11,7 @@ class PineconeMemory(MemoryProviderSingleton):
         pinecone_api_key = cfg.pinecone_api_key
         pinecone_region = cfg.pinecone_region
         pinecone.init(api_key=pinecone_api_key, environment=pinecone_region)
-        dimension = 1536
+        dimension = cfg.embed_dim
         metric = "cosine"
         pod_type = "p1"
         table_name = "auto-gpt"

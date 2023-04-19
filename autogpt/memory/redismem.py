@@ -10,16 +10,18 @@ from redis.commands.search.field import TextField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
+from autogpt.config import Config
 from autogpt.llm_utils import create_embedding_with_ada
 from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton
 
+CFG = Config()
 SCHEMA = [
     TextField("data"),
     VectorField(
         "embedding",
         "HNSW",
-        {"TYPE": "FLOAT32", "DIM": 1536, "DISTANCE_METRIC": "COSINE"},
+        {"TYPE": "FLOAT32", "DIM": CFG.embed_dim, "DISTANCE_METRIC": "COSINE"},
     ),
 ]
 
@@ -37,7 +39,7 @@ class RedisMemory(MemoryProviderSingleton):
         redis_host = cfg.redis_host
         redis_port = cfg.redis_port
         redis_password = cfg.redis_password
-        self.dimension = 1536
+        self.dimension = cfg.embed_dim
         self.redis = redis.Redis(
             host=redis_host,
             port=redis_port,

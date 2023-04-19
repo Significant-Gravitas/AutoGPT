@@ -32,6 +32,7 @@ class Config(metaclass=Singleton):
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
+        self.embed_dim = int(os.getenv("EMBED_DIM", 1536))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
@@ -48,6 +49,8 @@ class Config(metaclass=Singleton):
             openai.api_type = self.openai_api_type
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
+        elif os.getenv("OPENAI_API_BASE_URL", None):
+            openai.api_base = os.getenv("OPENAI_API_BASE_URL")
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
