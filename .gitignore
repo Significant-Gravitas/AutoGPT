@@ -10,6 +10,7 @@ auto_gpt_workspace/*
 *.mpeg
 .env
 <<<<<<< HEAD
+<<<<<<< HEAD
 outputs/*
 ai_settings.yaml
 ai_settings.yaml
@@ -19,6 +20,8 @@ scripts/auto_gpt_workspace/requirements.txt
 .gitignore
 ai_settings.yaml
 =======
+=======
+>>>>>>> upstream/master
 azure.yaml
 ai_settings.yaml
 last_run_ai_settings.yaml
@@ -168,5 +171,9 @@ vicuna-*
 .DS_Store
 
 # news
+<<<<<<< HEAD
 CURRENT_BULLETIN.md
 >>>>>>> ecf2ba12db11ff19bce359b842f810f0e2d09d6a
+=======
+CURRENT_BULLETIN.md
+>>>>>>> upstream/master
