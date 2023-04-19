@@ -228,6 +228,33 @@ def search_files(directory: str) -> list[str]:
     return found_files
 
 
+def rename_files(directory: str, old_name: str, new_name: str) -> None:
+    """Rename files and folders in a directory
+
+    Args:
+        directory (str): The directory to search in
+        old_name (str): The old name of the file/folder
+        new_name (str): The new name to give the file/folder
+    """
+    if directory in {"", "/"}:
+        search_directory = WORKSPACE_PATH
+    else:
+        search_directory = path_in_workspace(directory)
+
+    for root, dirs, files in os.walk(search_directory):
+        for name in files + dirs:
+            if name.startswith("."):
+                continue
+            if old_name in name:
+                try:
+                    old_path = os.path.join(root, name)
+                    new_path = os.path.join(root, name.replace(old_name, new_name))
+                    os.rename(old_path, new_path)
+                    return f"Successfully renamed '{old_name}' to '{new_name}'."
+                except:
+                    return f"Error while renaming {old_name}."
+
+
 def search_folders(directory: str) -> list[str]:
     """Search for folders in a directory
 
