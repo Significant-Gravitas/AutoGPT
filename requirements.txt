@@ -27,7 +27,6 @@ flake8
 numpy
 pre-commit
 black
-sourcery
 isort
 gitpython==3.1.31
 
