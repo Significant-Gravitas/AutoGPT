@@ -1,5 +1,7 @@
 import unittest
+
 from autogpt.processing.text import split_text
+
 
 class TestSplitText(unittest.TestCase):
     def test_empty_string(self):
@@ -62,10 +64,12 @@ class TestSplitText(unittest.TestCase):
         result = list(split_text(text, max_length=50))
         self.assertEqual(
             result,
-            ['This is a test',
-             'with extra whitespace and a longer text that might',
-             'require splitting based on the given maximum',
-             'length.'],
+            [
+                "This is a test",
+                "with extra whitespace and a longer text that might",
+                "require splitting based on the given maximum",
+                "length.",
+            ],
         )
 
     def test_value_error(self):
