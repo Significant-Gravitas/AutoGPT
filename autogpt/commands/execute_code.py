@@ -5,7 +5,7 @@ import subprocess
 import docker
 from docker.errors import ImageNotFound
 
-from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
+from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
 
 
 def execute_python_file(file: str) -> str:
@@ -84,6 +84,12 @@ def execute_python_file(file: str) -> str:
 
         return logs
 
+    except docker.errors.DockerException as e:
+        print(
+            "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
+        )
+        return f"Error: {str(e)}"
+
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -125,10 +131,9 @@ def execute_shell_popen(command_line) -> str:
         str: Description of the fact that the process started and its id
     """
     current_dir = os.getcwd()
-
-    if WORKING_DIRECTORY not in current_dir:  # Change dir into workspace if necessary
-        work_dir = os.path.join(os.getcwd(), WORKING_DIRECTORY)
-        os.chdir(work_dir)
+    # Change dir into workspace if necessary
+    if str(WORKSPACE_PATH) not in current_dir:
+        os.chdir(WORKSPACE_PATH)
 
     print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
