@@ -46,6 +46,7 @@ def get_embedding(text: str) -> list:
 def get_sbert_embedding(text):
     return SentenceTransformer("sentence-transformers/all-mpnet-base-v2", device="cpu").encode(text, show_progress_bar=False)
 
+
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
     def add(self, data):
