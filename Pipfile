@@ -1,0 +1,12 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+yq = "*"
+
+[packages]
+
+[requires]
+python_version = "3.8"

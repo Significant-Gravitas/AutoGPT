@@ -1,0 +1,65 @@
+version: '3'
+
+dotenv: ['./.env']
+
+tasks:
+  install:
+    desc: installs all deps and stuff to run application locally (must have ZSH)
+    cmds:
+      - brew bundle
+      - pyenv install --force
+      - pipenv shell
+      - pip install -r requirements.txt
+
+  install:m2:
+    desc: installs all deps and stuff to run application locally on arm64 (must have ZSH)
+    cmds:
+      - arch -arm64 brew bundle
+      - arch -arm64 pyenv install --force
+      - pipenv shell
+      - pip install -r requirements.txt
+
+  shell:
+    desc: starts a python/pipenv shell
+      - pipenv shell
+
+  start:
+    desc: runs the AutoGPT program
+    cmds:
+      - ./run.sh
+
+  start:continuous:
+    desc: runs the AutoGPT program continuously
+    cmds:
+      - ./run.sh --continuous
+
+  start:gpt3:
+    desc: runs the AutoGPT program with gpt3.5
+    cmds:
+      - ./run.sh --gpt3only
+
+  test:
+    desc: run tests
+    cmds:
+      - python -m unittest discover tests
+
+  test:coverage:
+    desc: run test coverage report
+    cmds:
+      - coverage run -m unittest discover tests
+
+  docker:up:
+    desc: starts docker container
+    cmds:
+      - docker-compose up
+
+  docker:down:
+    desc: stops docker container
+    cmds:
+      - docker-compose down
+
+  docker:restart:
+    desc: restarts docker container
+    cmds:
+      - task: docker:down
+      - task: docker:up
