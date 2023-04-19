@@ -31,17 +31,17 @@ def get_prompt() -> str:
     # Add constraints to the PromptGenerator object
     prompt_generator.add_constraint(
         "~4000 word limit for short term memory. Short term memory is short, so"
-        " immediately save important information to files."
+        " immediately write important information."
     )
     prompt_generator.add_constraint(
-        "If you are unsure of past events, thinking about similar events will help you remember."
+        "When unsure of past events, think about similar events."
     )
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint(
         'Exclusively use the commands listed in double quotes e.g. "command name"'
     )
     prompt_generator.add_constraint(
-        "You don't have to be in a context all the time, but you cannot be in multiple contexts at once."
+        "Contexts are a segment of the larger goal. Only create a context when there is enough data to fill the template."
     )
 
     context_directory = Path(os.getcwd()) / "auto_gpt_workspace/contexts"
@@ -49,15 +49,12 @@ def get_prompt() -> str:
     context_manager = ContextManager(context_directory, context_template_file)
     context_template = context_manager.context_template
     prompt_generator.add_constraint(
-        "When creating a context, you must use the Context template written in Markdown. Do not omit any headers:"
+        "When creating a context, you must use the Context template written in Markdown with no structural changes:\n"
         f"{context_template}\n"
-        "Fill in the template with relevant data and use the command \"create_context\" to create the context, passing the markdown text through as a string. Contexts should a portion of the larger task, and should be created as needed."
+        "Fill in the template with relevant data and use the command \"create_context\" to create the context, passing the markdown text as a string."
     )
     prompt_generator.add_constraint(
-        "Only write to markdown (.md) files with clear headings, bullet points, summaries, and sources/references as appropriate."
-    )
-    prompt_generator.add_constraint(
-        "No code. No Command Line. Exclusively Text."
+        "No code. No Command Line. Exclusively Text. Only write markdown (.md) files."
     )
 
     # Define the command list
@@ -91,24 +88,24 @@ def get_prompt() -> str:
     ]
 
     # Only add the audio to text command if the model is specified
-    if cfg.huggingface_audio_to_text_model:
-        commands.append(
-            (
-                "Convert Audio to text",
-                "read_audio_from_file",
-                {"file": "<file>"}
-            ),
-        )
+    # if cfg.huggingface_audio_to_text_model:
+    #     commands.append(
+    #         (
+    #             "Convert Audio to text",
+    #             "read_audio_from_file",
+    #             {"file": "<file>"}
+    #         ),
+    #     )
 
-    # Only add shell command to the prompt if the AI is allowed to execute it
-    if cfg.execute_local_commands:
-        commands.append(
-            (
-                "Execute Shell Command, non-interactive commands only",
-                "execute_shell",
-                {"command_line": "<command_line>"},
-            ),
-        )
+    # # Only add shell command to the prompt if the AI is allowed to execute it
+    # if cfg.execute_local_commands:
+    #     commands.append(
+    #         (
+    #             "Execute Shell Command, non-interactive commands only",
+    #             "execute_shell",
+    #             {"command_line": "<command_line>"},
+    #         ),
+    #     )
 
     # Add these command last.
     commands.append(
@@ -123,9 +120,9 @@ def get_prompt() -> str:
         prompt_generator.add_command(command_label, command_name, args)
 
     # Add resources to the PromptGenerator object
-    prompt_generator.add_resource("Reading, writing, appending to, and reorganizing files, which is your primary goal.")
+    # prompt_generator.add_resource("Reading, writing, appending to, and reorganizing files, which is your primary goal.")
     prompt_generator.add_resource("Long Term memory management.")
-    prompt_generator.add_resource("Context creation and management for staying on task.")
+    prompt_generator.add_resource("Context creation for segmenting the goal.")
     prompt_generator.add_resource(
         "GPT-3.5 powered Agents for delegation of simple tasks."
     )
@@ -135,19 +132,13 @@ def get_prompt() -> str:
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation(
-        "Continuously review both your actions and the file system to stay on track."
+        "Evaluate context usage regularly."
     )
     prompt_generator.add_performance_evaluation(
-        "Evaluate your current context regularly and keep the context file up to date in clean markdown formatting."
+        "Constructively self-criticize your big-picture behavior and reflect on past decisions and stretegies constantly."
     )
     prompt_generator.add_performance_evaluation(
-        "Constructively self-criticize your big-picture behavior constantly."
-    )
-    prompt_generator.add_performance_evaluation(
-        "Reflect on past decisions and strategies to refine your approach."
-    )
-    prompt_generator.add_performance_evaluation(
-        "Every command has a cost, so be smart and efficient without sacrificing quality."
+        "Every command has a cost, so be smart and efficient."
     )
 
     # Generate the prompt string

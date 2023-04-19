@@ -1,12 +1,12 @@
 # Context Name
-Choose a descriptive name for the context
+{Brief description of content theme}
 ## Context Goal
-Describe here what the overall purpose and goal of this context are
+{Brief description of context goal or purpose}
 ### Context Parameters for Success
-Describe here what parameters you will use to determine if you have fulfilled your goal. Additionally, describe how you will get back on track if you diverge from the context's goal.
-#### Files
-As files are created, list them here with internal linking directly to the file
-##### Sources (same constraint as sources)
-As sources are gathered, list them here with their links in markdown
-###### Highlights
-As you go through this context, store key highlights here so they are not forgotten.
+- {List of parameters}
+- {That will determine}
+- {Success of this context}
+{Brief description of how you will stay on track when you start to diverge}
+### Highlights
+- {List of highlights from the context}
+- {Will start empty, but highlights should be appended here throughout the context's lifecycle}
