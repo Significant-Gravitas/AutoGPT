@@ -82,6 +82,7 @@ def main(
     from autogpt.plugins import scan_plugins
     from autogpt.prompts.prompt import construct_main_ai_config
     from autogpt.utils import get_latest_bulletin
+
     if ctx.invoked_subcommand is None:
         cfg = Config()
         # TODO: fill in llm values here
