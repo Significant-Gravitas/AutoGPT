@@ -110,6 +110,50 @@ class TestParseJson(unittest.TestCase):
             fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj
         )
 
+    def test_invalid_json_with_multiple_json_object(self):
+        # Sometimes the JSON string will have multiple JSON objects in it, in those cases we want to extract the longest one
+        json_str = """I suggest we start by browsing the repository to find any issues that we can fix.
+        {
+            "name": "browse_website",
+            "args":{
+                "url": "https://github.com/Torantulino/Auto-GPT"
+            }
+        }
+
+{
+    "command": {
+        "name": "browse_website",
+        "args":{
+            "url": "https://github.com/Torantulino/Auto-GPT"
+        }
+    },
+    "thoughts":
+    {
+        "text": "I suggest we start browsing the repository to find any issues that we can fix.",
+        "reasoning": "Browsing the repository will give us an idea of the current state of the codebase and identify any issues that we can address to improve the repo.",
+        "plan": "- Look through the repository to find any issues.",
+        "criticism": "I should be careful while browsing so as not to accidentally introduce any new bugs or issues.",
+        "speak": "I will start browsing the repository to find any issues we can fix."
+    }
+}"""
+        good_obj = {
+            "command": {
+                "name": "browse_website",
+                "args": {"url": "https://github.com/Torantulino/Auto-GPT"},
+            },
+            "thoughts": {
+                "text": "I suggest we start browsing the repository to find any issues that we can fix.",
+                "reasoning": "Browsing the repository will give us an idea of the current state of the codebase and identify any issues that we can address to improve the repo.",
+                "plan": "- Look through the repository to find any issues.",
+                "criticism": "I should be careful while browsing so as not to accidentally introduce any new bugs or issues.",
+                "speak": "I will start browsing the repository to find any issues we can fix.",
+            },
+        }
+        # Assert that this raises an exception:
+        self.assertEqual(
+            fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
