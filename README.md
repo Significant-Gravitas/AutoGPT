@@ -451,6 +451,23 @@ HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 sudo Xvfb :10 -ac -screen 0 1024x768x24 & DISPLAY=:10 <YOUR_CLIENT>
 ```
 
+## Twitter
+1. Go to your Twitter Developer Portal (https://developer.twitter.com/en).
+2. Select your project and app.
+3. In the settings tab scroll down and hit the edit/set up button of User authentication settings.
+4. Change App permissions to Read and write and Direct message.
+5. Set to web app (2nd option).
+6. Set Callback URI & Website just to https://twitter.com/ since it doesn't matter.
+7. Save and generate your Keys and Tokens in the Keys and Tokens Tab. (ignore the newly created client ID/secret generated after setting up auth, those are not needed)
+8. Set the following variables in your `.env` file:
+```bash
+TW_BEARER_TOKEN=
+TW_CONSUMER_KEY=
+TW_CONSUMER_SECRET=
+TW_ACCESS_TOKEN=
+TW_ACCESS_TOKEN_SECRET=
+```
+
 ## ⚠️ Limitations
 
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
