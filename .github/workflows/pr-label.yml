@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  labeler:
+  shirt-size:
     permissions:
       issues: write
       pull-requests: write
