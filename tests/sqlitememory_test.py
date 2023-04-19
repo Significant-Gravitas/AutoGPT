@@ -1,4 +1,5 @@
 import unittest
+
 from autogpt.memory.sqlitemem import SqliteMemory
 
 
@@ -65,7 +66,8 @@ class TestSqliteMemory(unittest.TestCase):
 
         stats = self.memory.get_stats()
         self.assertEqual(
-            stats, {"num_memories": 1, "index": self.cfg.sqlite_index, "embedder": "ada"}
+            stats,
+            {"num_memories": 1, "index": self.cfg.sqlite_index, "embedder": "ada"},
         )
 
 
