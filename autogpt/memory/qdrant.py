@@ -1,8 +1,10 @@
 import uuid
+
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
-from qdrant_client.http.models import PointStruct
 from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.http.models import PointStruct
+
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 
@@ -29,9 +31,8 @@ class QdrantMemory(MemoryProviderSingleton):
             self.client.recreate_collection(
                 self.index_name,
                 vectors_config=rest.VectorParams(
-                    size=self.dimension,
-                    distance=self.metric
-                )
+                    size=self.dimension, distance=self.metric
+                ),
             )
 
     def ping(self):
@@ -50,9 +51,7 @@ class QdrantMemory(MemoryProviderSingleton):
             payload={"raw_text": data},
         )
         resp = self.client.upsert(
-            collection_name=self.index_name,
-            points=[point],
-            wait=True
+            collection_name=self.index_name, points=[point], wait=True
         )
         _text = f"Inserting data into memory at index: {self.vec_num}:\n data: {data}"
         self.vec_num = uuid.uuid4().hex
@@ -62,13 +61,10 @@ class QdrantMemory(MemoryProviderSingleton):
         return self.get_relevant(data, 1)
 
     def clear(self):
-        self.client.delete_collection(self.index_name);
+        self.client.delete_collection(self.index_name)
         self.client.recreate_collection(
             self.index_name,
-            vectors_config=rest.VectorParams(
-                size=self.dimension,
-                distance=self.metric
-            )
+            vectors_config=rest.VectorParams(size=self.dimension, distance=self.metric),
         )
         self.vec_num = 0
         return "Obliviated"
