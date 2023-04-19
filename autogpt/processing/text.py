@@ -1,5 +1,6 @@
 """Text processing functions"""
-from typing import Dict, Generator, Optional, List
+from typing import Dict, Generator, Optional
+import textwrap
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from autogpt.config import Config
@@ -21,19 +22,14 @@ def split_text(text: str, max_length: int = 50) -> Generator[str, None, None]:
     lines = text.split("\n")
 
     for line in lines:
-        words = line.split()
-        current_line = []
+        if not line.strip():
+            continue
 
-        for word in words:
-            if len(" ".join(current_line)) + len(word) + 1 > max_length:
-                yield " ".join(current_line)
-                current_line = [word]
-            else:
-                current_line.append(word)
-
-        if current_line:
-            yield " ".join(current_line)
-
+        wrapped_lines = textwrap.wrap(line, width=max_length)
+        if wrapped_lines:
+            yield from wrapped_lines
+        else:
+            yield line
 
 
 def summarize_text(
