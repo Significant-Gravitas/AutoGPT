@@ -20,6 +20,8 @@ webdriver-manager
 jsonschema
 tweepy
 click
+trio
+pydantic
 
 ##Dev
 coverage

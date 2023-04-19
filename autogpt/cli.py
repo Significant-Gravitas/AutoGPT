@@ -1,5 +1,8 @@
 """Main script for the autogpt package."""
-import click
+import asyncclick as click
+
+# Importing agent subcommands
+import autogpt.agent
 
 
 @click.group(invoke_without_command=True)
@@ -149,6 +152,10 @@ def main(
             triggering_prompt=triggering_prompt,
         )
         agent.start_interaction_loop()
+
+
+# Add the agent subcommands
+main.add_command(autogpt.agent.agent)
 
 
 if __name__ == "__main__":
