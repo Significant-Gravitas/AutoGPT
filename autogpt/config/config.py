@@ -24,7 +24,6 @@ class Config(metaclass=Singleton):
         self.speak_mode = False
         self.skip_reprompt = False
         self.allow_downloads = False
-        self.skip_news = False
 
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
@@ -38,9 +37,6 @@ class Config(metaclass=Singleton):
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
-        )
-        self.restrict_to_workspace = (
-            os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True"
         )
 
         if self.use_azure:
@@ -85,20 +81,14 @@ class Config(metaclass=Singleton):
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
-        self.image_size = int(os.getenv("IMAGE_SIZE", 256))
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
-        self.huggingface_image_model = os.getenv(
-            "HUGGINGFACE_IMAGE_MODEL", "CompVis/stable-diffusion-v1-4"
-        )
         self.huggingface_audio_to_text_model = os.getenv(
             "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
         )
-        self.sd_webui_url = os.getenv("SD_WEBUI_URL", "http://localhost:7860")
-        self.sd_webui_auth = os.getenv("SD_WEBUI_AUTH")
 
         # Selenium browser settings
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
-        self.selenium_headless = os.getenv("HEADLESS_BROWSER", "True") == "True"
+        self.selenium_headless = os.getenv('HEADLESS_BROWSER', "True") == "True"
 
         # User agent header to use when making HTTP requests
         # Some websites might just completely deny request with an error code if
