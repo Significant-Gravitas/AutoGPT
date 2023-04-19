@@ -47,7 +47,6 @@ class AIConfig:
         self.prompt_generator = None
         self.command_registry = None
 
-
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
         """

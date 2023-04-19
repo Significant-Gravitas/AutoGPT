@@ -131,7 +131,7 @@ class Config(metaclass=Singleton):
 
         plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
         if plugins_allowlist:
-            plugins_allowlist=plugins_allowlist.split(",")
+            plugins_allowlist = plugins_allowlist.split(",")
             self.plugins_whitelist = plugins_allowlist
         else:
             self.plugins_whitelist = []

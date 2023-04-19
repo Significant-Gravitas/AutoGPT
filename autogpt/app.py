@@ -135,7 +135,9 @@ def execute_command(
         return f"Error: {str(e)}"
 
 
-@command("get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"')
+@command(
+    "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
+)
 def get_text_summary(url: str, question: str) -> str:
     """Return the results of a Google search
 
