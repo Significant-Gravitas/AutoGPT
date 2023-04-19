@@ -79,6 +79,7 @@ def get_prompt() -> str:
             "improve_code",
             {"suggestions": "<list_of_suggestions>", "code": "<full_code_string>"},
         ),
+        ("Get System Info", "get_current_os", {}),
         (
             "Write Tests",
             "write_tests",
