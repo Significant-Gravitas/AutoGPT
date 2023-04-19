@@ -47,6 +47,11 @@ import click
     is_flag=True,
     help="Specifies whether to suppress the output of latest news on startup.",
 )
+@click.option(
+    "--chat-history-file",
+    "-H",
+    help="Specifies which chat_history.jsonl file to use.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -62,6 +67,7 @@ def main(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
+    chat_history_file: str,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -79,7 +85,7 @@ def main(
     from autogpt.logs import logger
     from autogpt.memory import get_memory
     from autogpt.prompt import construct_prompt
-    from autogpt.utils import get_current_git_branch, get_latest_bulletin
+    from autogpt.utils import get_current_git_branch, get_latest_bulletin, load_chat_history_file
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -98,6 +104,7 @@ def main(
             browser_name,
             allow_downloads,
             skip_news,
+            chat_history_file,
         )
         logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
         ai_name = ""
@@ -116,7 +123,7 @@ def main(
         system_prompt = construct_prompt()
         # print(prompt)
         # Initialize variables
-        full_message_history = []
+        full_message_history = load_chat_history_file(cfg.chat_history_file)
         next_action_count = 0
         # Make a constant:
         triggering_prompt = (
