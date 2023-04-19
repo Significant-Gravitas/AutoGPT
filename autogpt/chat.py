@@ -169,7 +169,7 @@ def chat_with_ai(
                 create_chat_message("assistant", assistant_reply)
             )
 
-            # update the chat history file   
+            # update the chat history file with the new message
             update_chat_history_file(cfg.chat_history_file, full_message_history[-1])
 
             return assistant_reply
