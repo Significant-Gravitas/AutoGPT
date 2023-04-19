@@ -39,8 +39,13 @@ class Config(metaclass=Singleton):
         )
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+<<<<<<< HEAD
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
+=======
+        self.temperature = float(os.getenv("TEMPERATURE", "1"))
+        self.use_azure = os.getenv("USE_AZURE") == "False"
+>>>>>>> 8032b75 (add ability set azure because github workflow needs it off)
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
@@ -48,11 +53,11 @@ class Config(metaclass=Singleton):
             os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True"
         )
 
-        if self.use_azure:
-            self.load_azure_config()
-            openai.api_type = self.openai_api_type
-            openai.api_base = self.openai_api_base
-            openai.api_version = self.openai_api_version
+        # if self.use_azure:
+        #     self.load_azure_config()
+        #     openai.api_type = self.openai_api_type
+        #     openai.api_base = self.openai_api_base
+        #     openai.api_version = self.openai_api_version
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
@@ -264,6 +269,10 @@ class Config(metaclass=Singleton):
         """Set the temperature value."""
         self.memory_backend = value
 >>>>>>> 20dca7b (Add set_temperature and set_memory_backend methods in config.py)
+
+    def set_use_azure(self, value: int) -> None:
+        """Set the temperature value."""
+        self.use_azure = value
 
 
 def check_openai_api_key() -> None:

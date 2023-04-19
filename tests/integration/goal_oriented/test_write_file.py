@@ -113,7 +113,9 @@ def create_writer_agent():
     CFG.set_continuous_mode(True)
     CFG.set_memory_backend("no_memory")
     CFG.set_temperature(0)
-    # CFG.use_azure(0)
+
+    CFG.set_openai_api_key("dummy_api_key")
+    CFG.set_use_azure(False)
     return agent
 
 
