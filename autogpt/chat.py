@@ -78,12 +78,12 @@ def chat_with_ai(
 
             logger.debug(f"Token limit: {token_limit}")
             send_token_limit = token_limit - 1000
-
-            relevant_memory = (
-                ""
-                if len(full_message_history) == 0
-                else permanent_memory.get_relevant(str(full_message_history[-9:]), 10)
-            )
+            if len(full_message_history) == 0:
+                # we do not have any messages in the history, so use the agent prompt and user input to find relevant memories
+                memory_lookup = f"{prompt}\n{user_input}"
+                relevant_memory = str(permanent_memory.get_relevant(memory_lookup, 10))
+            else:
+                relevant_memory = str(permanent_memory.get_relevant(str(full_message_history[-9:]), 10))
 
             logger.debug(f"Memory Stats: {permanent_memory.get_stats()}")
 
