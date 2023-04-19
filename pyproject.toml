@@ -38,3 +38,6 @@ skip = '''
     dist/*
 
 '''
+
+[tool.setuptools]
+py-modules = []
