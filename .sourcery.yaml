@@ -30,7 +30,7 @@ rule_settings:
   - refactoring
   - suggestion
   - comment
-  python_version: '3.9' # A string specifying the lowest Python version your project supports. Sourcery will not suggest refactorings requiring a higher Python version.
+  python_version: '3.10' # A string specifying the lowest Python version your project supports. Sourcery will not suggest refactorings requiring a higher Python version.
 
 # rules:  # A list of custom rules Sourcery will include in its analysis.
 # - id: no-print-statements
