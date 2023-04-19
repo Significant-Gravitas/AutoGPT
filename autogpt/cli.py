@@ -42,6 +42,11 @@ import click
     is_flag=True,
     help="Dangerous: Allows Auto-GPT to download files natively.",
 )
+@click.option(
+    "--skip-news",
+    is_flag=True,
+    help="Specifies whether to suppress the output of latest news on startup.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -56,6 +61,7 @@ def main(
     memory_type: str,
     browser_name: str,
     allow_downloads: bool,
+    skip_news: bool,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -64,6 +70,7 @@ def main(
     """
     # Put imports inside function to avoid importing everything when starting the CLI
     import logging
+    import sys
 
     from colorama import Fore
 
@@ -73,6 +80,7 @@ def main(
     from autogpt.logs import logger
     from autogpt.memory import get_memory
     from autogpt.prompt import construct_prompt
+    from autogpt.utils import get_current_git_branch, get_latest_bulletin
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -90,9 +98,31 @@ def main(
             memory_type,
             browser_name,
             allow_downloads,
+            skip_news,
         )
         logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
         ai_name = ""
+        if not cfg.skip_news:
+            motd = get_latest_bulletin()
+            if motd:
+                logger.typewriter_log("NEWS: ", Fore.GREEN, motd)
+            git_branch = get_current_git_branch()
+            if git_branch and git_branch != "stable":
+                logger.typewriter_log(
+                    "WARNING: ",
+                    Fore.RED,
+                    f"You are running on `{git_branch}` branch "
+                    "- this is not a supported branch.",
+                )
+            if sys.version_info < (3, 10):
+                logger.typewriter_log(
+                    "WARNING: ",
+                    Fore.RED,
+                    "You are running on an older version of Python. "
+                    "Some people have observed problems with certain "
+                    "parts of Auto-GPT with this version. "
+                    "Please consider upgrading to Python 3.10 or higher.",
+                )
         system_prompt = construct_prompt()
         # print(prompt)
         # Initialize variables
