@@ -62,7 +62,7 @@ def summarize_text(
     print(f"Text length: {text_length} characters")
 
     summaries = []
-    chunks = list(split_text(text))
+    chunks = list(split_text(text, CFG.browse_chunk_max_length))
     scroll_ratio = 1 / len(chunks)
 
     for i, chunk in enumerate(chunks):
