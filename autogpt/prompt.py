@@ -6,7 +6,7 @@ from autogpt.config.config import Config
 from autogpt.logs import logger
 from autogpt.promptgenerator import PromptGenerator
 from autogpt.setup import prompt_user
-from autogpt.utils import clean_input
+from autogpt.utils import clean_input, clear_chat_history_file
 
 CFG = Config()
 
@@ -196,6 +196,7 @@ Continue (y/n): """
     if not config.ai_name:
         config = prompt_user()
         config.save(CFG.ai_settings_file)
+        clear_chat_history_file(CFG.chat_history_file)
 
     # Get rid of this global:
     global ai_name
