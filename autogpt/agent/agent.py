@@ -60,11 +60,7 @@ class Agent:
         while True:
             # Discontinue if continuous limit is reached
             loop_count += 1
-            if (
-                cfg.continuous_mode
-                and cfg.continuous_limit > 0
-                and loop_count > cfg.continuous_limit
-            ):
+            if cfg.continuous_mode and loop_count > cfg.continuous_limit > 0:
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
