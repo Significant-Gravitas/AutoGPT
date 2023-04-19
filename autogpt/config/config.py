@@ -48,11 +48,11 @@ class Config(metaclass=Singleton):
             os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True"
         )
 
-        if self.use_azure:
-            self.load_azure_config()
-            openai.api_type = self.openai_api_type
-            openai.api_base = self.openai_api_base
-            openai.api_version = self.openai_api_version
+        # if self.use_azure:
+        #     self.load_azure_config()
+        #     openai.api_type = self.openai_api_type
+        #     openai.api_base = self.openai_api_base
+        #     openai.api_version = self.openai_api_version
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
@@ -251,19 +251,9 @@ class Config(metaclass=Singleton):
         """Set the debug mode value."""
         self.debug_mode = value
 
-<<<<<<< HEAD
     def set_plugins(self, value: list) -> None:
         """Set the plugins value."""
         self.plugins = value
-=======
-    def set_temperature(self, value: int) -> None:
-        """Set the temperature value."""
-        self.temperature = value
-
-    def set_memory_backend(self, value: int) -> None:
-        """Set the temperature value."""
-        self.memory_backend = value
->>>>>>> 20dca7b (Add set_temperature and set_memory_backend methods in config.py)
 
     def set_temperature(self, value: int) -> None:
         """Set the temperature value."""

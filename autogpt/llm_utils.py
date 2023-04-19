@@ -95,22 +95,22 @@ def create_chat_completion(
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
-            if CFG.use_azure:
-                response = openai.ChatCompletion.create(
-                    deployment_id=CFG.get_azure_deployment_id_for_model(model),
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            else:
-                response = openai.ChatCompletion.create(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            break
+            # if CFG.use_azure:
+            #     response = openai.ChatCompletion.create(
+            #         deployment_id=CFG.get_azure_deployment_id_for_model(model),
+            #         model=model,
+            #         messages=messages,
+            #         temperature=temperature,
+            #         max_tokens=max_tokens,
+            #     )
+            # else:
+            response = openai.ChatCompletion.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        # break
         except RateLimitError:
             if CFG.debug_mode:
                 print(
@@ -159,17 +159,17 @@ def create_embedding_with_ada(text) -> list:
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
-            if CFG.use_azure:
-                return openai.Embedding.create(
-                    input=[text],
-                    engine=CFG.get_azure_deployment_id_for_model(
-                        "text-embedding-ada-002"
-                    ),
-                )["data"][0]["embedding"]
-            else:
-                return openai.Embedding.create(
-                    input=[text], model="text-embedding-ada-002"
-                )["data"][0]["embedding"]
+            # if CFG.use_azure:
+            #     return openai.Embedding.create(
+            #         input=[text],
+            #         engine=CFG.get_azure_deployment_id_for_model(
+            #             "text-embedding-ada-002"
+            #         ),
+            #     )["data"][0]["embedding"]
+            # else:
+            return openai.Embedding.create(
+                input=[text], model="text-embedding-ada-002"
+            )["data"][0]["embedding"]
         except RateLimitError:
             pass
         except APIError as e:

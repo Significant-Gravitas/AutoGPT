@@ -32,4 +32,8 @@ jobs:
 
     - name: Generate coverage report
       run: |
-        coverage run --source=autogpt -m pytest -s -k tests/integration/goal_oriented       
+        coverage run --source=autogpt -m pytest -s -k tests/integration/goal_oriented
+      env:
+        OPENAI_API_KEY: 'dummy_api_key'
+        MEMORY_BACKEND: 'no_memory'
+        USE_AZURE: 'False'
