@@ -39,17 +39,8 @@ class Config(metaclass=Singleton):
         )
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-<<<<<<< HEAD
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
-=======
-        self.temperature = float(os.getenv("TEMPERATURE", "1"))
-<<<<<<< HEAD
-        self.use_azure = os.getenv("USE_AZURE") == "False"
->>>>>>> 8032b75 (add ability set azure because github workflow needs it off)
-=======
-        self.use_azure = os.getenv("USE_AZURE") == "True"
->>>>>>> 45f409c (solve conflicts in cli.py)
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
@@ -260,23 +251,9 @@ class Config(metaclass=Singleton):
         """Set the debug mode value."""
         self.debug_mode = value
 
-<<<<<<< HEAD
     def set_plugins(self, value: list) -> None:
         """Set the plugins value."""
         self.plugins = value
-=======
-    def set_temperature(self, value: int) -> None:
-        """Set the temperature value."""
-        self.temperature = value
-
-    def set_memory_backend(self, value: int) -> None:
-        """Set the temperature value."""
-        self.memory_backend = value
->>>>>>> 20dca7b (Add set_temperature and set_memory_backend methods in config.py)
-
-    def set_use_azure(self, value: int) -> None:
-        """Set the temperature value."""
-        self.use_azure = value
 
 
 def check_openai_api_key() -> None:

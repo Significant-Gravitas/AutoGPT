@@ -69,15 +69,8 @@ def main(
     Start an Auto-GPT assistant.
     """
     # Put imports inside function to avoid importing everything when starting the CLI
-<<<<<<< HEAD
-<<<<<<< HEAD
     import logging
     import sys
-=======
->>>>>>> 4ad6e7b (Refactor main function and imports in cli.py)
-=======
-    import logging
->>>>>>> 52cc322 (solve conflicts)
 
     from colorama import Fore
 
@@ -87,19 +80,8 @@ def main(
     from autogpt.configurator import create_config
     from autogpt.logs import logger
     from autogpt.memory import get_memory
-<<<<<<< HEAD
-<<<<<<< HEAD
     from autogpt.plugins import scan_plugins
     from autogpt.prompts.prompt import construct_main_ai_config
-=======
-<<<<<<< HEAD
-    from autogpt.prompt import construct_prompt
->>>>>>> 52cc322 (solve conflicts)
-    from autogpt.utils import get_current_git_branch, get_latest_bulletin
-=======
-=======
->>>>>>> 45f409c (solve conflicts in cli.py)
-    from autogpt.prompt import Prompt
     from autogpt.utils import get_current_git_branch, get_latest_bulletin
 
     if ctx.invoked_subcommand is None:
@@ -134,7 +116,6 @@ def main(
                     f"You are running on `{git_branch}` branch "
                     "- this is not a supported branch.",
                 )
-<<<<<<< HEAD
             if sys.version_info < (3, 10):
                 logger.typewriter_log(
                     "WARNING: ",
@@ -164,13 +145,15 @@ def main(
         ai_name = ""
         ai_config = construct_main_ai_config()
         ai_config.command_registry = command_registry
-=======
-        prompt = Prompt()
->>>>>>> 45f409c (solve conflicts in cli.py)
         # print(prompt)
         # Initialize variables
         full_message_history = []
         next_action_count = 0
+        # Make a constant:
+        triggering_prompt = (
+            "Determine which next command to use, and respond using the"
+            " format specified above:"
+        )
         # Initialize memory and make sure it is empty.
         # this is particularly important for indexing and referencing pinecone memory
         memory = get_memory(cfg, init=True)
@@ -184,24 +167,12 @@ def main(
         agent = Agent(
             ai_name=ai_name,
             memory=memory,
-<<<<<<< HEAD
-<<<<<<< HEAD
             full_message_history=full_message_history,
             next_action_count=next_action_count,
             command_registry=command_registry,
             config=ai_config,
             system_prompt=system_prompt,
             triggering_prompt=triggering_prompt,
-=======
-            full_message_history=[],
-            next_action_count=0,
-=======
-            full_message_history=full_message_history,
-            next_action_count=next_action_count,
->>>>>>> 45f409c (solve conflicts in cli.py)
-            system_prompt=prompt.system_prompt,
-            triggering_prompt=prompt.triggering_prompt,
->>>>>>> 52cc322 (solve conflicts)
         )
         agent.start_interaction_loop()
 

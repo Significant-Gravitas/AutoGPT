@@ -41,7 +41,7 @@ def test_write_file() -> None:
     agent = create_writer_agent()
     try:
         with my_vcr.use_cassette(
-            "write_file.yaml",
+            "write_file.vcr.yml",
             filter_headers=[
                 "authorization",
                 "X-OpenAI-Client-User-Agent",
