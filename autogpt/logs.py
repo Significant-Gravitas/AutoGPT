@@ -5,13 +5,13 @@ import os
 import random
 import re
 import time
-from logging import LogRecord
 import traceback
+from logging import LogRecord
 
 from colorama import Fore, Style
 
-from autogpt.speech import say_text
 from autogpt.config import Config, Singleton
+from autogpt.speech import say_text
 
 CFG = Config()
 
@@ -46,7 +46,9 @@ class Logger(metaclass=Singleton):
         self.console_handler.setFormatter(console_formatter)
 
         # Info handler in activity.log
-        self.file_handler = logging.FileHandler(os.path.join(log_dir, log_file))
+        self.file_handler = logging.FileHandler(
+            os.path.join(log_dir, log_file), "a", "utf-8"
+        )
         self.file_handler.setLevel(logging.DEBUG)
         info_formatter = AutoGptFormatter(
             "%(asctime)s %(levelname)s %(title)s %(message_no_color)s"
@@ -54,7 +56,9 @@ class Logger(metaclass=Singleton):
         self.file_handler.setFormatter(info_formatter)
 
         # Error handler error.log
-        error_handler = logging.FileHandler(os.path.join(log_dir, error_file))
+        error_handler = logging.FileHandler(
+            os.path.join(log_dir, error_file), "a", "utf-8"
+        )
         error_handler.setLevel(logging.ERROR)
         error_formatter = AutoGptFormatter(
             "%(asctime)s %(levelname)s %(module)s:%(funcName)s:%(lineno)d %(title)s"
@@ -200,10 +204,10 @@ logger = Logger()
 
 def print_assistant_thoughts(ai_name, assistant_reply):
     """Prints the assistant's thoughts to the console"""
-    from autogpt.json_fixes.bracket_termination import (
+    from autogpt.json_utils.json_fix_llm import (
         attempt_to_fix_json_by_finding_outermost_brackets,
+        fix_and_parse_json,
     )
-    from autogpt.json_fixes.parsing import fix_and_parse_json
 
     try:
         try:
@@ -288,3 +292,41 @@ def print_assistant_thoughts(ai_name, assistant_reply):
     except Exception:
         call_stack = traceback.format_exc()
         logger.error("Error: \n", call_stack)
+
+
+def print_assistant_thoughts(
+    ai_name: object, assistant_reply_json_valid: object
+) -> None:
+    assistant_thoughts_reasoning = None
+    assistant_thoughts_plan = None
+    assistant_thoughts_speak = None
+    assistant_thoughts_criticism = None
+
+    assistant_thoughts = assistant_reply_json_valid.get("thoughts", {})
+    assistant_thoughts_text = assistant_thoughts.get("text")
+    if assistant_thoughts:
+        assistant_thoughts_reasoning = assistant_thoughts.get("reasoning")
+        assistant_thoughts_plan = assistant_thoughts.get("plan")
+        assistant_thoughts_criticism = assistant_thoughts.get("criticism")
+        assistant_thoughts_speak = assistant_thoughts.get("speak")
+    logger.typewriter_log(
+        f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
+    )
+    logger.typewriter_log("REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}")
+    if assistant_thoughts_plan:
+        logger.typewriter_log("PLAN:", Fore.YELLOW, "")
+        # If it's a list, join it into a string
+        if isinstance(assistant_thoughts_plan, list):
+            assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
+        elif isinstance(assistant_thoughts_plan, dict):
+            assistant_thoughts_plan = str(assistant_thoughts_plan)
+
+        # Split the input_string using the newline character and dashes
+        lines = assistant_thoughts_plan.split("\n")
+        for line in lines:
+            line = line.lstrip("- ")
+            logger.typewriter_log("- ", Fore.GREEN, line.strip())
+    logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
+    # Speak the assistant's thoughts
+    if CFG.speak_mode and assistant_thoughts_speak:
+        say_text(assistant_thoughts_speak)

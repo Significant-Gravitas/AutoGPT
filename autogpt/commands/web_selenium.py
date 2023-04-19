@@ -1,22 +1,25 @@
 """Selenium web scraping module."""
 from __future__ import annotations
 
-from selenium import webdriver
-from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
-import autogpt.processing.text as summary
-from bs4 import BeautifulSoup
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.firefox import GeckoDriverManager
-from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from selenium.webdriver.safari.options import Options as SafariOptions
 import logging
 from pathlib import Path
+from sys import platform
+
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.safari.options import Options as SafariOptions
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.firefox import GeckoDriverManager
+
+import autogpt.processing.text as summary
 from autogpt.config import Config
+from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
@@ -75,6 +78,15 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
     else:
+        if platform == "linux" or platform == "linux2":
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--remote-debugging-port=9222")
+
+        options.add_argument("--no-sandbox")
+        if CFG.selenium_headless:
+            options.add_argument("--headless")
+            options.add_argument("--disable-gpu")
+
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
