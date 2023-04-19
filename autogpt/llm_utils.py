@@ -83,7 +83,7 @@ def create_chat_completion(
         try:
             if CFG.use_azure:
                 response = openai.ChatCompletion.create(
-                    engine=CFG.get_azure_deployment_id_for_model(model),
+                    deployment_id=CFG.get_azure_deployment_id_for_model(model),
                     model=model,
                     messages=messages,
                     temperature=temperature,
