@@ -1,4 +1,7 @@
-# Contributing to ProjectName
+# Document translations:
+<kbd>[<img title="Russian" alt="Russian" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ru.svg" width="22">](docs/translations/CONTRIBUTING-ru.md)</kbd>
+
+# Contributing to Auto-GPT
 
 First of all, thank you for considering contributing to our project! We appreciate your time and effort, and we value any contribution, whether it's reporting a bug, suggesting a new feature, or submitting a pull request.
 

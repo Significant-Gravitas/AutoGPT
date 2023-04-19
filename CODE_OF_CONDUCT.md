@@ -1,3 +1,6 @@
+# Document translations:
+<kbd>[<img title="Russian" alt="Russian" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ru.svg" width="22">](docs/translations/CODE_OF_CONDUCT-ru.md)</kbd>
+
 # Code of Conduct for auto-gpt
 
 ## 1. Purpose
