@@ -168,7 +168,7 @@ class Config(metaclass=Singleton):
         self.openai_api_version = (
             config_params.get("azure_api_version") or "2023-03-15-preview"
         )
-        self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", [])
+        self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", {})
 
     def set_continuous_mode(self, value: bool) -> None:
         """Set the continuous mode value."""
