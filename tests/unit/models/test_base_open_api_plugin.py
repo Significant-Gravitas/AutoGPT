@@ -2,8 +2,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pytest
 
-from autogpt.models.base_open_ai_plugin import (BaseOpenAIPlugin, Message,
-                                                PromptGenerator)
+from autogpt.models.base_open_ai_plugin import (
+    BaseOpenAIPlugin,
+    Message,
+    PromptGenerator,
+)
 
 
 class DummyPlugin(BaseOpenAIPlugin):

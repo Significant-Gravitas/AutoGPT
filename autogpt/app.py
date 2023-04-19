@@ -6,14 +6,21 @@ from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.evaluate_code import evaluate_code
-from autogpt.commands.execute_code import (execute_python_file, execute_shell,
-                                           execute_shell_popen)
-from autogpt.commands.file_operations import (append_to_file, delete_file,
-                                              download_file, read_file,
-                                              search_files, write_to_file)
+from autogpt.commands.execute_code import (
+    execute_python_file,
+    execute_shell,
+    execute_shell_popen,
+)
+from autogpt.commands.file_operations import (
+    append_to_file,
+    delete_file,
+    download_file,
+    read_file,
+    search_files,
+    write_to_file,
+)
 from autogpt.commands.git_operations import clone_repository
-from autogpt.commands.google_search import (google_official_search,
-                                            google_search)
+from autogpt.commands.google_search import google_official_search, google_search
 from autogpt.commands.image_gen import generate_image
 from autogpt.commands.improve_code import improve_code
 from autogpt.commands.twitter import send_tweet
