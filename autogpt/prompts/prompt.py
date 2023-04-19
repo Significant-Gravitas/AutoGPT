@@ -71,9 +71,7 @@ def build_default_prompt_generator() -> PromptGenerator:
         "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
         " the least number of steps."
     )
-    prompt_generator.add_performance_evaluation(
-        "Write all code to a file."
-    )
+    prompt_generator.add_performance_evaluation("Write all code to a file.")
     return prompt_generator
 
 
