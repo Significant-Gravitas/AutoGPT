@@ -3,6 +3,7 @@ import json
 from typing import Dict, List, NoReturn, Union
 
 from autogpt.agent.agent_manager import AgentManager
+from autogpt.commands.analyze_code import analyze_code
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.evaluate_code import evaluate_code
@@ -28,7 +29,7 @@ from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.write_tests import write_tests
 from autogpt.config import Config
-from autogpt.json_fixes.parsing import fix_and_parse_json
+from autogpt.json_utils.json_fix_llm import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.generator import PromptGenerator
@@ -141,6 +142,8 @@ def execute_command(
             return get_text_summary(arguments["url"], arguments["question"])
         elif command_name == "get_hyperlinks":
             return get_hyperlinks(arguments["url"])
+        elif command_name == "analyze_code":
+            return analyze_code(arguments["code"])
         elif command_name == "download_file":
             if not CFG.allow_downloads:
                 return "Error: You do not have user authorization to download files locally."

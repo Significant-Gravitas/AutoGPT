@@ -1,12 +1,10 @@
 """Code evaluation module."""
 from __future__ import annotations
 
-from autogpt.commands.command import command
 from autogpt.llm_utils import call_ai_function
 
 
-@command("evaluate_code", "Evaluate Code", '"code": "<full_code_string>"')
-def evaluate_code(code: str) -> list[str]:
+def analyze_code(code: str) -> list[str]:
     """
     A function that takes in a string and returns a response from create chat
       completion api call.
