@@ -59,7 +59,9 @@ def test_dummy_plugin_default_methods(dummy_plugin):
     assert dummy_plugin.post_prompt(None) is None
     assert dummy_plugin.on_planning(None, None) is None
     assert dummy_plugin.post_planning("world") == "world"
-    pre_instruction = dummy_plugin.pre_instruction([{"role": "system", "content": "Beep, bop, boop"}])
+    pre_instruction = dummy_plugin.pre_instruction(
+        [{"role": "system", "content": "Beep, bop, boop"}]
+    )
     assert isinstance(pre_instruction, list)
     assert len(pre_instruction) == 1
     assert pre_instruction[0]["role"] == "system"
