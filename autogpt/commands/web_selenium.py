@@ -83,6 +83,11 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--remote-debugging-port=9222")
 
+        options.add_argument("--no-sandbox")
+        if CFG.selenium_headless:
+            options.add_argument("--headless")
+            options.add_argument("--disable-gpu")
+
         # Remove the 'https_proxy' env var
         # Otherwise, webdriver.Chrome() method will get stuck
         http_proxy = os.getenv('http_proxy')
@@ -94,8 +99,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         if http_proxy != "":
             http_proxy = os.getenv('http_proxy')
             del os.environ['http_proxy']
-
-        options.add_argument("--no-sandbox")
+            
         driver = webdriver.Chrome(
             executable_path=ChromeDriverManager().install(), options=options
         )
