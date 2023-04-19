@@ -19,6 +19,7 @@ selenium
 webdriver-manager
 jsonschema
 tweepy
+click
 
 ##Dev
 coverage
@@ -27,7 +28,6 @@ numpy
 gradio_tools
 pre-commit
 black
-sourcery
 isort
 gitpython==3.1.31
 

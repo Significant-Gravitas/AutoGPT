@@ -3,8 +3,8 @@ import json
 from typing import Dict, List, NoReturn, Union
 
 from autogpt.agent.agent_manager import AgentManager
+from autogpt.commands.analyze_code import analyze_code
 from autogpt.commands.audio_text import read_audio_from_file
-from autogpt.commands.evaluate_code import evaluate_code
 from autogpt.commands.execute_code import (
     execute_python_file,
     execute_shell,
@@ -27,7 +27,7 @@ from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.write_tests import write_tests
 from autogpt.config import Config
-from autogpt.json_fixes.parsing import fix_and_parse_json
+from autogpt.json_utils.json_fix_llm import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
@@ -181,8 +181,8 @@ def execute_command(command_name: str, arguments):
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"
-        elif command_name == "evaluate_code":
-            return evaluate_code(arguments["code"])
+        elif command_name == "analyze_code":
+            return analyze_code(arguments["code"])
         elif command_name == "improve_code":
             return improve_code(arguments["suggestions"], arguments["code"])
         elif command_name == "write_tests":
