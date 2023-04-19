@@ -20,7 +20,7 @@ class Command:
         name: str,
         description: str,
         method: Callable[..., Any],
-        signature: str = '',
+        signature: str = "",
         enabled: bool = True,
         disabled_reason: Optional[str] = None,
     ):
@@ -126,7 +126,7 @@ class CommandRegistry:
 def command(
     name: str,
     description: str,
-    signature: str = '',
+    signature: str = "",
     enabled: bool = True,
     disabled_reason: Optional[str] = None,
 ) -> Callable[..., Any]:

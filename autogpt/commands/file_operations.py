@@ -9,8 +9,8 @@ import requests
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
 
-from autogpt.config import Config
 from autogpt.commands.command import command
+from autogpt.config import Config
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
@@ -163,7 +163,9 @@ def write_to_file(filename: str, text: str) -> str:
         return f"Error: {str(e)}"
 
 
-@command("append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"')
+@command(
+    "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
+)
 def append_to_file(filename: str, text: str, shouldLog: bool = True) -> str:
     """Append text to a file
 
@@ -235,8 +237,13 @@ def search_files(directory: str) -> list[str]:
     return found_files
 
 
-
-@command("download_file", "Search Files", '"url": "<url>", "filename": "<filename>"', CFG.allow_downloads,  "Error: You do not have user authorization to download files locally.")
+@command(
+    "download_file",
+    "Search Files",
+    '"url": "<url>", "filename": "<filename>"',
+    CFG.allow_downloads,
+    "Error: You do not have user authorization to download files locally.",
+)
 def download_file(url, filename):
     """Downloads a file
     Args:
