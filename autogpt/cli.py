@@ -78,9 +78,10 @@ def main(
     from autogpt.configurator import create_config
     from autogpt.logs import logger
     from autogpt.memory import get_memory
+
     from autogpt.prompt import construct_full_prompt
     from autogpt.setup import get_ai_config
-    from autogpt.utils import get_latest_bulletin
+    from autogpt.utils import get_current_git_branch, get_latest_bulletin
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -107,9 +108,18 @@ def main(
             if motd:
                 logger.typewriter_log("NEWS: ", Fore.GREEN, motd)
 
+            git_branch = get_current_git_branch()
+            if git_branch and git_branch != "stable":
+                logger.typewriter_log(
+                    "WARNING: ",
+                    Fore.RED,
+                    f"You are running on `{git_branch}` branch "
+                    "- this is not a supported branch.",
+                )
         ai_config = get_ai_config()
         system_prompt = construct_full_prompt(ai_config)
         # print(system_prompt)
+
         # Initialize variables
         full_message_history = []
         next_action_count = 0
