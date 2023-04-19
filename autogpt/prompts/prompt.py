@@ -59,6 +59,7 @@ class Prompt:
         """
 >>>>>>> 947347b (Remove unused import in prompt.py):autogpt/prompt.py
 
+<<<<<<< HEAD:autogpt/prompts/prompt.py
 <<<<<<< HEAD
 <<<<<<< HEAD
     # Define the command list
@@ -114,6 +115,8 @@ class Prompt:
 =======
 =======
 >>>>>>> 30837be8 (solve conflicts)
+=======
+>>>>>>> 4ae001d (solve conflict):autogpt/prompt.py
         # Initialize the Config object
         cfg = Config()
 
@@ -179,7 +182,6 @@ class Prompt:
                 {"code": "<full_code_string>", "focus": "<list_of_focus_areas>"},
             ),
             ("Execute Python File", "execute_python_file", {"file": "<file>"}),
-            ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
             ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
             ("Send Tweet", "send_tweet", {"text": "<text>"}),
         ]
