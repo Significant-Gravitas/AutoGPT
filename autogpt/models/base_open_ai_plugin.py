@@ -34,7 +34,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
 
     def on_response(self, response: str, *args, **kwargs) -> str:
         """This method is called when a response is received from the model."""
-        pass
+        return response
 
     def can_handle_post_prompt(self) -> bool:
         """This method is called to check that the plugin can
@@ -51,7 +51,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         Returns:
             PromptGenerator: The prompt generator.
         """
-        pass
+        return prompt
 
     def can_handle_on_planning(self) -> bool:
         """This method is called to check that the plugin can
@@ -84,7 +84,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         Returns:
             str: The resulting response.
         """
-        pass
+        return response
 
     def can_handle_pre_instruction(self) -> bool:
         """This method is called to check that the plugin can
@@ -100,7 +100,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         Returns:
             List[Message]: The resulting list of messages.
         """
-        pass
+        return messages
 
     def can_handle_on_instruction(self) -> bool:
         """This method is called to check that the plugin can
@@ -132,7 +132,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         Returns:
             str: The resulting response.
         """
-        pass
+        return response
 
     def can_handle_pre_command(self) -> bool:
         """This method is called to check that the plugin can
@@ -151,7 +151,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         Returns:
             Tuple[str, Dict[str, Any]]: The command name and the arguments.
         """
-        pass
+        return command_name, arguments
 
     def can_handle_post_command(self) -> bool:
         """This method is called to check that the plugin can
@@ -168,7 +168,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         Returns:
             str: The resulting response.
         """
-        pass
+        return response
 
     def can_handle_chat_completion(
         self, messages: Dict[Any, Any], model: str, temperature: float, max_tokens: int

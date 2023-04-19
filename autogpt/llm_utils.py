@@ -83,12 +83,14 @@ def create_chat_completion(
             temperature=temperature,
             max_tokens=max_tokens,
         ):
-            return plugin.handle_chat_completion(
+            message = plugin.handle_chat_completion(
                 messages=messages,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+            if message is not None:
+                return message
     response = None
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)

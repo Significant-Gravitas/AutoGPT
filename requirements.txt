@@ -31,7 +31,6 @@ pre-commit
 black
 isort
 gitpython==3.1.31
-abstract-singleton
 auto-gpt-plugin-template
 
 # Items below this point will not be included in the Docker Image
@@ -48,5 +47,3 @@ pytest-mock
 
 # OpenAI and Generic plugins import
 openapi-python-client==0.13.4
-abstract-singleton
-auto-gpt-plugin-template
