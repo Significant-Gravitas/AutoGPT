@@ -47,7 +47,7 @@ def write_dict_to_json_file(data: dict, file_path: str) -> None:
         data (dict): Dictionary to write.
         file_path (str): Path to the file.
     """
-    with open(file_path, 'w') as file:
+    with open(file_path, "w") as file:
         json.dump(data, file, indent=4)
 
 
@@ -64,35 +64,42 @@ def fetch_openai_plugins_manifest_and_spec(cfg: Config) -> dict:
     for url in cfg.plugins_openai:
         openai_plugin_client_dir = f"{cfg.plugins_dir}/openai/{urlparse(url).netloc}"
         create_directory_if_not_exists(openai_plugin_client_dir)
-        if not os.path.exists(f'{openai_plugin_client_dir}/ai-plugin.json'):
+        if not os.path.exists(f"{openai_plugin_client_dir}/ai-plugin.json"):
             try:
                 response = requests.get(f"{url}/.well-known/ai-plugin.json")
                 if response.status_code == 200:
                     manifest = response.json()
                     if manifest["schema_version"] != "v1":
-                        print(f"Unsupported manifest version: {manifest['schem_version']} for {url}")
+                        print(
+                            f"Unsupported manifest version: {manifest['schem_version']} for {url}"
+                        )
                         continue
                     if manifest["api"]["type"] != "openapi":
-                        print(f"Unsupported API type: {manifest['api']['type']} for {url}")
+                        print(
+                            f"Unsupported API type: {manifest['api']['type']} for {url}"
+                        )
                         continue
-                    write_dict_to_json_file(manifest, f'{openai_plugin_client_dir}/ai-plugin.json')
+                    write_dict_to_json_file(
+                        manifest, f"{openai_plugin_client_dir}/ai-plugin.json"
+                    )
                 else:
                     print(f"Failed to fetch manifest for {url}: {response.status_code}")
             except requests.exceptions.RequestException as e:
                 print(f"Error while requesting manifest from {url}: {e}")
         else:
             print(f"Manifest for {url} already exists")
-            manifest = json.load(open(f'{openai_plugin_client_dir}/ai-plugin.json'))
-        if not os.path.exists(f'{openai_plugin_client_dir}/openapi.json'):
-            openapi_spec = openapi_python_client._get_document(url=manifest["api"]["url"], path=None, timeout=5)
-            write_dict_to_json_file(openapi_spec, f'{openai_plugin_client_dir}/openapi.json')
+            manifest = json.load(open(f"{openai_plugin_client_dir}/ai-plugin.json"))
+        if not os.path.exists(f"{openai_plugin_client_dir}/openapi.json"):
+            openapi_spec = openapi_python_client._get_document(
+                url=manifest["api"]["url"], path=None, timeout=5
+            )
+            write_dict_to_json_file(
+                openapi_spec, f"{openai_plugin_client_dir}/openapi.json"
+            )
         else:
             print(f"OpenAPI spec for {url} already exists")
-            openapi_spec = json.load(open(f'{openai_plugin_client_dir}/openapi.json'))
-        manifests[url] = {
-            'manifest': manifest,
-            'openapi_spec': openapi_spec
-        }
+            openapi_spec = json.load(open(f"{openai_plugin_client_dir}/openapi.json"))
+        manifests[url] = {"manifest": manifest, "openapi_spec": openapi_spec}
     return manifests
 
 
@@ -117,7 +124,9 @@ def create_directory_if_not_exists(directory_path: str) -> bool:
         return True
 
 
-def initialize_openai_plugins(manifests_specs: dict, cfg: Config, debug: bool = False) -> dict:
+def initialize_openai_plugins(
+    manifests_specs: dict, cfg: Config, debug: bool = False
+) -> dict:
     """
     Initialize OpenAI plugins.
     Args:
@@ -127,39 +136,47 @@ def initialize_openai_plugins(manifests_specs: dict, cfg: Config, debug: bool = 
     Returns:
         dict: per url dictionary of manifest, spec and client.
     """
-    openai_plugins_dir = f'{cfg.plugins_dir}/openai'
+    openai_plugins_dir = f"{cfg.plugins_dir}/openai"
     if create_directory_if_not_exists(openai_plugins_dir):
         for url, manifest_spec in manifests_specs.items():
-            openai_plugin_client_dir = f'{openai_plugins_dir}/{urlparse(url).hostname}'
-            _meta_option = openapi_python_client.MetaType.SETUP,
-            _config = OpenAPIConfig(**{
-                'project_name_override': 'client',
-                'package_name_override': 'client',
-            })
+            openai_plugin_client_dir = f"{openai_plugins_dir}/{urlparse(url).hostname}"
+            _meta_option = (openapi_python_client.MetaType.SETUP,)
+            _config = OpenAPIConfig(
+                **{
+                    "project_name_override": "client",
+                    "package_name_override": "client",
+                }
+            )
             prev_cwd = Path.cwd()
             os.chdir(openai_plugin_client_dir)
-            Path('ai-plugin.json')
-            if not os.path.exists('client'):
+            Path("ai-plugin.json")
+            if not os.path.exists("client"):
                 client_results = openapi_python_client.create_new_client(
-                    url=manifest_spec['manifest']['api']['url'],
+                    url=manifest_spec["manifest"]["api"]["url"],
                     path=None,
                     meta=_meta_option,
                     config=_config,
                 )
                 if client_results:
-                    print(f"Error creating OpenAPI client: {client_results[0].header} \n"
-                          f" details: {client_results[0].detail}")
+                    print(
+                        f"Error creating OpenAPI client: {client_results[0].header} \n"
+                        f" details: {client_results[0].detail}"
+                    )
                     continue
-            spec = importlib.util.spec_from_file_location('client', 'client/client/client.py')
+            spec = importlib.util.spec_from_file_location(
+                "client", "client/client/client.py"
+            )
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             client = module.Client(base_url=url)
             os.chdir(prev_cwd)
-            manifest_spec['client'] = client
+            manifest_spec["client"] = client
     return manifests_specs
 
 
-def instantiate_openai_plugin_clients(manifests_specs_clients: dict, cfg: Config, debug: bool = False) -> dict:
+def instantiate_openai_plugin_clients(
+    manifests_specs_clients: dict, cfg: Config, debug: bool = False
+) -> dict:
     """
     Instantiates BaseOpenAIPlugin instances for each OpenAI plugin.
     Args:
@@ -203,16 +220,18 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                 a_module = getattr(zipped_module, key)
                 a_keys = dir(a_module)
                 if (
-                        "_abc_impl" in a_keys
-                        and a_module.__name__ != "AutoGPTPluginTemplate"
-                        and blacklist_whitelist_check(a_module.__name__, cfg)
+                    "_abc_impl" in a_keys
+                    and a_module.__name__ != "AutoGPTPluginTemplate"
+                    and blacklist_whitelist_check(a_module.__name__, cfg)
                 ):
                     loaded_plugins.append(a_module())
     # OpenAI plugins
     if cfg.plugins_openai:
         manifests_specs = fetch_openai_plugins_manifest_and_spec(cfg)
         if manifests_specs.keys():
-            manifests_specs_clients = initialize_openai_plugins(manifests_specs, cfg, debug)
+            manifests_specs_clients = initialize_openai_plugins(
+                manifests_specs, cfg, debug
+            )
             for url, openai_plugin_meta in manifests_specs_clients.items():
                 if blacklist_whitelist_check(url, cfg):
                     plugin = BaseOpenAIPlugin(openai_plugin_meta)
