@@ -13,6 +13,21 @@ services:
       - "./autogpt:/app"
       - ".env:/app/.env"
     profiles: ["exclude-from-up"]
+    networks:
+      - default
 
   redis:
     image: "redis/redis-stack-server:latest"
+    volumes:
+      - "./redis:/data"
+    env_file:
+      - .env
+    profiles: ["exclude-from-up"]
+    expose:
+      - 6379
+    networks:
+      - default
+
+networks:
+  default:
+      name: "autogpt_default"
