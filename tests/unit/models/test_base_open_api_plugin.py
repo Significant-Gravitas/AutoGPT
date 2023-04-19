@@ -19,10 +19,10 @@ def dummy_plugin():
         "manifest": {
             "name_for_model": "Dummy",
             "schema_version": "1.0",
-            "description_for_model": "A dummy plugin for testing purposes"
+            "description_for_model": "A dummy plugin for testing purposes",
         },
         "client": None,
-        "openapi_spec": None
+        "openapi_spec": None,
     }
     return DummyPlugin(manifests_specs_clients)
 
