@@ -14,6 +14,7 @@ concurrency:
 jobs:
   shirt-size:
     permissions:
+      issues: write
       pull-requests: write
     runs-on: ubuntu-latest
     name: Label the PR size
