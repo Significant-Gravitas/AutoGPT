@@ -27,7 +27,7 @@ from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.write_tests import write_tests
 from autogpt.config import Config
-from autogpt.json_fixes.parsing import fix_and_parse_json
+from autogpt.json_utils.json_fix_llm import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
