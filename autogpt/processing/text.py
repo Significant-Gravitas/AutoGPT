@@ -9,10 +9,28 @@ from autogpt.memory import get_memory
 
 CFG = Config()
 
+
 def get_memory_instance():
     return get_memory(CFG)
 
+
 def split_text(text: str, max_length: int = 50) -> Generator[str, None, None]:
+    """Split text into chunks of a maximum length.
+
+    This function takes a text string and splits it into smaller chunks of a maximum length,
+    wrapping lines that exceed the maximum length. It uses the textwrap module to wrap lines
+    to the specified maximum length.
+
+    Args:
+        text (str): The text to split.
+        max_length (int, optional): The maximum length of each chunk. Defaults to 50.
+
+    Yields:
+        str: The next chunk of text.
+
+    Raises:
+        ValueError: If the max_length is less than or equal to 0.
+    """
     if max_length <= 0:
         raise ValueError("max_length should be greater than 0")
 
