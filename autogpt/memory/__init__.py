@@ -37,6 +37,14 @@ except ImportError:
     # print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
 
+try:
+    from autogpt.memory.marqo import MarqoMemory
+
+    supported_memory.append("marqo")
+except ImportError:
+    # print("py-marqo not installed. Skipping import.")
+    MarqoMemory = None
+
 
 def get_memory(cfg, init=False):
     memory = None
@@ -74,6 +82,14 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "marqo":
+        if not MarqoMemory:
+            print(
+                "Error: Marqo sdk is not installed."
+                "Please install marqo to use Marqo as memory backend."
+            )
+        else:
+            memory = MarqoMemory(cfg)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
@@ -95,5 +111,6 @@ __all__ = [
     "PineconeMemory",
     "NoMemory",
     "MilvusMemory",
+    "MarqoMemory",
     "WeaviateMemory",
 ]

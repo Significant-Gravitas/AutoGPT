@@ -81,6 +81,11 @@ class Config(metaclass=Singleton):
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
 
+        # marqo configuration
+        self.marqo_url = os.getenv("MARQO_URL", "http://localhost:8882")
+        self.marqo_api_key = os.getenv("MARQO_API_KEY", "")
+        self.marqo_index_name = os.getenv("MARQO_INDEX_NAME", "autogpt")
+
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
         self.huggingface_audio_to_text_model = os.getenv(

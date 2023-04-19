@@ -333,6 +333,26 @@ export MEMORY_BACKEND="pinecone"
 **Optional:**
 - set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
 
+### Marqo Setup
+
+[Marqo](https://marqo.ai/) is an open-source, highly scalable vector database with an included inference engine which allows it to operate directly on text and images. There is no need to provide your own embeddings or use a separate API for them. Marqo offers fast indexing and retrival of raw documents by more closely coupling inference and storage. Marqo can run on CPU and GPU, locally or in the cloud.
+
+Install the marqo python client:
+```
+pip install marqo
+```
+
+Setup the Marqo database, keep your py-marqo and marqo versions compatible to avoid issues.
+- Setup with open source [Install Marqo](https://docs.marqo.ai/latest/)
+- or setup with the [Marqo Cloud](https://www.marqo.ai/pricing).
+
+In the `.env` set:
+- `MARQO_URL` to your marqo url (the default for local docker images is `http://localhost:8882`).
+
+**Optional:**
+- Set `MARQO_INDEX_NAME` in the `.env` to change the index name, `autogpt` is the default name.
+- Set `MARQO_API_KEY` in the `.env` to your API key if you are using the managed cloud offering.
+
 
 ### Weaviate Setup
 [Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
