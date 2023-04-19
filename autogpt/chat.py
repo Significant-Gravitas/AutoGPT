@@ -6,6 +6,7 @@ from autogpt import token_counter
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
+from autogpt.utils import update_chat_history_file
 
 cfg = Config()
 
@@ -167,6 +168,9 @@ def chat_with_ai(
             full_message_history.append(
                 create_chat_message("assistant", assistant_reply)
             )
+
+            # update the chat history file   
+            update_chat_history_file(cfg.chat_history_file, full_message_history[-1])
 
             return assistant_reply
         except RateLimitError:
