@@ -70,6 +70,7 @@ def main(
     """
     # Put imports inside function to avoid importing everything when starting the CLI
     import logging
+    import sys
 
     from colorama import Fore
 
@@ -112,6 +113,15 @@ def main(
                     Fore.RED,
                     f"You are running on `{git_branch}` branch "
                     "- this is not a supported branch.",
+                )
+            if sys.version_info < (3, 10):
+                logger.typewriter_log(
+                    "WARNING: ",
+                    Fore.RED,
+                    "You are running on an older version of Python. "
+                    "Some people have observed problems with certain "
+                    "parts of Auto-GPT with this version. "
+                    "Please consider upgrading to Python 3.10 or higher.",
                 )
         system_prompt = construct_prompt()
         # print(prompt)
