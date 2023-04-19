@@ -13,11 +13,11 @@ CFG = Config()
 @command(
     "read_audio_from_file",
     "Convert Audio to text",
-    '"file": "<file>"',
+    '"filename": "<filename>"',
     CFG.huggingface_audio_to_text_model,
     "Configure huggingface_audio_to_text_model.",
 )
-def read_audio_from_file(audio_path: str) -> str:
+def read_audio_from_file(filename: str) -> str:
     """
     Convert audio to text.
 
@@ -27,7 +27,7 @@ def read_audio_from_file(audio_path: str) -> str:
     Returns:
         str: The text from the audio
     """
-    audio_path = path_in_workspace(audio_path)
+    audio_path = path_in_workspace(filename)
     with open(audio_path, "rb") as audio_file:
         audio = audio_file.read()
     return read_audio(audio)

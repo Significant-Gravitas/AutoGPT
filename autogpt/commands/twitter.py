@@ -12,7 +12,7 @@ load_dotenv()
 @command(
     "send_tweet",
     "Send Tweet",
-    '"text": "<text>"',
+    '"tweet_text": "<tweet_text>"',
 )
 def send_tweet(tweet_text: str) -> str:
     """
