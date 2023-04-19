@@ -8,4 +8,33 @@ readme = "README.md"
 line-length = 88
 target-version = ['py310']
 include = '\.pyi?$'
-extend-exclude = ""
+packages = ["autogpt"]
+extend-exclude = '.+/(dist|.venv|venv|build)/.+'
+
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+line_length = 88
+sections = [
+    "FUTURE",
+    "STDLIB",
+    "THIRDPARTY",
+    "FIRSTPARTY",
+    "LOCALFOLDER"
+]
+skip = '''
+    .tox
+    __pycache__
+    *.pyc
+    .env
+    venv*/*
+    .venv/*
+    reports/*
+    dist/*
+
+'''
