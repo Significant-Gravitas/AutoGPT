@@ -70,6 +70,7 @@ def main(
     """
     # Put imports inside function to avoid importing everything when starting the CLI
     import logging
+    import sys
 
     from colorama import Fore
 
@@ -79,7 +80,7 @@ def main(
     from autogpt.logs import logger
     from autogpt.memory import get_memory
     from autogpt.prompt import construct_prompt
-    from autogpt.utils import get_latest_bulletin
+    from autogpt.utils import get_current_git_branch, get_latest_bulletin
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -105,6 +106,23 @@ def main(
             motd = get_latest_bulletin()
             if motd:
                 logger.typewriter_log("NEWS: ", Fore.GREEN, motd)
+            git_branch = get_current_git_branch()
+            if git_branch and git_branch != "stable":
+                logger.typewriter_log(
+                    "WARNING: ",
+                    Fore.RED,
+                    f"You are running on `{git_branch}` branch "
+                    "- this is not a supported branch.",
+                )
+            if sys.version_info < (3, 10):
+                logger.typewriter_log(
+                    "WARNING: ",
+                    Fore.RED,
+                    "You are running on an older version of Python. "
+                    "Some people have observed problems with certain "
+                    "parts of Auto-GPT with this version. "
+                    "Please consider upgrading to Python 3.10 or higher.",
+                )
         system_prompt = construct_prompt()
         # print(prompt)
         # Initialize variables
