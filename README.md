@@ -177,7 +177,6 @@ You can pass extra arguments, for instance, running with `--gpt3only` and `--con
 ```bash
 docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt --gpt3only --continuous
 ```
-
 ```bash
 docker-compose run --build --rm auto-gpt --gpt3only --continuous
 ```
