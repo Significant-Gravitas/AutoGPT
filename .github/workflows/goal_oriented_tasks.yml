@@ -18,10 +18,10 @@ jobs:
 
     steps:
     - name: Check out repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -35,5 +35,3 @@ jobs:
         coverage run --source=autogpt -m pytest -s -k tests/integration/goal_oriented
       env:
         OPENAI_API_KEY: 'dummy_api_key'
-        MEMORY_BACKEND: 'no_memory'
-        USE_AZURE: 'False'

@@ -42,6 +42,11 @@ class Config(metaclass=Singleton):
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
 
+
+<<<<<<< HEAD
+
+=======
+>>>>>>> fb5e916 (setup github action to v3)
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
