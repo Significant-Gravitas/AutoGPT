@@ -4,9 +4,8 @@ from typing import Dict, Generator, Optional
 import spacy
 from selenium.webdriver.remote.webdriver import WebDriver
 
-from autogpt import token_counter
 from autogpt.config import Config
-from autogpt.llm_utils import create_chat_completion
+from autogpt.llm_utils import create_chat_completion, count_message_tokens
 from autogpt.memory import get_memory
 
 CFG = Config()
@@ -70,7 +69,7 @@ def split_text(
 
 
 def token_usage_of_chunk(messages, model):
-    return token_counter.count_message_tokens(messages, model)
+    return count_message_tokens(messages, model)
 
 
 def summarize_text(
@@ -112,7 +111,7 @@ def summarize_text(
         MEMORY.add(memory_to_add)
 
         messages = [create_message(chunk, question)]
-        tokens_for_chunk = token_counter.count_message_tokens(messages, model)
+        tokens_for_chunk = count_message_tokens(messages, model)
         print(
             f"Summarizing chunk {i + 1} / {len(chunks)} of length {len(chunk)} characters, or {tokens_for_chunk} tokens"
         )
