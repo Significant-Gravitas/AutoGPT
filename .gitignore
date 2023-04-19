@@ -9,3 +9,9 @@ auto_gpt_workspace/*
 .env
 outputs/*
 ai_settings.yaml
+ai_settings.yaml
+scripts/pinecone_test.py
+scripts/auto_gpt_workspace/potential_next_steps.txt
+scripts/auto_gpt_workspace/requirements.txt
+.gitignore
+ai_settings.yaml
