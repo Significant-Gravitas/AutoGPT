@@ -139,6 +139,8 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
    ./run.sh start
    # On Windows:
    ./run.bat start
+   # Or you can use
+   python -m autogpt
    ```
    Running with `--help` after `start` lists all the possible command line arguments you can pass.
 
