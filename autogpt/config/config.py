@@ -29,8 +29,8 @@ class Config(metaclass=Singleton):
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
-        self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
-        self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+        self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4096))
+        self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8192))
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 3000))
         self.browse_spacy_language_model = os.getenv(
             "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
@@ -80,7 +80,7 @@ class Config(metaclass=Singleton):
         self.weaviate_embedded_path = os.getenv("WEAVIATE_EMBEDDED_PATH")
         self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
         self.use_weaviate_embedded = (
-            os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
+                os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
         )
 
         # milvus configuration, e.g., localhost:19530.
@@ -169,7 +169,7 @@ class Config(metaclass=Singleton):
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
         self.openai_api_version = (
-            config_params.get("azure_api_version") or "2023-03-15-preview"
+                config_params.get("azure_api_version") or "2023-03-15-preview"
         )
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", {})
 
