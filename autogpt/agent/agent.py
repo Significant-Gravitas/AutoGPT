@@ -59,7 +59,9 @@ class Agent:
         self.next_action_count = next_action_count
         self.pause_count = 0
         self.pause_loop = False
-        self.code_window_name = GetWindowText(GetForegroundWindow())  # Get the code execution window name
+        self.code_window_name = GetWindowText(
+            GetForegroundWindow()
+        )  # Get the code execution window name
         self.command_registry = command_registry
         self.config = config
         self.system_prompt = system_prompt
@@ -67,12 +69,18 @@ class Agent:
         self.shift_pressed = False
 
     def on_press(self, key):
-        current_window = GetWindowText(GetForegroundWindow())  # Get the current window name
+        current_window = GetWindowText(
+            GetForegroundWindow()
+        )  # Get the current window name
 
-        if current_window == self.code_window_name:  # Check if the current window matches the original code window name
-            if key == KeyCode.from_char('P') and self.shift_pressed:
+        if (
+            current_window == self.code_window_name
+        ):  # Check if the current window matches the original code window name
+            if key == KeyCode.from_char("P") and self.shift_pressed:
                 if self.pause_count >= 2:
-                    print("FEEDBACK REQUEST DETECTED. You will be able to give feedback on the next loop. Please wait.")
+                    print(
+                        "FEEDBACK REQUEST DETECTED. You will be able to give feedback on the next loop. Please wait."
+                    )
                 self.pause_count += 1
             elif key == Key.shift:
                 self.shift_pressed = True
