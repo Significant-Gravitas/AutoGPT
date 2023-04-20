@@ -15,6 +15,10 @@ CFG = Config()
 
 openai.api_key = CFG.openai_api_key
 
+if CFG.use_azure:
+    openai.api_type = "azure"
+    openai.api_base = CFG.openai_api_base
+    openai.api_version = CFG.openai_api_version
 
 def call_ai_function(
     function: str, args: list, description: str, model: str | None = None
