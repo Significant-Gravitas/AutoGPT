@@ -60,8 +60,7 @@ class MyScaleMemory(MemoryProviderSingleton):
             n = ",".join([f"'{self.escape_str(str(_n))}'" for _n in n])
             _data.append(f"({n})")
         i_str = f"""
-                INSERT INTO TABLE 
-                    {self.table_name}
+                INSERT INTO TABLE {self.table_name}
                 VALUES
                 {','.join(_data)}
                 """
