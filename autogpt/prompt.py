@@ -27,6 +27,7 @@ def get_prompt() -> str:
     prompt_generator = PromptGenerator()
 
     # Add constraints to the PromptGenerator object
+    # TODO: Make the token limit value configurable rather than a hard limit
     prompt_generator.add_constraint(
         "~4096 token limit for short term memory. Your short term memory is short, so"
         " immediately save important information to files."
