@@ -69,6 +69,7 @@ Development of this free, open-source project is made possible by all the <a hre
 
 ### Optional
 - Memory backend (pick one)
+  - [DeepLake] (https://app.activeloop.ai)
   - [Pinecone](https://www.pinecone.io/)
   - [Milvus](https://milvus.io/)
   - [Redis](https://redis.io)
@@ -283,11 +284,12 @@ ALLOWLISTED_PLUGINS=example-plugin1,example-plugin2,example-plugin3
 
 ## Setting Your Cache Type
 
-By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+By default, Auto-GPT is going to use LocalCache instead of redis, Pinecone, DeepLake or other supported memory backends.
 
 To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
 
 * `local` (default) uses a local JSON cache file
+* `deeplake` uses deeplake token you configured in your ENV settings
 * `pinecone` uses the Pinecone.io account you configured in your ENV settings
 * `redis` will use the redis cache that you configured
 * `milvus` will use the milvus cache that you configured
@@ -319,6 +321,38 @@ You can specify the memory index for redis using the following:
 ```bash
 MEMORY_INDEX=<WHATEVER>
 ```
+
+### DeepLake Setup
+[DeepLake](https://app.activeloop.ai) is an open-source, highly scalable multi-modal vector database that can easily scale up to billions of rows and provide fast relevant search.
+Just install deeplake with the following command:
+`pip install deeplake`
+
+**Optional:**
+- set `ACTIVELOOP_DATASET` in `.env` to change deeplake dataset name as you want, `mem://AutoGPT` is the default name.
+
+if you want to increase capacity of your memory and to store data on a remote server you can do the following (advanced):
+
+1. Go to [DeepLake](https://app.activeloop.ai) and make an account if you don't already have one.
+2. Log in and under the user choose API tokens and create a new api token if don't have already exisitng one and copy it
+
+In the `.env` file set:
+- `ACTIVELOOP_TOKEN`
+
+Alternatively, you can set them from the command line:
+
+For Windows Users:
+
+```bash
+setx ACTIVELOOP_TOKEN <YOUR_ACTIVELOOP_TOKEN>
+```
+
+For macOS and Linux users:
+```bash
+export ACTIVELOOP_TOKEN <YOUR_ACTIVELOOP_TOKEN>
+
+and finally set `ACTIVELOOP_DATASET` in `.env` file to where you want to store it (ex: "hub://adilkhan/AutoGPT")
+```
+
 
 ### 🌲 Pinecone API Key Setup
 

@@ -37,6 +37,13 @@ except ImportError:
     # print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
 
+try:
+    from autogpt.memory.deeplake import DeepLakeMemory
+
+    supported_memory.append("deeplake")
+except ImportError:
+    DeepLakeMemory = None
+
 
 def get_memory(cfg, init=False):
     memory = None
@@ -74,6 +81,13 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "deeplake":
+        if not DeepLakeMemory:
+            print(
+                "Error: DeepLake sdk is not installed."
+                "Please install deeplake to use DeepLake as memory backend."
+                "To install DeepLake run: `pip install deeplake`"
+            )
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
@@ -96,4 +110,5 @@ __all__ = [
     "NoMemory",
     "MilvusMemory",
     "WeaviateMemory",
+    "DeepLakeMemory",
 ]
