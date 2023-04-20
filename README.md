@@ -282,6 +282,8 @@ If you add the plugins class name to the `ALLOWLISTED_PLUGINS` in the `.env` you
 ALLOWLISTED_PLUGINS=example-plugin1,example-plugin2,example-plugin3
 ```
 
+See PLUGINS.md for a list of known plugins
+
 ## Setting Your Cache Type
 
 By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
