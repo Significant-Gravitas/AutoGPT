@@ -5,19 +5,24 @@ import subprocess
 import docker
 from docker.errors import ImageNotFound
 
-from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
+from autogpt.commands.command import command
+from autogpt.config import Config
+from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
+
+CFG = Config()
 
 
-def execute_python_file(file: str):
+@command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
+def execute_python_file(filename: str) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
-        file (str): The name of the file to execute
+        filename (str): The name of the file to execute
 
     Returns:
         str: The output of the file
     """
-
+    file = filename
     print(f"Executing file '{file}' in workspace '{WORKSPACE_PATH}'")
 
     if not file.endswith(".py"):
@@ -40,10 +45,10 @@ def execute_python_file(file: str):
     try:
         client = docker.from_env()
 
-        # You can replace 'python:3.8' with the desired Python image/version
+        # You can replace this with the desired Python image/version
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
-        image_name = "python:3.10"
+        image_name = "python:3-alpine"
         try:
             client.images.get(image_name)
             print(f"Image '{image_name}' found locally")
@@ -84,10 +89,25 @@ def execute_python_file(file: str):
 
         return logs
 
+    except docker.errors.DockerException as e:
+        print(
+            "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
+        )
+        return f"Error: {str(e)}"
+
     except Exception as e:
         return f"Error: {str(e)}"
 
 
+@command(
+    "execute_shell",
+    "Execute Shell Command, non-interactive commands only",
+    '"command_line": "<command_line>"',
+    CFG.execute_local_commands,
+    "You are not allowed to run local shell commands. To execute"
+    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+    "in your config. Do not attempt to bypass the restriction.",
+)
 def execute_shell(command_line: str) -> str:
     """Execute a shell command and return the output
 
@@ -97,6 +117,13 @@ def execute_shell(command_line: str) -> str:
     Returns:
         str: The output of the command
     """
+
+    if not CFG.execute_local_commands:
+        return (
+            "You are not allowed to run local shell commands. To execute"
+            " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+            "in your config. Do not attempt to bypass the restriction."
+        )
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
     if str(WORKSPACE_PATH) not in current_dir:
@@ -111,7 +138,43 @@ def execute_shell(command_line: str) -> str:
 
     os.chdir(current_dir)
 
-    return output
+
+@command(
+    "execute_shell_popen",
+    "Execute Shell Command, non-interactive commands only",
+    '"command_line": "<command_line>"',
+    CFG.execute_local_commands,
+    "You are not allowed to run local shell commands. To execute"
+    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
+    "in your config. Do not attempt to bypass the restriction.",
+)
+def execute_shell_popen(command_line) -> str:
+    """Execute a shell command with Popen and returns an english description
+    of the event and the process id
+
+    Args:
+        command_line (str): The command line to execute
+
+    Returns:
+        str: Description of the fact that the process started and its id
+    """
+    current_dir = os.getcwd()
+    # Change dir into workspace if necessary
+    if str(WORKSPACE_PATH) not in current_dir:
+        os.chdir(WORKSPACE_PATH)
+
+    print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
+
+    do_not_show_output = subprocess.DEVNULL
+    process = subprocess.Popen(
+        command_line, shell=True, stdout=do_not_show_output, stderr=do_not_show_output
+    )
+
+    # Change back to whatever the prior working dir was
+
+    os.chdir(current_dir)
+
+    return f"Subprocess started with PID:'{str(process.pid)}'"
 
 
 def we_are_running_in_a_docker_container() -> bool:
