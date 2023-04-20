@@ -5,9 +5,9 @@ A module that contains the AIConfig class object that contains the configuration
 from __future__ import annotations
 
 import os
-import platform
-from typing import Optional, Type
 from pathlib import Path
+from typing import Optional, Type
+import platform
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
@@ -134,7 +134,6 @@ class AIConfig:
 
         # Construct full prompt
         full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\nThe OS you are running on is {os_name} {os_version}\n{prompt_start}\n\nGOALS:\n\n"
-
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
         self.prompt_generator = prompt_generator
