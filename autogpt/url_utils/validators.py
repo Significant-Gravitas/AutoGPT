@@ -8,6 +8,7 @@ from requests.compat import urljoin
 def validate_url(func: Callable[..., Any]) -> Any:
     """The command validate_url is used to validate urls for any command that requires
     a url as an arugment"""
+
     @functools.wraps(func)
     def wrapper(url, *args, **kwargs) -> Any:
         # Most basic check if the URL is valid:
