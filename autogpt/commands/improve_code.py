@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import json
 
+from autogpt.commands.command import command
 from autogpt.llm_utils import call_ai_function
 
 
+@command(
+    "improve_code",
+    "Get Improved Code",
+    '"suggestions": "<list_of_suggestions>", "code": "<full_code_string>"',
+)
 def improve_code(suggestions: list[str], code: str) -> str:
     """
     A function that takes in code and suggestions and returns a response from create
