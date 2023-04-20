@@ -180,7 +180,7 @@ def shutdown() -> NoReturn:
     "Start GPT Agent",
     '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"',
 )
-def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
+def start_agent(name: str, task: str, prompt: str, model=CFG.chat_llm_model) -> str:
     """Start an agent with a given name, task, and prompt
 
     Args:
