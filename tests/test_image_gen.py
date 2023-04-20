@@ -19,10 +19,11 @@ def is_ci():
     if os.getenv("CI") is not None:
         if os.getenv("CI").lower() == "true":
             return True
+        os.environ["CI"] = "False"
     return False
 
 
-@unittest.skipIf(not is_ci(), "Skipping image generation tests")
+@unittest.skipIf(not os.getenv("CI"), "Skipping image generation tests")
 class TestImageGen(unittest.TestCase):
     def setUp(self):
         self.config = Config()
@@ -108,4 +109,5 @@ class TestImageGen(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    is_ci()
     unittest.main()
