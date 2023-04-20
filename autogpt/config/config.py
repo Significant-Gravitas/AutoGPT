@@ -82,7 +82,7 @@ class Config(metaclass=Singleton):
         self.weaviate_embedded_path = os.getenv("WEAVIATE_EMBEDDED_PATH")
         self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
         self.use_weaviate_embedded = (
-                os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
+            os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
         )
 
         # milvus configuration, e.g., localhost:19530.
@@ -183,7 +183,7 @@ class Config(metaclass=Singleton):
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
         self.openai_api_version = (
-                config_params.get("azure_api_version") or "2023-03-15-preview"
+            config_params.get("azure_api_version") or "2023-03-15-preview"
         )
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", {})
 
