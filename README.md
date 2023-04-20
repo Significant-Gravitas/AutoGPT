@@ -35,6 +35,7 @@ Development of this free, open-source project is made possible by all the <a hre
 <p align="center">
 <div align="center" class="logo-container">
 
+<a href="https://www.zilliz.com/"><img src="https://user-images.githubusercontent.com/22963551/233313799-74105a64-258d-4f99-8e50-1d7d823a7ba6.png" height="40px" alt="Zilliz" /></a>
 <a href="https://roost.ai"><img src="https://user-images.githubusercontent.com/22963551/233059778-055502b4-fa2e-4334-82b6-9a12252fd9e1.png" height="40px" alt="Roost.AI" /></a>
 <a href="https://nuclei.ai/"><img src="https://user-images.githubusercontent.com/22963551/233059785-28ce2549-62de-42c2-925a-c0aa08aef6bd.png" height="40px" alt="NucleiAI" /></a>
 <a href="https://www.algohash.org/"><img src="https://user-images.githubusercontent.com/22963551/233061211-9a9ec216-9fc0-46fd-a124-bf951057207c.png" height="40px" alt="Algohash" /></a>
