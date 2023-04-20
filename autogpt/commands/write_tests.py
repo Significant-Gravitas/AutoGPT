@@ -3,9 +3,15 @@ from __future__ import annotations
 
 import json
 
+from autogpt.commands.command import command
 from autogpt.llm_utils import call_ai_function
 
 
+@command(
+    "write_tests",
+    "Write Tests",
+    '"code": "<full_code_string>", "focus": "<list_of_focus_areas>"',
+)
 def write_tests(code: str, focus: list[str]) -> str:
     """
     A function that takes in code and focus topics and returns a response from create

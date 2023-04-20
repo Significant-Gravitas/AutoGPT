@@ -21,24 +21,24 @@ class Agent:
         full_message_history: The full message history.
         next_action_count: The number of actions to execute.
         system_prompt: The system prompt is the initial prompt that defines everything
-        the AI needs to know to achieve its task successfully.
+          the AI needs to know to achieve its task successfully.
         Currently, the dynamic and customizable information in the system prompt are
-        ai_name, description and goals.
+          ai_name, description and goals.
 
-        triggering_prompt: The last sentence the AI will see before answering. For Auto
-        -GPT, this prompt is:
+        triggering_prompt: The last sentence the AI will see before answering.
+            For Auto-GPT, this prompt is:
             Determine which next command to use, and respond using the format specified
-            above:
+              above:
             The triggering prompt is not part of the system prompt because between the
-            system prompt and the triggering
+              system prompt and the triggering
             prompt we have contextual information that can distract the AI and make it
-            forget that its goal is to find the next task to achieve.
+              forget that its goal is to find the next task to achieve.
             SYSTEM PROMPT
             CONTEXTUAL INFORMATION (memory, previous conversations, anything relevant)
             TRIGGERING PROMPT
 
-        The triggering prompt reminds the AI about its short term meta task (defining
-          the next task)
+        The triggering prompt reminds the AI about its short term meta task
+        (defining the next task)
     """
 
     def __init__(
@@ -47,6 +47,8 @@ class Agent:
         memory,
         full_message_history,
         next_action_count,
+        command_registry,
+        config,
         system_prompt,
         triggering_prompt,
     ):
@@ -54,6 +56,8 @@ class Agent:
         self.memory = memory
         self.full_message_history = full_message_history
         self.next_action_count = int(next_action_count)
+        self.command_registry = command_registry
+        self.config = config
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
 
@@ -81,6 +85,7 @@ class Agent:
             # Send message to AI, get response
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
+                    self,
                     self.system_prompt,
                     self.triggering_prompt,
                     self.full_message_history,
@@ -89,6 +94,10 @@ class Agent:
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
+            for plugin in cfg.plugins:
+                if not plugin.can_handle_post_planning():
+                    continue
+                assistant_reply_json = plugin.post_planning(self, assistant_reply_json)
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
@@ -97,8 +106,6 @@ class Agent:
                 try:
                     print_assistant_thoughts(self.ai_name, assistant_reply_json)
                     command_name, arguments = get_command(assistant_reply_json)
-                    # command_name, arguments = assistant_reply_json_valid["command"]
-                    # ["name"], assistant_reply_json_valid["command"]["args"]
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
                 except Exception as e:
@@ -218,30 +225,40 @@ class Agent:
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
             else:
-                result = (
-                    f"Command {command_name} returned: "
-                    f"{execute_command(command_name, arguments)}"
+                for plugin in cfg.plugins:
+                    if not plugin.can_handle_pre_command():
+                        continue
+                    command_name, arguments = plugin.pre_command(
+                        command_name, arguments
+                    )
+                command_result = execute_command(
+                    self.command_registry,
+                    command_name,
+                    arguments,
+                    self.config.prompt_generator,
                 )
                 if int(self.next_action_count) > 0:
                     self.next_action_count -= 1
-
-            memory_to_add = (
-                f"Assistant Reply: {assistant_reply} "
-                f"\nResult: {result} "
-                f"\nHuman Feedback: {user_input} "
-            )
-
-            self.memory.add(memory_to_add)
-
-            # Check if there's a result from the command append it to the message
-            # history
-            if result is not None:
-                self.full_message_history.append(create_chat_message("system", result))
-                logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
-            else:
-                self.full_message_history.append(
-                    create_chat_message("system", "Unable to execute command")
+            if command_name != "do_nothing":
+                memory_to_add = (
+                    f"Assistant Reply: {assistant_reply} "
+                    f"\nResult: {result} "
+                    f"\nHuman Feedback: {user_input} "
                 )
-                logger.typewriter_log(
-                    "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
-                )
+
+                self.memory.add(memory_to_add)
+
+                # Check if there's a result from the command append it to the message
+                # history
+                if result is not None:
+                    self.full_message_history.append(
+                        create_chat_message("system", result)
+                    )
+                    logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
+                else:
+                    self.full_message_history.append(
+                        create_chat_message("system", "Unable to execute command")
+                    )
+                    logger.typewriter_log(
+                        "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
+                    )
