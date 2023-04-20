@@ -6,11 +6,22 @@ from requests.compat import urljoin
 
 
 def validate_url(func: Callable[..., Any]) -> Any:
-    """The command validate_url is used to validate urls for any command that requires
+    """The method decorator validate_url is used to validate urls for any command that requires
     a url as an arugment"""
 
     @functools.wraps(func)
     def wrapper(url: str, *args, **kwargs) -> Any:
+        """Check if the URL is valid using a basic check, urllib check, and local file check
+
+        Args:
+            url (str): The URL to check
+
+        Returns:
+            the result of the wrapped function
+
+        Raises:
+            ValueError if the url fails any of the validation tests
+        """
         # Most basic check if the URL is valid:
         if not url.startswith("http://") and not url.startswith("https://"):
             raise ValueError("Invalid URL format")
