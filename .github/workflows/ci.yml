@@ -70,3 +70,9 @@ jobs:
         coverage report
         coverage xml
       if: success() || failure()
+
+    - name: Publish coverage report
+      uses: orgoro/coverage@v3
+        with:
+          coverageFile: coverage.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
