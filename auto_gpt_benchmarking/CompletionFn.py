@@ -1,5 +1,3 @@
-import importlib
-from typing import Optional
 from evals.api import CompletionFn, CompletionResult
 
 from evals.prompt.base import CompletionPrompt
@@ -16,12 +14,21 @@ class AutoGPTCompletionResult(CompletionResult):
 
 
 class AutoGPTCompletionFn(CompletionFn):
-    def __init__(self, **kwargs) -> None:
-        pass
+
+    def __init__(self, auto_gpt_path, **kwargs) -> None:
+        self.auto_gpt_path = auto_gpt_path
+        self.agent = None
 
     def __call__(self, prompt, **kwargs) -> AutoGPTCompletionResult:
         prompt = CompletionPrompt(prompt).to_formatted_prompt()
-        agent = AutoGPTAgent(prompt)
-        response = agent.start()
+        self.kill_agent()
+        self.agent = AutoGPTAgent(prompt, self.auto_gpt_path)
+        response = self.agent.start()
         record_sampling(prompt=prompt, sampled=response)
         return AutoGPTCompletionResult(response)
+
+    def kill_agent(self):
+        if self.agent:
+            self.agent.kill()
+
+

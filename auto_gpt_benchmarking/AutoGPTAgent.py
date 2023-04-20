@@ -10,7 +10,9 @@ The model is instantiated with a prompt from the AutoGPT completion function.
 Eventualy we will also save and log all of the associated output and thinking for the model as well
 """
 from pathlib import Path
-import os
+import docker
+import asyncio
+import aiodocker
 
 
 class AutoGPTAgent:
@@ -36,11 +38,33 @@ class AutoGPTAgent:
         if self.file_logger.exists():
             self.file_logger.unlink()
 
-    def _copy_ai_settings(self):
+    def _copy_ai_settings(self) -> None:
         self.ai_settings_dest.write_text(self.ai_settings_file.read_text())
 
-    def _copy_prompt(self):
+    def _copy_prompt(self) -> None:
         self.prompt_file.write_text(self.prompt)
+
+    async def _stream_logs(self, container: aiodocker.containers.DockerContainer) -> None:
+        try:
+            async for line in container.log(stdout=True, stderr=True, follow=True, tail="all"):
+                print(line.strip())
+                await asyncio.sleep(1)
+        except aiodocker.exceptions.DockerError as e:
+            # Handle Docker errors (e.g., container is killed or removed)
+            print('Docker error: {}'.format(e))
+
+    async def _run_stream_logs(self) -> None:
+        """
+        This grabs the docker containers id and streams the logs to the console with aiodocker.
+        :return: None
+        """
+        async with aiodocker.Docker() as docker_client:
+            try:
+                container = docker_client.containers.container(self.container.id)
+                await self._stream_logs(container)
+            except aiodocker.exceptions.DockerError as e:
+                # Handle cases when the container is not found
+                print('Container not found: {}'.format(e))
 
     def _start_agent(self):
         """
@@ -51,9 +75,26 @@ class AutoGPTAgent:
         You also must set up the .env file in the Auto-GPT repo.
         :return:
         """
+        client = docker.from_env()
         env_file = self.auto_gpt_path / ".env"
-        # run it in continuous mode and skip re-prompts
-        os.system(f"docker run -it --env-file={env_file} -v {self.auto_workspace}:/home/appuser/auto_gpt_workspace -v {self.auto_gpt_path}/autogpt:/home/appuser/autogpt autogpt --continuous -C '/home/appuser/auto_gpt_workspace/ai_settings.yaml'")
+        envs = [
+            f"{line.strip()}" for line in open(
+                env_file
+            ) if line.strip() != "" and line.strip()[0] != "#" and line.strip()[0] != "\n"]
+
+        self.container = client.containers.run(
+            image="autogpt",
+            command="--continuous -C '/home/appuser/auto_gpt_workspace/ai_settings.yaml'",
+            environment=envs,
+            volumes={
+                self.auto_workspace: {"bind": "/home/appuser/auto_gpt_workspace", "mode": "rw"},
+                f"{self.auto_gpt_path}/autogpt": {"bind": "/home/appuser/autogpt", "mode": "rw"},
+            },
+            stdin_open=True,
+            tty=True,
+            detach=True
+        )
+        asyncio.run(self._run_stream_logs())
 
     def _poll_for_output(self):
         """
@@ -64,8 +105,8 @@ class AutoGPTAgent:
             if self.output_file.exists():
                 return self.output_file.read_text()
 
-    def __init__(self, prompt):
-        self.auto_gpt_path = Path(__file__).parent / "Auto-GPT"
+    def __init__(self, prompt, auto_gpt_path: str):
+        self.auto_gpt_path = Path(auto_gpt_path)
         self.auto_workspace = self.auto_gpt_path / "auto_gpt_workspace"
         self.prompt_file = self.auto_workspace / "prompt.txt"
         self.output_file = self.auto_workspace / "output.txt"
@@ -76,15 +117,32 @@ class AutoGPTAgent:
         self._clean_up_workspace()
         self._copy_ai_settings()
         self._copy_prompt()
+        self.container = None
+        self.killing = False
+        self.logging_task = None
 
     def start(self):
         self._start_agent()
         answer = self._poll_for_output()
-        print('about to do clean up')
-        print(answer)
-        self._clean_up_workspace()
-        print('did clean up')
+        print(f"Prompt was: {self.prompt}, Answer was: {answer}")
+        self.kill()
         return answer
+
+    def kill(self):
+        if self.killing:
+            return
+        self.killing = True
+        self._clean_up_workspace()
+        if self.container:
+            # kill the container
+            try:
+                self.container.kill()
+                self.container.remove()
+            except docker.errors.APIError:
+                print('Couldn\'t find container to kill. Assuming container successfully killed itself.')
+            if self.logging_task:
+                self.logging_task.cancel()
+        self.killing = False
 
 
 
