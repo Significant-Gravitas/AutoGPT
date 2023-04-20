@@ -9,11 +9,16 @@ from autogpt.commands.command import Command, CommandRegistry
 
 
 class TestCommand:
+    """ Test cases for the Command class."""
     @staticmethod
     def example_function(arg1: int, arg2: str) -> str:
+        """Example function for testing the Command class."""
+        # This function is static because it is not used by any other test cases.
         return f"{arg1} - {arg2}"
 
     def test_command_creation(self):
+        """Test that a Command object can be created."""
+        # Create a Command object with the example_function.
         cmd = Command(
             name="example", description="Example command", method=self.example_function
         )
@@ -24,29 +29,36 @@ class TestCommand:
         assert cmd.signature == "(arg1: int, arg2: str) -> str"
 
     def test_command_call(self):
+        """Test that a Command object can be called like a function."""
+        # Create a Command object with the example_function.
         cmd = Command(
             name="example", description="Example command", method=self.example_function
         )
-
+        # Call the Command object like a function.
         result = cmd(arg1=1, arg2="test")
         assert result == "1 - test"
 
     def test_command_call_with_invalid_arguments(self):
+        """Test that calling a Command object with invalid arguments raises a TypeError."""
+        # Create a Command object with the example_function.
         cmd = Command(
             name="example", description="Example command", method=self.example_function
         )
-
+        # Call the Command object with invalid arguments.
         with pytest.raises(TypeError):
             cmd(arg1="invalid", does_not_exist="test")
 
     def test_command_default_signature(self):
+        """Test that the default signature is generated correctly."""
+        # Create a Command object with the example_function.
         cmd = Command(
             name="example", description="Example command", method=self.example_function
         )
-
+        # Check that the default signature is correct.
         assert cmd.signature == "(arg1: int, arg2: str) -> str"
 
     def test_command_custom_signature(self):
+        """Test that a custom signature can be set."""
         custom_signature = "custom_arg1: int, custom_arg2: str"
         cmd = Command(
             name="example",
@@ -54,7 +66,7 @@ class TestCommand:
             method=self.example_function,
             signature=custom_signature,
         )
-
+        # Check that the custom signature is correct.
         assert cmd.signature == custom_signature
 
 
