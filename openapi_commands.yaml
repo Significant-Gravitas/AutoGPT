@@ -7,15 +7,15 @@
 # Weather GPT OpenAI Plugin
 # https://weathergpt.vercel.app/
 weathergpt:
-    url: https://weathergpt.vercel.app/
+    url: https://weathergpt.vercel.app
     openai_manifest: /.well-known/ai-plugin.json
-    openapi_spec: https://weathergpt.vercel.app/openapi.json
+    openapi_spec: /openapi.json
     enabled: true
     auth:
         type: none
 
 weatherapi:
-    url: https://weathergpt.vercel.app/
+    url: https://weathergpt.vercel.app
     openai_manifest: /.well-known/ai-plugin.json
     openapi_spec:
     enabled: true

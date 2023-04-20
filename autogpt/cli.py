@@ -1,6 +1,8 @@
 """Main script for the autogpt package."""
 import click
 
+from autogpt.commands.openapi import import_openapi_apis_as_commands
+
 
 @click.group(invoke_without_command=True)
 @click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
@@ -142,23 +144,9 @@ def main(
         command_registry.import_commands("autogpt.commands.web_selenium")
         command_registry.import_commands("autogpt.commands.write_tests")
         command_registry.import_commands("autogpt.app")
-
         if cfg.openapi_apis:
-            for plugin in openai_plugins:
-                manifest = plugin._manifest
-                openapi_spec = plugin._openapi_spec
-                name = plugin._name
-                client = plugin._client
-                description = plugin._description
-                methods = plugin._modules
-                for method_name, method in methods.items():
-                    command = Command(
-                        name=method_name,
-                        description=method['description'],
-                        method=method['method'],
-                        signature=method['signature']
-                    )
-                    command_registry.register(command)
+            # Importing OpenAPI APIs as commands
+            command_registry = import_openapi_apis_as_commands(command_registry, cfg)
 
         ai_name = ""
         ai_config = construct_main_ai_config()
