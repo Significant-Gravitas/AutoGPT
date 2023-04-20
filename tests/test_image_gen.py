@@ -13,7 +13,16 @@ def lst(txt):
     return txt.split(":")[1].strip()
 
 
-@unittest.skipIf(not os.getenv("CI"), "Skipping image generation tests")
+# Chreck if we are running in CI
+def is_ci():
+    """Check if we are running in CI"""
+    if os.getenv("CI") is not None:
+        if os.getenv("CI").lower() == "true":
+            return True
+    return False
+
+
+@unittest.skipIf(not is_ci(), "Skipping image generation tests")
 class TestImageGen(unittest.TestCase):
     def setUp(self):
         self.config = Config()
