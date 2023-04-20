@@ -1,9 +1,7 @@
 """ GTTS Voice. """
-import os
-
 import gtts
-from playsound import playsound
 
+from autogpt.speech.playback import play_audio
 from autogpt.speech.base import VoiceBase
 
 
@@ -16,7 +14,6 @@ class GTTSVoice(VoiceBase):
     def _speech(self, text: str, _: int = 0) -> bool:
         """Play the given text."""
         tts = gtts.gTTS(text)
-        tts.save("speech.mp3")
-        playsound("speech.mp3", True)
-        os.remove("speech.mp3")
+        audio_data = b''.join(tts.stream())
+        play_audio(audio_data)
         return True

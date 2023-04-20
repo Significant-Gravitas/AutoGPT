@@ -1,9 +1,7 @@
 """ Brian speech module for autogpt """
-import os
-
 import requests
-from playsound import playsound
 
+from autogpt.speech.playback import play_audio
 from autogpt.speech.base import VoiceBase
 
 
@@ -29,10 +27,7 @@ class BrianSpeech(VoiceBase):
         response = requests.get(tts_url)
 
         if response.status_code == 200:
-            with open("speech.mp3", "wb") as f:
-                f.write(response.content)
-            playsound("speech.mp3")
-            os.remove("speech.mp3")
+            play_audio(response.content)
             return True
         else:
             print("Request failed with status code:", response.status_code)
