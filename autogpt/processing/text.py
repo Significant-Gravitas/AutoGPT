@@ -1,15 +1,24 @@
 """Text processing functions"""
-from typing import Generator, Optional, Dict
+from typing import Dict, Generator, Optional
+
+import spacy
 from selenium.webdriver.remote.webdriver import WebDriver
-from autogpt.memory import get_memory
+
+from autogpt import token_counter
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
+from autogpt.memory import get_memory
 
 CFG = Config()
 MEMORY = get_memory(CFG)
 
 
-def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
+def split_text(
+    text: str,
+    max_length: int = CFG.browse_chunk_max_length,
+    model: str = CFG.fast_llm_model,
+    question: str = "",
+) -> Generator[str, None, None]:
     """Split text into chunks of a maximum length
 
     Args:
@@ -22,21 +31,46 @@ def split_text(text: str, max_length: int = 8192) -> Generator[str, None, None]:
     Raises:
         ValueError: If the text is longer than the maximum length
     """
-    paragraphs = text.split("\n")
-    current_length = 0
+    flatened_paragraphs = " ".join(text.split("\n"))
+    nlp = spacy.load(CFG.browse_spacy_language_model)
+    nlp.add_pipe("sentencizer")
+    doc = nlp(flatened_paragraphs)
+    sentences = [sent.text.strip() for sent in doc.sents]
+
     current_chunk = []
 
-    for paragraph in paragraphs:
-        if current_length + len(paragraph) + 1 <= max_length:
-            current_chunk.append(paragraph)
-            current_length += len(paragraph) + 1
+    for sentence in sentences:
+        message_with_additional_sentence = [
+            create_message(" ".join(current_chunk) + " " + sentence, question)
+        ]
+
+        expected_token_usage = (
+            token_usage_of_chunk(messages=message_with_additional_sentence, model=model)
+            + 1
+        )
+        if expected_token_usage <= max_length:
+            current_chunk.append(sentence)
         else:
-            yield "\n".join(current_chunk)
-            current_chunk = [paragraph]
-            current_length = len(paragraph) + 1
+            yield " ".join(current_chunk)
+            current_chunk = [sentence]
+            message_this_sentence_only = [
+                create_message(" ".join(current_chunk), question)
+            ]
+            expected_token_usage = (
+                token_usage_of_chunk(messages=message_this_sentence_only, model=model)
+                + 1
+            )
+            if expected_token_usage > max_length:
+                raise ValueError(
+                    f"Sentence is too long in webpage: {expected_token_usage} tokens."
+                )
 
     if current_chunk:
-        yield "\n".join(current_chunk)
+        yield " ".join(current_chunk)
+
+
+def token_usage_of_chunk(messages, model):
+    return token_counter.count_message_tokens(messages, model)
 
 
 def summarize_text(
@@ -56,11 +90,16 @@ def summarize_text(
     if not text:
         return "Error: No text to summarize"
 
+    model = CFG.fast_llm_model
     text_length = len(text)
     print(f"Text length: {text_length} characters")
 
     summaries = []
-    chunks = list(split_text(text))
+    chunks = list(
+        split_text(
+            text, max_length=CFG.browse_chunk_max_length, model=model, question=question
+        ),
+    )
     scroll_ratio = 1 / len(chunks)
 
     for i, chunk in enumerate(chunks):
@@ -72,16 +111,20 @@ def summarize_text(
 
         MEMORY.add(memory_to_add)
 
-        print(f"Summarizing chunk {i + 1} / {len(chunks)}")
         messages = [create_message(chunk, question)]
+        tokens_for_chunk = token_counter.count_message_tokens(messages, model)
+        print(
+            f"Summarizing chunk {i + 1} / {len(chunks)} of length {len(chunk)} characters, or {tokens_for_chunk} tokens"
+        )
 
         summary = create_chat_completion(
-            model=CFG.fast_llm_model,
+            model=model,
             messages=messages,
-            max_tokens=CFG.browse_summary_max_token,
         )
         summaries.append(summary)
-        print(f"Added chunk {i + 1} summary to memory")
+        print(
+            f"Added chunk {i + 1} summary to memory, of length {len(summary)} characters"
+        )
 
         memory_to_add = f"Source: {url}\n" f"Content summary part#{i + 1}: {summary}"
 
@@ -93,9 +136,8 @@ def summarize_text(
     messages = [create_message(combined_summary, question)]
 
     return create_chat_completion(
-        model=CFG.fast_llm_model,
+        model=model,
         messages=messages,
-        max_tokens=CFG.browse_summary_max_token,
     )
 
 
