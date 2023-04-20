@@ -22,8 +22,11 @@ class MilvusMemory(MemoryProviderSingleton):
             milvus_port = parsed_url.port
             milvus_uri = f"https://{milvus_host}:{milvus_port}"
             connections.connect("default",uri=milvus_uri, user=milvus_user, password=milvus_password, secure=True)
+            index_type = "AUTOINDEX"
         else: 
             connections.connect(address=cfg.milvus_addr)
+            index_type = "HNSW"
+            
         fields = [
             FieldSchema(name="pk", dtype=DataType.INT64, is_primary=True, auto_id=True),
             FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=1536),
@@ -41,7 +44,7 @@ class MilvusMemory(MemoryProviderSingleton):
                 "embeddings",
                 {
                     "metric_type": "IP",
-                    "index_type": "AUTOINDEX",
+                    "index_type": index_type,
                     "params": {"M": 8, "efConstruction": 64},
                 },
                 index_name="embeddings",
