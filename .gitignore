@@ -15,6 +15,7 @@ last_run_ai_settings.yaml
 .vscode
 .idea/*
 auto-gpt.json
+AutoGpt.json
 log.txt
 log-ingestion.txt
 logs
