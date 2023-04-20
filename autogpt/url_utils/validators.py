@@ -10,7 +10,7 @@ def validate_url(func: Callable[..., Any]) -> Any:
     a url as an arugment"""
 
     @functools.wraps(func)
-    def wrapper(url, *args, **kwargs) -> Any:
+    def wrapper(url: str, *args, **kwargs) -> Any:
         # Most basic check if the URL is valid:
         if not url.startswith("http://") and not url.startswith("https://"):
             raise ValueError("Invalid URL format")
