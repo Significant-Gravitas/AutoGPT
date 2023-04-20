@@ -10,6 +10,7 @@ from autogpt.memory.local import LocalCache
 
 class TestLocalCache(unittest.TestCase):
     """Tests for LocalCache class"""
+
     def random_string(self, length):
         """Generate a random string of fixed length"""
         return "".join(random.choice(string.ascii_letters) for _ in range(length))

@@ -11,6 +11,7 @@ from browse import extract_hyperlinks
 
 class TestBrowseLinks(unittest.TestCase):
     """Class for testing the extract_hyperlinks function"""
+
     def test_extract_hyperlinks(self):
         """Test the extract_hyperlinks function"""
         body = """

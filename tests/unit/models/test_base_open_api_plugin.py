@@ -11,6 +11,7 @@ from autogpt.models.base_open_ai_plugin import (
 
 class DummyPlugin(BaseOpenAIPlugin):
     """A dummy plugin for testing purposes."""
+
     pass
 
 

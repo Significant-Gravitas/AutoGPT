@@ -6,6 +6,7 @@ from autogpt.token_counter import count_message_tokens, count_string_tokens
 
 class TestTokenCounter(unittest.TestCase):
     """Test the token counter."""
+
     def test_count_message_tokens(self):
         """Test that the message tokens are counted correctly."""
         messages = [

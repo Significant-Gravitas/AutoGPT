@@ -23,8 +23,10 @@ def test_inspect_zip_for_module():
 @pytest.fixture
 def mock_config_denylist_allowlist_check():
     """Mock config object for testing the denylist_allowlist_check function"""
+
     class MockConfig:
         """Mock config object for testing the denylist_allowlist_check function"""
+
         plugins_denylist = ["BadPlugin"]
         plugins_allowlist = ["GoodPlugin"]
 
@@ -97,8 +99,10 @@ def config_with_plugins():
 @pytest.fixture
 def mock_config_openai_plugin():
     """Mock config object for testing the scan_plugins function"""
+
     class MockConfig:
         """Mock config object for testing the scan_plugins function"""
+
         plugins_dir = PLUGINS_TEST_DIR
         plugins_openai = [PLUGIN_TEST_OPENAI]
         plugins_denylist = ["AutoGPTPVicuna"]
@@ -117,6 +121,7 @@ def test_scan_plugins_openai(mock_config_openai_plugin):
 @pytest.fixture
 def mock_config_generic_plugin():
     """Mock config object for testing the scan_plugins function"""
+
     # Test that the function returns the correct number of plugins
     class MockConfig:
         plugins_dir = PLUGINS_TEST_DIR

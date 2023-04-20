@@ -9,7 +9,8 @@ from autogpt.commands.command import Command, CommandRegistry
 
 
 class TestCommand:
-    """ Test cases for the Command class."""
+    """Test cases for the Command class."""
+
     @staticmethod
     def example_function(arg1: int, arg2: str) -> str:
         """Example function for testing the Command class."""

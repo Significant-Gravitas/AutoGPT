@@ -8,6 +8,7 @@ from autogpt.chat import create_chat_message, generate_context
 
 class TestChat(unittest.TestCase):
     """Test the chat functions."""
+
     # Tests that the function returns a dictionary with the correct keys and values when valid strings are provided for role and content.
     def test_happy_path_role_content(self):
         """Test that the function returns a dictionary with the correct keys and values when valid strings are provided for role and content."""

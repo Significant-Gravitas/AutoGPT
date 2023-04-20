@@ -39,6 +39,7 @@ requests and parse HTML content, respectively.
 
 class TestScrapeLinks:
     """Tests for the scrape_links function."""
+
     # Tests that the function returns a list of formatted hyperlinks when
     # provided with a valid url that returns a webpage with hyperlinks.
     def test_valid_url_with_hyperlinks(self):
