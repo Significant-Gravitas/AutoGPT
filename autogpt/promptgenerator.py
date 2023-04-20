@@ -21,14 +21,13 @@ class PromptGenerator:
         self.resources = []
         self.performance_evaluation = []
         self.response_format = {
-            "thoughts": {
-                "text": "brief thought",
-                "reasoning": "brief reasoning",
+            "natural language": "Write your amazing response here",
+            "key updates": {
+                "essence": "a few relevant key words with rough weights (1-10)",
+                "reasoning": "reasoning",
                 "plan": "- short bulleted\n- list that conveys\n- long-term plan",
-                "criticism": "brief constructive self-criticism",
-                "speak": "brief summary or quip for the user",
-                "essence": "a couple relevant words each ranked by importance (1-10)",
-                "progress report": "progress towards goals.",
+                "criticism": "constructive self-criticism",
+                "big picture": "big picture alignment check"
             },
             "command": {"name": "command name", "args": {"arg name": "value"}},
         }
@@ -134,7 +133,7 @@ class PromptGenerator:
             f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             "Performance Evaluation:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
-            "You should only respond in JSON format as described below \nResponse"
-            f" Format: \n{formatted_response_format} \nEnsure the response can be"
-            " parsed by Python json.loads"
+            "You should respond in json data formatted in the response format to ensure compatibility with the virtual environment.\n"
+            f"Response Format: \n{formatted_response_format}"
         )
+    

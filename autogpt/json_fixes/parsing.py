@@ -17,24 +17,25 @@ CFG = Config()
 
 JSON_SCHEMA = """
 {
+    "natural language": "Write your amazing response here",
     "command": {
         "name": "command name",
         "args": {
             "arg name": "value"
         }
     },
-    "thoughts":
-    {
-        "text": "thought",
+    "key updates": {
+        "essence": "a few relevant key words with rough weights (1-10)",
         "reasoning": "reasoning",
         "plan": "- short bulleted\n- list that conveys\n- long-term plan",
         "criticism": "constructive self-criticism",
-        "speak": "thoughts summary to say to user"
-        "essence": "a couple relevant words ranked by importance (1-10)",
-        "progress report": "progress towards goals."
-    }
+        "big picture": "big picture alignment check"
+    },
 }
 """
+
+# "essence": "a couple relevant words ranked by importance (1-10)",
+# "progress report": "progress towards goals."
 
 
 def correct_json(json_to_load: str) -> str:

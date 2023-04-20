@@ -230,15 +230,43 @@ def print_assistant_thoughts(ai_name, assistant_reply):
                     )
                 )
 
+        response_natural_language=assistant_reply_json.get("natural language")
+        response_key_updates = assistant_reply_json.get("key updates", {})
+        if response_key_updates:
+            response_essence = response_key_updates.get("essence")
+            response_reasoning = response_key_updates.get("reasoning")
+            response_plan = response_key_updates.get("plan")
+            response_criticism = response_key_updates.get("criticism")
+            response_big_picture = response_key_updates.get("big picture")
+        
+        logger.typewriter_log(
+            f"{ai_name.upper()} Natural Language:", Fore.YELLOW, f"{response_natural_language}"
+        )
+        logger.typewriter_log(
+            "ESSENCE:", Fore.YELLOW, f"{response_essence}"
+        )
+        logger.typewriter_log(
+            "REASONING:", Fore.YELLOW, f"{response_reasoning}"
+        )
+        logger.typewriter_log(
+            "PLAN:", Fore.YELLOW, f"{response_plan}"
+        )
+        logger.typewriter_log(
+            "CRITICISM:", Fore.YELLOW, f"{response_criticism}"
+        )
+        logger.typewriter_log(
+            "BIG PICTURE:", Fore.YELLOW, f"{response_big_picture}"
+        )
+        
+
         assistant_thoughts_reasoning = None
         assistant_thoughts_plan = None
         assistant_thoughts_speak = None
         assistant_thoughts_criticism = None
-        assistant_thoughts_essence = None
         assistant_thoughts_progress_report = None
         if not isinstance(assistant_reply_json, dict):
             assistant_reply_json = {}
-        assistant_thoughts = assistant_reply_json.get("thoughts", {})
+        assistant_thoughts = assistant_reply_json.get("key updates", {})
         assistant_thoughts_text = assistant_thoughts.get("text")
 
         if assistant_thoughts:
@@ -246,44 +274,44 @@ def print_assistant_thoughts(ai_name, assistant_reply):
             assistant_thoughts_plan = assistant_thoughts.get("plan")
             assistant_thoughts_criticism = assistant_thoughts.get("criticism")
             assistant_thoughts_speak = assistant_thoughts.get("speak")
-            assistant_thoughts_essence = assistant_thoughts.get("essence")
-            assistant_thoughts_progress_report = assistant_thoughts.get("progress report")
+            # assistant_thoughts_essence = assistant_thoughts.get("essence")
+            # assistant_thoughts_progress_report = assistant_thoughts.get("progress report")
 
-        if (assistant_thoughts_essence):
-            logger.typewriter_log("ESSENCE:", Fore.YELLOW, f"{assistant_thoughts_essence}")
+        # if (assistant_thoughts_essence):
+        #     logger.typewriter_log("ESSENCE:", Fore.YELLOW, f"{assistant_thoughts_essence}")
 
-        if (assistant_thoughts_progress_report):
-            logger.typewriter_log("PROGRESS REPORT:", Fore.YELLOW, f"{assistant_thoughts_progress_report}")
+        # if (assistant_thoughts_progress_report):
+        #     logger.typewriter_log("PROGRESS REPORT:", Fore.YELLOW, f"{assistant_thoughts_progress_report}")
             
-        logger.typewriter_log(
-            f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
-        )
-        logger.typewriter_log(
-            "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
-        )
+        # logger.typewriter_log(
+        #     f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
+        # )
+        # logger.typewriter_log(
+        #     "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
+        # )
 
-        if assistant_thoughts_plan:
-            logger.typewriter_log("PLAN:", Fore.YELLOW, "")
-            # If it's a list, join it into a string
-            if isinstance(assistant_thoughts_plan, list):
-                assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
-            elif isinstance(assistant_thoughts_plan, dict):
-                assistant_thoughts_plan = str(assistant_thoughts_plan)
+        # if assistant_thoughts_plan:
+        #     logger.typewriter_log("PLAN:", Fore.YELLOW, "")
+        #     # If it's a list, join it into a string
+        #     if isinstance(assistant_thoughts_plan, list):
+        #         assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
+        #     elif isinstance(assistant_thoughts_plan, dict):
+        #         assistant_thoughts_plan = str(assistant_thoughts_plan)
 
-            # Split the input_string using the newline character and dashes
-            lines = assistant_thoughts_plan.split("\n")
-            for line in lines:
-                line = line.lstrip("- ")
-                logger.typewriter_log("- ", Fore.GREEN, line.strip())
+        #     # Split the input_string using the newline character and dashes
+        #     lines = assistant_thoughts_plan.split("\n")
+        #     for line in lines:
+        #         line = line.lstrip("- ")
+        #         logger.typewriter_log("- ", Fore.GREEN, line.strip())
 
-        logger.typewriter_log(
-            "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
-        )
+        # logger.typewriter_log(
+        #     "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
+        # )
         # Speak the assistant's thoughts
-        if CFG.speak_mode and assistant_thoughts_speak:
-            say_text(assistant_thoughts_speak)
-        else:
-            logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
+        # if CFG.speak_mode and assistant_thoughts_speak:
+        #     say_text(assistant_thoughts_speak)
+        # else:
+        #     logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
 
         return assistant_reply_json
     except json.decoder.JSONDecodeError:

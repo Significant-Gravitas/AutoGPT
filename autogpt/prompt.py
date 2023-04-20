@@ -38,11 +38,11 @@ def get_prompt() -> str:
     )
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint(
-        'Exclusively use the commands listed in double quotes e.g. "command name"'
+        'Your primary purpose is to use your extensive knowledge base while interfacing with a vertual environment using commands. Exclusively use the commands listed in double quotes e.g. "command name" and respond in the provided format to ensure compatibility'
     )
-    prompt_generator.add_constraint(
-        "Contexts are a segment of the larger goal. Only create a context when there is enough data to fill the template."
-    )
+    # prompt_generator.add_constraint(
+        # ""
+    # )
 
     context_directory = Path(os.getcwd()) / "auto_gpt_workspace/contexts"
     context_template_file = Path(os.getcwd()) / "auto_gpt_workspace/contexts/context_template.md"
@@ -122,7 +122,7 @@ def get_prompt() -> str:
         prompt_generator.add_command(command_label, command_name, args)
 
     # Add resources to the PromptGenerator object
-    # prompt_generator.add_resource("Reading, writing, appending to, and reorganizing files, which is your primary goal.")
+    prompt_generator.add_resource("Reading, writing, appending to, and reorganizing files.")
     prompt_generator.add_resource("Long Term memory management.")
     prompt_generator.add_resource("Context creation for segmenting the goal.")
     prompt_generator.add_resource(
@@ -139,9 +139,9 @@ def get_prompt() -> str:
     prompt_generator.add_performance_evaluation(
         "Constructively self-criticize your big-picture behavior and reflect on past decisions and stretegies constantly."
     )
-    prompt_generator.add_performance_evaluation(
-        "Every command has a cost, so be smart and efficient."
-    )
+    # prompt_generator.add_performance_evaluation(
+        # "Every command has a cost, so be smart and efficient."
+    # )
 
     # Generate the prompt string
     return prompt_generator.generate_prompt_string()
