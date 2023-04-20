@@ -63,12 +63,10 @@ class PromptGenerator:
         if args is None:
             args = {}
 
-        command_args = {arg_key: arg_value for arg_key, arg_value in args.items()}
-
         command = {
             "label": command_label,
             "name": command_name,
-            "args": command_args,
+            "args": args,
             "function": function,
         }
 
