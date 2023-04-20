@@ -2,7 +2,7 @@ name: Push Docker Image on Release
 
 on:
   release:
-    types: [published]
+    types: [published,edited]
 
 jobs:
 
@@ -24,4 +24,8 @@ jobs:
         tag=$(echo $tag_v | sed 's/v//')
         docker build . --file Dockerfile --tag ${{secrets.DOCKER_USER}}/auto-gpt:${tag}
     - name: Docker Push
-      run: docker push ${{secrets.DOCKER_USER}}/auto-gpt
+      run: |
+        tag_v2=$(git describe --tags $(git rev-list --tags --max-count=1))
+        tag2=$(echo $tag_v | sed 's/v//')
+        docker push ${{secrets.DOCKER_USER}}/auto-gpt:${tag2}
+      
