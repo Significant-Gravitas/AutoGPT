@@ -34,12 +34,12 @@ Development of this free, open-source project is made possible by all the <a hre
 
 <p align="center">
 <div align="center" class="logo-container">
-<a href="https://www.influxdata.com/"><img src="https://user-images.githubusercontent.com/22963551/233059795-2ec47b2a-c2c0-4c10-98a7-0d1212740cc0.png" height="40px" alt="InfluxData" />
+
 <a href="https://roost.ai"><img src="https://user-images.githubusercontent.com/22963551/233059778-055502b4-fa2e-4334-82b6-9a12252fd9e1.png" height="40px" alt="Roost.AI" /></a>
 <a href="https://nuclei.ai/"><img src="https://user-images.githubusercontent.com/22963551/233059785-28ce2549-62de-42c2-925a-c0aa08aef6bd.png" height="40px" alt="NucleiAI" /></a>
 <a href="https://www.algohash.org/"><img src="https://user-images.githubusercontent.com/22963551/233061211-9a9ec216-9fc0-46fd-a124-bf951057207c.png" height="40px" alt="Algohash" /></a>
 <a href="https://www.typingmind.com/?utm_source=autogpt"><img src="https://user-images.githubusercontent.com/22963551/233202971-61e77209-58a0-47d9-9f7e-dd081111437b.png" height="40px" alt="TypingMind" /></a>
-</a>
+</div>
 
 </br>
 </br>
