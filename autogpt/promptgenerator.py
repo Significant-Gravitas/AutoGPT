@@ -1,6 +1,8 @@
 """ A module for generating custom prompt strings."""
+from __future__ import annotations
+
 import json
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 
 class PromptGenerator:
@@ -18,10 +20,6 @@ class PromptGenerator:
         self.commands = []
         self.resources = []
         self.performance_evaluation = []
-        self.goals = []
-        self.command_registry = None
-        self.name = "Bob"
-        self.role = "AI"
         self.response_format = {
             "thoughts": {
                 "text": "thought",
@@ -42,13 +40,7 @@ class PromptGenerator:
         """
         self.constraints.append(constraint)
 
-    def add_command(
-        self,
-        command_label: str,
-        command_name: str,
-        args=None,
-        function: Optional[Callable] = None,
-    ) -> None:
+    def add_command(self, command_label: str, command_name: str, args=None) -> None:
         """
         Add a command to the commands list with a label, name, and optional arguments.
 
@@ -57,8 +49,6 @@ class PromptGenerator:
             command_name (str): The name of the command.
             args (dict, optional): A dictionary containing argument names and their
               values. Defaults to None.
-            function (callable, optional): A callable function to be called when
-                the command is executed. Defaults to None.
         """
         if args is None:
             args = {}
@@ -69,12 +59,11 @@ class PromptGenerator:
             "label": command_label,
             "name": command_name,
             "args": command_args,
-            "function": function,
         }
 
         self.commands.append(command)
 
-    def _generate_command_string(self, command: Dict[str, Any]) -> str:
+    def _generate_command_string(self, command: dict[str, Any]) -> str:
         """
         Generate a formatted string representation of a command.
 
@@ -107,7 +96,7 @@ class PromptGenerator:
         """
         self.performance_evaluation.append(evaluation)
 
-    def _generate_numbered_list(self, items: List[Any], item_type="list") -> str:
+    def _generate_numbered_list(self, items: list[Any], item_type="list") -> str:
         """
         Generate a numbered list from given items based on the item_type.
 
@@ -120,16 +109,10 @@ class PromptGenerator:
             str: The formatted numbered list.
         """
         if item_type == "command":
-            command_strings = []
-            if self.command_registry:
-                command_strings += [
-                    str(item)
-                    for item in self.command_registry.commands.values()
-                    if item.enabled
-                ]
-            # These are the commands that are added manually, do_nothing and terminate
-            command_strings += [self._generate_command_string(item) for item in items]
-            return "\n".join(f"{i+1}. {item}" for i, item in enumerate(command_strings))
+            return "\n".join(
+                f"{i+1}. {self._generate_command_string(item)}"
+                for i, item in enumerate(items)
+            )
         else:
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
 
@@ -151,5 +134,5 @@ class PromptGenerator:
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
             "You should only respond in JSON format as described below \nResponse"
             f" Format: \n{formatted_response_format} \nEnsure the response can be"
-            "parsed by Python json.loads"
+            " parsed by Python json.loads"
         )
