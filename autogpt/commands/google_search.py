@@ -19,7 +19,7 @@ CFG = Config()
     name_alias=["search"],
 )
 def google_search(query: str, num_results: int = 8) -> str:
-    """Return the results of a Google search
+    """Return the results of a Google search.
 
     Args:
         query (str): The search query.
@@ -49,9 +49,10 @@ def google_search(query: str, num_results: int = 8) -> str:
     '"query": "<query>"',
     bool(CFG.google_api_key),
     "Configure google_api_key.",
+    name_alias=["search"],
 )
 def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
-    """Return the results of a Google search using the official Google API
+    """Return the results of a Google search using the official Google API.
 
     Args:
         query (str): The search query.
@@ -106,7 +107,7 @@ def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
 
 def safe_google_results(results: str | list) -> str:
     """
-        Return the results of a google search in a safe format.
+        Return the results of a Google search in a safe format.
 
     Args:
         results (str | list): The search results.
