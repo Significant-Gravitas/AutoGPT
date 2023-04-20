@@ -46,3 +46,5 @@ pytest-benchmark
 pytest-cov
 pytest-integration
 pytest-mock
+mkdocs==1.4.2
+pymdown-extensions==9.11

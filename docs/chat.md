@@ -1,46 +1,35 @@
-### Functionality
-This module contains functions to interact with the OpenAI API, specifically to generate chat conversations between a user and an AI. The `chat_with_ai` function is the main function that takes in inputs from the user, generates context based on the history of messages, and sends the context to the model for generation. 
+# `chat_with_ai`
 
-### Required Libraries
-The following libraries are required for this module to work
-- `time`
-- `openai`
-- `dotenv`
-- `config`
-- `token_counter` 
-- `llm_utils`
 
-### `create_chat_message` function
-Function to create a chat message with the given role and content.
-##### Inputs 
-- `role`: A string, the role of the message sender, e.g., "system", "user", or "assistant".
-- `content`: A string, the content of the message.
+## Description
+This function facilitates interaction between a user and an AI model. It prompts the user for input, sends it to the AI model for processing, and returns its response. The conversation history is updated with each interaction.
 
-##### Output 
-- A dictionary containing the role and content of the message.
+## Signature
+```python
+def chat_with_ai(
+    agent, prompt, user_input, full_message_history, permanent_memory, token_limit
+)
+```
 
-### `generate_context` function
-Function to generate context based on the prompt, relevant memory, full history of messages and model. 
-##### Inputs
-- `prompt`: A string, prompt explaining the rules to the AI.
-- `relevant_memory`: A string, contains relevant past message history.
-- `full_message_history`: A list that stores all messages sent between the user and the AI.
-- `model`: A string, containing the name of pre-trained model.
+## Parameters
+* `agent` (type: object): An object that provides methods for communicating and receiving data between the chat interface and the AI model.
+* `prompt` (type: str): The prompt to be displayed to the user.
+* `user_input` (type: str): The user's input.
+* `full_message_history` (type: list): A list of messages sent between the user and AI. Each message is represented as a dictionary containing the role and content of the sender.
+* `permanent_memory` (type: object): An object containing the permanent memory.
+* `token_limit` (type: int): The maximum number of tokens allowed in the API call.
 
-##### Output 
-- `next_message_to_add_index`:  An integer representing the next message to add index.
-- `current_tokens_used`: An integer representing currently used tokens.
-- `insertion_index`: An integer representing insertion index .
-- `current_context`: A list containing the current context.
+## Returns
+* Returns string: The AI's response.
 
-### `chat_with_ai` function
-Main function to interact with the OpenAI API, sending the prompt, user input, message history, and permanent memory.
-##### Inputs
-- `prompt`: A string, the prompt explaining the rules to the AI.
-- `user_input`: A string containing the input from the user.
-- `full_message_history`: A list that stores all messages sent between the user and the AI.
-- `permanent_memory`: A memory object containing the permanent memory.
-- `token_limit`: An integer, maximum number of tokens allowed in the API call.
+## Example
+```python
+agent = "agent"
+prompt = "Hi, how can I assist you?"
+user_input = "Can you tell me about the benefits of exercise?"
+full_message_history = []
+permanent_memory = "permanent_memory"
+token_limit = 100
 
-##### Output
-- A string, the AI's response.
+chat_with_ai(agent, prompt, user_input, full_message_history, permanent_memory, token_limit)
+```
