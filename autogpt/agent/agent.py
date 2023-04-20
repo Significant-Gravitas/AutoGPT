@@ -74,6 +74,7 @@ class Agent:
             if context_data:
                 context_message = {
                     "role": "context",
+                    "contextNumber": self.context_manager.context_count,
                     "content": json.dumps(context_data)
                 }
                 self.full_message_history.insert(0, context_message)

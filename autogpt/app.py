@@ -140,16 +140,36 @@ def execute_command(command_name: str, arguments):
             return str(safe_message)
         elif command_name == "memory_add":
             return memory.add(arguments["string"])
+        
         elif command_name == "create_context":
             context_name = arguments["context_name"]
             context_data = arguments["context_data"]
             context_directory = CONTEXTS_PATH
             context_template_file = CONTEXTS_PATH / "context_template.md"
-            
             context_manager = ContextManager(context_directory, context_template_file)
-            context_manager.create_new_context(context_name, context_data)
-    
-            return f"Context '{context_name}' has been created successfully."
+
+            if context_manager.is_valid_context(context_data, context_template_file):
+                context_manager.create_new_context(context_name, context_data)
+                return f"Context '{context_name}' has been created successfully."
+            else:
+                # Handle invalid context data
+                return f"Invalid context data. Please ensure that it adheres to the context template."
+        elif command_name == "evaluate_context":   
+            context_name = arguments["context_name"]
+            summary_of_context_evaluation = arguments["summary_of_context_evaluation"]
+            context_directory = CONTEXTS_PATH
+            context_template_file = CONTEXTS_PATH / "context_template.md"
+            context_manager = ContextManager(context_directory, context_template_file)
+
+            return context_manager.evaluate_context_success(context_name, summary_of_context_evaluation)
+        elif command_name == "close_context":
+            context_name = arguments["context_name"]
+            markdown_context_summary = arguments["markdown_context_summary"]
+            context_directory = CONTEXTS_PATH
+            context_template_file = CONTEXTS_PATH / "context_template.md"
+            context_manager = ContextManager(context_directory, context_template_file)
+            return context_manager.close_context(context_name, markdown_context_summary)
+        
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"], arguments["task"], arguments["prompt"]
@@ -206,7 +226,7 @@ def execute_command(command_name: str, arguments):
             return generate_image(arguments["prompt"])
         elif command_name == "send_tweet":
             return send_tweet(arguments["text"])
-        elif command_name == "evaluate_context":
+        elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
             shutdown()

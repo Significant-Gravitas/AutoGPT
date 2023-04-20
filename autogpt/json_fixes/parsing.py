@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-from typing import Any
+from typing import Any, Tuple, Union
 
 from autogpt.config import Config
 from autogpt.json_fixes.auto_fix import fix_json

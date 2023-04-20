@@ -49,9 +49,7 @@ def get_prompt() -> str:
     context_manager = ContextManager(context_directory, context_template_file)
     context_template = context_manager.context_template
     prompt_generator.add_constraint(
-        "When creating a context, you must use the Context template written in Markdown with no structural changes:\n"
-        f"{context_template}\n"
-        "Fill in the template with relevant data and use the command \"create_context\" to create the context, passing the markdown text as a string."
+        f"Only create a context when there is enough data to fill the template. You must use the Context template written in Markdown with no structural changes:\n{context_template}\n and pass it to create_context as a string."
     )
     prompt_generator.add_constraint(
         "No code. No Command Line. Exclusively Text. Only write markdown (.md) files."
@@ -75,7 +73,11 @@ def get_prompt() -> str:
             "message_agent",
             {"key": "<key>", "message": "<message>"},
         ),
+
         ("Create Context", "create_context", {"context_name": "<name>", "context_data": "<context_data>"}),
+        ("Evaluate Context", "evaluate_context", {"context_name": "<name>", "summary_of_context_evaluation": "<summary_of_context_evaluation>"}),
+        ("Close Context", "close_context", {"context_name": "<name>", "markdown_context_summary": "<markdown_context_summary>"}),
+        
         ("List GPT Agents", "list_agents", {}),
         ("Delete GPT Agent", "delete_agent", {"key": "<key>"}),
         ("Write to file", "write_to_file", {"file": "<file>", "text": "<text>"}),
@@ -109,7 +111,7 @@ def get_prompt() -> str:
 
     # Add these command last.
     commands.append(
-        ("Evaluate Context", "evaluate_context", {}),
+        ("Do Nothing", "do_nothing", {}),
     )
     commands.append(
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
