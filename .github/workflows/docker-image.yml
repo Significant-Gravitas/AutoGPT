@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ "master" ]
 concurrency:
-  group: ${{ format('docker-image-{0}', github.event.pull_request.number || github.sha) }}
+  group: ${{ format('docker-ci-{0}', github.event.pull_request.number || github.sha) }}
   cancel-in-progress: true
 
 jobs:
