@@ -19,7 +19,7 @@ def is_ci():
     if os.getenv("CI") is not None:
         if os.getenv("CI").lower() == "true":
             return True
-        os.environ["CI"] = "False"
+        os.environ["CI"] = ""
     return False
 
 
