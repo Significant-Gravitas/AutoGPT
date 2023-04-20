@@ -125,7 +125,7 @@ def execute_command(
         else:
             for command in prompt.commands:
                 if command_name == command["label"] or command_name == command["name"]:
-                    return command["function"](*arguments.values())
+                    return command["function"](**arguments)
             return (
                 f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
                 " list for available commands and only respond in the specified JSON"
