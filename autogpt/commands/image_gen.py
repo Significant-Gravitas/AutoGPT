@@ -83,6 +83,7 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
     Args:
         prompt (str): The prompt to use
         filename (str): The filename to save the image to
+        size (int): The size of the image
 
     Returns:
         str: The filename of the image
