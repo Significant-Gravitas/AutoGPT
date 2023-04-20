@@ -18,11 +18,14 @@ import sys
 from pathlib import Path
 from datetime import datetime
 import yaml
+from datetime import datetime
+
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("eval", type=str, help="Name of an eval. See registry.")
+    parser.add_argument(
+        "eval", type=str, help="Name of an eval. See registry.")
     parser.add_argument(
         "--completion-fn",
         type=str,
@@ -47,20 +50,27 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--extra_eval_params", type=str, default="")
     parser.add_argument("--max_samples", type=int, default=None)
-    parser.add_argument("--cache", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--visible", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument(
+        "--cache", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--visible", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--seed", type=int, default=20220722)
     parser.add_argument("--user", type=str, default="")
-    parser.add_argument("--record_path", type=str, default=str(Path(__file__).parent.parent / "data" / "records.jsonl"))
+    parser.add_argument("--record_path", type=str, default=str(Path(
+        __file__).parent.parent / "data" / f"eval-{datetime.now().strftime('%Y%m%d-%H%M%S')}.jsonl"))
     parser.add_argument(
-        "--log_to_file", type=str, default=None,#default=str(
-         #   Path(__file__).parent.parent / "data" / "log" / "log.txt"
-      #  ), help="Log to a file instead of stdout"
+        "--log_to_file", type=str, default=None,  # default=str(
+        #   Path(__file__).parent.parent / "data" / "log" / "log.txt"
+        #  ), help="Log to a file instead of stdout"
     )
-    parser.add_argument("--debug", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--local-run", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--dry-run", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--dry-run-logging", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--debug", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--local-run", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--dry-run", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--dry-run-logging",
+                        action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
 
 
@@ -76,7 +86,8 @@ def update_yaml_with_auto_gpt_path(yaml_path: str, auto_gpt_path: str or None) -
     with open(yaml_path, "r") as f:
         yaml_data = yaml.safe_load(f)
     if yaml_data["auto_gpt_completion_fn"]["args"]["auto_gpt_path"] is None and auto_gpt_path is None:
-        raise Exception("You must specify a auto_gpt_path in the yaml file or pass it in as a parameter")
+        raise Exception(
+            "You must specify a auto_gpt_path in the yaml file or pass it in as a parameter")
     if auto_gpt_path is None:
         auto_gpt_path = yaml_data["auto_gpt_completion_fn"]["args"]["auto_gpt_path"]
     if auto_gpt_path is not None:
@@ -108,7 +119,8 @@ if __name__ == "__main__":
 
     # Update the yaml file with the auto_gpt_path
     autogpt_path = update_yaml_with_auto_gpt_path(
-        str(Path(__file__).parent / "completion_fns" / "auto_gpt_completion_fn.yaml"),
+        str(Path(__file__).parent / "completion_fns" /
+            "auto_gpt_completion_fn.yaml"),
         args.auto_gpt_path
     )
 
