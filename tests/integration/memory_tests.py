@@ -9,10 +9,13 @@ from autogpt.memory.local import LocalCache
 
 
 class TestLocalCache(unittest.TestCase):
+    """Tests for LocalCache class"""
     def random_string(self, length):
+        """Generate a random string of fixed length"""
         return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
     def setUp(self):
+        """Set up the test environment"""
         cfg = cfg = Config()
         self.cache = LocalCache(cfg)
         self.cache.clear()
@@ -24,7 +27,7 @@ class TestLocalCache(unittest.TestCase):
             "The cake is a lie, but the pie is always true",
             "ChatGPT is an advanced AI model for conversation",
         ]
-
+        # Add the example texts to the cache
         for text in self.example_texts:
             self.cache.add(text)
 
@@ -33,6 +36,7 @@ class TestLocalCache(unittest.TestCase):
             self.cache.add(self.random_string(10))
 
     def test_get_relevant(self):
+        """Test getting relevant texts from the cache"""
         query = "I'm interested in artificial intelligence and NLP"
         k = 3
         relevant_texts = self.cache.get_relevant(query, k)
