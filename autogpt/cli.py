@@ -4,7 +4,7 @@ import click
 
 @click.group(invoke_without_command=True)
 @click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
-@click.option("--risk_avoidance", is_flag=True, help="Enable Risk Avoidance Mode")
+@click.option("--risk-avoidance", is_flag=True, help="Enable Risk Avoidance Mode")
 @click.option(
     "--skip-reprompt",
     "-y",
