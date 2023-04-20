@@ -78,7 +78,6 @@ def create_config(
         CFG.set_smart_llm_model("gpt-3.5-turbo")
         CFG.set_chat_llm_model("gpt-3.5-turbo")
 
-
     if gpt4only:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_fast_llm_model("gpt-4")
