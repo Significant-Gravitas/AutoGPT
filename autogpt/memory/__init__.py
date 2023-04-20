@@ -89,9 +89,7 @@ def get_memory(cfg, init=False):
                 "Please install `clickhouse-connect` to use MyScale as memory backend."
             )
         else:
-            if init:
-                memory.clear()
-            memory = MyScaleMemory(cfg)
+            memory = MyScaleMemory(cfg, init)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 

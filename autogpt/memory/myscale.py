@@ -10,7 +10,7 @@ from autogpt.memory.base import MemoryProviderSingleton
 
 
 class MyScaleMemory(MemoryProviderSingleton):
-    def __init__(self, cfg):
+    def __init__(self, cfg, init):
         self.client = get_client(
             host=cfg.myscale_host,
             port=cfg.myscale_port,
@@ -49,6 +49,8 @@ class MyScaleMemory(MemoryProviderSingleton):
                 VECTOR INDEX vidx vector TYPE {cfg.myscale_index_type}('metric_type={metric}')
             ) ENGINE = MergeTree ORDER BY id
         """
+        if init:
+            self.clear()
         self.client.command(schema_)
 
     def escape_str(self, value: str) -> str:
