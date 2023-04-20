@@ -88,6 +88,8 @@ def get_memory(cfg, init=False):
                 "Please install deeplake to use DeepLake as memory backend."
                 "To install DeepLake run: `pip install deeplake`"
             )
+        else:
+            memory = DeepLakeMemory(cfg)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 

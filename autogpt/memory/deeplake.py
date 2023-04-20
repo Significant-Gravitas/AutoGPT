@@ -13,10 +13,9 @@ class DeepLakeMemory(MemoryProviderSingleton):
 
     def __init__(self, cfg):
         """Initialize DeepLake Storage Memory Provider"""
-        dataset_name = cfg.get("deeplake_dataset_name")
-        token = cfg.get("deeplake_token")
+        dataset_name = cfg.deeplake_dataset_name
+        token = cfg.deeplake_token
         self.dataset = deeplake.empty(dataset_name, token=token)
-
         self.dataset.create_tensor(
             "raw_text",
             htype="text",
@@ -46,8 +45,8 @@ class DeepLakeMemory(MemoryProviderSingleton):
             str: log.
         """
         embedding = create_embedding_with_ada(text)
-        self.dataset.embedding.extend(embedding)
-        self.dataset.raw_text.extend(text)
+        self.dataset.embedding.append(embedding)
+        self.dataset.raw_text.append(text)
         return text
 
     def clear(self):
@@ -70,7 +69,8 @@ class DeepLakeMemory(MemoryProviderSingleton):
         top_k_indices = np.argsort(scores)[-num_relevant:][::-1]
 
         return [
-            self.dataset.raw_text[i].numpy(fetch_chunks=True) for i in top_k_indices
+            self.dataset.raw_text[int(i)].numpy(fetch_chunks=True)
+            for i in top_k_indices
         ]
 
     def get(self, data: str) -> Union[list[str], None]:
