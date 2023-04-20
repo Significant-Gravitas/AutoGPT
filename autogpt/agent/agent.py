@@ -88,39 +88,6 @@ class Agent:
                     cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
-
-            # if the assistant reply is not a valid json, then we need to add the missing parts   
-            try:
-                json.loads(assistant_reply)
-            except ValueError as e:
-                if assistant_reply.count('{') == assistant_reply.count('}') == 0:
-                    # remove " and '
-                    assistant_reply = assistant_reply.replace('"', '').replace("'", '')
-                    assistant_reply = '{' \
-                                        '"thoughts": {' \
-                                            '"text": "' + assistant_reply + '",' \
-                                            '"reasoning": "",' \
-                                            '"plan": "",' \
-                                            '"criticism": "",' \
-                                            '"speak": ""' \
-                                        '},' \
-                                        '"command": {' \
-                                            '"name": "do_nothing", "args": {}' \
-                                        '}' \
-                                    '}'
-                elif assistant_reply.count('{') == assistant_reply.count('}'):
-                    # remove everything before the first { and after the last }
-                    assistant_reply = assistant_reply[assistant_reply.find('{'):assistant_reply.rfind('}') + 1]
-                else:
-                    while assistant_reply.count('{') != assistant_reply.count('}'):
-                        if assistant_reply.count('{') > assistant_reply.count('}'):
-                            # add a } to the end
-                            assistant_reply = assistant_reply + '}'
-                        else:
-                            # add a { to the beginning
-                            assistant_reply = '{' + assistant_reply  
-
-
             # Print Assistant thoughts
             print_assistant_thoughts(self.ai_name, assistant_reply)
 
