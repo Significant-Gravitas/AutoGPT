@@ -219,8 +219,6 @@ You can also build this into a docker image and run it:
 docker build -t autogpt .
 docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_workspace autogpt
 ```
-#### Installing Docker
-- To install Docker on your machine please follow the [Official Docker Engine Installation Guide](https://docs.docker.com/engine/install/)
   
 Or if you have `docker-compose`:
 ```bash
@@ -234,6 +232,8 @@ docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/app/auto_gpt_worksp
 ```bash
 docker-compose run --build --rm auto-gpt --gpt3only --continuous
 ```
+#### Installing Docker
+- To install Docker on your machine please follow the [Official Docker Engine Installation Guide](https://docs.docker.com/engine/install/)
 
 ### <a name="command-line-arguments"></a>Command Line Arguments
 Here are some common arguments you can use when running Auto-GPT:
