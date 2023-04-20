@@ -70,15 +70,18 @@ def main(
     """
     # Put imports inside function to avoid importing everything when starting the CLI
     import logging
+    import sys
 
     from colorama import Fore
 
     from autogpt.agent.agent import Agent
+    from autogpt.commands.command import CommandRegistry
     from autogpt.config import Config, check_openai_api_key
     from autogpt.configurator import create_config
     from autogpt.logs import logger
     from autogpt.memory import get_memory
-    from autogpt.prompt import construct_prompt
+    from autogpt.plugins import scan_plugins
+    from autogpt.prompts.prompt import construct_main_ai_config
     from autogpt.utils import get_current_git_branch, get_latest_bulletin
 
     if ctx.invoked_subcommand is None:
@@ -113,7 +116,35 @@ def main(
                     f"You are running on `{git_branch}` branch "
                     "- this is not a supported branch.",
                 )
-        system_prompt = construct_prompt()
+            if sys.version_info < (3, 10):
+                logger.typewriter_log(
+                    "WARNING: ",
+                    Fore.RED,
+                    "You are running on an older version of Python. "
+                    "Some people have observed problems with certain "
+                    "parts of Auto-GPT with this version. "
+                    "Please consider upgrading to Python 3.10 or higher.",
+                )
+
+        cfg = Config()
+        cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
+        # Create a CommandRegistry instance and scan default folder
+        command_registry = CommandRegistry()
+        command_registry.import_commands("autogpt.commands.analyze_code")
+        command_registry.import_commands("autogpt.commands.audio_text")
+        command_registry.import_commands("autogpt.commands.execute_code")
+        command_registry.import_commands("autogpt.commands.file_operations")
+        command_registry.import_commands("autogpt.commands.git_operations")
+        command_registry.import_commands("autogpt.commands.google_search")
+        command_registry.import_commands("autogpt.commands.image_gen")
+        command_registry.import_commands("autogpt.commands.improve_code")
+        command_registry.import_commands("autogpt.commands.twitter")
+        command_registry.import_commands("autogpt.commands.web_selenium")
+        command_registry.import_commands("autogpt.commands.write_tests")
+        command_registry.import_commands("autogpt.app")
+        ai_name = ""
+        ai_config = construct_main_ai_config()
+        ai_config.command_registry = command_registry
         # print(prompt)
         # Initialize variables
         full_message_history = []
@@ -130,11 +161,16 @@ def main(
             "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
         )
         logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
+        system_prompt = ai_config.construct_full_prompt()
+        if cfg.debug_mode:
+            logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
         agent = Agent(
             ai_name=ai_name,
             memory=memory,
             full_message_history=full_message_history,
             next_action_count=next_action_count,
+            command_registry=command_registry,
+            config=ai_config,
             system_prompt=system_prompt,
             triggering_prompt=triggering_prompt,
         )
