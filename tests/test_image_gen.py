@@ -10,15 +10,19 @@ from autogpt.workspace import path_in_workspace
 
 
 def lst(txt):
+    """Get the last item in a list."""
     return txt.split(":")[1].strip()
 
 
 @unittest.skipIf(os.getenv("CI"), "Skipping image generation tests")
 class TestImageGen(unittest.TestCase):
+    """Test image generation."""
     def setUp(self):
+        """Set up the test class."""
         self.config = Config()
 
     def test_dalle(self):
+        """Test DALL-E image generation."""
         self.config.image_provider = "dalle"
 
         # Test using size 256
@@ -37,6 +41,7 @@ class TestImageGen(unittest.TestCase):
         image_path.unlink()
 
     def test_huggingface(self):
+        """Test HuggingFace image generation."""
         self.config.image_provider = "huggingface"
 
         # Test usin SD 1.4 model and size 512
@@ -57,6 +62,7 @@ class TestImageGen(unittest.TestCase):
         image_path.unlink()
 
     def test_sd_webui(self):
+        """Test SD WebUI image generation."""
         self.config.image_provider = "sd_webui"
         return
 
@@ -99,4 +105,5 @@ class TestImageGen(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    """Run the tests."""
     unittest.main()
