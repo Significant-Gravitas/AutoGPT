@@ -1,6 +1,6 @@
 import openai
+
 from autogpt.config import Config
-import openai
 
 cfg = Config()
 openai.api_key = cfg.openai_api_key
@@ -9,23 +9,12 @@ print_total_cost = True
 # Define the cost per thousand tokens for each model
 # TODO: make this a json file that we can update separate from the code
 COSTS = {
-    "gpt-3.5-turbo": {
-        "prompt": 0.002,
-        "completion": 0.002
-    },
-    "gpt-3.5-turbo-0301": {
-        "prompt": 0.002,
-        "completion": 0.002
-    },
-    "gpt-4-0314": {
-        "prompt": 0.03,
-        "completion": 0.06
-    },
-    "gpt-4": {
-        "prompt": 0.03,
-        "completion": 0.06
-    }
+    "gpt-3.5-turbo": {"prompt": 0.002, "completion": 0.002},
+    "gpt-3.5-turbo-0301": {"prompt": 0.002, "completion": 0.002},
+    "gpt-4-0314": {"prompt": 0.03, "completion": 0.06},
+    "gpt-4": {"prompt": 0.03, "completion": 0.06},
 }
+
 
 # TODO: route all API's through this manager, so we can keep track of
 # the cost of all API calls, not just chat completions
@@ -36,12 +25,14 @@ class ApiManager:
         self.total_cost = 0
         self.total_budget = 0
 
-    def create_chat_completion(self,
-    messages: list,  # type: ignore
-    model: str | None = None,
-    temperature: float = cfg.temperature,
-    max_tokens: int | None = None, 
-    deployment_id=None) -> str:
+    def create_chat_completion(
+        self,
+        messages: list,  # type: ignore
+        model: str | None = None,
+        temperature: float = cfg.temperature,
+        max_tokens: int | None = None,
+        deployment_id=None,
+    ) -> str:
         """
         Create a chat completion and update the cost.
 
@@ -56,19 +47,19 @@ class ApiManager:
         """
         if deployment_id is not None:
             response = openai.ChatCompletion.create(
-                        deployment_id=deployment_id,
-                        model=model,
-                        messages=messages,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                    )
+                deployment_id=deployment_id,
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
         else:
             response = openai.ChatCompletion.create(
-                        model=model,
-                        messages=messages,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                    )
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
         prompt_tokens = response.usage.prompt_tokens
         completion_tokens = response.usage.completion_tokens
         self.update_cost(prompt_tokens, completion_tokens, model)
@@ -85,8 +76,10 @@ class ApiManager:
         """
         self.total_prompt_tokens += prompt_tokens
         self.total_completion_tokens += completion_tokens
-        self.total_cost += (prompt_tokens * COSTS[model]["prompt"] +
-                            completion_tokens * COSTS[model]["completion"]) / 1000
+        self.total_cost += (
+            prompt_tokens * COSTS[model]["prompt"]
+            + completion_tokens * COSTS[model]["completion"]
+        ) / 1000
         if print_total_cost:
             print(f"Total running cost: ${self.total_cost:.3f}")
 
@@ -134,5 +127,6 @@ class ApiManager:
         float: The total budget for API calls.
         """
         return self.total_budget
+
 
 api_manager = ApiManager()

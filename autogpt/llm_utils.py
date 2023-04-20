@@ -7,9 +7,9 @@ import openai
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError
 
+from autogpt.api_manager import api_manager
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.api_manager import api_manager
 from autogpt.types.openai import Message
 
 CFG = Config()

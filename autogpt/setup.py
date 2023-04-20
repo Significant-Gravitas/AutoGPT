@@ -81,14 +81,18 @@ def prompt_user() -> AIConfig:
         "For example: $1.50",
     )
     print("Enter nothing to let the AI run without monetary limit", flush=True)
-    api_budget_input = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $")
+    api_budget_input = utils.clean_input(
+        f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
+    )
     if api_budget_input == "":
         api_budget = 0.0
     else:
         try:
             api_budget = float(api_budget_input.replace("$", ""))
         except ValueError:
-            logger.typewriter_log("Invalid budget input. Setting budget to unlimited.", Fore.RED)
+            logger.typewriter_log(
+                "Invalid budget input. Setting budget to unlimited.", Fore.RED
+            )
             api_budget = 0.0
 
     return AIConfig(ai_name, ai_role, ai_goals, api_budget)

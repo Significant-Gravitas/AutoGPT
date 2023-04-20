@@ -1,12 +1,12 @@
 from colorama import Fore
 
+from autogpt.api_manager import api_manager
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
-from autogpt.api_manager import api_manager
 
 CFG = Config()
 
@@ -87,7 +87,11 @@ def construct_main_ai_config() -> AIConfig:
         logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
         logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
         logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
-        logger.typewriter_log("API Budget:", Fore.GREEN, "infinite" if config.api_budget <= 0 else f"${config.api_budget}")
+        logger.typewriter_log(
+            "API Budget:",
+            Fore.GREEN,
+            "infinite" if config.api_budget <= 0 else f"${config.api_budget}",
+        )
     elif config.ai_name:
         logger.typewriter_log(
             "Welcome back! ",
