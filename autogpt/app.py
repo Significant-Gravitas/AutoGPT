@@ -12,7 +12,6 @@ from autogpt.prompts.generator import PromptGenerator
 from autogpt.speech import say_text
 from autogpt.url_utils.validators import validate_url
 
-
 CFG = Config()
 AGENT_MANAGER = AgentManager()
 

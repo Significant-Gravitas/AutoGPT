@@ -4,7 +4,7 @@ from git.repo import Repo
 from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.url_utils.validators import validate_url
-
+from autogpt.workspace import path_in_workspace
 
 CFG = Config()
 
