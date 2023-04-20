@@ -212,7 +212,9 @@ class Agent:
                     listener.stop()
                     self.pause_loop = False
                     self.pause_count = 0
-                    console_input = input("Enter your comments: ")
+                    console_input = clean_input(
+                        Fore.MAGENTA + "Enter your comments: " + Style.RESET_ALL
+                    )
                     user_input = console_input
                     command_name = "human_feedback"
 
