@@ -166,6 +166,19 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
     return scrape_links(url)
 
 
+@command("memory_add", "Add to Memory", '"string": "<string_to_be_saved>"')
+def add_memory(string: str) -> str:
+    """Saves string in memory
+
+        Args:
+            string (str): String to add to memory
+
+        Returns:
+            str: Data which is saved
+    """
+    return get_memory(CFG).add(string)
+
+
 def shutdown() -> NoReturn:
     """Shut down the program"""
     print("Shutting down...")
