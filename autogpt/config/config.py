@@ -1,8 +1,10 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
+from typing import List
 
 import openai
 import yaml
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from dotenv import load_dotenv
 
@@ -34,7 +36,11 @@ class Config(metaclass=Singleton):
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         self.risk_threshold = float(os.getenv("RISK_THRESHOLD", 0.5))
-        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
+        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 3000))
+        self.browse_spacy_language_model = os.getenv(
+            "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
+        )
+
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
@@ -122,6 +128,18 @@ class Config(metaclass=Singleton):
         self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
+
+        self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
+        self.plugins: List[AutoGPTPluginTemplate] = []
+        self.plugins_openai = []
+
+        plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
+        if plugins_allowlist:
+            plugins_allowlist = plugins_allowlist.split(",")
+            self.plugins_whitelist = plugins_allowlist
+        else:
+            self.plugins_whitelist = []
+        self.plugins_blacklist = []
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
@@ -244,6 +262,10 @@ class Config(metaclass=Singleton):
     def set_risk_avoidance_mode(self, value: bool):
         """Set the risk avoidance mode value."""
         self.risk_avoidance_mode = value
+
+    def set_plugins(self, value: list) -> None:
+        """Set the plugins value."""
+        self.plugins = value
 
 
 def check_openai_api_key() -> None:
