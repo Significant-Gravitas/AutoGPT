@@ -56,7 +56,7 @@ See the AutoGPT docs on how to do that.
 Run your first eval with:
 
     `cd Auto-GPT-Benchmarks`
-    `python3 -m auto_gpt_benchmarking test-match --auto-gpt-path /your/path/to/Auto-GPT`
+    `python3 auto_gpt_benchmarking test-match --auto-gpt-path /your/path/to/Auto-GPT`
 
 You should only need to use the --auto-gpt-path flag the first time you run it. Afterwards, that will be saved in 
 
