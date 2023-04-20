@@ -157,7 +157,5 @@ vicuna-*
 # mac
 .DS_Store
 
-openai/
-
 # news
 CURRENT_BULLETIN.md
