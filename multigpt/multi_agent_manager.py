@@ -18,7 +18,6 @@ from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from multigpt.multi_agent import MultiAgent
 from multigpt.agent_selection import AgentSelection
-from multigpt.constants import CHAT_ONLY_MODE, NEXTAGENTSELECTION
 
 
 class MultiAgentManager(metaclass=Singleton):
@@ -61,7 +60,7 @@ class MultiAgentManager(metaclass=Singleton):
         self.agent_counter += 1
 
         memory = get_memory(self.cfg, ai_key=agent_id, init=True)
-        if not CHAT_ONLY_MODE:
+        if not self.cfg.chat_only_mode:
             logger.typewriter_log(
                 f"Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
             )
@@ -102,13 +101,13 @@ class MultiAgentManager(metaclass=Singleton):
         self.last_active_agent = self.current_active_agent
         self.current_active_agent = None
 
-        if NEXTAGENTSELECTION == AgentSelection.ROUND_ROBIN:
+        if self.cfg.next_agent_selection == AgentSelection.ROUND_ROBIN:
             self.current_active_agent = self.agents[loop_count % len(self.agents)]
 
-        elif NEXTAGENTSELECTION == AgentSelection.RANDOM:
+        elif self.cfg.next_agent_selection == AgentSelection.RANDOM:
             self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
 
-        elif NEXTAGENTSELECTION == AgentSelection.SMART_SELECTION:
+        elif self.cfg.next_agent_selection == AgentSelection.SMART_SELECTION:
             if self.last_active_agent is None and len(self.agents) > 0:  # If last agent is None, fallback to random select
                 self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
             else:
@@ -211,7 +210,7 @@ class MultiAgentManager(metaclass=Singleton):
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 active_agent.user_input = ""
-                if not CHAT_ONLY_MODE:
+                if not self.cfg.chat_only_mode:
                     logger.typewriter_log(
                         "NEXT ACTION: ",
                         Fore.CYAN,
@@ -262,7 +261,7 @@ class MultiAgentManager(metaclass=Singleton):
                     print("Exiting...", flush=True)
                     break
             else:
-                if not CHAT_ONLY_MODE:
+                if not self.cfg.chat_only_mode:
                     # Print command
                     logger.typewriter_log(
                         "NEXT ACTION: ",
@@ -298,13 +297,13 @@ class MultiAgentManager(metaclass=Singleton):
             # history
             if result is not None:
                 active_agent.full_message_history.append(create_chat_message("system", result))
-                if not CHAT_ONLY_MODE:
+                if not self.cfg.chat_only_mode:
                     logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
             else:
                 active_agent.full_message_history.append(
                     create_chat_message("system", "Unable to execute command")
                 )
-                if not CHAT_ONLY_MODE:
+                if not self.cfg.chat_only_mode:
                     logger.typewriter_log(
                         "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                     )

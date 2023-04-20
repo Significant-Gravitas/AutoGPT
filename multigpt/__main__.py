@@ -10,15 +10,15 @@ from autogpt import utils
 from autogpt.agent.agent import Agent
 from autogpt.args import parse_arguments
 
-from autogpt.config import Config, check_openai_api_key
+from autogpt.config import check_openai_api_key
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 
 from autogpt.spinner import Spinner
 from multigpt.expert import Expert
+from multigpt.multi_config import MultiConfig
 from multigpt.multi_agent_manager import MultiAgentManager
-from multigpt.constants import MIN_EXPERTS, MAX_EXPERTS, CONTINUOUS_LIMIT
 
 EXPERT_PROMPT = """The task is: {task}.
 
@@ -72,7 +72,7 @@ def parse_experts(experts: str) -> List[Expert]:
 
 
 def main() -> None:
-    cfg = Config()
+    cfg = MultiConfig()
     check_openai_api_key()
     parse_arguments()
     multi_agent_manager = MultiAgentManager(cfg)
@@ -95,8 +95,8 @@ def main() -> None:
     if task == "":
         task = "Achieve world domination!"
 
-    messages = [{"role": "system", "content": EXPERT_PROMPT.format(task=task, min_experts=MIN_EXPERTS,
-                                                                   max_experts=MAX_EXPERTS)}]
+    messages = [{"role": "system", "content": EXPERT_PROMPT.format(task=task, min_experts=cfg.min_experts,
+                                                                   max_experts=cfg.max_experts)}]
     with Spinner("Gathering group of experts... "):
         experts_string = create_chat_completion(messages=messages, model=cfg.smart_llm_model, max_tokens=1000)
 

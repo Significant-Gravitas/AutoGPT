@@ -11,9 +11,9 @@ import traceback
 from colorama import Fore, Style
 
 from autogpt.speech import say_text
-from autogpt.config import Config, Singleton
-from multigpt.constants import CHAT_ONLY_MODE
-CFG = Config()
+from autogpt.config import Singleton
+from multigpt.multi_config import MultiConfig
+CFG = MultiConfig()
 
 
 class Logger(metaclass=Singleton):
@@ -245,7 +245,7 @@ def print_assistant_thoughts(ai_name, assistant_reply):
             assistant_thoughts_criticism = assistant_thoughts.get("criticism")
             assistant_thoughts_speak = assistant_thoughts.get("speak")
 
-        if CHAT_ONLY_MODE:
+        if CFG.chat_only_mode:
             if assistant_thoughts_speak is not None and len(assistant_thoughts_speak) > 0:
                 logger.typewriter_log(f"{ai_name.upper()}:", Fore.YELLOW, f"{assistant_thoughts_speak}")
 
