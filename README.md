@@ -323,9 +323,13 @@ MEMORY_INDEX=<WHATEVER>
 ```
 
 ### DeepLake Setup
-[DeepLake](https://app.activeloop.ai) is an open-source, highly scalable multi-modal vector database that can easily scale up to billions of rows and provide fast relevant search.
-Just install deeplake with the following command:
+[DeepLake](https://app.activeloop.ai) is an open-source, highly scalable multi-modal vector database that supports audios, videos, texts and images. It can easily scale up to billions of rows and provide fast relevant search.
+install deeplake with the following command:
 `pip install deeplake`
+set following environment variables:
+MEMORY_BACKEND = "deeplake"
+ACTIVELOOP_TOKEN = None
+ACTIVELOOP_DATASET = "mem://AutoGPT"
 
 **Optional:**
 - set `ACTIVELOOP_DATASET` in `.env` to change deeplake dataset name as you want, `mem://AutoGPT` is the default name.
@@ -335,8 +339,9 @@ if you want to increase capacity of your memory and to store data on a remote se
 1. Go to [DeepLake](https://app.activeloop.ai) and make an account if you don't already have one.
 2. Log in and under the user choose API tokens and create a new api token if don't have already exisitng one and copy it
 
-In the `.env` file set:
+In the `.env` file on top of already set parameters change `ACTIVELOOP_TOKEN` from None to the token you copied:
 - `ACTIVELOOP_TOKEN`
+
 
 Alternatively, you can set them from the command line:
 
