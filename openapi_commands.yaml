@@ -3,18 +3,23 @@
 # into commands and ingested in runtime via listing their names in ENV variable OPENAPI_APIS
 # OpenAI Plugins specification: https://platform.openai.com/docs/plugins/getting-started/plugin-manifest
 
-openai_plugins:
-    # Weather GPT OpenAI Plugin
-    # https://weathergpt.vercel.app/
-    weathergpt:
-        url: https://weathergpt.vercel.app/openapi.json
-        openapi_spec: /openapi.json
-        openai_manifest: /openai.json
-        auth: none
 
-openapi_plugins:
-    weatherapi:
-        url: https://api.weatherapi.com/v1/openapi.json
-        openapi_spec: /v1/openapi.json
-        auth: none
+# Weather GPT OpenAI Plugin
+# https://weathergpt.vercel.app/
+weathergpt:
+    url: https://weathergpt.vercel.app/
+    openai_manifest: /.well-known/ai-plugin.json
+    openapi_spec: https://weathergpt.vercel.app/openapi.json
+    enabled: true
+    auth:
+        type: none
+
+weatherapi:
+    url: https://weathergpt.vercel.app/
+    openai_manifest: /.well-known/ai-plugin.json
+    openapi_spec:
+    enabled: true
+    auth:
+        type: none
+
 

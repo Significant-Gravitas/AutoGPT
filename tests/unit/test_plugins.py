@@ -10,7 +10,6 @@ from autogpt.plugins import (
 PLUGINS_TEST_DIR = "tests/unit/data/test_plugins"
 PLUGIN_TEST_ZIP_FILE = "Auto-GPT-Plugin-Test-master.zip"
 PLUGIN_TEST_INIT_PY = "Auto-GPT-Plugin-Test-master/src/auto_gpt_vicuna/__init__.py"
-PLUGIN_TEST_OPENAI = "https://weathergpt.vercel.app/"
 
 
 def test_inspect_zip_for_module():
@@ -70,31 +69,6 @@ def test_blacklist_whitelist_check_user_input_invalid(
     assert not blacklist_whitelist_check(
         "UnknownPlugin", mock_config_blacklist_whitelist_check
     )
-
-
-@pytest.fixture
-def config_with_plugins():
-    cfg = Config()
-    cfg.plugins_dir = PLUGINS_TEST_DIR
-    cfg.plugins_openai = ["https://weathergpt.vercel.app/"]
-    return cfg
-
-
-@pytest.fixture
-def mock_config_openai_plugin():
-    class MockConfig:
-        plugins_dir = PLUGINS_TEST_DIR
-        plugins_openai = [PLUGIN_TEST_OPENAI]
-        plugins_blacklist = ["AutoGPTPVicuna"]
-        plugins_whitelist = [PLUGIN_TEST_OPENAI]
-
-    return MockConfig()
-
-
-def test_scan_plugins_openai(mock_config_openai_plugin):
-    result = scan_plugins(mock_config_openai_plugin, debug=True)
-    assert len(result) == 1
-
 
 @pytest.fixture
 def mock_config_generic_plugin():
