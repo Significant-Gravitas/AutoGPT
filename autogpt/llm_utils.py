@@ -105,7 +105,7 @@ def create_chat_completion(
                     prompt=f"{anthropic.HUMAN_PROMPT} {messages} {anthropic.AI_PROMPT}",
                     stop_sequences = [anthropic.HUMAN_PROMPT],
                     model="claude-v1",
-                    max_tokens_to_sample=10000000000,
+                    max_tokens_to_sample=1500,
                 )
             break
         except RateLimitError:
