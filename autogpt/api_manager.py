@@ -1,3 +1,5 @@
+from typing import List
+
 import openai
 
 from autogpt.config import Config
@@ -13,6 +15,7 @@ COSTS = {
     "gpt-3.5-turbo-0301": {"prompt": 0.002, "completion": 0.002},
     "gpt-4-0314": {"prompt": 0.03, "completion": 0.06},
     "gpt-4": {"prompt": 0.03, "completion": 0.06},
+    "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0.0},
 }
 
 
@@ -64,6 +67,32 @@ class ApiManager:
         completion_tokens = response.usage.completion_tokens
         self.update_cost(prompt_tokens, completion_tokens, model)
         return response
+
+    def embedding_create(
+        self,
+        text_list: List[str],
+        model: str = "text-embedding-ada-002",
+    ) -> List[float]:
+        """
+        Create an embedding for the given input text using the specified model.
+
+        Args:
+        text_list (List[str]): Input text for which the embedding is to be created.
+        model (str, optional): The model to use for generating the embedding.
+
+        Returns:
+        List[float]: The generated embedding as a list of float values.
+        """
+        if cfg.use_azure:
+            response = openai.Embedding.create(
+                input=text_list,
+                engine=cfg.get_azure_deployment_id_for_model(model),
+            )
+        else:
+            response = openai.Embedding.create(input=text_list, model=model)
+
+        self.update_cost(response.usage.prompt_tokens, 0, model)
+        return response["data"][0]["embedding"]
 
     def update_cost(self, prompt_tokens, completion_tokens, model):
         """
