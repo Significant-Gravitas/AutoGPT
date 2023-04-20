@@ -31,8 +31,8 @@ class TestConfig(TestCase):
         self.assertFalse(self.config.speak_mode)
         self.assertEqual(self.config.fast_llm_model, "gpt-3.5-turbo")
         self.assertEqual(self.config.smart_llm_model, "gpt-4")
-        self.assertEqual(self.config.fast_token_limit, 4000)
-        self.assertEqual(self.config.smart_token_limit, 8000)
+        self.assertEqual(self.config.fast_token_limit, 4096)
+        self.assertEqual(self.config.smart_token_limit, 8192)
 
     def test_set_continuous_mode(self):
         """
