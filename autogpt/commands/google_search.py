@@ -5,11 +5,13 @@ import json
 
 from duckduckgo_search import ddg
 
+from autogpt.commands.command import command
 from autogpt.config import Config
 
 CFG = Config()
 
 
+@command("google", "Google Search", '"query": "<query>"', not CFG.google_api_key)
 def google_search(query: str, num_results: int = 8) -> str:
     """Return the results of a Google search
 
@@ -31,9 +33,17 @@ def google_search(query: str, num_results: int = 8) -> str:
     for j in results:
         search_results.append(j)
 
-    return json.dumps(search_results, ensure_ascii=False, indent=4)
+    results = json.dumps(search_results, ensure_ascii=False, indent=4)
+    return safe_google_results(results)
 
 
+@command(
+    "google",
+    "Google Search",
+    '"query": "<query>"',
+    bool(CFG.google_api_key),
+    "Configure google_api_key.",
+)
 def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
     """Return the results of a Google search using the official Google API
 
@@ -82,6 +92,26 @@ def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
             return "Error: The provided Google API key is invalid or missing."
         else:
             return f"Error: {e}"
+    # google_result can be a list or a string depending on the search results
 
     # Return the list of search result URLs
-    return search_results_links
+    return safe_google_results(search_results_links)
+
+
+def safe_google_results(results: str | list) -> str:
+    """
+        Return the results of a google search in a safe format.
+
+    Args:
+        results (str | list): The search results.
+
+    Returns:
+        str: The results of the search.
+    """
+    if isinstance(results, list):
+        safe_message = json.dumps(
+            [result.enocde("utf-8", "ignore") for result in results]
+        )
+    else:
+        safe_message = results.encode("utf-8", "ignore").decode("utf-8")
+    return safe_message
