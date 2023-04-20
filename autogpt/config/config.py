@@ -29,8 +29,10 @@ class Config(metaclass=Singleton):
         self.skip_news = False
 
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
+        self.chat_llm_model = os.getenv("CHAT_LLM_MODEL", "gpt-3.5-turbo")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
+        self.chat_token_limit = int(os.getenv("CHAT_TOKEN_LIMIT", 4000))
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 3000))
@@ -194,6 +196,10 @@ class Config(metaclass=Singleton):
     def set_speak_mode(self, value: bool) -> None:
         """Set the speak mode value."""
         self.speak_mode = value
+
+    def set_chat_llm_model(self, value: str) -> None:
+        """Set the chat LLM model value"""
+        self.chat_llm_model = value
 
     def set_fast_llm_model(self, value: str) -> None:
         """Set the fast LLM model value."""

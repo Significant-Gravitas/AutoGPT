@@ -29,6 +29,7 @@ class TestConfig(TestCase):
         self.assertFalse(self.config.debug_mode)
         self.assertFalse(self.config.continuous_mode)
         self.assertFalse(self.config.speak_mode)
+        self.assertEqual(self.config.chat_llm_model, "gpt-3.5-turbo")
         self.assertEqual(self.config.fast_llm_model, "gpt-3.5-turbo")
         self.assertEqual(self.config.smart_llm_model, "gpt-4")
         self.assertEqual(self.config.fast_token_limit, 4000)
@@ -59,6 +60,13 @@ class TestConfig(TestCase):
 
         # Reset speak mode
         self.config.set_speak_mode(speak_mode)
+
+    def test_set_chat_llm_model(self):
+        """
+        Test if the set_chat_llm_model() method updates the chat_llm_model attribute.
+        """
+        self.config.set_chat_llm_model("gpt-3.5-turbo-test")
+        self.assertEqual(self.config.chat_llm_model, "gpt-3.5-turbo-test")
 
     def test_set_fast_llm_model(self):
         """

@@ -89,8 +89,9 @@ class Agent:
                     self.triggering_prompt,
                     self.full_message_history,
                     self.memory,
-                    cfg.fast_token_limit,
-                )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                    cfg.chat_llm_model,
+                    cfg.chat_token_limit,
+                )
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
             for plugin in cfg.plugins:
