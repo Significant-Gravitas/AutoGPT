@@ -4,7 +4,7 @@ import json
 import requests
 import yaml
 from colorama import Fore
-from git import Repo
+from git.repo import Repo
 
 
 def clean_input(prompt: str = ""):
