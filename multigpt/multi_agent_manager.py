@@ -18,7 +18,8 @@ from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from multigpt.multi_agent import MultiAgent
 from multigpt.agent_selection import AgentSelection
-from multigpt.constants import CHAT_ONLY_MODE, NEXTAGENTSELECTION
+from multigpt.constants import CHAT_ONLY_MODE, NEXTAGENTSELECTION, USE_LMQL_QUERIES
+import multigpt.lmql_magic
 
 
 class MultiAgentManager(metaclass=Singleton):
@@ -109,7 +110,8 @@ class MultiAgentManager(metaclass=Singleton):
             self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
 
         elif NEXTAGENTSELECTION == AgentSelection.SMART_SELECTION:
-            if self.last_active_agent is None and len(self.agents) > 0:  # If last agent is None, fallback to random select
+            if self.last_active_agent is None and len(
+                    self.agents) > 0:  # If last agent is None, fallback to random select
                 self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
             else:
                 try:
@@ -123,10 +125,11 @@ class MultiAgentManager(metaclass=Singleton):
                     messages = [{"role": "system", "content": prompt}]
                     with Spinner("Selecting next participant... "):
                         next_speaker_id_unparsed = create_chat_completion(messages=messages,
-                                                                          model=self.cfg.fast_llm_model,    #consider using smart model here
+                                                                          model=self.cfg.fast_llm_model,
+                                                                          # consider using smart model here
                                                                           max_tokens=1000)
                         next_speaker_id = self.parse_num_output_llm(next_speaker_id_unparsed)
-                        self.current_active_agent = self.agents[next_speaker_id-1]
+                        self.current_active_agent = self.agents[next_speaker_id - 1]
 
 
                 except Exception as e:  # If parsing fails, just fallback to random select
@@ -176,13 +179,17 @@ class MultiAgentManager(metaclass=Singleton):
                     agent_name, message = active_agent.auditory_buffer.pop(0)
                     conversation_input += f"{agent_name}: {message}\n"
                 conversation_input += active_agent.user_input
-                assistant_reply = chat_with_ai(
-                    active_agent.prompt,
-                    conversation_input,
-                    active_agent.full_message_history,
-                    active_agent.memory,
-                    self.cfg.fast_token_limit,
-                )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+
+                chat_with_ai_args = [active_agent.prompt,
+                        conversation_input,
+                        active_agent.full_message_history,
+                        active_agent.memory,
+                        self.cfg.fast_token_limit]
+                assistant_reply = None
+                if USE_LMQL_QUERIES == True:
+                    assistant_reply = multigpt.lmql_magic.chat_with_ai(*chat_with_ai_args)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                else:
+                    assistant_reply = chat_with_ai(*chat_with_ai_args)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             # Print Assistant thoughts
 

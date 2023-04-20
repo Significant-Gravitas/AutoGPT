@@ -30,3 +30,4 @@ python-slugify~=8.0.1
 pytest
 pytest-mock
 tweepy
+lmql~=0.0.5
