@@ -1,11 +1,8 @@
-""" Brian speech module for autogpt """
 import os
-
 import requests
+import logging
 from playsound import playsound
-
 from autogpt.speech.base import VoiceBase
-
 
 class BrianSpeech(VoiceBase):
     """Brian speech module for autogpt"""
@@ -23,9 +20,7 @@ class BrianSpeech(VoiceBase):
         Returns:
             bool: True if the request was successful, False otherwise
         """
-        tts_url = (
-            f"https://api.streamelements.com/kappa/v2/speech?voice=Brian&text={text}"
-        )
+        tts_url = f"https://api.streamelements.com/kappa/v2/speech?voice=Brian&text={text}"
         response = requests.get(tts_url)
 
         if response.status_code == 200:
@@ -35,6 +30,5 @@ class BrianSpeech(VoiceBase):
             os.remove("speech.mp3")
             return True
         else:
-            print("Request failed with status code:", response.status_code)
-            print("Response content:", response.content)
+            logging.error("Request failed with status code: %s, response content: %s", response.status_code, response.content)
             return False
