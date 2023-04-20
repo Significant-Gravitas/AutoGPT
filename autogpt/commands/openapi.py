@@ -12,10 +12,38 @@ from urllib.parse import urlparse
 
 import openapi_python_client
 import requests
+import yaml
 from openapi_python_client.cli import Config as OpenAPIConfig
 
 from autogpt.commands.command import CommandRegistry, Command
 from autogpt.config import Config
+
+
+OPENAPI_COMMANDS_REGISTRY = str(Path(os.getcwd()) / "openapi_commands.yaml")
+
+
+def load_openapi_config(cfg: Config):
+    """
+    Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from
+      yaml file if yaml file exists,
+    else returns class with no parameters.
+
+    Parameters:
+       config_file (int): The path to the config yaml file.
+         DEFAULT: "../ai_settings.yaml"
+
+    Returns:
+        cls (object): An instance of given cls object
+    """
+
+    try:
+        with open(OPENAPI_COMMANDS_REGISTRY, encoding="utf-8") as file:
+            openapi_registry = yaml.load(file, Loader=yaml.FullLoader)
+    except FileNotFoundError:
+        openapi_registry = {}
+
+    ai_name = openapi_registry.get("ai_name", "")
+
 
 
 def write_dict_to_json_file(data: dict, file_path: str) -> None:

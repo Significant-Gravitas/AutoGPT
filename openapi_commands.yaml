@@ -1,0 +1,20 @@
+# Any OpenAI plugin API, or REST API returning openapi.json (aka Swagger) spec can be
+# listed here, it works as a registry. All methods of APIs listed here can be converted
+# into commands and ingested in runtime via listing their names in ENV variable OPENAPI_APIS
+# OpenAI Plugins specification: https://platform.openai.com/docs/plugins/getting-started/plugin-manifest
+
+openai_plugins:
+    # Weather GPT OpenAI Plugin
+    # https://weathergpt.vercel.app/
+    weathergpt:
+        url: https://weathergpt.vercel.app/openapi.json
+        openapi_spec: /openapi.json
+        openai_manifest: /openai.json
+        auth: none
+
+openapi_plugins:
+    weatherapi:
+        url: https://api.weatherapi.com/v1/openapi.json
+        openapi_spec: /v1/openapi.json
+        auth: none
+
