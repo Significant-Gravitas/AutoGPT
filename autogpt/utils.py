@@ -6,7 +6,7 @@ import requests
 import speech_recognition as sr
 import yaml
 from colorama import Fore
-from git import Repo
+from git.repo import Repo
 
 import autogpt.speech.say as speak
 from autogpt.config.config import Config

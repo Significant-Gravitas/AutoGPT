@@ -18,6 +18,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 
 import autogpt.processing.text as summary
+from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 
@@ -25,6 +26,11 @@ FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
 
 
+@command(
+    "browse_website",
+    "Browse Website",
+    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+)
 def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     """Browse a website and return the answer and links to the user
 
