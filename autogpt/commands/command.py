@@ -68,15 +68,15 @@ class CommandRegistry:
 
     def reload_commands(self) -> None:
         """Reloads all loaded command plugins."""
-        for cmd_name in self.commands:
-            cmd = self.commands[cmd_name]
+        for command_name in self.commands:
+            cmd = self.commands[command_name]
             module = self._import_module(cmd.__module__)
             reloaded_module = self._reload_module(module)
             if hasattr(reloaded_module, "register"):
                 reloaded_module.register(self)
 
-    def get_command(self, name: str) -> Callable[..., Any]:
-        return self.commands[name]
+    def get_command(self, command_name: str) -> Callable[..., Any]:
+        return self.commands[command_name]
 
     def call(self, command_name: str, **kwargs) -> Any:
         if command_name not in self.commands:
