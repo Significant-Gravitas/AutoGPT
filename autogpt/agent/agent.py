@@ -1,4 +1,6 @@
 from colorama import Fore, Style
+from pynput.keyboard import Key, KeyCode, Listener
+from win32gui import GetForegroundWindow, GetWindowText
 
 from autogpt.app import execute_command, get_command
 from autogpt.chat import chat_with_ai, create_chat_message
@@ -9,8 +11,6 @@ from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
-from pynput.keyboard import Key, Listener, KeyCode
-from win32gui import GetWindowText, GetForegroundWindow
 
 
 class Agent:
