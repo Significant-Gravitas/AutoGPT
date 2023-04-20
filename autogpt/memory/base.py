@@ -3,8 +3,8 @@ import abc
 
 import openai
 
-from autogpt.config import AbstractSingleton, Config
 from autogpt.api_manager import api_manager
+from autogpt.config import AbstractSingleton, Config
 
 cfg = Config()
 

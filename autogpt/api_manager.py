@@ -15,7 +15,7 @@ COSTS = {
     "gpt-3.5-turbo-0301": {"prompt": 0.002, "completion": 0.002},
     "gpt-4-0314": {"prompt": 0.03, "completion": 0.06},
     "gpt-4": {"prompt": 0.03, "completion": 0.06},
-    "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0.0}
+    "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0.0},
 }
 
 
@@ -86,14 +86,10 @@ class ApiManager:
         if cfg.use_azure:
             response = openai.Embedding.create(
                 input=text_list,
-                engine=cfg.get_azure_deployment_id_for_model(
-                    model
-                ),
+                engine=cfg.get_azure_deployment_id_for_model(model),
             )
         else:
-            response = openai.Embedding.create(
-                input=text_list, model=model
-            )
+            response = openai.Embedding.create(input=text_list, model=model)
 
         self.update_cost(response.usage.prompt_tokens, 0, model)
         return response["data"][0]["embedding"]
