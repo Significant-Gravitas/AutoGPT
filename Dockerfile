@@ -29,7 +29,7 @@ USER appuser
 # Copy the requirements.txt file and install the requirements
 COPY --chown=appuser:appuser requirements.txt .
 RUN sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
-	pip install --no-cache-dir --user -r requirements.txt
+	pip3 install --no-cache-dir --user -r requirements.txt
 
 # Copy the application files
 COPY --chown=appuser:appuser autogpt/ ./autogpt
