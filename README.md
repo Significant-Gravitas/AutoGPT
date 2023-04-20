@@ -282,6 +282,28 @@ If you add the plugins class name to the `ALLOWLISTED_PLUGINS` in the `.env` you
 ALLOWLISTED_PLUGINS=example-plugin1,example-plugin2,example-plugin3
 ```
 
+## 🔍 Google Serper API Keys Configuration
+If you wish to use the full search results from google.com, you can use the `google_serper_search` command. 
+This feature enables the agent to leverage the Google knowledge graph, featured snippets, and information on 'related searches'.
+To use this command, you'll need to set up your Serper API keys in the environment variables.
+
+1. Go to [serper.dev](https://serper.dev).
+2. Sign up for a free account (you get 1k free credits)
+3. Go to the [API key](https://serper.dev/api-key) page and copy the API key.
+4. Set the `SERPER_API_KEY` environment variable to the key you copied.
+
+For Windows Users:
+
+```bash
+setx SERPER_API_KEY "YOUR_SERPER_API_KEY"
+```
+
+For macOS and Linux users:
+
+```bash
+export SERPER_API_KEY="YOUR_SERPER_API_KEY"
+```
+
 ## Setting Your Cache Type
 
 By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 
+import requests
 from duckduckgo_search import ddg
 
 from autogpt.commands.command import command
@@ -11,7 +12,12 @@ from autogpt.config import Config
 CFG = Config()
 
 
-@command("google", "Google Search", '"query": "<query>"', not CFG.google_api_key)
+@command(
+    "google",
+    "Google Search",
+    '"query": "<query>"',
+    not (CFG.google_api_key or CFG.serper_api_key),
+)
 def google_search(query: str, num_results: int = 8) -> str:
     """Return the results of a Google search
 
@@ -35,6 +41,53 @@ def google_search(query: str, num_results: int = 8) -> str:
 
     results = json.dumps(search_results, ensure_ascii=False, indent=4)
     return safe_google_results(results)
+
+
+@command(
+    "google",
+    "Google Search",
+    '"query": "<query>"',
+    bool(CFG.serper_api_key),
+    "Configure serper_api_key.",
+)
+def google_serper_search(query: str, num_results: int = 8) -> str:
+    """Return the results of a Google search using the Serper Google Search API.
+    Use this if you're running into rate limits or want to use the full search results from google.com, so you can
+    leverage the Google knowledge graph, featured snippets and 'related searches' information.
+
+    Args:
+        query (str): The search query.
+        num_results (int): The number of results to return.
+
+    Returns:
+        str: The results of the search.
+    """
+
+    if not query:
+        return json.dumps({})
+
+    try:
+        api_key = CFG.serper_api_key
+        headers = {
+            "X-API-KEY": api_key or "",
+            "Content-Type": "application/json",
+        }
+        params = {"q": query, "num": num_results}
+        response = requests.post(
+            "https://google.serper.dev/search", headers=headers, params=params
+        )
+        response.raise_for_status()
+        search_results = response.json()
+        results = json.dumps(search_results, ensure_ascii=False, indent=4)
+        return safe_google_results(results)
+
+    except requests.exceptions.HTTPError as e:
+        if e.response.text:
+            return f"Serper API Error: {e.response.text}"
+        return f"HTTP Error: {e}"
+
+    except Exception as e:
+        return f"Error: {e}"
 
 
 @command(
