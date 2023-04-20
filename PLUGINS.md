@@ -10,8 +10,6 @@ The following community plugins are known to the maintainers of Auto-GPT.  Their
 
 ## Prompt Plugins
 
-System Info -
-Injects information about the Operation System into the prompt
-
+[System Info](https://github.com/hdkiller/Auto-GPT-SystemInfo) - 
 https://github.com/hdkiller/Auto-GPT-SystemInfo
 
