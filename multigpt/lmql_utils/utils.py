@@ -1,154 +1,14 @@
 import asyncio
 import time
 
-import lmql
-
 from openai.error import RateLimitError
 from autogpt import token_counter
 from autogpt.chat import cfg, generate_context, create_chat_message
-from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
+from multigpt.lmql_utils import _queries
 
 
-@lmql.query
-async def chatgpt_enforce_prompt_format_gpt4(messages):
-    '''
-    argmax
-        for message in messages:
-            if message['role'] == 'system':
-                "{:system} {message['content']}"
-            elif message['role'] == 'user':
-                "{:user} {message['content']}"
-            elif message['role'] == 'assistant':
-                "{:assistant} {message['content']}"
-            else:
-                assert False, "not a supported role " + str(role)
-        schema = {
-            "thoughts": {
-                "text": str,
-                "reasoning": str,
-                "plan": str,
-                "criticism": str,
-                "speak": str
-            },
-            "command": {
-                "name": str,
-                "args": {
-                    "[STRING_VALUE]" : str
-                }
-            }
-        }
-        stack = [("", schema)]
-        indent = ""
-        dq = '"'
-        while len(stack) > 0:
-            t = stack.pop(0)
-            if type(t) is tuple:
-                k, key_type = t
-                if k != "":
-                    "{indent}{dq}{k}{dq}: "
-                if key_type is str:
-                     if stack[0] == "DEDENT":
-                        '"[STRING_VALUE]\n'
-                     else:
-                        '"[STRING_VALUE],\n'
-                elif key_type is int:
-                     if stack[0] == "DEDENT":
-                        "[INT_VALUE]\n"
-                     else:
-                        "[INT_VALUE],\n"
-                elif type(key_type) is dict:
-                    "{{\n"
-                    indent += "    "
-                    if len(stack) == 0 or stack[0] == "DEDENT":
-                        stack = [(k, key_type[k]) for k in key_type.keys()] + ["DEDENT", "}\n"] + stack
-                    else:
-                        stack = [(k, key_type[k]) for k in key_type.keys()] + ["DEDENT", "},\n"] + stack
-                else:
-                    assert False, "not a supported type " + str(k)
-            elif t == "DEDENT":
-                indent = indent[:-4]
-            elif type(t) is str:
-                "{indent}{t}"
-            else:
-                assert False, "not a supported type" + str(t)
-    from
-       'openai/gpt-4'
-    where
-       STOPS_AT(STRING_VALUE, '\"') and STOPS_AT(INT_VALUE, ",") and INT(INT_VALUE)
-    '''
-
-
-@lmql.query
-async def chatgpt_enforce_prompt_format_gpt3(messages):
-    '''
-    argmax
-        for message in messages:
-            if message['role'] == 'system':
-                "{:system} {message['content']}"
-            elif message['role'] == 'user':
-                "{:user} {message['content']}"
-            elif message['role'] == 'assistant':
-                "{:assistant} {message['content']}"
-            else:
-                assert False, "not a supported role " + str(role)
-        schema = {
-            "thoughts": {
-                "text": str,
-                "reasoning": str,
-                "plan": str,
-                "criticism": str,
-                "speak": str
-            },
-            "command": {
-                "name": str,
-                "args": {
-                    "[STRING_VALUE]" : str
-                }
-            }
-        }
-        stack = [("", schema)]
-        indent = ""
-        dq = '"'
-        while len(stack) > 0:
-            t = stack.pop(0)
-            if type(t) is tuple:
-                k, key_type = t
-                if k != "":
-                    "{indent}{dq}{k}{dq}: "
-                if key_type is str:
-                     if stack[0] == "DEDENT":
-                        '"[STRING_VALUE]\n'
-                     else:
-                        '"[STRING_VALUE],\n'
-                elif key_type is int:
-                     if stack[0] == "DEDENT":
-                        "[INT_VALUE]\n"
-                     else:
-                        "[INT_VALUE],\n"
-                elif type(key_type) is dict:
-                    "{{\n"
-                    indent += "    "
-                    if len(stack) == 0 or stack[0] == "DEDENT":
-                        stack = [(k, key_type[k]) for k in key_type.keys()] + ["DEDENT", "}\n"] + stack
-                    else:
-                        stack = [(k, key_type[k]) for k in key_type.keys()] + ["DEDENT", "},\n"] + stack
-                else:
-                    assert False, "not a supported type " + str(k)
-            elif t == "DEDENT":
-                indent = indent[:-4]
-            elif type(t) is str:
-                "{indent}{t}"
-            else:
-                assert False, "not a supported type" + str(t)
-    from
-       'openai/gpt-3.5-turbo'
-    where
-       STOPS_AT(STRING_VALUE, '\"') and STOPS_AT(INT_VALUE, ",") and INT(INT_VALUE)
-    '''
-
-
-def chat_with_ai(
+def lmql_chat_with_ai(
         prompt, user_input, full_message_history, permanent_memory, token_limit
 ):
     """Interact with the OpenAI API, sending the prompt, user input, message history,
@@ -254,7 +114,7 @@ def chat_with_ai(
 
             # TODO: use a model defined elsewhere, so that model can contain
             # temperature and other settings we care about
-            assistant_reply = create_chat_completion_lmql(
+            assistant_reply = lmql_create_chat_completion(
                 model=model,
                 messages=current_context,
                 max_tokens=tokens_remaining,
@@ -273,26 +133,37 @@ def chat_with_ai(
             time.sleep(10)
 
 
-async def send_to_lmql(current_context, model):
+def lmql_create_chat_completion(model="gpt-3.5-turbo", messages=None, max_tokens=0):
+    res = asyncio.run(_query_chat_completion(messages, model))
+    return _extract_response(res, '{')
+
+
+def lmql_get_emotional_state(message):
+    res = asyncio.run(_query_emotional_state(message))
+    return res
+
+
+# internal helper functions
+
+async def _query_chat_completion(current_context, model):
     if model == "gpt-4":
-        return (await chatgpt_enforce_prompt_format_gpt4(current_context))[0].prompt
+        return (await _queries.create_chat_completion_gpt4(current_context))[0].prompt
     else:
-        return (await chatgpt_enforce_prompt_format_gpt3(current_context))[0].prompt
+        return (await _queries.create_chat_completion_gpt3(current_context))[0].prompt
 
 
-def get_json_str_lmql(input_string):
+async def _query_emotional_state(message):
+    emotion = (await _queries.classify_emotion(message))
+    return emotion.variables['CLASSIFICATION']
+
+
+def _extract_response(input_string, first_char):
     substring = "<lmql:user/>"
     last_occurrence_index = input_string.rfind(substring)
 
     if last_occurrence_index != -1:
         input_string = input_string[last_occurrence_index + len(substring):]
-        substring = '{'
-        first_occurrence_index = input_string.find(substring)
+        first_occurrence_index = input_string.find(first_char)
         if first_occurrence_index != -1:
             return input_string[first_occurrence_index:]
-    return "{}"
-
-
-def create_chat_completion_lmql(model="gpt-3.5-turbo", messages=None, max_tokens=0):
-    res = asyncio.run(send_to_lmql(messages, model))
-    return get_json_str_lmql(res)
+    return None

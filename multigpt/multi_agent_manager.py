@@ -19,7 +19,7 @@ from autogpt.utils import clean_input
 from multigpt.multi_agent import MultiAgent
 from multigpt.agent_selection import AgentSelection
 from multigpt.constants import CHAT_ONLY_MODE, NEXTAGENTSELECTION, USE_LMQL_QUERIES
-import multigpt.lmql_magic
+import lmql_utils
 
 
 class MultiAgentManager(metaclass=Singleton):
@@ -181,14 +181,16 @@ class MultiAgentManager(metaclass=Singleton):
                 conversation_input += active_agent.user_input
 
                 chat_with_ai_args = [active_agent.prompt,
-                        conversation_input,
-                        active_agent.full_message_history,
-                        active_agent.memory,
-                        self.cfg.fast_token_limit]
+                                     conversation_input,
+                                     active_agent.full_message_history,
+                                     active_agent.memory,
+                                     self.cfg.fast_token_limit]
                 if USE_LMQL_QUERIES == True:
-                    assistant_reply = multigpt.lmql_magic.chat_with_ai(*chat_with_ai_args)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                    assistant_reply = lmql_utils.lmql_chat_with_ai(
+                        *chat_with_ai_args)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
                 else:
-                    assistant_reply = chat_with_ai(*chat_with_ai_args)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                    assistant_reply = chat_with_ai(
+                        *chat_with_ai_args)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             # Print Assistant thoughts
 
@@ -196,6 +198,12 @@ class MultiAgentManager(metaclass=Singleton):
             if assistant_reply_object is not None:
                 try:
                     speak_value = assistant_reply_object.get('thoughts', {}).get('speak')
+                    with Spinner(f"EVALUATING EMOTIONAL STATE OF {active_agent.ai_name}."):
+                        val = lmql_utils.lmql_get_emotional_state(speak_value)
+                    logger.typewriter_log(
+                        "JARVIS: ", Fore.YELLOW,
+                        f"Evaluation complete. {active_agent.ai_name} is feeling {val} right now."
+                    )
                     if speak_value is not None:
                         self.send_message_to_all_agents(speaker=active_agent, message=speak_value)
                         active_agent.auditory_buffer.pop()
