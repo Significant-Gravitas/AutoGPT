@@ -1,2 +1,4 @@
 auto_gpt_completion_fn:
+  args:
+    auto_gpt_path:
   class: auto_gpt_benchmarking.CompletionFn:AutoGPTCompletionFn

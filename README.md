@@ -1,69 +1,97 @@
 # Auto-GPT-Benchmarks
-A set of standardised benchmarks to assess the performance of Auto-GPTs.
+A set of standardised benchmarks to assess the performance of Auto-GPT.
+This currently uses the OpenAI Evals framework to run the benchmarks.
 
-# What is next?
+## Setup
 
-- [ ] Build longer form tasks, (code fix backed by testing)
-- [ ] Explicitly note the common failure modes in the test harness and fix them. Most of these appear to be failure modes with the core AutoGPT project
-- [ ] Switch to a ubuntu container so it can do more things (git, bash, etc)
-- [ ] Lower priority, but put this in a webserver backend so we have a good API rather than doing container and file management for our interface between evals and our agent.
-- [ ] Get token counting data from the model Add scores to result files based on pricing associated with tokens and models used
-- [ ] Think about how this can be applied to other projects besides AutoGPT so we can be THE agent evaluation framework.
-- [ ] Copy the OpenAI Eval files from the tmp file they are saved to somewhere we can track the results
-- [ ] Support multi-threaded evals. OpenAI has great support for this. The docker system built here doesn't.
+You must add the auto_gpt_benchmarking dir to the python path
+Do this with a path file in your venv. OpenAI evals needs to import it.
 
+These instructions currently assume ubuntuy 22.04.
+They should be fairly adaptable to the windows/MacOS equivalents. Please submit a PR if you would like to see your OS
+documented.
+
+Clone the repo with:
+
+    `git clone git@github.com:Significant-Gravitas/Auto-GPT-Benchmarks.git`
+    `cd Auto-GPT-Benchmarks`
+
+Create a venv with
+
+    `python3.9 -m venv venv`
+
+
+Activate it with
+
+    `source venv/bin/activate`
+
+Install the requirements with:
+
+    `pip install -r requirements.txt`
+
+If you haven't already clone the AutoGPT repo somewhere else on your machine.
+DO NOT CLONE IT INTO A SUBDIR OF THIS REPO.
+
+    `cd somewhere/else`
+    `git clone git@github.com:Significant-Gravitas/Auto-GPT.git`
+
+You will need to update the .env file in the Auto-GPT repo to have your OpenAI api key. The file in question is at:
+
+    `Auto-GPT/.env`
+
+Finally, we assume you have a docker container built from the Dockerfile in the Auto-GPT repo.
+
+Build this with:
+
+    `cd Auto-GPT`
+    `docker build -t autogpt .`
+
+If you want to run with redis as your memory system, you can stand up a redis image in the AutoGPT repo with
+    
+    `docker compose up`
+
+Then you will need to adjust some variables in your .env file to use the redis memory backend. 
+See the AutoGPT docs on how to do that.
+
+Run your first eval with:
+
+    `cd Auto-GPT-Benchmarks`
+    `python3 -m auto_gpt_benchmarking test-match --auto-gpt-path /your/path/to/Auto-GPT`
+
+You should only need to use the --auto-gpt-path flag the first time you run it. Afterwards, that will be saved in 
+
+    `auto_gpt_benchmarking/completion_fns/auto_gpt_completion_fn.yaml`.
+
+To see a full list of available flags you can use run `python3 -m auto_gpt_benchmarking --help`
+Some of these are inherited from the openAI evals framework and do not work quite as intended as they are not applicable
+to this use case.
+
+This saves a file in `Auto-GPT-Benchmarks/data/records.jsonl`
+This file is currently a default that is configurable with --record_path flag. You will have to specify the fully
+qualified path.
+
+## Currently Supported Benchmarks:
+From OpenAI Evals
+- [x] test-match
+- [x] test-fuzzy-match
+- [ ] Everything else they have...
 
 ## Understanding OpenAI Evals
 
 The Evals docs are here and very good: https://github.com/openai/evals/tree/main/docs
 
-The basic idea is this:
+The basic idea is this though:
 1. Use a completion function to point to the language model or in our case AutoGPT, the model you want to test.
 2. Register that completion function with the evals framework with a yaml in a `completion_fns` dir.
 3. Run the evals against the completion function.
 
-Then you can make more yaml defined evals and run them against the completion function as needed.
+Then you can make more also, yaml defined evals and run them against the completion function as needed.
 
 ### Completions Functions
 
 See our yaml file in `completion_fns` dir for the registration of the completion function.
 See our completion function itself in CompletionFn.py
 That points to the AutoGPT model we want to test which is spun up dynamically in a docker container in AutoGPTAgent.py
-
-
-## Setup
-
-You must add the auto_gpt_benchmarking dir to the python path
-Do this with a path file in your venv. OpenAI evals needs to import it. 
-
-Create a venv with
-
-`python3.9 -m venv venv`
-
-Activate it with
-
-`source venv/bin/activate`
-
-Add a file to `venv/lib/python3.9/site-packages/benchmarking.pth` with the contents: 
-`/PATH/TO/REPO/Auto-GPT-Benchmarks-fork`
-
-This is because evals tries to import it directly.
-
-Install the requirements with
-
-`pip install -r requirements.txt`
-
-You must have a docker container built corresponding to the submodule below or the docker run command starting the agent will fail.
-
-Cd into the AutoGPT submodule and build/tag the dockerfile so the agent can be instantiated.
-`cd auto_gpt_benchmarks/Auto-GPT`
-
-Build the container so we can run it procedurally!
-`docker build -t autogpt .`
-
-## Running the tests
-
-EVALS_THREADS=1 EVALS_THREAD_TIMEOUT=600 oaieval auto_gpt_completion_fn test-match --registry_path $PWD/auto_gpt_benchmarking
 
 
 # Example final output:
@@ -79,3 +107,12 @@ EVALS_THREADS=1 EVALS_THREAD_TIMEOUT=600 oaieval auto_gpt_completion_fn test-mat
 {"run_id": "230417220821DPM75QNS", "event_id": 5, "sample_id": "test-match.s1.0", "type": "match", "data": {"correct": false, "expected": "time", "picked": null, "sampled": "Once upon a time", "options": ["time"]}, "created_by": "", "created_at": "2023-04-17 22:12:04.691064+00:00"}
 (venv) douglas@douglas-XPS-15-9500:~/AGI/Auto-GPT-Benchmarks-fork$ 
 
+# What is next?
+
+- [ ] Run the rest of the OpenAI Evals Especially the modelgraded ones
+- [ ] Build longer form tasks, (code fix backed by testing)
+- [ ] Explicitly note the common failure modes in the test harness and fix them. Most of these appear to be failure modes with the core AutoGPT project
+- [ ] Get token counting data from the model Add scores to result files based on pricing associated with tokens and models used
+- [ ] Think about how this can be applied to other projects besides AutoGPT so we can be THE agent evaluation framework.
+- [ ] Figure our how the OpenAI Evals results are saved...
+- [ ] Support multi-threaded evals. OpenAI has great support for this. The docker system built here doesn't.

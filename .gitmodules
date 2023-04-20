@@ -1,3 +1,0 @@
-[submodule "Auto-GPT"]
-	path = auto_gpt_benchmarking/Auto-GPT
-	url = https://github.com/Significant-Gravitas/Auto-GPT.git
