@@ -75,11 +75,14 @@ def create_config(
 
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        CFG.set_smart_llm_model("gpt-3.5")
+        CFG.set_smart_llm_model("gpt-3.5-turbo")
+        CFG.set_chat_llm_model("gpt-3.5-turbo")
+
 
     if gpt4only:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_fast_llm_model("gpt-4")
+        CFG.set_chat_llm_model("gpt-4")
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
