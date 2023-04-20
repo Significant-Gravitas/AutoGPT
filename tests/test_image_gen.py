@@ -13,7 +13,7 @@ def lst(txt):
     return txt.split(":")[1].strip()
 
 
-@unittest.skipIf(os.getenv("CI"), "Skipping image generation tests")
+@unittest.skipIf(not os.getenv("CI", False), "Skipping image generation tests")
 class TestImageGen(unittest.TestCase):
     def setUp(self):
         self.config = Config()
