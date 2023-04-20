@@ -39,7 +39,7 @@ Development of this free, open-source project is made possible by all the <a hre
 <a href="https://nuclei.ai/"><img src="https://user-images.githubusercontent.com/22963551/233059785-28ce2549-62de-42c2-925a-c0aa08aef6bd.png" height="40px" alt="NucleiAI" /></a>
 <a href="https://www.algohash.org/"><img src="https://user-images.githubusercontent.com/22963551/233061211-9a9ec216-9fc0-46fd-a124-bf951057207c.png" height="40px" alt="Algohash" /></a>
 <a href="https://www.typingmind.com/?utm_source=autogpt"><img src="https://user-images.githubusercontent.com/22963551/233202971-61e77209-58a0-47d9-9f7e-dd081111437b.png" height="40px" alt="TypingMind" /></a>
-</a>
+</a></div>
 
 </br>
 </br>
