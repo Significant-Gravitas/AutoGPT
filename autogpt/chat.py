@@ -52,7 +52,13 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
 
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
-    agent, prompt, user_input, full_message_history, permanent_memory, model, token_limit
+    agent,
+    prompt,
+    user_input,
+    full_message_history,
+    permanent_memory,
+    model,
+    token_limit,
 ):
     """Interact with the OpenAI API, sending the prompt, user input, message history,
     and permanent memory."""
