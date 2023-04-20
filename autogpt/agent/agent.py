@@ -79,7 +79,6 @@ class Agent:
                     self.memory,
                     cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
-
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
 
             # Print Assistant thoughts
