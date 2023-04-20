@@ -148,7 +148,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
   On linux or mac:
     ```bash
     # On Linux or Mac:
-   ./run.sh start
+   ./run.sh
    # On Windows:
    .\run.bat
    ```
