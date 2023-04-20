@@ -100,7 +100,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
    you can download the [latest stable release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest) (`Source code (zip)`, bottom of the page).
 
     ```bash
-    git clone https://github.com/Significant-Gravitas/Auto-GPT.git
+    git clone -b stable https://github.com/Significant-Gravitas/Auto-GPT.git
     ```
 
 3. Navigate to the directory where the repository was downloaded
@@ -145,10 +145,10 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 ## 🔧 Usage
 
 1. Run `autogpt` Python module in your terminal.
-  On linux or mac:
-    ```bash
-    # On Linux or Mac:
-   ./run.sh start
+   ```bash
+   # On Linux of Mac:
+   ./run.sh
+
    # On Windows:
    .\run.bat
    ```
