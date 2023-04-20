@@ -34,5 +34,7 @@ RUN sed -i '/Items below this point will not be included in the Docker Image/,$d
 # Copy the application files
 COPY --chown=appuser:appuser autogpt/ ./autogpt
 
+RUN pip install openapi-python-client
+
 # Set the entrypoint
 ENTRYPOINT ["python", "-m", "autogpt"]
