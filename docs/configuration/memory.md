@@ -15,7 +15,7 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 Links to memory backends
 
 - [Pinecone](https://www.pinecone.io/)
-- [Milvus](https://milvus.io/)
+- [Milvus](https://milvus.io/) &ndash; [self-hosted](https://milvus.io/docs), or managed with [Zilliz Cloud](https://zilliz.com/)
 - [Redis](https://redis.io)
 - [Weaviate](https://weaviate.io)
 
@@ -80,17 +80,41 @@ export MEMORY_BACKEND="pinecone"
 
 ### Milvus Setup
 
-[Milvus](https://milvus.io/) is an open-source, highly scalable vector database to store huge amounts of vector-based memory and provide fast relevant search.
+[Milvus](https://milvus.io/) is an open-source, highly scalable vector database to store huge amounts of vector-based memory and provide fast relevant search. And it can be quickly deployed by docker locally or as a cloud service provided by [Zilliz Cloud](https://zilliz.com/).
 
-- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
-  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
-  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
-- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
-- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
+#### Setup Client
 
-**Optional:**
-- set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
+- Run `pip3 install pymilvus` in your python envrionment, keep your pymilvus version and milvus version compatible to avoid compatibility issues. More detail at [pymilvus](https://github.com/milvus-io/pymilvus)
 
+#### Setup Database
+
+Deploy your milvus service by Zilliz Cloud remotely or docker locally 
+
+***Use Zilliz Cloud***
+
+- Go to [Zilliz Cloud](https://zilliz.com/) and sign up if you don't already have account.
+- Choose "Databases" tab, create a new database, remember your username and password, wait until database's status is changed to RUNNING.
+- Choose "Database detail" tab of the database you have created, get public cloud endpoint, such as:
+`https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443`.
+
+***Or use Milvus locally***
+
+- [Install and deploy Milvus locally](https://milvus.io/docs/install_standalone-operator.md)
+
+#### In `.env` file
+
+- `MEMORY_BACKEND=milvus`
+- One of:
+  - `MILVUS_ADDR=host:ip` (for local instance)
+  - `MILVUS_ADDR=https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443` (for Zilliz Cloud)
+
+#### Optional
+
+- Set `MILVUS_USERNAME=your-username-of-milvus-or-cloud-service`, By default it is db_admin for Zilliz Cloud but can be different
+- Set `MILVUS_PASSWORD=your-password-of-milvus-or-cloud-service`
+- Set `MILVUS_SECURE` if tls of your milvus is enabled. Zilliz Cloud and `https` remote address will enable this option by default.
+- Set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name. 
+- You may encounter the accessing problem if you use Zilliz Cloud, modify your IP white list in `Admin -> Access and Security -> IP Address` tab.
 
 ### Weaviate Setup
 [Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 

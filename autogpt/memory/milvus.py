@@ -1,5 +1,6 @@
 """ Milvus memory storage provider."""
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
+from regex import regex
 
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
@@ -13,8 +14,61 @@ class MilvusMemory(MemoryProviderSingleton):
         Args:
             cfg (Config): Auto-GPT global config.
         """
-        # connect to milvus server.
-        connections.connect(address=cfg.milvus_addr)
+        # parse from configuration.
+        self.parse_configure(cfg)
+
+        # use remote uri or addr to connect.
+        if self.uri is not None:
+            connections.connect(
+                uri=self.uri,
+                user=self.username,
+                password=self.password,
+                secure=self.secure,
+            )
+        else:
+            connections.connect(
+                address=self.address,
+                user=self.username,
+                password=self.password,
+                secure=self.secure,
+            )
+        # init collection.
+        self.init_collection()
+
+    def parse_configure(self, cfg) -> None:
+        # init with configuration.
+        self.uri = None
+        self.address = cfg.milvus_addr
+        self.username = cfg.milvus_username
+        self.password = cfg.milvus_password
+        self.collection_name = cfg.milvus_collection
+        self.secure = cfg.milvus_secure
+        # use HNSW by default.
+        self.index_params = {
+            "metric_type": "IP",
+            "index_type": "HNSW",
+            "params": {"M": 8, "efConstruction": 64},
+        }
+
+        # check if config by url.
+        re_uri_prefix = regex.compile(r"^(https?|tcp)://")
+        if re_uri_prefix.match(self.address) is not None:
+            self.uri = self.address
+            # secure option should be True if https is enabled.
+            if self.uri.startswith("https"):
+                self.secure = True
+
+        # zilliz cloud support AutoIndex but not manually index.
+        re_zilliz_cloud = regex.compile(r"^https://(.*)\.zillizcloud\.(com|cn)")
+        if re_zilliz_cloud.match(self.address) is not None:
+            self.index_params = {
+                "metric_type": "IP",
+                "index_type": "AUTOINDEX",
+                "params": {},
+            }
+
+    def init_collection(self) -> None:
+        """Initialize collection in vector database."""
         fields = [
             FieldSchema(name="pk", dtype=DataType.INT64, is_primary=True, auto_id=True),
             FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=1536),
@@ -22,19 +76,14 @@ class MilvusMemory(MemoryProviderSingleton):
         ]
 
         # create collection if not exist and load it.
-        self.milvus_collection = cfg.milvus_collection
         self.schema = CollectionSchema(fields, "auto-gpt memory storage")
-        self.collection = Collection(self.milvus_collection, self.schema)
+        self.collection = Collection(self.collection_name, self.schema)
         # create index if not exist.
         if not self.collection.has_index():
             self.collection.release()
             self.collection.create_index(
                 "embeddings",
-                {
-                    "metric_type": "IP",
-                    "index_type": "HNSW",
-                    "params": {"M": 8, "efConstruction": 64},
-                },
+                self.index_params,
                 index_name="embeddings",
             )
         self.collection.load()
@@ -70,14 +119,10 @@ class MilvusMemory(MemoryProviderSingleton):
             str: log.
         """
         self.collection.drop()
-        self.collection = Collection(self.milvus_collection, self.schema)
+        self.collection = Collection(self.collection_name, self.schema)
         self.collection.create_index(
             "embeddings",
-            {
-                "metric_type": "IP",
-                "index_type": "HNSW",
-                "params": {"M": 8, "efConstruction": 64},
-            },
+            self.index_params,
             index_name="embeddings",
         )
         self.collection.load()
