@@ -3,7 +3,7 @@ import os
 import requests
 import yaml
 from colorama import Fore
-from git.repo import Repo
+from git import Repo
 
 
 def clean_input(prompt: str = ""):
