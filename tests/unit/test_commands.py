@@ -9,7 +9,8 @@ from autogpt.app import execute_command, list_agents, start_agent
 
 @pytest.mark.integration_test
 def test_make_agent() -> None:
-    """Test the make_agent command"""
+    """Test that an agent can be created"""
+    # Use the mock agent manager to avoid creating a real agent
     with patch("openai.ChatCompletion.create") as mock:
         obj = MagicMock()
         obj.response.choices[0].messages[0].content = "Test message"
