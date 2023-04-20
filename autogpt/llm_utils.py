@@ -104,7 +104,7 @@ def create_chat_completion(
                 response = anthropic_client.completion(
                     prompt=f"{anthropic.HUMAN_PROMPT} {messages} {anthropic.AI_PROMPT}",
                     stop_sequences = [anthropic.HUMAN_PROMPT],
-                    model="claude-v1.3",
+                    model="claude-v1",
                     max_tokens_to_sample=10000000000,
                 )
             break
