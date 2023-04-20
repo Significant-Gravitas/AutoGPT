@@ -24,6 +24,7 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ env.min-python-version }}
+        node-version: '16'
 
     - name: Install dependencies
       run: |
