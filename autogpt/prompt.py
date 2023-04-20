@@ -1,4 +1,7 @@
 from colorama import Fore
+import json
+import importlib
+
 from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
 from autogpt.promptgenerator import PromptGenerator
@@ -7,6 +10,51 @@ from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
 CFG = Config()
+
+
+def log_err(s: str, headline: str = "Error: \n"):
+    logger.error(headline, s)
+
+
+def _extract_yaml_config_type(yaml_config_entry: dict):
+    if "raw" in yaml_config_entry:
+        return "raw"
+    if "collection" in yaml_config_entry:
+        return "collection"
+    log_err(f"Unknown config type given for entry: {json.dumps(yaml_config_entry)}")
+
+
+def _load_yaml_config_into_prompt_generator(
+    prompt_config,
+    prompt_generator,
+    yaml_key
+):
+    for yaml_entry in prompt_config[yaml_key]:
+        yaml_entry_type = _extract_yaml_config_type(yaml_entry)
+
+        if yaml_entry_type == "raw":
+            prompt_generator.add_resource(yaml_entry["raw"])
+
+        elif yaml_entry_type == "collection":
+            yaml_entry_module = importlib.import_module(yaml_entry["collection"])
+
+            if hasattr(yaml_entry_module, yaml_key):
+                yaml_entry_collection = getattr(yaml_entry_module, yaml_key)
+            else:
+                log_err(
+                    f"Failed to load module from yaml: {yaml_entry_module}"
+                )
+                continue
+
+            if not isinstance(yaml_entry_collection, list):
+                log_err(
+                    f"Invalid {yaml_key} collection given in yaml config (it should be"
+                    f" of type list[str]): {yaml_entry['collection']}"
+                )
+                continue
+
+            for yaml_entry_str in yaml_entry_collection:
+                prompt_generator.add_constraint(yaml_entry_str)
 
 
 def get_prompt() -> str:
@@ -21,31 +69,22 @@ def get_prompt() -> str:
     # Initialize the Config object
     cfg = Config()
 
+    # Grab the prompt config directly for ease later
+    prompt_config = cfg.yaml_config["prompt"]
+
     # Initialize the PromptGenerator object
     prompt_generator = PromptGenerator()
 
     # Add constraints to the PromptGenerator object
-    prompt_generator.add_constraint(
-        "~4000 word limit for short term memory. Your short term memory is short, so"
-        " immediately save important information to files."
-    )
-    prompt_generator.add_constraint(
-        "If you are unsure how you previously did something or want to recall past"
-        " events, thinking about similar events will help you remember."
-    )
-    prompt_generator.add_constraint("No user assistance")
-    prompt_generator.add_constraint(
-        'Exclusively use the commands listed in double quotes e.g. "command name"'
+    _load_yaml_config_into_prompt_generator(
+        prompt_config,
+        prompt_generator,
+        "constraints"
     )
 
     # Define the command list
     commands = [
         ("Google Search", "google", {"input": "<search>"}),
-        (
-            "Search HackerNews",
-            "search_hackernews",
-            {"input": "<search>"}
-        ),
         (
             "Browse Website",
             "browse_website",
@@ -122,29 +161,17 @@ def get_prompt() -> str:
         prompt_generator.add_command(command_label, command_name, args)
 
     # Add resources to the PromptGenerator object
-    prompt_generator.add_resource(
-        "Internet access for searches and information gathering."
+    _load_yaml_config_into_prompt_generator(
+        prompt_config,
+        prompt_generator,
+        "resources"
     )
-    prompt_generator.add_resource("Long Term memory management.")
-    prompt_generator.add_resource(
-        "GPT-3.5 powered Agents for delegation of simple tasks."
-    )
-    prompt_generator.add_resource("File output.")
 
     # Add performance evaluations to the PromptGenerator object
-    prompt_generator.add_performance_evaluation(
-        "Continuously review and analyze your actions to ensure you are performing to"
-        " the best of your abilities."
-    )
-    prompt_generator.add_performance_evaluation(
-        "Constructively self-criticize your big-picture behavior constantly."
-    )
-    prompt_generator.add_performance_evaluation(
-        "Reflect on past decisions and strategies to refine your approach."
-    )
-    prompt_generator.add_performance_evaluation(
-        "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
-        " the least number of steps."
+    _load_yaml_config_into_prompt_generator(
+        prompt_config,
+        prompt_generator,
+        "evaluations"
     )
 
     # Generate the prompt string

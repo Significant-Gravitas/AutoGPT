@@ -105,6 +105,11 @@ class Config(metaclass=Singleton):
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
+        # load config.yaml
+        path = os.path.join(os.path.dirname(__file__)) + "/../../autogpt_config.yaml"
+        with open(path) as file:
+            self.yaml_config = yaml.load(file, Loader=yaml.FullLoader)
+
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
         Returns the relevant deployment id for the model specified.

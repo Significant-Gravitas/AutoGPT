@@ -1,0 +1,24 @@
+prompt:
+  constraints:
+    - collection: autogpt.collections.default
+    # - raw: "~4000 word limit for short term memory. Your short term memory is short, so immediately save important information to files."
+    # - raw: "If you are unsure how you previously did something or want to recall past events, thinking about similar events will help you remember."
+    # - raw: "No user assistance"
+    # - raw: 'Exclusively use the commands listed in double quotes e.g. "command name"'
+    # - raw: "Use subprocesses for commands that will not terminate within a few minutes"
+  resources:
+    - collection: autogpt.collections.default
+    # - raw: "Internet access for searches and information gathering."
+    # - raw: "Long Term memory management."
+    # - raw: "GPT-3.5 powered Agents for delegation of simple tasks."
+    # - raw: "File output."
+    # - raw: "Continuously review and analyze your actions to ensure you are performing to the best of your abilities."
+    # - raw: "Constructively self-criticize your big-picture behavior constantly."
+    # - raw: "Reflect on past decisions and strategies to refine your approach."
+    # - raw: "Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps."
+  evaluations:
+    - collection: autogpt.collections.default
+    # - raw: "Continuously review and analyze your actions to ensure you are performing to the best of your abilities."
+    # - raw: "Constructively self-criticize your big-picture behavior constantly."
+    # - raw: "Reflect on past decisions and strategies to refine your approach."
+    # - raw: "Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps."

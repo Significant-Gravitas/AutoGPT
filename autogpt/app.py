@@ -1,6 +1,5 @@
 """ Command and Control """
 import json
-import urllib.parse
 from typing import List, NoReturn, Union
 
 from autogpt.agent.agent_manager import AgentManager
@@ -24,7 +23,7 @@ from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
-from autogpt.commands.web_selenium import browse_website, build_driver, scrape_links_with_selenium
+from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.git_operations import clone_repository
 from autogpt.commands.twitter import send_tweet
 
@@ -133,7 +132,10 @@ def execute_command(command_name: str, arguments):
 
             # google_result can be a list or a string depending on the search results
             if isinstance(google_result, list):
-                safe_message = [google_result_single.encode('utf-8', 'ignore') for google_result_single in google_result]
+                safe_message = [
+                    google_result_single.encode('utf-8', 'ignore')
+                    for google_result_single in google_result
+                ]
             else:
                 safe_message = google_result.encode('utf-8', 'ignore')
 
@@ -170,26 +172,6 @@ def execute_command(command_name: str, arguments):
             return search_files(arguments["directory"])
         elif command_name == "browse_website":
             return browse_website(arguments["url"], arguments["question"])
-        elif command_name == "search_hackernews":
-            formatted_search_terms = urllib.parse.quote(arguments['input'])
-            url = f"https://hn.algolia.com/?q={formatted_search_terms}"
-            driver = build_driver()
-            driver.get(url)
-            links = scrape_links_with_selenium(driver, url)
-
-            valid_links = []
-            for i, link in enumerate(links):
-                if "://www.algolia.com" in link:
-                    continue
-                if "://hn.algolia.com" in link:
-                    continue
-                if "://news.ycombinator.com" in link:
-                    continue
-                text = links[i-1].split(" (https://news.ycombinator.com")[0]
-                actual_link = link.split(" ")[0]
-                valid_links.append(f"{text} {actual_link}")
-
-            return valid_links
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again"

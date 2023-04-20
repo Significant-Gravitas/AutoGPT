@@ -16,10 +16,10 @@ class PromptGenerator:
         Initialize the PromptGenerator object with empty lists of constraints,
             commands, resources, and performance evaluations.
         """
-        self.constraints = []
+        self.constraints: list[str] = []
         self.commands = []
-        self.resources = []
-        self.performance_evaluation = []
+        self.resources: list[str] = []
+        self.performance_evaluation: list[str] = []
         self.response_format = {
             "thoughts": {
                 "text": "thought",
@@ -30,6 +30,7 @@ class PromptGenerator:
             },
             "command": {"name": "command name", "args": {"arg name": "value"}},
         }
+        self.response_format_json = json.dumps(self.response_format, indent=4)
 
     def add_constraint(self, constraint: str) -> None:
         """
@@ -124,7 +125,6 @@ class PromptGenerator:
         Returns:
             str: The generated prompt string.
         """
-        formatted_response_format = json.dumps(self.response_format, indent=4)
         return (
             f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
             "Commands:\n"
@@ -133,6 +133,6 @@ class PromptGenerator:
             "Performance Evaluation:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
             "You should only respond in JSON format as described below \nResponse"
-            f" Format: \n{formatted_response_format} \nEnsure the response can be"
+            f" Format: \n{self.response_format_json} \nEnsure the response can be"
             " parsed by Python json.loads"
         )
