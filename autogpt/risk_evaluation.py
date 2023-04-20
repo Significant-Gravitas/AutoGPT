@@ -1,8 +1,10 @@
+import json
+
 from autogpt.chat import (  # TODO this shouldnt really be in chat.py, should it?
     create_chat_message,
 )
 from autogpt.config import Config
-from autogpt.json_fixes import parsing
+from autogpt.json_utils.json_fix_general import correct_json
 from autogpt.llm_utils import create_chat_completion
 
 cfg = Config()
@@ -45,9 +47,11 @@ def evaluate_risk(command, arguments):
         max_tokens=2500,  # More than enough for this task, but TODO: Maybe this could be configurable?
     )
 
-    if cfg.debug_mode:
-        print(f"Risk evaluator response: {response}")
+    response_object = json.loads(
+        correct_json(response)
+    )  # correct_json only checks for errors
 
-    response_object = parsing.fix_and_parse_json(response, False)
+    if cfg.debug_mode:
+        print(f"Risk evaluator response object: {response_object}")
 
     return response_object["calculated_risk"], response_object["reason"]
