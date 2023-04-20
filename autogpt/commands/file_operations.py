@@ -137,7 +137,12 @@ def ingest_file(
         print(f"Error while ingesting file '{filename}': {str(e)}")
 
 
-@command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
+@command(
+    "write_to_file",
+    "Write to file",
+    '"filename": "<filename>", "text": "<text>"',
+    name_alias=["write_file", "create_file"],
+)
 def write_to_file(filename: str, text: str) -> str:
     """Write text to a file
 

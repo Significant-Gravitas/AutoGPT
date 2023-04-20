@@ -1,6 +1,6 @@
 import importlib
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
@@ -23,6 +23,7 @@ class Command:
         signature: str = "",
         enabled: bool = True,
         disabled_reason: Optional[str] = None,
+        name_alias: Optional[Union[str, list]] = None,
     ):
         self.name = name
         self.description = description
@@ -30,6 +31,12 @@ class Command:
         self.signature = signature if signature else str(inspect.signature(self.method))
         self.enabled = enabled
         self.disabled_reason = disabled_reason
+        if name_alias and isinstance(name_alias, str):
+            self.name_alias = [name_alias]
+        elif name_alias and isinstance(name_alias, list):
+            self.name_alias = name_alias
+        else:
+            self.name_alias = []
 
     def __call__(self, *args, **kwargs) -> Any:
         if not self.enabled:
@@ -59,9 +66,18 @@ class CommandRegistry:
 
     def register(self, cmd: Command) -> None:
         self.commands[cmd.name] = cmd
+        for command_name_alias in cmd.name_alias:
+            if command_name_alias == cmd.name:
+                continue
+            self.commands[command_name_alias] = cmd
 
     def unregister(self, command_name: str):
         if command_name in self.commands:
+            cmd = self.commands[command_name]
+            for command_name_alias in cmd.name_alias:
+                if command_name_alias not in self.commands:
+                    continue
+                del self.commands[command_name_alias]
             del self.commands[command_name]
         else:
             raise KeyError(f"Command '{command_name}' not found in registry.")
@@ -81,8 +97,8 @@ class CommandRegistry:
     def call(self, command_name: str, **kwargs) -> Any:
         if command_name not in self.commands:
             raise KeyError(f"Command '{command_name}' not found in registry.")
-        command = self.commands[command_name]
-        return command(**kwargs)
+        cmd = self.commands[command_name]
+        return cmd(**kwargs)
 
     def command_prompt(self) -> str:
         """
@@ -129,6 +145,7 @@ def command(
     signature: str = "",
     enabled: bool = True,
     disabled_reason: Optional[str] = None,
+    name_alias: Optional[Union[str, list]] = None,
 ) -> Callable[..., Any]:
     """The command decorator is used to create Command objects from ordinary functions."""
 
@@ -140,6 +157,7 @@ def command(
             signature=signature,
             enabled=enabled,
             disabled_reason=disabled_reason,
+            name_alias=name_alias,
         )
 
         def wrapper(*args, **kwargs) -> Any:

@@ -11,7 +11,13 @@ from autogpt.config import Config
 CFG = Config()
 
 
-@command("google", "Google Search", '"query": "<query>"', not CFG.google_api_key)
+@command(
+    "google",
+    "Google Search",
+    '"query": "<query>"',
+    not CFG.google_api_key,
+    name_alias=["search"],
+)
 def google_search(query: str, num_results: int = 8) -> str:
     """Return the results of a Google search
 

@@ -87,6 +87,81 @@ class TestCommandRegistry:
 
         assert cmd.name not in registry.commands
 
+    def test_register_command_plus_alias(self):
+        """Test that a command can be registered to the registry."""
+        registry = CommandRegistry()
+        cmd = Command(
+            name="example",
+            description="Example command",
+            method=self.example_function,
+            name_alias="example_alias",
+        )
+
+        registry.register(cmd)
+        assert len(registry.commands) == 2
+
+        assert cmd.name in registry.commands
+        assert cmd.name_alias[0] in registry.commands
+        assert registry.commands[cmd.name] == cmd
+        assert registry.commands[cmd.name_alias[0]] == cmd
+
+    def test_unregister_command_plus_alias(self):
+        """Test that a command can be unregistered from the registry."""
+        registry = CommandRegistry()
+        cmd = Command(
+            name="example",
+            description="Example command",
+            method=self.example_function,
+            name_alias="example_alias",
+        )
+
+        registry.register(cmd)
+        registry.unregister(cmd.name)
+
+        assert len(registry.commands) == 0
+
+        assert cmd.name not in registry.commands
+        assert cmd.name_alias[0] not in registry.commands
+
+    def test_register_command_plus_alias_list(self):
+        """Test that a command can be registered to the registry."""
+        registry = CommandRegistry()
+        cmd = Command(
+            name="example",
+            description="Example command",
+            method=self.example_function,
+            name_alias=["example_alias", "example_alias_2"],
+        )
+
+        registry.register(cmd)
+        assert len(registry.commands) == 3
+
+        assert cmd.name in registry.commands
+        assert cmd.name_alias[0] in registry.commands
+        assert cmd.name_alias[1] in registry.commands
+        assert registry.commands[cmd.name] == cmd
+        assert registry.commands[cmd.name_alias[0]] == cmd
+        assert registry.commands[cmd.name_alias[1]] == cmd
+
+    def test_unregister_command_plus_alias(self):
+        """Test that a command can be unregistered from the registry."""
+        registry = CommandRegistry()
+        cmd = Command(
+            name="example",
+            description="Example command",
+            method=self.example_function,
+            name_alias=["example_alias", "example_alias_2"],
+        )
+
+        registry.register(cmd)
+        registry.unregister(cmd.name)
+
+        assert len(registry.commands) == 0
+
+        assert cmd.name not in registry.commands
+        assert cmd.name_alias[0] not in registry.commands
+        assert cmd.name_alias[1] not in registry.commands
+
     def test_get_command(self):
         """Test that a command can be retrieved from the registry."""
         registry = CommandRegistry()
