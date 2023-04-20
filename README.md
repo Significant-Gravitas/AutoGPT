@@ -265,6 +265,11 @@ export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
 export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 ```
 
+## Commands
+
+Commands are the actions that Auto-GPT can take. They are defined in the `commands` folder. Detailed description available
+in the [commands README](commands.md).
+
 ## Plugins
 
 See https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template for the template of the plugins.
