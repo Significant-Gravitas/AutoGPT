@@ -142,6 +142,24 @@ def main(
         command_registry.import_commands("autogpt.commands.web_selenium")
         command_registry.import_commands("autogpt.commands.write_tests")
         command_registry.import_commands("autogpt.app")
+
+        if cfg.openapi_apis:
+            for plugin in openai_plugins:
+                manifest = plugin._manifest
+                openapi_spec = plugin._openapi_spec
+                name = plugin._name
+                client = plugin._client
+                description = plugin._description
+                methods = plugin._modules
+                for method_name, method in methods.items():
+                    command = Command(
+                        name=method_name,
+                        description=method['description'],
+                        method=method['method'],
+                        signature=method['signature']
+                    )
+                    command_registry.register(command)
+
         ai_name = ""
         ai_config = construct_main_ai_config()
         ai_config.command_registry = command_registry

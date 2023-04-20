@@ -127,7 +127,8 @@ class Config(metaclass=Singleton):
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
-        self.plugins_openai = []
+        self.openapi_apis = os.getenv("OPENAPI_APIS")
+        self.openapi_apis = self.openapi_apis.split(",") if self.openapi_apis else []
 
         plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
         if plugins_allowlist:
