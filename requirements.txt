@@ -1,4 +1,4 @@
-beautifulsoup4
+beautifulsoup4>=4.12.2
 colorama==0.4.6
 openai==0.27.2
 playsound==1.2.2
