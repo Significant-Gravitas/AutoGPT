@@ -74,6 +74,7 @@ Development of this free, open-source project is made possible by all the <a hre
   - [Milvus](https://milvus.io/)
   - [Redis](https://redis.io)
   - [Weaviate](https://weaviate.io)
+  - [MyScale](https://myscale.com)
 - ElevenLabs Key (If you want the AI to speak)
 
 ## ⚠️ OpenAI API Keys Configuration ⚠️ 
@@ -293,6 +294,7 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 * `redis` will use the redis cache that you configured
 * `milvus` will use the milvus cache that you configured
 * `weaviate` will use the weaviate cache that you configured
+* `MyScale` will use the myscale cloud memory you configured
 
 ## Memory Backend Setup
 
@@ -354,7 +356,34 @@ export MEMORY_BACKEND="pinecone"
 
 ### MyScale Setup
 
-// FIXME @ fangrui : write this
+MyScale is a cloud-based database optimized for AI applications and solutions, and is a good option to store massive amount of memory with both good recall performance and efficiency.
+
+To use MyScale as AutoGPT memory backend:
+
+1. Go to [MyScale](https://myscale.com) and click on sign up.
+2. Go to your console to [create a cluster](https://docs.myscale.com/en/cluster-management/)
+3. Get your `Connection Details` under `Action` column under cluster table.
+4. Fill out the blanks in `.env`
+
+```bash
+## MYSCALE
+# ==========================
+# MYSCALE_HOST - MyScale Endpoint URL. You can find it if you log into your console.
+# MYSCALE_PORT - MyScale Endpoint port. You can find it if you log into your console. (Default: 8443)
+# MYSCALE_USERNAME - Username to access the endpoint. 
+# MYSCALE_PASSWORD - Password to access the endpoint. (Example: passwd-****)
+# MYSCALE_DATABASE - Database name you would like to use. (Default: default)
+# MYSCALE_INDEX_TYPE - Index type for vector search. (Default: IVFFLAT)
+# ==========================
+MYSCALE_HOST=your-myscale-endpoint-host
+MYSCALE_PORT=8443
+MYSCALE_USERNAME=your-username
+MYSCALE_PASSWORD=your-password
+MYSCALE_DATABASE=default
+MYSCALE_INDEX_TYPE=IVFFLAT
+```
+
+Alternatively, you can set it up with your command line!
 
 ### Milvus Setup
 

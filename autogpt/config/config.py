@@ -84,12 +84,12 @@ class Config(metaclass=Singleton):
         self.use_weaviate_embedded = (
             os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
         )
-        
+
         self.myscale_host = os.getenv("MYSCALE_HOST")
-        self.myscale_port = os.getenv("MYSCALE_PORT")
-        self.myscale_username = os.getenv("MYSCALE_USERNAME")
-        self.myscale_password = os.getenv("MYSCALE_PASSWORD")
-        self.myscale_database = os.getenv("MYSCALE_PASSWORD", "default")
+        self.myscale_port = os.getenv("MYSCALE_PORT", 8443)
+        self.myscale_username = os.getenv("MYSCALE_USERNAME", None)
+        self.myscale_password = os.getenv("MYSCALE_PASSWORD", None)
+        self.myscale_database = os.getenv("MYSCALE_DATABASE", "default")
         self.myscale_index_type = os.getenv("MYSCALE_INDEX_TYPE", "IVFFLAT")
 
         # milvus configuration, e.g., localhost:19530.
@@ -257,6 +257,30 @@ class Config(metaclass=Singleton):
     def set_pinecone_region(self, value: str) -> None:
         """Set the Pinecone region value."""
         self.pinecone_region = value
+
+    def set_myscale_host(self, value: str) -> None:
+        """Set the MyScale host value"""
+        self.myscale_host = value
+
+    def set_myscale_port(self, value: int) -> None:
+        """Set the MyScale port value"""
+        self.myscale_port = value
+
+    def set_myscale_username(self, value: str) -> None:
+        """Set the MyScale username value"""
+        self.myscale_username = value
+
+    def set_myscale_password(self, value: str) -> None:
+        """Set the MyScale password value"""
+        self.myscale_password = value
+
+    def set_myscale_database(self, value: str) -> None:
+        """Set the MyScale database value"""
+        self.myscale_password = value
+
+    def set_myscale_index_type(self, value: str) -> None:
+        """Set the MyScale index type value"""
+        self.myscale_password = value
 
     def set_debug_mode(self, value: bool) -> None:
         """Set the debug mode value."""

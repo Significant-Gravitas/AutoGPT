@@ -1,11 +1,12 @@
+from hashlib import sha1
+from typing import List, Optional
+
+from clickhouse_connect import get_client
 from colorama import Fore, Style
 
-from typing import List, Optional
 from autogpt.llm_utils import create_embedding_with_ada
 from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton
-from clickhouse_connect import get_client
-from hashlib import sha1
 
 
 class MyScaleMemory(MemoryProviderSingleton):
@@ -14,14 +15,17 @@ class MyScaleMemory(MemoryProviderSingleton):
             host=cfg.myscale_host,
             port=cfg.myscale_port,
             username=cfg.myscale_username,
-            password=cfg.myscale_password
+            password=cfg.myscale_password,
+            secure=True,
         )
         dimension = 1536
         metric = "cosine"
-        self.table_name = f"{cfg.myscale_database}.auto-gpt"
+        self.BS = "\\"
+        self.must_escape = ("\\", "'")
+        self.table_name = f"{cfg.myscale_database}.auto_gpt"
 
         try:
-            self.client.query('SELECT 1')
+            self.client.query("SELECT 1")
         except Exception as e:
             logger.typewriter_log(
                 "FAILED TO CONNECT TO MYSCALE",
@@ -32,7 +36,7 @@ class MyScaleMemory(MemoryProviderSingleton):
             logger.double_check(
                 "Please ensure you have setup and configured MyScale properly for use."
                 + f"You can check out {Fore.CYAN + Style.BRIGHT}"
-                "https://github.com/Torantulino/Auto-GPT#-pinecone-api-key-setup"
+                "https://github.com/Torantulino/Auto-GPT#myscale-setup"
                 f"{Style.RESET_ALL} to ensure you've set up everything correctly."
             )
             exit(1)
@@ -46,18 +50,21 @@ class MyScaleMemory(MemoryProviderSingleton):
             ) ENGINE = MergeTree ORDER BY id
         """
         self.client.command(schema_)
-    
+
+    def escape_str(self, value: str) -> str:
+        return "".join(f"{self.BS}{c}" if c in self.must_escape else c for c in value)
+
     def _build_istr(self, transac):
         _data = []
         for n in transac:
-            n = ','.join([f"'{str(_n)}'" for _n in n])
+            n = ",".join([f"'{self.escape_str(str(_n))}'" for _n in n])
             _data.append(f"({n})")
-        i_str = f'''
+        i_str = f"""
                 INSERT INTO TABLE 
                     {self.table_name}
                 VALUES
                 {','.join(_data)}
-                '''
+                """
         return i_str
 
     def _insert(self, transac):
@@ -66,8 +73,8 @@ class MyScaleMemory(MemoryProviderSingleton):
 
     def add(self, data):
         vector = create_embedding_with_ada(data)
-        doc_id = sha1(data.encode('utf-8')).hexdigest()
-        self._insert([[sha1(data.encode('utf-8')), vector, data]])
+        doc_id = sha1(data.encode("utf-8")).hexdigest()
+        self._insert([[sha1(data.encode("utf-8")).hexdigest(), vector, data]])
         _text = f"Inserting data into memory at index: {doc_id}:\n data: {data}"
         return _text
 
@@ -79,7 +86,7 @@ class MyScaleMemory(MemoryProviderSingleton):
         return "Obliviated"
 
     def _build_qstr(self, q_emb: List[float], topk: int) -> str:
-        q_emb = ','.join(map(str, q_emb))
+        q_emb = ",".join(map(str, q_emb))
         q_str = f"""
             SELECT raw_text
             FROM {self.table_name}
@@ -96,8 +103,15 @@ class MyScaleMemory(MemoryProviderSingleton):
         """
         query_embedding = create_embedding_with_ada(data)
         q_str = self._build_qstr(query_embedding, num_relevant)
-        return [str(item["raw_text"]) for item in self.client.query(q_str).named_results()]
+        return [
+            str(item["raw_text"]) for item in self.client.query(q_str).named_results()
+        ]
 
     def get_stats(self):
-        cnt = [r for r in self.client.query(f"SELECT COUNT(*) AS cnt FROM {self.table_name}").named_results()][0]['cnt']
+        cnt = [
+            r
+            for r in self.client.query(
+                f"SELECT COUNT(*) AS cnt FROM {self.table_name}"
+            ).named_results()
+        ][0]["cnt"]
         return f"Entities num: {cnt}"
