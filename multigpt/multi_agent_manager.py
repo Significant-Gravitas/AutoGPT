@@ -185,7 +185,6 @@ class MultiAgentManager(metaclass=Singleton):
                         active_agent.full_message_history,
                         active_agent.memory,
                         self.cfg.fast_token_limit]
-                assistant_reply = None
                 if USE_LMQL_QUERIES == True:
                     assistant_reply = multigpt.lmql_magic.chat_with_ai(*chat_with_ai_args)  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
                 else:
