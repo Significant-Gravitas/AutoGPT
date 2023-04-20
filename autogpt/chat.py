@@ -28,9 +28,7 @@ def create_chat_message(role, content) -> Message:
 def generate_context(prompt, relevant_memory, full_message_history, model):
     current_context = [
         create_chat_message("system", prompt),
-        create_chat_message(
-            "system", f"The current time and date is {strftime('%c')}"
-        ),
+        create_chat_message("system", f"The current time and date is {strftime('%c')}"),
         create_chat_message(
             "system",
             f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
