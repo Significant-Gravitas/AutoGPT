@@ -4,6 +4,7 @@ import dataclasses
 from pathlib import Path
 from typing import Any, List
 
+import ftfy
 import numpy as np
 import orjson
 
@@ -61,7 +62,7 @@ class LocalCache(MemoryProviderSingleton):
         """
         if "Command Error:" in text:
             return ""
-        self.data.texts.append(text)
+        self.data.texts.append(ftfy.fix_text(text))
 
         embedding = get_ada_embedding(text)
 
