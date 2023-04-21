@@ -145,11 +145,12 @@ Note: If you don't have Git, you can just download the [latest stable release](h
 ## 🔧 Usage
 
 1. Run the `autogpt` Python module in your terminal.
+* On Linux/MacOS:
    ```bash
-   # On Linux or Mac:
    ./run.sh
-
-   # On Windows:
+  ```
+* On Windows:
+   ```bash
    .\run.bat
    ```
    Running with `--help` after `.\run.bat` lists all the possible command line arguments you can pass.
