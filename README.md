@@ -507,7 +507,7 @@ By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, 
 Once you have a token, set these variables in your `.env`:
 
 ```bash
-IMAGE_PROVIDER=sd
+IMAGE_PROVIDER=huggingface
 HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 ```
 
