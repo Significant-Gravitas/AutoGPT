@@ -1,6 +1,12 @@
 from datetime import datetime
 
+from autogpt.commands.command import command
 
+
+@command(
+    "get_times",
+    "Get Times",
+)
 def get_datetime() -> str:
     """Return the current date and time
 
