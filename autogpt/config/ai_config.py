@@ -5,9 +5,9 @@ A module that contains the AIConfig class object that contains the configuration
 from __future__ import annotations
 
 import os
+import platform
 from pathlib import Path
 from typing import Optional, Type
-import platform
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
@@ -114,8 +114,6 @@ class AIConfig:
             " simple strategies with no legal complications."
             ""
         )
-        os_name = platform.system()
-        os_version = platform.release()
 
         from autogpt.config import Config
         from autogpt.prompts.prompt import build_default_prompt_generator
@@ -132,8 +130,16 @@ class AIConfig:
                 continue
             prompt_generator = plugin.post_prompt(prompt_generator)
 
+        # If execute_local_commands enabled, add OS info to prompt
+        if cfg.execute_local_commands:
+            os_name = platform.system()
+            if os_name == "Darwin":
+                os_name = "MacOS"
+            os_version = platform.release()
+            prompt_start += f"\nThe OS you are running on is: {os_name} {os_version}"
+
         # Construct full prompt
-        full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\nThe OS you are running on is {os_name} {os_version}\n{prompt_start}\n\nGOALS:\n\n"
+        full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
         self.prompt_generator = prompt_generator
