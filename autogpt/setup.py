@@ -4,7 +4,7 @@ from colorama import Fore, Style
 from autogpt import utils
 from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
-
+from prompt_toolkit import HTML
 
 def prompt_user() -> AIConfig:
     """Prompt the user for input
@@ -63,7 +63,7 @@ def prompt_user() -> AIConfig:
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
-        ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
+        ai_goal = utils.clean_input(HTML(f'<ansibrightblue>Goal</ansibrightblue> {i+1}: '))
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)

@@ -4,15 +4,23 @@ import requests
 import yaml
 from colorama import Fore
 from git.repo import Repo
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.formatted_text import FormattedText
+from typing import Union
 
+session = PromptSession(history=InMemoryHistory())
 
-def clean_input(prompt: str = ""):
+def clean_input(prompt: Union[str, FormattedText] = ""):
     try:
-        return input(prompt)
+        user_input = session.prompt(prompt)
+        return user_input.strip()
     except KeyboardInterrupt:
         print("You interrupted Auto-GPT")
         print("Quitting...")
         exit(0)
+    except EOFError:
+        return ""
 
 
 def validate_yaml_file(file: str):
