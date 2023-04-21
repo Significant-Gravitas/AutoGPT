@@ -9,9 +9,6 @@ services:
     build: ./
     env_file:
       - .env
-    volumes:
-      - "./autogpt:/app"
-      - ".env:/app/.env"
     profiles: ["exclude-from-up"]
     networks:
       - testnet

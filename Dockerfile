@@ -1,5 +1,5 @@
 # Use an official Python base image from the Docker Hub
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # Install git
 RUN apt-get -y update
@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y firefox-esr
 ENV PIP_NO_CACHE_DIR=yes \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
+
+COPY .env /app/.env
 
 # Create a non-root user and set permissions
 RUN useradd --create-home appuser
