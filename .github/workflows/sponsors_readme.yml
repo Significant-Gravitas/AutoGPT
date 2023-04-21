@@ -17,10 +17,13 @@ jobs:
           file: 'README.md'
           minimum: 2500
           maximum: 99999
-
-      - name: Deploy to GitHub Pages 🚀
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          branch: master
-          folder: '.'
-          token: ${{ secrets.README_UPDATER_PAT }}
+          
+      - name: Commit and push changes 🚀
+        env:
+          GITHUB_TOKEN: ${{ secrets.README_UPDATER_PAT }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update Sponsors in README"
+          git push
