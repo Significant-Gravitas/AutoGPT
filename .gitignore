@@ -10,7 +10,6 @@ auto_gpt_workspace/*
 *.mpeg
 .env
 azure.yaml
-outputs/*
 ai_settings.yaml
 last_run_ai_settings.yaml
 .vscode
@@ -127,6 +126,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+.direnv/
 .env
 .venv
 env/
@@ -156,3 +156,8 @@ vicuna-*
 
 # mac
 .DS_Store
+
+openai/
+
+# news
+CURRENT_BULLETIN.md

@@ -5,13 +5,13 @@ import os
 import random
 import re
 import time
-from logging import LogRecord
 import traceback
+from logging import LogRecord
 
 from colorama import Fore, Style
 
-from autogpt.speech import say_text
 from autogpt.config import Config, Singleton
+from autogpt.speech import say_text
 
 CFG = Config()
 
@@ -47,7 +47,7 @@ class Logger(metaclass=Singleton):
 
         # Info handler in activity.log
         self.file_handler = logging.FileHandler(
-            os.path.join(log_dir, log_file), 'a', 'utf-8'
+            os.path.join(log_dir, log_file), "a", "utf-8"
         )
         self.file_handler.setLevel(logging.DEBUG)
         info_formatter = AutoGptFormatter(
@@ -57,7 +57,7 @@ class Logger(metaclass=Singleton):
 
         # Error handler error.log
         error_handler = logging.FileHandler(
-            os.path.join(log_dir, error_file), 'a', 'utf-8'
+            os.path.join(log_dir, error_file), "a", "utf-8"
         )
         error_handler.setLevel(logging.ERROR)
         error_formatter = AutoGptFormatter(
@@ -79,7 +79,7 @@ class Logger(metaclass=Singleton):
         self.logger.setLevel(logging.DEBUG)
 
     def typewriter_log(
-            self, title="", title_color="", content="", speak_text=False, level=logging.INFO
+        self, title="", title_color="", content="", speak_text=False, level=logging.INFO
     ):
         if speak_text and CFG.speak_mode:
             say_text(f"{title}. {content}")
@@ -95,18 +95,18 @@ class Logger(metaclass=Singleton):
         )
 
     def debug(
-            self,
-            message,
-            title="",
-            title_color="",
+        self,
+        message,
+        title="",
+        title_color="",
     ):
         self._log(title, title_color, message, logging.DEBUG)
 
     def warn(
-            self,
-            message,
-            title="",
-            title_color="",
+        self,
+        message,
+        title="",
+        title_color="",
     ):
         self._log(title, title_color, message, logging.WARN)
 
@@ -180,10 +180,10 @@ class AutoGptFormatter(logging.Formatter):
     def format(self, record: LogRecord) -> str:
         if hasattr(record, "color"):
             record.title_color = (
-                    getattr(record, "color")
-                    + getattr(record, "title")
-                    + " "
-                    + Style.RESET_ALL
+                getattr(record, "color")
+                + getattr(record, "title")
+                + " "
+                + Style.RESET_ALL
             )
         else:
             record.title_color = getattr(record, "title")
@@ -204,10 +204,10 @@ logger = Logger()
 
 def print_assistant_thoughts(ai_name, assistant_reply):
     """Prints the assistant's thoughts to the console"""
-    from autogpt.json_fixes.bracket_termination import (
+    from autogpt.json_utils.json_fix_llm import (
         attempt_to_fix_json_by_finding_outermost_brackets,
+        fix_and_parse_json,
     )
-    from autogpt.json_fixes.parsing import fix_and_parse_json
 
     try:
         try:
@@ -294,7 +294,9 @@ def print_assistant_thoughts(ai_name, assistant_reply):
         logger.error("Error: \n", call_stack)
 
 
-def print_assistant_thoughts(ai_name: object, assistant_reply_json_valid: object) -> None:
+def print_assistant_thoughts(
+    ai_name: object, assistant_reply_json_valid: object
+) -> None:
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
     assistant_thoughts_speak = None
@@ -310,9 +312,7 @@ def print_assistant_thoughts(ai_name: object, assistant_reply_json_valid: object
     logger.typewriter_log(
         f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
     )
-    logger.typewriter_log(
-        "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
-    )
+    logger.typewriter_log("REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}")
     if assistant_thoughts_plan:
         logger.typewriter_log("PLAN:", Fore.YELLOW, "")
         # If it's a list, join it into a string
@@ -326,9 +326,7 @@ def print_assistant_thoughts(ai_name: object, assistant_reply_json_valid: object
         for line in lines:
             line = line.lstrip("- ")
             logger.typewriter_log("- ", Fore.GREEN, line.strip())
-    logger.typewriter_log(
-        "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
-    )
+    logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
     # Speak the assistant's thoughts
     if CFG.speak_mode and assistant_thoughts_speak:
         say_text(assistant_thoughts_speak)

@@ -1,16 +1,16 @@
 from colorama import Fore
+
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.logs import logger
-from autogpt.promptgenerator import PromptGenerator
-from autogpt.config import Config
+from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
 CFG = Config()
 
 
-def get_prompt() -> str:
+def build_default_prompt_generator() -> PromptGenerator:
     """
     This function generates a prompt string that includes various constraints,
         commands, resources, and performance evaluations.
@@ -18,9 +18,6 @@ def get_prompt() -> str:
     Returns:
         str: The generated prompt string.
     """
-
-    # Initialize the Config object
-    cfg = Config()
 
     # Initialize the PromptGenerator object
     prompt_generator = PromptGenerator()
@@ -41,87 +38,9 @@ def get_prompt() -> str:
 
     # Define the command list
     commands = [
-        ("Google Search", "google", {"input": "<search>"}),
-        (
-            "Browse Website",
-            "browse_website",
-            {"url": "<url>", "question": "<what_you_want_to_find_on_website>"},
-        ),
-        (
-            "Start GPT Agent",
-            "start_agent",
-            {"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"},
-        ),
-        (
-            "Message GPT Agent",
-            "message_agent",
-            {"key": "<key>", "message": "<message>"},
-        ),
-        ("List GPT Agents", "list_agents", {}),
-        ("Delete GPT Agent", "delete_agent", {"key": "<key>"}),
-        (
-            "Clone Repository",
-            "clone_repository",
-            {"repository_url": "<url>", "clone_path": "<directory>"},
-        ),
-        ("Write to file", "write_to_file", {"file": "<file>", "text": "<text>"}),
-        ("Read file", "read_file", {"file": "<file>"}),
-        ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
-        ("Delete file", "delete_file", {"file": "<file>"}),
-        ("Search Files", "search_files", {"directory": "<directory>"}),
-        ("Evaluate Code", "evaluate_code", {"code": "<full_code_string>"}),
-        (
-            "Get Improved Code",
-            "improve_code",
-            {"suggestions": "<list_of_suggestions>", "code": "<full_code_string>"},
-        ),
-        (
-            "Write Tests",
-            "write_tests",
-            {"code": "<full_code_string>", "focus": "<list_of_focus_areas>"},
-        ),
-        ("Execute Python File", "execute_python_file", {"file": "<file>"}),
-        ("Generate Image", "generate_image", {"prompt": "<prompt>"}),
-        ("Send Tweet", "send_tweet", {"text": "<text>"}),
-    ]
-
-    # Only add the audio to text command if the model is specified
-    if cfg.huggingface_audio_to_text_model:
-        commands.append(
-            (
-                "Convert Audio to text",
-                "read_audio_from_file",
-                {"file": "<file>"}
-            ),
-        )
-
-    # Only add shell command to the prompt if the AI is allowed to execute it
-    if cfg.execute_local_commands:
-        commands.append(
-            (
-                "Execute Shell Command, non-interactive commands only",
-                "execute_shell",
-                {"command_line": "<command_line>"},
-            ),
-        )
-
-    # Only add the download file command if the AI is allowed to execute it
-    if cfg.allow_downloads:
-        commands.append(
-            (
-                "Downloads a file from the internet, and stores it locally",
-                "download_file",
-                {"url": "<file_url>", "file": "<saved_filename>"}
-            ),
-        )
-
-    # Add these command last.
-    commands.append(
         ("Do Nothing", "do_nothing", {}),
-    )
-    commands.append(
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
-    )
+    ]
 
     # Add commands to the PromptGenerator object
     for command_label, command_name, args in commands:
@@ -152,12 +71,11 @@ def get_prompt() -> str:
         "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
         " the least number of steps."
     )
+    prompt_generator.add_performance_evaluation("Write all code to a file.")
+    return prompt_generator
 
-    # Generate the prompt string
-    return prompt_generator.generate_prompt_string()
 
-
-def construct_prompt() -> str:
+def construct_main_ai_config() -> AIConfig:
     """Construct the prompt for the AI to respond to
 
     Returns:
@@ -189,8 +107,4 @@ Continue (y/n): """
         config = prompt_user()
         config.save(CFG.ai_settings_file)
 
-    # Get rid of this global:
-    global ai_name
-    ai_name = config.ai_name
-
-    return config.construct_full_prompt()
+    return config
