@@ -3,7 +3,7 @@ name: Post coverage comment
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["Python CI"]
     types:
       - completed
 
