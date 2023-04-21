@@ -70,6 +70,8 @@ class AIConfig:
         except FileNotFoundError:
             config_params = {}
 
+        if config_params == None:
+            config_params = {}
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
