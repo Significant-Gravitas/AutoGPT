@@ -25,7 +25,6 @@ class Config(metaclass=Singleton):
         self.continuous_limit = 0
         self.speak_mode = False
         self.skip_reprompt = False
-        default-authorizations
         self.default_authorisation = os.getenv("DEFAULT_AUTHORISATION") == "True"
         self.default_authorisation_count = int(os.getenv("DEFAULT_AUTHORISATION_COUNT", 0))
         self.allow_downloads = False
