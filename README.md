@@ -26,9 +26,8 @@ Demo made by <a href=https://twitter.com/BlakeWerlinger>Blake Werlinger</a>
 
 <h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
 <p align="center">
-If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
-Your support is greatly appreciated.
-Development of this free, open-source project is made possible by all the <a href="https://github.com/Significant-Gravitas/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
+If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help to push the boundaries of fully autonomous AI!
+Your support is greatly appreciated. Development of this free, open-source project is made possible by all the <a href="https://github.com/Significant-Gravitas/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
 </p>
 
 
@@ -52,7 +51,7 @@ Development of this free, open-source project is made possible by all the <a hre
 ## 🚀 Features
 
 - 🌐 Internet access for searches and information gathering
-- 💾 Long-Term and Short-Term memory management
+- 💾 Long-term and short-term memory management
 - 🧠 GPT-4 instances for text generation
 - 🔗 Access to popular websites and platforms
 - 🗃️ File storage and summarization with GPT-3.5
@@ -75,56 +74,60 @@ Development of this free, open-source project is made possible by all the <a hre
 
 ## ⚠️ OpenAI API Keys Configuration ⚠️ 
 
-Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
+Get your OpenAI API key from: https://platform.openai.com/account/api-keys.
 
 To use OpenAI API key for Auto-GPT, you **NEED** to have billing set up (AKA paid account).
 
 You can set up paid account at https://platform.openai.com/account/billing/overview.
 
+Important: It's highly recommended that you track your usage on [the Usage page](https://platform.openai.com/account/usage)
+You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
+
 ![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./docs/imgs/openai-api-key-billing-paid-account.png)
 
-#### **PLEASE ENSURE YOU HAVE DONE THIS STEP BEFORE PROCEEDING, OTHERWISE NOTHING WILL WORK!**
+#### **PLEASE ENSURE YOU HAVE DONE THIS STEP BEFORE PROCEEDING. OTHERWISE, NOTHING WILL WORK!**
 
 ## 💾 Installation
 
 To install Auto-GPT, follow these steps:
 
-1. Make sure you have all the **requirements** listed above, if not, install/get them
+1. Make sure you have all the **requirements** listed above. If not, install/get them.
 
 _To execute the following commands, open a CMD, Bash, or Powershell window by navigating to a folder on your computer and typing `CMD` in the folder path at the top, then press enter._
 
-2. Clone the repository: For this step, you need Git installed. Alternatively,
-   you can download the [latest stable release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest) (`Source code (zip)`, bottom of the page).
+2. Clone the repository: For this step, you need Git installed. 
+Note: If you don't have Git, you can just download the [latest stable release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest) instead (`Source code (zip)`, at the bottom of the page).
 
     ```bash
     git clone -b stable https://github.com/Significant-Gravitas/Auto-GPT.git
     ```
 
-3. Navigate to the directory where the repository was downloaded
+3. Navigate to the directory where you downloaded the repository.
 
     ```bash
     cd Auto-GPT
     ```
 
-4. Install the required dependencies
+4. Install the required dependencies.
 
     ```bash
     pip install -r requirements.txt
     ```
 
-5. Configure Auto-GPT
-   1. Locate the file named `.env.template` in the main /Auto-GPT folder. This file may be hidden by default in some operating systems due to the dot prefix. To reveal hidden files, follow the instructions for your specific operating system (e.g., in Windows, click on the "View" tab in File Explorer and check the "Hidden items" box; in macOS, press Cmd + Shift + .).
-   2. Create a copy of this file, called `.env` by removing the `template` extension.  The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`.
+5. Configure Auto-GPT:
+   1. Find the file named `.env.template` in the main /Auto-GPT folder. This file may be hidden by default in some operating systems due to the dot prefix. To reveal hidden files, follow the instructions for your specific operating system (e.g., in Windows, click on the "View" tab in File Explorer and check the "Hidden items" box; in macOS, press Cmd + Shift + .).
+   2. Create a copy of this file and call it `.env` by removing the `template` extension.  The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`.
    3. Open the `.env` file in a text editor.
    4. Find the line that says `OPENAI_API_KEY=`.
    5. After the `"="`, enter your unique OpenAI API Key (without any quotes or spaces).
-   6. Enter any other API keys or Tokens for services you would like to utilize.
+   6. Enter any other API keys or Tokens for services you would like to use.
    7. Save and close the `.env` file.
 
-   By completing these steps, you have properly configured the API Keys for your project.
+   After you complete these steps, you'll have properly configured the API keys for your project.
    
-   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to obtain your OpenAI API key.
-   - Obtain your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+   Notes:
+   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to get your OpenAI API key.
+   - Get your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
    - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
      - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section:
        - `fast_llm_model_deployment_id` - your gpt-3.5-turbo or gpt-4 deployment ID
@@ -141,7 +144,7 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 
 ## 🔧 Usage
 
-1. Run `autogpt` Python module in your terminal.
+1. Run the `autogpt` Python module in your terminal.
    ```bash
    # On Linux or Mac:
    ./run.sh
@@ -151,11 +154,12 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
    ```
    Running with `--help` after `.\run.bat` lists all the possible command line arguments you can pass.
 
-2. After each action, choose from options to authorize command(s),
+2. After each response from Auto-GPT, choose from the options to authorize command(s),
 exit the program, or provide feedback to the AI.
-   1. Authorize a single command, enter `y`
-   2. Authorize a series of _N_ continuous commands, enter `y -N`
-   3. Exit the program, enter `n`
+   1. Authorize a single command by entering `y`
+   2. Authorize a series of _N_ continuous commands by entering `y -N`. For example, entering `y -10` would run 10 automatic iterations.
+   3. Enter any free text to give feedback to Auto-GPT.
+   4. Exit the program by entering `n`
 
 
 ### Logs
@@ -211,13 +215,13 @@ Here are some common arguments you can use when running Auto-GPT:
 
 ## 🗣️ Speech Mode
 
-Use this to use TTS _(Text-to-Speech)_ for Auto-GPT
+Enter this command to use TTS _(Text-to-Speech)_ for Auto-GPT
 
 ```bash
 python -m autogpt --speak
 ```
 
-### List of IDs with names from eleven labs, you can use the name or ID:
+### List of IDs with names from eleven labs. You can use the name or ID:
 
 - Rachel : 21m00Tcm4TlvDq8ikWAM
 - Domi : AZnzlk1XvdvUeBnXmlld
@@ -231,19 +235,36 @@ python -m autogpt --speak
 
 ## 🔍 Google API Keys Configuration
 
-This section is optional, use the official google api if you are having issues with error 429 when running a google search.
+Note:
+This section is optional. use the official google api if you are having issues with error 429 when running a google search.
 To use the `google_official_search` command, you need to set up your Google API keys in your environment variables.
 
+Create your project:
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
 2. If you don't already have an account, create one and log in.
-3. Create a new project by clicking on the "Select a Project" dropdown at the top of the page and clicking "New Project". Give it a name and click "Create".
-4. Go to the [APIs & Services Dashboard](https://console.cloud.google.com/apis/dashboard) and click "Enable APIs and Services". Search for "Custom Search API" and click on it, then click "Enable".
-5. Go to the [Credentials](https://console.cloud.google.com/apis/credentials) page and click "Create Credentials". Choose "API Key".
-6. Copy the API key and set it as an environment variable named `GOOGLE_API_KEY` on your machine. See setting up environment variables below.
-7. [Enable](https://console.developers.google.com/apis/api/customsearch.googleapis.com) the Custom Search API on your project. (Might need to wait few minutes to propagate)
-8. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page and click "Add".
-9. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
-10. Once you've created your search engine, click on "Control Panel" and then "Basics". Copy the "Search engine ID" and set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine. See setting up environment variables below.
+3. Create a new project by clicking on the "Select a Project" dropdown at the top of the page and clicking "New Project". 
+4. Give it a name and click "Create".
+
+Set up a custom search API and add to your .env file:
+5. Go to the [APIs & Services Dashboard](https://console.cloud.google.com/apis/dashboard).
+6. Click "Enable APIs and Services". 
+7. Search for "Custom Search API" and click on it.
+8. Click "Enable".
+9. Go to the [Credentials](https://console.cloud.google.com/apis/credentials) page.
+10. Click "Create Credentials". 
+11. Choose "API Key".
+12. Copy the API key.
+13. Set it as an environment variable named `GOOGLE_API_KEY` on your machine (see how to set up environment variables below).
+14. [Enable](https://console.developers.google.com/apis/api/customsearch.googleapis.com) the Custom Search API on your project. (Might need to wait few minutes to propagate)
+
+Set up a custom serach engine and add to your .env file:
+15. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page.
+16. Click "Add".
+17. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
+18. Once you've created your search engine, click on "Control Panel".
+19. Click "Basics". 
+20. Copy the "Search engine ID".
+21. Set it as an environment variable named `CUSTOM_SEARCH_ENGINE_ID` on your machine (see how to set up environment variables below).
 
 _Remember that your free daily custom search quota allows only up to 100 searches. To increase this limit, you need to assign a billing account to the project to profit from up to 10K daily searches._
 
@@ -315,13 +336,13 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 ### Redis Setup
 > _**CAUTION**_ \
 This is not intended to be publicly accessible and lacks security measures. Therefore, avoid exposing Redis to the internet without a password or at all
-1. Install docker (or Docker Desktop on Windows)
-2. Launch Redis container
+1. Install docker (or Docker Desktop on Windows).
+2. Launch Redis container.
     ```bash
     docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
     ```
     > See https://hub.docker.com/r/redis/redis-stack-server for setting a password and additional configuration.
-3. Set the following settings in `.env`
+3. Set the following settings in `.env`.
     > Replace **PASSWORD** in angled brackets (<>)
     ```bash
     MEMORY_BACKEND=redis
@@ -339,7 +360,7 @@ MEMORY_INDEX=<WHATEVER>
 
 ### 🌲 Pinecone API Key Setup
 
-Pinecone enables the storage of vast amounts of vector-based memory, allowing for only relevant memories to be loaded for the agent at any given time.
+Pinecone lets you store vast amounts of vector-based memory, allowing the agent to load only relevant memories at any given time.
 
 1. Go to [pinecone](https://app.pinecone.io/) and make an account if you don't already have one.
 2. Choose the `Starter` plan to avoid being charged.
