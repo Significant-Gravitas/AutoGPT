@@ -5,9 +5,15 @@ A module that contains the AIConfig class object that contains the configuration
 from __future__ import annotations
 
 import os
-from typing import Type
+from pathlib import Path
+from typing import Optional, Type
 
 import yaml
+
+from autogpt.prompts.generator import PromptGenerator
+
+# Soon this will go in a folder where it remembers more stuff about the run(s)
+SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 
 
 class AIConfig:
@@ -38,9 +44,8 @@ class AIConfig:
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
-
-    # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "ai_settings.yaml")
+        self.prompt_generator = None
+        self.command_registry = None
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
@@ -89,7 +94,9 @@ class AIConfig:
         with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
 
-    def construct_full_prompt(self) -> str:
+    def construct_full_prompt(
+        self, prompt_generator: Optional[PromptGenerator] = None
+    ) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
 
@@ -108,14 +115,25 @@ class AIConfig:
             ""
         )
 
-        from autogpt.prompt import get_prompt
+        from autogpt.config import Config
+        from autogpt.prompts.prompt import build_default_prompt_generator
+
+        cfg = Config()
+        if prompt_generator is None:
+            prompt_generator = build_default_prompt_generator()
+        prompt_generator.goals = self.ai_goals
+        prompt_generator.name = self.ai_name
+        prompt_generator.role = self.ai_role
+        prompt_generator.command_registry = self.command_registry
+        for plugin in cfg.plugins:
+            if not plugin.can_handle_post_prompt():
+                continue
+            prompt_generator = plugin.post_prompt(prompt_generator)
 
         # Construct full prompt
-        full_prompt = (
-            f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
-        )
+        full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
-
-        full_prompt += f"\n\n{get_prompt()}"
+        self.prompt_generator = prompt_generator
+        full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
         return full_prompt
