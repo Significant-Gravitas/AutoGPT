@@ -116,23 +116,9 @@ class MultiAgentManager(metaclass=Singleton):
                 self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
             else:
                 try:
-                    prompt = (
-                        f" Consider the following snippet of a discussion round:\n\n{self.chat_buffer_to_str()}\n"
-                        f" Now consider this list of participants (ID - NAME):\n\n{self.agents_to_str()}\n"
-                        f" Please wisely choose the best next speaker based on the last message(s) of the discussion by"
-                        f" outputting their id. Make sure each participant contributes equal parts to the discussion."
-                        f" Limit your output to their id only."
-                    )
-                    messages = [{"role": "system", "content": prompt}]
                     with Spinner("Selecting next participant... "):
-                        next_speaker_id_unparsed = create_chat_completion(messages=messages,
-                                                                          model=self.cfg.fast_llm_model,
-                                                                          # consider using smart model here
-                                                                          max_tokens=1000)
-                        next_speaker_id = self.parse_num_output_llm(next_speaker_id_unparsed)
+                        next_speaker_id, _ = lmql_utils.lmql_smart_select(self.chat_buffer_to_str(), self.agents_to_str())
                         self.current_active_agent = self.agents[next_speaker_id - 1]
-
-
                 except Exception as e:  # If parsing fails, just fallback to random select
                     self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
 
@@ -275,9 +261,9 @@ class MultiAgentManager(metaclass=Singleton):
                     )
                 elif active_agent.user_input == "EXIT":
                     print("Exiting...", flush=True)
-                    #TODO add clean exit that closes event loop
-                    loop = asyncio.get_event_loop()
-                    loop.close()
+                    # TODO add clean exit that closes event loop
+                    # loop = asyncio.get_event_loop()
+                    # loop.close()
                     break
             else:
                 if not CHAT_ONLY_MODE:

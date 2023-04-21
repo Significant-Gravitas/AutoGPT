@@ -148,12 +148,22 @@ def lmql_create_chat_completion(model="gpt-3.5-turbo", messages=None, max_tokens
 def lmql_get_emotional_state(message):
     async def _query_emotional_state():
         result = (await _queries.classify_emotion(message))
-        #TODO perhaps add offset to neutral emotion? Most of the messages are too polite to be considered anything but 'neutral'
-        return result.variables['CLASSIFICATION']
+        return result
 
     loop = asyncio.get_event_loop()
     emotion = loop.run_until_complete(_query_emotional_state())
-    return emotion
+    # TODO perhaps add offset to neutral emotion? Most of the messages are too polite to be considered anything but 'neutral'
+    return emotion.variables['CLASSIFICATION']
+
+
+def lmql_smart_select(message_history, list_of_participants):
+    async def _query_smart_select_agent():
+        result = (await _queries.smart_select_agent(message_history, list_of_participants))
+        return result
+
+    loop = asyncio.get_event_loop()
+    lmql_result = loop.run_until_complete(_query_smart_select_agent())[0]
+    return int(lmql_result.variables['INTVALUE']), lmql_result.variables['NAME']
 
 
 # internal helper functions

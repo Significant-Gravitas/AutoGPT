@@ -1,14 +1,20 @@
 import lmql
 
 
-# @lmql.query
-# async def smart_select_agent(message):
-#     '''
-#     argmax
-#         pass
-#     from
-#         "openai/text-davinci-003
-#     '''
+@lmql.query
+async def smart_select_agent(message_history, list_of_participants):
+    '''
+    argmax
+        """Consider the following message history of a discussion round:\n\n{message_history}\n
+         Now consider this list of participants (ID - NAME):\n{list_of_participants}\n
+         Who should talk next?
+         The next speaker should be: [INTVALUE] - [NAME]
+        """
+    from
+        'openai/text-davinci-003'
+    where
+        INT(INTVALUE)
+    '''
 
 
 @lmql.query
