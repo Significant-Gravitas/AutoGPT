@@ -69,7 +69,7 @@ body:
         - Latest Release
         - Stable (branch)
         - Master (branch)
-      validations:
+    validations:
         required: true
   - type: dropdown
     attributes:
