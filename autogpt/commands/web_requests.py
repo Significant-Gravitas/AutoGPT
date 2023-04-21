@@ -5,6 +5,8 @@ import requests
 import traceback
 from bs4 import BeautifulSoup
 from requests import Response
+from requests.compat import urljoin
+from typing import Dict, Any, Union, List
 
 from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
@@ -15,6 +17,8 @@ CFG = Config()
 
 session = requests.Session()
 session.headers.update({"User-Agent": CFG.user_agent})
+
+JSONType = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
 @command(
     "make_http_request",
