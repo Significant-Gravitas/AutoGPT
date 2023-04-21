@@ -30,8 +30,6 @@ def make_http_request(url: str, method: str, auth_token: str, data: JSONType):
     sanitized_url: str = sanitize_url(url)
 
     print("Starting HTTP request...")
-    # Retrieve API key from environment variables
-
     # Set up headers with API key
     headers = {
         "Authorization": f"Bearer {auth_token}",
