@@ -51,9 +51,11 @@ class CommandRegistry:
     def __init__(self):
         self.commands = {}
 
+    @staticmethod
     def _import_module(self, module_name: str) -> Any:
         return importlib.import_module(module_name)
 
+    @staticmethod
     def _reload_module(self, module: Any) -> Any:
         return importlib.reload(module)
 
