@@ -127,11 +127,18 @@ class MultiAgentManager(metaclass=Singleton):
         return self.current_active_agent
 
     def send_message_to_all_agents(self, speaker=None, message=None):
-        if speaker is None or message is None:
-            return
+        def message_is_empty():
+            if message is None:
+                return True
+            pattern = re.compile(r'(\d|[a-z]|[A-Z])')
+            return not bool(pattern.match(message)) or len(message) == 0
+
+        if speaker is None or message_is_empty():
+            return False
         for agent in self.agents:
             agent.send_message(speaker, message)
         self.add_message_to_chat_buffer(speaker, message)
+        return True
 
     def add_message_to_chat_buffer(self, speaker, message):
         self.chat_buffer.append((speaker, message))
@@ -159,16 +166,16 @@ class MultiAgentManager(metaclass=Singleton):
 
             # Send message to AI, get response
             with Spinner(f"{active_agent.ai_name} is thinking... "):
-                conversation_input = ""
-                if len(active_agent.auditory_buffer) > 0:
-                    conversation_input += "DISCUSSION:\n\n"
                 while len(active_agent.auditory_buffer) > 0:
                     agent_name, message = active_agent.auditory_buffer.pop(0)
-                    conversation_input += f"{agent_name}: {message}\n"
-                conversation_input += active_agent.user_input
+                    active_agent.full_message_history.append(dict(
+                        content=f"{agent_name}: {message}",
+                        # Consider using the <name> field of the openai api instead of this format
+                        role='user'
+                    ))
 
                 chat_with_ai_args = [active_agent.prompt,
-                                     conversation_input,
+                                     active_agent.user_input,
                                      active_agent.full_message_history,
                                      active_agent.memory,
                                      self.cfg.fast_token_limit]
@@ -191,8 +198,9 @@ class MultiAgentManager(metaclass=Singleton):
                         "JARVIS: ", Fore.YELLOW,
                         f"Evaluation complete. {active_agent.ai_name} is feeling {val} right now."
                     )
-                    if speak_value is not None:
-                        self.send_message_to_all_agents(speaker=active_agent, message=speak_value)
+                    successful = self.send_message_to_all_agents(speaker=active_agent, message=speak_value)
+                    if successful:
+                        # Only remove own message from buffer if it was non-empty
                         active_agent.auditory_buffer.pop()
                 except Exception as e:
                     logger.error(f"Failed to add assistant reply to buffer.\n\n {e}\n\n")

@@ -1,6 +1,5 @@
 import lmql
 
-
 @lmql.query
 async def smart_select_agent(message_history, list_of_participants):
     '''
