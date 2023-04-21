@@ -14,6 +14,7 @@ from autogpt.commands.command import command
     '"recipient": "<recipient_email>", "subject": "<subject>", "body": "<body>"',
 )
 def send_email(recipient: str, subject: str, body: str) -> str:
+    """Send an email to a recipient."""
     email_sender = os.environ.get("EMAIL_SENDER")
     email_password = os.environ.get("EMAIL_PASSWORD")
 
@@ -40,6 +41,7 @@ def send_email(recipient: str, subject: str, body: str) -> str:
     '"folder": "<folder>"',
 )
 def receive_email(folder: str) -> str:
+    """Receive emails from a folder."""
     email_sender = os.environ.get("EMAIL_SENDER")
     email_password = os.environ.get("EMAIL_PASSWORD")
 
