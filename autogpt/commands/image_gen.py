@@ -78,6 +78,7 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
                 return f"Saved to disk:{filename}"
             except Exception as e:
                 print(e)
+                break
         else:
             try:
                 error = json.loads(response.text)
@@ -86,8 +87,11 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
                     print(response.text)
                     print("Retrying in", delay)
                     time.sleep(delay)
+                else:
+                    break
             except Exception as e:
                 print(e)
+                break
 
         retry_count += 1
 
