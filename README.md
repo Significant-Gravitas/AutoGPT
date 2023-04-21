@@ -113,9 +113,9 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
     ```
 
 5. Configure Auto-GPT
-   1. Locate the file named `.env.template` in the main `/Auto-GPT` folder.
+   1. Locate the file named `.env.template` in the main /Auto-GPT folder. This file may be hidden by default in some operating systems due to the dot prefix. To reveal hidden files, follow the instructions for your specific operating system (e.g., in Windows, click on the "View" tab in File Explorer and check the "Hidden items" box; in macOS, press Cmd + Shift + .).
    2. Create a copy of this file, called `.env` by removing the `template` extension.  The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`.
-   3. Open the `.env` file in a text editor.  _Note: Files starting with a dot might be hidden by your Operating System._
+   3. Open the `.env` file in a text editor.
    4. Find the line that says `OPENAI_API_KEY=`.
    5. After the `"="`, enter your unique OpenAI API Key (without any quotes or spaces).
    6. Enter any other API keys or Tokens for services you would like to utilize.
