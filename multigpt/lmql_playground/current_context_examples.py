@@ -1,3 +1,5 @@
+import asyncio
+
 from multigpt import lmql_utils
 
 current_context_examples = [[{'role': 'system',
@@ -37,5 +39,15 @@ current_context_examples = [[{'role': 'system',
 
 #result = lmql_utils.lmql_create_chat_completion(model="gpt-3.5-turbo", messages=current_context_examples[1])
 #print("gpt-3.5-turbo output:\n", result)
+
+#result = lmql_utils.lmql_create_chat_completion(model="gpt-3.5-turbo", messages=current_context_examples[1])
+#print("gpt-3.5-turbo output:\n", result)
+#result = lmql_utils.lmql_create_chat_completion(model="gpt-3.5-turbo", messages=current_context_examples[0])
+#print("gpt-3.5-turbo output:\n", result)
 #result = create_chat_completion_lmql(model="gpt-4", messages=current_context_examples[3])
 #print("gpt-4 output:\n", result)
+
+#val = lmql_utils.lmql_get_emotional_state("We need to start by gaining a comprehensive understanding of our target audience for the iPhone 16, who they are and what they want. We should carefully study their demographics, psychographics, and what motivates them for a successful marketing campaign. Also, we need to establish and monitor clear Key Performance Indicators(KPIs) to measure the performance of the marketing campaign as we move forward. Any ideas on how we can go about conducting the target audience research? ")
+#print(val)
+#val2 = lmql_utils.lmql_get_emotional_state("I believe that is an absolutely terrible idea.")
+#print(val2)

@@ -15,10 +15,10 @@ import lmql
 async def classify_emotion(message):
     '''
     argmax
-        """Review:{message}\n
-        Q: What is the underlying sentiment of this review and why?\n
+        """Message:{message}\n
+        Q: In what emotional state is the author of this message and why?\n
         A:[ANALYSIS]\n
-        Based on this, the overall sentiment of the message can be considered to be[CLASSIFICATION]"""
+        Based on this, the overall emotional sentiment of the message can be considered to be[CLASSIFICATION]"""
     from
         "openai/text-davinci-003"
     distribution

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import random
 import re
@@ -19,7 +20,7 @@ from autogpt.utils import clean_input
 from multigpt.multi_agent import MultiAgent
 from multigpt.agent_selection import AgentSelection
 from multigpt.constants import CHAT_ONLY_MODE, NEXTAGENTSELECTION, USE_LMQL_QUERIES
-import lmql_utils
+from multigpt import lmql_utils
 
 
 class MultiAgentManager(metaclass=Singleton):
@@ -274,6 +275,9 @@ class MultiAgentManager(metaclass=Singleton):
                     )
                 elif active_agent.user_input == "EXIT":
                     print("Exiting...", flush=True)
+                    #TODO add clean exit that closes event loop
+                    loop = asyncio.get_event_loop()
+                    loop.close()
                     break
             else:
                 if not CHAT_ONLY_MODE:

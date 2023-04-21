@@ -134,27 +134,29 @@ def lmql_chat_with_ai(
 
 
 def lmql_create_chat_completion(model="gpt-3.5-turbo", messages=None, max_tokens=0):
-    res = asyncio.run(_query_chat_completion(messages, model))
-    return _extract_response(res, '{')
+    async def _query_chat_completion():
+        if model == "gpt-4":
+            return (await _queries.create_chat_completion_gpt4(messages))[0].prompt
+        else:
+            return (await _queries.create_chat_completion_gpt3(messages))[0].prompt
+
+    loop = asyncio.get_event_loop()
+    chat_completion = loop.run_until_complete(_query_chat_completion())
+    return _extract_response(chat_completion, '{')
 
 
 def lmql_get_emotional_state(message):
-    res = asyncio.run(_query_emotional_state(message))
-    return res
+    async def _query_emotional_state():
+        result = (await _queries.classify_emotion(message))
+        #TODO perhaps add offset to neutral emotion? Most of the messages are too polite to be considered anything but 'neutral'
+        return result.variables['CLASSIFICATION']
+
+    loop = asyncio.get_event_loop()
+    emotion = loop.run_until_complete(_query_emotional_state())
+    return emotion
 
 
 # internal helper functions
-
-async def _query_chat_completion(current_context, model):
-    if model == "gpt-4":
-        return (await _queries.create_chat_completion_gpt4(current_context))[0].prompt
-    else:
-        return (await _queries.create_chat_completion_gpt3(current_context))[0].prompt
-
-
-async def _query_emotional_state(message):
-    emotion = (await _queries.classify_emotion(message))
-    return emotion.variables['CLASSIFICATION']
 
 
 def _extract_response(input_string, first_char):

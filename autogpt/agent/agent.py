@@ -1,3 +1,5 @@
+import asyncio
+
 from colorama import Fore, Style
 from autogpt.app import execute_command, get_command
 
@@ -136,6 +138,9 @@ class Agent:
                     )
                 elif self.user_input == "EXIT":
                     print("Exiting...", flush=True)
+                    #TODO add clean exit that closes event loop
+                    loop = asyncio.get_event_loop()
+                    loop.close()
                     break
             else:
                 # Print command
