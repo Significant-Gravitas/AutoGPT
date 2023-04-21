@@ -17,7 +17,7 @@ services:
       - testnet
 
   redis:
-    image: "redis"
+    image: "redis/redis-stack-server:latest"
     networks:
       - testnet
 
