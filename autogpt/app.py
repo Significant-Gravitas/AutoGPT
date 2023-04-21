@@ -1,32 +1,15 @@
 """ Command and Control """
 import json
-from typing import List, NoReturn, Union, Dict
+from typing import Dict, List, NoReturn, Union
+
 from autogpt.agent.agent_manager import AgentManager
-from autogpt.commands.evaluate_code import evaluate_code
-from autogpt.commands.google_search import google_official_search, google_search
-from autogpt.commands.improve_code import improve_code
-from autogpt.commands.write_tests import write_tests
-from autogpt.config import Config
-from autogpt.commands.image_gen import generate_image
-from autogpt.commands.audio_text import read_audio_from_file
+from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.web_requests import scrape_links, scrape_text
-from autogpt.commands.execute_code import execute_python_file, execute_shell
-from autogpt.commands.file_operations import (
-    append_to_file,
-    delete_file,
-    read_file,
-    search_files,
-    write_to_file,
-    download_file
-)
-from autogpt.json_fixes.parsing import fix_and_parse_json
+from autogpt.config import Config
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
+from autogpt.prompts.generator import PromptGenerator
 from autogpt.speech import say_text
-from autogpt.commands.web_selenium import browse_website
-from autogpt.commands.git_operations import clone_repository
-from autogpt.commands.twitter import send_tweet
-
 
 CFG = Config()
 AGENT_MANAGER = AgentManager()
@@ -104,7 +87,12 @@ def map_command_synonyms(command_name: str):
     return command_name
 
 
-def execute_command(command_name: str, arguments):
+def execute_command(
+    command_registry: CommandRegistry,
+    command_name: str,
+    arguments,
+    prompt: PromptGenerator,
+):
     """Execute the command and return the result
 
     Args:
@@ -112,96 +100,32 @@ def execute_command(command_name: str, arguments):
         arguments (dict): The arguments for the command
 
     Returns:
-        str: The result of the command"""
-    memory = get_memory(CFG)
-
+        str: The result of the command
+    """
     try:
-        command_name = map_command_synonyms(command_name)
-        if command_name == "google":
-            # Check if the Google API key is set and use the official search method
-            # If the API key is not set or has only whitespaces, use the unofficial
-            # search method
-            key = CFG.google_api_key
-            if key and key.strip() and key != "your-google-api-key":
-                google_result = google_official_search(arguments["input"])
-                return google_result
-            else:
-                google_result = google_search(arguments["input"])
+        cmd = command_registry.commands.get(command_name)
 
-            # google_result can be a list or a string depending on the search results
-            if isinstance(google_result, list):
-                safe_message = [google_result_single.encode('utf-8', 'ignore') for google_result_single in google_result]
-            else:
-                safe_message = google_result.encode('utf-8', 'ignore')
+        # If the command is found, call it with the provided arguments
+        if cmd:
+            return cmd(**arguments)
 
-            return str(safe_message)
-        elif command_name == "memory_add":
-            return memory.add(arguments["string"])
-        elif command_name == "start_agent":
-            return start_agent(
-                arguments["name"], arguments["task"], arguments["prompt"]
-            )
-        elif command_name == "message_agent":
-            return message_agent(arguments["key"], arguments["message"])
-        elif command_name == "list_agents":
-            return list_agents()
-        elif command_name == "delete_agent":
-            return delete_agent(arguments["key"])
-        elif command_name == "get_text_summary":
-            return get_text_summary(arguments["url"], arguments["question"])
-        elif command_name == "get_hyperlinks":
-            return get_hyperlinks(arguments["url"])
-        elif command_name == "clone_repository":
-            return clone_repository(
-                arguments["repository_url"], arguments["clone_path"]
-            )
-        elif command_name == "read_file":
-            return read_file(arguments["file"])
-        elif command_name == "write_to_file":
-            return write_to_file(arguments["file"], arguments["text"])
-        elif command_name == "append_to_file":
-            return append_to_file(arguments["file"], arguments["text"])
-        elif command_name == "delete_file":
-            return delete_file(arguments["file"])
-        elif command_name == "search_files":
-            return search_files(arguments["directory"])
-        elif command_name == "download_file":
-            if not CFG.allow_downloads:
-                return "Error: You do not have user authorization to download files locally."
-            return download_file(arguments["url"], arguments["file"])
-        elif command_name == "browse_website":
-            return browse_website(arguments["url"], arguments["question"])
+        # TODO: Remove commands below after they are moved to the command registry.
+        command_name = map_command_synonyms(command_name.lower())
+
+        if command_name == "memory_add":
+            return get_memory(CFG).add(arguments["string"])
+
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
-        # filepath, write your code to file and try again"
-        elif command_name == "evaluate_code":
-            return evaluate_code(arguments["code"])
-        elif command_name == "improve_code":
-            return improve_code(arguments["suggestions"], arguments["code"])
-        elif command_name == "write_tests":
-            return write_tests(arguments["code"], arguments.get("focus"))
-        elif command_name == "execute_python_file":  # Add this command
-            return execute_python_file(arguments["file"])
-        elif command_name == "execute_shell":
-            if CFG.execute_local_commands:
-                return execute_shell(arguments["command_line"])
-            else:
-                return (
-                    "You are not allowed to run local shell commands. To execute"
-                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-                    "in your config. Do not attempt to bypass the restriction."
-                )
-        elif command_name == "read_audio_from_file":
-            return read_audio_from_file(arguments["file"])
-        elif command_name == "generate_image":
-            return generate_image(arguments["prompt"])
-        elif command_name == "send_tweet":
-            return send_tweet(arguments["text"])
+        # filepath, write your code to file and try again
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
             shutdown()
         else:
+            for command in prompt.commands:
+                if command_name == command["label"] or command_name == command["name"]:
+                    return command["function"](*arguments.values())
             return (
                 f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
                 " list for available commands and only respond in the specified JSON"
@@ -211,8 +135,11 @@ def execute_command(command_name: str, arguments):
         return f"Error: {str(e)}"
 
 
+@command(
+    "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
+)
 def get_text_summary(url: str, question: str) -> str:
-    """Return the results of a google search
+    """Return the results of a Google search
 
     Args:
         url (str): The url to scrape
@@ -226,8 +153,9 @@ def get_text_summary(url: str, question: str) -> str:
     return f""" "Result" : {summary}"""
 
 
+@command("get_hyperlinks", "Get text summary", '"url": "<url>"')
 def get_hyperlinks(url: str) -> Union[str, List[str]]:
-    """Return the results of a google search
+    """Return the results of a Google search
 
     Args:
         url (str): The url to scrape
@@ -244,6 +172,11 @@ def shutdown() -> NoReturn:
     quit()
 
 
+@command(
+    "start_agent",
+    "Start GPT Agent",
+    '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"',
+)
 def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
     """Start an agent with a given name, task, and prompt
 
@@ -276,6 +209,7 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
 
+@command("message_agent", "Message GPT Agent", '"key": "<key>", "message": "<message>"')
 def message_agent(key: str, message: str) -> str:
     """Message an agent with a given key and message"""
     # Check if the key is a valid integer
@@ -290,7 +224,8 @@ def message_agent(key: str, message: str) -> str:
     return agent_response
 
 
-def list_agents():
+@command("list_agents", "List GPT Agents", "")
+def list_agents() -> str:
     """List all agents
 
     Returns:
@@ -301,6 +236,7 @@ def list_agents():
     )
 
 
+@command("delete_agent", "Delete GPT Agent", '"key": "<key>"')
 def delete_agent(key: str) -> str:
     """Delete an agent with a given key
 

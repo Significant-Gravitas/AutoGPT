@@ -3,17 +3,19 @@ from __future__ import annotations
 
 import os
 import os.path
-from pathlib import Path
-from typing import Generator, List
+from typing import Generator
+
 import requests
-from requests.adapters import HTTPAdapter
-from requests.adapters import Retry
-from colorama import Fore, Back
+from colorama import Back, Fore
+from requests.adapters import HTTPAdapter, Retry
+
+from autogpt.commands.command import command
+from autogpt.config import Config
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
-from autogpt.workspace import path_in_workspace, WORKSPACE_PATH
+from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
 
-
+CFG = Config()
 LOG_FILE = "file_logger.txt"
 LOG_FILE_PATH = WORKSPACE_PATH / LOG_FILE
 
@@ -47,7 +49,7 @@ def log_operation(operation: str, filename: str) -> None:
         with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
             f.write("File Operation Logger ")
 
-    append_to_file(LOG_FILE, log_entry, shouldLog = False)
+    append_to_file(LOG_FILE, log_entry, shouldLog=False)
 
 
 def split_file(
@@ -70,13 +72,19 @@ def split_file(
     while start < content_length:
         end = start + max_length
         if end + overlap < content_length:
-            chunk = content[start : end + overlap]
+            chunk = content[start : end + overlap - 1]
         else:
             chunk = content[start:content_length]
+
+            # Account for the case where the last chunk is shorter than the overlap, so it has already been consumed
+            if len(chunk) <= overlap:
+                break
+
         yield chunk
         start += max_length - overlap
 
 
+@command("read_file", "Read file", '"filename": "<filename>"')
 def read_file(filename: str) -> str:
     """Read a file and return the contents
 
@@ -129,6 +137,7 @@ def ingest_file(
         print(f"Error while ingesting file '{filename}': {str(e)}")
 
 
+@command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
 def write_to_file(filename: str, text: str) -> str:
     """Write text to a file
 
@@ -154,6 +163,9 @@ def write_to_file(filename: str, text: str) -> str:
         return f"Error: {str(e)}"
 
 
+@command(
+    "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
+)
 def append_to_file(filename: str, text: str, shouldLog: bool = True) -> str:
     """Append text to a file
 
@@ -177,6 +189,7 @@ def append_to_file(filename: str, text: str, shouldLog: bool = True) -> str:
         return f"Error: {str(e)}"
 
 
+@command("delete_file", "Delete file", '"filename": "<filename>"')
 def delete_file(filename: str) -> str:
     """Delete a file
 
@@ -197,6 +210,7 @@ def delete_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
+@command("search_files", "Search Files", '"directory": "<directory>"')
 def search_files(directory: str) -> list[str]:
     """Search for files in a directory
 
@@ -223,6 +237,13 @@ def search_files(directory: str) -> list[str]:
     return found_files
 
 
+@command(
+    "download_file",
+    "Search Files",
+    '"url": "<url>", "filename": "<filename>"',
+    CFG.allow_downloads,
+    "Error: You do not have user authorization to download files locally.",
+)
 def download_file(url, filename):
     """Downloads a file
     Args:
@@ -236,23 +257,23 @@ def download_file(url, filename):
             session = requests.Session()
             retry = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
             adapter = HTTPAdapter(max_retries=retry)
-            session.mount('http://', adapter)
-            session.mount('https://', adapter)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
 
             total_size = 0
             downloaded_size = 0
 
             with session.get(url, allow_redirects=True, stream=True) as r:
                 r.raise_for_status()
-                total_size = int(r.headers.get('Content-Length', 0))
+                total_size = int(r.headers.get("Content-Length", 0))
                 downloaded_size = 0
 
-                with open(safe_filename, 'wb') as f:
+                with open(safe_filename, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
                         downloaded_size += len(chunk)
 
-                         # Update the progress message
+                        # Update the progress message
                         progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
                         spinner.update_message(f"{message} {progress}")
 
