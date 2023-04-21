@@ -13,6 +13,8 @@
 **Download the latest `stable` release from here: https://github.com/Significant-Gravitas/Auto-GPT/releases/latest.**
 The `master` branch may often be in a **broken** state.
 
+**If using macbook with m1 and want to run on docker use firefox and set headless mode to true**
+
 <hr/>
 
 

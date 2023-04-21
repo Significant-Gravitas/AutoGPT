@@ -10,6 +10,7 @@ services:
     env_file:
       - .env
     volumes:
+      - "./auto_gpt_workspace:/home/appuse/auto_gpt_workspacer"
       - "./autogpt:/app"
       - ".env:/app/.env"
     profiles: ["exclude-from-up"]
