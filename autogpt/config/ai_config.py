@@ -9,6 +9,7 @@ import platform
 from pathlib import Path
 from typing import Optional, Type
 
+import distro
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
@@ -131,13 +132,16 @@ class AIConfig:
                 continue
             prompt_generator = plugin.post_prompt(prompt_generator)
 
-        # If execute_local_commands enabled, add OS info to prompt
         if cfg.execute_local_commands:
+            # add OS info to prompt
             os_name = platform.system()
-            if os_name == "Darwin":
-                os_name = "MacOS"
-            os_version = platform.release()
-            prompt_start += f"\nThe OS you are running on is: {os_name} {os_version}"
+            os_info = (
+                platform.platform(terse=True)
+                if os_name != "Linux"
+                else distro.name(pretty=True)
+            )
+
+            prompt_start += f"\nThe OS you are running on is: {os_info}"
 
         # Construct full prompt
         full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
