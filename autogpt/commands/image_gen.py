@@ -1,8 +1,8 @@
 """ Image Generation Module for AutoGPT."""
 import io
-import uuid
-import time
 import json
+import time
+import uuid
 from base64 import b64decode
 
 import openai
