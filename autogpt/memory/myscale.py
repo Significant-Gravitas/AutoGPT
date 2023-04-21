@@ -32,7 +32,6 @@ class MyScaleMemory(MemoryProviderSingleton):
                 Fore.RED,
                 Style.BRIGHT + str(e) + Style.RESET_ALL,
             )
-            # FIXME@fangruil : add documents
             logger.double_check(
                 "Please ensure you have setup and configured MyScale properly for use."
                 + f"You can check out {Fore.CYAN + Style.BRIGHT}"
