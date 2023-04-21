@@ -146,12 +146,12 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 ## 🔧 Usage
 
 1. Run the `autogpt` Python module in your terminal.
-
+* On Linux/MacOS:
    ```bash
-   # On Linux or Mac:
    ./run.sh
-
-   # On Windows:
+  ```
+* On Windows:
+   ```bash
    .\run.bat
    ```
 
