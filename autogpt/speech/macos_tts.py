@@ -16,8 +16,7 @@ class MacOSTTS(VoiceBase):
         """
         cfg = Config()
         available_voices = self.get_voice_names()
-
-        default_voices = ["Alex", "Victoria", "Samantha"]
+        default_voices = ["Alex", "Victoria"]
         custom_voices = [cfg.macos_voice_1, cfg.macos_voice_2]
 
         self._voices = [voice for voice in custom_voices if voice in available_voices] + default_voices
@@ -51,6 +50,10 @@ class MacOSTTS(VoiceBase):
         Returns:
             bool: True if the text was spoken successfully, False otherwise.
         """
-        voice = self._voices[voice_index % len(self._voices)]
-        os.system(f'say -v "{voice}" "{text}"')
+        if voice_index == 0:
+            os.system(f'say "{text}"')
+        else:
+            voice = self._voices[voice_index % len(self._voices)]
+            os.system(f'say -v "{voice}" "{text}"')
+
         return True
