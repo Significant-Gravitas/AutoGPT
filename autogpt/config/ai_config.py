@@ -5,9 +5,10 @@ A module that contains the AIConfig class object that contains the configuration
 from __future__ import annotations
 
 import os
-import platform
 from pathlib import Path
+from platform import platform
 from typing import Optional, Type
+
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
