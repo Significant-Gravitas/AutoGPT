@@ -111,10 +111,17 @@ class AIConfig:
 
         # Construct full prompt
         full_prompt = (
+            f"...continuing the AI self-monitoring protocol.\n"
+            f"...commands and resources ready for {self.ai_name}.\n"
+            f"...aligning {self.ai_name}.\n"
+            f"Ready to continue.\n\n"
             f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
         )
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
         full_prompt += f"\n\n{get_prompt()}"
+        print("\n\nFULL PROMPT:")
+        print(full_prompt)
+        print("\n\n")
         return full_prompt

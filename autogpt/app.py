@@ -31,6 +31,8 @@ from autogpt.workspace import CONTEXTS_PATH
 
 CFG = Config()
 AGENT_MANAGER = AgentManager()
+context_template_file = CONTEXTS_PATH / "context_template.md"
+context_manager = ContextManager(CONTEXTS_PATH, context_template_file)
 
 
 def is_valid_int(value: str) -> bool:
@@ -138,38 +140,11 @@ def execute_command(command_name: str, arguments):
                 safe_message = google_result.encode('utf-8', 'ignore')
 
             return str(safe_message)
-        elif command_name == "memory_add":
-            return memory.add(arguments["string"])
+        elif command_name == "browse_website":
+            return browse_website(arguments["url"], arguments["question"])
         
-        elif command_name == "create_context":
-            context_name = arguments["context_name"]
-            context_data = arguments["context_data"]
-            context_directory = CONTEXTS_PATH
-            context_template_file = CONTEXTS_PATH / "context_template.md"
-            context_manager = ContextManager(context_directory, context_template_file)
+        # AGENTS
 
-            if context_manager.is_valid_context(context_data, context_template_file):
-                context_manager.create_new_context(context_name, context_data)
-                return f"Context '{context_name}' has been created successfully."
-            else:
-                # Handle invalid context data
-                return f"Invalid context data. Please ensure that it adheres to the context template."
-        elif command_name == "evaluate_context":   
-            context_name = arguments["context_name"]
-            summary_of_context_evaluation = arguments["summary_of_context_evaluation"]
-            context_directory = CONTEXTS_PATH
-            context_template_file = CONTEXTS_PATH / "context_template.md"
-            context_manager = ContextManager(context_directory, context_template_file)
-
-            return context_manager.evaluate_context_success(context_name, summary_of_context_evaluation)
-        elif command_name == "close_context":
-            context_name = arguments["context_name"]
-            markdown_context_summary = arguments["markdown_context_summary"]
-            context_directory = CONTEXTS_PATH
-            context_template_file = CONTEXTS_PATH / "context_template.md"
-            context_manager = ContextManager(context_directory, context_template_file)
-            return context_manager.close_context(context_name, markdown_context_summary)
-        
         elif command_name == "start_agent":
             return start_agent(
                 arguments["name"], arguments["task"], arguments["prompt"]
@@ -180,6 +155,43 @@ def execute_command(command_name: str, arguments):
             return list_agents()
         elif command_name == "delete_agent":
             return delete_agent(arguments["key"])
+        
+        # CONTEXTS
+
+        elif command_name == "create_context": # CREATE
+            context_name = arguments["descriptive_context_name"]
+            context_data = arguments["filled_template_markdown_data"]
+            return context_manager.create_new_context(context_name, context_data)
+        elif command_name == "evaluate_context": # EVALUATE
+            context_name = arguments["context_name"]
+            summary_of_context_evaluation = arguments["markdown_summary_of_context_evaluation"]
+            return context_manager.evaluate_context_success(context_name, summary_of_context_evaluation)
+        elif command_name == "close_context": # CLOSE
+            context_name = arguments["context_name"]
+            markdown_context_summary = arguments["markdown_context_summary"]
+            return context_manager.close_context(context_name, markdown_context_summary)
+        elif command_name == "switch_context": # SWITCH
+            context_name = arguments["context_name"]
+            return context_manager.switch_context(context_name)
+        elif command_name == "merge_contexts": # MERGE
+            context_name_1 = arguments["context_name_1"]
+            context_name_2 = arguments["context_name_2"]
+            merged_context_name = arguments["merged_context_name"]
+            merged_context_data = arguments["merged_context_data"]
+            context_manager.merge_contexts(context_name_1, context_name_2, merged_context_name, merged_context_data)
+        elif command_name == "update_context": # UPDATE
+            context_name = arguments["context_name"]
+            context_data = arguments["filled_template_markdown_data"]
+            return context_manager.update_context(context_name, context_data)
+        elif command_name == "get_context": # GET
+            context_name = arguments["context_name"]
+            return context_manager.get_context(context_name)
+        elif command_name == "get_current_context": # CURRENT
+            return context_manager.get_current_context()
+        elif command_name == "list_contexts": # LIST
+            return context_manager.list_contexts()
+
+        
         elif command_name == "get_text_summary":
             return get_text_summary(arguments["url"], arguments["question"])
         elif command_name == "get_hyperlinks":
@@ -198,38 +210,16 @@ def execute_command(command_name: str, arguments):
             return delete_file(arguments["file"])
         elif command_name == "search_files":
             return search_files(arguments["directory"])
-        elif command_name == "browse_website":
-            return browse_website(arguments["url"], arguments["question"])
-        # TODO: Change these to take in a file rather than pasted code, if
-        # non-file is given, return instructions "Input should be a python
-        # filepath, write your code to file and try again"
-        elif command_name == "evaluate_code":
-            return evaluate_code(arguments["code"])
-        elif command_name == "improve_code":
-            return improve_code(arguments["suggestions"], arguments["code"])
-        elif command_name == "write_tests":
-            return write_tests(arguments["code"], arguments.get("focus"))
-        elif command_name == "execute_python_file":  # Add this command
-            return execute_python_file(arguments["file"])
-        elif command_name == "execute_shell":
-            if CFG.execute_local_commands:
-                return execute_shell(arguments["command_line"])
-            else:
-                return (
-                    "You are not allowed to run local shell commands. To execute"
-                    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-                    "in your config. Do not attempt to bypass the restriction."
-                )
-        elif command_name == "read_audio_from_file":
-            return read_audio_from_file(arguments["file"])
+        
         elif command_name == "generate_image":
             return generate_image(arguments["prompt"])
-        elif command_name == "send_tweet":
-            return send_tweet(arguments["text"])
         elif command_name == "do_nothing":
             return "No action performed."
         elif command_name == "task_complete":
             shutdown()
+
+        elif command_name == "memory_add":
+            return memory.add(arguments["string"])
         else:
             return (
                 f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
@@ -272,6 +262,9 @@ def shutdown() -> NoReturn:
     print("Shutting down...")
     quit()
 
+
+
+# AGENT COMMANDS
 
 def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
     """Start an agent with a given name, task, and prompt

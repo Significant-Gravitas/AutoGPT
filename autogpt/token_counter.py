@@ -51,6 +51,8 @@ def count_message_tokens(
     for message in messages:
         num_tokens += tokens_per_message
         for key, value in message.items():
+            if not isinstance(value, str):
+                value = str(value)
             num_tokens += len(encoding.encode(value))
             if key == "name":
                 num_tokens += tokens_per_name

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 from typing import Any, Tuple, Union
 
 from autogpt.config import Config
@@ -88,7 +89,8 @@ def fix_and_parse_json(
     """
 
     # print(json_to_load)
-    
+    json_to_load = extract_code_block(json_to_load)
+
     with contextlib.suppress(json.JSONDecodeError):
         if isinstance(json_to_load, dict):
             json_to_load = json.dumps(json_to_load).replace("\t", "")
@@ -114,6 +116,16 @@ def fix_and_parse_json(
         return json.loads(maybe_fixed_json)
     except (json.JSONDecodeError, ValueError) as e:
         return try_ai_fix(try_to_fix_with_gpt, e, json_to_load)
+
+
+def extract_code_block(response: str) -> str:
+    code_block_pattern = r"```(.*?)```"
+    code_block_match = re.search(code_block_pattern, response, re.DOTALL)
+
+    if code_block_match:
+        return code_block_match.group(1).strip()
+    else:
+        return response
 
 
 def try_ai_fix(
@@ -150,3 +162,19 @@ def try_ai_fix(
     #   which usually results in it correcting its ways.
     logger.error("Failed to fix AI output, telling the AI.")
     return json_to_load
+
+
+def extract_json_and_nl(response: str) -> Tuple[str, Union[dict, None]]:
+        separator = "|||"
+        if separator not in response:
+            return response.strip(), None
+
+        nl_part, json_part = response.split(separator, 1)
+        try:
+            json_data = json.loads(json_part)
+        except json.JSONDecodeError:
+            json_data = None
+
+        return nl_part.strip(), json_data
+
+

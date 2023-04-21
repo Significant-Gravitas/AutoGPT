@@ -1,4 +1,6 @@
 import json
+from json import JSONEncoder
+from pathlib import WindowsPath
 from autogpt.contexts.contextualize import ContextManager
 from colorama import Fore, Style
 from autogpt.app import execute_command, get_command
@@ -12,6 +14,12 @@ from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
+
+class CustomJSONEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, WindowsPath):
+            return str(obj)
+        return super().default(obj)
 
 
 class Agent:
@@ -43,20 +51,16 @@ class Agent:
         self.next_action_count = next_action_count
         self.prompt = prompt
         self.user_input = user_input
-        self.context_file = context_file
         self.context_manager = ContextManager()
 
     def start_interaction_loop(self):
-        # Load context data
-        if self.context_file:
-            self.context_manager.load_context_from_file(self.context_file)
-
         # Interaction Loop
         cfg = Config()
         loop_count = 0
         command_name = None
         arguments = None
         while True:
+            print("Interaction loop running")
             # Discontinue if continuous limit is reached
             loop_count += 1
             if (
@@ -69,13 +73,12 @@ class Agent:
                 )
                 break
 
-
-            context_data = self.context_manager.get_context()
+            context_data = self.context_manager.get_current_context()
             if context_data:
                 context_message = {
-                    "role": "context",
-                    "contextNumber": self.context_manager.context_count,
-                    "content": json.dumps(context_data)
+                    "role": "system",
+                    # "contextNumber": self.context_manager.context_count,
+                    "content": json.dumps(context_data, cls=CustomJSONEncoder),
                 }
                 self.full_message_history.insert(0, context_message)
 
@@ -183,15 +186,10 @@ class Agent:
             memory_to_add = (
                 f"Assistant Reply: {assistant_reply} "
                 f"\nResult: {result} "
-                f"\nHuman Feedback: {self.user_input} "
+                f"\n---------- HUMAN FEEDBACK (don't let this confuse you): {self.user_input} "
             )
 
             self.memory.add(memory_to_add)
-
-            if self.context_file:
-                self.context_manager.update_context("last_command", command_name)
-                self.context_manager.update_context("last_arguments", arguments)
-                self.context_manager.save_context_to_file(self.context_file)
 
             # Check if there's a result from the command append it to the message
             # history

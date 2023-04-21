@@ -16,6 +16,8 @@ class PromptGenerator:
         Initialize the PromptGenerator object with empty lists of constraints,
             commands, resources, and performance evaluations.
         """
+        self.identity_directives = []
+        self.prime_directives = []
         self.constraints = []
         self.commands = []
         self.resources = []
@@ -31,6 +33,24 @@ class PromptGenerator:
             },
             "command": {"name": "command name", "args": {"arg name": "value"}},
         }
+
+    def add_identity_directive(self, constraint: str) -> None:
+        """
+        Add a constraint to the constraints list.
+
+        Args:
+            constraint (str): The constraint to be added.
+        """
+        self.identity_directives.append(constraint)
+        
+    def add_prime_directive(self, constraint: str) -> None:
+        """
+        Add a constraint to the constraints list.
+
+        Args:
+            constraint (str): The constraint to be added.
+        """
+        self.prime_directives.append(constraint)
 
     def add_constraint(self, constraint: str) -> None:
         """
@@ -126,14 +146,18 @@ class PromptGenerator:
             str: The generated prompt string.
         """
         formatted_response_format = json.dumps(self.response_format, indent=4)
-        return (
+        output = (
+            f"IDENTITY DIRECTIVES:\n{self._generate_numbered_list(self.identity_directives)}\n\n"
+            f"PRIME DIRECTIVES:\n{self._generate_numbered_list(self.prime_directives)}\n\n"
             f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
-            "Commands:\n"
+            "COMMANDS (HOW YOU INTERFACE WITH THE VIRTUAL ENVIRONMENT):\n"
             f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
-            f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
-            "Performance Evaluation:\n"
-            f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
-            "You should respond in json data formatted in the response format to ensure compatibility with the virtual environment.\n"
-            f"Response Format: \n{formatted_response_format}"
+            f"RESOURCES (your current primary toolset):\n{self._generate_numbered_list(self.resources)}\n\n"
+            "Performance Evaluations:\n"
+            f"{self._generate_numbered_list(self.performance_evaluation)}"
+            # "Friendly reminder: To ensure compatibility with the virtual environment, only respond in RESPONSE_FORMAT\n"
+            # f"RESPONSE_FORMAT------------ \n{formatted_response_format}\n----------------------"
         )
+        # print(output)
+        return output
     

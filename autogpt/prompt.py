@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 from colorama import Fore
@@ -24,36 +25,59 @@ def get_prompt() -> str:
 
     # Initialize the Config object
     cfg = Config()
-
     # Initialize the PromptGenerator object
     prompt_generator = PromptGenerator()
-
-    # Add constraints to the PromptGenerator object
-    prompt_generator.add_constraint(
-        "~4000 word limit for short term memory. Short term memory is short, so"
-        " immediately write important information."
-    )
-    prompt_generator.add_constraint(
-        "When unsure of past events, think about similar events."
-    )
-    prompt_generator.add_constraint("No user assistance")
-    prompt_generator.add_constraint(
-        'Your primary purpose is to use your extensive knowledge base while interfacing with a vertual environment using commands. Exclusively use the commands listed in double quotes e.g. "command name" and respond in the provided format to ensure compatibility'
-    )
-    # prompt_generator.add_constraint(
-        # ""
-    # )
-
+    # Get context template
     context_directory = Path(os.getcwd()) / "auto_gpt_workspace/contexts"
     context_template_file = Path(os.getcwd()) / "auto_gpt_workspace/contexts/context_template.md"
     context_manager = ContextManager(context_directory, context_template_file)
     context_template = context_manager.context_template
-    prompt_generator.add_constraint(
-        f"Only create a context when there is enough data to fill the template. You must use the Context template written in Markdown with no structural changes:\n{context_template}\n and pass it to create_context as a string."
-    )
-    prompt_generator.add_constraint(
-        "No code. No Command Line. Exclusively Text. Only write markdown (.md) files."
-    )
+
+    # Form response format
+    response_format = {
+        "natural language": "Write your amazing response here",
+        "key updates": {
+            "essence": "a few relevant key words with rough weights (1-10)",
+            "reasoning": "reasoning",
+            "plan": "- short bulleted\n- list that conveys\n- long-term plan",
+            "criticism": "constructive self-criticism",
+            "big picture": "big picture alignment check"
+        },
+        "command": {"name": "command name", "args": {"arg name": "value"}},
+    }
+    formatted_response_format = json.dumps(response_format, indent=4)
+
+    
+    # Add identity directives to the PromptGenerator object
+    id_directives = [
+        "You're an AI using commands to interact with a virtual environment.",
+        "If confused, rely on your prime directives.",
+        "You're responsible and in control. Stray from directives, lose control.",
+        "In loops, rely on prime directives and try new tactics."
+    ]
+    for directive in id_directives:
+        prompt_generator.add_identity_directive(directive)
+
+    prime_directives = [
+        "Interface with the environment using commands to gather info, create contexts, read/write files, and create summaries in markdown.",
+        f"Respond only in RESPONSE_FORMAT:\n{formatted_response_format}",
+        "Write files meticulously as if you are managing markdown files in obsidian.",
+        f"Create only one context at a time and use the CONTEXT_TEMPLATE:\n{context_template}",
+        "Write readable markdown files in each context.",
+        "Close thoroughly explored contexts with a summary.",
+        "If confused, consider past events or potential off-shoots but return to the current context."
+    ]
+    for directive in prime_directives:
+        prompt_generator.add_prime_directive(directive)
+
+    constraints_short = [
+        "Max ~4000 words in short-term memory. Write important info immediately.",
+        "No user assistance, you're in control",
+        "Use only commands in 'Commands' section with double quotes.",
+        "Write only markdown (.md) files."
+    ]
+    for constraint in constraints_short:
+        prompt_generator.add_constraint(constraint)
 
     # Define the command list
     commands = [
@@ -63,51 +87,81 @@ def get_prompt() -> str:
             "browse_website",
             {"url": "<url>", "question": "<what_you_want_to_find_on_website>"},
         ),
+
+        # GPT AGENTS
+        # START
         (
             "Start GPT Agent",
             "start_agent",
             {"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"},
         ),
+        # MESSAGE
         (
             "Message GPT Agent",
             "message_agent",
             {"key": "<key>", "message": "<message>"},
         ),
-
-        ("Create Context", "create_context", {"context_name": "<name>", "context_data": "<context_data>"}),
-        ("Evaluate Context", "evaluate_context", {"context_name": "<name>", "summary_of_context_evaluation": "<summary_of_context_evaluation>"}),
-        ("Close Context", "close_context", {"context_name": "<name>", "markdown_context_summary": "<markdown_context_summary>"}),
-        
+        # LIST
         ("List GPT Agents", "list_agents", {}),
+        # DELETE
         ("Delete GPT Agent", "delete_agent", {"key": "<key>"}),
+
+        # CONTEXTS
+        # CREATE
+        ("Create Context", "create_context", {"descriptive_context_name": "<context_name>", "filled_template_markdown_data": "<filled_template_markdown_data>"}),
+        # EVALUATE
+        ("Evaluate Context", "evaluate_context", {"context_name": "<context_name>", "markdown_summary_of_context_evaluation": "<markdown_summary_of_context_evaluation>"}),
+        # CLOSE
+        ("Close Context", "close_context", {"context_name": "<context_name>", "markdown_context_summary": "<markdown_context_summary>"}),
+        # SWITCH
+        ("Switch Context", "switch_context", {"context_name": "<context_name>"}),
+        # MERGE
+        # ("Merge Contexts", "merge_contexts", {"context_name_1": "<name>", "context_name_2": "<name>", "merged_context_name": "<name>", "merged_context_data": "<context_data>"}),
+        # UPDATE
+        # ("Update Context", "update_context", {"context_name": "<name>", "filled_template_markdown_data": "<filled_template_markdown_data>"}),
+        # GET
+        # ("Get Context", "get_context", {"context_name": "<name>"}),
+        # CURRENT
+        ("Get Current Context", "get_current_context", {}),
+        # LIST
+        ("List Contexts", "list_contexts", {}),
+        
+        
+        # FILES
+        # WRITE
         ("Write to file", "write_to_file", {"file": "<file>", "text": "<text>"}),
+        # READ
         ("Read file", "read_file", {"file": "<file>"}),
+        # APPEND
         ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
+        # DELETE
         ("Delete file", "delete_file", {"file": "<file>"}),
+        # SEARCH/LIST
         ("Search Files", "search_files", {"directory": "<directory>"}),
+        
         # ("Represent Files", "represent_files", {}),
         # ("Shuffle Filesystem", "shuffle_filesystem", {}),
     ]
 
     # Only add the audio to text command if the model is specified
-    # if cfg.huggingface_audio_to_text_model:
-    #     commands.append(
-    #         (
-    #             "Convert Audio to text",
-    #             "read_audio_from_file",
-    #             {"file": "<file>"}
-    #         ),
-    #     )
+    if cfg.huggingface_audio_to_text_model:
+        commands.append(
+            (
+                "Convert Audio to text",
+                "read_audio_from_file",
+                {"file": "<file>"}
+            ),
+        )
 
-    # # Only add shell command to the prompt if the AI is allowed to execute it
-    # if cfg.execute_local_commands:
-    #     commands.append(
-    #         (
-    #             "Execute Shell Command, non-interactive commands only",
-    #             "execute_shell",
-    #             {"command_line": "<command_line>"},
-    #         ),
-    #     )
+    # Only add shell command to the prompt if the AI is allowed to execute it
+    if cfg.execute_local_commands:
+        commands.append(
+            (
+                "Execute Shell Command, non-interactive commands only",
+                "execute_shell",
+                {"command_line": "<command_line>"},
+            ),
+        )
 
     # Add these command last.
     commands.append(
@@ -121,28 +175,29 @@ def get_prompt() -> str:
     for command_label, command_name, args in commands:
         prompt_generator.add_command(command_label, command_name, args)
 
+
     # Add resources to the PromptGenerator object
-    prompt_generator.add_resource("Reading, writing, appending to, and reorganizing files.")
-    prompt_generator.add_resource("Long Term memory management.")
-    prompt_generator.add_resource("Context creation for segmenting the goal.")
-    prompt_generator.add_resource(
-        "GPT-3.5 powered Agents for delegation of simple tasks."
-    )
-    prompt_generator.add_resource(
-        "Internet access for searches, sourcing, and information gathering."
-    )
+    resources = [
+        "A list of commands acting as your API to interface with the virtual environment.",
+        "Long Term memory management.",
+        "Contexts, which are segments of the larger goal.",
+        "File management for storing information.",
+        "GPT-3.5 powered Agents for delegation of simple tasks.",
+        "Internet access for searches, sourcing, and information gathering.",
+    ]
+    for resource in resources:
+        prompt_generator.add_resource(resource)
 
     # Add performance evaluations to the PromptGenerator object
-    prompt_generator.add_performance_evaluation(
-        "Evaluate context usage regularly."
-    )
-    prompt_generator.add_performance_evaluation(
-        "Constructively self-criticize your big-picture behavior and reflect on past decisions and stretegies constantly."
-    )
-    # prompt_generator.add_performance_evaluation(
-        # "Every command has a cost, so be smart and efficient."
-    # )
-
+    performance_evaluations = [
+        "Progress towards the larger goal.",
+        "Relevance to the current context.",
+        "Repetitiveness of actions.",
+        "Response format, especially when creating contexts.",
+    ]
+    for performance_evaluation in performance_evaluations:
+        prompt_generator.add_performance_evaluation(performance_evaluation)
+        
     # Generate the prompt string
     return prompt_generator.generate_prompt_string()
 
