@@ -1,10 +1,10 @@
 """A module that contains a command to send a tweet."""
 import os
 
-import facebook
 import tweepy
 from dotenv import load_dotenv
-from linkedin_v2 import linkedin
+from linkedin import linkedin
+from pyfacebook import GraphAPI
 
 from autogpt.commands.command import command
 
