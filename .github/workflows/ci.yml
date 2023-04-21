@@ -47,6 +47,7 @@ jobs:
       pull-requests: write
       statuses: write
       checks: write
+      comments: write
     runs-on: ubuntu-latest
     strategy:
       matrix:
