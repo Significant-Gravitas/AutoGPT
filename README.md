@@ -29,7 +29,7 @@
 | autogpt/commands/web\_selenium.py           |       70 |       70 |       20 |        0 |      0% |     2-160 |
 | autogpt/commands/write\_tests.py            |       10 |       10 |        0 |        0 |      0% |      2-37 |
 | autogpt/config/\_\_init\_\_.py              |        4 |        0 |        0 |        0 |    100% |           |
-| autogpt/config/ai\_config.py                |       53 |       39 |       14 |        0 |     21% |42-48, 65-75, 89-95, 111-139 |
+| autogpt/config/ai\_config.py                |       59 |       43 |       16 |        0 |     21% |44-50, 67-77, 91-97, 113-152 |
 | autogpt/config/config.py                    |      142 |       34 |       14 |        2 |     71% |52-55, 134, 149-162, 177-184, 192, 216, 220, 224, 228, 232, 236, 240, 244, 248, 256, 261-268 |
 | autogpt/config/singleton.py                 |        9 |        0 |        2 |        0 |    100% |           |
 | autogpt/configurator.py                     |       61 |       61 |       30 |        0 |      0% |     2-134 |
@@ -70,7 +70,7 @@
 | autogpt/types/openai.py                     |        4 |        0 |        0 |        0 |    100% |           |
 | autogpt/utils.py                            |       52 |       41 |       14 |        0 |     17% |10-15, 19-30, 39-43, 47-54, 58-63, 67-77 |
 | autogpt/workspace.py                        |       16 |        6 |        4 |        1 |     55% |14->18, 27, 40-48 |
-|                                   **TOTAL** | **2839** | **1835** |  **844** |   **55** | **31%** |           |
+|                                   **TOTAL** | **2845** | **1839** |  **846** |   **55** | **31%** |           |
 
 
 ## Setup coverage badge
