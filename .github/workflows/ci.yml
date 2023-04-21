@@ -75,6 +75,7 @@ jobs:
       if: success() || failure()
 
     - name: Publish coverage report
+      if: ${{ github.event_name == 'pull_request' }}
       uses: orgoro/coverage@v3
       with:
         coverageFile: coverage.xml
