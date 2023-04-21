@@ -3,7 +3,6 @@ import shutil
 import unittest
 from pathlib import Path
 
-from autogpt.config import Config
 from autogpt.commands.file_operations import (
     LOG_FILE_PATH,
     append_to_file,
@@ -15,6 +14,7 @@ from autogpt.commands.file_operations import (
     split_file,
     write_to_file,
 )
+from autogpt.config import Config
 from autogpt.workspace import path_in_workspace
 
 
@@ -137,13 +137,14 @@ class TestFileOperations(unittest.TestCase):
         # Get the absolute path of self.test_file2
         test_file2_abs_path = os.path.abspath(self.test_file2)
 
-        with self.assertRaises(ValueError):  
+        with self.assertRaises(ValueError):
             read_file(test_file2_abs_path)
 
         CFG.restrict_to_workspace = False
         read_file(test_file2_abs_path)
 
         os.remove(test_file2_abs_path)
+
 
 if __name__ == "__main__":
     unittest.main()
