@@ -22,7 +22,7 @@ def read_audio_from_file(filename: str) -> str:
     Convert audio to text.
 
     Args:
-        audio_path (str): The path to the audio file
+        filename (str): The filename of the audio.
 
     Returns:
         str: The text from the audio
