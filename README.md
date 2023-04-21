@@ -265,19 +265,38 @@ export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 
 ## Plugins
 
-See https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template for the template of the plugins.
+Use the [Auto-GPT Plugin Template](https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template) as a starting point for creating your own plugins.
 
-⚠️💀 WARNING 💀⚠️: Review the code of any plugin you use, this allows for any Python to be executed and do malicious things. Like stealing your API keys.
+⚠️💀 **WARNING** 💀⚠️: Review the code of any plugin you use thoroughly, as plugins can execute any Python code, potentially leading to malicious activities, such as stealing your API keys.
 
-Drop the repo's zipfile in the plugins folder.
+### Plugin Installation Steps
 
-![Download Zip](https://raw.githubusercontent.com/BillSchumacher/Auto-GPT/master/plugin.png)
+1. **Clone or download the plugin repository:**
+   Clone the plugin repository, or download the repository as a zip file.
+  
+   ![Download Zip](https://raw.githubusercontent.com/BillSchumacher/Auto-GPT/master/plugin.png)
 
-If you add the plugins class name to the `ALLOWLISTED_PLUGINS` in the `.env` you will not be prompted otherwise you'll be warned before loading the plugin:
+2. **Install the plugin's dependencies (if any):**
+   Navigate to the plugin's folder in your terminal, and run the following command to install any required dependencies:
 
-```
-ALLOWLISTED_PLUGINS=example-plugin1,example-plugin2,example-plugin3
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Package the plugin as a Zip file:**
+   If you cloned the repository, compress the plugin folder as a Zip file.
+
+4. **Copy the plugin's Zip file:**
+   Place the plugin's Zip file in the `plugins` folder of the Auto-GPT repository.
+
+5. **Allowlist the plugin (optional):**
+   Add the plugin's class name to the `ALLOWLISTED_PLUGINS` in the `.env` file to avoid being prompted with a warning when loading the plugin:
+
+   ```
+   ALLOWLISTED_PLUGINS=example-plugin1,example-plugin2,example-plugin3
+   ```
+
+   If the plugin is not allowlisted, you will be warned before it's loaded.
 
 ## Setting Your Cache Type
 
