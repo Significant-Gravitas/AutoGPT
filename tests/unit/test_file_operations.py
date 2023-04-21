@@ -3,6 +3,7 @@ import shutil
 import unittest
 from pathlib import Path
 
+from autogpt.config import Config
 from autogpt.commands.file_operations import (
     LOG_FILE_PATH,
     append_to_file,
@@ -24,6 +25,7 @@ class TestFileOperations(unittest.TestCase):
 
     def setUp(self):
         self.test_file = "test_file.txt"
+        self.test_file2 = "test_file2.txt"
         self.test_directory = "test_directory"
         self.file_content = "This is a test file.\n"
         self.file_logger_logs = "file_logger.txt"
@@ -111,7 +113,7 @@ class TestFileOperations(unittest.TestCase):
         files = search_files(path_in_workspace(""))
         self.assertIn(file_a, files)
         self.assertIn(file_b, files)
-        self.assertIn(f"{self.test_directory}/{file_a}", files)
+        self.assertIn(os.path.join(self.test_directory, file_a), files)
 
         # Clean up
         os.remove(path_in_workspace(file_a))
@@ -124,6 +126,24 @@ class TestFileOperations(unittest.TestCase):
         files = search_files("")
         self.assertNotIn(non_existent_file, files)
 
+    # Test to ensure we cannot read files out of workspace
+    def test_restrict_workspace(self):
+        CFG = Config()
+        with open(self.test_file2, "w+") as f:
+            f.write("test text")
+
+        CFG.restrict_to_workspace = True
+
+        # Get the absolute path of self.test_file2
+        test_file2_abs_path = os.path.abspath(self.test_file2)
+
+        with self.assertRaises(ValueError):  
+            read_file(test_file2_abs_path)
+
+        CFG.restrict_to_workspace = False
+        read_file(test_file2_abs_path)
+
+        os.remove(test_file2_abs_path)
 
 if __name__ == "__main__":
     unittest.main()
