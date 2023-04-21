@@ -2,18 +2,51 @@
 from __future__ import annotations
 
 import requests
+import traceback
 from bs4 import BeautifulSoup
 from requests import Response
 
 from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
+from autogpt.commands.command import command
 
 CFG = Config()
 
 session = requests.Session()
 session.headers.update({"User-Agent": CFG.user_agent})
 
+@command(
+    "make_http_request",
+    "Make an HTTP request",
+    '"url": "<url>", "method": "<method>", "auth_token": "<auth_token>", "data": "<data>"',
+)
+def make_http_request(url: str, method: str, auth_token: str, data: JSONType):
+    valid_url = is_valid_url(url)
+
+    if not valid_url:
+        return "Error: Invalid URL"
+
+    sanitized_url: str = sanitize_url(url)
+
+    print("Starting HTTP request...")
+    # Retrieve API key from environment variables
+
+    # Set up headers with API key
+    headers = {
+        "Authorization": f"Bearer {auth_token}",
+        "Content-Type": "application/json",
+    }
+
+    # Send request
+    try:
+        response = requests.request(method, sanitized_url, json=data, headers=headers)
+        print("HTTP request sent successfully!", response)
+        return response
+    except Exception as e:
+        print("Error making HTTP request:")
+        print(traceback.format_exc())
+        return e
 
 @validate_url
 def get_response(
