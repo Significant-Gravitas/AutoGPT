@@ -63,15 +63,12 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
         "X-Use-Cache": "false",
     }
 
-
     retry_count = 0
     while retry_count < 10:
         response = requests.post(
             API_URL,
             headers=headers,
-            json={
-                "inputs": prompt
-            },
+            json={"inputs": prompt},
         )
 
         if response.ok:
@@ -95,6 +92,7 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
         retry_count += 1
 
     return f"Error creating image."
+
 
 def generate_image_with_dalle(prompt: str, filename: str) -> str:
     """Generate an image with DALL-E.
