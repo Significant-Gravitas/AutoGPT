@@ -45,6 +45,8 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
+      statuses: write
+      checks: write
     runs-on: ubuntu-latest
     strategy:
       matrix:
