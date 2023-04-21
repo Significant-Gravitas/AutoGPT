@@ -1,5 +1,7 @@
 # Embracing the Future Together: A Manifesto for Open Source AGI Development
 
+![Embracing the Future Together](./docs/imgs/Auto-GPT.jpg)
+
 ## Introduction
 In the ever-evolving landscape of human innovation, we stand at the precipice of a groundbreaking frontier: the creation of artificial general intelligence (AGI). As the pioneers of the Open Source Auto-GPT Project, we recognize the immense potential of AGI to benefit humanity, while also acknowledging the inherent risks and responsibilities that come with its development. Our mission is to harness the power of AGI for the betterment of society, fostering a global community that collaborates on building autonomous AI agents that are ethical, responsible, and designed to serve the greater good.
 
