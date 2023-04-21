@@ -22,6 +22,14 @@ except ImportError:
     PineconeMemory = None
 
 try:
+    from autogpt.memory.myscale import MyScaleMemory
+
+    supported_memory.append("myscale")
+except ImportError:
+    # print("MyScale not installed. Skipping import.")
+    MyScaleMemory = None
+
+try:
     from autogpt.memory.weaviate import WeaviateMemory
 
     supported_memory.append("weaviate")
@@ -74,6 +82,14 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "myscale":
+        if not MyScaleMemory:
+            print(
+                "Error: MyScale is not installed."
+                "Please install `clickhouse-connect` to use MyScale as memory backend."
+            )
+        else:
+            memory = MyScaleMemory(cfg, init)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 

@@ -155,7 +155,7 @@ def main(
             " format specified above:"
         )
         # Initialize memory and make sure it is empty.
-        # this is particularly important for indexing and referencing pinecone memory
+        # this is particularly important for indexing and referencing pinecone and myscale memory
         memory = get_memory(cfg, init=True)
         logger.typewriter_log(
             "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
