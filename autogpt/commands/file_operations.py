@@ -72,7 +72,7 @@ def split_file(
     while start < content_length:
         end = start + max_length
         if end + overlap < content_length:
-            chunk = content[start: end + overlap - 1]
+            chunk = content[start : end + overlap - 1]
         else:
             chunk = content[start:content_length]
 
