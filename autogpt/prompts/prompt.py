@@ -96,13 +96,11 @@ def construct_main_ai_config() -> AIConfig:
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
-            f"Would you like me to return to being {config.ai_name}?",
+            f"Continue with the last session as {config.ai_name}?",
             speak_text=True,
         )
         should_continue = clean_input(
-            f"""Continue with the last settings?
-Name:  {config.ai_name}
-Role:  {config.ai_role}
+            f"""Role:  {config.ai_role}
 Goals: {config.ai_goals}
 API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
 Continue (y/n): """
@@ -111,8 +109,9 @@ Continue (y/n): """
             config = AIConfig()
 
     if not config.ai_name:
-        config = prompt_user()
-        config.save(CFG.ai_settings_file)
+        configs = prompt_user()
+        for config in configs:
+            config.save()
 
     # set the total api budget
     api_manager = ApiManager()

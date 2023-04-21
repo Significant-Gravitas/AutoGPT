@@ -14,10 +14,6 @@ import yaml
 
 from autogpt.prompts.generator import PromptGenerator
 
-# Soon this will go in a folder where it remembers more stuff about the run(s)
-SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
-
-
 class AIConfig:
     """
     A class object that contains the configuration information for the AI
@@ -56,8 +52,41 @@ class AIConfig:
         self.prompt_generator = None
         self.command_registry = None
 
+    # Save the current session to root
+    SESSION_FILE = os.path.join(os.getcwd(), "ai_session.yaml")
+
+    def get_save_file_path(self) -> str:
+        """
+        Get the save file path for the AI configuration based on the project name and AI name.
+
+        If the project_name is not provided, the file will be saved in the agents folder.
+        If the project_name is provided, the file will be saved in the corresponding project folder.
+
+        Returns:
+            str: The save file path for the AI configuration.
+        """
+        if self.project_name:
+            formatted_ai_name = self.ai_name.lower().replace(" ", "_")
+            formatted_project_name = self.project_name.lower().replace(" ", "_")
+            save_file = os.path.join(
+                os.getcwd(),
+                "projects",
+                f"{formatted_project_name}",
+                "agents",
+                f"ai_{formatted_ai_name}.yaml"
+            )
+        else:
+            formatted_ai_name = self.ai_name.lower().replace(" ", "_")
+            save_file = os.path.join(
+                os.getcwd(),
+                "projects",
+                "free_agents",
+                f"ai_{formatted_ai_name}.yaml"
+            )
+        return save_file
+
     @staticmethod
-    def load(config_file: str = SAVE_FILE) -> "AIConfig":
+    def load(config_file: str = None) -> "AIConfig":
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
           yaml file if yaml file exists,
@@ -65,28 +94,42 @@ class AIConfig:
 
         Parameters:
            config_file (int): The path to the config yaml file.
-             DEFAULT: "../ai_settings.yaml"
+             DEFAULT: "../ai_session.yaml"
 
         Returns:
             cls (object): An instance of given cls object
         """
-
         try:
             with open(config_file, encoding="utf-8") as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
         except FileNotFoundError:
             config_params = {}
+            
+        agent = config_params.get("agent", "") if config_params else ""
 
+        if not agent:
+            return AIConfig()
+
+        try:
+            with open(agent, encoding="utf-8") as file:
+                config_params = yaml.load(file, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            return AIConfig()
+
+        project_name = config_params.get("project_name", "")
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
         api_budget = config_params.get("api_budget", 0.0)
-        # type: Type[AIConfig]
-        return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+
+        return AIConfig(project_name, ai_name, ai_role, ai_goals, api_budget)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
+        If the project_name is not empty, it will save the file in the appropriate
+        project directory with the formatted AI name, otherwise it will save in the
+        free_agents director.
 
         Parameters:
             config_file(str): The path to the config yaml file.
@@ -95,15 +138,61 @@ class AIConfig:
         Returns:
             None
         """
+        config = {}
+        if self.project_name:
+            if config_file is None:
+                # Format the AI name and project name
+                formatted_ai_name = self.ai_name.lower().replace(" ", "_")
+                formatted_project_name = self.project_name.lower().replace(" ", "_")
 
-        config = {
-            "ai_name": self.ai_name,
-            "ai_role": self.ai_role,
-            "ai_goals": self.ai_goals,
-            "api_budget": self.api_budget,
+                # Use the get_save_file_path() attribute with the formatted project name and AI name
+                config_file = self.get_save_file_path().format(project_name=formatted_project_name, ai_name=formatted_ai_name)
+            config = {
+                "project_name": self.project_name,
+                "ai_name": self.ai_name,
+                "ai_role": self.ai_role,
+                "ai_goals": self.ai_goals,
+                "api_budget": self.api_budget,
+            }
+        elif config_file is None:
+            # If config_file and project_name are not provided, use the default file path
+            formatted_ai_name = self.ai_name.lower().replace(" ", "_")
+            config_file = self.get_save_file_path().format(ai_name=formatted_ai_name)
+            
+            config = {
+                "ai_name": self.ai_name,
+                "ai_role": self.ai_role,
+                "ai_goals": self.ai_goals,
+                "api_budget": self.api_budget,
         }
-        with open(config_file, "w", encoding="utf-8") as file:
-            yaml.dump(config, file, allow_unicode=True)
+
+        if config_file:  # Ensure the config_file is not empty before calling os.makedirs
+            # Create the file if it doesn't exist
+            config_directory = os.path.dirname(config_file)
+            os.makedirs(config_directory, exist_ok=True)
+
+            with open(config_file, "w", encoding="utf-8") as file:
+                yaml.dump(config, file, allow_unicode=True)
+
+            # Save the current session to ai_session.yaml
+            self.save_session({'agent': self.get_save_file_path()})
+
+            return config_file
+        else:
+            raise ValueError("Invalid config_file path")
+        
+    def save_session(self, config_file: str) -> None:
+        """
+        Saves the current session to ai_session.yaml.
+
+        Parameters:
+            config_file (str): The path to the config yaml file.
+
+        Returns:
+            None
+        """
+        with open(self.SESSION_FILE, "w", encoding="utf-8") as file:
+            yaml.dump(config_file, file, allow_unicode=True)
 
     def construct_full_prompt(
         self, prompt_generator: Optional[PromptGenerator] = None

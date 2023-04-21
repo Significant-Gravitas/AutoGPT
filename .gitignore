@@ -4,6 +4,7 @@ autogpt/*json
 autogpt/node_modules/
 autogpt/__pycache__/keys.cpython-310.pyc
 autogpt/auto_gpt_workspace
+projects/*
 package-lock.json
 *.pyc
 auto_gpt_workspace/*
