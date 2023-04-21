@@ -151,9 +151,13 @@ def lmql_get_emotional_state(message):
         return result
 
     loop = asyncio.get_event_loop()
-    emotion = loop.run_until_complete(_query_emotional_state())
-    # TODO perhaps add offset to neutral emotion? Most of the messages are too polite to be considered anything but 'neutral'
-    return emotion.variables['CLASSIFICATION']
+    lmql_result = loop.run_until_complete(_query_emotional_state())
+    p_emotions = sorted(lmql_result.variables['P(CLASSIFICATION)'], key=lambda elem: elem[1])
+    emotion, p = p_emotions.pop()
+    # If emotion is neutral with P(CLASSIFICATION) < threshold, return second result instead
+    if emotion == ' neutral' and p < 0.999:
+        emotion, _ = p_emotions.pop()
+    return emotion
 
 
 def lmql_smart_select(message_history, list_of_participants):
@@ -163,7 +167,7 @@ def lmql_smart_select(message_history, list_of_participants):
 
     loop = asyncio.get_event_loop()
     lmql_result = loop.run_until_complete(_query_smart_select_agent())[0]
-    return int(lmql_result.variables['INTVALUE']), lmql_result.variables['NAME']
+    return int(lmql_result.variables['INTVALUE']), lmql_result.variables['NAME'], lmql_result.variables['REASONING']
 
 
 # internal helper functions

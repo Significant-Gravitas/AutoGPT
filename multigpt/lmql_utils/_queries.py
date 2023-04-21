@@ -4,10 +4,13 @@ import lmql
 async def smart_select_agent(message_history, list_of_participants):
     '''
     argmax
-        """Consider the following message history of a discussion round:\n\n{message_history}\n
+        """Consider the following excerpt of a panel discussion :\n\n{message_history}\n
          Now consider this list of participants (ID - NAME):\n{list_of_participants}\n
-         Who should talk next?
-         The next speaker should be: [INTVALUE] - [NAME]
+         Who should talk next? Explain your reasoning. First and foremost, ensure that if
+         the last speaker addresses one of the participants directly, it should be their turn next.
+         Secondly, make sure each participant contributes roughly equal parts to the discussion.\n
+         Reasoning: [REASONING]\n
+         Therefore, the next speaker should be: [INTVALUE] - [NAME]
         """
     from
         'openai/text-davinci-003'

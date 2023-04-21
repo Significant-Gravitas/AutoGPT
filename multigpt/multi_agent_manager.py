@@ -117,9 +117,14 @@ class MultiAgentManager(metaclass=Singleton):
             else:
                 try:
                     with Spinner("Selecting next participant... "):
-                        next_speaker_id, _ = lmql_utils.lmql_smart_select(self.chat_buffer_to_str(), self.agents_to_str())
-                        self.current_active_agent = self.agents[next_speaker_id - 1]
-                except Exception as e:  # If parsing fails, just fallback to random select
+                        next_speaker_id, _, reasoning = lmql_utils.lmql_smart_select(self.chat_buffer_to_str(), self.agents_to_str())
+                        print(f"\n\n{reasoning}\n\n")
+                        # If smart select selects same agent, use random select instead
+                        if self.last_active_agent is self.agents[next_speaker_id - 1]:
+                            self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
+                        else:
+                            self.current_active_agent = self.agents[next_speaker_id - 1]
+                except Exception as e:  # If smart select fails for some reason, just fallback to random select
                     self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
 
         else:
