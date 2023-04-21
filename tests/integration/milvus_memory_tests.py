@@ -13,11 +13,15 @@ try:
         """Tests for the MilvusMemory class."""
 
         def random_string(self, length: int) -> str:
-            """Generate a random string of the given length."""
+            """
+            Generate a random string of the given length.
+            Args:
+                length (int): The length of the string to generate.
+            """
             return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
         def setUp(self) -> None:
-            """Set up the test environment."""
+            """Set up the test environment for the MilvusMemory tests."""
             cfg = Config()
             cfg.milvus_addr = "localhost:19530"
             self.memory = MilvusMemory(cfg)

@@ -74,6 +74,8 @@ class TestCommand:
 class TestCommandRegistry:
     @staticmethod
     def example_function(arg1: int, arg2: str) -> str:
+        """Example function for testing the CommandRegistry class."""
+        # Return a string with the two arguments separated by a dash
         return f"{arg1} - {arg2}"
 
     def test_register_command(self):
@@ -165,7 +167,11 @@ class TestCommandRegistry:
         )
 
     def test_import_temp_command_file_module(self, tmp_path):
-        """Test that the registry can import a command plugins module from a temp file."""
+        """
+        Test that the registry can import a command plugins module from a temp file.
+        Args:
+            tmp_path (pathlib.Path): Path to a temporary directory.
+        """
         registry = CommandRegistry()
 
         # Create a temp command file

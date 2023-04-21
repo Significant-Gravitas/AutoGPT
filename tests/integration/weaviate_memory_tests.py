@@ -13,7 +13,7 @@ from autogpt.memory.weaviate import WeaviateMemory
 
 
 class TestWeaviateMemory(unittest.TestCase):
-    """Tests for the WeaviateMemory class."""
+    """Unit tests for the WeaviateMemory class in memory/weaviate.py."""
 
     cfg = None
     client = None

@@ -10,7 +10,8 @@ from autogpt.memory.local import LocalCache
 
 
 def mock_config() -> dict:
-    """Mock the Config class"""
+    """Mock the config object for testing purposes."""
+    # Return a mock config object with the required attributes
     return type(
         "MockConfig",
         (object,),
@@ -25,7 +26,7 @@ def mock_config() -> dict:
 
 @pytest.mark.integration_test
 class TestLocalCache(unittest.TestCase):
-    """Tests for LocalCache class"""
+    """Unit tests for the LocalCache class in memory/local.py."""
 
     def setUp(self) -> None:
         """Set up the test environment"""

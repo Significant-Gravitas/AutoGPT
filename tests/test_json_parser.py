@@ -5,7 +5,7 @@ from autogpt.json_utils.json_fix_llm import fix_and_parse_json
 
 
 class TestParseJson(unittest.TestCase):
-    """Test the JSON parser."""
+    """Test cases for the fix_and_parse_json function in json_fix_llm.py"""
 
     def test_valid_json(self):
         """Test that a valid JSON string can be parsed."""
@@ -110,5 +110,4 @@ class TestParseJson(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    """Run the tests."""
     unittest.main()

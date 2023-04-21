@@ -9,14 +9,18 @@ from autogpt.memory.local import LocalCache
 
 
 class TestLocalCache(unittest.TestCase):
-    """Tests for LocalCache class"""
+    """Unit tests for the LocalCache class in memory/local.py."""
 
     def random_string(self, length):
-        """Generate a random string of fixed length"""
+        """
+        Generate a random string of the given length.
+        Args:
+            length (int): The length of the string to generate.
+        """
         return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
     def setUp(self):
-        """Set up the test environment"""
+        """Set up the test environment for the LocalCache tests."""
         cfg = cfg = Config()
         self.cache = LocalCache(cfg)
         self.cache.clear()
@@ -32,12 +36,11 @@ class TestLocalCache(unittest.TestCase):
         for text in self.example_texts:
             self.cache.add(text)
 
-        # Add some random strings to test noise
         for _ in range(5):
             self.cache.add(self.random_string(10))
 
     def test_get_relevant(self):
-        """Test getting relevant texts from the cache"""
+        """Test getting relevant texts from the cache."""
         query = "I'm interested in artificial intelligence and NLP"
         k = 3
         relevant_texts = self.cache.get_relevant(query, k)
