@@ -142,11 +142,10 @@ class Config(metaclass=Singleton):
 
         plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
         if plugins_allowlist:
-            plugins_allowlist = plugins_allowlist.split(",")
-            self.plugins_whitelist = plugins_allowlist
+            self.plugins_allowlist = plugins_allowlist.split(",")
         else:
-            self.plugins_whitelist = []
-        self.plugins_blacklist = []
+            self.plugins_allowlist = []
+        self.plugins_denylist = []
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
@@ -186,11 +185,8 @@ class Config(metaclass=Singleton):
         Returns:
             None
         """
-        try:
-            with open(config_file) as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
-        except FileNotFoundError:
-            config_params = {}
+        with open(config_file) as file:
+            config_params = yaml.load(file, Loader=yaml.FullLoader)
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
         self.openai_api_version = (

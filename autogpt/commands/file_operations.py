@@ -239,7 +239,7 @@ def search_files(directory: str) -> list[str]:
 
 @command(
     "download_file",
-    "Search Files",
+    "Download File",
     '"url": "<url>", "filename": "<filename>"',
     CFG.allow_downloads,
     "Error: You do not have user authorization to download files locally.",

@@ -222,7 +222,7 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                 if (
                     "_abc_impl" in a_keys
                     and a_module.__name__ != "AutoGPTPluginTemplate"
-                    and blacklist_whitelist_check(a_module.__name__, cfg)
+                    and denylist_allowlist_check(a_module.__name__, cfg)
                 ):
                     loaded_plugins.append(a_module())
     # OpenAI plugins
@@ -233,7 +233,7 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                 manifests_specs, cfg, debug
             )
             for url, openai_plugin_meta in manifests_specs_clients.items():
-                if blacklist_whitelist_check(url, cfg):
+                if denylist_allowlist_check(url, cfg):
                     plugin = BaseOpenAIPlugin(openai_plugin_meta)
                     loaded_plugins.append(plugin)
 
@@ -244,8 +244,8 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
     return loaded_plugins
 
 
-def blacklist_whitelist_check(plugin_name: str, cfg: Config) -> bool:
-    """Check if the plugin is in the whitelist or blacklist.
+def denylist_allowlist_check(plugin_name: str, cfg: Config) -> bool:
+    """Check if the plugin is in the allowlist or denylist.
 
     Args:
         plugin_name (str): Name of the plugin.
@@ -254,12 +254,12 @@ def blacklist_whitelist_check(plugin_name: str, cfg: Config) -> bool:
     Returns:
         True or False
     """
-    if plugin_name in cfg.plugins_blacklist:
+    if plugin_name in cfg.plugins_denylist:
         return False
-    if plugin_name in cfg.plugins_whitelist:
+    if plugin_name in cfg.plugins_allowlist:
         return True
     ack = input(
         f"WARNNG Plugin {plugin_name} found. But not in the"
-        " whitelist... Load? (y/n): "
+        " allowlist... Load? (y/n): "
     )
     return ack.lower() == "y"
