@@ -2,7 +2,7 @@ import pytest
 
 from autogpt.config import Config
 from autogpt.plugins import (
-    blacklist_whitelist_check,
+    denylist_allowlist_check,
     inspect_zip_for_module,
     scan_plugins,
 )
@@ -18,56 +18,54 @@ def test_inspect_zip_for_module():
 
 
 @pytest.fixture
-def mock_config_blacklist_whitelist_check():
+def mock_config_denylist_allowlist_check():
     class MockConfig:
-        plugins_blacklist = ["BadPlugin"]
-        plugins_whitelist = ["GoodPlugin"]
+        plugins_denylist = ["BadPlugin"]
+        plugins_allowlist = ["GoodPlugin"]
 
     return MockConfig()
 
 
-def test_blacklist_whitelist_check_blacklist(
-    mock_config_blacklist_whitelist_check, monkeypatch
+def test_denylist_allowlist_check_denylist(
+    mock_config_denylist_allowlist_check, monkeypatch
 ):
     monkeypatch.setattr("builtins.input", lambda _: "y")
-    assert not blacklist_whitelist_check(
-        "BadPlugin", mock_config_blacklist_whitelist_check
+    assert not denylist_allowlist_check(
+        "BadPlugin", mock_config_denylist_allowlist_check
     )
 
 
-def test_blacklist_whitelist_check_whitelist(
-    mock_config_blacklist_whitelist_check, monkeypatch
+def test_denylist_allowlist_check_allowlist(
+    mock_config_denylist_allowlist_check, monkeypatch
 ):
     monkeypatch.setattr("builtins.input", lambda _: "y")
-    assert blacklist_whitelist_check(
-        "GoodPlugin", mock_config_blacklist_whitelist_check
+    assert denylist_allowlist_check("GoodPlugin", mock_config_denylist_allowlist_check)
+
+
+def test_denylist_allowlist_check_user_input_yes(
+    mock_config_denylist_allowlist_check, monkeypatch
+):
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    assert denylist_allowlist_check(
+        "UnknownPlugin", mock_config_denylist_allowlist_check
     )
 
 
-def test_blacklist_whitelist_check_user_input_yes(
-    mock_config_blacklist_whitelist_check, monkeypatch
-):
-    monkeypatch.setattr("builtins.input", lambda _: "y")
-    assert blacklist_whitelist_check(
-        "UnknownPlugin", mock_config_blacklist_whitelist_check
-    )
-
-
-def test_blacklist_whitelist_check_user_input_no(
-    mock_config_blacklist_whitelist_check, monkeypatch
+def test_denylist_allowlist_check_user_input_no(
+    mock_config_denylist_allowlist_check, monkeypatch
 ):
     monkeypatch.setattr("builtins.input", lambda _: "n")
-    assert not blacklist_whitelist_check(
-        "UnknownPlugin", mock_config_blacklist_whitelist_check
+    assert not denylist_allowlist_check(
+        "UnknownPlugin", mock_config_denylist_allowlist_check
     )
 
 
-def test_blacklist_whitelist_check_user_input_invalid(
-    mock_config_blacklist_whitelist_check, monkeypatch
+def test_denylist_allowlist_check_user_input_invalid(
+    mock_config_denylist_allowlist_check, monkeypatch
 ):
     monkeypatch.setattr("builtins.input", lambda _: "invalid")
-    assert not blacklist_whitelist_check(
-        "UnknownPlugin", mock_config_blacklist_whitelist_check
+    assert not denylist_allowlist_check(
+        "UnknownPlugin", mock_config_denylist_allowlist_check
     )
 
 @pytest.fixture
@@ -75,8 +73,8 @@ def mock_config_generic_plugin():
     class MockConfig:
         plugins_dir = PLUGINS_TEST_DIR
         plugins_openai = []
-        plugins_blacklist = []
-        plugins_whitelist = ["AutoGPTPVicuna"]
+        plugins_denylist = []
+        plugins_allowlist = ["AutoGPTPVicuna"]
 
     return MockConfig()
 
