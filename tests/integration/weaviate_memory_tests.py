@@ -21,7 +21,7 @@ class TestWeaviateMemory(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Set up the test environment"""
+        """Set up the test environment for the WeaviateMemory tests."""
         # only create the connection to weaviate once
         cls.cfg = Config()
 
@@ -53,7 +53,7 @@ class TestWeaviateMemory(unittest.TestCase):
     """
 
     def setUp(self):
-        """Set up the test environment"""
+        """Set up the test environment for the WeaviateMemory tests."""
         try:
             self.client.schema.delete_class(self.index)
         except:

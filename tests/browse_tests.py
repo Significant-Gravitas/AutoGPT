@@ -14,7 +14,6 @@ class TestBrowseLinks(unittest.TestCase):
 
     def test_extract_hyperlinks(self):
         """Test the extract_hyperlinks function with a simple HTML body."""
-        # Define a simple HTML body with some hyperlinks.
         body = """
         <body>
         <a href="https://google.com">Google</a>

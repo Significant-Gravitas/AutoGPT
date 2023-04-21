@@ -78,7 +78,7 @@ class TestScrapeText:
     # Tests that the function returns an empty string when the html page contains no
     #  text to be scraped.
     def test_no_text(self, mocker):
-        """ "Test that the function returns an empty string when the html page contains no text to be scraped."""
+        """Test that the function returns an empty string when the html page contains no text to be scraped."""
         # Mock the requests.get() method to return a response with no text
         mock_response = mocker.Mock()
         mock_response.status_code = 200

@@ -99,7 +99,6 @@ class TestScrapeLinks:
     # a sample HTML containing a few hyperlinks.
     def test_scrape_links_with_few_hyperlinks(self, mocker):
         """Test that scrape_links() correctly extracts and formats hyperlinks from a sample HTML containing a few hyperlinks."""
-        # Mock the requests.get() function to return a response with a sample HTML containing hyperlinks
         mock_response = mocker.Mock()
         mock_response.status_code = 200
         mock_response.text = """

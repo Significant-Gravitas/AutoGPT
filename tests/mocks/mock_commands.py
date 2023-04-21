@@ -9,5 +9,4 @@ def function_based(arg1: int, arg2: str) -> str:
         arg1 (int): The first argument.
         arg2 (str): The second argument.
     """
-    # Return a string with the two arguments separated by a dash
     return f"{arg1} - {arg2}"

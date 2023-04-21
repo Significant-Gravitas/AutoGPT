@@ -10,7 +10,7 @@ from autogpt.memory.milvus import MilvusMemory
 try:
 
     class TestMilvusMemory(unittest.TestCase):
-        """Tests for the MilvusMemory class."""
+        """Unit tests for the MilvusMemory class."""
 
         def random_string(self, length: int) -> str:
             """
