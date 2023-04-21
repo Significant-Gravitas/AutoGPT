@@ -1,0 +1,309 @@
+@charset "UTF-8";
+/* Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0 */
+/* For details: https://github.com/nedbat/coveragepy/blob/master/NOTICE.txt */
+/* Don't edit this .css file. Edit the .scss file instead! */
+html, body, h1, h2, h3, p, table, td, th { margin: 0; padding: 0; border: 0; font-weight: inherit; font-style: inherit; font-size: 100%; font-family: inherit; vertical-align: baseline; }
+
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", sans-serif; font-size: 1em; background: #fff; color: #000; }
+
+@media (prefers-color-scheme: dark) { body { background: #1e1e1e; } }
+
+@media (prefers-color-scheme: dark) { body { color: #eee; } }
+
+html > body { font-size: 16px; }
+
+a:active, a:focus { outline: 2px dashed #007acc; }
+
+p { font-size: .875em; line-height: 1.4em; }
+
+table { border-collapse: collapse; }
+
+td { vertical-align: top; }
+
+table tr.hidden { display: none !important; }
+
+p#no_rows { display: none; font-size: 1.2em; }
+
+a.nav { text-decoration: none; color: inherit; }
+
+a.nav:hover { text-decoration: underline; color: inherit; }
+
+.hidden { display: none; }
+
+header { background: #f8f8f8; width: 100%; z-index: 2; border-bottom: 1px solid #ccc; }
+
+@media (prefers-color-scheme: dark) { header { background: black; } }
+
+@media (prefers-color-scheme: dark) { header { border-color: #333; } }
+
+header .content { padding: 1rem 3.5rem; }
+
+header h2 { margin-top: .5em; font-size: 1em; }
+
+header p.text { margin: .5em 0 -.5em; color: #666; font-style: italic; }
+
+@media (prefers-color-scheme: dark) { header p.text { color: #aaa; } }
+
+header.sticky { position: fixed; left: 0; right: 0; height: 2.5em; }
+
+header.sticky .text { display: none; }
+
+header.sticky h1, header.sticky h2 { font-size: 1em; margin-top: 0; display: inline-block; }
+
+header.sticky .content { padding: 0.5rem 3.5rem; }
+
+header.sticky .content p { font-size: 1em; }
+
+header.sticky ~ #source { padding-top: 6.5em; }
+
+main { position: relative; z-index: 1; }
+
+footer { margin: 1rem 3.5rem; }
+
+footer .content { padding: 0; color: #666; font-style: italic; }
+
+@media (prefers-color-scheme: dark) { footer .content { color: #aaa; } }
+
+#index { margin: 1rem 0 0 3.5rem; }
+
+h1 { font-size: 1.25em; display: inline-block; }
+
+#filter_container { float: right; margin: 0 2em 0 0; }
+
+#filter_container input { width: 10em; padding: 0.2em 0.5em; border: 2px solid #ccc; background: #fff; color: #000; }
+
+@media (prefers-color-scheme: dark) { #filter_container input { border-color: #444; } }
+
+@media (prefers-color-scheme: dark) { #filter_container input { background: #1e1e1e; } }
+
+@media (prefers-color-scheme: dark) { #filter_container input { color: #eee; } }
+
+#filter_container input:focus { border-color: #007acc; }
+
+header button { font-family: inherit; font-size: inherit; border: 1px solid; border-radius: .2em; color: inherit; padding: .1em .5em; margin: 1px calc(.1em + 1px); cursor: pointer; border-color: #ccc; }
+
+@media (prefers-color-scheme: dark) { header button { border-color: #444; } }
+
+header button:active, header button:focus { outline: 2px dashed #007acc; }
+
+header button.run { background: #eeffee; }
+
+@media (prefers-color-scheme: dark) { header button.run { background: #373d29; } }
+
+header button.run.show_run { background: #dfd; border: 2px solid #00dd00; margin: 0 .1em; }
+
+@media (prefers-color-scheme: dark) { header button.run.show_run { background: #373d29; } }
+
+header button.mis { background: #ffeeee; }
+
+@media (prefers-color-scheme: dark) { header button.mis { background: #4b1818; } }
+
+header button.mis.show_mis { background: #fdd; border: 2px solid #ff0000; margin: 0 .1em; }
+
+@media (prefers-color-scheme: dark) { header button.mis.show_mis { background: #4b1818; } }
+
+header button.exc { background: #f7f7f7; }
+
+@media (prefers-color-scheme: dark) { header button.exc { background: #333; } }
+
+header button.exc.show_exc { background: #eee; border: 2px solid #808080; margin: 0 .1em; }
+
+@media (prefers-color-scheme: dark) { header button.exc.show_exc { background: #333; } }
+
+header button.par { background: #ffffd5; }
+
+@media (prefers-color-scheme: dark) { header button.par { background: #650; } }
+
+header button.par.show_par { background: #ffa; border: 2px solid #bbbb00; margin: 0 .1em; }
+
+@media (prefers-color-scheme: dark) { header button.par.show_par { background: #650; } }
+
+#help_panel, #source p .annotate.long { display: none; position: absolute; z-index: 999; background: #ffffcc; border: 1px solid #888; border-radius: .2em; color: #333; padding: .25em .5em; }
+
+#source p .annotate.long { white-space: normal; float: right; top: 1.75em; right: 1em; height: auto; }
+
+#help_panel_wrapper { float: right; position: relative; }
+
+#keyboard_icon { margin: 5px; }
+
+#help_panel_state { display: none; }
+
+#help_panel { top: 25px; right: 0; padding: .75em; border: 1px solid #883; color: #333; }
+
+#help_panel .keyhelp p { margin-top: .75em; }
+
+#help_panel .legend { font-style: italic; margin-bottom: 1em; }
+
+.indexfile #help_panel { width: 25em; }
+
+.pyfile #help_panel { width: 18em; }
+
+#help_panel_state:checked ~ #help_panel { display: block; }
+
+kbd { border: 1px solid black; border-color: #888 #333 #333 #888; padding: .1em .35em; font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: bold; background: #eee; border-radius: 3px; }
+
+#source { padding: 1em 0 1em 3.5rem; font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+#source p { position: relative; white-space: pre; }
+
+#source p * { box-sizing: border-box; }
+
+#source p .n { float: left; text-align: right; width: 3.5rem; box-sizing: border-box; margin-left: -3.5rem; padding-right: 1em; color: #999; }
+
+@media (prefers-color-scheme: dark) { #source p .n { color: #777; } }
+
+#source p .n.highlight { background: #ffdd00; }
+
+#source p .n a { margin-top: -4em; padding-top: 4em; text-decoration: none; color: #999; }
+
+@media (prefers-color-scheme: dark) { #source p .n a { color: #777; } }
+
+#source p .n a:hover { text-decoration: underline; color: #999; }
+
+@media (prefers-color-scheme: dark) { #source p .n a:hover { color: #777; } }
+
+#source p .t { display: inline-block; width: 100%; box-sizing: border-box; margin-left: -.5em; padding-left: 0.3em; border-left: 0.2em solid #fff; }
+
+@media (prefers-color-scheme: dark) { #source p .t { border-color: #1e1e1e; } }
+
+#source p .t:hover { background: #f2f2f2; }
+
+@media (prefers-color-scheme: dark) { #source p .t:hover { background: #282828; } }
+
+#source p .t:hover ~ .r .annotate.long { display: block; }
+
+#source p .t .com { color: #008000; font-style: italic; line-height: 1px; }
+
+@media (prefers-color-scheme: dark) { #source p .t .com { color: #6a9955; } }
+
+#source p .t .key { font-weight: bold; line-height: 1px; }
+
+#source p .t .str { color: #0451a5; }
+
+@media (prefers-color-scheme: dark) { #source p .t .str { color: #9cdcfe; } }
+
+#source p.mis .t { border-left: 0.2em solid #ff0000; }
+
+#source p.mis.show_mis .t { background: #fdd; }
+
+@media (prefers-color-scheme: dark) { #source p.mis.show_mis .t { background: #4b1818; } }
+
+#source p.mis.show_mis .t:hover { background: #f2d2d2; }
+
+@media (prefers-color-scheme: dark) { #source p.mis.show_mis .t:hover { background: #532323; } }
+
+#source p.run .t { border-left: 0.2em solid #00dd00; }
+
+#source p.run.show_run .t { background: #dfd; }
+
+@media (prefers-color-scheme: dark) { #source p.run.show_run .t { background: #373d29; } }
+
+#source p.run.show_run .t:hover { background: #d2f2d2; }
+
+@media (prefers-color-scheme: dark) { #source p.run.show_run .t:hover { background: #404633; } }
+
+#source p.exc .t { border-left: 0.2em solid #808080; }
+
+#source p.exc.show_exc .t { background: #eee; }
+
+@media (prefers-color-scheme: dark) { #source p.exc.show_exc .t { background: #333; } }
+
+#source p.exc.show_exc .t:hover { background: #e2e2e2; }
+
+@media (prefers-color-scheme: dark) { #source p.exc.show_exc .t:hover { background: #3c3c3c; } }
+
+#source p.par .t { border-left: 0.2em solid #bbbb00; }
+
+#source p.par.show_par .t { background: #ffa; }
+
+@media (prefers-color-scheme: dark) { #source p.par.show_par .t { background: #650; } }
+
+#source p.par.show_par .t:hover { background: #f2f2a2; }
+
+@media (prefers-color-scheme: dark) { #source p.par.show_par .t:hover { background: #6d5d0c; } }
+
+#source p .r { position: absolute; top: 0; right: 2.5em; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", sans-serif; }
+
+#source p .annotate { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", sans-serif; color: #666; padding-right: .5em; }
+
+@media (prefers-color-scheme: dark) { #source p .annotate { color: #ddd; } }
+
+#source p .annotate.short:hover ~ .long { display: block; }
+
+#source p .annotate.long { width: 30em; right: 2.5em; }
+
+#source p input { display: none; }
+
+#source p input ~ .r label.ctx { cursor: pointer; border-radius: .25em; }
+
+#source p input ~ .r label.ctx::before { content: "▶ "; }
+
+#source p input ~ .r label.ctx:hover { background: #e8f4ff; color: #666; }
+
+@media (prefers-color-scheme: dark) { #source p input ~ .r label.ctx:hover { background: #0f3a42; } }
+
+@media (prefers-color-scheme: dark) { #source p input ~ .r label.ctx:hover { color: #aaa; } }
+
+#source p input:checked ~ .r label.ctx { background: #d0e8ff; color: #666; border-radius: .75em .75em 0 0; padding: 0 .5em; margin: -.25em 0; }
+
+@media (prefers-color-scheme: dark) { #source p input:checked ~ .r label.ctx { background: #056; } }
+
+@media (prefers-color-scheme: dark) { #source p input:checked ~ .r label.ctx { color: #aaa; } }
+
+#source p input:checked ~ .r label.ctx::before { content: "▼ "; }
+
+#source p input:checked ~ .ctxs { padding: .25em .5em; overflow-y: scroll; max-height: 10.5em; }
+
+#source p label.ctx { color: #999; display: inline-block; padding: 0 .5em; font-size: .8333em; }
+
+@media (prefers-color-scheme: dark) { #source p label.ctx { color: #777; } }
+
+#source p .ctxs { display: block; max-height: 0; overflow-y: hidden; transition: all .2s; padding: 0 .5em; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", sans-serif; white-space: nowrap; background: #d0e8ff; border-radius: .25em; margin-right: 1.75em; text-align: right; }
+
+@media (prefers-color-scheme: dark) { #source p .ctxs { background: #056; } }
+
+#index { font-family: SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.875em; }
+
+#index table.index { margin-left: -.5em; }
+
+#index td, #index th { text-align: right; width: 5em; padding: .25em .5em; border-bottom: 1px solid #eee; }
+
+@media (prefers-color-scheme: dark) { #index td, #index th { border-color: #333; } }
+
+#index td.name, #index th.name { text-align: left; width: auto; }
+
+#index th { font-style: italic; color: #333; cursor: pointer; }
+
+@media (prefers-color-scheme: dark) { #index th { color: #ddd; } }
+
+#index th:hover { background: #eee; }
+
+@media (prefers-color-scheme: dark) { #index th:hover { background: #333; } }
+
+#index th[aria-sort="ascending"], #index th[aria-sort="descending"] { white-space: nowrap; background: #eee; padding-left: .5em; }
+
+@media (prefers-color-scheme: dark) { #index th[aria-sort="ascending"], #index th[aria-sort="descending"] { background: #333; } }
+
+#index th[aria-sort="ascending"]::after { font-family: sans-serif; content: " ↑"; }
+
+#index th[aria-sort="descending"]::after { font-family: sans-serif; content: " ↓"; }
+
+#index td.name a { text-decoration: none; color: inherit; }
+
+#index tr.total td, #index tr.total_dynamic td { font-weight: bold; border-top: 1px solid #ccc; border-bottom: none; }
+
+#index tr.file:hover { background: #eee; }
+
+@media (prefers-color-scheme: dark) { #index tr.file:hover { background: #333; } }
+
+#index tr.file:hover td.name { text-decoration: underline; color: inherit; }
+
+#scroll_marker { position: fixed; z-index: 3; right: 0; top: 0; width: 16px; height: 100%; background: #fff; border-left: 1px solid #eee; will-change: transform; }
+
+@media (prefers-color-scheme: dark) { #scroll_marker { background: #1e1e1e; } }
+
+@media (prefers-color-scheme: dark) { #scroll_marker { border-color: #333; } }
+
+#scroll_marker .marker { background: #ccc; position: absolute; min-height: 3px; width: 100%; }
+
+@media (prefers-color-scheme: dark) { #scroll_marker .marker { background: #444; } }
