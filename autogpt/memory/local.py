@@ -41,7 +41,7 @@ class LocalCache(MemoryProviderSingleton):
         self.filename = f"{cfg.memory_index}.json"
         if os.path.exists(self.filename):
             try:
-                with open(self.filename, "w+b") as f:
+                with open(self.filename, "a+b") as f:
                     file_content = f.read()
                     if not file_content.strip():
                         file_content = b"{}"
