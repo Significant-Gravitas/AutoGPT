@@ -72,6 +72,7 @@ def main(
     import logging
     import sys
 
+    import gnureadline
     from colorama import Fore
 
     from autogpt.agent.agent import Agent
