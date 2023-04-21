@@ -1,4 +1,4 @@
-azure_api_type: azure_ad
+azure_api_type: azure
 azure_api_base: your-base-url-for-azure
 azure_api_version: api-version-for-azure
 azure_model_map:
