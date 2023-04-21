@@ -10,8 +10,8 @@ services:
     env_file:
       - .env
     volumes:
-      - "./autogpt:/app"
-      - ".env:/app/.env"
+      - "./autogpt:/home/appuser"
+      - ".env:/home/appuser/.env"
     profiles: ["exclude-from-up"]
 
   redis:
