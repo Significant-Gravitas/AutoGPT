@@ -1,5 +1,7 @@
-import pkg_resources
+import re
 import sys
+
+import pkg_resources
 
 
 def main():
@@ -15,7 +17,7 @@ def main():
     for package in required_packages:
         if not package:  # Skip empty lines
             continue
-        package_name = package.strip().split("==")[0]
+        package_name = re.split("[<>=@ ]+", package.strip())[0]
         if package_name.lower() not in installed_packages:
             missing_packages.append(package_name)
 
