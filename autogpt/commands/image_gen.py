@@ -76,7 +76,7 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
     return f"Saved to disk:{filename}"
 
 
-def generate_image_with_dalle(prompt: str, filename: str) -> str:
+def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
     """Generate an image with DALL-E.
 
     Args:
