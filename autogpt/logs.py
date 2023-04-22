@@ -330,3 +330,7 @@ def print_assistant_thoughts(
     # Speak the assistant's thoughts
     if CFG.speak_mode and assistant_thoughts_speak:
         say_text(assistant_thoughts_speak)
+
+
+
+
