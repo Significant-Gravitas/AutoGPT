@@ -14,32 +14,32 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     env:
-      min-python-version: '3.10'
+      min-python-version: "3.10"
 
     steps:
-    - name: Check out repository
-      uses: actions/checkout@v3
+      - name: Check out repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python ${{ env.min-python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ env.min-python-version }}
+      - name: Set up Python ${{ env.min-python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ env.min-python-version }}
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Lint with flake8
-      run: flake8
+      - name: Lint with flake8
+        run: flake8
 
-    - name: Check black formatting
-      run: black . --check
-      if: success() || failure()
+      - name: Check black formatting
+        run: black . --check
+        if: success() || failure()
 
-    - name: Check isort formatting
-      run: isort . --check
-      if: success() || failure()
+      - name: Check isort formatting
+        run: isort . --check
+        if: success() || failure()
 
   test:
     permissions:
@@ -53,43 +53,31 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ["3.10", "3.11"]
 
     steps:
-    - name: Check out repository
-      uses: actions/checkout@v3
+      - name: Check out repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Run unittest tests with coverage
-      run: |
-        pytest --cov=autogpt --without-integration --without-slow-integration --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+      - name: Run unittest tests with coverage
+        run: |
+          pytest --cov=autogpt --without-integration --without-slow-integration --cov-report term-missing --cov-branch --cov-report xml --cov-report term
 
-    - name: Generate coverage report
-      run: |
-        coverage report
-        coverage xml
-      if: success() || failure()
+      - name: Generate coverage report
+        run: |
+          coverage report
+          coverage xml
+        if: success() || failure()
 
-    - name: Coverage comment
-      id: coverage_comment
-      uses: py-cov-action/python-coverage-comment-action@v3
-      with:
-          GITHUB_TOKEN: ${{ github.token }}
-
-    - name: Store Pull Request comment to be posted
-      uses: actions/upload-artifact@v3
-      if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
-      with:
-        # If you use a different name, update COMMENT_ARTIFACT_NAME accordingly
-        name: python-coverage-comment-action
-        # If you use a different name, update COMMENT_FILENAME accordingly
-        path: python-coverage-comment-action.txt
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v3
