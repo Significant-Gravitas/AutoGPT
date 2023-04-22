@@ -128,6 +128,10 @@ def fix_and_parse_json(
     """
 
     with contextlib.suppress(json.JSONDecodeError):
+        dfsj = DFSJson()
+        json_to_load = dfsj.loads(json_to_load)
+
+    with contextlib.suppress(json.JSONDecodeError):
         json_to_load = json_to_load.replace("\t", "")
         return json.loads(json_to_load)
 
@@ -146,9 +150,7 @@ def fix_and_parse_json(
         maybe_fixed_json = json_to_load[brace_index:]
         last_brace_index = maybe_fixed_json.rindex("}")
         maybe_fixed_json = maybe_fixed_json[: last_brace_index + 1]
-        dfsj = DFSJson()
-        dfs_json = dfsj.loads(maybe_fixed_json)
-        return dfs_json
+        return maybe_fixed_json
     except (json.JSONDecodeError, ValueError) as e:
         return try_ai_fix(try_to_fix_with_gpt, e, json_to_load)
 
