@@ -72,7 +72,7 @@ class TestScrapeText:
         assert "Error:" in error_message
 
     def test_no_text(self, mocker):
-        """Test that the function returns an empty string when the html page contains no text to be scraped."""
+        """Test that scrape_text returns an empty string when the html page contains no text to be scraped."""
         # Mock the requests.get() method to return a response with no text
         mock_response = mocker.Mock()
         mock_response.status_code = 200
@@ -84,7 +84,7 @@ class TestScrapeText:
         assert scrape_text(url) == ""
 
     def test_http_error(self, mocker):
-        """Test that the function returns an error message when the response status code is an http error (>=400)."""
+        """Test that scrape_text returns an error message when the response status code is an http error (>=400)."""
         # Mock the requests.get() method to return a response with a 404 status code
         mocker.patch("requests.Session.get", return_value=mocker.Mock(status_code=404))
 
