@@ -14,7 +14,7 @@ from autogpt.utils import (
     readable_file_size,
     validate_yaml_file,
 )
-from tests.utils import skip_on_ci
+from tests.utils import skip_in_ci
 
 
 def test_validate_yaml_file_valid():
@@ -71,7 +71,7 @@ def test_get_bulletin_from_web_failure(mock_get):
     assert bulletin == ""
 
 
-@skip_on_ci
+@skip_in_ci
 def test_get_current_git_branch():
     branch_name = get_current_git_branch()
 
