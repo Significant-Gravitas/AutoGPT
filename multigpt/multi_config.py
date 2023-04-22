@@ -7,7 +7,7 @@ class MultiConfig(Config):
     def __init__(self):
         super().__init__()
         # TODO: find a more elegant solution
-        next_agent_selection_str = os.getenv("NEXTAGENTSELECTION", "ROUND_ROBIN")
+        next_agent_selection_str = os.getenv("NEXTAGENTSELECTION", "SMART_SELECTION")
         if next_agent_selection_str == "SMART_SELECTION":
             self.next_agent_selection = AgentSelection.SMART_SELECTION
         elif next_agent_selection_str == "RANDOM":

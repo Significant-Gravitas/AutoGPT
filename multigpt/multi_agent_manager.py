@@ -109,12 +109,14 @@ class MultiAgentManager(metaclass=Singleton):
             self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
 
         elif self.cfg.next_agent_selection == AgentSelection.SMART_SELECTION:
-            if self.last_active_agent is None and len(self.agents) > 0:  # If last agent is None, fallback to random select
+            if self.last_active_agent is None and len(
+                    self.agents) > 0:  # If last agent is None, fallback to random select
                 self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
             else:
                 try:
                     with Spinner("Selecting next participant... "):
-                        next_speaker_id, _, reasoning = lmql_utils.lmql_smart_select(self.chat_buffer_to_str(), self.agents_to_str())
+                        next_speaker_id, _, reasoning = lmql_utils.lmql_smart_select(self.chat_buffer_to_str(),
+                                                                                     self.agents_to_str())
                         # If smart select selects same agent, use random select instead
                         if self.last_active_agent is self.agents[next_speaker_id - 1]:
                             self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
@@ -176,11 +178,11 @@ class MultiAgentManager(metaclass=Singleton):
                     ))
 
                 assistant_reply = chat_with_ai(active_agent.prompt,
-                    active_agent.user_input,
-                    active_agent.full_message_history,
-                    active_agent.memory,
-                    self.cfg.fast_token_limit
-                )   # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                                               active_agent.user_input,
+                                               active_agent.full_message_history,
+                                               active_agent.memory,
+                                               self.cfg.fast_token_limit
+                                               )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             # Print Assistant thoughts
 
@@ -191,8 +193,8 @@ class MultiAgentManager(metaclass=Singleton):
                     with Spinner(f"EVALUATING EMOTIONAL STATE OF {active_agent.ai_name}."):
                         val = lmql_utils.lmql_get_emotional_state(speak_value)
                     logger.typewriter_log(
-                        "JARVIS: ", Fore.YELLOW,
-                        f"Evaluation complete. {active_agent.ai_name} is feeling {val} right now."
+                        "System: ", Fore.YELLOW,
+                        f"Evaluation complete. {active_agent.ai_name} is feeling '{val}' right now."
                     )
                     successful = self.send_message_to_all_agents(speaker=active_agent, message=speak_value)
                     if successful:
