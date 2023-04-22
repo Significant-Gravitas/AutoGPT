@@ -136,7 +136,3 @@ We look forward to connecting with you and hearing your thoughts, ideas, and exp
     <img src="https://api.star-history.com/svg?repos=Torantulino/auto-gpt&type=Date" alt="Star History Chart">
   </a>
 </p>
-
-## Run tests
-
-testing.md
