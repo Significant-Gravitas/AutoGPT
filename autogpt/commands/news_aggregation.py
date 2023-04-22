@@ -1,7 +1,9 @@
-from autogpt.config import Config
-from newsapi import NewsApiClient
-from autogpt.commands.command import command
 import concurrent.futures
+
+from newsapi import NewsApiClient
+
+from autogpt.commands.command import command
+from autogpt.config import Config
 
 CFG = Config()
 
