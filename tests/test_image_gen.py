@@ -16,7 +16,6 @@ def lst(txt):
 
 @unittest.skipIf(os.getenv("CI"), "Skipping image generation tests")
 class TestImageGen(unittest.TestCase):
-
     def setUp(self):
         self.config = Config()
 

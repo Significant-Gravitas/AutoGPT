@@ -30,7 +30,6 @@ PLEASE_WAIT = "Please wait..."
 
 
 class TestSpinner(unittest.TestCase):
-    
     def test_spinner_initializes_with_default_values(self):
         """Tests that the spinner initializes with default values."""
         with Spinner() as spinner:
@@ -43,7 +42,7 @@ class TestSpinner(unittest.TestCase):
             self.assertEqual(spinner.message, PLEASE_WAIT)
             self.assertEqual(spinner.delay, 0.2)
 
-    # 
+    #
     def test_spinner_stops_spinning(self):
         """Tests that the spinner starts spinning and stops spinning without errors."""
         with Spinner() as spinner:

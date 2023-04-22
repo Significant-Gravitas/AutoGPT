@@ -5,7 +5,6 @@ from autogpt.token_counter import count_message_tokens, count_string_tokens
 
 
 class TestTokenCounter(unittest.TestCase):
-
     def test_count_message_tokens(self):
         messages = [
             {"role": "user", "content": "Hello"},
@@ -34,7 +33,6 @@ class TestTokenCounter(unittest.TestCase):
             count_message_tokens(messages, model="invalid_model")
 
     def test_count_message_tokens_gpt_4(self):
-
         messages = [
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there!"},

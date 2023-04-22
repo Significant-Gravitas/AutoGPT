@@ -13,7 +13,6 @@ from autogpt.memory.weaviate import WeaviateMemory
 
 
 class TestWeaviateMemory(unittest.TestCase):
-
     cfg = None
     client = None
     index = None

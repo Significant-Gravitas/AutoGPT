@@ -39,7 +39,7 @@ requests and parse HTML content, respectively.
 
 class TestScrapeLinks:
     """
-    Tests that the function returns a list of formatted hyperlinks when 
+    Tests that the function returns a list of formatted hyperlinks when
     provided with a valid url that returns a webpage with hyperlinks.
     """
 

@@ -21,7 +21,6 @@ def test_inspect_zip_for_module():
 
 @pytest.fixture
 def mock_config_denylist_allowlist_check():
-
     class MockConfig:
         """Mock config object for testing the denylist_allowlist_check function"""
 
