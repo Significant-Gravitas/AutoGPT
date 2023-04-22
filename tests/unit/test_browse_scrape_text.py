@@ -41,7 +41,6 @@ Additional aspects:
 
 
 class TestScrapeText:
-    """Tests for the scrape_text function."""
 
     def test_scrape_text_with_valid_url(self, mocker):
         """Tests that scrape_text() returns the expected text when given a valid URL."""
