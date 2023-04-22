@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from autogpt.config.singleton import Singleton
 
-load_dotenv(verbose=True)
+load_dotenv(verbose=True, override=True)
 
 
 class Config(metaclass=Singleton):
@@ -134,11 +134,10 @@ class Config(metaclass=Singleton):
 
         plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
         if plugins_allowlist:
-            plugins_allowlist = plugins_allowlist.split(",")
-            self.plugins_whitelist = plugins_allowlist
+            self.plugins_allowlist = plugins_allowlist.split(",")
         else:
-            self.plugins_whitelist = []
-        self.plugins_blacklist = []
+            self.plugins_allowlist = []
+        self.plugins_denylist = []
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
@@ -178,11 +177,8 @@ class Config(metaclass=Singleton):
         Returns:
             None
         """
-        try:
-            with open(config_file) as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
-        except FileNotFoundError:
-            config_params = {}
+        with open(config_file) as file:
+            config_params = yaml.load(file, Loader=yaml.FullLoader)
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
         self.openai_api_version = (
@@ -261,6 +257,14 @@ class Config(metaclass=Singleton):
     def set_plugins(self, value: list) -> None:
         """Set the plugins value."""
         self.plugins = value
+
+    def set_temperature(self, value: int) -> None:
+        """Set the temperature value."""
+        self.temperature = value
+
+    def set_memory_backend(self, value: int) -> None:
+        """Set the temperature value."""
+        self.memory_backend = value
 
 
 def check_openai_api_key() -> None:
