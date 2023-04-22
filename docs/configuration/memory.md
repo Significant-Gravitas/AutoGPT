@@ -17,6 +17,7 @@ to the value that you want:
 Links to memory backends
 
 - [Pinecone](https://www.pinecone.io/)
+- [AnalyticDB](https://www.alibabacloud.com/help/en/analyticdb-for-postgresql/latest/product-introduction-overview)
 - [Milvus](https://milvus.io/) &ndash; [self-hosted](https://milvus.io/docs), or managed with [Zilliz Cloud](https://zilliz.com/)
 - [Redis](https://redis.io)
 - [Weaviate](https://weaviate.io)
@@ -69,6 +70,22 @@ In the `.env` file set:
 - `PINECONE_API_KEY`
 - `PINECONE_ENV` (example: `us-east4-gcp`)
 - `MEMORY_BACKEND=pinecone`
+
+### AnalyticDB Setup
+
+[AnalyticDB](https://www.alibabacloud.com/help/en/analyticdb-for-postgresql/latest/product-introduction-overview)
+is a distributed cloud native vector database. Fully compatible with PostgresSQL syntax, you can effortlessly utilize it. 
+- quick start from [Cloud](https://www.alibabacloud.com/help/en/analyticdb-for-postgresql/latest/quick-start)
+- In your `.env` file set the following:
+```
+MEMORY_BACKEND=analyticdb
+PG_HOST=your_host_address # the IP or domain of the running AnalyticDB instance
+PG_PORT=5432 #Optional, defalut is 5432
+PG_USER=username # Your database username
+PG_PASSWORD=password # Your database password
+PG_DATABASE=postgres # Optional, your database, default is postgres
+PG_RELATION=autogpt #Optional, your relation to store data, default is autogpt
+```
 
 ### Milvus Setup
 

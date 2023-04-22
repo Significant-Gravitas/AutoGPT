@@ -71,5 +71,6 @@ try:
             self.memory.add(text)
             stats = self.memory.get_stats()
             self.assertEqual("Entities num: 1", stats)
+
 except:
     print("AnalyticDB not installed, skipping tests")

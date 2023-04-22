@@ -1,6 +1,7 @@
 """ AnalyticDB memory storage provider."""
-import psycopg2cffi as psycopg2
 import uuid
+
+import psycopg2cffi as psycopg2
 
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
@@ -95,10 +96,7 @@ class AnalyticDBMemory(MemoryProviderSingleton):
     def _upsert_data(self, data, embedding):
         self.vec_num = uuid.uuid4().hex
 
-        upsert_data = (
-            self.vec_num,
-            data,
-            embedding)
+        upsert_data = (self.vec_num, data, embedding)
 
         with self.conn.cursor() as cur:
             # Construct the SQL query and data
