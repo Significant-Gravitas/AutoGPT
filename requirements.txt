@@ -16,7 +16,7 @@ pinecone-client==2.2.1
 redis
 orjson
 Pillow
-selenium
+selenium==4.1.4
 webdriver-manager
 jsonschema
 tweepy
