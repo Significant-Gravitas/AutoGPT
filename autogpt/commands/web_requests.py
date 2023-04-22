@@ -21,24 +21,20 @@ session.headers.update({"User-Agent": CFG.user_agent})
 
 JSONType = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
-@command(
-    "make_http_request",
-    "Make an HTTP request",
-    '"url": "<url>", "method?": "<method>", "auth_token?": "<auth_token>", "data?": "<data>"',
-)
-def make_http_request(url: str, method: str, auth_token: str, data: JSONType):
+@command("make_http_request", "Make an HTTP request", '"url": "<url>", "method": "<method>", "auth_token": "<auth_token>", "data": "<data>"')
+def make_http_request(url: str, method: str = "GET", auth_token: str = None, data: JSONType = None):
     if not is_valid_url(url):
         logger.error(f"Invalid URL: {url}")
         return "Error: Invalid URL"
 
     sanitized_url: str = sanitize_url(url)
-
     logger.info(f"Sending HTTP request: {method} {sanitized_url}")
+
     # Set up headers with API key
-    headers = {
-        "Authorization": f"Bearer {auth_token}",
-        "Content-Type": "application/json",
-    }
+    headers = {}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    headers["Content-Type"] = "application/json"
 
     # Send request
     try:
