@@ -7,21 +7,18 @@ from autogpt.chat import create_chat_message, generate_context
 
 
 class TestChat(unittest.TestCase):
-    """Test the chat functions."""
+    """Test the chat module functions."""
 
-    # Tests that the function returns a dictionary with the correct keys and values when valid strings are provided for role and content.
     def test_happy_path_role_content(self):
         """Test that the function returns a dictionary with the correct keys and values when valid strings are provided for role and content."""
         result = create_chat_message("system", "Hello, world!")
         self.assertEqual(result, {"role": "system", "content": "Hello, world!"})
 
-    # Tests that the function returns a dictionary with the correct keys and values when empty strings are provided for role and content.
     def test_empty_role_content(self):
         """Test that the function returns a dictionary with the correct keys and values when empty strings are provided for role and content."""
         result = create_chat_message("", "")
         self.assertEqual(result, {"role": "", "content": ""})
 
-    # Tests the behavior of the generate_context function when all input parameters are empty.
     @patch("time.strftime")
     def test_generate_context_empty_inputs(self, mock_strftime):
         """Test the behavior of the generate_context function when all input parameters are empty."""
@@ -55,7 +52,6 @@ class TestChat(unittest.TestCase):
         )
         self.assertEqual(result, expected_result)
 
-    # Tests that the function successfully generates a current_context given valid inputs.
     def test_generate_context_valid_inputs(self):
         """Test that the function successfully generates a current_context given valid inputs."""
         # Given
