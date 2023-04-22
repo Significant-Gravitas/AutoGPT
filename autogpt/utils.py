@@ -3,7 +3,13 @@ import os
 import requests
 import yaml
 from colorama import Fore
-from git import Repo
+from git.repo import Repo
+
+# Use readline if available (for clean_input)
+try:
+    import readline
+except:
+    pass
 
 
 def clean_input(prompt: str = ""):
