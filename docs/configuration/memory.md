@@ -120,6 +120,24 @@ WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate" # this is optional and i
 USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
 MEMORY_INDEX="Autogpt" # name of the index to create for the application
 ```
+
+### Qdrant Setup
+Install docker desktop.
+
+Run:
+
+```
+docker run -p "6333:6333" -p "6334:6334" qdrant/qdrant:v1.0.3
+```
+
+In your `.env` file set the following:
+
+```
+MEMORY_BACKEND=qdrant
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+```
+
  
 ## View Memory Usage
 
