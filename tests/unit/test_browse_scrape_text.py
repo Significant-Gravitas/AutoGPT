@@ -41,7 +41,6 @@ Additional aspects:
 
 
 class TestScrapeText:
-
     def test_scrape_text_with_valid_url(self, mocker):
         """Tests that scrape_text() returns the expected text when given a valid URL."""
         # Mock the requests.get() method to return a response with expected text
