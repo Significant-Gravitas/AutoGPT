@@ -18,26 +18,27 @@ from autogpt.config import Config
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
 
-def inspect_zip_for_module(zip_path: str, debug: bool = False) -> Optional[str]:
+def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
     """
-    Inspect a zipfile for a module.
+    Inspect a zipfile for a modules.
 
     Args:
         zip_path (str): Path to the zipfile.
         debug (bool, optional): Enable debug logging. Defaults to False.
 
     Returns:
-        Optional[str]: The name of the module if found, else None.
+        list[str]: The list of module names found or empty list if none were found.
     """
+    result = []
     with zipfile.ZipFile(zip_path, "r") as zfile:
         for name in zfile.namelist():
             if name.endswith("__init__.py"):
                 if debug:
                     print(f"Found module '{name}' in the zipfile at: {name}")
-                return name
+                result.append(name)
     if debug:
         print(f"Module '__init__.py' not found in the zipfile @ {zip_path}.")
-    return None
+    return result
 
 
 def write_dict_to_json_file(data: dict, file_path: str) -> None:
@@ -207,24 +208,25 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
     # Generic plugins
     plugins_path_path = Path(cfg.plugins_dir)
     for plugin in plugins_path_path.glob("*.zip"):
-        if module := inspect_zip_for_module(str(plugin), debug):
-            plugin = Path(plugin)
-            module = Path(module)
-            if debug:
-                print(f"Plugin: {plugin} Module: {module}")
-            zipped_package = zipimporter(str(plugin))
-            zipped_module = zipped_package.load_module(str(module.parent))
-            for key in dir(zipped_module):
-                if key.startswith("__"):
-                    continue
-                a_module = getattr(zipped_module, key)
-                a_keys = dir(a_module)
-                if (
-                    "_abc_impl" in a_keys
-                    and a_module.__name__ != "AutoGPTPluginTemplate"
-                    and denylist_allowlist_check(a_module.__name__, cfg)
-                ):
-                    loaded_plugins.append(a_module())
+        if moduleList := inspect_zip_for_modules(str(plugin), debug):
+            for module in moduleList:
+                plugin = Path(plugin)
+                module = Path(module)
+                if debug:
+                    print(f"Plugin: {plugin} Module: {module}")
+                zipped_package = zipimporter(str(plugin))
+                zipped_module = zipped_package.load_module(str(module.parent))
+                for key in dir(zipped_module):
+                    if key.startswith("__"):
+                        continue
+                    a_module = getattr(zipped_module, key)
+                    a_keys = dir(a_module)
+                    if (
+                        "_abc_impl" in a_keys
+                        and a_module.__name__ != "AutoGPTPluginTemplate"
+                        and denylist_allowlist_check(a_module.__name__, cfg)
+                    ):
+                        loaded_plugins.append(a_module())
     # OpenAI plugins
     if cfg.plugins_openai:
         manifests_specs = fetch_openai_plugins_manifest_and_spec(cfg)
