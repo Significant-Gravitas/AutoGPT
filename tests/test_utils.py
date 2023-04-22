@@ -5,7 +5,7 @@ import pytest
 import requests
 from colorama import Fore
 from git import Repo
-
+from tests.utils import skip_on_ci
 from autogpt.utils import (
     clean_input,
     get_bulletin_from_web,
@@ -70,9 +70,8 @@ def test_get_bulletin_from_web_failure(mock_get):
     assert bulletin == ""
 
 
-@pytest.mark.skipif(
-    os.environ.get("CI") == "true", reason="This test doesn't work on GitHub Actions."
-)
+
+@skip_on_ci
 def test_get_current_git_branch():
     branch_name = get_current_git_branch()
 
