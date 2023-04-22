@@ -1,6 +1,6 @@
 import os
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from autogpt.utils import (
     clean_input,
     validate_yaml_file,
@@ -9,6 +9,14 @@ from autogpt.utils import (
     get_current_git_branch,
     get_latest_bulletin,
 )
+
+
+
+import requests
+from git import Repo
+from colorama import Fore
+
+
 
 
 def test_validate_yaml_file_valid():
@@ -97,6 +105,93 @@ def test_get_latest_bulletin_with_new_bulletin():
     with patch("autogpt.utils.get_bulletin_from_web", return_value="New bulletin"):
         bulletin = get_latest_bulletin()
         assert "New bulletin" in bulletin
+
+    os.remove("CURRENT_BULLETIN.md")
+
+
+
+
+
+@patch("requests.get")
+def test_get_bulletin_from_web_success(mock_get):
+    mock_get.return_value.status_code = 200
+    mock_get.return_value.text = "Test bulletin"
+    bulletin = get_bulletin_from_web()
+
+    assert bulletin == "Test bulletin"
+    mock_get.assert_called_with("https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md")
+
+
+@patch("requests.get")
+def test_get_bulletin_from_web_failure(mock_get):
+    mock_get.return_value.status_code = 404
+    bulletin = get_bulletin_from_web()
+
+    assert bulletin == ""
+
+
+@patch("requests.get")
+def test_get_bulletin_from_web_exception(mock_get):
+    mock_get.side_effect = requests.exceptions.RequestException()
+    bulletin = get_bulletin_from_web()
+
+    assert bulletin == ""
+
+
+@patch("utils.Repo")
+def test_get_current_git_branch_success(mock_repo):
+    mock_repo.return_value.active_branch.name = "test-branch"
+    branch_name = get_current_git_branch()
+
+    assert branch_name == "test-branch"
+
+
+@patch("utils.Repo")
+def test_get_current_git_branch_failure(mock_repo):
+    mock_repo.side_effect = Exception()
+    branch_name = get_current_git_branch()
+
+    assert branch_name == ""
+
+
+def test_get_latest_bulletin_no_file():
+    if os.path.exists("CURRENT_BULLETIN.md"):
+        os.remove("CURRENT_BULLETIN.md")
+
+    with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
+        bulletin = get_latest_bulletin()
+        assert bulletin == ""
+
+
+def test_get_latest_bulletin_with_file():
+    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
+        f.write("Test bulletin")
+
+    with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
+        bulletin = get_latest_bulletin()
+        assert bulletin == "Test bulletin"
+
+    os.remove("CURRENT_BULLETIN.md")
+
+
+def test_get_latest_bulletin_with_new_bulletin():
+    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
+        f.write("Old bulletin")
+
+    with patch("autogpt.utils.get_bulletin_from_web", return_value="New bulletin"):
+        bulletin = get_latest_bulletin()
+        assert f" {Fore.RED}::UPDATED:: {Fore.CYAN}New bulletin{Fore.RESET}" in bulletin
+
+    os.remove("CURRENT_BULLETIN.md")
+
+
+def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
+    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
+        f.write("Test bulletin")
+
+    with patch("autogpt.utils.get_bulletin_from_web", return_value="Test bulletin"):
+        bulletin = get_latest_bulletin()
+        assert bulletin == "Test bulletin"
 
     os.remove("CURRENT_BULLETIN.md")
 
