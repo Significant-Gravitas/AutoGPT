@@ -38,7 +38,7 @@ def aggregate_top_news_headlines():
     Aggregates top news headlines from the categories.
 
     Returns:
-        list(str): A list of top news headlines for the per category.
+        list(str): A list of top news headlines aggregated from all categories.
 
 
     """
