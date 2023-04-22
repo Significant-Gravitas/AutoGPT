@@ -10,16 +10,14 @@ from autogpt.workspace import path_in_workspace
 
 
 def lst(txt):
-    """Get the last item in a list."""
+    """Extract the file path from the output of `generate_image()`"""
     return txt.split(":")[1].strip()
 
 
 @unittest.skipIf(os.getenv("CI"), "Skipping image generation tests")
 class TestImageGen(unittest.TestCase):
-    """Test image generation."""
 
     def setUp(self):
-        """Set up the test class."""
         self.config = Config()
 
     def test_dalle(self):
