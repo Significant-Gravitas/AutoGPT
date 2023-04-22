@@ -142,7 +142,7 @@ Goals:
         },
         {"role": "user", "content": user_prompt},
     ]
-    output = create_chat_completion(messages, CFG.smart_llm_model)
+    output = create_chat_completion(messages, CFG.fast_llm_model)
 
     if CFG.debug_mode:
         logger.debug(f"AI Config Generator Raw Output: {output}")
