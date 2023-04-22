@@ -58,8 +58,8 @@ class TestFixJsonUsingMultipleTechniques:
     def test_fix_and_parse_json_can_not(self, mocker):
         # Edge case test case where the JSON string is not parseable and cannot be fixed using either technique
         json_string = "This is not a JSON string"
-        #mock auto_fix_json to failed:
-        mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value = {})
+        # mock auto_fix_json to failed:
+        mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
         expected_output = {}
 
         # Use the actual function name in the test
