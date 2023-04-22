@@ -12,6 +12,7 @@ from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
 from autogpt.commands.command import command
+from autogpt.logs import logger
 
 CFG = Config()
 
@@ -23,17 +24,16 @@ JSONType = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 @command(
     "make_http_request",
     "Make an HTTP request",
-    '"url": "<url>", "method": "<method>", "auth_token": "<auth_token>", "data": "<data>"',
+    '"url": "<url>", "method?": "<method>", "auth_token?": "<auth_token>", "data?": "<data>"',
 )
 def make_http_request(url: str, method: str, auth_token: str, data: JSONType):
-    valid_url = is_valid_url(url)
-
-    if not valid_url:
+    if not is_valid_url(url):
+        logger.error(f"Invalid URL: {url}")
         return "Error: Invalid URL"
 
     sanitized_url: str = sanitize_url(url)
 
-    print("Starting HTTP request...")
+    logger.info(f"Sending HTTP request: {method} {sanitized_url}")
     # Set up headers with API key
     headers = {
         "Authorization": f"Bearer {auth_token}",
@@ -43,11 +43,11 @@ def make_http_request(url: str, method: str, auth_token: str, data: JSONType):
     # Send request
     try:
         response = requests.request(method, sanitized_url, json=data, headers=headers)
-        print("HTTP request sent successfully!", response)
+        logger.info(f"HTTP request sent successfully: {response.status_code}")
         return response
     except Exception as e:
-        print("Error making HTTP request:")
-        print(traceback.format_exc())
+        logger.error(f"Error making HTTP request: {e}")
+        logger.error(traceback.format_exc())
         return e
 
 @validate_url
