@@ -74,33 +74,22 @@ Your support is greatly appreciated. Development of this free, open-source proje
 
 Please see the [documentation](/docs) linked below for full setup instructions and configuration options.
 
-## 💾 Installation
+## 💾 Documentation
 
 [Installation](/docs/installation.md)
 
-## 🔧 Usage
-
 [Usage](/docs/usage.md)
-
-## 🗣️ Speech Mode
 
 [Speech](/docs/configuration/voice.md)
 
-## Search
-
 [Search](/docs/configuration/search.md)
-
-## Plugins
 
 [Plugins](/docs/plugins.md)
 
-## Memory
-
 [Memory](/docs/configuration/memory.md)
 
-## 🖼 Image Generation
-
 [Image Generation](/docs/configuration/imagegen.md)
+
 
 ## ⚠️ Limitations
 
