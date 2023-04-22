@@ -20,7 +20,9 @@ class TestCommand:
     def test_command_creation(self):
         """Test that a Command object can be created with the correct attributes."""
         cmd = Command(
-            name="example", description="Example command", method=self.example_command_method
+            name="example",
+            description="Example command",
+            method=self.example_command_method,
         )
 
         assert cmd.name == "example"
@@ -32,7 +34,9 @@ class TestCommand:
         """Test that Command(*args) calls and returns the result of method(*args)."""
         # Create a Command object with the example_command_method.
         cmd = Command(
-            name="example", description="Example command", method=self.example_command_method
+            name="example",
+            description="Example command",
+            method=self.example_command_method,
         )
         result = cmd(arg1=1, arg2="test")
         assert result == "1 - test"
@@ -40,7 +44,9 @@ class TestCommand:
     def test_command_call_with_invalid_arguments(self):
         """Test that calling a Command object with invalid arguments raises a TypeError."""
         cmd = Command(
-            name="example", description="Example command", method=self.example_command_method
+            name="example",
+            description="Example command",
+            method=self.example_command_method,
         )
         with pytest.raises(TypeError):
             cmd(arg1="invalid", does_not_exist="test")
@@ -48,7 +54,9 @@ class TestCommand:
     def test_command_default_signature(self):
         """Test that the default signature is generated correctly."""
         cmd = Command(
-            name="example", description="Example command", method=self.example_command_method
+            name="example",
+            description="Example command",
+            method=self.example_command_method,
         )
         assert cmd.signature == "(arg1: int, arg2: str) -> str"
 
@@ -73,7 +81,9 @@ class TestCommandRegistry:
         """Test that a command can be registered to the registry."""
         registry = CommandRegistry()
         cmd = Command(
-            name="example", description="Example command", method=self.example_command_method
+            name="example",
+            description="Example command",
+            method=self.example_command_method,
         )
 
         registry.register(cmd)
@@ -85,7 +95,9 @@ class TestCommandRegistry:
         """Test that a command can be unregistered from the registry."""
         registry = CommandRegistry()
         cmd = Command(
-            name="example", description="Example command", method=self.example_command_method
+            name="example",
+            description="Example command",
+            method=self.example_command_method,
         )
 
         registry.register(cmd)
@@ -97,7 +109,9 @@ class TestCommandRegistry:
         """Test that a command can be retrieved from the registry."""
         registry = CommandRegistry()
         cmd = Command(
-            name="example", description="Example command", method=self.example_command_method
+            name="example",
+            description="Example command",
+            method=self.example_command_method,
         )
 
         registry.register(cmd)
@@ -116,7 +130,9 @@ class TestCommandRegistry:
         """Test that a command can be called through the registry."""
         registry = CommandRegistry()
         cmd = Command(
-            name="example", description="Example command", method=self.example_command_method
+            name="example",
+            description="Example command",
+            method=self.example_command_method,
         )
 
         registry.register(cmd)
@@ -135,7 +151,9 @@ class TestCommandRegistry:
         """Test that the command prompt is correctly formatted."""
         registry = CommandRegistry()
         cmd = Command(
-            name="example", description="Example command", method=self.example_command_method
+            name="example",
+            description="Example command",
+            method=self.example_command_method,
         )
 
         registry.register(cmd)

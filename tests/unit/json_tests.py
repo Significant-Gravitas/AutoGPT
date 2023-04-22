@@ -4,7 +4,6 @@ from autogpt.json_utils.json_fix_llm import fix_and_parse_json
 
 
 class TestParseJson(unittest.TestCase):
-
     def test_valid_json(self):
         json_str = '{"name": "John", "age": 30, "city": "New York"}'
         obj = fix_and_parse_json(json_str)
