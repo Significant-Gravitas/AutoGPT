@@ -116,7 +116,7 @@ def generate_aiconfig_automatic(user_prompt) -> AIConfig:
     system_prompt = """
 Your task is to devise up to 5 highly effective goals and an appropriate role-based name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned with the successful completion of its assigned task.
 
-The user will provide the task, you will provide only the output in the format specified below with no explanation or conversation.
+The user will provide the task, you will provide only the output in the exact format specified below with no explanation or conversation.
 
 Example input:
 Help me with marketing my business
