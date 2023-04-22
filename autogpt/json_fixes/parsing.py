@@ -7,10 +7,8 @@ import re
 from typing import Any, Tuple, Union
 
 from autogpt.config import Config
-from autogpt.json_fixes.auto_fix import fix_json
-from autogpt.json_fixes.bracket_termination import balance_braces
-from autogpt.json_fixes.escaping import fix_invalid_escape
-from autogpt.json_fixes.missing_quotes import add_quotes_to_property_names
+from autogpt.json_utils.json_fix_general import add_quotes_to_property_names, balance_braces, fix_invalid_escape
+from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.logs import logger
 
 CFG = Config()
@@ -26,7 +24,7 @@ JSON_SCHEMA = """
         }
     },
     "key updates": {
-        "essence": "a few relevant key words with rough weights (1-10)",
+        "essence": "A phrase boiling down the essence of the current task",
         "reasoning": "reasoning",
         "plan": "- short bulleted\n- list that conveys\n- long-term plan",
         "criticism": "constructive self-criticism",
@@ -34,9 +32,6 @@ JSON_SCHEMA = """
     },
 }
 """
-
-# "essence": "a couple relevant words ranked by importance (1-10)",
-# "progress report": "progress towards goals."
 
 
 def correct_json(json_to_load: str) -> str:
@@ -154,7 +149,7 @@ def try_ai_fix(
         " slightly."
     )
     # Now try to fix this up using the ai_functions
-    ai_fixed_json = fix_json(json_to_load, JSON_SCHEMA)
+    ai_fixed_json = fix_json_using_multiple_techniques(json_to_load, JSON_SCHEMA)
 
     if ai_fixed_json != "failed":
         return json.loads(ai_fixed_json)

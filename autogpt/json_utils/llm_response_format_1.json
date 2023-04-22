@@ -1,0 +1,32 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "braindump": {
+            "type": "string"
+        },
+        "command": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "args": {"type": "object"}
+            },
+            "required": ["name", "args"],
+            "additionalProperties": false
+        },
+        "key updates": {
+            "type": "object",
+            "properties": {
+                "essence": {"type": "string"},
+                "reasoning": {"type": "string"},
+                "plan": {"type": "string"},
+                "criticism": {"type": "string"},
+                "big picture": {"type": "string"}
+            },
+            "required": ["essence", "reasoning", "plan", "criticism", "big picture"],
+            "additionalProperties": false
+        }
+    },
+    "required": ["braindump", "command", "key updates"],
+    "additionalProperties": false
+}

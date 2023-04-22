@@ -17,14 +17,28 @@ orjson
 Pillow
 selenium
 webdriver-manager
+jsonschema
+tweepy
+click
+spacy>=3.0.0,<4.0.0
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.4.0/en_core_web_sm-3.4.0-py3-none-any.whl
+
+##Dev
 coverage
 flake8
 numpy
 pre-commit
 black
-sourcery
 isort
 gitpython==3.1.31
+
+# Items below this point will not be included in the Docker Image
+
+# Testing dependencies
 pytest
+asynctest
+pytest-asyncio
+pytest-benchmark
+pytest-cov
+pytest-integration
 pytest-mock
-tweepy

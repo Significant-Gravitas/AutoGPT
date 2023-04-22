@@ -23,9 +23,9 @@ class PromptGenerator:
         self.resources = []
         self.performance_evaluation = []
         self.response_format = {
-            "natural language": "Write your amazing response here",
+            "braindump": "Dump your verbose thoughts here",
             "key updates": {
-                "essence": "a few relevant key words with rough weights (1-10)",
+                "essence": "A phrase boiling down the essence of the current task",
                 "reasoning": "reasoning",
                 "plan": "- short bulleted\n- list that conveys\n- long-term plan",
                 "criticism": "constructive self-criticism",

@@ -2,12 +2,13 @@ import json
 import os
 from pathlib import Path
 from colorama import Fore
+
+from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.contexts.contextualize import ContextManager
 from autogpt.logs import logger
 from autogpt.promptgenerator import PromptGenerator
-from autogpt.config import Config
 from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
@@ -35,9 +36,9 @@ def get_prompt() -> str:
 
     # Form response format
     response_format = {
-        "natural language": "Write your amazing response here",
+        "braindump": "Dump your verbose thoughts here",
         "key updates": {
-            "essence": "a few relevant key words with rough weights (1-10)",
+            "essence": "A phrase boiling down the essence of the current task",
             "reasoning": "reasoning",
             "plan": "- short bulleted\n- list that conveys\n- long-term plan",
             "criticism": "constructive self-criticism",
@@ -146,11 +147,7 @@ def get_prompt() -> str:
     # Only add the audio to text command if the model is specified
     if cfg.huggingface_audio_to_text_model:
         commands.append(
-            (
-                "Convert Audio to text",
-                "read_audio_from_file",
-                {"file": "<file>"}
-            ),
+            ("Convert Audio to text", "read_audio_from_file", {"file": "<file>"}),
         )
 
     # Only add shell command to the prompt if the AI is allowed to execute it
@@ -160,6 +157,23 @@ def get_prompt() -> str:
                 "Execute Shell Command, non-interactive commands only",
                 "execute_shell",
                 {"command_line": "<command_line>"},
+            ),
+        )
+        commands.append(
+            (
+                "Execute Shell Command Popen, non-interactive commands only",
+                "execute_shell_popen",
+                {"command_line": "<command_line>"},
+            ),
+        )
+
+    # Only add the download file command if the AI is allowed to execute it
+    if cfg.allow_downloads:
+        commands.append(
+            (
+                "Downloads a file from the internet, and stores it locally",
+                "download_file",
+                {"url": "<file_url>", "file": "<saved_filename>"},
             ),
         )
 
