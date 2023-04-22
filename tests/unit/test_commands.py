@@ -6,10 +6,11 @@ import pytest
 import autogpt.agent.agent_manager as agent_manager
 from autogpt.app import execute_command, list_agents, start_agent
 
-
 @pytest.mark.integration_test
 def test_make_agent() -> None:
     """Test the make_agent command"""
+    agent_manager.AgentManager().reset()
+
     with patch("openai.ChatCompletion.create") as mock:
         obj = MagicMock()
         obj.response.choices[0].messages[0].content = "Test message"
