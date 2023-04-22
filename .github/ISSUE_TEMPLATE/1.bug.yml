@@ -59,6 +59,20 @@ body:
       required: true
   - type: dropdown
     attributes:
+      label: Which version of Auto-GPT are you using?
+      description: |
+        Please select which version of Auto-GPT you were using when this issue occurred.
+        If you downloaded the code from the [releases page](https://github.com/Significant-Gravitas/Auto-GPT/releases/) make sure you were using the latest code. 
+        **If you weren't please try with the [latest code](https://github.com/Significant-Gravitas/Auto-GPT/releases/)**.
+        If installed with git you can run `git branch` to see which version of Auto-GPT you are running.
+      options:
+        - Latest Release
+        - Stable (branch)
+        - Master (branch)
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
       label: GPT-3 or GPT-4?
       description: >
         If you are using Auto-GPT with `--gpt3only`, your problems may be caused by
