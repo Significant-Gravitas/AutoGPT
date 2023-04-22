@@ -82,7 +82,7 @@ class Agent:
                 break
 
             # Send message to AI, get response
-            with Spinner("Thinking... "):
+            with Spinner("Thinking... " if self.next_action_count <= 0 else f"Thinking... {self.next_action_count} continuous actions remaining"):
                 assistant_reply = chat_with_ai(
                     self,
                     self.system_prompt,
