@@ -12,50 +12,44 @@ class TestCommand:
     """Test cases for the Command class."""
 
     @staticmethod
-    def example_function(arg1: int, arg2: str) -> str:
+    def example_method(arg1: int, arg2: str) -> str:
         """Example function for testing the Command class."""
         # This function is static because it is not used by any other test cases.
         return f"{arg1} - {arg2}"
 
     def test_command_creation(self):
-        """Test that a Command object can be created."""
-        # Create a Command object with the example_function.
+        """Test that a Command object can be created with the correct attributes."""
         cmd = Command(
-            name="example", description="Example command", method=self.example_function
+            name="example", description="Example command", method=self.example_method
         )
 
         assert cmd.name == "example"
         assert cmd.description == "Example command"
-        assert cmd.method == self.example_function
+        assert cmd.method == self.example_method
         assert cmd.signature == "(arg1: int, arg2: str) -> str"
 
     def test_command_call(self):
-        """Test that a Command object can be called like a function."""
-        # Create a Command object with the example_function.
+        """Test that Command(*args) calls and returns the result of method(*args)."""
+        # Create a Command object with the example_method.
         cmd = Command(
-            name="example", description="Example command", method=self.example_function
+            name="example", description="Example command", method=self.example_method
         )
-        # Call the Command object like a function.
         result = cmd(arg1=1, arg2="test")
         assert result == "1 - test"
 
     def test_command_call_with_invalid_arguments(self):
         """Test that calling a Command object with invalid arguments raises a TypeError."""
-        # Create a Command object with the example_function.
         cmd = Command(
-            name="example", description="Example command", method=self.example_function
+            name="example", description="Example command", method=self.example_method
         )
-        # Call the Command object with invalid arguments.
         with pytest.raises(TypeError):
             cmd(arg1="invalid", does_not_exist="test")
 
     def test_command_default_signature(self):
         """Test that the default signature is generated correctly."""
-        # Create a Command object with the example_function.
         cmd = Command(
-            name="example", description="Example command", method=self.example_function
+            name="example", description="Example command", method=self.example_method
         )
-        # Check that the default signature is correct.
         assert cmd.signature == "(arg1: int, arg2: str) -> str"
 
     def test_command_custom_signature(self):
@@ -64,7 +58,7 @@ class TestCommand:
         cmd = Command(
             name="example",
             description="Example command",
-            method=self.example_function,
+            method=self.example_method,
             signature=custom_signature,
         )
         # Check that the custom signature is correct.
@@ -73,7 +67,7 @@ class TestCommand:
 
 class TestCommandRegistry:
     @staticmethod
-    def example_function(arg1: int, arg2: str) -> str:
+    def example_method(arg1: int, arg2: str) -> str:
         """Example function for testing the CommandRegistry class."""
         # Return a string with the two arguments separated by a dash
         return f"{arg1} - {arg2}"
@@ -82,7 +76,7 @@ class TestCommandRegistry:
         """Test that a command can be registered to the registry."""
         registry = CommandRegistry()
         cmd = Command(
-            name="example", description="Example command", method=self.example_function
+            name="example", description="Example command", method=self.example_method
         )
 
         registry.register(cmd)
@@ -94,7 +88,7 @@ class TestCommandRegistry:
         """Test that a command can be unregistered from the registry."""
         registry = CommandRegistry()
         cmd = Command(
-            name="example", description="Example command", method=self.example_function
+            name="example", description="Example command", method=self.example_method
         )
 
         registry.register(cmd)
@@ -106,7 +100,7 @@ class TestCommandRegistry:
         """Test that a command can be retrieved from the registry."""
         registry = CommandRegistry()
         cmd = Command(
-            name="example", description="Example command", method=self.example_function
+            name="example", description="Example command", method=self.example_method
         )
 
         registry.register(cmd)
@@ -125,7 +119,7 @@ class TestCommandRegistry:
         """Test that a command can be called through the registry."""
         registry = CommandRegistry()
         cmd = Command(
-            name="example", description="Example command", method=self.example_function
+            name="example", description="Example command", method=self.example_method
         )
 
         registry.register(cmd)
@@ -144,7 +138,7 @@ class TestCommandRegistry:
         """Test that the command prompt is correctly formatted."""
         registry = CommandRegistry()
         cmd = Command(
-            name="example", description="Example command", method=self.example_function
+            name="example", description="Example command", method=self.example_method
         )
 
         registry.register(cmd)
