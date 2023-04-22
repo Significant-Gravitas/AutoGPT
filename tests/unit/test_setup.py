@@ -1,10 +1,11 @@
 import unittest
-from unittest.mock import patch
 from io import StringIO
+from unittest.mock import patch
+
 from autogpt.config.ai_config import AIConfig
 from autogpt.setup import (
-    generate_aiconfig_manual,
     generate_aiconfig_automatic,
+    generate_aiconfig_manual,
     prompt_user,
 )
 

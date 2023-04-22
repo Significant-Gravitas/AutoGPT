@@ -1,12 +1,13 @@
 """Set up the AI and its goals"""
-from colorama import Fore, Style
 import re
 
+from colorama import Fore, Style
+
 from autogpt import utils
-from autogpt.config.ai_config import AIConfig
-from autogpt.logs import logger
-from autogpt.llm_utils import create_chat_completion
 from autogpt.config import Config
+from autogpt.config.ai_config import AIConfig
+from autogpt.llm_utils import create_chat_completion
+from autogpt.logs import logger
 
 CFG = Config()
 
