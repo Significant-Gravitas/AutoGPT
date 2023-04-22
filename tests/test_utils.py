@@ -1,22 +1,19 @@
 import os
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import patch, Mock
+import requests
+from colorama import Fore
+from git import Repo
+
 from autogpt.utils import (
     clean_input,
-    validate_yaml_file,
-    readable_file_size,
     get_bulletin_from_web,
     get_current_git_branch,
     get_latest_bulletin,
+    readable_file_size,
+    validate_yaml_file,
 )
-
-
-
-import requests
-from git import Repo
-from colorama import Fore
-
-
 
 
 def test_validate_yaml_file_valid():
@@ -38,7 +35,9 @@ def test_validate_yaml_file_not_found():
 
 def test_validate_yaml_file_invalid():
     with open("invalid_test_file.yaml", "w") as f:
-        f.write("setting: value\nunindented_setting: value")
+        f.write(
+            "settings:\n  first_setting: value\n  second_setting: value\n    nested_setting: value\n  third_setting: value\nunindented_setting: value"
+        )
     result, message = validate_yaml_file("invalid_test_file.yaml")
     os.remove("invalid_test_file.yaml")
     print(result)
@@ -109,9 +108,6 @@ def test_get_latest_bulletin_with_new_bulletin():
     os.remove("CURRENT_BULLETIN.md")
 
 
-
-
-
 @patch("requests.get")
 def test_get_bulletin_from_web_success(mock_get):
     mock_get.return_value.status_code = 200
@@ -119,7 +115,9 @@ def test_get_bulletin_from_web_success(mock_get):
     bulletin = get_bulletin_from_web()
 
     assert bulletin == "Test bulletin"
-    mock_get.assert_called_with("https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md")
+    mock_get.assert_called_with(
+        "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md"
+    )
 
 
 @patch("requests.get")
@@ -138,7 +136,7 @@ def test_get_bulletin_from_web_exception(mock_get):
     assert bulletin == ""
 
 
-@patch("utils.Repo")
+@patch("autogpt.utils.Repo")
 def test_get_current_git_branch_success(mock_repo):
     mock_repo.return_value.active_branch.name = "test-branch"
     branch_name = get_current_git_branch()
@@ -146,7 +144,7 @@ def test_get_current_git_branch_success(mock_repo):
     assert branch_name == "test-branch"
 
 
-@patch("utils.Repo")
+@patch("autogpt.utils.Repo")
 def test_get_current_git_branch_failure(mock_repo):
     mock_repo.side_effect = Exception()
     branch_name = get_current_git_branch()
