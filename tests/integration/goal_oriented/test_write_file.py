@@ -6,20 +6,22 @@ import pytest
 import vcr
 
 from autogpt.agent import Agent
+from autogpt.commands.command import CommandRegistry
 from autogpt.commands.file_operations import LOG_FILE, delete_file, read_file
 from autogpt.config import AIConfig, Config, check_openai_api_key
 from autogpt.memory import get_memory
-from autogpt.prompt import Prompt
+
+# from autogpt.prompt import Prompt
 from autogpt.workspace import WORKSPACE_PATH
-from tests.integration.goal_oriented.vcr_utils import replace_timestamp_in_request
+from tests.integration.goal_oriented.vcr_helper import before_record_request
 
 current_file_dir = os.path.dirname(os.path.abspath(__file__))
 # tests_directory = os.path.join(current_file_dir, 'tests')
 
 my_vcr = vcr.VCR(
     cassette_library_dir=os.path.join(current_file_dir, "cassettes"),
-    record_mode="once",
-    before_record_request=replace_timestamp_in_request,
+    record_mode="new_episodes",
+    before_record_request=before_record_request,
 )
 
 CFG = Config()
@@ -64,31 +66,42 @@ def test_write_file() -> None:
 
 
 def create_writer_agent():
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.app")
+
     ai_config = AIConfig(
-        ai_name="write_file-GPT",
-        ai_role="an AI designed to use the write_file command to write 'Hello World' into a file named \"hello_world.txt\" and then use the task_complete command to complete the task.",
+        ai_name="write_to_file-GPT",
+        ai_role="an AI designed to use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\" and then use the task_complete command to complete the task.",
         ai_goals=[
-            "Use the write_file command to write 'Hello World' into a file named \"hello_world.txt\".",
+            "Use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\".",
             "Use the task_complete command to complete the task.",
             "Do not use any other commands.",
         ],
     )
+    ai_config.command_registry = command_registry
     memory = get_memory(CFG, init=True)
-    prompt = Prompt(ai_config=ai_config)
+    triggering_prompt = (
+        "Determine which next command to use, and respond using the"
+        " format specified above:"
+    )
+    system_prompt = ai_config.construct_full_prompt()
+
     agent = Agent(
         ai_name="",
         memory=memory,
         full_message_history=[],
+        command_registry=command_registry,
+        config=ai_config,
         next_action_count=0,
-        system_prompt=prompt.system_prompt,
-        triggering_prompt=prompt.triggering_prompt,
+        system_prompt=system_prompt,
+        triggering_prompt=triggering_prompt,
     )
     CFG.set_continuous_mode(True)
     CFG.set_memory_backend("no_memory")
     CFG.set_temperature(0)
     os.environ["TIKTOKEN_CACHE_DIR"] = ""
 
-    CFG.set_use_azure(False)
     return agent
 
 

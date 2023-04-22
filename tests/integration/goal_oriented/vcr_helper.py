@@ -6,7 +6,7 @@ def replace_timestamp_in_request(request):
     # Check if the request body contains a JSON object
 
     try:
-        if not request.body:
+        if not request or not request.body:
             return request
         body = json.loads(request.body)
     except ValueError:
@@ -24,3 +24,20 @@ def replace_timestamp_in_request(request):
 
     request.body = json.dumps(body)
     return request
+
+
+def filter_hostnames(request):
+    allowed_hostnames = ["api.openai.com"]  # List of hostnames you want to allow
+
+    if any(hostname in request.url for hostname in allowed_hostnames):
+        return request
+    else:
+        return None
+
+
+def before_record_request(request):
+    filtered_request = filter_hostnames(request)
+    filtered_request_without_dynamic_data = replace_timestamp_in_request(
+        filtered_request
+    )
+    return filtered_request_without_dynamic_data
