@@ -10,8 +10,22 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit import HTML
 from typing import Union
 
+ANSI_BLACK = "ansiblack"
+ANSI_RED = "ansired"
+ANSI_GREEN = "ansigreen"
+ANSI_YELLOW = "ansiyellow"
+ANSI_BLUE = "ansiblue"
 ANSI_MAGENTA = "ansimagenta"
+ANSI_CYAN = "ansicyan"
+ANSI_GRAY = "ansigray"
+ANSI_BRIGHTBLACK = "ansibrightblack"
+ANSI_BRIGHTRED = "ansibrightred"
+ANSI_BRIGHTGREEN = "ansibrightgreen"
+ANSI_BRIGHTYELLOW = "ansibrightyellow"
 ANSI_BRIGHTBLUE = "ansibrightblue"
+ANSI_BRIGHTMAGENTA = "ansibrightmagenta"
+ANSI_BRIGHTCYAN = "ansibrightcyan"
+ANSI_WHITE = "ansiwhite"
 
 session = PromptSession(history=InMemoryHistory())
 
