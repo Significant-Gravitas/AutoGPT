@@ -3,6 +3,13 @@ import os
 import requests
 import yaml
 from colorama import Fore
+from git.repo import Repo
+
+# Use readline if available (for clean_input)
+try:
+    import readline
+except:
+    pass
 
 
 def clean_input(prompt: str = ""):
@@ -49,6 +56,15 @@ def get_bulletin_from_web() -> str:
         )
         if response.status_code == 200:
             return response.text
+    except:
+        return ""
+
+
+def get_current_git_branch() -> str:
+    try:
+        repo = Repo(search_parent_directories=True)
+        branch = repo.active_branch
+        return branch.name
     except:
         return ""
 
