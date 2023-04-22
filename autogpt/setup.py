@@ -38,7 +38,7 @@ def prompt_user() -> AIConfig:
     user_desire = utils.clean_input(f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: ")
 
     if user_desire == "":
-        user_desire = "Write a wikipedia style article about Auto-GPT" # Default prompt
+        user_desire = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT" # Default prompt
 
     # If user desire contains "--manual"
     if "--manual" in user_desire:
