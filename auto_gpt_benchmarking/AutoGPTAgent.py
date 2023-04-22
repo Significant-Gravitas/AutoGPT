@@ -108,6 +108,9 @@ class AutoGPTAgent:
     def __init__(self, prompt, auto_gpt_path: str):
         self.auto_gpt_path = Path(auto_gpt_path)
         self.auto_workspace = self.auto_gpt_path / "auto_gpt_workspace"
+        # if the workspace doesn't exist, create it
+        if not self.auto_workspace.exists():
+            self.auto_workspace.mkdir()
         self.prompt_file = self.auto_workspace / "prompt.txt"
         self.output_file = self.auto_workspace / "output.txt"
         self.file_logger = self.auto_workspace / "file_logger.txt"
