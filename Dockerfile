@@ -32,7 +32,10 @@ RUN sed -i '/Items below this point will not be included in the Docker Image/,$d
 	pip install --no-cache-dir --user -r requirements.txt
 
 # Copy the application files
-COPY --chown=appuser:appuser autogpt/ ./autogpt
+COPY --chown=appuser:appuser autogpt/ /home/appuser/autogpt
+
+# Copy the plugins folder
+COPY --chown=appuser:appuser plugins /home/appuser/plugins
 
 # Set the entrypoint
 ENTRYPOINT ["python", "-m", "autogpt"]

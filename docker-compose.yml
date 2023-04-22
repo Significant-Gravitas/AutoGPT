@@ -9,9 +9,10 @@ services:
     build: ./
     env_file:
       - .env
-    volumes:
-      - "./autogpt:/home/appuser"
-      - ".env:/home/appuser/.env"
+    volumes:                                            # uncommented iff you need any volume
+      - ".workspace:/home/appuser/auto_gpt_workspace/" # uncomment if you want to peek workspace
+#      - "plugins:/home/appuser/plugins/"               # uncomment if you don't want to rebuild the container everytime you touch the plugin folder
+#      - "autogpt:/home/appuser/autogpt/"               # uncomment if you don't want to rebuild the container every time you change a file
     profiles: ["exclude-from-up"]
 
   redis:
