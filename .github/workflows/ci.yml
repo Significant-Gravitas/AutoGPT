@@ -14,20 +14,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     env:
-<<<<<<< HEAD
       min-python-version: "3.10"
-=======
-      min-python-version: '3.10'
-<<<<<<< HEAD
-=======
-
-    strategy:
-      matrix:
-        python-version: '3.10'
->>>>>>> c23e7b76 (solve conflicts)
->>>>>>> 52cc322 (solve conflicts)
-=======
->>>>>>> 45f409c (solve conflicts in cli.py)
 
     steps:
       - name: Check out repository
