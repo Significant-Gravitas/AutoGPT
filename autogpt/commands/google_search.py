@@ -110,7 +110,7 @@ def safe_google_results(results: str | list) -> str:
     """
     if isinstance(results, list):
         safe_message = json.dumps(
-            [result.enocde("utf-8", "ignore") for result in results]
+            [result.encode("utf-8", "ignore") for result in results]
         )
     else:
         safe_message = results.encode("utf-8", "ignore").decode("utf-8")
