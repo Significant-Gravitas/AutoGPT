@@ -140,10 +140,11 @@ Goals:
             "role": "system",
             "content": system_prompt,
         },
-        {"role": "user", "content": user_prompt},
+        {"role": "user", "content": f"Task: '{user_prompt}'\nRespond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n"},
     ]
     output = create_chat_completion(messages, CFG.fast_llm_model)
 
+    # Debug LLM Output
     if CFG.debug_mode:
         logger.debug(f"AI Config Generator Raw Output: {output}")
 
