@@ -7,6 +7,7 @@ import json
 from typing import Any, Dict
 
 from colorama import Fore
+from dfsjson.src.dfsjson import DFSJson
 from regex import regex
 
 from autogpt.config import Config
@@ -145,7 +146,9 @@ def fix_and_parse_json(
         maybe_fixed_json = json_to_load[brace_index:]
         last_brace_index = maybe_fixed_json.rindex("}")
         maybe_fixed_json = maybe_fixed_json[: last_brace_index + 1]
-        return json.loads(maybe_fixed_json)
+        dfsj = DFSJson()
+        dfs_json = dfsj.loads(maybe_fixed_json)
+        return json.loads(dfs_json)
     except (json.JSONDecodeError, ValueError) as e:
         return try_ai_fix(try_to_fix_with_gpt, e, json_to_load)
 
