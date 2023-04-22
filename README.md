@@ -58,11 +58,10 @@ Your support is greatly appreciated. Development of this free, open-source proje
 - 🔌 Extensibility with Plugins
 
 ## 📋 Requirements
-
-- Environment (pick one)
-  - Python 3.10 or later (instructions: [for Windows](https://www.tutorialspoint.com/how-to-install-python-in-windows))
-  - Docker [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt)
-  - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+Choose an environment:
+1. [VSCode + Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): It has been configured in the `.devcontainer` folder and can be used directly.
+2. [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt)
+3. [Python 3.10+](https://www.python.org/downloads/)
 
 ## Quickstart
 
