@@ -216,6 +216,16 @@ Here are some common arguments you can use when running Auto-GPT:
 
 ## 🗣️ Speech Mode
 
+Eleven Labs provides voice technologies such as voice design, speech synthesis, and premade voices that auto gpt can use for speech.
+
+1. Go to [Eleven Labs](https://beta.elevenlabs.io/) and make an account if you don't already have one.
+2. Choose and setup the `Starter` plan.
+3. Click the top right icon and find "Profile" to locate your API Key.
+
+In the `.env` file set:
+- `ELEVENLABS_API_KEY`
+- `ELEVENLABS_VOICE_1_ID` (example: _"premade/Adam"_)
+
 Enter this command to use TTS _(Text-to-Speech)_ for Auto-GPT
 
 ```bash
