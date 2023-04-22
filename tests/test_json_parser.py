@@ -8,7 +8,7 @@ class TestParseJson(unittest.TestCase):
     """Test cases for the fix_and_parse_json function in json_fix_llm.py"""
 
     def test_valid_json(self):
-        """Test that a valid JSON string can be parsed."""
+        """Test that a valid JSON string is parsed correctly."""
         json_str = '{"name": "John", "age": 30, "city": "New York"}'
         obj = fix_and_parse_json(json_str)
         self.assertEqual(obj, {"name": "John", "age": 30, "city": "New York"})
