@@ -28,7 +28,7 @@ def make_http_request(url: str, method: str = "GET", auth_token: str = None, dat
         return "Error: Invalid URL"
 
     sanitized_url: str = sanitize_url(url)
-    logger.info(f"Sending HTTP request: {method} {sanitized_url}")
+    logger._log(f"Sending HTTP request: {method} {sanitized_url}")
 
     # Set up headers with API key
     headers = {}
@@ -39,7 +39,7 @@ def make_http_request(url: str, method: str = "GET", auth_token: str = None, dat
     # Send request
     try:
         response = requests.request(method, sanitized_url, json=data, headers=headers)
-        logger.info(f"HTTP request sent successfully: {response.status_code}")
+        logger._log(f"HTTP request sent successfully: {response.status_code}")
         return response
     except Exception as e:
         logger.error(f"Error making HTTP request: {e}")
