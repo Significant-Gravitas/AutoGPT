@@ -1,3 +1,4 @@
+
 from colorama import Fore, Style
 from autogpt.app import execute_command, get_command
 

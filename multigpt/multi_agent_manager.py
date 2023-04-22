@@ -18,6 +18,7 @@ from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from multigpt.multi_agent import MultiAgent
 from multigpt.agent_selection import AgentSelection
+from multigpt import lmql_utils
 
 
 class MultiAgentManager(metaclass=Singleton):
@@ -112,23 +113,14 @@ class MultiAgentManager(metaclass=Singleton):
                 self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
             else:
                 try:
-                    prompt = (
-                        f" Consider the following snippet of a discussion round:\n\n{self.chat_buffer_to_str()}\n"
-                        f" Now consider this list of participants (ID - NAME):\n\n{self.agents_to_str()}\n"
-                        f" Please wisely choose the best next speaker based on the last message(s) of the discussion by"
-                        f" outputting their id. Make sure each participant contributes equal parts to the discussion."
-                        f" Limit your output to their id only."
-                    )
-                    messages = [{"role": "system", "content": prompt}]
                     with Spinner("Selecting next participant... "):
-                        next_speaker_id_unparsed = create_chat_completion(messages=messages,
-                                                                          model=self.cfg.fast_llm_model,    #consider using smart model here
-                                                                          max_tokens=1000)
-                        next_speaker_id = self.parse_num_output_llm(next_speaker_id_unparsed)
-                        self.current_active_agent = self.agents[next_speaker_id-1]
-
-
-                except Exception as e:  # If parsing fails, just fallback to random select
+                        next_speaker_id, _, reasoning = lmql_utils.lmql_smart_select(self.chat_buffer_to_str(), self.agents_to_str())
+                        # If smart select selects same agent, use random select instead
+                        if self.last_active_agent is self.agents[next_speaker_id - 1]:
+                            self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
+                        else:
+                            self.current_active_agent = self.agents[next_speaker_id - 1]
+                except Exception as e:  # If smart select fails for some reason, just fallback to random select
                     self.current_active_agent = self.agents[random.randint(0, len(self.agents) - 1)]
 
         else:
@@ -136,11 +128,18 @@ class MultiAgentManager(metaclass=Singleton):
         return self.current_active_agent
 
     def send_message_to_all_agents(self, speaker=None, message=None):
-        if speaker is None or message is None:
-            return
+        def message_is_empty():
+            if message is None:
+                return True
+            pattern = re.compile(r'(\d|[a-z]|[A-Z])')
+            return not bool(pattern.match(message)) or len(message) == 0
+
+        if speaker is None or message_is_empty():
+            return False
         for agent in self.agents:
             agent.send_message(speaker, message)
         self.add_message_to_chat_buffer(speaker, message)
+        return True
 
     def add_message_to_chat_buffer(self, speaker, message):
         self.chat_buffer.append((speaker, message))
@@ -168,20 +167,20 @@ class MultiAgentManager(metaclass=Singleton):
 
             # Send message to AI, get response
             with Spinner(f"{active_agent.ai_name} is thinking... "):
-                conversation_input = ""
-                if len(active_agent.auditory_buffer) > 0:
-                    conversation_input += "DISCUSSION:\n\n"
                 while len(active_agent.auditory_buffer) > 0:
                     agent_name, message = active_agent.auditory_buffer.pop(0)
-                    conversation_input += f"{agent_name}: {message}\n"
-                conversation_input += active_agent.user_input
-                assistant_reply = chat_with_ai(
-                    active_agent.prompt,
-                    conversation_input,
+                    active_agent.full_message_history.append(dict(
+                        content=f"{agent_name}: {message}",
+                        # Consider using the <name> field of the openai api instead of this format
+                        role='user'
+                    ))
+
+                assistant_reply = chat_with_ai(active_agent.prompt,
+                    active_agent.user_input,
                     active_agent.full_message_history,
                     active_agent.memory,
-                    self.cfg.fast_token_limit,
-                )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                    self.cfg.fast_token_limit
+                )   # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             # Print Assistant thoughts
 
@@ -189,8 +188,15 @@ class MultiAgentManager(metaclass=Singleton):
             if assistant_reply_object is not None:
                 try:
                     speak_value = assistant_reply_object.get('thoughts', {}).get('speak')
-                    if speak_value is not None:
-                        self.send_message_to_all_agents(speaker=active_agent, message=speak_value)
+                    with Spinner(f"EVALUATING EMOTIONAL STATE OF {active_agent.ai_name}."):
+                        val = lmql_utils.lmql_get_emotional_state(speak_value)
+                    logger.typewriter_log(
+                        "JARVIS: ", Fore.YELLOW,
+                        f"Evaluation complete. {active_agent.ai_name} is feeling {val} right now."
+                    )
+                    successful = self.send_message_to_all_agents(speaker=active_agent, message=speak_value)
+                    if successful:
+                        # Only remove own message from buffer if it was non-empty
                         active_agent.auditory_buffer.pop()
                 except Exception as e:
                     logger.error(f"Failed to add assistant reply to buffer.\n\n {e}\n\n")
@@ -259,6 +265,9 @@ class MultiAgentManager(metaclass=Singleton):
                     )
                 elif active_agent.user_input == "EXIT":
                     print("Exiting...", flush=True)
+                    # TODO add clean exit that closes event loop
+                    # loop = asyncio.get_event_loop()
+                    # loop.close()
                     break
             else:
                 if not self.cfg.chat_only_mode:
