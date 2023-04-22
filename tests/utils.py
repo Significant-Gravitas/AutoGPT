@@ -18,7 +18,7 @@ def requires_api_key(env_var):
     return decorator
 
 
-def skip_on_ci(test_function):
+def skip_in_ci(test_function):
     return pytest.mark.skipif(
         os.environ.get("CI") == "true",
         reason="This test doesn't work on GitHub Actions.",
