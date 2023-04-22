@@ -5,10 +5,8 @@ from autogpt.token_counter import count_message_tokens, count_string_tokens
 
 
 class TestTokenCounter(unittest.TestCase):
-    """Test cases for the token counter functions in the token_counter module."""
 
     def test_count_message_tokens(self):
-        """Test that the message tokens are counted correctly."""
         messages = [
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there!"},
@@ -16,7 +14,6 @@ class TestTokenCounter(unittest.TestCase):
         self.assertEqual(count_message_tokens(messages), 17)
 
     def test_count_message_tokens_with_name(self):
-        """Test that the name is counted as a token."""
         messages = [
             {"role": "user", "content": "Hello", "name": "John"},
             {"role": "assistant", "content": "Hi there!"},
@@ -24,12 +21,10 @@ class TestTokenCounter(unittest.TestCase):
         self.assertEqual(count_message_tokens(messages), 17)
 
     def test_count_message_tokens_empty_input(self):
-        """Test that the message tokens are counted correctly."""
         # Empty input should return 3 tokens
         self.assertEqual(count_message_tokens([]), 3)
 
     def test_count_message_tokens_invalid_model(self):
-        """Test that the message tokens are counted correctly."""
         # Invalid model should raise a KeyError
         messages = [
             {"role": "user", "content": "Hello"},
@@ -39,7 +34,6 @@ class TestTokenCounter(unittest.TestCase):
             count_message_tokens(messages, model="invalid_model")
 
     def test_count_message_tokens_gpt_4(self):
-        """Test that the message tokens are counted correctly."""
 
         messages = [
             {"role": "user", "content": "Hello"},
@@ -61,7 +55,6 @@ class TestTokenCounter(unittest.TestCase):
         self.assertEqual(count_string_tokens("", model_name="gpt-3.5-turbo-0301"), 0)
 
     def test_count_message_tokens_invalid_model(self):
-        """Test that the message tokens are counted correctly."""
         # Invalid model should raise a NotImplementedError
         messages = [
             {"role": "user", "content": "Hello"},
