@@ -20,57 +20,61 @@ from autogpt.telegram_chat import TelegramUtils
 
 cfg = Config()
 
+def clean_chat_message_to_user(report: str):
+    try:
+        for plugin in enumerate(cfg.plugins):
+            if not plugin.can_handle_report():
+                continue
+            plugin.send_message(report)
+    except:
+        pass
 
 def clean_input(prompt: str = "", talk=False):
     try:
-        if talk and cfg.use_mac_os_voice_input == "True":
-            try:
-                return voice_input(prompt)
-            except:
-                print(traceback.format_exc())
-                print("Siri could not understand your input.")
-                speak.say_text("I didn't understand that. Sorry.")
-                return input(prompt)
-        else:
-            if cfg.telegram_enabled:
-                print("Asking user via Telegram...")
-                telegramUtils = TelegramUtils()
-                chat_answer = telegramUtils.ask_user(prompt=prompt)
-                print("Telegram answer: " + chat_answer)
-                if chat_answer in [
-                    "yes",
-                    "yeah",
-                    "yep",
-                    "yup",
-                    "y",
-                    "ok",
-                    "okay",
-                    "sure",
-                    "affirmative",
-                    "aye",
-                    "aye aye",
-                    "alright",
-                    "alrighty",
-                ]:
+        if cfg.chat_messages_enabled:
+            for plugin in enumerate(cfg.plugins):
+                if not plugin.can_handle_user_input():
+                    continue
+                plugin_response = plugin.user_input(
+                    prompt, talk
+                )
+                if plugin_response in [
+                        "yes",
+                        "yeah",
+                        "yep",
+                        "yup",
+                        "y",
+                        "ok",
+                        "okay",
+                        "sure",
+                        "affirmative",
+                        "aye",
+                        "aye aye",
+                        "alright",
+                        "alrighty",
+                    ]:
                     return "y"
-                elif chat_answer in [
-                    "no",
-                    "nope",
-                    "n",
-                    "nah",
-                    "negative",
-                    "nay",
-                    "nay nay",
-                ]:
+                elif plugin_response in [
+                        "no",
+                        "nope",
+                        "n",
+                        "nah",
+                        "negative",
+                        "nay",
+                        "nay nay",
+                    ]:
                     return "n"
-                return chat_answer
+                if not plugin_response or plugin_response == "":
+                    continue
+                if plugin_response:
+                    return plugin_response
 
-            # ask for input, default when just pressing Enter is y
-            print("Asking user via keyboard...")
-            answer = input(prompt + " [y/n] or press Enter for default (y): ")
-            if answer == "":
-                answer = "y"
-            return answer
+        # ask for input, default when just pressing Enter is y
+        print("Asking user via keyboard...")
+        answer = input(prompt + " [y/n] or press Enter for default (y): ")
+        if answer == "":
+            answer = "y"
+        return answer
     except KeyboardInterrupt:
         print("You interrupted Auto-GPT from utils.py")
         print("Quitting...")

@@ -8,8 +8,8 @@ from autogpt.json_utils.utilities import validate_json
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
-from autogpt.telegram_chat import TelegramUtils
 from autogpt.utils import clean_input
+from autogpt.utils import clean_chat_message_to_user
 
 
 class Agent:
@@ -81,9 +81,9 @@ class Agent:
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
                 break
-            if cfg.telegram_enabled:
-                telegramUtils = TelegramUtils()
-                telegramUtils.send_message("Thinking... \n")
+            if cfg.chat_messages_enabled:
+                message = "Thinking... \n"
+                clean_chat_message_to_user(message)
             # Send message to AI, get response
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
@@ -110,10 +110,9 @@ class Agent:
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
-                    if cfg.telegram_enabled:
-                        TelegramUtils().send_message(
-                            f"I want to execute {command_name} \n with arguments {arguments}"
-                        )
+                    if cfg.chat_messages_enabled:
+                        message = "Thinking... \n"
+                        clean_chat_message_to_user(message)
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
@@ -122,19 +121,17 @@ class Agent:
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 self.user_input = ""
-                if cfg.telegram_enabled:
-                    telegramUtils = TelegramUtils()
-                    telegramUtils.send_message(
+                if cfg.chat_messages_enabled:
+                    clean_chat_message_to_user(
                         "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
                         f"ARGUMENTS = {arguments}"
                     )
-                else:
-                    logger.typewriter_log(
-                        "NEXT ACTION: ",
-                        Fore.CYAN,
-                        f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                        f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-                    )
+                logger.typewriter_log(
+                    "NEXT ACTION: ",
+                    Fore.CYAN,
+                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+                    f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                )
                 print(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous "
                     "commands, 'n' to exit program, or enter feedback for "
@@ -143,11 +140,8 @@ class Agent:
                 )
                 while True:
                     console_input = ""
-                    if cfg.telegram_enabled:
-                        telegramUtils = TelegramUtils()
-                        console_input = telegramUtils.ask_user(
-                            "Enter 'y' to authorise command, 'y -N' to run N continuous \n commands, 'n' to exit program, or enter feedback for me."
-                        )
+                    if cfg.chat_messages_enabled:
+                        console_input = clean_input("Waiting for your response...")
                     else:
                         console_input = clean_input(
                             Fore.MAGENTA + "Input:" + Style.RESET_ALL
@@ -186,26 +180,24 @@ class Agent:
                         "",
                     )
                 elif user_input == "EXIT":
-                    if cfg.telegram_enabled:
-                        telegramUtils = TelegramUtils()
-                        telegramUtils.send_message("Exiting...")
+                    if cfg.chat_messages_enabled:
+                        clean_chat_message_to_user("Exiting...")
                     print("Exiting...", flush=True)
                     break
             else:
                 # Print command
-                if cfg.telegram_enabled:
-                    telegramUtils = TelegramUtils()
-                    telegramUtils.send_message(
+                if cfg.chat_messages_enabled:
+                    clean_chat_message_to_user                    (
                         "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
                         f"ARGUMENTS = {arguments}"
                     )
-                else:
-                    logger.typewriter_log(
-                        "NEXT ACTION: ",
-                        Fore.CYAN,
-                        f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                        f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-                    )
+                
+                logger.typewriter_log(
+                    "NEXT ACTION: ",
+                    Fore.CYAN,
+                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
+                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                )
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):

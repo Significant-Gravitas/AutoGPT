@@ -6,6 +6,7 @@ import random
 import re
 import time
 import traceback
+import utils
 from logging import LogRecord
 
 from colorama import Fore, Style
@@ -84,12 +85,9 @@ class Logger(metaclass=Singleton):
         if speak_text and CFG.speak_mode:
             say_text(f"{title}. {content}")
 
-        if CFG.telegram_enabled:
-            from autogpt.telegram_chat import TelegramUtils
-
-            telegramUtils = TelegramUtils()
+        if CFG.chat_messages_enabled:
             message = f"{title}. {content}"
-            telegramUtils.send_message(message)
+            utils.clean_chat_message_to_user(message)
 
         if content:
             if isinstance(content, list):
