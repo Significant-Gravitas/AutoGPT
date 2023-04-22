@@ -38,7 +38,7 @@ If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and follo
 ```bash
 cp azure.yaml.template azure.yaml
 ```
-3. Add the following credentials to the `azure_model_map` section:
+2. Add the following credentials to the `azure_model_map` section:
    1. `fast_llm_model_deployment_id`: "`Your gpt-3.5-turbo or gpt-4 deployment ID`"
    2. `smart_llm_model_deployment_id`: "`Your gpt-4 deployment ID`"
    3. `embedding_model_deployment_id`: "`Your text-embedding-ada-002 v2 deployment ID`"
