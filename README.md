@@ -55,7 +55,7 @@ Your support is greatly appreciated. Development of this free, open-source proje
 - 🧠 GPT-4 instances for text generation
 - 🔗 Access to popular websites and platforms
 - 🗃️ File storage and summarization with GPT-3.5
-- Extensibility with Plugins
+- 🔌 Extensibility with Plugins
 
 ## 📋 Requirements
 
