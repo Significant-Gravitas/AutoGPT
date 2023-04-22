@@ -1,6 +1,6 @@
 import json
 from json import JSONEncoder
-from pathlib import WindowsPath
+from pathlib import WindowsPath, PosixPath
 from autogpt.contexts.contextualize import ContextManager
 from colorama import Fore, Style
 
@@ -16,9 +16,10 @@ from autogpt.utils import clean_input
 
 class CustomJSONEncoder(JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, WindowsPath):
+        if isinstance(obj, (WindowsPath, PosixPath)):  # Check for both WindowsPath and PosixPath
             return str(obj)
         return super().default(obj)
+
 
 
 class Agent:
