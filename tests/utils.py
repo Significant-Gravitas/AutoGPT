@@ -18,8 +18,12 @@ def requires_api_key(env_var):
     return decorator
 
 
-def skip_on_ci(test_function):
-    return pytest.mark.skipif(
-        os.environ.get("CI") == "true",
-        reason="This test doesn't work on GitHub Actions.",
-    )(test_function)
+def skip_in_ci():
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            if os.environ.get("CI"):
+                pytest.skip(f"This test doesn't work on GitHub Actions.")
+            else:
+                return func(*args, **kwargs)
+        return wrapper
+    return decorator
