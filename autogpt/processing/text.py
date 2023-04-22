@@ -1,7 +1,8 @@
 """Text processing functions"""
 from typing import Dict, Generator, Optional
 
-import spacy
+import nltk
+from nltk.tokenize import sent_tokenize
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from autogpt import token_counter
@@ -32,10 +33,7 @@ def split_text(
         ValueError: If the text is longer than the maximum length
     """
     flatened_paragraphs = " ".join(text.split("\n"))
-    nlp = spacy.load(CFG.browse_spacy_language_model)
-    nlp.add_pipe("sentencizer")
-    doc = nlp(flatened_paragraphs)
-    sentences = [sent.text.strip() for sent in doc.sents]
+    sentences = sent_tokenize(flattened_paragraphs)
 
     current_chunk = []
 
