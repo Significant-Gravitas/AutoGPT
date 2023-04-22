@@ -16,7 +16,7 @@ CFG = Config()
 
 JSON_SCHEMA = """
 {
-    "natural language": "Write your amazing response here",
+    "braindump": "Dump your verbose thoughts here",
     "command": {
         "name": "command name",
         "args": {

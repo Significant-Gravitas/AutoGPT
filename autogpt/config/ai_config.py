@@ -112,7 +112,7 @@ class AIConfig:
 
         # Construct full prompt
         full_prompt = (
-            f"...continuing the AI self-monitoring protocol.\n"
+            f"...continuing the AI self-improvement protocol.\n"
             f"...commands and resources ready for {self.ai_name}.\n"
             f"...aligning {self.ai_name}.\n"
             f"Ready to continue.\n\n"

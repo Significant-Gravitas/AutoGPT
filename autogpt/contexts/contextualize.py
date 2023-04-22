@@ -9,6 +9,9 @@ from autogpt.contexts.markdown_parsing import get_header_levels, matches_templat
 class ContextManager:
     _instance = None
 
+    def get_context_manager_instance():
+        return ContextManager()
+
     context_count = 0
     open_context_count = 0
     context_eval_count = 0
@@ -101,8 +104,8 @@ class ContextManager:
         :param context_data: Data to be included in the new context
         """
 
-        if (self.open_context_count >= 6):
-            return f"There are already 6 contexts open. Please conclude a context before creating a new one. Current context: {self.current_context}"
+        if (self.open_context_count >= 2):
+            return f"There are already 2 contexts open. Please conclude a context before creating a new one. Current context: {self.current_context}"
 
         if not self.matches_context_template(context_data, self.context_template):
             return self.matches_context_template(context_data, self.context_template)
