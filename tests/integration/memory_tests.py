@@ -10,11 +10,6 @@ from autogpt.memory.local import LocalCache
 
 class TestLocalCache(unittest.TestCase):
     def generate_random_string(self, length):
-        """
-        Generate a random string of the given length.
-        Args:
-            length (int): The length of the string to generate.
-        """
         return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
     def setUp(self):
