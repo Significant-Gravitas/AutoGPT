@@ -84,11 +84,11 @@ Please see the [documentation](/docs) linked below for full setup instructions a
 
 ## 🗣️ Speech Mode
 
-[Speech](/docs/voice.md)
+[Speech](/docs/configuration/voice.md)
 
 ## Search
 
-[Search](/docs/search.md)
+[Search](/docs/configuration/search.md)
 
 ## Plugins
 
@@ -96,11 +96,11 @@ Please see the [documentation](/docs) linked below for full setup instructions a
 
 ## Memory
 
-[Memory](/docs/memory.md)
+[Memory](/docs/configuration/memory.md)
 
 ## 🖼 Image Generation
 
-[Image Generation](/docs/imagegen.md)
+[Image Generation](/docs/configuration/imagegen.md)
 
 ## ⚠️ Limitations
 
