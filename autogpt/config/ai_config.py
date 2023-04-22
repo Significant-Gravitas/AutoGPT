@@ -5,9 +5,11 @@ A module that contains the AIConfig class object that contains the configuration
 from __future__ import annotations
 
 import os
+import platform
 from pathlib import Path
 from typing import Optional, Type
 
+import distro
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
@@ -129,6 +131,17 @@ class AIConfig:
             if not plugin.can_handle_post_prompt():
                 continue
             prompt_generator = plugin.post_prompt(prompt_generator)
+
+        if cfg.execute_local_commands:
+            # add OS info to prompt
+            os_name = platform.system()
+            os_info = (
+                platform.platform(terse=True)
+                if os_name != "Linux"
+                else distro.name(pretty=True)
+            )
+
+            prompt_start += f"\nThe OS you are running on is: {os_info}"
 
         # Construct full prompt
         full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
