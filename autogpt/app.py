@@ -4,7 +4,6 @@ from typing import Dict, List, NoReturn, Union
 from autogpt import memory
 
 from autogpt.agent.agent_manager import AgentManager
-from autogpt.commands import google_search
 from autogpt.commands.analyze_code import analyze_code
 from autogpt.commands.audio_text import read_audio_from_file
 from autogpt.commands.execute_code import (
@@ -20,7 +19,7 @@ from autogpt.commands.file_operations import (
     search_files,
     write_to_file,
 )
-from autogpt.commands.google_search import google_official_search
+from autogpt.commands.google_search import google_official_search, google_search
 from autogpt.commands.image_gen import generate_image
 from autogpt.commands.web_playwright import scrape_links, scrape_text
 from autogpt.config import Config
