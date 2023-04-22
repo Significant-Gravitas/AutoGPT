@@ -12,32 +12,39 @@ To switch to either, change the `MEMORY_BACKEND` env variable to the value that 
 
 ## Memory Backend Setup
 
-- Links to memory backends
-  - [Pinecone](https://www.pinecone.io/)
-  - [Milvus](https://milvus.io/)
-  - [Redis](https://redis.io)
-  - [Weaviate](https://weaviate.io)
+Links to memory backends
+
+- [Pinecone](https://www.pinecone.io/)
+- [Milvus](https://milvus.io/)
+- [Redis](https://redis.io)
+- [Weaviate](https://weaviate.io)
 
 ### Redis Setup
 > _**CAUTION**_ \
 This is not intended to be publicly accessible and lacks security measures. Therefore, avoid exposing Redis to the internet without a password or at all
 1. Install docker (or Docker Desktop on Windows).
 2. Launch Redis container.
-    ```    docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
-    ```
-    > See https://hub.docker.com/r/redis/redis-stack-server for setting a password and additional configuration.
+
+``` shell    
+    docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+```
+> See https://hub.docker.com/r/redis/redis-stack-server for setting a password and additional configuration.
+
 3. Set the following settings in `.env`.
     > Replace **PASSWORD** in angled brackets (<>)
-    ```    MEMORY_BACKEND=redis
-    REDIS_HOST=localhost
-    REDIS_PORT=6379
-    REDIS_PASSWORD=<PASSWORD>
-    ```
+    
+``` shell
+MEMORY_BACKEND=redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=<PASSWORD>
+```
 
     You can optionally set `WIPE_REDIS_ON_START=False` to persist memory stored in Redis.
 
 You can specify the memory index for redis using the following:
-```MEMORY_INDEX=<WHATEVER>
+``` shell
+MEMORY_INDEX=<WHATEVER>
 ```
 
 ### 🌲 Pinecone API Key Setup
@@ -57,14 +64,16 @@ Alternatively, you can set them from the command line (advanced):
 
 For Windows Users:
 
-```setx PINECONE_API_KEY "<YOUR_PINECONE_API_KEY>"
+``` shell
+setx PINECONE_API_KEY "<YOUR_PINECONE_API_KEY>"
 setx PINECONE_ENV "<YOUR_PINECONE_REGION>" # e.g: "us-east4-gcp"
 setx MEMORY_BACKEND "pinecone"
 ```
 
 For macOS and Linux users:
 
-```export PINECONE_API_KEY="<YOUR_PINECONE_API_KEY>"
+``` shell
+export PINECONE_API_KEY="<YOUR_PINECONE_API_KEY>"
 export PINECONE_ENV="<YOUR_PINECONE_REGION>" # e.g: "us-east4-gcp"
 export MEMORY_BACKEND="pinecone"
 ```
@@ -91,7 +100,7 @@ Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/
 
 Install the Weaviate client before usage.
 
-```
+``` shell
 $ pip install weaviate-client
 ```
 
@@ -99,7 +108,7 @@ $ pip install weaviate-client
 
 In your `.env` file set the following:
 
-```
+``` shell
 MEMORY_BACKEND=weaviate
 WEAVIATE_HOST="127.0.0.1" # the IP or domain of the running Weaviate instance
 WEAVIATE_PORT="8080" 
@@ -120,7 +129,8 @@ View memory usage by using the `--debug` flag :)
 ## 🧠 Memory pre-seeding
 Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.
 
-```# python data_ingestion.py -h 
+``` shell
+# python data_ingestion.py -h 
 usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
 
 Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
@@ -135,6 +145,7 @@ options:
 
 # python data_ingestion.py --dir DataFolder --init --overlap 100 --max_length 2000
 ```
+
 In the example above, the script initializes the memory, ingests all files within the `Auto-Gpt/autogpt/auto_gpt_workspace/DataFolder` directory into memory with an overlap between chunks of 100 and a maximum length of each chunk of 2000.
 
 Note that you can also use the `--file` argument to ingest a single file into memory and that data_ingestion.py will only ingest files within the `/auto_gpt_workspace` directory.

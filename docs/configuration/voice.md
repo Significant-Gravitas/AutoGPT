@@ -2,7 +2,8 @@
 
 Enter this command to use TTS _(Text-to-Speech)_ for Auto-GPT
 
-```python -m autogpt --speak
+``` shell
+python -m autogpt --speak
 ```
 
 ### List of IDs with names from eleven labs. You can use the name or ID:

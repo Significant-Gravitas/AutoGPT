@@ -65,7 +65,7 @@ Use at your own risk.
 
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
 
-```
+``` shell
 python -m autogpt --gpt3only
 ```
 
@@ -73,7 +73,7 @@ python -m autogpt --gpt3only
 
 If you do have access to the GPT4 api, this mode will allow you to use Auto-GPT solely using the GPT-4 API for increased intelligence (and cost!)
 
-```
+``` shell
 python -m autogpt --gpt4only
 ```
 
@@ -83,6 +83,6 @@ Activity and error logs are located in the `./output/logs`
 
 To print out debug logs:
 
-```
+``` shell
 python -m autogpt --debug
 ```

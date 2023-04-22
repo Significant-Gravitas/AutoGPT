@@ -26,18 +26,21 @@ _To execute the following commands, open a CMD, Bash, or Powershell window by na
 2. Clone the repository: For this step, you need Git installed. 
 Note: If you don't have Git, you can just download the [latest stable release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest) instead (`Source code (zip)`, at the bottom of the page).
 
-    ```    git clone -b stable https://github.com/Significant-Gravitas/Auto-GPT.git
-    ```
+``` shell
+    git clone -b stable https://github.com/Significant-Gravitas/Auto-GPT.git
+```
 
 3. Navigate to the directory where you downloaded the repository.
 
-    ```    cd Auto-GPT
-    ```
+``` shell
+    cd Auto-GPT
+```
 
 4. Install the required dependencies.
 
-    ```    pip install -r requirements.txt
-    ```
+``` shell
+    pip install -r requirements.txt
+```
 
 5. Configure Auto-GPT:
    1. Find the file named `.env.template` in the main /Auto-GPT folder. This file may be hidden by default in some operating systems due to the dot prefix. To reveal hidden files, follow the instructions for your specific operating system (e.g., in Windows, click on the "View" tab in File Explorer and check the "Hidden items" box; in macOS, press Cmd + Shift + .).
@@ -60,33 +63,34 @@ Note: If you don't have Git, you can just download the [latest stable release](h
        - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID
      - Please specify all of these values as double-quoted strings
        
-       ```
-       # Replace string in angled brackets (<>) to your own ID
-       azure_model_map:
-         fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
-         ...
-       ```
+``` shell
+# Replace string in angled brackets (<>) to your own ID
+azure_model_map:
+    fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
+    ...
+```
      - Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
 
 ## Docker
 
 You can also build this into a docker image and run it:
 
-```
+``` shell
 docker build -t autogpt .
 docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/home/appuser/auto_gpt_workspace autogpt
 ```
 
 Or if you have `docker-compose`:
-```
+``` shell
 docker-compose run --build --rm auto-gpt
 ```
 
 You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
-```
+``` shell
 docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/home/appuser/auto_gpt_workspace autogpt --gpt3only --continuous
 ```
-```
+
+``` shell
 docker-compose run --build --rm auto-gpt --gpt3only --continuous
 ```
 

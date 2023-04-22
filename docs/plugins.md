@@ -14,7 +14,8 @@ Use the [Auto-GPT Plugin Template](https://github.com/Significant-Gravitas/Auto-
 2. **Install the plugin's dependencies (if any):**
    Navigate to the plugin's folder in your terminal, and run the following command to install any required dependencies:
 
-   ```   pip install -r requirements.txt
+   ``` shell
+      pip install -r requirements.txt
    ```
 
 3. **Package the plugin as a Zip file:**
@@ -26,7 +27,7 @@ Use the [Auto-GPT Plugin Template](https://github.com/Significant-Gravitas/Auto-
 5. **Allowlist the plugin (optional):**
    Add the plugin's class name to the `ALLOWLISTED_PLUGINS` in the `.env` file to avoid being prompted with a warning when loading the plugin:
 
-   ```
+   ``` shell
    ALLOWLISTED_PLUGINS=example-plugin1,example-plugin2,example-plugin3
    ```
 
