@@ -1,4 +1,4 @@
-# Contributing to ProjectName
+# Contributing to Auto-GPT
 
 First of all, thank you for considering contributing to our project! We appreciate your time and effort, and we value any contribution, whether it's reporting a bug, suggesting a new feature, or submitting a pull request.
 
@@ -102,4 +102,4 @@ Happy coding, and once again, thank you for your contributions!
 
 Maintainers will look at PR that have no merge conflicts when deciding what to add to the project. Make sure your PR shows up here:
 
-https://github.com/Torantulino/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-is%3Aconflict+
+https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-is%3Aconflict+
