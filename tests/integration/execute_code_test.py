@@ -18,6 +18,6 @@ class TestExecuteCode(TestCase):
             temp_file.flush()
             temp_file_path = pathlib.Path(temp_file.name).parent
             temp_file_name = pathlib.Path(temp_file.name).name
-            with patch("autogpt.execute_code.WORKSPACE_FOLDER", temp_file_path):
+            with patch("autogpt.commands.execute_code.WORKSPACE_FOLDER", temp_file_path):
                 result = execute_python_file(temp_file_name)
                 self.assertEqual(result, f"Hello {random_string}!\n")
