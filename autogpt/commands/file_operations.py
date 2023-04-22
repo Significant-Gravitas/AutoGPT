@@ -48,8 +48,7 @@ def log_operation(operation: str, filename: str) -> None:
     if not os.path.exists(LOG_FILE_PATH):
         with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
             f.write("File Operation Logger ")
-
-    append_to_file(LOG_FILE, log_entry, should_log=False)
+    append_to_file(str(LOG_FILE_PATH), log_entry, should_log=False)
 
 
 def split_file(
@@ -94,8 +93,8 @@ def read_file(filename: str) -> str:
     Returns:
         str: The contents of the file
     """
+    filepath = path_in_workspace(filename)
     try:
-        filepath = path_in_workspace(filename)
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
         return content
@@ -240,7 +239,7 @@ def search_files(directory: str) -> list[str]:
 
 @command(
     "download_file",
-    "Search Files",
+    "Download File",
     '"url": "<url>", "filename": "<filename>"',
     CFG.allow_downloads,
     "Error: You do not have user authorization to download files locally.",
