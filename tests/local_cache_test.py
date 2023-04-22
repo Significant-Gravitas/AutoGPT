@@ -7,6 +7,7 @@ import unittest
 import pytest
 
 from autogpt.memory.local import LocalCache
+from tests.utils import requires_api_key
 
 
 def mock_config() -> dict:
@@ -32,17 +33,20 @@ class TestLocalCache(unittest.TestCase):
         self.cfg = mock_config()
         self.cache = LocalCache(self.cfg)
 
+    @requires_api_key("OPENAI_API_KEY")
     def test_add(self) -> None:
         """Test adding a text to the cache"""
         text = "Sample text"
         self.cache.add(text)
         self.assertIn(text, self.cache.data.texts)
 
+    @requires_api_key("OPENAI_API_KEY")
     def test_clear(self) -> None:
         """Test clearing the cache"""
         self.cache.clear()
         self.assertEqual(self.cache.data.texts, [])
 
+    @requires_api_key("OPENAI_API_KEY")
     def test_get(self) -> None:
         """Test getting a text from the cache"""
         text = "Sample text"
@@ -50,6 +54,7 @@ class TestLocalCache(unittest.TestCase):
         result = self.cache.get(text)
         self.assertEqual(result, [text])
 
+    @requires_api_key("OPENAI_API_KEY")
     def test_get_relevant(self) -> None:
         """Test getting relevant texts from the cache"""
         text1 = "Sample text 1"
@@ -59,6 +64,7 @@ class TestLocalCache(unittest.TestCase):
         result = self.cache.get_relevant(text1, 1)
         self.assertEqual(result, [text1])
 
+    @requires_api_key("OPENAI_API_KEY")
     def test_get_stats(self) -> None:
         """Test getting the cache stats"""
         text = "Sample text"
