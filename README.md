@@ -64,16 +64,6 @@ Your support is greatly appreciated. Development of this free, open-source proje
   - Docker [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt)
   - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
 
-
-### Optional
-- Memory backend (pick one)
-  - [Pinecone](https://www.pinecone.io/)
-  - [Milvus](https://milvus.io/)
-  - [Redis](https://redis.io)
-  - [Weaviate](https://weaviate.io)
-  - [MyScale](https://myscale.com)
-- ElevenLabs Key (If you want the AI to speak)
-
 ## Quickstart
 
 1. Set up your OpenAI [API Keys](https://platform.openai.com/account/api-keys)

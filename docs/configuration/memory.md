@@ -78,6 +78,37 @@ export PINECONE_ENV="<YOUR_PINECONE_REGION>" # e.g: "us-east4-gcp"
 export MEMORY_BACKEND="pinecone"
 ```
 
+### MyScale Setup
+
+MyScale is a cloud-based database optimized for AI applications and solutions, and is a good option to store massive amount of memory with both good recall performance and efficiency.
+
+To use MyScale as AutoGPT memory backend:
+
+1. Go to [MyScale](https://myscale.com) and click on sign up.
+2. Go to your console to [create a cluster](https://docs.myscale.com/en/cluster-management/)
+3. Get your `Connection Details` under `Action` column under cluster table.
+4. Fill out the blanks in `.env`
+
+```bash
+## MYSCALE
+# ==========================
+# MYSCALE_HOST - MyScale Endpoint URL. You can find it if you log into your console.
+# MYSCALE_PORT - MyScale Endpoint port. You can find it if you log into your console. (Default: 8443)
+# MYSCALE_USERNAME - Username to access the endpoint. 
+# MYSCALE_PASSWORD - Password to access the endpoint. (Example: passwd-****)
+# MYSCALE_DATABASE - Database name you would like to use. (Default: default)
+# MYSCALE_INDEX_TYPE - Index type for vector search. (Default: IVFFLAT)
+# ==========================
+MYSCALE_HOST=your-myscale-endpoint-host
+MYSCALE_PORT=8443
+MYSCALE_USERNAME=your-username
+MYSCALE_PASSWORD=your-password
+MYSCALE_DATABASE=default
+MYSCALE_INDEX_TYPE=IVFFLAT
+```
+
+Alternatively, you can set it up with your command line!
+
 ### Milvus Setup
 
 [Milvus](https://milvus.io/) is an open-source, highly scalable vector database to store huge amounts of vector-based memory and provide fast relevant search.
