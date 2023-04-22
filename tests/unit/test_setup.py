@@ -2,10 +2,14 @@ import unittest
 from unittest.mock import patch
 from io import StringIO
 from autogpt.config.ai_config import AIConfig
-from autogpt.setup import generate_aiconfig_manual, generate_aiconfig_automatic, prompt_user 
+from autogpt.setup import (
+    generate_aiconfig_manual,
+    generate_aiconfig_automatic,
+    prompt_user,
+)
+
 
 class TestAutoGPT(unittest.TestCase):
-
     def test_generate_aiconfig_automatic_default(self):
         user_inputs = [""]
         with patch("builtins.input", side_effect=user_inputs):
@@ -28,7 +32,14 @@ class TestAutoGPT(unittest.TestCase):
         self.assertLessEqual(len(ai_config.ai_goals), 5)
 
     def test_generate_aiconfig_automatic_fallback(self):
-        user_inputs = ["T&GF£OIBECC()!*", "Chef-GPT", "an AI designed to browse bake a cake.", "Purchase ingredients", "Bake a cake", ""]
+        user_inputs = [
+            "T&GF£OIBECC()!*",
+            "Chef-GPT",
+            "an AI designed to browse bake a cake.",
+            "Purchase ingredients",
+            "Bake a cake",
+            "",
+        ]
         with patch("builtins.input", side_effect=user_inputs):
             ai_config = prompt_user()
 
@@ -36,10 +47,16 @@ class TestAutoGPT(unittest.TestCase):
         self.assertEqual(ai_config.ai_name, "Chef-GPT")
         self.assertEqual(ai_config.ai_role, "an AI designed to browse bake a cake.")
         self.assertEqual(ai_config.ai_goals, ["Purchase ingredients", "Bake a cake"])
-
 
     def test_prompt_user_manual_mode(self):
-        user_inputs = ["--manual", "Chef-GPT", "an AI designed to browse bake a cake.", "Purchase ingredients", "Bake a cake", ""]
+        user_inputs = [
+            "--manual",
+            "Chef-GPT",
+            "an AI designed to browse bake a cake.",
+            "Purchase ingredients",
+            "Bake a cake",
+            "",
+        ]
         with patch("builtins.input", side_effect=user_inputs):
             ai_config = prompt_user()
 
@@ -47,6 +64,7 @@ class TestAutoGPT(unittest.TestCase):
         self.assertEqual(ai_config.ai_name, "Chef-GPT")
         self.assertEqual(ai_config.ai_role, "an AI designed to browse bake a cake.")
         self.assertEqual(ai_config.ai_goals, ["Purchase ingredients", "Bake a cake"])
+
 
 if __name__ == "__main__":
     unittest.main()

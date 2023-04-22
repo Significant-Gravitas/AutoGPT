@@ -10,6 +10,7 @@ from autogpt.config import Config
 
 CFG = Config()
 
+
 def prompt_user() -> AIConfig:
     """Prompt the user for input
 
@@ -35,10 +36,12 @@ def prompt_user() -> AIConfig:
         speak_text=True,
     )
 
-    user_desire = utils.clean_input(f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: ")
+    user_desire = utils.clean_input(
+        f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: "
+    )
 
     if user_desire == "":
-        user_desire = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT" # Default prompt
+        user_desire = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt
 
     # If user desire contains "--manual"
     if "--manual" in user_desire:
@@ -48,7 +51,7 @@ def prompt_user() -> AIConfig:
             speak_text=True,
         )
         return generate_aiconfig_manual()
-    
+
     else:
         try:
             return generate_aiconfig_automatic(user_desire)
@@ -57,15 +60,13 @@ def prompt_user() -> AIConfig:
                 "Unable to automatically generate AI Config based on user desire.",
                 Fore.RED,
                 "Falling back to manual mode.",
-                speak_text=True
+                speak_text=True,
             )
-
 
             return generate_aiconfig_manual()
 
 
 def generate_aiconfig_manual() -> AIConfig:
-
     """
     Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
 
@@ -133,11 +134,12 @@ def generate_aiconfig_manual() -> AIConfig:
 
     return AIConfig(ai_name, ai_role, ai_goals)
 
+
 def generate_aiconfig_automatic(user_prompt) -> AIConfig:
     """Generates an AIConfig object from the given string.
 
-        Returns:
-        AIConfig: The AIConfig object tailored to the user's input
+    Returns:
+    AIConfig: The AIConfig object tailored to the user's input
     """
 
     system_prompt = """
@@ -160,14 +162,17 @@ Goals:
 
 - Proactively take the lead in guiding you and offering suggestions when faced with unclear information or uncertainty to ensure your marketing strategy remains on track.
 """
-    
+
     # Call LLM with the string as user input
     messages = [
         {
             "role": "system",
             "content": system_prompt,
         },
-        {"role": "user", "content": f"Task: '{user_prompt}'\nRespond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n"},
+        {
+            "role": "user",
+            "content": f"Task: '{user_prompt}'\nRespond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n",
+        },
     ]
     output = create_chat_completion(messages, CFG.fast_llm_model)
 
@@ -177,7 +182,15 @@ Goals:
 
     # Parse the output
     ai_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output, re.IGNORECASE).group(1)
-    ai_role = re.search(r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)", output, re.IGNORECASE | re.DOTALL).group(1).strip()
+    ai_role = (
+        re.search(
+            r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
+            output,
+            re.IGNORECASE | re.DOTALL,
+        )
+        .group(1)
+        .strip()
+    )
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
 
     return AIConfig(ai_name, ai_role, ai_goals)

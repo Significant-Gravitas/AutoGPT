@@ -108,7 +108,12 @@ Continue (y/n): """
         config.save(CFG.ai_settings_file)
 
     # Agent Created, print message
-    logger.typewriter_log(config.ai_name, Fore.LIGHTBLUE_EX, "has been created with the following details:", speak_text=True)
+    logger.typewriter_log(
+        config.ai_name,
+        Fore.LIGHTBLUE_EX,
+        "has been created with the following details:",
+        speak_text=True,
+    )
 
     # Print the ai config details
     # Name
