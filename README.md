@@ -15,9 +15,9 @@
 | autogpt/commands/\_\_init\_\_.py            |        0 |        0 |        0 |        0 |    100% |           |
 | autogpt/commands/analyze\_code.py           |        9 |        9 |        0 |        0 |      0% |      2-31 |
 | autogpt/commands/audio\_text.py             |       22 |       22 |        4 |        0 |      0% |      2-63 |
-| autogpt/commands/command.py                 |       66 |       13 |       18 |        3 |     76% |36, 55, 58, 67, 71-76, 122-123, 146 |
+| autogpt/commands/command.py                 |       66 |       12 |       18 |        3 |     77% |36, 55, 58, 67, 71-76, 122-123 |
 | autogpt/commands/execute\_code.py           |       71 |       71 |       22 |        0 |      0% |     2-186 |
-| autogpt/commands/file\_operations.py        |      139 |      108 |       44 |        0 |     17% |33-35, 45-52, 69-84, 97-103, 118-137, 151-163, 179-189, 202-210, 223-237, 253-284 |
+| autogpt/commands/file\_operations.py        |      139 |       50 |       44 |        6 |     63% |48->52, 72->exit, 118-137, 152, 157, 162-163, 188-189, 203, 209-210, 233, 253-284 |
 | autogpt/commands/git\_operations.py         |       15 |       15 |        0 |        0 |      0% |      2-35 |
 | autogpt/commands/google\_search.py          |       40 |       40 |       14 |        0 |      0% |     2-117 |
 | autogpt/commands/image\_gen.py              |       54 |       39 |       16 |        0 |     21% |28-39, 52-77, 91-115, 136-165 |
@@ -69,8 +69,8 @@
 | autogpt/token\_counter.py                   |       34 |        2 |       14 |        2 |     92% |    35, 38 |
 | autogpt/types/openai.py                     |        4 |        0 |        0 |        0 |    100% |           |
 | autogpt/utils.py                            |       56 |       43 |       14 |        0 |     19% |11-12, 16-21, 25-36, 45-49, 53-60, 64-69, 73-83 |
-| autogpt/workspace.py                        |       16 |        6 |        4 |        1 |     55% |14->18, 27, 40-48 |
-|                                   **TOTAL** | **2849** | **1841** |  **846** |   **55** | **31%** |           |
+| autogpt/workspace.py                        |       16 |        0 |        4 |        1 |     95% |    14->18 |
+|                                   **TOTAL** | **2849** | **1776** |  **846** |   **61** | **34%** |           |
 
 
 ## Setup coverage badge
