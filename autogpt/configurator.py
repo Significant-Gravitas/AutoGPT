@@ -55,7 +55,7 @@ def create_config(
             Fore.RED,
             "Continuous mode is not recommended. It is potentially dangerous and may"
             " cause your AI to run forever or carry out actions you would not usually"
-            " authorise. Use at your own risk.",
+            " authorise. Use at your own risk. Press 'SHIFT + P + P' to pause the AI and give feedback",
         )
         CFG.set_continuous_mode(True)
 

@@ -159,6 +159,7 @@ Note: If you don't have Git, you can just download the [latest stable release](h
 exit the program, or provide feedback to the AI.
    1. Authorize a single command by entering `y`
    2. Authorize a series of _N_ continuous commands by entering `y -N`. For example, entering `y -10` would run 10 automatic iterations.
+      - To pause the series and give feedback, click the running program window and press "SHIFT + P + P"
    3. Enter any free text to give feedback to Auto-GPT.
    4. Exit the program by entering `n`
 
@@ -489,7 +490,12 @@ Use at your own risk.
     python -m autogpt --speak --continuous
     ```
 
-2. To exit the program, press Ctrl + C
+2. To pause the program and give feedback / input, press SHIFT + P + P. 💡
+   - The program will detect this & notify you that your request has been detected.
+     - When the next loop is ready, the program will pause and wait for your feedback. Hit Enter to submit your feedback. The program will take your input, process it, and continue running the loop with this new context.
+   - 💡 To be specific, Hold the SHIFT button down, and press P twice.
+   
+3. To exit the program, press Ctrl + C
 
 ## GPT3.5 ONLY Mode
 
