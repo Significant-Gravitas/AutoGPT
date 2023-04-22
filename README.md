@@ -478,6 +478,17 @@ HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 sudo Xvfb :10 -ac -screen 0 1024x768x24 & DISPLAY=:10 <YOUR_CLIENT>
 ```
 
+
+## News Aggregation
+
+Kindly request a free tier [News API Key] at (https://newsapi.org/account)
+
+Once you have a key, set this variables in your `.env`:
+
+```bash
+NEWS_API_KEY="YOUR_NEWS_API_KEY"
+```
+
 ## ⚠️ Limitations
 
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
