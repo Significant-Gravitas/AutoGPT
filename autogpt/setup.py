@@ -1,10 +1,10 @@
 """Set up the AI and its goals"""
-from colorama import Fore, Style
+from colorama import Fore
 
-from autogpt import utils
+from autogpt.utils import clean_input, ANSI_BRIGHTBLUE
 from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
-from prompt_toolkit import HTML
+
 
 def prompt_user() -> AIConfig:
     """Prompt the user for input
@@ -33,7 +33,7 @@ def prompt_user() -> AIConfig:
     logger.typewriter_log(
         "Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'"
     )
-    ai_name = utils.clean_input("AI Name: ")
+    ai_name = clean_input("AI Names: ", ANSI_BRIGHTBLUE)
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
@@ -48,7 +48,7 @@ def prompt_user() -> AIConfig:
         "For example, 'an AI designed to autonomously develop and run businesses with"
         " the sole goal of increasing your net worth.'",
     )
-    ai_role = utils.clean_input(f"{ai_name} is: ")
+    ai_role = clean_input(f"{ai_name} is: ", ANSI_BRIGHTBLUE)
     if ai_role == "":
         ai_role = "an AI designed to autonomously develop and run businesses with the"
         " sole goal of increasing your net worth."
@@ -63,7 +63,7 @@ def prompt_user() -> AIConfig:
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
     ai_goals = []
     for i in range(5):
-        ai_goal = utils.clean_input(HTML(f'<ansibrightblue>Goal</ansibrightblue> {i+1}: '))
+        ai_goal = clean_input(f"Goal {i+1}: ", ANSI_BRIGHTBLUE)
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)

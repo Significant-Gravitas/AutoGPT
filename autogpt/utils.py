@@ -7,11 +7,18 @@ from git.repo import Repo
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit import HTML
 from typing import Union
+
+ANSI_MAGENTA = "ansimagenta"
+ANSI_BRIGHTBLUE = "ansibrightblue"
 
 session = PromptSession(history=InMemoryHistory())
 
-def clean_input(prompt: Union[str, FormattedText] = ""):
+
+def clean_input(prompt: Union[str, FormattedText] = "", color: str = None):
+    if color:
+        prompt = HTML(f"<{color}>{prompt}</{color}>")
     try:
         user_input = session.prompt(prompt)
         return user_input.strip()

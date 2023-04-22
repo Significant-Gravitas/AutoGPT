@@ -8,8 +8,8 @@ from autogpt.json_utils.utilities import validate_json
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
-from autogpt.utils import clean_input
-from prompt_toolkit import HTML
+from autogpt.utils import clean_input, ANSI_MAGENTA
+
 
 class Agent:
     """Agent class for interacting with Auto-GPT.
@@ -127,7 +127,7 @@ class Agent:
                     flush=True,
                 )
                 while True:
-                    console_input = clean_input(HTML('<ansimagenta>Input:</ansimagenta>'))
+                    console_input = clean_input("Input:", ANSI_MAGENTA)
 
                     if console_input.lower().strip() == "y":
                         user_input = "GENERATE NEXT COMMAND JSON"
