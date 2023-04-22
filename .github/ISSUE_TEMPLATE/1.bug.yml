@@ -69,8 +69,8 @@ body:
         - Latest Release
         - Stable (branch)
         - Master (branch)
-      validations:
-        required: true
+    validations:
+      required: true
   - type: dropdown
     attributes:
       label: GPT-3 or GPT-4?
