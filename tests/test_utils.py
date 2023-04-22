@@ -5,7 +5,7 @@ import pytest
 import requests
 from colorama import Fore
 from git import Repo
-from tests.utils import skip_on_ci
+
 from autogpt.utils import (
     clean_input,
     get_bulletin_from_web,
@@ -14,6 +14,7 @@ from autogpt.utils import (
     readable_file_size,
     validate_yaml_file,
 )
+from tests.utils import skip_on_ci
 
 
 def test_validate_yaml_file_valid():
@@ -68,7 +69,6 @@ def test_get_bulletin_from_web_failure(mock_get):
     bulletin = get_bulletin_from_web()
     print(bulletin)
     assert bulletin == ""
-
 
 
 @skip_on_ci
