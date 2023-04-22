@@ -15,29 +15,33 @@ class Agent:
     """Agent class for interacting with Auto-GPT.
 
     Attributes:
-        ai_name: The name of the agent.
-        memory: The memory object to use.
-        full_message_history: The full message history.
-        next_action_count: The number of actions to execute.
-        system_prompt: The system prompt is the initial prompt that defines everything
-          the AI needs to know to achieve its task successfully.
-        Currently, the dynamic and customizable information in the system prompt are
-          ai_name, description and goals.
+        ai_name (str): The name of the agent.
+        memory (object): The memory object to use.
+        full_message_history (list): The full message history.
+        next_action_count (int): The number of actions to execute.
+        command_registry (object): The command registry object.
+        config (Config): The configuration object.
+        system_prompt (str): The system prompt is the initial prompt that defines everything
+                             the AI needs to know to achieve its task successfully.
+                             Currently, the dynamic and customizable information in the
+                             system prompt are ai_name, description, and goals.
+        triggering_prompt (str): The last sentence the AI will see before answering.
+                                 For Auto-GPT, this prompt is:
+                                 Determine which next command to use, and respond using the
+                                 format specified above:
+                                 The triggering prompt is not part of the system prompt
+                                 because between the system prompt and the triggering
+                                 prompt we have contextual information that can distract the
+                                 AI and make it forget that its goal is to find the next
+                                 task to achieve.
+                                 SYSTEM PROMPT
+                                 CONTEXTUAL INFORMATION (memory, previous conversations,
+                                                         anything relevant)
+                                 TRIGGERING PROMPT
+        model_name (str): The name of the AI model to be used for generating responses.
 
-        triggering_prompt: The last sentence the AI will see before answering.
-            For Auto-GPT, this prompt is:
-            Determine which next command to use, and respond using the format specified
-              above:
-            The triggering prompt is not part of the system prompt because between the
-              system prompt and the triggering
-            prompt we have contextual information that can distract the AI and make it
-              forget that its goal is to find the next task to achieve.
-            SYSTEM PROMPT
-            CONTEXTUAL INFORMATION (memory, previous conversations, anything relevant)
-            TRIGGERING PROMPT
-
-        The triggering prompt reminds the AI about its short term meta task
-        (defining the next task)
+        The triggering prompt reminds the AI about its short-term meta task
+        (defining the next task).
     """
 
     def __init__(
@@ -50,6 +54,7 @@ class Agent:
         config,
         system_prompt,
         triggering_prompt,
+        model_name,
     ):
         self.ai_name = ai_name
         self.memory = memory
@@ -59,10 +64,19 @@ class Agent:
         self.config = config
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
+        self.model_name = model_name
 
     def start_interaction_loop(self):
+        """
+        Starts the main interaction loop between the user and the AI agent.
+        
+        This method is responsible for managing the entire interaction process, 
+        including sending user inputs to the AI, processing AI responses, 
+        executing commands, and handling user feedback. The loop continues 
+        until the user decides to exit the program or the continuous limit 
+        is reached (if specified in the configuration).
+        """
         # Interaction Loop
-        cfg = Config()
         loop_count = 0
         command_name = None
         arguments = None
@@ -72,12 +86,12 @@ class Agent:
             # Discontinue if continuous limit is reached
             loop_count += 1
             if (
-                cfg.continuous_mode
-                and cfg.continuous_limit > 0
-                and loop_count > cfg.continuous_limit
+                self.config.continuous_mode
+                and self.config.continuous_limit > 0
+                and loop_count > self.config.continuous_limit
             ):
                 logger.typewriter_log(
-                    "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
+                    "Continuous Limit Reached: ", Fore.YELLOW, f"{self.config.continuous_limit}"
                 )
                 break
 
@@ -89,11 +103,12 @@ class Agent:
                     self.triggering_prompt,
                     self.full_message_history,
                     self.memory,
-                    cfg.fast_token_limit,
-                )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                    self.config.fast_token_limit,
+                    self.model_name,
+                )
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
-            for plugin in cfg.plugins:
+            for plugin in config.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
                 assistant_reply_json = plugin.post_planning(self, assistant_reply_json)
@@ -105,12 +120,12 @@ class Agent:
                 try:
                     print_assistant_thoughts(self.ai_name, assistant_reply_json)
                     command_name, arguments = get_command(assistant_reply_json)
-                    if cfg.speak_mode:
+                    if config.speak_mode:
                         say_text(f"I want to execute {command_name}")
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
-            if not cfg.continuous_mode and self.next_action_count == 0:
+            if not self.config.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -183,7 +198,7 @@ class Agent:
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
             else:
-                for plugin in cfg.plugins:
+                for plugin in self.config.plugins:
                     if not plugin.can_handle_pre_command():
                         continue
                     command_name, arguments = plugin.pre_command(
@@ -197,7 +212,7 @@ class Agent:
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
 
-                for plugin in cfg.plugins:
+                for plugin in self.config.plugins:
                     if not plugin.can_handle_post_command():
                         continue
                     result = plugin.post_command(command_name, result)
