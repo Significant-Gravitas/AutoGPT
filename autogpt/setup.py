@@ -1,10 +1,14 @@
 """Set up the AI and its goals"""
 from colorama import Fore, Style
+import re
 
 from autogpt import utils
 from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
+from autogpt.llm_utils import create_chat_completion
+from autogpt.config import Config
 
+CFG = Config()
 
 def prompt_user() -> AIConfig:
     """Prompt the user for input
@@ -13,6 +17,8 @@ def prompt_user() -> AIConfig:
         AIConfig: The AIConfig object containing the user's input
     """
     ai_name = ""
+    ai_config = None
+
     # Construct the prompt
     logger.typewriter_log(
         "Welcome to Auto-GPT! ",
@@ -21,6 +27,34 @@ def prompt_user() -> AIConfig:
         speak_text=True,
     )
 
+    # Get user desire
+    logger.typewriter_log(
+        "Create an AI-Assistant:",
+        Fore.GREEN,
+        "What would like me to do?",
+        speak_text=True,
+    )
+
+    user_desire = utils.clean_input(f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: ")
+
+    if user_desire == "":
+        user_desire = "Write a wikipedia style article about Auto-GPT" # Default prompt
+
+    # If user desire contains "--manual"
+    if "--manual" in user_desire:
+        logger.typewriter_log(
+            "Manual Mode Selected",
+            Fore.GREEN,
+            speak_text=True,
+        )
+        return generate_aiconfig_manual()
+    
+    else:
+        return generate_aiconfig_automatic(user_desire)
+
+def generate_aiconfig_manual():
+
+    # Manual Setup Intro
     logger.typewriter_log(
         "Create an AI-Assistant:",
         Fore.GREEN,
@@ -73,5 +107,49 @@ def prompt_user() -> AIConfig:
             "Grow Twitter Account",
             "Develop and manage multiple businesses autonomously",
         ]
+
+    return AIConfig(ai_name, ai_role, ai_goals)
+
+def generate_aiconfig_automatic(user_prompt) -> AIConfig:
+    """Generates an AIConfig object from the given string."""
+
+    system_prompt = """
+Your task is to devise up to 5 highly effective goals and an appropriate role-based name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned with the successful completion of its assigned task.
+
+The user will provide the task, you will provide only the output in the format specified below with no explanation or conversation.
+
+Example input:
+Help me with marketing my business
+
+Example output:
+Name: CMOGPT
+Description: a professional digital marketer AI that assists Solopreneurs in growing their businesses by providing world-class expertise in solving marketing problems for SaaS, content products, agencies, and more.
+Goals:
+- Engage in effective problem-solving, prioritization, planning, and supporting execution to address your marketing needs as your virtual Chief Marketing Officer.
+
+- Provide specific, actionable, and concise advice to help you make informed decisions without the use of platitudes or overly wordy explanations.
+
+- Identify and prioritize quick wins and cost-effective campaigns that maximize results with minimal time and budget investment.
+
+- Proactively take the lead in guiding you and offering suggestions when faced with unclear information or uncertainty to ensure your marketing strategy remains on track.
+"""
+    
+    # Call LLM with the string as user input
+    messages = [
+        {
+            "role": "system",
+            "content": system_prompt,
+        },
+        {"role": "user", "content": user_prompt},
+    ]
+    output = create_chat_completion(messages, CFG.smart_llm_model)
+
+    if CFG.debug_mode:
+        logger.debug(f"AI Config Generator Raw Output: {output}")
+
+    # Parse the output
+    ai_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output, re.IGNORECASE).group(1)
+    ai_role = re.search(r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)", output, re.IGNORECASE | re.DOTALL).group(1).strip()
+    ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
 
     return AIConfig(ai_name, ai_role, ai_goals)
