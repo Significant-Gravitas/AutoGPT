@@ -42,6 +42,14 @@ jobs:
       if: success() || failure()
 
   test:
+    permissions:
+      # Gives the action the necessary permissions for publishing new
+      # comments in pull requests.
+      pull-requests: write
+      # Gives the action the necessary permissions for pushing data to the
+      # python-coverage-comment-action branch, and for editing existing
+      # comments (to avoid publishing multiple comments in the same PR)
+      contents: write
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -63,10 +71,25 @@ jobs:
 
     - name: Run unittest tests with coverage
       run: |
-        pytest --cov=autogpt --without-integration --without-slow-integration
+        pytest --cov=autogpt --without-integration --without-slow-integration --cov-report term-missing --cov-branch --cov-report xml --cov-report term
 
     - name: Generate coverage report
       run: |
         coverage report
         coverage xml
       if: success() || failure()
+
+    - name: Coverage comment
+      id: coverage_comment
+      uses: py-cov-action/python-coverage-comment-action@v3
+      with:
+          GITHUB_TOKEN: ${{ github.token }}
+
+    - name: Store Pull Request comment to be posted
+      uses: actions/upload-artifact@v3
+      if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+      with:
+        # If you use a different name, update COMMENT_ARTIFACT_NAME accordingly
+        name: python-coverage-comment-action
+        # If you use a different name, update COMMENT_FILENAME accordingly
+        path: python-coverage-comment-action.txt
