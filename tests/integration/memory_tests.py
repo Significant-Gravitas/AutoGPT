@@ -28,6 +28,7 @@ class TestLocalCache(unittest.TestCase):
         for text in self.example_texts:
             self.cache.add(text)
 
+        # Add some random strings to test noise
         for _ in range(5):
             self.cache.add(self.generate_random_string(10))
 
