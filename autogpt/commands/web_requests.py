@@ -34,7 +34,9 @@ def make_http_request(url: str, method: str = "GET", auth_token: str = None, dat
     headers = {}
     if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
-    headers["Content-Type"] = "application/json"
+
+    if (method == "POST" or method == "PUT"):
+        headers["Content-Type"] = "application/json"
 
     # Send request
     try:
