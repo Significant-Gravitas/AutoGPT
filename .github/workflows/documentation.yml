@@ -3,6 +3,9 @@ name: Docs
 on:
   push:
     branches: [ stable ]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
