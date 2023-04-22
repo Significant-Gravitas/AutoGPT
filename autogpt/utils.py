@@ -1,4 +1,3 @@
-import asyncio
 import os
 import traceback
 
@@ -15,10 +14,10 @@ except:
     pass
 
 import autogpt.speech.say as speak
-from autogpt.config.config import Config
-from autogpt.telegram_chat import TelegramUtils
+from autogpt.config import Config
 
 cfg = Config()
+
 
 def clean_chat_message_to_user(report: str):
     try:
@@ -29,40 +28,39 @@ def clean_chat_message_to_user(report: str):
     except:
         pass
 
+
 def clean_input(prompt: str = "", talk=False):
     try:
         if cfg.chat_messages_enabled:
             for plugin in enumerate(cfg.plugins):
                 if not plugin.can_handle_user_input():
                     continue
-                plugin_response = plugin.user_input(
-                    prompt, talk
-                )
+                plugin_response = plugin.user_input(prompt, talk)
                 if plugin_response in [
-                        "yes",
-                        "yeah",
-                        "yep",
-                        "yup",
-                        "y",
-                        "ok",
-                        "okay",
-                        "sure",
-                        "affirmative",
-                        "aye",
-                        "aye aye",
-                        "alright",
-                        "alrighty",
-                    ]:
+                    "yes",
+                    "yeah",
+                    "yep",
+                    "yup",
+                    "y",
+                    "ok",
+                    "okay",
+                    "sure",
+                    "affirmative",
+                    "aye",
+                    "aye aye",
+                    "alright",
+                    "alrighty",
+                ]:
                     return "y"
                 elif plugin_response in [
-                        "no",
-                        "nope",
-                        "n",
-                        "nah",
-                        "negative",
-                        "nay",
-                        "nay nay",
-                    ]:
+                    "no",
+                    "nope",
+                    "n",
+                    "nah",
+                    "negative",
+                    "nay",
+                    "nay nay",
+                ]:
                     return "n"
                 if not plugin_response or plugin_response == "":
                     continue

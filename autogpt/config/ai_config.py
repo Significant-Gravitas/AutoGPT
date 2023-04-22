@@ -11,6 +11,7 @@ from typing import Optional, Type
 
 import distro
 import yaml
+
 try:
     from autogpt.prompts.generator import PromptGenerator
 except ModuleNotFoundError:

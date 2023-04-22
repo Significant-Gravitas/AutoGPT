@@ -8,8 +8,7 @@ from autogpt.json_utils.utilities import validate_json
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
-from autogpt.utils import clean_input
-from autogpt.utils import clean_chat_message_to_user
+from autogpt.utils import clean_chat_message_to_user, clean_input
 
 
 class Agent:
@@ -187,11 +186,11 @@ class Agent:
             else:
                 # Print command
                 if cfg.chat_messages_enabled:
-                    clean_chat_message_to_user                    (
+                    clean_chat_message_to_user(
                         "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
                         f"ARGUMENTS = {arguments}"
                     )
-                
+
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
