@@ -124,7 +124,10 @@ def execute_command(
             shutdown()
         else:
             for command in prompt.commands:
-                if command_name == command["label"].lower() or command_name == command["name"].lower():
+                if (
+                    command_name == command["label"].lower()
+                    or command_name == command["name"].lower()
+                ):
                     return command["function"](**arguments)
             return (
                 f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
