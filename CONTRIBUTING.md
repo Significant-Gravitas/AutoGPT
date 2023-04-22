@@ -1,4 +1,4 @@
-# Contributing to ProjectName
+# Contributing to Auto-GPT
 
 First of all, thank you for considering contributing to our project! We appreciate your time and effort, and we value any contribution, whether it's reporting a bug, suggesting a new feature, or submitting a pull request.
 
