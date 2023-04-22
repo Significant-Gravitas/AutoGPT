@@ -20,7 +20,7 @@ def get_news_headlines_for_category(category: str):
         category (str) : The category specified. Must be one of technology, business, entertainment, health, sports or science.
 
     Returns:
-        list(str): A list of top 3 news headlines for the specified category.
+        list(str): A list of top news headlines for the specified category.
 
 
     """
@@ -38,7 +38,7 @@ def aggregate_top_news_headlines():
     Aggregates top news headlines from the categories.
 
     Returns:
-        list(str): A list of top 3 news headlines for the per category.
+        list(str): A list of top news headlines for the per category.
 
 
     """
