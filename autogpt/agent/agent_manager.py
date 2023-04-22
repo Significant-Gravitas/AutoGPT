@@ -144,7 +144,6 @@ class AgentManager(metaclass=Singleton):
         except KeyError:
             return False
 
-    
     def reset(self):
         """Reset the AgentManager state."""
         self.next_key = 0
