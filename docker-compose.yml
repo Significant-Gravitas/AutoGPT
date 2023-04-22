@@ -1,5 +1,5 @@
-# To boot the app run the following:
-# docker-compose run auto-gpt
+# # To boot the app run the following:
+# # docker-compose run auto-gpt
 version: "3.9"
 
 services:
@@ -10,9 +10,9 @@ services:
     env_file:
       - .env
     volumes:
-      - "./autogpt:/home/appuser"
-      - ".env:/home/appuser/.env"
+      - "./auto_gpt_workspace:/home/appuser/auto_gpt_workspace"
     profiles: ["exclude-from-up"]
 
   redis:
-    image: "redis/redis-stack-server:latest"
+    image: redis/redis-stack-server:latest
+    container_name: redis-stack-server
