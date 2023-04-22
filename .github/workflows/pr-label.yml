@@ -30,6 +30,7 @@ jobs:
   size:
     if: ${{ github.event_name == 'pull_request_target' }}
     permissions:
+      issues: write
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
