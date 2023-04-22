@@ -8,6 +8,12 @@ import yaml
 from colorama import Fore
 from git.repo import Repo
 
+# Use readline if available (for clean_input)
+try:
+    import readline
+except:
+    pass
+
 import autogpt.speech.say as speak
 from autogpt.config.config import Config
 from autogpt.telegram_chat import TelegramUtils

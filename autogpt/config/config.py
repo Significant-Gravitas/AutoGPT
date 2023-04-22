@@ -13,7 +13,7 @@ try:
 except ModuleNotFoundError:
     from config.singleton import Singleton
 
-load_dotenv(verbose=True)
+load_dotenv(verbose=True, override=True)
 
 
 class Config(metaclass=Singleton):
