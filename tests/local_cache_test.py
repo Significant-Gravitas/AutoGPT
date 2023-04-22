@@ -26,8 +26,6 @@ def mock_config() -> dict:
 
 @pytest.mark.integration_test
 class TestLocalCache(unittest.TestCase):
-    """Unit tests for the LocalCache class in memory/local.py."""
-
     def setUp(self) -> None:
         """Set up the test environment"""
         self.cfg = mock_config()

@@ -68,7 +68,7 @@ class TestCommand:
             method=self.example_command_method,
             signature=custom_signature,
         )
-        # Check that the custom signature is correct.
+
         assert cmd.signature == custom_signature
 
 
