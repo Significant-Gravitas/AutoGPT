@@ -14,7 +14,7 @@ def prompt_user() -> AIConfig:
     """Prompt the user for input
 
     Returns:
-        AIConfig: The AIConfig object containing the user's input
+        AIConfig: The AIConfig object tailored to the user's input
     """
     ai_name = ""
     ai_config = None
@@ -64,7 +64,18 @@ def prompt_user() -> AIConfig:
             return generate_aiconfig_manual()
 
 
-def generate_aiconfig_manual():
+def generate_aiconfig_manual() -> AIConfig:
+
+    """
+    Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
+
+    This function guides the user through a series of prompts to collect the necessary information to create
+    an AIConfig object. The user will be asked to provide a name and role for the AI, as well as up to five
+    goals. If the user does not provide a value for any of the fields, default values will be used.
+
+    Returns:
+        AIConfig: An AIConfig object containing the user-defined or default AI name, role, and goals.
+    """
 
     # Manual Setup Intro
     logger.typewriter_log(
@@ -123,7 +134,11 @@ def generate_aiconfig_manual():
     return AIConfig(ai_name, ai_role, ai_goals)
 
 def generate_aiconfig_automatic(user_prompt) -> AIConfig:
-    """Generates an AIConfig object from the given string."""
+    """Generates an AIConfig object from the given string.
+
+        Returns:
+        AIConfig: The AIConfig object tailored to the user's input
+    """
 
     system_prompt = """
 Your task is to devise up to 5 highly effective goals and an appropriate role-based name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned with the successful completion of its assigned task.
