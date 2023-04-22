@@ -48,8 +48,7 @@ def log_operation(operation: str, filename: str) -> None:
     if not os.path.exists(LOG_FILE_PATH):
         with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
             f.write("File Operation Logger ")
-
-    append_to_file(str(LOG_FILE_PATH), log_entry, shouldLog=False)
+    append_to_file(str(LOG_FILE_PATH), log_entry, should_log=False)
 
 
 def split_file(
@@ -166,12 +165,13 @@ def write_to_file(filename: str, text: str) -> str:
 @command(
     "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
 )
-def append_to_file(filename: str, text: str, shouldLog: bool = True) -> str:
+def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
     """Append text to a file
 
     Args:
         filename (str): The name of the file to append to
         text (str): The text to append to the file
+        should_log (bool): Should log output
 
     Returns:
         str: A message indicating success or failure
@@ -181,7 +181,7 @@ def append_to_file(filename: str, text: str, shouldLog: bool = True) -> str:
         with open(filepath, "a") as f:
             f.write(text)
 
-        if shouldLog:
+        if should_log:
             log_operation("append", filename)
 
         return "Text appended successfully."
