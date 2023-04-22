@@ -25,5 +25,7 @@ def skip_in_ci():
                 pytest.skip(f"This test doesn't work on GitHub Actions.")
             else:
                 return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
