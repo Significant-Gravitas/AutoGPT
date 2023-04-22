@@ -49,7 +49,7 @@ def log_operation(operation: str, filename: str) -> None:
         with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
             f.write("File Operation Logger ")
 
-    append_to_file(LOG_FILE, log_entry, shouldLog=False)
+    append_to_file(str(LOG_FILE_PATH), log_entry, shouldLog=False)
 
 
 def split_file(
@@ -94,8 +94,8 @@ def read_file(filename: str) -> str:
     Returns:
         str: The contents of the file
     """
+    filepath = path_in_workspace(filename)
     try:
-        filepath = path_in_workspace(filename)
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
         return content
