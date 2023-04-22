@@ -36,7 +36,7 @@ def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
                 if debug:
                     print(f"Found module '{name}' in the zipfile at: {name}")
                 result.append(name)
-    if debug:
+    if debug and len(result) == 0:
         print(f"Module '__init__.py' not found in the zipfile @ {zip_path}.")
     return result
 
