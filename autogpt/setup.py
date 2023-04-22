@@ -50,7 +50,19 @@ def prompt_user() -> AIConfig:
         return generate_aiconfig_manual()
     
     else:
-        return generate_aiconfig_automatic(user_desire)
+        try:
+            return generate_aiconfig_automatic(user_desire)
+        except Exception as e:
+            logger.typewriter_log(
+                "Unable to automatically generate AI Config based on user desire.",
+                Fore.RED,
+                "Falling back to manual mode.",
+                speak_text=True
+            )
+
+
+            return generate_aiconfig_manual()
+
 
 def generate_aiconfig_manual():
 
