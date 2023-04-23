@@ -6,12 +6,9 @@ import vcr
 
 from autogpt.agent import Agent
 from autogpt.commands.command import CommandRegistry
-from autogpt.commands.file_operations import LOG_FILE, delete_file, read_file
-from autogpt.config import AIConfig, Config, check_openai_api_key
+from autogpt.commands.file_operations import delete_file, read_file
+from autogpt.config import AIConfig, Config
 from autogpt.memory import get_memory
-
-# from autogpt.prompt import Prompt
-from autogpt.workspace import WORKSPACE_PATH
 from tests.integration.goal_oriented.vcr_helper import before_record_request
 from tests.utils import requires_api_key
 
@@ -28,19 +25,12 @@ CFG = Config()
 
 
 @requires_api_key("OPENAI_API_KEY")
-def test_write_file() -> None:
-    # if file exist
-    file_name = "hello_world.txt"
+def test_write_file(workspace) -> None:
+    CFG.workspace_path = workspace.root
+    CFG.file_logger_path = os.path.join(workspace.root, "file_logger.txt")
 
-    file_path_to_write_into = f"{WORKSPACE_PATH}/{file_name}"
-    if os.path.exists(file_path_to_write_into):
-        os.remove(file_path_to_write_into)
-    file_logger_path = f"{WORKSPACE_PATH}/{LOG_FILE}"
-    if os.path.exists(file_logger_path):
-        os.remove(file_logger_path)
-
-    delete_file(file_name)
-    agent = create_writer_agent()
+    file_name = str(workspace.get_path("hello_world.txt"))
+    agent = create_writer_agent(workspace)
     try:
         with my_vcr.use_cassette(
             "write_file.vcr.yml",
@@ -58,14 +48,11 @@ def test_write_file() -> None:
                     assert False, "The process took longer than 45 seconds to complete."
     # catch system exit exceptions
     except SystemExit:  # the agent returns an exception when it shuts down
-        content = ""
         content = read_file(file_name)
-        os.remove(file_path_to_write_into)
-
         assert content == "Hello World", f"Expected 'Hello World', got {content}"
 
 
-def create_writer_agent():
+def create_writer_agent(workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -96,6 +83,7 @@ def create_writer_agent():
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=triggering_prompt,
+        workspace_directory=workspace.root,
     )
     CFG.set_continuous_mode(True)
     CFG.set_memory_backend("no_memory")
