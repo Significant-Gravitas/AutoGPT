@@ -14,6 +14,7 @@ from autogpt.config import Config
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
+from autogpt.commands.file_operations_utils import read_textual_file
 
 CFG = Config()
 LOG_FILE = "file_logger.txt"
@@ -81,6 +82,24 @@ def split_file(
 
         yield chunk
         start += max_length - overlap
+
+
+@command("read_text_file", "Read file", '"filename": "<filename>"')
+def read_text_file(filename: str) -> str:
+    """Read a file and return the contents
+
+    Args:
+        filename (str): The name of the file to read
+
+    Returns:
+        str: The contents of the file
+    """
+    filepath = path_in_workspace(filename)
+    try:
+        content = read_textual_file(filepath)
+        return content
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 @command("read_file", "Read file", '"filename": "<filename>"')
