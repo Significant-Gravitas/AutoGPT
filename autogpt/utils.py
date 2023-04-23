@@ -17,13 +17,10 @@ cfg = Config()
 
 
 def clean_chat_message_to_user(report: str):
-    try:
-        for plugin in enumerate(cfg.plugins):
-            if not plugin.can_handle_report():
-                continue
-            plugin.send_message(report)
-    except:
-        pass
+    for plugin in enumerate(cfg.plugins):
+        if not plugin.can_handle_report():
+            continue
+        plugin.send_message(report)
 
 
 def clean_input(prompt: str = "", talk=False):
