@@ -85,9 +85,12 @@ class Config(metaclass=Singleton):
             os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
         )
 
-        # milvus configuration, e.g., localhost:19530.
+        # milvus or zilliz cloud configuration.
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
+        self.milvus_username = os.getenv("MILVUS_USERNAME")
+        self.milvus_password = os.getenv("MILVUS_PASSWORD")
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
+        self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
