@@ -1,0 +1,13 @@
+- ai_goals:
+    - There are files located in the folder ./python_doc/ , I want you to go through them and produce a detailed summary aimed at engineers and save these summaries in files located in the folder ./python_summary
+    - Analyze the code in the ./python_doc/ folder and provide suggestions for improvements and optimizations
+    - Create a list of frequently asked questions (FAQs) related to the content in the ./python_doc/ folder
+  ai_name: PythonGPT
+  ai_role: Produce high-quality and well-detailed documentation and tutorial for Python Developers
+
+- ai_goals:
+    - There are files located in the folder ./python_doc/ , I want you to go through them and produce a detailed summary aimed at engineers and save these summaries in files located in the folder ./python_summary
+    - Generate a tutorial for beginners based on the content found in the ./python_doc/ folder
+    - Identify the most important concepts and create a cheat sheet for developers using the information in the ./python_doc/ folder
+  ai_name: PythonGPT
+  ai_role: Produce high-quality and well-detailed documentation and tutorial for Python Developers

@@ -73,12 +73,20 @@ class AIConfig(AbstractSingleton):
 
         cls.__configs = []
         for i, row in enumerate(config_params):
-            ai_name = row.get("ai_name", "")
-            ai_role = row.get("ai_role", "")
-            ai_goals = row.get("ai_goals", [])
-            prompt_generator = row.get("prompt_generator", None)
-            command_registry = row.get("command_registry", None)
-            cls.__configs.append({"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals, "prompt_generator": prompt_generator,"command_registry": command_registry })
+            config = {'ai_name': row["ai_name"],
+                    "ai_role": row["ai_role"],
+                    "ai_goals": row["ai_goals"],
+                    "prompt_generator": row["prompt_generator"],
+                    "command_registry": row["command_registry"]}
+            
+            cls.__configs.append(config)
+
+            # ai_name = row.get("ai_name", "")
+            # ai_role = row.get("ai_role", "")
+            # ai_goals = row.get("ai_goals", [])
+            # prompt_generator = row.get("prompt_generator", None)
+            # command_registry = row.get("command_registry", None)
+            # cls.__configs.append({"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals, "prompt_generator": prompt_generator,"command_registry": command_registry })
 
         return cls.__configs
 
@@ -146,9 +154,9 @@ class AIConfig(AbstractSingleton):
 
         # Construct full prompt
         full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
-        for i, goal in enumerate(self.ai_goals):
+        for i, goal in enumerate(self.__configs[self.__current_config]["ai_goals"]):
             full_prompt += f"{i+1}. {goal}\n"
-        self.prompt_generator = prompt_generator
+        self.__configs[self.__current_config]["prompt_generator"] = prompt_generator
         full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
         return full_prompt
         
@@ -236,8 +244,8 @@ class AIConfig(AbstractSingleton):
             self.__configs.append({"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals, "prompt_generator": prompt_generator,"command_registry": command_registry })
         else :
             self.__configs[config_number]["ai_name"] = ai_name,
-            self.__configs[config_number]["ai_role"] = ai_goals
-            self.__configs[config_number]["ai_goals"] = ai_role
+            self.__configs[config_number]["ai_role"] = ai_role
+            self.__configs[config_number]["ai_goals"] = ai_goals
 
             self.__configs[config_number]["prompt_generator"]= prompt_generator
             self.__configs[config_number]["command_registry"]= command_registry

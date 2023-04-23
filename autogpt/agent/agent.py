@@ -2,7 +2,7 @@ from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
 from autogpt.chat import chat_with_ai, create_chat_message
-from autogpt.config import Config
+from autogpt.config import Config , AIConfig
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import validate_json
 from autogpt.logs import logger, print_assistant_thoughts
@@ -56,7 +56,7 @@ class Agent:
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
         self.command_registry = command_registry
-        self.config = config
+        self.config = config.get_current_config()
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
 
@@ -67,8 +67,17 @@ class Agent:
         command_name = None
         arguments = None
         user_input = ""
-
+        ai_configs = AIConfig()
         while True:
+            # Save any change to the config so we continue where we quited
+            ai_configs.set_config( config_number = ai_configs.get_config_number() ,
+            ai_name = self.config["ai_name"], 
+            ai_role = self.config["ai_role"], 
+            ai_goals = self.config["ai_goals"], 
+            prompt_generator = self.config["prompt_generator"], 
+            command_registry = self.config["command_registry"] )
+            #ai_configs.save()
+
             # Discontinue if continuous limit is reached
             loop_count += 1
             if (
@@ -193,7 +202,7 @@ class Agent:
                     self.command_registry,
                     command_name,
                     arguments,
-                    self.config.prompt_generator,
+                    self.config['prompt_generator'],
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
 
@@ -226,3 +235,5 @@ class Agent:
                     logger.typewriter_log(
                         "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                     )
+
+
