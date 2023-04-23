@@ -142,9 +142,10 @@ def main(
         command_registry.import_commands("autogpt.commands.web_selenium")
         command_registry.import_commands("autogpt.commands.write_tests")
         command_registry.import_commands("autogpt.app")
-        ai_name = ""
+        
         ai_config = construct_main_ai_config()
         ai_config.command_registry = command_registry
+        ai_name = ai_config.get_current_config['ai_name']
         # print(prompt)
         # Initialize variables
         full_message_history = []

@@ -101,6 +101,8 @@ class AIConfig(AbstractSingleton):
             Returns:
                 None
             """
+            # TODO : Secure config savings
+            # Only save the config currently in use
 
             with open(config_file, "w", encoding="utf-8") as file:
                 yaml.dump(self.__configs, file, allow_unicode=True)

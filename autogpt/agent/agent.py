@@ -42,7 +42,7 @@ class Agent:
 
     def __init__(
         self,
-        ai_name,
+        ai_name, # TODO : Remove Agent.ai_name ?
         memory,
         full_message_history,
         next_action_count,
@@ -51,7 +51,7 @@ class Agent:
         system_prompt,
         triggering_prompt,
     ):
-        self.ai_name = ai_name
+        self.ai_name = ai_name # TODO : Remove Agent.ai_name ?
         self.memory = memory
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
@@ -172,6 +172,11 @@ class Agent:
                         Fore.MAGENTA,
                         "",
                     )
+                    logger.typewriter_log(
+                        self.config['ai_name'] + " : ",
+                        Fore.BLUE,
+                        "",
+                    )
                 elif user_input == "EXIT":
                     print("Exiting...", flush=True)
                     break
@@ -219,7 +224,9 @@ class Agent:
                     f"\nHuman Feedback: {user_input} "
                 )
 
-                self.memory.add(memory_to_add)
+                self.memory.add( memory_to_add)
+                # TODO : adapt memory
+                # self.memory.add(self.config['ai_name'], memory_to_add)
 
                 # Check if there's a result from the command append it to the message
                 # history
