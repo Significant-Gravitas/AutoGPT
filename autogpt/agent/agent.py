@@ -9,6 +9,7 @@ from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
+from autogpt.workspace import Workspace
 
 
 class Agent:
@@ -50,7 +51,9 @@ class Agent:
         config,
         system_prompt,
         triggering_prompt,
+        workspace_directory,
     ):
+        cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
         self.full_message_history = full_message_history
@@ -59,6 +62,7 @@ class Agent:
         self.config = config
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
+        self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -107,6 +111,16 @@ class Agent:
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
+
+                    if "directory" in arguments and arguments["directory"] in {"", "/"}:
+                        arguments["directory"] = str(self.workspace.root)
+                    else:
+                        for pathlike in ["filename", "directory", "clone_path"]:
+                            if pathlike in arguments:
+                                arguments[pathlike] = str(
+                                    self.workspace.get_path(arguments[pathlike])
+                                )
+
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
