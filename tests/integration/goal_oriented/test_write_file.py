@@ -2,7 +2,6 @@ import concurrent
 import os
 import unittest
 
-import pytest
 import vcr
 
 from autogpt.agent import Agent
@@ -28,7 +27,6 @@ my_vcr = vcr.VCR(
 CFG = Config()
 
 
-@pytest.mark.integration_test
 @requires_api_key("OPENAI_API_KEY")
 def test_write_file() -> None:
     # if file exist
