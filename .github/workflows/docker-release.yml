@@ -1,0 +1,167 @@
+name: Docker Release
+
+on:
+  release:
+    types: [ published, edited ]
+
+  workflow_dispatch:
+    inputs:
+      no_cache:
+        type: boolean
+        description: 'Build from scratch, without using cached layers'
+
+env:
+  IMAGE_NAME: auto-gpt
+  DEPLOY_IMAGE_NAME: ${{ secrets.DOCKER_USER }}/auto-gpt
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Log in to Docker hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USER }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+      # slashes are not allowed in image tags, but can appear in git branch or tag names
+    - id: sanitize_tag
+      name: Sanitize image tag
+      run: echo tag=${raw_tag//\//-} >> $GITHUB_OUTPUT
+      env:
+        raw_tag: ${{ github.ref_name }}
+
+    - id: build
+      name: Build image
+      uses: docker/build-push-action@v3
+      with:
+        load: true    # save to docker images
+        # push: true  # TODO: uncomment when this issue is fixed: https://github.com/moby/buildkit/issues/1555
+        tags: >
+          ${{ env.IMAGE_NAME }},
+          ${{ env.DEPLOY_IMAGE_NAME }}:latest,
+          ${{ env.DEPLOY_IMAGE_NAME }}:${{ steps.sanitize_tag.outputs.tag }}
+
+        # cache layers in GitHub Actions cache to speed up builds
+        cache-from: ${{ !inputs.no_cache && 'type=gha' || '' }}
+        cache-to: type=gha,mode=max
+
+    - name: Push image to Docker Hub
+      run: docker push --all-tags ${{ env.DEPLOY_IMAGE_NAME }}
+
+    - name: Generate build report
+      env:
+        prod_branch: stable
+        dev_branch: master
+        base_branch: ${{ github.ref_name != 'master' && github.ref_name != 'stable' && 'master' || 'stable' }}
+        current_ref: ${{ github.ref_name }}
+        source_url: ${{ format('{0}/tree/{1}', github.event.repository.url, github.event.release && github.event.release.tag_name || github.sha) }}
+        compare_url_template: ${{ format('/{0}/compare/{{base}}...{{head}}', github.repository) }}
+
+        github_context_json: ${{ toJSON(github) }}
+        job_env_json: ${{ toJSON(env) }}
+        vars_json: ${{ toJSON(vars) }}
+
+      run: |
+        meta=$(docker image inspect $IMAGE_NAME | jq '.[0]')
+
+        ref_compare_url=$(sed "s/{base}/$base_branch/; s/{head}/$commit_hash/" <<< $compare_url_template)
+
+        cat << MarkdownHERE >> $GITHUB_STEP_SUMMARY
+        # Docker Release Build summary 🚀🔨
+
+        **Source:** ${{ github.ref_type }} \`$current_ref\` -> [${{ github.repository }}@\`${commit_hash:0:7}\`]($source_url)
+
+        **Image size:** $((`jq -r .Size <<< $meta` / 10**6))MB
+
+        ## Image details
+
+        **Tags:**
+        $(jq -r '.RepoTags | map("* `\(.)`") | join("\n")' <<< $meta)
+
+        <details>
+        <summary><h3>Layers</h3></summary>
+
+        |    Age    |  Size  | Created by instruction |
+        | --------- | ------ | ---------------------- |
+        $(docker history --no-trunc --format "{{.CreatedSince}}\t{{.Size}}\t\`{{.CreatedBy}}\`\t{{.Comment}}" $IMAGE_NAME \
+          | grep 'buildkit.dockerfile' `# filter for layers created in this build process`\
+          | cut -f-3                   `# yeet Comment column`\
+          | sed 's/ ago//'             `# fix Layer age`\
+          | sed 's/ # buildkit//'      `# remove buildkit comment from instructions`\
+          | column -t -s$'\t' -o' | '  `# align columns and add separator`\
+          | sed 's/^/| /; s/$/ |/'     `# add table row start and end pipes`)
+        </details>
+
+        <details>
+        <summary><h3>ENV</h3></summary>
+
+        | Variable | Value    |
+        | -------- | -------- |
+        $(jq -r \
+          '.Config.Env
+          | map(
+            split("=")
+            | "\(.[0]) | `\(.[1] | gsub("\\s+"; " "))`"
+          )
+          | map("| \(.) |")
+          | .[]' <<< $meta
+        )
+        </details>
+
+        <details>
+        <summary>Raw metadata</summary>
+
+        \`\`\`JSON
+        $meta
+        \`\`\`
+        </details>
+
+        ## Build details
+        **Build trigger:** ${{ github.event_name }} \`${{ github.event.ref }}\`
+
+        | Parameter      | Value        |
+        | -------------- | ------------ |
+        | \`no_cache\`   | \`${{ inputs.no_cache }}\` |
+
+        <details>
+        <summary><code>github</code> context</summary>
+
+        \`\`\`JSON
+        $github_context_json
+        \`\`\`
+        </details>
+
+        ### Source
+        **HEAD:** [${{ github.repository }}@\`${commit_hash:0:7}\`]($source_url) on ${{ github.ref_type }} [$current_ref]($ref_compare_url)
+
+        **Diff with previous HEAD:** $head_compare_url
+
+        #### New commits
+        $(jq -r 'map([
+          "**Commit [`\(.id[0:7])`](\(.url)) by \(if .author.username then "@"+.author.username else .author.name end):**",
+          .message,
+          (if .committer.name != .author.name then "\n> <sub>**Committer:** \(.committer.name) <\(.committer.email)></sub>" else "" end),
+          "<sub>**Timestamp:** \(.timestamp)</sub>"
+        ] | map("> \(.)\n") | join("")) | join("\n")' <<< $new_commits_json)
+
+        ### Job environment
+
+        #### \`vars\` context:
+        \`\`\`JSON
+        $vars_json
+        \`\`\`
+
+        #### \`env\` context:
+        \`\`\`JSON
+        $job_env_json
+        \`\`\`
+
+        MarkdownHERE
+      continue-on-error: true

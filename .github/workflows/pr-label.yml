@@ -1,4 +1,5 @@
 name: "Pull Request auto-label"
+
 on:
   # So that PRs touching the same files as the push are updated
   push:
@@ -6,7 +7,8 @@ on:
   # We recommend `pull_request_target` so that github secrets are available.
   # In `pull_request` we wouldn't be able to change labels of fork PRs
   pull_request_target:
-    types: [opened, synchronize]
+    types: [ opened, synchronize ]
+
 concurrency:
   group: ${{ format('pr-label-{0}', github.event.pull_request.number || github.sha) }}
   cancel-in-progress: true
@@ -34,7 +36,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: codelytv/pr-size-labeler@v1.7.0
+      - uses: codelytv/pr-size-labeler@v1
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           s_label: "size/s"
@@ -44,5 +46,3 @@ jobs:
           l_label: "size/l"
           l_max_size: "200"
           xl_label: "size/xl"
-          fail_if_xl: "false"
-          github_api_url: "api.github.com"
