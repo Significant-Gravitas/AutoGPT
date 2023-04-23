@@ -2,7 +2,6 @@ import concurrent
 import os
 import unittest
 
-import pytest
 import vcr
 
 from autogpt.agent import Agent
@@ -14,6 +13,7 @@ from autogpt.memory import get_memory
 # from autogpt.prompt import Prompt
 from autogpt.workspace import WORKSPACE_PATH
 from tests.integration.goal_oriented.vcr_helper import before_record_request
+from tests.utils import requires_api_key
 
 current_file_dir = os.path.dirname(os.path.abspath(__file__))
 # tests_directory = os.path.join(current_file_dir, 'tests')
@@ -27,7 +27,7 @@ my_vcr = vcr.VCR(
 CFG = Config()
 
 
-@pytest.mark.integration_test
+@requires_api_key("OPENAI_API_KEY")
 def test_write_file() -> None:
     # if file exist
     file_name = "hello_world.txt"
