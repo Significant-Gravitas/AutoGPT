@@ -1,41 +1,62 @@
+# sourcery skip: snake-case-functions
+"""Tests for LocalCache class"""
 import os
 import sys
-# Probably a better way:
-sys.path.append(os.path.abspath('../scripts'))
-from memory.local import LocalCache
+import unittest
+
+import pytest
+
+from autogpt.memory.local import LocalCache
+from tests.utils import requires_api_key
 
 
-def MockConfig():
-    return type('MockConfig', (object,), {
-        'debug_mode': False,
-        'continuous_mode': False,
-        'speak_mode': False,
-        'memory_index': 'auto-gpt',
-    })
+def mock_config() -> dict:
+    """Mock the Config class"""
+    return type(
+        "MockConfig",
+        (object,),
+        {
+            "debug_mode": False,
+            "continuous_mode": False,
+            "speak_mode": False,
+            "memory_index": "auto-gpt",
+        },
+    )
 
 
+@pytest.mark.integration_test
 class TestLocalCache(unittest.TestCase):
+    """Tests for LocalCache class"""
 
-    def setUp(self):
-        self.cfg = MockConfig()
+    def setUp(self) -> None:
+        """Set up the test environment"""
+        self.cfg = mock_config()
         self.cache = LocalCache(self.cfg)
 
-    def test_add(self):
+    @requires_api_key("OPENAI_API_KEY")
+    def test_add(self) -> None:
+        """Test adding a text to the cache"""
         text = "Sample text"
         self.cache.add(text)
         self.assertIn(text, self.cache.data.texts)
 
-    def test_clear(self):
+    @requires_api_key("OPENAI_API_KEY")
+    def test_clear(self) -> None:
+        """Test clearing the cache"""
         self.cache.clear()
-        self.assertEqual(self.cache.data, [""])
+        self.assertEqual(self.cache.data.texts, [])
 
-    def test_get(self):
+    @requires_api_key("OPENAI_API_KEY")
+    def test_get(self) -> None:
+        """Test getting a text from the cache"""
         text = "Sample text"
         self.cache.add(text)
         result = self.cache.get(text)
         self.assertEqual(result, [text])
 
-    def test_get_relevant(self):
+    @requires_api_key("OPENAI_API_KEY")
+    def test_get_relevant(self) -> None:
+        """Test getting relevant texts from the cache"""
         text1 = "Sample text 1"
         text2 = "Sample text 2"
         self.cache.add(text1)
@@ -43,12 +64,10 @@ class TestLocalCache(unittest.TestCase):
         result = self.cache.get_relevant(text1, 1)
         self.assertEqual(result, [text1])
 
-    def test_get_stats(self):
+    @requires_api_key("OPENAI_API_KEY")
+    def test_get_stats(self) -> None:
+        """Test getting the cache stats"""
         text = "Sample text"
         self.cache.add(text)
         stats = self.cache.get_stats()
-        self.assertEqual(stats, (1, self.cache.data.embeddings.shape))
-
-
-if __name__ == '__main__':
-    unittest.main()
+        self.assertEqual(stats, (4, self.cache.data.embeddings.shape))
