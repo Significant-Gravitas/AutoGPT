@@ -63,7 +63,7 @@ If you have an idea for a new feature or improvement, please create an issue on 
 When submitting a pull request, please ensure that your changes meet the following criteria:
 
 - Your pull request should be atomic and focus on a single change.
-- Your pull request should include tests for your change.
+- Your pull request should include tests for your change. We automatically enforce this with [CodeCov](https://docs.codecov.com/docs/commit-status)
 - You should have thoroughly tested your changes with multiple different prompts.
 - You should have considered potential risks and mitigations for your changes.
 - You should have documented your changes clearly and comprehensively.
@@ -105,4 +105,4 @@ Happy coding, and once again, thank you for your contributions!
 
 Maintainers will look at PR that have no merge conflicts when deciding what to add to the project. Make sure your PR shows up here:
 
-https://github.com/Torantulino/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-is%3Aconflict+
+https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-is%3Aconflict+
