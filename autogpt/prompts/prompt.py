@@ -84,12 +84,11 @@ def construct_main_ai_config() -> AIConfig:
         str: The prompt string
     """
     config = AIConfig.load(CFG.ai_session)
-    print('config', config)
     if CFG.skip_project and config.project_name:
         logger.typewriter_log("Project:", Fore.GREEN, config.project_name)
-        logger.typewriter_log("AI Worker Name:", Fore.GREEN, config.ai_name)
-        logger.typewriter_log("AI Worker Role:", Fore.GREEN, config.ai_role)
-        logger.typewriter_log("AI Worker Goals:", Fore.GREEN, f"{config.ai_goals}")
+        logger.typewriter_log("AI Name:", Fore.GREEN, config.ai_name)
+        logger.typewriter_log("AI Role:", Fore.GREEN, config.ai_role)
+        logger.typewriter_log("AI Goals:", Fore.GREEN, f"{config.ai_goals}")
         logger.typewriter_log(
             "API Budget:",
             Fore.GREEN,
@@ -105,9 +104,9 @@ def construct_main_ai_config() -> AIConfig:
         should_continue = clean_input(
             f"""Continue with the last session?
 Project: {config.project_name}
-AI Worker Name: {config.ai_name}
-AI Worker Role: {config.ai_role}
-AI Worker Goals: {config.ai_goals}
+AI Name: {config.ai_name}
+AI Role: {config.ai_role}
+AI Goals: {config.ai_goals}
 Continue (y/n): """
         )
         if should_continue.lower() == "n":
@@ -129,6 +128,7 @@ Continue (y/n): """
                 f"Continue with the last session as {config.ai_name}?",
                 speak_text=True,
             )
+            
             should_continue = clean_input(
                 f"""Role:  {config.ai_role}
 Goals: {config.ai_goals}
@@ -140,11 +140,13 @@ Continue (y/n): """
 
     if not config.ai_name:
         configs = prompt_user()
+        
         for config in configs:
             config.save()
     
+    print("this CONFIG", config)
     if config.project_name:
-        ProjectManager.project_agents()
+        ProjectManager.project_agents(config.project_name)
 
     # set the total api budget
     api_manager = ApiManager()

@@ -45,9 +45,9 @@ Here are some common arguments you can use when running Auto-GPT:
 ``` shell
 python -m autogpt --help
 ```
-* Run Auto-GPT with a different AI Settings file
+* Run Auto-GPT with a different AI Config file
 ``` shell
-python -m autogpt --ai-settings <filename>
+python -m autogpt --ai-session <filename>
 ```
 * Specify a memory backend
 ``` shell
