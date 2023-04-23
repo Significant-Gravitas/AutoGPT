@@ -37,6 +37,14 @@ except ImportError:
     # print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
 
+try:
+    from autogpt.memory.sqlitemem import SqliteMemory
+
+    supported_memory.append("sqlite")
+except ImportError:
+    print("SQLite not installed. Skipping import.")
+    SqliteMemory = None
+
 
 def get_memory(cfg, init=False):
     memory = None
@@ -74,6 +82,14 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "sqlite":
+        if not SqliteMemory:
+            print(
+                "Error: SQLite is not installed. Please install zarr and sklearn to"
+                " use SQLite as a memory backend."
+            )
+        else:
+            memory = SqliteMemory(cfg)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
@@ -92,6 +108,7 @@ __all__ = [
     "get_memory",
     "LocalCache",
     "RedisMemory",
+    "SqliteMemory",
     "PineconeMemory",
     "NoMemory",
     "MilvusMemory",

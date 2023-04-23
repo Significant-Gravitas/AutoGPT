@@ -155,6 +155,9 @@ dmypy.json
 llama-*
 vicuna-*
 
+# Local memory
+/memory/
+
 # mac
 .DS_Store
 
