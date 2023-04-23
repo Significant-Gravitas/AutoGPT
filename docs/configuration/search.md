@@ -22,7 +22,7 @@ Set up a custom search API and add to your .env file:
 13. Set it as an environment variable named `GOOGLE_API_KEY` on your machine (see how to set up environment variables below).
 14. [Enable](https://console.developers.google.com/apis/api/customsearch.googleapis.com) the Custom Search API on your project. (Might need to wait few minutes to propagate)
 
-Set up a custom serach engine and add to your .env file:
+Set up a custom search engine and add to your .env file:
 15. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page.
 16. Click "Add".
 17. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
