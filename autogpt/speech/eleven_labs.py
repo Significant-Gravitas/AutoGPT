@@ -5,6 +5,7 @@ import requests
 from playsound import playsound
 
 from autogpt.config import Config
+from autogpt.logs import logger
 from autogpt.speech.base import VoiceBase
 
 PLACEHOLDERS = {"your-voice-id"}
@@ -81,6 +82,6 @@ class ElevenLabsSpeech(VoiceBase):
             os.remove("speech.mpeg")
             return True
         else:
-            print("Request failed with status code:", response.status_code)
-            print("Response content:", response.content)
+            logger.warn("Request failed with status code:", response.status_code)
+            logger.info("Response content:", response.content)
             return False

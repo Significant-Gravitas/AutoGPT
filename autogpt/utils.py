@@ -5,6 +5,8 @@ import yaml
 from colorama import Fore
 from git.repo import Repo
 
+from autogpt.logs import logger
+
 # Use readline if available (for clean_input)
 try:
     import readline
@@ -16,8 +18,8 @@ def clean_input(prompt: str = ""):
     try:
         return input(prompt)
     except KeyboardInterrupt:
-        print("You interrupted Auto-GPT")
-        print("Quitting...")
+        logger.info("You interrupted Auto-GPT")
+        logger.info("Quitting...")
         exit(0)
 
 

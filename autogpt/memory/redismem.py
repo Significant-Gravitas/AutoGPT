@@ -73,7 +73,7 @@ class RedisMemory(MemoryProviderSingleton):
                 ),
             )
         except Exception as e:
-            print("Error creating Redis search index: ", e)
+            logger.warn("Error creating Redis search index: ", e)
         existing_vec_num = self.redis.get(f"{cfg.memory_index}-vec_num")
         self.vec_num = int(existing_vec_num.decode("utf-8")) if existing_vec_num else 0
 
@@ -145,7 +145,7 @@ class RedisMemory(MemoryProviderSingleton):
                 query, query_params={"vector": query_vector}
             )
         except Exception as e:
-            print("Error calling Redis search: ", e)
+            logger.warn("Error calling Redis search: ", e)
             return None
         return [result.data for result in results.docs]
 

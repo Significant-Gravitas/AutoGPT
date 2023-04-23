@@ -7,6 +7,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from autogpt import token_counter
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
+from autogpt.logs import logger
 from autogpt.memory import get_memory
 
 CFG = Config()
@@ -92,7 +93,7 @@ def summarize_text(
 
     model = CFG.fast_llm_model
     text_length = len(text)
-    print(f"Text length: {text_length} characters")
+    logger.info(f"Text length: {text_length} characters")
 
     summaries = []
     chunks = list(
@@ -105,7 +106,7 @@ def summarize_text(
     for i, chunk in enumerate(chunks):
         if driver:
             scroll_to_percentage(driver, scroll_ratio * i)
-        print(f"Adding chunk {i + 1} / {len(chunks)} to memory")
+        logger.info(f"Adding chunk {i + 1} / {len(chunks)} to memory")
 
         memory_to_add = f"Source: {url}\n" f"Raw content part#{i + 1}: {chunk}"
 
@@ -113,7 +114,7 @@ def summarize_text(
 
         messages = [create_message(chunk, question)]
         tokens_for_chunk = token_counter.count_message_tokens(messages, model)
-        print(
+        logger.info(
             f"Summarizing chunk {i + 1} / {len(chunks)} of length {len(chunk)} characters, or {tokens_for_chunk} tokens"
         )
 
@@ -122,7 +123,7 @@ def summarize_text(
             messages=messages,
         )
         summaries.append(summary)
-        print(
+        logger.info(
             f"Added chunk {i + 1} summary to memory, of length {len(summary)} characters"
         )
 
@@ -130,7 +131,7 @@ def summarize_text(
 
         MEMORY.add(memory_to_add)
 
-    print(f"Summarized {len(chunks)} chunks.")
+    logger.info(f"Summarized {len(chunks)} chunks.")
 
     combined_summary = "\n".join(summaries)
     messages = [create_message(combined_summary, question)]
