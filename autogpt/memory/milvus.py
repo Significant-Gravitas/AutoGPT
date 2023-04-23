@@ -1,6 +1,8 @@
 """ Milvus memory storage provider."""
+import re
+
+from config import Config
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
-from regex import regex
 
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
@@ -8,41 +10,36 @@ from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 class MilvusMemory(MemoryProviderSingleton):
     """Milvus memory storage provider."""
 
-    def __init__(self, cfg) -> None:
+    def __init__(self, cfg: Config) -> None:
         """Construct a milvus memory storage connection.
 
         Args:
             cfg (Config): Auto-GPT global config.
         """
-        # parse from configuration.
-        self.parse_configure(cfg)
+        self.configure(cfg)
 
-        # use remote uri or addr to connect.
-        if self.uri is not None:
-            connections.connect(
-                uri=self.uri,
-                user=self.username,
-                password=self.password,
-                secure=self.secure,
-            )
-        else:
-            connections.connect(
-                address=self.address,
-                user=self.username,
-                password=self.password,
-                secure=self.secure,
-            )
-        # init collection.
+        connect_kwargs = {}
+        if self.username:
+            connect_kwargs["user"] = self.username
+            connect_kwargs["password"] = self.password
+
+        connections.connect(
+            **connect_kwargs,
+            uri=self.uri or "",
+            address=self.address or "",
+            secure=self.secure,
+        )
+
         self.init_collection()
 
-    def parse_configure(self, cfg) -> None:
+    def configure(self, cfg: Config) -> None:
         # init with configuration.
         self.uri = None
         self.address = cfg.milvus_addr
+        self.secure = cfg.milvus_secure
         self.username = cfg.milvus_username
         self.password = cfg.milvus_password
         self.collection_name = cfg.milvus_collection
-        self.secure = cfg.milvus_secure
         # use HNSW by default.
         self.index_params = {
             "metric_type": "IP",
@@ -50,17 +47,21 @@ class MilvusMemory(MemoryProviderSingleton):
             "params": {"M": 8, "efConstruction": 64},
         }
 
-        # check if config by url.
-        re_uri_prefix = regex.compile(r"^(https?|tcp)://")
-        if re_uri_prefix.match(self.address) is not None:
+        if (self.username is None) != (self.password is None):
+            raise ValueError(
+                "Both username and password must be set to use authentication for Milvus"
+            )
+
+        # configured address may be a full URL.
+        if re.match(r"^(https?|tcp)://", self.address) is not None:
             self.uri = self.address
-            # secure option should be True if https is enabled.
+            self.address = None
+
             if self.uri.startswith("https"):
                 self.secure = True
 
-        # zilliz cloud support AutoIndex but not manually index.
-        re_zilliz_cloud = regex.compile(r"^https://(.*)\.zillizcloud\.(com|cn)")
-        if re_zilliz_cloud.match(self.address) is not None:
+        # Zilliz Cloud requires AutoIndex.
+        if re.match(r"^https://(.*)\.zillizcloud\.(com|cn)", self.address) is not None:
             self.index_params = {
                 "metric_type": "IP",
                 "index_type": "AUTOINDEX",

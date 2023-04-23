@@ -82,39 +82,35 @@ export MEMORY_BACKEND="pinecone"
 
 [Milvus](https://milvus.io/) is an open-source, highly scalable vector database to store huge amounts of vector-based memory and provide fast relevant search. And it can be quickly deployed by docker locally or as a cloud service provided by [Zilliz Cloud](https://zilliz.com/).
 
-#### Setup Client
+1. Deploy your Milvus service, either locally using docker or with a managed Zilliz Cloud database.
+    - [Install and deploy Milvus locally](https://milvus.io/docs/install_standalone-operator.md)
 
-- Run `pip3 install pymilvus` in your python envrionment, keep your pymilvus version and milvus version compatible to avoid compatibility issues. More detail at [pymilvus](https://github.com/milvus-io/pymilvus)
+    - <details><summary>Set up a managed Zilliz Cloud database <i>(click to expand)</i></summary>
 
-#### Setup Database
+      1. Go to [Zilliz Cloud](https://zilliz.com/) and sign up if you don't already have account.
+      2. In the *Databases* tab, create a new database.
+          - Remember your username and password
+          - Wait until the database status is changed to RUNNING.
+      3. In the *Database detail* tab of the database you have created, the public cloud endpoint, such as:
+      `https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443`.
+    </details>
 
-Deploy your milvus service by Zilliz Cloud remotely or docker locally 
+2. Run `pip3 install pymilvus` to install the required client library.
+    Make sure your PyMilvus version and Milvus version are [compatible](https://github.com/milvus-io/pymilvus#compatibility) to avoid issues.
+    See also the [PyMilvus installation instructions](https://github.com/milvus-io/pymilvus#installation).
 
-***Use Zilliz Cloud***
+3. Update `.env`
+    - `MEMORY_BACKEND=milvus`
+    - One of:
+      - `MILVUS_ADDR=host:ip` (for local instance)
+      - `MILVUS_ADDR=https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443` (for Zilliz Cloud)
 
-- Go to [Zilliz Cloud](https://zilliz.com/) and sign up if you don't already have account.
-- Choose "Databases" tab, create a new database, remember your username and password, wait until database's status is changed to RUNNING.
-- Choose "Database detail" tab of the database you have created, get public cloud endpoint, such as:
-`https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443`.
-
-***Or use Milvus locally***
-
-- [Install and deploy Milvus locally](https://milvus.io/docs/install_standalone-operator.md)
-
-#### In `.env` file
-
-- `MEMORY_BACKEND=milvus`
-- One of:
-  - `MILVUS_ADDR=host:ip` (for local instance)
-  - `MILVUS_ADDR=https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443` (for Zilliz Cloud)
-
-#### Optional
-
-- Set `MILVUS_USERNAME=your-username-of-milvus-or-cloud-service`, By default it is db_admin for Zilliz Cloud but can be different
-- Set `MILVUS_PASSWORD=your-password-of-milvus-or-cloud-service`
-- Set `MILVUS_SECURE` if tls of your milvus is enabled. Zilliz Cloud and `https` remote address will enable this option by default.
-- Set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name. 
-- You may encounter the accessing problem if you use Zilliz Cloud, modify your IP white list in `Admin -> Access and Security -> IP Address` tab.
+    *The following settings are **optional**:*
+    - Set `MILVUS_USERNAME='username-of-your-milvus-instance'`
+    - Set `MILVUS_PASSWORD='password-of-your-milvus-instance'`
+    - Set `MILVUS_SECURE=True` to use a secure connection. Only use if your Milvus instance has TLS enabled.
+      Setting a `MILVUS_ADDR` containing `https://` will enable this option by default.
+    - Set `MILVUS_COLLECTION` if you want to change the collection name to use in Milvus. Defaults to `autogpt`.
 
 ### Weaviate Setup
 [Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
