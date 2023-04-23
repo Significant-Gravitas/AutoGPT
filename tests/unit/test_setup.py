@@ -44,6 +44,7 @@ class TestAutoGPT(unittest.TestCase):
             "Purchase ingredients",
             "Bake a cake",
             "",
+            "",
         ]
         with patch("builtins.input", side_effect=user_inputs):
             ai_config = prompt_user()
@@ -61,6 +62,7 @@ class TestAutoGPT(unittest.TestCase):
             "an AI designed to browse bake a cake.",
             "Purchase ingredients",
             "Bake a cake",
+            "",
             "",
         ]
         with patch("builtins.input", side_effect=user_inputs):
