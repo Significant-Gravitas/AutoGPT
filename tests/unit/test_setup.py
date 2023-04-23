@@ -8,6 +8,7 @@ from autogpt.setup import (
     generate_aiconfig_manual,
     prompt_user,
 )
+from tests.utils import requires_api_key
 
 
 class TestAutoGPT(unittest.TestCase):
