@@ -2,8 +2,8 @@ import hashlib
 import os
 import shutil
 import unittest
-from unittest.mock import patch
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -71,7 +71,7 @@ class TestImageGen(unittest.TestCase):
     def test_huggingface_fail_request_with_delay(self, mock_post, mock_sleep):
         mock_post.return_value.status_code = 500
         mock_post.return_value.ok = False
-        mock_post.return_value.text = "{\"error\":\"Model CompVis/stable-diffusion-v1-4 is currently loading\",\"estimated_time\":0}"
+        mock_post.return_value.text = '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading","estimated_time":0}'
 
         self.config.image_provider = "huggingface"
 
@@ -89,7 +89,9 @@ class TestImageGen(unittest.TestCase):
     def test_huggingface_fail_request_no_delay(self, mock_post, mock_sleep):
         mock_post.return_value.status_code = 500
         mock_post.return_value.ok = False
-        mock_post.return_value.text = "{\"error\":\"Model CompVis/stable-diffusion-v1-4 is currently loading\"}"
+        mock_post.return_value.text = (
+            '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading"}'
+        )
 
         self.config.image_provider = "huggingface"
 
@@ -107,7 +109,7 @@ class TestImageGen(unittest.TestCase):
     def test_huggingface_fail_request_bad_json(self, mock_post, mock_sleep):
         mock_post.return_value.status_code = 500
         mock_post.return_value.ok = False
-        mock_post.return_value.text = "{\"error:}"
+        mock_post.return_value.text = '{"error:}'
 
         self.config.image_provider = "huggingface"
 
