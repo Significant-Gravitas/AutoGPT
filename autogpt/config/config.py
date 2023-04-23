@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from autogpt.config.singleton import Singleton
 
-load_dotenv(verbose=True)
+load_dotenv(verbose=True, override=True)
 
 
 class Config(metaclass=Singleton):
@@ -255,6 +255,14 @@ class Config(metaclass=Singleton):
     def set_plugins(self, value: list) -> None:
         """Set the plugins value."""
         self.plugins = value
+
+    def set_temperature(self, value: int) -> None:
+        """Set the temperature value."""
+        self.temperature = value
+
+    def set_memory_backend(self, value: int) -> None:
+        """Set the temperature value."""
+        self.memory_backend = value
 
 
 def check_openai_api_key() -> None:

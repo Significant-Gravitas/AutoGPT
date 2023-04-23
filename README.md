@@ -26,9 +26,8 @@ Demo made by <a href=https://twitter.com/BlakeWerlinger>Blake Werlinger</a>
 
 <h2 align="center"> 💖 Help Fund Auto-GPT's Development 💖</h2>
 <p align="center">
-If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help push the boundaries of fully autonomous AI!
-Your support is greatly appreciated.
-Development of this free, open-source project is made possible by all the <a href="https://github.com/Significant-Gravitas/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
+If you can spare a coffee, you can help to cover the costs of developing Auto-GPT and help to push the boundaries of fully autonomous AI!
+Your support is greatly appreciated. Development of this free, open-source project is made possible by all the <a href="https://github.com/Significant-Gravitas/Auto-GPT/graphs/contributors">contributors</a> and <a href="https://github.com/sponsors/Torantulino">sponsors</a>. If you'd like to sponsor this project and have your avatar or company logo appear below <a href="https://github.com/sponsors/Torantulino">click here</a>.
 </p>
 
 
@@ -52,16 +51,15 @@ Development of this free, open-source project is made possible by all the <a hre
 ## 🚀 Features
 
 - 🌐 Internet access for searches and information gathering
-- 💾 Long-Term and Short-Term memory management
+- 💾 Long-term and short-term memory management
 - 🧠 GPT-4 instances for text generation
 - 🔗 Access to popular websites and platforms
 - 🗃️ File storage and summarization with GPT-3.5
+- 🔌 Extensibility with Plugins
 
 ## 📋 Requirements
 
 - Environment (pick one)
-  - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): It has been configured in the .devcontainer folder and can be used directly
-  - Docker
   - Python 3.10 or later (instructions: [for Windows](https://www.tutorialspoint.com/how-to-install-python-in-windows))
 - [OpenAI API key](https://platform.openai.com/account/api-keys)
 
@@ -365,140 +363,32 @@ setx PINECONE_ENV "<YOUR_PINECONE_REGION>" # e.g: "us-east4-gcp"
 setx MEMORY_BACKEND "pinecone"
 ```
 
-For macOS and Linux users:
+## Quickstart
 
-```bash
-export PINECONE_API_KEY="<YOUR_PINECONE_API_KEY>"
-export PINECONE_ENV="<YOUR_PINECONE_REGION>" # e.g: "us-east4-gcp"
-export MEMORY_BACKEND="pinecone"
-```
+1. Set up your OpenAI [API Keys](https://platform.openai.com/account/api-keys)
+2. Download the [latest release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
+3. Install the [dependencies](/docs/installation.md) and set your [environment variables](/docs/installation.md)
+4. Configure any additional features you want, or install some [plugins](/docs/plugins.md)
+5. [Run](/docs/usage.md) the app
 
-### Milvus Setup
+Please see the [documentation](/docs) linked below for full setup instructions and configuration options.
 
-[Milvus](https://milvus.io/) is an open-source, highly scalable vector database to store huge amounts of vector-based memory and provide fast relevant search.
+## 💾 Documentation
 
-- setup milvus database, keep your pymilvus version and milvus version same to avoid compatible issues.
-  - setup by open source [Install Milvus](https://milvus.io/docs/install_standalone-operator.md)
-  - or setup by [Zilliz Cloud](https://zilliz.com/cloud)
-- set `MILVUS_ADDR` in `.env` to your milvus address `host:ip`.
-- set `MEMORY_BACKEND` in `.env` to `milvus` to enable milvus as backend.
+[Installation](/docs/installation.md)
 
-**Optional:**
-- set `MILVUS_COLLECTION` in `.env` to change milvus collection name as you want, `autogpt` is the default name.
+[Usage](/docs/usage.md)
 
+[Speech](/docs/configuration/voice.md)
 
-### Weaviate Setup
-[Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
-Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded) is supported which allows the Auto-GPT process itself to start a Weaviate instance. To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip install "weaviate-client>=3.15.4"`. 
+[Search](/docs/configuration/search.md)
 
-#### Install the Weaviate client
+[Plugins](/docs/plugins.md)
 
-Install the Weaviate client before usage.
+[Memory](/docs/configuration/memory.md)
 
-```
-$ pip install weaviate-client
-```
+[Image Generation](/docs/configuration/imagegen.md)
 
-#### Setting up environment variables
-
-In your `.env` file set the following:
-
-```
-MEMORY_BACKEND=weaviate
-WEAVIATE_HOST="127.0.0.1" # the IP or domain of the running Weaviate instance
-WEAVIATE_PORT="8080" 
-WEAVIATE_PROTOCOL="http"
-WEAVIATE_USERNAME="your username"
-WEAVIATE_PASSWORD="your password"
-WEAVIATE_API_KEY="your weaviate API key if you have one"
-WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate" # this is optional and indicates where the data should be persisted when running an embedded instance
-USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
-MEMORY_INDEX="Autogpt" # name of the index to create for the application
-```
- 
-## View Memory Usage
-
-View memory usage by using the `--debug` flag :)
-
-
-## 🧠 Memory pre-seeding
-Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.
-
-```bash
-# python data_ingestion.py -h 
-usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
-
-Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
-
-options:
-  -h, --help               show this help message and exit
-  --file FILE              The file to ingest.
-  --dir DIR                The directory containing the files to ingest.
-  --init                   Init the memory and wipe its content (default: False)
-  --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
-  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000)
-
-# python data_ingestion.py --dir DataFolder --init --overlap 100 --max_length 2000
-```
-In the example above, the script initializes the memory, ingests all files within the `Auto-Gpt/autogpt/auto_gpt_workspace/DataFolder` directory into memory with an overlap between chunks of 100 and a maximum length of each chunk of 2000.
-
-Note that you can also use the `--file` argument to ingest a single file into memory and that data_ingestion.py will only ingest files within the `/auto_gpt_workspace` directory.
-
-The DIR path is relative to the auto_gpt_workspace directory, so `python data_ingestion.py --dir . --init` will ingest everything in `auto_gpt_workspace` directory.
-
-You can adjust the `max_length` and overlap parameters to fine-tune the way the docuents are presented to the AI when it "recall" that memory:
-- Adjusting the overlap value allows the AI to access more contextual information from each chunk when recalling information, but will result in more chunks being created and therefore increase memory backend usage and OpenAI API requests.
-- Reducing the `max_length` value will create more chunks, which can save prompt tokens by allowing for more message history in the context, but will also increase the number of chunks.
-- Increasing the `max_length` value will provide the AI with more contextual information from each chunk, reducing the number of chunks created and saving on OpenAI API requests. However, this may also use more prompt tokens and decrease the overall context available to the AI.
-
-Memory pre-seeding is a technique for improving AI accuracy by ingesting relevant data into its memory. Chunks of data are split and added to memory, allowing the AI to access them quickly and generate more accurate responses. It's useful for large datasets or when specific information needs to be accessed quickly. Examples include ingesting API or GitHub documentation before running Auto-GPT.
-
-⚠️ If you use Redis as your memory, make sure to run Auto-GPT with the `WIPE_REDIS_ON_START=False` in your `.env` file.
-
-⚠️For other memory backend, we currently forcefully wipe the memory when starting Auto-GPT. To ingest data with those memory backend, you can call the `data_ingestion.py` script anytime during an Auto-GPT run. 
-
-Memories will be available to the AI immediately as they are ingested, even if ingested while Auto-GPT is running.
-
-## 💀 Continuous Mode ⚠️
-
-Run the AI **without** user authorization, 100% automated.
-Continuous mode is NOT recommended.
-It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorize.
-Use at your own risk.
-
-1. Run the `autogpt` python module in your terminal:
-
-    ```bash
-    python -m autogpt --speak --continuous
-    ```
-
-2. To exit the program, press Ctrl + C
-
-## GPT3.5 ONLY Mode
-
-If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!
-
-```bash
-python -m autogpt --speak --gpt3only
-```
-
-It is recommended to use a virtual machine for tasks that require high security measures to prevent any potential harm to the main computer's system and data.
-
-## 🖼 Image Generation
-
-By default, Auto-GPT uses DALL-e for image generation. To use Stable Diffusion, a [Hugging Face API Token](https://huggingface.co/settings/tokens) is required.
-
-Once you have a token, set these variables in your `.env`:
-
-```bash
-IMAGE_PROVIDER=sd
-HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
-```
-
-## Selenium
-```bash
-sudo Xvfb :10 -ac -screen 0 1024x768x24 & DISPLAY=:10 <YOUR_CLIENT>
-```
 
 ## ⚠️ Limitations
 
@@ -535,43 +425,3 @@ We look forward to connecting with you and hearing your thoughts, ideas, and exp
     <img src="https://api.star-history.com/svg?repos=Torantulino/auto-gpt&type=Date" alt="Star History Chart">
   </a>
 </p>
-
-## Run tests
-
-To run all tests, run the following command:
-
-```bash
-pytest 
-
-```
-
-To run just without integration tests:
-
-```
-pytest --without-integration
-```
-
-To run just without slow integration tests:
-
-```
-pytest --without-slow-integration
-```
-
-To run tests and see coverage, run the following command:
-
-```bash
-pytest --cov=autogpt --without-integration --without-slow-integration
-```
-
-## Run linter
-
-This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. We currently use the following rules: `E303,W293,W291,W292,E305,E231,E302`. See the [flake8 rules](https://www.flake8rules.com/) for more information.
-
-To run the linter, run the following command:
-
-```bash
-flake8 autogpt/ tests/
-
-# Or, if you want to run flake8 with the same configuration as the CI:
-flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
-```
