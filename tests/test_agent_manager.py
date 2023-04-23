@@ -1,21 +1,25 @@
 import unittest
 from typing import List
+
+from autogpt.agent.agent_manager import AgentManager
 from autogpt.config.config import Config
 from autogpt.llm_utils import create_chat_completion
 from autogpt.types.openai import Message
-from autogpt.agent.agent_manager import AgentManager
 
 
 class TestAgentManager(unittest.TestCase):
-
     def setUp(self):
         self.agent_manager = AgentManager()
         self.task = "translate English to French"
-        self.prompt = "Translate the following English text to French: 'Hello, how are you?'"
+        self.prompt = (
+            "Translate the following English text to French: 'Hello, how are you?'"
+        )
         self.model = "gpt-4"
 
     def test_create_agent(self):
-        key, agent_reply = self.agent_manager.create_agent(self.task, self.prompt, self.model)
+        key, agent_reply = self.agent_manager.create_agent(
+            self.task, self.prompt, self.model
+        )
         self.assertIsInstance(key, int)
         self.assertIsInstance(agent_reply, str)
         self.assertIn(key, self.agent_manager.agents)
@@ -39,5 +43,5 @@ class TestAgentManager(unittest.TestCase):
         self.assertNotIn(key, self.agent_manager.agents)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
