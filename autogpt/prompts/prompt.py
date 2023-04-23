@@ -107,4 +107,22 @@ Continue (y/n): """
         config = prompt_user()
         config.save(CFG.ai_settings_file)
 
+    # Agent Created, print message
+    logger.typewriter_log(
+        config.ai_name,
+        Fore.LIGHTBLUE_EX,
+        "has been created with the following details:",
+        speak_text=True,
+    )
+
+    # Print the ai config details
+    # Name
+    logger.typewriter_log("Name:", Fore.GREEN, config.ai_name, speak_text=False)
+    # Role
+    logger.typewriter_log("Role:", Fore.GREEN, config.ai_role, speak_text=False)
+    # Goals
+    logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
+    for goal in config.ai_goals:
+        logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
+
     return config
