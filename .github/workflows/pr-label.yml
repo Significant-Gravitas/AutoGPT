@@ -1,0 +1,48 @@
+name: "Pull Request auto-label"
+on:
+  # So that PRs touching the same files as the push are updated
+  push:
+  # So that the `dirtyLabel` is removed if conflicts are resolve
+  # We recommend `pull_request_target` so that github secrets are available.
+  # In `pull_request` we wouldn't be able to change labels of fork PRs
+  pull_request_target:
+    types: [opened, synchronize]
+concurrency:
+  group: ${{ format('pr-label-{0}', github.event.pull_request.number || github.sha) }}
+  cancel-in-progress: true
+
+jobs:
+  conflicts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Update PRs with conflict labels
+        uses: eps1lon/actions-label-merge-conflict@releases/2.x
+        with:
+          dirtyLabel: "conflicts"
+          #removeOnDirtyLabel: "PR: ready to ship"
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          commentOnDirty: "This pull request has conflicts with the base branch, please resolve those so we can evaluate the pull request."
+          commentOnClean: "Conflicts have been resolved! 🎉 A maintainer will review the pull request shortly."
+
+  size:
+    if: ${{ github.event_name == 'pull_request_target' }}
+    permissions:
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: codelytv/pr-size-labeler@v1.7.0
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          s_label: "size/s"
+          s_max_size: "10"
+          m_label: "size/m"
+          m_max_size: "50"
+          l_label: "size/l"
+          l_max_size: "200"
+          xl_label: "size/xl"
+          fail_if_xl: "false"
+          github_api_url: "api.github.com"
