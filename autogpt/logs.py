@@ -248,6 +248,8 @@ def print_assistant_thoughts(ai_name, assistant_reply):
         if CFG.chat_only_mode:
             if assistant_thoughts_speak is not None and len(assistant_thoughts_speak) > 0:
                 logger.typewriter_log(f"{ai_name.upper()}:", Fore.YELLOW, f"{assistant_thoughts_speak}")
+                from multigpt.discord_utils import send_message
+                send_message(username=ai_name.upper(), content=assistant_thoughts_speak)
 
         else:
             logger.typewriter_log(
