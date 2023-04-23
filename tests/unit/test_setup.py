@@ -22,6 +22,7 @@ class TestAutoGPT(unittest.TestCase):
         self.assertGreaterEqual(len(ai_config.ai_goals), 1)
         self.assertLessEqual(len(ai_config.ai_goals), 5)
 
+    @requires_api_key("OPENAI_API_KEY")
     def test_generate_aiconfig_automatic_typical(self):
         user_prompt = "Help me create a rock opera about cybernetic giraffes"
         ai_config = generate_aiconfig_automatic(user_prompt)
