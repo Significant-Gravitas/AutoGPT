@@ -12,6 +12,7 @@ from tests.utils import requires_api_key
 
 
 class TestAutoGPT(unittest.TestCase):
+    @requires_api_key("OPENAI_API_KEY")
     def test_generate_aiconfig_automatic_default(self):
         user_inputs = [""]
         with patch("builtins.input", side_effect=user_inputs):
