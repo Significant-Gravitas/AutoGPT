@@ -1,4 +1,4 @@
-""" Brian speech module for autogpt """
+import logging
 import os
 
 import requests
@@ -35,6 +35,9 @@ class BrianSpeech(VoiceBase):
             os.remove("speech.mp3")
             return True
         else:
-            print("Request failed with status code:", response.status_code)
-            print("Response content:", response.content)
+            logging.error(
+                "Request failed with status code: %s, response content: %s",
+                response.status_code,
+                response.content,
+            )
             return False
