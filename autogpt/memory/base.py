@@ -2,9 +2,6 @@
 import abc
 from typing import Any, Dict, List
 
-import openai
-
-from autogpt.api_manager import api_manager
 from autogpt.config import AbstractSingleton, Config
 
 cfg = Config()
@@ -15,8 +12,7 @@ def get_ada_embedding(text: str) -> Dict:
     return api_manager.embedding_create(
         text_list=[text], model="text-embedding-ada-002"
     )
-
-
+    
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
     def add(self, data: Any) -> None:
