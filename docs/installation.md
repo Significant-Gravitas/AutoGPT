@@ -42,6 +42,7 @@ cp azure.yaml.template azure.yaml
    1. `fast_llm_model_deployment_id`: "`Your gpt-3.5-turbo or gpt-4 deployment ID`"
    2. `smart_llm_model_deployment_id`: "`Your gpt-4 deployment ID`"
    3. `embedding_model_deployment_id`: "`Your text-embedding-ada-002 v2 deployment ID`"
+     - If you're on Windows you may need to install https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170
        
 To learn more, see the **Microsoft Azure Endpoints** section in the [OpenAI Python Library](https://pypi.org/project/openai/), and [Tutorial: Explore Azure OpenAI Service embeddings and document search](https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line) for the embedding model.
 
