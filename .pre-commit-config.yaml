@@ -21,3 +21,12 @@ repos:
     hooks:
       - id: black
         language_version: python3.10
+
+#  - repo: local
+#    hooks:
+#      - id: pytest-check
+#        name: pytest-check
+#        entry: pytest --cov=autogpt --without-integration --without-slow-integration
+#        language: system
+#        pass_filenames: false
+#        always_run: false
