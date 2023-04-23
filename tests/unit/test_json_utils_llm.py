@@ -42,13 +42,13 @@ class TestFixJsonUsingMultipleTechniques:
         assert fix_json_using_multiple_techniques(json_string) == expected_output
 
     # Tests that the function successfully fixes and parses a JSON string that contains only whitespace characters.
-    @requires_api_key("OPEN_API_KEY")
+    # @requires_api_key("OPEN_API_KEY")
     def test_fix_and_parse_json_whitespace(self, mocker):
         # Happy path test case where the JSON string contains only whitespace characters
         json_string = "   \n\t   "
 
         # mock try_ai_fix to avoid calling the AI model:
-        # mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
+        mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
 
         expected_output = {}
         assert fix_json_using_multiple_techniques(json_string) == expected_output
@@ -61,13 +61,13 @@ class TestFixJsonUsingMultipleTechniques:
         assert fix_json_using_multiple_techniques(json_string) == expected_output
 
     # Tests that the function returns an empty dictionary when the JSON string is not parseable and cannot be fixed using either technique.
-    @requires_api_key("OPEN_API_KEY")
+    # @requires_api_key("OPEN_API_KEY")
     def test_fix_and_parse_json_can_not(self, mocker):
         # Edge case test case where the JSON string is not parseable and cannot be fixed using either technique
         json_string = "This is not a JSON string"
 
         # mock try_ai_fix to avoid calling the AI model:
-        # mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
+        mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
 
         expected_output = {}
 
@@ -77,14 +77,14 @@ class TestFixJsonUsingMultipleTechniques:
         assert result == expected_output
 
     # Tests that the function returns an empty dictionary when the JSON string is empty.
-    @requires_api_key("OPEN_API_KEY")
+    # @requires_api_key("OPEN_API_KEY")
     def test_fix_and_parse_json_empty_string(self, mocker):
         # Arrange
         json_string = ""
 
         # Act
         # mock try_ai_fix to avoid calling the AI model:
-        # mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
+        mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
 
         result = fix_and_parse_json(json_string)
 
