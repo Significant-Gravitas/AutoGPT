@@ -55,43 +55,41 @@ Your support is greatly appreciated. Development of this free, open-source proje
 - 🧠 GPT-4 instances for text generation
 - 🔗 Access to popular websites and platforms
 - 🗃️ File storage and summarization with GPT-3.5
+- 🔌 Extensibility with Plugins
 
 ## 📋 Requirements
 
 - Environment (pick one)
-  - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers): It has been configured in the .devcontainer folder and can be used directly
-  - Docker
   - Python 3.10 or later (instructions: [for Windows](https://www.tutorialspoint.com/how-to-install-python-in-windows))
-- [OpenAI API key](https://platform.openai.com/account/api-keys)
+  - Docker [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt)
+  - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
 
-### Optional
-- Memory backend (pick one)
-  - [Pinecone](https://www.pinecone.io/)
-  - [Milvus](https://milvus.io/)
-  - [Redis](https://redis.io)
-  - [Weaviate](https://weaviate.io)
-- ElevenLabs Key (If you want the AI to speak)
+## Quickstart
 
-## ⚠️ OpenAI API Keys Configuration ⚠️ 
+1. Set up your OpenAI [API Keys](https://platform.openai.com/account/api-keys)
+2. Download the [latest release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
+3. Install the [dependencies](/docs/installation.md) and set your [environment variables](/docs/installation.md)
+4. Configure any additional features you want, or install some [plugins](/docs/plugins.md)
+5. [Run](/docs/usage.md) the app
 
-Get your OpenAI API key from: https://platform.openai.com/account/api-keys.
+Please see the [documentation](/docs) linked below for full setup instructions and configuration options.
 
-To use OpenAI API key for Auto-GPT, you **NEED** to have billing set up (AKA paid account).
+## 💾 Documentation
 
-You can set up paid account at https://platform.openai.com/account/billing/overview.
+[Installation](/docs/installation.md)
 
-Important: It's highly recommended that you track your usage on [the Usage page](https://platform.openai.com/account/usage)
-You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
+[Usage](/docs/usage.md)
 
-![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./docs/imgs/openai-api-key-billing-paid-account.png)
+[Speech](/docs/configuration/voice.md)
 
-#### **PLEASE ENSURE YOU HAVE DONE THIS STEP BEFORE PROCEEDING. OTHERWISE, NOTHING WILL WORK!**
+[Search](/docs/configuration/search.md)
 
-## 💾 Installation
+[Plugins](/docs/plugins.md)
 
-To install Auto-GPT, follow these steps:
+[Memory](/docs/configuration/memory.md)
 
-1. Make sure you have all the **requirements** listed above. If not, install/get them.
+[Image Generation](/docs/configuration/imagegen.md)
+
 
 _To execute the following commands, open a CMD, Bash, or Powershell window by navigating to a folder on your computer and typing `CMD` in the folder path at the top, then press enter._
 
@@ -517,6 +515,7 @@ HUGGINGFACE_API_TOKEN="YOUR_HUGGINGFACE_API_TOKEN"
 sudo Xvfb :10 -ac -screen 0 1024x768x24 & DISPLAY=:10 <YOUR_CLIENT>
 ```
 
+
 ## ⚠️ Limitations
 
 This experiment aims to showcase the potential of GPT-4 but comes with some limitations:
@@ -552,43 +551,3 @@ We look forward to connecting with you and hearing your thoughts, ideas, and exp
     <img src="https://api.star-history.com/svg?repos=Torantulino/auto-gpt&type=Date" alt="Star History Chart">
   </a>
 </p>
-
-## Run tests
-
-To run all tests, run the following command:
-
-```bash
-pytest 
-
-```
-
-To run just without integration tests:
-
-```
-pytest --without-integration
-```
-
-To run just without slow integration tests:
-
-```
-pytest --without-slow-integration
-```
-
-To run tests and see coverage, run the following command:
-
-```bash
-pytest --cov=autogpt --without-integration --without-slow-integration
-```
-
-## Run linter
-
-This project uses [flake8](https://flake8.pycqa.org/en/latest/) for linting. We currently use the following rules: `E303,W293,W291,W292,E305,E231,E302`. See the [flake8 rules](https://www.flake8rules.com/) for more information.
-
-To run the linter, run the following command:
-
-```bash
-flake8 autogpt/ tests/
-
-# Or, if you want to run flake8 with the same configuration as the CI:
-flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
-```
