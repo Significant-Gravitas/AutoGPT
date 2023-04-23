@@ -1,8 +1,6 @@
 import os
-import traceback
 
 import requests
-import speech_recognition as sr
 import yaml
 from colorama import Fore
 from git.repo import Repo
@@ -13,7 +11,6 @@ try:
 except:
     pass
 
-import autogpt.speech.say as speak
 from autogpt.config import Config
 
 cfg = Config()
@@ -72,7 +69,7 @@ def clean_input(prompt: str = "", talk=False):
         answer = input(prompt)
         return answer
     except KeyboardInterrupt:
-        print("You interrupted Auto-GPT from utils.py")
+        print("You interrupted Auto-GPT")
         print("Quitting...")
         exit(0)
 
