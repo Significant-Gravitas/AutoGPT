@@ -75,7 +75,7 @@ Development of this free, open-source project is made possible by all the <a hre
   - [Weaviate](https://weaviate.io)
 - ElevenLabs Key (If you want the AI to speak)
 
-## ⚠️ OpenAI API Keys Configuration ⚠️
+## ⚠️ OpenAI API Keys Configuration ⚠️ 
 
 Obtain your OpenAI API key from: https://platform.openai.com/account/api-keys.
 
@@ -267,7 +267,7 @@ export GOOGLE_API_KEY="YOUR_GOOGLE_API_KEY"
 export CUSTOM_SEARCH_ENGINE_ID="YOUR_CUSTOM_SEARCH_ENGINE_ID"
 ```
 
-## \>Plugins
+## Plugins
 
 See https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template for the template of the plugins.
 
