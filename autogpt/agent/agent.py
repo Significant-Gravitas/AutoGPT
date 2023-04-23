@@ -219,7 +219,7 @@ class Agent:
                     f"\nHuman Feedback: {user_input} "
                 )
 
-                self.memory.add(memory_to_add)
+                self.memory.add(self.config['ai_name'], memory_to_add)
 
                 # Check if there's a result from the command append it to the message
                 # history
