@@ -12,10 +12,7 @@ from typing import Optional, Type
 import distro
 import yaml
 
-try:
-    from autogpt.prompts.generator import PromptGenerator
-except ModuleNotFoundError:
-    from prompts.generator import PromptGenerator
+from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
