@@ -82,31 +82,59 @@ def construct_main_ai_config() -> AIConfig:
     Returns:
         str: The prompt string
     """
-    config = AIConfig.load(CFG.ai_settings_file)
-    if CFG.skip_reprompt and config.ai_name:
-        logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
-        logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
-        logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
+    config = AIConfig.load(CFG.ai_session)
+    if CFG.skip_project and config.project_name:
+        logger.typewriter_log("Project:", Fore.GREEN, config.project_name)
+        logger.typewriter_log("AI Worker Name:", Fore.GREEN, config.ai_name)
+        logger.typewriter_log("AI Worker Role:", Fore.GREEN, config.ai_role)
+        logger.typewriter_log("AI Worker Goals:", Fore.GREEN, f"{config.ai_goals}")
         logger.typewriter_log(
             "API Budget:",
             Fore.GREEN,
             "infinite" if config.api_budget <= 0 else f"${config.api_budget}",
         )
-    elif config.ai_name:
+    elif config.project_name:
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
-            f"Continue with the last session as {config.ai_name}?",
+            f"Would you like to continue working on {config.project_name}?",
             speak_text=True,
         )
         should_continue = clean_input(
-            f"""Role:  {config.ai_role}
-Goals: {config.ai_goals}
-API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
+            f"""Continue with the last session?
+Project: {config.project_name}
+AI Worker Name: {config.ai_name}
+AI Worker Role: {config.ai_role}
+AI Worker Goals: {config.ai_goals}
 Continue (y/n): """
         )
         if should_continue.lower() == "n":
             config = AIConfig()
+    else:
+        if CFG.skip_reprompt and config.ai_name:
+            logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
+            logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
+            logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
+            logger.typewriter_log(
+                "API Budget:",
+                Fore.GREEN,
+                "infinite" if config.api_budget <= 0 else f"${config.api_budget}",
+            )
+        elif config.ai_name:
+            logger.typewriter_log(
+                "Welcome back! ",
+                Fore.GREEN,
+                f"Continue with the last session as {config.ai_name}?",
+                speak_text=True,
+            )
+            should_continue = clean_input(
+                f"""Role:  {config.ai_role}
+Goals: {config.ai_goals}
+API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
+Continue (y/n): """
+            )
+            if should_continue.lower() == "n":
+                config = AIConfig()
 
     if not config.ai_name:
         configs = prompt_user()
