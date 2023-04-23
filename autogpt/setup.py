@@ -133,7 +133,28 @@ def generate_aiconfig_manual() -> AIConfig:
             "Develop and manage multiple businesses autonomously",
         ]
 
-    return AIConfig(ai_name, ai_role, ai_goals)
+    # Get API Budget from User
+    logger.typewriter_log(
+        "Enter your budget for API calls: ",
+        Fore.GREEN,
+        "For example: $1.50",
+    )
+    print("Enter nothing to let the AI run without monetary limit", flush=True)
+    api_budget_input = utils.clean_input(
+        f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
+    )
+    if api_budget_input == "":
+        api_budget = 0.0
+    else:
+        try:
+            api_budget = float(api_budget_input.replace("$", ""))
+        except ValueError:
+            logger.typewriter_log(
+                "Invalid budget input. Setting budget to unlimited.", Fore.RED
+            )
+            api_budget = 0.0
+
+    return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
 
 def generate_aiconfig_automatic(user_prompt) -> AIConfig:
@@ -192,5 +213,6 @@ Goals:
         .strip()
     )
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
+    api_budget = 0.0  # TODO: parse api budget using a regular expression
 
-    return AIConfig(ai_name, ai_role, ai_goals)
+    return AIConfig(ai_name, ai_role, ai_goals, api_budget)
