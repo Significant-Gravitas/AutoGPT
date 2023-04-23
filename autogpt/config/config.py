@@ -41,6 +41,9 @@ class Config(metaclass=Singleton):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
+        self.use_oobabooga = os.getenv("USE_OOBABOOGA") == "True"
+        self.oobabooga_api_host = os.getenv("OOBABOOGA_API_HOST", "http://127.0.0.1:7860")
+
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
@@ -267,7 +270,7 @@ class Config(metaclass=Singleton):
 def check_openai_api_key() -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     cfg = Config()
-    if not cfg.openai_api_key:
+    if not cfg.openai_api_key and not cfg.use_oobabooga:
         print(
             Fore.RED
             + "Please set your OpenAI API key in .env or as an environment variable."

@@ -11,6 +11,8 @@ from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.types.openai import Message
 
+from .local_llm import OoobaboogaAPI
+
 CFG = Config()
 
 openai.api_key = CFG.openai_api_key
@@ -103,6 +105,21 @@ def create_chat_completion(
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
+            elif CFG.use_oobabooga:
+                contents = [msg["content"] for msg in messages]
+                print("".center(60, "="))
+                print("\n".join(contents))
+                print("".center(60, "="))
+
+                print(f"TEMPERATURE: {temperature}")
+                print(f"MAX TOKENS: {max_tokens}")
+
+                response_payload = OoobaboogaAPI(CFG).generate_text(
+                    input="\n".join(contents),
+                    temperature=0.72,
+                    max_new_tokens=max_tokens
+                )
+                return response_payload
             else:
                 response = openai.ChatCompletion.create(
                     model=model,
