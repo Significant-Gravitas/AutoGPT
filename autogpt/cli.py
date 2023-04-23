@@ -47,6 +47,14 @@ import click
     is_flag=True,
     help="Specifies whether to suppress the output of latest news on startup.",
 )
+@click.option(
+    # TODO: this is a hidden option for now, necessary for integration testing.
+    #   We should make this public once we're ready to roll out agent specific workspaces.
+    "--workspace-directory",
+    "-w",
+    type=click.Path(),
+    hidden=True,
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -62,6 +70,7 @@ def main(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
+    workspace_directory: str,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -71,6 +80,7 @@ def main(
     # Put imports inside function to avoid importing everything when starting the CLI
     import logging
     import sys
+    from pathlib import Path
 
     from colorama import Fore
 
@@ -83,6 +93,7 @@ def main(
     from autogpt.plugins import scan_plugins
     from autogpt.prompts.prompt import construct_main_ai_config
     from autogpt.utils import get_current_git_branch, get_latest_bulletin
+    from autogpt.workspace import Workspace
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -103,7 +114,6 @@ def main(
             skip_news,
         )
         logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
-        ai_name = ""
         if not cfg.skip_news:
             motd = get_latest_bulletin()
             if motd:
@@ -126,7 +136,6 @@ def main(
                     "Please consider upgrading to Python 3.10 or higher.",
                 )
 
-        cfg = Config()
         cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
         # Create a CommandRegistry instance and scan default folder
         command_registry = CommandRegistry()
@@ -142,6 +151,7 @@ def main(
         command_registry.import_commands("autogpt.commands.web_selenium")
         command_registry.import_commands("autogpt.commands.write_tests")
         command_registry.import_commands("autogpt.app")
+
         ai_name = ""
         ai_config = construct_main_ai_config()
         ai_config.command_registry = command_registry
@@ -164,6 +174,27 @@ def main(
         system_prompt = ai_config.construct_full_prompt()
         if cfg.debug_mode:
             logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
+
+        # TODO: have this directory live outside the repository (e.g. in a user's
+        #   home directory) and have it come in as a command line argument or part of
+        #   the env file.
+        if workspace_directory is None:
+            workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
+        else:
+            workspace_directory = Path(workspace_directory)
+        # TODO: pass in the ai_settings file and the env file and have them cloned into
+        #   the workspace directory so we can bind them to the agent.
+        workspace_directory = Workspace.make_workspace(workspace_directory)
+        cfg.workspace_path = str(workspace_directory)
+
+        # HACK: doing this here to collect some globals that depend on the workspace.
+        file_logger_path = workspace_directory / "file_logger.txt"
+        if not file_logger_path.exists():
+            with file_logger_path.open(mode="w", encoding="utf-8") as f:
+                f.write("File Operation Logger ")
+
+        cfg.file_logger_path = str(file_logger_path)
+
         agent = Agent(
             ai_name=ai_name,
             memory=memory,
@@ -173,6 +204,7 @@ def main(
             config=ai_config,
             system_prompt=system_prompt,
             triggering_prompt=triggering_prompt,
+            workspace_directory=workspace_directory,
         )
         agent.start_interaction_loop()
 
