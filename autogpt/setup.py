@@ -213,6 +213,6 @@ Goals:
         .strip()
     )
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
-    api_budget = 0.0 # TODO: parse api budget using a regular expression
+    api_budget = 0.0  # TODO: parse api budget using a regular expression
 
     return AIConfig(ai_name, ai_role, ai_goals, api_budget)

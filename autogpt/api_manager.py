@@ -10,6 +10,7 @@ cfg = Config()
 openai.api_key = cfg.openai_api_key
 print_total_cost = cfg.debug_mode
 
+
 class ApiManager:
     def __init__(self, debug=False):
         self.total_prompt_tokens = 0

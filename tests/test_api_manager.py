@@ -1,6 +1,8 @@
-import pytest
 from unittest.mock import MagicMock, patch
-from autogpt.api_manager import ApiManager, COSTS
+
+import pytest
+
+from autogpt.api_manager import COSTS, ApiManager
 
 api_manager = ApiManager()
 
@@ -13,7 +15,14 @@ def reset_api_manager():
 
 @pytest.fixture(autouse=True)
 def mock_costs():
-    with patch.dict(COSTS, {"gpt-3.5-turbo": {"prompt": 0.002, "completion": 0.002}, "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0}}, clear=True):
+    with patch.dict(
+        COSTS,
+        {
+            "gpt-3.5-turbo": {"prompt": 0.002, "completion": 0.002},
+            "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0},
+        },
+        clear=True,
+    ):
         yield
 
 
