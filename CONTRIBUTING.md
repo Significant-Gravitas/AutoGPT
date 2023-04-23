@@ -1,4 +1,4 @@
-# Contributing to ProjectName
+# Contributing to Auto-GPT
 
 First of all, thank you for considering contributing to our project! We appreciate your time and effort, and we value any contribution, whether it's reporting a bug, suggesting a new feature, or submitting a pull request.
 
@@ -19,6 +19,12 @@ This document provides guidelines and best practices to help you contribute effe
 ## Code of Conduct
 
 By participating in this project, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md). Please read it to understand the expectations we have for everyone who contributes to this project.
+
+## 📢 A Quick Word
+Right now we will not be accepting any Contributions that add non-essential commands to Auto-GPT.
+
+However, you absolutely can still add these commands to Auto-GPT in the form of plugins. Please check out this [template](https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template).
+> ⚠️ Plugin support is expected to ship within the week. You can follow PR #757 for more updates!
 
 ## Getting Started
 
@@ -54,7 +60,7 @@ If you have an idea for a new feature or improvement, please create an issue on 
 When submitting a pull request, please ensure that your changes meet the following criteria:
 
 - Your pull request should be atomic and focus on a single change.
-- Your pull request should include tests for your change.
+- Your pull request should include tests for your change. We automatically enforce this with [CodeCov](https://docs.codecov.com/docs/commit-status)
 - You should have thoroughly tested your changes with multiple different prompts.
 - You should have considered potential risks and mitigations for your changes.
 - You should have documented your changes clearly and comprehensively.
@@ -96,4 +102,4 @@ Happy coding, and once again, thank you for your contributions!
 
 Maintainers will look at PR that have no merge conflicts when deciding what to add to the project. Make sure your PR shows up here:
 
-https://github.com/Torantulino/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-is%3Aconflict+
+https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-is%3Aconflict+
