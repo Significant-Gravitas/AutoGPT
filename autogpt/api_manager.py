@@ -3,30 +3,26 @@ from typing import List
 import openai
 
 from autogpt.config import Config
+from autogpt.logs import logger
+from autogpt.modelsinfo import COSTS
 
 cfg = Config()
 openai.api_key = cfg.openai_api_key
-print_total_cost = True
+print_total_cost = cfg.debug_mode
 
-# Define the cost per thousand tokens for each model
-# TODO: make this a json file that we can update separate from the code
-COSTS = {
-    "gpt-3.5-turbo": {"prompt": 0.002, "completion": 0.002},
-    "gpt-3.5-turbo-0301": {"prompt": 0.002, "completion": 0.002},
-    "gpt-4-0314": {"prompt": 0.03, "completion": 0.06},
-    "gpt-4": {"prompt": 0.03, "completion": 0.06},
-    "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0.0},
-}
-
-
-# TODO: route all API's through this manager, so we can keep track of
-# the cost of all API calls, not just chat completions
 class ApiManager:
-    def __init__(self):
+    def __init__(self, debug=False):
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
         self.total_cost = 0
         self.total_budget = 0
+        self.debug = debug
+
+    def reset(self):
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_cost = 0
+        self.total_budget = 0.0
 
     def create_chat_completion(
         self,
@@ -38,13 +34,11 @@ class ApiManager:
     ) -> str:
         """
         Create a chat completion and update the cost.
-
         Args:
         messages (list): The list of messages to send to the API.
         model (str): The model to use for the API call.
         temperature (float): The temperature to use for the API call.
         max_tokens (int): The maximum number of tokens for the API call.
-
         Returns:
         str: The AI's response.
         """
@@ -63,6 +57,8 @@ class ApiManager:
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+        if self.debug:
+            logger.debug(f"Response: {response}")
         prompt_tokens = response.usage.prompt_tokens
         completion_tokens = response.usage.completion_tokens
         self.update_cost(prompt_tokens, completion_tokens, model)
@@ -158,4 +154,4 @@ class ApiManager:
         return self.total_budget
 
 
-api_manager = ApiManager()
+api_manager = ApiManager(cfg.debug_mode)

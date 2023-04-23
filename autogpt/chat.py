@@ -141,21 +141,20 @@ def chat_with_ai(
                 )
                 if remaining_budget < 0:
                     remaining_budget = 0
-                current_context.append(
-                    create_chat_message(
-                        "system",
-                        f"Your remaining API budget is ${remaining_budget:.3f}"
-                        + (
-                            " BUDGET EXCEEDED! SHUT DOWN!\n\n"
-                            if remaining_budget == 0
-                            else " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                            if remaining_budget < 0.005
-                            else " Budget nearly exceeded. Finish up.\n\n"
-                            if remaining_budget < 0.01
-                            else "\n\n"
-                        ),
+                system_message = (
+                    f"Your remaining API budget is ${remaining_budget:.3f}"
+                    + (
+                        " BUDGET EXCEEDED! SHUT DOWN!\n\n"
+                        if remaining_budget == 0
+                        else " Budget very nearly exceeded! Shut down gracefully!\n\n"
+                        if remaining_budget < 0.005
+                        else " Budget nearly exceeded. Finish up.\n\n"
+                        if remaining_budget < 0.01
+                        else "\n\n"
                     )
                 )
+                logger.debug(system_message)
+                current_context.append(create_chat_message("system", system_message))
 
             # Append user input, the length of this is accounted for above
             current_context.extend([create_chat_message("user", user_input)])
