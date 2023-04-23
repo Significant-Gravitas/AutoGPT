@@ -7,9 +7,11 @@ services:
     depends_on:
       - redis
     build: ./
+    env_file:
+      - .env
     volumes:
-      - "./scripts:/app"
-      - ".env:/app/.env"
+      - "./autogpt:/home/appuser"
+      - ".env:/home/appuser/.env"
     profiles: ["exclude-from-up"]
 
   redis:
