@@ -65,62 +65,6 @@ class TestImageGen(unittest.TestCase):
             self.assertEqual(img.size, (768, 768))
         image_path.unlink()
 
-    @requires_api_key("HUGGINGFACE_API_TOKEN")
-    @patch("time.sleep")
-    @patch("requests.post")
-    def test_huggingface_fail_request_with_delay(self, mock_post, mock_sleep):
-        mock_post.return_value.status_code = 500
-        mock_post.return_value.ok = False
-        mock_post.return_value.text = '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading","estimated_time":0}'
-
-        self.config.image_provider = "huggingface"
-
-        # Verify request fails.
-        self.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
-        result = generate_image("astronaut riding a horse", 512)
-        self.assertTrue(result == "Error creating image.")
-
-        # Verify retry was called with delay.
-        mock_sleep.assert_called_with(0)
-
-    @requires_api_key("HUGGINGFACE_API_TOKEN")
-    @patch("time.sleep")
-    @patch("requests.post")
-    def test_huggingface_fail_request_no_delay(self, mock_post, mock_sleep):
-        mock_post.return_value.status_code = 500
-        mock_post.return_value.ok = False
-        mock_post.return_value.text = (
-            '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading"}'
-        )
-
-        self.config.image_provider = "huggingface"
-
-        # Verify request fails.
-        self.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
-        result = generate_image("astronaut riding a horse", 512)
-        self.assertTrue(result == "Error creating image.")
-
-        # Verify retry was not called.
-        mock_sleep.assert_not_called()
-
-    @requires_api_key("HUGGINGFACE_API_TOKEN")
-    @patch("time.sleep")
-    @patch("requests.post")
-    def test_huggingface_fail_request_bad_json(self, mock_post, mock_sleep):
-        mock_post.return_value.status_code = 500
-        mock_post.return_value.ok = False
-        mock_post.return_value.text = '{"error:}'
-
-        self.config.image_provider = "huggingface"
-
-        # Verify request fails.
-        self.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
-        result = generate_image("astronaut riding a horse", 512)
-        self.assertTrue(result == "Error creating image.")
-
-        # Verify retry was not called.
-        mock_sleep.assert_not_called()
-
     def test_sd_webui(self):
         self.config.image_provider = "sd_webui"
         return
@@ -160,6 +104,71 @@ class TestImageGen(unittest.TestCase):
         image_path.unlink()
 
         self.assertNotEqual(image_hash, neg_image_hash)
+
+
+class TestImageGenFailure(unittest.TestCase):
+    def setUp(self):
+        self.config = Config()
+        workspace_path = os.path.join(os.path.dirname(__file__), "workspace")
+        self.workspace_path = Workspace.make_workspace(workspace_path)
+        self.config.workspace_path = workspace_path
+        self.workspace = Workspace(workspace_path, restrict_to_workspace=True)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.workspace_path)
+
+    @patch("time.sleep")
+    @patch("requests.post")
+    def test_huggingface_fail_request_with_delay(self, mock_post, mock_sleep):
+        mock_post.return_value.status_code = 500
+        mock_post.return_value.ok = False
+        mock_post.return_value.text = '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading","estimated_time":0}'
+
+        self.config.image_provider = "huggingface"
+
+        # Verify request fails.
+        self.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+        result = generate_image("astronaut riding a horse", 512)
+        self.assertTrue(result == "Error creating image.")
+
+        # Verify retry was called with delay.
+        mock_sleep.assert_called_with(0)
+
+    @patch("time.sleep")
+    @patch("requests.post")
+    def test_huggingface_fail_request_no_delay(self, mock_post, mock_sleep):
+        mock_post.return_value.status_code = 500
+        mock_post.return_value.ok = False
+        mock_post.return_value.text = (
+            '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading"}'
+        )
+
+        self.config.image_provider = "huggingface"
+
+        # Verify request fails.
+        self.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+        result = generate_image("astronaut riding a horse", 512)
+        self.assertTrue(result == "Error creating image.")
+
+        # Verify retry was not called.
+        mock_sleep.assert_not_called()
+
+    @patch("time.sleep")
+    @patch("requests.post")
+    def test_huggingface_fail_request_bad_json(self, mock_post, mock_sleep):
+        mock_post.return_value.status_code = 500
+        mock_post.return_value.ok = False
+        mock_post.return_value.text = '{"error:}'
+
+        self.config.image_provider = "huggingface"
+
+        # Verify request fails.
+        self.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+        result = generate_image("astronaut riding a horse", 512)
+        self.assertTrue(result == "Error creating image.")
+
+        # Verify retry was not called.
+        mock_sleep.assert_not_called()
 
 
 if __name__ == "__main__":
