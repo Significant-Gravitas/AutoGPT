@@ -69,9 +69,7 @@ def clean_input(prompt: str = "", talk=False):
 
         # ask for input, default when just pressing Enter is y
         print("Asking user via keyboard...")
-        answer = input(prompt + " [y/n] or press Enter for default (y): ")
-        if answer == "":
-            answer = "y"
+        answer = input(prompt)
         return answer
     except KeyboardInterrupt:
         print("You interrupted Auto-GPT from utils.py")
