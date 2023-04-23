@@ -33,6 +33,7 @@ class AIConfig(AbstractSingleton):
             "prompt_generator": prompt_generator,
             "command_registry": command_registry 
             })
+        # TODO __version (str): Version of the app
     """
 
         
@@ -72,40 +73,67 @@ class AIConfig(AbstractSingleton):
             config_params = {}
 
         cls.__configs = []
-        for i, row in enumerate(config_params):
-            config = {'ai_name': row["ai_name"],
-                    "ai_role": row["ai_role"],
-                    "ai_goals": row["ai_goals"],
-                    "prompt_generator": row["prompt_generator"],
-                    "command_registry": row["command_registry"]}
-            
-            cls.__configs.append(config)
+        for key, row in config_params.items():
+            if key == 'version' :
+                continue
+            elif key == 'configurations' : 
+                for yaml_config in row  :
+                    print(yaml_config)
+                    config = {'ai_name': yaml_config["ai_name"],
+                            "ai_role": yaml_config["ai_role"],
+                            "ai_goals": yaml_config["ai_goals"],
+                            "prompt_generator": yaml_config["prompt_generator"],
+                            "command_registry": yaml_config["command_registry"]}
+                    cls.__configs.append(config)
 
-            # ai_name = row.get("ai_name", "")
-            # ai_role = row.get("ai_role", "")
-            # ai_goals = row.get("ai_goals", [])
-            # prompt_generator = row.get("prompt_generator", None)
-            # command_registry = row.get("command_registry", None)
-            # cls.__configs.append({"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals, "prompt_generator": prompt_generator,"command_registry": command_registry })
-
+                # ai_name = row.get("ai_name", "")
+                # ai_role = row.get("ai_role", "")
+                # ai_goals = row.get("ai_goals", [])
+                # prompt_generator = row.get("prompt_generator", None)
+                # command_registry = row.get("command_registry", None)
+                # cls.__configs.append({"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals, "prompt_generator": prompt_generator,"command_registry": command_registry })
         return cls.__configs
 
-    def save(self, config_file: str = SAVE_FILE) -> None:
-            """
-            Saves the class parameters to the specified file yaml file path as a yaml file.
+    # def save(self, config_file: str = SAVE_FILE) -> None:
+    #         """
+    #         Saves the class parameters to the specified file yaml file path as a yaml file.
 
-            Parameters:
-                config_number(int): The config entry number (1 to 5) to be updated or added.
-                config_file(str): The path to the config yaml file.
-                DEFAULT: "../ai_settings.yaml"
-            Returns:
-                None
-            """
-            # TODO : Secure config savings
-            # Only save the config currently in use
+    #         Parameters:
+    #             config_number(int): The config entry number (1 to 5) to be updated or added.
+    #             config_file(str): The path to the config yaml file.
+    #             DEFAULT: "../ai_settings.yaml"
+    #         Returns:
+    #             None
+    #         """
 
-            with open(config_file, "w", encoding="utf-8") as file:
-                yaml.dump(self.__configs, file, allow_unicode=True)
+    #         with open(config_file, "w", encoding="utf-8") as file:
+    #             yaml.dump(self.__configs, file, allow_unicode=True)
+def save(self, config_file: str = SAVE_FILE) -> None:
+    """
+    Saves the current configuration to the specified file yaml file path as a yaml file.
+
+    Parameters:
+        config_file(str): The path to the config yaml file.
+        DEFAULT: "../ai_settings.yaml"
+    Returns:
+        None
+    """
+    try:
+        with open(config_file, encoding="utf-8") as file:
+            config_params = yaml.load(file, Loader=yaml.FullLoader)
+    except FileNotFoundError:
+        config_params = {}
+
+    if 'configurations' not in config_params:
+        config_params['configurations'] = []
+
+    if 0 <= self.__current_config < len(config_params['configurations']):
+        config_params['configurations'][self.__current_config] = self.get_current_config()
+    else:
+        config_params['configurations'].append(self.get_current_config())
+
+    with open(config_file, "w", encoding="utf-8") as file:
+        yaml.dump(config_params, file, allow_unicode=True)
 
     def construct_full_prompt(
         self, prompt_generator: Optional[PromptGenerator] = None

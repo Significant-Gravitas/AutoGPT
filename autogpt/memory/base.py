@@ -23,19 +23,19 @@ def get_ada_embedding(text):
 
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
-    def add(self, data):
+    def add(self, ai_name : str,  data):
         pass
 
     @abc.abstractmethod
-    def get(self, data):
+    def get(self, ai_name : str, data):
         pass
 
     @abc.abstractmethod
-    def clear(self):
+    def clear(self, ai_name : str):
         pass
 
     @abc.abstractmethod
-    def get_relevant(self, data, num_relevant=5):
+    def get_relevant(self, ai_name : str, data, num_relevant=5):
         pass
 
     @abc.abstractmethod
