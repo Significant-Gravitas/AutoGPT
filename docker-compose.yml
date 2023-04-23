@@ -13,7 +13,6 @@ services:
       - "./autogpt:/app"
       - ".env:/app/.env"
       - "$PWD/auto_gpt_workspace:/home/appuser/auto_gpt_workspace"
-      - "./ai_settings.yaml:/home/appuser/ai_settings.yaml"
     profiles: ["exclude-from-up"]
 
   redisStack:
@@ -24,6 +23,3 @@ services:
     volumes:
       - ./redis-data:/data
       - ./redis-stack.conf:/redis-stack.conf
-    ports:
-      - "6379:6379"
-      - "8001:8001"

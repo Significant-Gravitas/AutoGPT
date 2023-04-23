@@ -83,7 +83,7 @@ docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/home/appuser/auto_g
 
 Or if you have `docker-compose`:
 ``` shell
-docker-compose run --build --rm auto-gpt
+docker-compose run -T --build --rm auto-gpt
 ```
 
 You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
@@ -92,7 +92,7 @@ docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/home/appuser/auto_g
 ```
 
 ``` shell
-docker-compose run --build --rm auto-gpt --gpt3only --continuous
+docker-compose run -T --build --rm auto-gpt --gpt3only --continuous
 ```
 
 Alternatively, you can pull the latest release directly from [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt)
