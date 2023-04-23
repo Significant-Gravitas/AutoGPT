@@ -195,6 +195,13 @@ docker run -it --env-file=./.env -v $PWD/auto_gpt_workspace:/home/appuser/auto_g
 docker-compose run --build --rm auto-gpt --gpt3only --continuous
 ```
 
+#### Enable speech mode in `docker-compose`
+To enable speech capabilities you need to uncomment lines after `# Uncomment to enable speech mode` in `docker-compose.yml`. Then run as usual:
+```bash
+docker-compose run --build --rm auto-gpt --speak
+```
+
+
 ### Command Line Arguments
 Here are some common arguments you can use when running Auto-GPT:
 > Replace anything in angled brackets (<>) to a value you want to specify

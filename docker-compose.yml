@@ -6,13 +6,24 @@ services:
   auto-gpt:
     depends_on:
       - redis
-    build: ./
+    build:
+      context: .
+# Uncomment to enable speech mode
+#      dockerfile: speech_linux.Dockerfile
     env_file:
       - .env
     volumes:
-      - "./autogpt:/home/appuser"
-      - ".env:/home/appuser/.env"
-    profiles: ["exclude-from-up"]
+      - "./autogpt_workspace:/home/appuser/auto_gpt_workspace"
+      - "./plugins:/home/appuser/plugins/"
+      - "./autogpt:/home/appuser/autogpt/"
+# Uncomment to enable speech mode
+#      - "$XDG_RUNTIME_DIR/pulse/:/run/user/1000/pulse/:ro"
+#      - "$HOME/.config/pulse/cookie:/home/appuser/.config/pulse/cookie:ro"
+    profiles: [ "exclude-from-up" ]
 
   redis:
     image: "redis/redis-stack-server:latest"
+
+networks:
+  default:
+    name: milvus
