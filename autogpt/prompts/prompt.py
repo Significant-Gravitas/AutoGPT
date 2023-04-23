@@ -156,7 +156,7 @@ def construct_main_ai_config() -> AIConfig:
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
-            f"Select one of the following configuration:",
+            f"Select one of the following configurations : ",
             speak_text=True,
         )
         for i, config in enumerate(config_list):
