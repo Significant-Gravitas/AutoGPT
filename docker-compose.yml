@@ -5,14 +5,25 @@ version: "3.9"
 services:
   auto-gpt:
     depends_on:
-      - redis
+      - redisStack
     build: ./
     env_file:
       - .env
     volumes:
-      - "./autogpt:/home/appuser"
-      - ".env:/home/appuser/.env"
+      - "./autogpt:/app"
+      - ".env:/app/.env"
+      - "$PWD/auto_gpt_workspace:/home/appuser/auto_gpt_workspace"
+      - "./ai_settings.yaml:/home/appuser/ai_settings.yaml"
     profiles: ["exclude-from-up"]
 
-  redis:
-    image: "redis/redis-stack-server:latest"
+  redisStack:
+    container_name: redisStack
+    hostname: redisStack
+    image: redis/redis-stack:latest
+    restart: always
+    volumes:
+      - ./redis-data:/data
+      - ./redis-stack.conf:/redis-stack.conf
+    ports:
+      - "6379:6379"
+      - "8001:8001"
