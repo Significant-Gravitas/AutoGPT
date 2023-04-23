@@ -8,11 +8,11 @@ import time
 import traceback
 from logging import LogRecord
 
-import utils
 from colorama import Fore, Style
 
 from autogpt.config import Config, Singleton
 from autogpt.speech import say_text
+from autogpt.utils import clean_chat_message_to_user
 
 CFG = Config()
 
@@ -87,7 +87,7 @@ class Logger(metaclass=Singleton):
 
         if CFG.chat_messages_enabled:
             message = f"{title}. {content}"
-            utils.clean_chat_message_to_user(message)
+            clean_chat_message_to_user(message)
 
         if content:
             if isinstance(content, list):
