@@ -51,6 +51,7 @@ class WeaviateMemory(MemoryProviderSingleton):
         # weaviate uses capitalised index names
         # The python client uses the following code to format
         # index names before the corresponding class is created
+        index = index.replace("-", "_")
         if len(index) == 1:
             return index.capitalize()
         return index[0].capitalize() + index[1:]
