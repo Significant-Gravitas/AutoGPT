@@ -14,8 +14,8 @@ class TestParseJson(unittest.TestCase):
     def test_invalid_json_minor(self):
         # Test that an invalid JSON string can be fixed with gpt
         json_str = '{"name": "John", "age": 30, "city": "New York",}'
-        with self.assertRaises(Exception):
-            fix_and_parse_json(json_str, try_to_fix_with_gpt=False)
+        obj = fix_and_parse_json(json_str)
+        self.assertEqual(obj, {"name": "John", "age": 30, "city": "New York"})
 
     def test_invalid_json_major_with_gpt(self):
         # Test that an invalid JSON string raises an error when try_to_fix_with_gpt is False
@@ -106,6 +106,48 @@ class TestParseJson(unittest.TestCase):
             fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj
         )
 
+    def test_invalid_json_with_dfs(self):
+        json_str = """
+                {
+                    "title": "The Hitchhiker's Guide to the Galaxy,
+                    "author": "Douglas Adams"
+                    "year": 1979,
+                    "genre": ["science-fiction", "comedy"]
+                    "characters": {
+                        "Arthur Dent": "human",
+                        "Ford Prefect": "alien",
+                        "Zaphod Beeblebrox": "two-headed alien"
+                    }
+                    "isAudiobook": true
+                    "audioBookDuration": "5 hours 45 minutes"
+                    "publishingInfo": {
+                        "publisher": "Pan Books",
+                        "publicationDate": "12 Oct 1979"
+                }"""
+
+        good_obj = \
+            {
+                'title': "The Hitchhiker's Guide to the Galaxy",
+                'author': 'Douglas Adams',
+                'year': 1979,
+                'genre': ['science-fiction', 'comedy'],
+                'characters': {
+                    'Arthur Dent': 'human',
+                    'Ford Prefect': 'alien',
+                    'Zaphod Beeblebrox': 'two-headed alien',
+                },
+                'isAudiobook': True,
+                'audioBookDuration': '5 hours 45 minutes',
+                'publishingInfo': {
+                    'publisher': 'Pan Books',
+                    'publicationDate': '12 Oct 1979',
+                },
+            }
+
+        # Assert that this raises an exception:
+        self.assertEqual(
+            fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj
+        )
 
 if __name__ == "__main__":
     unittest.main()
