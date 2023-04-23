@@ -1,9 +1,9 @@
 """ Milvus memory storage provider."""
 import re
 
-from config import Config
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
 
+from autogpt.config import Config
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
 
