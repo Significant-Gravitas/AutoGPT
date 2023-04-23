@@ -49,15 +49,17 @@ def readable_file_size(size, decimal_places=2):
     return f"{size:.{decimal_places}f} {unit}"
 
 
-def get_bulletin_from_web() -> str:
+def get_bulletin_from_web():
     try:
         response = requests.get(
             "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md"
         )
         if response.status_code == 200:
             return response.text
-    except:
-        return ""
+    except requests.exceptions.RequestException:
+        pass
+
+    return ""
 
 
 def get_current_git_branch() -> str:
