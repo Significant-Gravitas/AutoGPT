@@ -7,19 +7,11 @@ import pkg_resources
 def main():
     requirements_file = sys.argv[1]
     with open(requirements_file, "r") as f:
-        required_packages = [
-            line.strip().split("#")[0].strip() for line in f.readlines()
-        ]
+        required_packages = [str(req) for req in pkg_resources.parse_requirements(f)]
 
-    installed_packages = [package.key for package in pkg_resources.working_set]
+    installed_packages = {package.key.lower() for package in pkg_resources.working_set}
 
-    missing_packages = []
-    for package in required_packages:
-        if not package:  # Skip empty lines
-            continue
-        package_name = re.split("[<>=@ ]+", package.strip())[0]
-        if package_name.lower() not in installed_packages:
-            missing_packages.append(package_name)
+    missing_packages = [package for package in required_packages if package.lower().split()[0] not in installed_packages]
 
     if missing_packages:
         print("Missing packages:")
