@@ -109,7 +109,7 @@ export MEMORY_BACKEND="pinecone"
     - Set `MILVUS_USERNAME='username-of-your-milvus-instance'`
     - Set `MILVUS_PASSWORD='password-of-your-milvus-instance'`
     - Set `MILVUS_SECURE=True` to use a secure connection. Only use if your Milvus instance has TLS enabled.
-      Setting a `MILVUS_ADDR` containing `https://` will enable this option by default.
+      Setting `MILVUS_ADDR` to a `https://` URL will override this setting.
     - Set `MILVUS_COLLECTION` if you want to change the collection name to use in Milvus. Defaults to `autogpt`.
 
 ### Weaviate Setup
