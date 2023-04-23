@@ -260,7 +260,7 @@ class Config(metaclass=Singleton):
         self.temperature = value
 
     def set_memory_backend(self, value: int) -> None:
-        """Set the temperature value."""
+        """Set the memory backend."""
         self.memory_backend = value
 
 
