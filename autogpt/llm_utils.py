@@ -152,27 +152,3 @@ def create_chat_completion(
             continue
         resp = plugin.on_response(resp)
     return resp
-
-
-def create_embedding_with_ada(text) -> list:
-    """Create an embedding with text-ada-002 using the OpenAI SDK"""
-    num_retries = 10
-    for attempt in range(num_retries):
-        backoff = 2 ** (attempt + 2)
-        try:
-            return api_manager.embedding_create(
-                text_list=[text], model="text-embedding-ada-002"
-            )
-        except RateLimitError:
-            pass
-        except APIError as e:
-            if e.http_status != 502:
-                raise
-            if attempt == num_retries - 1:
-                raise
-        if CFG.debug_mode:
-            print(
-                f"{Fore.RED}Error: ",
-                f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
-            )
-        time.sleep(backoff)
