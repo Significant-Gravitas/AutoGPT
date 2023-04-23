@@ -14,7 +14,7 @@ from tests.utils import requires_api_key
 
 
 def lst(txt):
-    return Path(txt.split(":")[1].strip())
+    return Path(txt.split(":", 1)[1].strip())
 
 
 @unittest.skip("Skipping image generation tests")
