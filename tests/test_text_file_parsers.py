@@ -11,15 +11,18 @@ from autogpt.commands.file_operations_utils import read_textual_file
 
 plain_text_str = "Hello, world!"
 
+
 def mock_text_file():
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
         f.write(plain_text_str)
     return f.name
 
+
 def mock_csv_file():
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".csv") as f:
         f.write(plain_text_str)
     return f.name
+
 
 def mock_pdf_file():
     with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".pdf") as f:
@@ -32,11 +35,15 @@ def mock_pdf_file():
         f.write(b"endobj\n")
         # Write the page object
         f.write(b"2 0 obj\n")
-        f.write(b"<< /Type /Page /Parent 1 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 4 0 R >>\n")
+        f.write(
+            b"<< /Type /Page /Parent 1 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 4 0 R >>\n"
+        )
         f.write(b"endobj\n")
         # Write the font object
         f.write(b"3 0 obj\n")
-        f.write(b"<< /Type /Font /Subtype /Type1 /Name /F1 /BaseFont /Helvetica-Bold >>\n")
+        f.write(
+            b"<< /Type /Font /Subtype /Type1 /Name /F1 /BaseFont /Helvetica-Bold >>\n"
+        )
         f.write(b"endobj\n")
         # Write the page contents object
         f.write(b"4 0 obj\n")
@@ -60,41 +67,53 @@ def mock_pdf_file():
         f.write(b"%%EOF\n")
     return f.name
 
+
 def mock_doc_file(is_docx=False):
-    with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".docx" if is_docx else ".doc") as f:
+    with tempfile.NamedTemporaryFile(
+        mode="wb", delete=False, suffix=".docx" if is_docx else ".doc"
+    ) as f:
         document = docx.Document()
         document.add_paragraph(plain_text_str)
         document.save(f.name)
     return f.name
 
+
 def mock_json_file():
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
-        json.dump({"text":plain_text_str}, f)
+        json.dump({"text": plain_text_str}, f)
     return f.name
+
 
 def mock_xml_file():
     root = ElementTree.Element("text")
     root.text = plain_text_str
-    tree = ElementTree.ElementTree(root)    
+    tree = ElementTree.ElementTree(root)
     with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".xml") as f:
         tree.write(f)
     return f.name
-    
+
+
 def mock_yaml_file():
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".yaml") as f:
-        yaml.dump({"text":plain_text_str}, f)
+        yaml.dump({"text": plain_text_str}, f)
     return f.name
 
+
 def mock_html_file():
-    html = BeautifulSoup(f'<html><head><title>This is a test</title></head><body><p>{plain_text_str}</p></body></html>', 'html.parser')
+    html = BeautifulSoup(
+        f"<html><head><title>This is a test</title></head><body><p>{plain_text_str}</p></body></html>",
+        "html.parser",
+    )
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".html") as f:
         f.write(str(html))
     return f.name
+
 
 def mock_md_file():
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".md") as f:
         f.write(f"# {plain_text_str}!\n")
     return f.name
+
 
 def mock_latex_file():
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".tex") as f:
@@ -114,12 +133,15 @@ respective_file_creation_functions = {
     ".yaml": mock_yaml_file,
     ".html": mock_html_file,
     ".md": mock_md_file,
-    ".tex": mock_latex_file
+    ".tex": mock_latex_file,
 }
 
-class TestConfig(TestCase):
 
+class TestConfig(TestCase):
     def test_parsers(self):
-        for file_extension, c_file_creator in respective_file_creation_functions.items():
+        for (
+            file_extension,
+            c_file_creator,
+        ) in respective_file_creation_functions.items():
             loaded_text = read_textual_file(c_file_creator())
             self.assertIn(plain_text_str, loaded_text)
