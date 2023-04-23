@@ -40,20 +40,14 @@ class LocalCache(MemoryProviderSingleton):
         """
         workspace_path = Path(cfg.workspace_path)
         self.filename = workspace_path / f"{cfg.memory_index}.json"
+
         self.filename.touch(exist_ok=True)
 
-        try:
-            with self.filename.open("w+b") as f:
-                file_content = f.read()
-                if not file_content.strip():
-                    file_content = b"{}"
-                    f.write(file_content)
-                loaded = orjson.loads(file_content)
-        except orjson.JSONDecodeError:
-            print(f"Error: The file '{self.filename}' is not in JSON format.")
-            loaded = {}
+        file_content = b"{}"
+        with self.filename.open("w+b") as f:
+            f.write(file_content)
 
-        self.data = CacheContent(**loaded)
+        self.data = CacheContent()
 
     def add(self, text: str):
         """
