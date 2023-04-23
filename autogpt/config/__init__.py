@@ -10,5 +10,5 @@ __all__ = [
     "AbstractSingleton",
     "AIConfig",
     "Config",
-    "Singleton",
+    "Singleton"
 ]

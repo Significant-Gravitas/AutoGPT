@@ -6,7 +6,7 @@ from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
 
 
-def prompt_user() -> AIConfig:
+def prompt_user(config_number : int) -> AIConfig:
     """Prompt the user for input
 
     Returns:
@@ -74,4 +74,11 @@ def prompt_user() -> AIConfig:
             "Develop and manage multiple businesses autonomously",
         ]
 
-    return AIConfig(ai_name, ai_role, ai_goals)
+    configs = AIConfig()
+    configs.set_config(config_number =  config_number, 
+                    ai_name = ai_name, 
+                    ai_role = ai_role, 
+                    ai_goals = ai_goals, 
+                    prompt_generator = '', 
+                    command_registry = '')
+    return configs.get_current_config()

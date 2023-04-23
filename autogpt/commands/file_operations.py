@@ -94,6 +94,10 @@ def read_file(filename: str) -> str:
         str: The contents of the file
     """
     filepath = path_in_workspace(filename)
+    if not os.path.exists(filepath):
+        error_message = f"Error: File '{filepath}' does not exist."
+        filepath = try_fix_missingfile(True, FileNotFoundError(error_message), error_message)
+    
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
@@ -282,3 +286,95 @@ def download_file(url, filename):
         return f"Got an HTTP Error whilst trying to download file: {e}"
     except Exception as e:
         return "Error: " + str(e)
+    
+
+FILEPATH_HUMAN_FIX_MAX_ATTEMPT = 3
+
+def try_fix_missingfile(
+    try_to_fix_with_gpt: bool, exception: Exception, file_to_load: str
+) -> str : #-> Union[str, Dict[Any, Any]]:
+    """Try to fix the missing file with the AI
+
+    Args:
+        file_to_load (str): The missing file to load.
+
+    Raises:
+        exception: If try_to_fix_with_gpt is False.
+
+    Returns:
+        #Union[str, Dict[Any, Any]]: The JSON string or dictionary.
+        str : the filepath to load
+    """
+    if not try_to_fix_with_gpt:
+        raise exception
+
+    logger.warn(
+    f"Warning: Failed to find {file_to_load}."
+    )
+    # Now try to fix this up using the ai_functions
+    ai_fixed_path = fix_missingfile(file_to_load)
+
+    if ai_fixed_path != "failed":
+        return ai_fixed_path
+    # This allows the AI to react to the error message,
+    #   which usually results in it correcting its ways.
+    logger.error("Failed to find file, telling the AI.")
+    return file_to_load
+
+def fix_missingfile(
+    file_to_load: str
+) -> str :
+    """Fix the given filepath string to make valid
+    Args:
+        file_to_load (str): The JSON string to fix.
+    Returns:
+        str: The fixed filepath string.
+    """
+    # # Try to fix the JSON using GPT:
+    # function_string = "def fix_missingfile(json_string: str) -> str:"
+    # args = [f"'''{json_string}'''"]
+    # description_string = (
+    #     "This function takes a filepath string and ensures that it"
+    #     " is existing and fully compliant with the provided schema. If an object"
+    #     " or field specified in the schema isn't contained within the correct JSON,"
+    #     " it is omitted. The function also escapes any double quotes within JSON"
+    #     " string values to ensure that they are valid. If the JSON string contains"
+    #     " any None or NaN values, they are replaced with null before being parsed."
+    # )
+
+    # # If it doesn't already start with a "`", add one:
+    # if not json_string.startswith("`"):
+    #     json_string = "```json\n" + json_string + "\n```"
+    # result_string = call_ai_function(
+    #     function_string, args, description_string, model=CFG.fast_llm_model
+    # )
+    # logger.debug("------------ JSON FIX ATTEMPT ---------------")
+    # logger.debug(f"Original JSON: {json_string}")
+    # logger.debug("-----------")
+    # logger.debug(f"Fixed JSON: {result_string}")
+    # logger.debug("----------- END OF FIX ATTEMPT ----------------")
+
+    # try:
+    #     json.loads(result_string)  # just check the validity
+    #     return result_string
+    # except json.JSONDecodeError:  # noqa: E722
+    #     # Get the call stack:
+    #     # import traceback
+    #     # call_stack = traceback.format_exc()
+    #     # print(f"Failed to fix JSON: '{json_string}' "+call_stack)
+    #     return "failed"
+
+    if FILEPATH_HUMAN_FIX_MAX_ATTEMPT < 1:
+        return "failed"
+    
+    number_of_attempts = 0
+    manualy_fixed_path = ''
+    while number_of_attempts < FILEPATH_HUMAN_FIX_MAX_ATTEMPT and manualy_fixed_path != 'skip' :
+        number_of_attempts += 1
+        manualy_fixed_path = input ("You can manualy fix this issue by input a filepath or input 'skip' to continue without fix "
+                                    f"Number of attempt {number_of_attempts}/3" )
+        if not os.path.exists(manualy_fixed_path) :
+            return manualy_fixed_path
+
+    return "failed"
+        

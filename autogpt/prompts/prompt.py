@@ -8,6 +8,7 @@ from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
 CFG = Config()
+MAX_AI_CONFIG = 5
 
 
 def build_default_prompt_generator() -> PromptGenerator:
@@ -74,37 +75,110 @@ def build_default_prompt_generator() -> PromptGenerator:
     prompt_generator.add_performance_evaluation("Write all code to a file.")
     return prompt_generator
 
+def get_ai_config_index(number_of_config: int) -> int:
+    """
+    Prompt the user to select one of the existing AI configurations or start with new settings.
+    Returns:
+        int: The index of the selected AI configuration or -1 for new settings.
+    """
+    while True:
+        user_input = clean_input(
+            f"Type 1 to {number_of_config} to continue with the saved settings or 'n' to start with new settings: "
+        )
+        if user_input.lower() == "n":
+            return -1
+        if user_input.isdigit():
+            index = int(user_input)
+            if 1 <= index <= number_of_config:
+                return index - 1
+
+def prompt_for_replacing_config(number_of_config: int) -> int:
+    """
+    Prompt the user to choose which AI configuration to replace when the maximum number of configurations is reached.
+    Returns:
+        int: The index of the AI configuration to be replaced.
+    """
+    while True:
+        user_input = clean_input(
+            f"There is a maximum of {number_of_config}. To create a new config, type the number of the config to replace (1 to {number_of_config}): "
+        )
+        if user_input.isdigit():
+            index = int(user_input)
+            if 1 <= index <= number_of_config:
+                return index - 1
+
+def goals_to_string(goals) -> str:
+    """
+    Convert the list of goals into a formatted string for display.
+    Args:
+        goals (list): A list of goal strings.
+    Returns:
+        str: A formatted string containing the goals.
+    """
+    return "\n".join(goals)
+
 
 def construct_main_ai_config() -> AIConfig:
-    """Construct the prompt for the AI to respond to
-
-    Returns:
-        str: The prompt string
     """
-    config = AIConfig.load(CFG.ai_settings_file)
-    if CFG.skip_reprompt and config.ai_name:
-        logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
-        logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
-        logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
-    elif config.ai_name:
+    Load or create an AI configuration for the main AI assistant.
+    Returns:
+        AIConfig: The selected or created AI configuration.
+    """
+    ai_configs = AIConfig(config_file=CFG.ai_settings_file)
+    config_list = ai_configs.get_configs()
+    number_of_config = len(config_list)
+    config_number = -1
+
+    if number_of_config == 0 or CFG.skip_reprompt:
+        logger.typewriter_log(
+            "skip_reprompt: Not supported in the current version",
+            Fore.GREEN,
+            config_list.ai_name,
+        )
+
+    if number_of_config == 1:
+        config_number = 0
+        ai_configs.set_config_number(config_number)
+        config = ai_configs.get_current_config()
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
-            f"Would you like me to return to being {config.ai_name}?",
+            f"Would you like me to return to being {config['ai_name']}?",
             speak_text=True,
         )
         should_continue = clean_input(
-            f"""Continue with the last settings?
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}
-Continue (y/n): """
+            f"""Continue with the last settings?\nName:  {config['ai_name']}\nRole:  {config['ai_role']}\nGoals: {goals_to_string(config['ai_goals'])}\nContinue (y/n): """
         )
         if should_continue.lower() == "n":
-            config = AIConfig()
+            config_number -1
 
-    if not config.ai_name:
-        config = prompt_user()
-        config.save(CFG.ai_settings_file)
+    elif number_of_config > 1:
+        logger.typewriter_log(
+            "Welcome back! ",
+            Fore.GREEN,
+            f"Select one of the following configuration:",
+            speak_text=True,
+        )
+        for i, config in enumerate(config_list):
+            logger.typewriter_log(
+                f"Config {i + 1} : ",
+                Fore.GREEN,
+                f"""Name:  {config['ai_name']}\nRole:  {config['ai_role']}\nGoals: {goals_to_string(config['ai_goals'])}: """,
+            )
 
-    return config
+        config_number = get_ai_config_index(number_of_config)
+
+    if config_number == -1:
+        if number_of_config < MAX_AI_CONFIG:
+            config_number = number_of_config
+        else:
+            config_number = prompt_for_replacing_config(number_of_config)
+
+        config = prompt_user(config_number)
+        ai_configs.save(CFG.ai_settings_file)
+
+    else :
+        ai_configs.set_config_number(new_config_number=config_number)
+        config = ai_configs.get_current_config()
+    
+    return ai_configs
