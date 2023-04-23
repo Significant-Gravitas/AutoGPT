@@ -7,6 +7,7 @@ from PIL import Image
 from autogpt.commands.image_gen import generate_image, generate_image_with_sd_webui
 from autogpt.config import Config
 from autogpt.workspace import path_in_workspace
+from tests.utils import requires_api_key
 
 
 def lst(txt):
@@ -18,6 +19,7 @@ class TestImageGen(unittest.TestCase):
     def setUp(self):
         self.config = Config()
 
+    @requires_api_key("OPENAI_API_KEY")
     def test_dalle(self):
         self.config.image_provider = "dalle"
 
@@ -36,6 +38,7 @@ class TestImageGen(unittest.TestCase):
             self.assertEqual(img.size, (512, 512))
         image_path.unlink()
 
+    @requires_api_key("HUGGINGFACE_API_TOKEN")
     def test_huggingface(self):
         self.config.image_provider = "huggingface"
 

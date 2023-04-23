@@ -255,6 +255,14 @@ class Config(metaclass=Singleton):
         """Set the plugins value."""
         self.plugins = value
 
+    def set_temperature(self, value: int) -> None:
+        """Set the temperature value."""
+        self.temperature = value
+
+    def set_memory_backend(self, value: int) -> None:
+        """Set the temperature value."""
+        self.memory_backend = value
+
 
 def check_openai_api_key() -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
