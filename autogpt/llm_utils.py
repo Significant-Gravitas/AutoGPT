@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import openai
 from colorama import Fore, Style
-from openai.error import APIError, RateLimitError
+from openai.error import APIError, RateLimitError, Timeout
 
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -122,7 +122,7 @@ def create_chat_completion(
                     + f"You can read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
                 )
                 warned_user = True
-        except APIError as e:
+        except (APIError, Timeout) as e:
             if e.http_status != 502:
                 raise
             if attempt == num_retries - 1:
@@ -172,7 +172,7 @@ def create_embedding_with_ada(text) -> list:
                 )["data"][0]["embedding"]
         except RateLimitError:
             pass
-        except APIError as e:
+        except (APIError, Timeout) as e:
             if e.http_status != 502:
                 raise
             if attempt == num_retries - 1:
