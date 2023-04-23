@@ -94,6 +94,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+site/
 
 # PyBuilder
 target/
@@ -156,6 +157,8 @@ vicuna-*
 
 # mac
 .DS_Store
+
+openai/
 
 # news
 CURRENT_BULLETIN.md
