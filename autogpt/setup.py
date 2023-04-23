@@ -2,6 +2,7 @@
 import re
 
 from colorama import Fore, Style
+from typing import List
 
 from autogpt import utils
 from autogpt.config import Config
@@ -12,7 +13,7 @@ from autogpt.logs import logger
 CFG = Config()
 
 
-def prompt_user() -> AIConfig:
+def prompt_user() -> List[AIConfig]:
     """Prompt the user for input
 
     Returns:
@@ -25,42 +26,74 @@ def prompt_user() -> AIConfig:
     logger.typewriter_log(
         "Welcome to Auto-GPT! ",
         Fore.GREEN,
-        "You can create a full project with multiple AI workers or a stand-alone AI, "
+        "You can create a full project with multiple AI or a stand-alone AI, "
         "run with '--help' for more information.",
         speak_text=True,
     )
 
-    user_desire = utils.clean_input(
-        f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: "
-    )
-
-    if user_desire == "":
-        user_desire = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt
-
-    # If user desire contains "--manual"
-    if "--manual" in user_desire:
+    # Get session type from User
+    type = utils.clean_input("Are you creating a full project? (y/n): ")
+    project_name = None
+    if type == "y":
+        # Get Project name from User
         logger.typewriter_log(
-            "Manual Mode Selected",
+            "Name your Project", Fore.GREEN
+        )
+        project_name = utils.clean_input("Project name: ")
+
+    ai_workers = []
+    add_another_worker = True
+
+    while add_another_worker:
+        # Get user desire
+        logger.typewriter_log(
+            "Create an AI-Assistant:",
             Fore.GREEN,
+            "input '--manual' to enter manual mode.",
             speak_text=True,
         )
-        return generate_aiconfig_manual()
 
-    else:
-        try:
-            return generate_aiconfig_automatic(user_desire)
-        except Exception as e:
+        user_desire = utils.clean_input(
+            f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: "
+        )
+
+        if user_desire == "":
+            user_desire = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt
+
+        # If user desire contains "--manual"
+        if "--manual" in user_desire:
             logger.typewriter_log(
-                "Unable to automatically generate AI Config based on user desire.",
-                Fore.RED,
-                "Falling back to manual mode.",
+                "Manual Mode Selected",
+                Fore.GREEN,
                 speak_text=True,
             )
+            ai_worker = generate_aiconfig_manual(project_name)
 
-            return generate_aiconfig_manual()
+        else:
+            try:
+                ai_worker = generate_aiconfig_automatic(user_desire, project_name)
+            except Exception as e:
+                logger.typewriter_log(
+                    "Unable to automatically generate AI Config based on user desire.",
+                    Fore.RED,
+                    "Falling back to manual mode.",
+                    speak_text=True,
+                )
+
+                ai_worker = generate_aiconfig_manual(project_name)
+
+        ai_workers.append(ai_worker)
+
+        if not project_name:
+            add_another_worker = False
+        else:
+            add_worker = utils.clean_input("Add another AI worker? (y/n): ")
+            add_another_worker = True if add_worker.lower() == 'y' else False
+
+    return ai_workers
 
 
-def generate_aiconfig_manual() -> AIConfig:
+def generate_aiconfig_manual(project_name) -> AIConfig:
     """
     Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
 
@@ -147,10 +180,10 @@ def generate_aiconfig_manual() -> AIConfig:
             )
             api_budget = 0.0
 
-    return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+    return AIConfig(project_name, ai_name, ai_role, ai_goals, api_budget)
 
 
-def generate_aiconfig_automatic(user_prompt) -> AIConfig:
+def generate_aiconfig_automatic(user_prompt, project_name) -> AIConfig:
     """Generates an AIConfig object from the given string.
 
     Returns:
@@ -208,4 +241,4 @@ Goals:
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
     api_budget = 0.0  # TODO: parse api budget using a regular expression
 
-    return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+    return AIConfig(project_name, ai_name, ai_role, ai_goals, api_budget)

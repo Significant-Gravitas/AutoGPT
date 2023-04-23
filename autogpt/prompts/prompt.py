@@ -7,6 +7,7 @@ from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
+from autogpt.project.project_manager import ProjectManager
 
 CFG = Config()
 
@@ -83,6 +84,7 @@ def construct_main_ai_config() -> AIConfig:
         str: The prompt string
     """
     config = AIConfig.load(CFG.ai_session)
+    print('config', config)
     if CFG.skip_project and config.project_name:
         logger.typewriter_log("Project:", Fore.GREEN, config.project_name)
         logger.typewriter_log("AI Worker Name:", Fore.GREEN, config.ai_name)
@@ -140,6 +142,9 @@ Continue (y/n): """
         configs = prompt_user()
         for config in configs:
             config.save()
+    
+    if config.project_name:
+        ProjectManager.project_agents()
 
     # set the total api budget
     api_manager = ApiManager()

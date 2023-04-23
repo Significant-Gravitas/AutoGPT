@@ -19,6 +19,7 @@ class AIConfig:
     A class object that contains the configuration information for the AI
 
     Attributes:
+        project_name (str): The name of the Project.
         ai_name (str): The name of the AI.
         ai_role (str): The description of the AI's role.
         ai_goals (list): The list of objectives the AI is supposed to complete.
@@ -26,7 +27,7 @@ class AIConfig:
     """
 
     def __init__(
-        self,
+        self, project_name: str = "",
         ai_name: str = "",
         ai_role: str = "",
         ai_goals: list | None = None,
@@ -36,6 +37,7 @@ class AIConfig:
         Initialize a class instance
 
         Parameters:
+            project_name (str): The name of the Project.
             ai_name (str): The name of the AI.
             ai_role (str): The description of the AI's role.
             ai_goals (list): The list of objectives the AI is supposed to complete.
@@ -45,6 +47,7 @@ class AIConfig:
         """
         if ai_goals is None:
             ai_goals = []
+        self.project_name = project_name
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
@@ -88,7 +91,7 @@ class AIConfig:
     @staticmethod
     def load(config_file: str = None) -> "AIConfig":
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
+        Returns class object with parameters (project_name, ai_name, ai_role, ai_goals, api_budget) loaded from
           yaml file if yaml file exists,
         else returns class with no parameters.
 
@@ -124,7 +127,7 @@ class AIConfig:
 
         return AIConfig(project_name, ai_name, ai_role, ai_goals, api_budget)
 
-    def save(self, config_file: str = SAVE_FILE) -> None:
+    def save(self, config_file: str = None) -> None:
         """
         Saves the class parameters to the specified file yaml file path as a yaml file.
         If the project_name is not empty, it will save the file in the appropriate
@@ -132,8 +135,8 @@ class AIConfig:
         free_agents director.
 
         Parameters:
-            config_file(str): The path to the config yaml file.
-              DEFAULT: "../ai_settings.yaml"
+            config_file (str): The path to the config yaml file, optional.
+            If not provided, it will be determined based on the project_name and ai_name.
 
         Returns:
             None
@@ -205,7 +208,7 @@ class AIConfig:
 
         Returns:
             full_prompt (str): A string containing the initial prompt for the user
-              including the ai_name, ai_role, ai_goals, and api_budget.
+              including the project_name, ai_name, ai_role, ai_goals, and api_budget.
         """
 
         prompt_start = (
@@ -221,6 +224,7 @@ class AIConfig:
         cfg = Config()
         if prompt_generator is None:
             prompt_generator = build_default_prompt_generator()
+        prompt_generator.project_name = self.project_name
         prompt_generator.goals = self.ai_goals
         prompt_generator.name = self.ai_name
         prompt_generator.role = self.ai_role
@@ -242,7 +246,7 @@ class AIConfig:
             prompt_start += f"\nThe OS you are running on is: {os_info}"
 
         # Construct full prompt
-        full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
+        full_prompt = f"You are working on {prompt_generator.project_name} as {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
         if self.api_budget > 0.0:
