@@ -15,6 +15,8 @@ from pathlib import Path
 class Workspace:
     """A class that represents a workspace for an AutoGPT agent."""
 
+    NULL_BYTES = ["\0", "\000", "\x00", r"\z", "\u0000", "%00"]
+
     def __init__(self, workspace_root: str | Path, restrict_to_workspace: bool):
         self._root = self._sanitize_path(workspace_root)
         self._restrict_to_workspace = restrict_to_workspace
@@ -99,6 +101,13 @@ class Workspace:
             If the path is outside the root and the root is restricted.
 
         """
+
+        # Posix systems disallow null bytes in paths. Windows is agnostic about it.
+        # Do an explicit check here for all sorts of null byte representations.
+
+        for null_byte in Workspace.NULL_BYTES:
+            if null_byte in str(relative_path) or null_byte in str(root):
+                raise ValueError("embedded null byte")
 
         if root is None:
             return Path(relative_path).resolve()
