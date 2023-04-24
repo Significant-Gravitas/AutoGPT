@@ -1,15 +1,16 @@
 # sourcery skip: snake-case-functions
 """Tests for the MilvusMemory class."""
-import os
-import sys
 import unittest
 
 try:
+    from pymilvus.exceptions import MilvusException
+
     from autogpt.memory.milvus import MilvusMemory
 
-    def mock_config() -> dict:
+    def mock_config_milvus() -> dict:
         """Mock the config object for testing purposes."""
         # Return a mock config object with the required attributes
+        """Mock the Config class"""
         return type(
             "MockConfig",
             (object,),
@@ -17,8 +18,28 @@ try:
                 "debug_mode": False,
                 "continuous_mode": False,
                 "speak_mode": False,
-                "milvus_collection": "autogpt",
                 "milvus_addr": "localhost:19530",
+                "milvus_username": None,
+                "milvus_password": None,
+                "milvus_collection": "autogpt_test",
+                "milvus_secure": False,
+            },
+        )
+
+    def mock_config_zilliz_cloud() -> dict:
+        """Mock the Config class"""
+        return type(
+            "MockConfig",
+            (object,),
+            {
+                "debug_mode": False,
+                "continuous_mode": False,
+                "speak_mode": False,
+                "milvus_addr": "https://xxxx-xxxxxxxxxxxxx.xxx-xx-xxxx-x.vectordb.zillizcloud.com:19541",
+                "milvus_username": "db_admin",
+                "milvus_password": "3mN_Hd.hxx.ZkC4",
+                "milvus_collection": "autogpt_test",
+                "milvus_secure": False,
             },
         )
 
@@ -27,8 +48,22 @@ try:
 
         def setUp(self) -> None:
             """Set up the test environment"""
-            self.cfg = mock_config()
-            self.memory = MilvusMemory(self.cfg)
+            self.cfg = mock_config_milvus()
+            try:
+                self.memory = MilvusMemory(self.cfg)
+            except MilvusException as err:
+                self.skipTest(
+                    f"Skipping RPC tests for MilvusMemory, milvus memory backend is not ready: {err}"
+                )
+
+        def test_zilliz_cloud_uri_paring(self) -> None:
+            """Test zilliz cloud uri paring"""
+            cfg = mock_config_zilliz_cloud()
+            try:
+                memory = MilvusMemory(self.cfg)
+            except MilvusException as err:
+                # Expected milvus exception.
+                return
 
         def test_add(self) -> None:
             """Test adding a text to the cache"""
