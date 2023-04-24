@@ -68,5 +68,5 @@ try:
             stats = self.memory.get_stats()
             self.assertEqual(15, len(stats))
 
-except:
-    print("Milvus not installed, skipping tests")
+except ImportError as err:
+    print(f"Skipping tests for MilvusMemory: {err}")
