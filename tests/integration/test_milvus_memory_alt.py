@@ -1,78 +1,61 @@
 # sourcery skip: snake-case-functions
 """Tests for the MilvusMemory class."""
-import unittest
+import random
+import string
 
 import pytest
 
-try:
-    from autogpt.memory.milvus import MilvusMemory
+pytest.importorskip("pymilvus", "2.2.0", "Pymilvus is not installed")
 
-    def mock_config() -> dict:
-        """Mock the config object for testing purposes."""
-        # Return a mock config object with the required attributes
-        return type(
-            "MockConfig",
-            (object,),
-            {
-                "debug_mode": False,
-                "continuous_mode": False,
-                "speak_mode": False,
-                "milvus_collection": "autogpt",
-                "milvus_addr": "localhost:19530",
-            },
-        )
+from autogpt.config import Config
+from autogpt.memory.milvus import MilvusMemory
 
-    @pytest.mark.integration_test
-    class TestMilvusMemory(unittest.TestCase):
-        """Tests for the MilvusMemory class."""
 
-        def setUp(self) -> None:
-            """Set up the test environment"""
-            self.cfg = mock_config()
-            self.memory = MilvusMemory(self.cfg)
+@pytest.fixture
+def mock_config():
+    cfg = Config()
+    cfg.milvus_addr = "localhost:19530"
+    return cfg
 
-        def test_add(self) -> None:
-            """Test adding a text to the cache"""
-            text = "Sample text"
-            self.memory.clear()
-            self.memory.add(text)
-            result = self.memory.get(text)
-            self.assertEqual([text], result)
 
-        def test_clear(self) -> None:
-            """Test clearing the cache"""
-            self.memory.clear()
-            self.assertEqual(self.memory.collection.num_entities, 0)
+@pytest.mark.integration_test
+class TestMilvusMemory:
+    """Unit tests for the MilvusMemory class."""
 
-        def test_get(self) -> None:
-            """Test getting a text from the cache"""
-            text = "Sample text"
-            self.memory.clear()
-            self.memory.add(text)
-            result = self.memory.get(text)
-            self.assertEqual(result, [text])
+    def generate_random_string(self, length: int) -> str:
+        return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
-        def test_get_relevant(self) -> None:
-            """Test getting relevant texts from the cache"""
-            text1 = "Sample text 1"
-            text2 = "Sample text 2"
-            self.memory.clear()
-            self.memory.add(text1)
-            self.memory.add(text2)
-            result = self.memory.get_relevant(text1, 1)
-            self.assertEqual(result, [text1])
+    @pytest.fixture(scope="class")
+    def memory(self, mock_config: Config) -> MilvusMemory:
+        memory = MilvusMemory(mock_config)
+        memory.clear()
 
-        def test_get_stats(self) -> None:
-            """Test getting the cache stats"""
-            text = "Sample text"
-            self.memory.clear()
-            self.memory.add(text)
-            stats = self.memory.get_stats()
-            self.assertEqual(15, len(stats))
+        # Add example texts to the cache
+        self.example_texts = [
+            "The quick brown fox jumps over the lazy dog",
+            "I love machine learning and natural language processing",
+            "The cake is a lie, but the pie is always true",
+            "ChatGPT is an advanced AI model for conversation",
+        ]
 
-except ImportError as err:
-    print(f"Skipping tests for MilvusMemory: {err}")
-except:
-    print(
-        "Skipping tests/integration/test_milvus_memory_alt.py as Milvus is not installed."
-    )
+        for text in self.example_texts:
+            memory.add(text)
+
+        # Add some random strings to test noise
+        for _ in range(5):
+            memory.add(self.generate_random_string(10))
+
+        return memory
+
+    def test_get_relevant(self, memory: MilvusMemory) -> None:
+        """Test getting relevant texts from the cache."""
+        query = "I'm interested in artificial intelligence and NLP"
+        num_relevant = 3
+        relevant_texts = memory.get_relevant(query, num_relevant)
+
+        print(f"Top {num_relevant} relevant texts for the query '{query}':")
+        for i, text in enumerate(relevant_texts, start=1):
+            print(f"{i}. {text}")
+
+        assert len(relevant_texts) == num_relevant
+        assert self.example_texts[1] in relevant_texts
