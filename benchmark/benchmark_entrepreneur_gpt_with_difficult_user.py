@@ -3,7 +3,7 @@ import subprocess
 import sys
 
 
-def benchmark_entrepeneur_gpt_with_difficult_user():
+def benchmark_entrepreneur_gpt_with_difficult_user():
     # Test case to check if the write_file command can successfully write 'Hello World' to a file
     # named 'hello_world.txt'.
 
@@ -102,4 +102,4 @@ Not what I need."""
 
 # Run the test case.
 if __name__ == "__main__":
-    benchmark_entrepeneur_gpt_with_difficult_user()
+    benchmark_entrepreneur_gpt_with_difficult_user()
