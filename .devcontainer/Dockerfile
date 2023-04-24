@@ -1,28 +1,26 @@
-# [Choice] Python version (use -bullseye variants on local arm64/Apple Silicon): 3, 3.10, 3-bullseye, 3.10-bullseye, 3-buster, 3.10-buster
-ARG VARIANT=3-bullseye
-FROM --platform=linux/amd64 python:3.10
+# Use an official Python base image from the Docker Hub
+FROM python:3.10-slim
 
-RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    # Remove imagemagick due to https://security-tracker.debian.org/tracker/CVE-2019-10131
-    && apt-get purge -y imagemagick imagemagick-6-common
+# 'dev' or 'release' container build
+ARG BUILD_TYPE=dev
 
-# Temporary: Upgrade python packages due to https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2022-40897
-# They are installed by the base image (python) which does not have the patch.
-RUN python3 -m pip install --upgrade setuptools
+# Install browsers
+RUN apt-get update && apt-get install -y \
+    chromium-driver firefox-esr \
+    ca-certificates
 
-# Install Chrome for web browsing
-RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    && curl -sSL https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb -o /tmp/chrome.deb \
-    && apt-get -y install /tmp/chrome.deb
+# Install utilities
+RUN apt-get install -y curl jq wget git
 
-# [Optional] If your pip requirements rarely change, uncomment this section to add them to the image.
-# COPY requirements.txt /tmp/pip-tmp/
-# RUN pip3 --disable-pip-version-check --no-cache-dir install -r /tmp/pip-tmp/requirements.txt \
-#    && rm -rf /tmp/pip-tmp
+# Set environment variables
+ENV PIP_NO_CACHE_DIR=yes \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 /
 
-# [Optional] Uncomment this section to install additional OS packages.
-# RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-#     && apt-get -y install --no-install-recommends <your-package-list-here>
+# Install the required python packages globally
+ENV PATH="$PATH:/root/.local/bin"
+COPY ./requirements.txt .
 
-# [Optional] Uncomment this line to install global node packages.
-# RUN su vscode -c "source /usr/local/share/nvm/nvm.sh && npm install -g <your-package-here>" 2>&1
+# Only install dev dependencies in dev container builds
+RUN [ '${BUILD_TYPE}' = 'dev' ] || sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
+	pip install --no-cache-dir -r requirements.txt

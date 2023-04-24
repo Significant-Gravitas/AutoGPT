@@ -1,0 +1,24 @@
+# To boot the app run the following:
+# docker-compose run auto-gpt
+version: '3.9'
+
+services:
+  auto-gpt:
+    depends_on:
+      - redis
+    build:
+      dockerfile: ./Dockerfile
+      context: ../
+    image: auto-gpt
+    tty: true
+    env_file:
+      - ../.env
+    environment:
+      MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+    volumes:
+      - ../:/workspace/Auto-GPT
+    working_dir: /workspace/Auto-GPT
+
+  redis:
+    image: 'redis/redis-stack-server:latest'
