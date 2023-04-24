@@ -10,10 +10,8 @@ from logging import LogRecord
 
 from colorama import Fore, Style
 
-from autogpt.config import Config, Singleton
+from autogpt.config import Singleton
 from autogpt.speech import say_text
-
-CFG = Config()
 
 
 class Logger(metaclass=Singleton):
@@ -22,6 +20,9 @@ class Logger(metaclass=Singleton):
     Outputs logs in console, activity.log, and errors.log
     For console handler: simulates typing
     """
+
+    log_file = "activity.log"
+    error_file = "error.log"
 
     def __init__(self):
         # create log directory if it doesn't exist
@@ -78,10 +79,12 @@ class Logger(metaclass=Singleton):
         self.logger.addHandler(error_handler)
         self.logger.setLevel(logging.DEBUG)
 
+        self.speak_mode = False
+
     def typewriter_log(
         self, title="", title_color="", content="", speak_text=False, level=logging.INFO
     ):
-        if speak_text and CFG.speak_mode:
+        if speak_text and self.speak_mode:
             say_text(f"{title}. {content}")
 
         if content:
@@ -202,7 +205,7 @@ def remove_color_codes(s: str) -> str:
 logger = Logger()
 
 
-def print_assistant_thoughts(ai_name, assistant_reply):
+def print_assistant_thoughts(ai_name, assistant_reply, speak_mode: bool = False):
     """Prints the assistant's thoughts to the console"""
     from autogpt.json_utils.json_fix_llm import (
         attempt_to_fix_json_by_finding_outermost_brackets,
@@ -274,7 +277,7 @@ def print_assistant_thoughts(ai_name, assistant_reply):
             "CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}"
         )
         # Speak the assistant's thoughts
-        if CFG.speak_mode and assistant_thoughts_speak:
+        if speak_mode and assistant_thoughts_speak:
             say_text(assistant_thoughts_speak)
         else:
             logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
@@ -282,7 +285,7 @@ def print_assistant_thoughts(ai_name, assistant_reply):
         return assistant_reply_json
     except json.decoder.JSONDecodeError:
         logger.error("Error: Invalid JSON\n", assistant_reply)
-        if CFG.speak_mode:
+        if speak_mode:
             say_text(
                 "I have received an invalid JSON response from the OpenAI API."
                 " I cannot ignore this response."
@@ -295,7 +298,9 @@ def print_assistant_thoughts(ai_name, assistant_reply):
 
 
 def print_assistant_thoughts(
-    ai_name: object, assistant_reply_json_valid: object
+    ai_name: object,
+    assistant_reply_json_valid: object,
+    speak_mode: bool = False,
 ) -> None:
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
@@ -328,5 +333,5 @@ def print_assistant_thoughts(
             logger.typewriter_log("- ", Fore.GREEN, line.strip())
     logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
     # Speak the assistant's thoughts
-    if CFG.speak_mode and assistant_thoughts_speak:
+    if speak_mode and assistant_thoughts_speak:
         say_text(assistant_thoughts_speak)
