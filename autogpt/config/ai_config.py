@@ -2,11 +2,11 @@
 """
 A module that contains the AIConfig class object that contains the configuration
 """
-
-from pathlib import Path
-from typing import List, Optional, Type
-import yaml
 from __future__ import annotations
+from pathlib import Path
+from typing import Type
+import yaml
+
 
 class AIConfig:
     """
@@ -19,7 +19,7 @@ class AIConfig:
     """
 
     def __init__(
-        self, ai_name: str = "", ai_role: str = "", ai_goals: list | None = None
+            self, ai_name: str = "", ai_role: str = "", ai_goals: list | None = None
     ) -> None:
         """
         Initialize a class instance
@@ -38,7 +38,7 @@ class AIConfig:
         self.ai_goals = ai_goals
 
     # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = Path(__file__).parent.parent / "ai_settings.yaml"
+    SAVE_FILE = Path().cwd() / "ai_settings.yaml"
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
