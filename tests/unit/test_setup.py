@@ -73,6 +73,34 @@ class TestAutoGPT(unittest.TestCase):
         self.assertEqual(ai_config.ai_role, "an AI designed to browse bake a cake.")
         self.assertEqual(ai_config.ai_goals, ["Purchase ingredients", "Bake a cake"])
 
+    @requires_api_key("OPENAI_API_KEY")
+    def test_prompt_user_manual_mode_default(self):
+        user_inputs = [
+            "--manual",
+            "",
+            "",
+            "",
+            "",
+        ]
+        with patch("builtins.input", side_effect=user_inputs):
+            ai_config = prompt_user()
+
+        default_ai_name = "Entrepreneur-GPT"
+        default_ai_role = (
+            "an AI designed to autonomously develop and run businesses with the"
+            " sole goal of increasing your net worth."
+        )
+        default_ai_goals = [
+            "Increase net worth",
+            "Grow Twitter Account",
+            "Develop and manage multiple businesses autonomously",
+        ]
+
+        self.assertIsInstance(ai_config, AIConfig)
+        self.assertEqual(ai_config.ai_name, default_ai_name)
+        self.assertEqual(ai_config.ai_role, default_ai_role)
+        self.assertEqual(ai_config.ai_goals, default_ai_goals)
+
 
 if __name__ == "__main__":
     unittest.main()
