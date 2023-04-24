@@ -22,7 +22,7 @@ def LocalCache():
 @pytest.fixture
 def mock_embed(mocker):
     mocker.patch(
-        "autogpt.memory.get_embedding",
+        "autogpt.memory.base.get_embedding",
         return_value=[0.1] * EMBED_DIM,
     )
 
