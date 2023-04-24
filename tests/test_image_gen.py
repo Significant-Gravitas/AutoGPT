@@ -14,6 +14,7 @@ from tests.utils import requires_api_key
 
 
 def lst(txt):
+    """Extract the file path from the output of `generate_image()`"""
     return Path(txt.split(":", 1)[1].strip())
 
 
@@ -31,6 +32,7 @@ class TestImageGen(unittest.TestCase):
 
     @requires_api_key("OPENAI_API_KEY")
     def test_dalle(self):
+        """Test DALL-E image generation."""
         self.config.image_provider = "dalle"
 
         # Test using size 256
@@ -48,6 +50,7 @@ class TestImageGen(unittest.TestCase):
 
     @requires_api_key("HUGGINGFACE_API_TOKEN")
     def test_huggingface(self):
+        """Test HuggingFace image generation."""
         self.config.image_provider = "huggingface"
 
         # Test usin SD 1.4 model and size 512
@@ -66,6 +69,7 @@ class TestImageGen(unittest.TestCase):
         image_path.unlink()
 
     def test_sd_webui(self):
+        """Test SD WebUI image generation."""
         self.config.image_provider = "sd_webui"
         return
 
