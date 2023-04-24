@@ -73,18 +73,21 @@ class AIConfig(AbstractSingleton):
             config_params = {}
 
         cls.__configs = []
-        for key, row in config_params.items():
-            if key == 'version' :
-                continue
-            elif key == 'configurations' : 
-                for yaml_config in row  :
-                    print(yaml_config)
-                    config = {'ai_name': yaml_config["ai_name"],
-                            "ai_role": yaml_config["ai_role"],
-                            "ai_goals": yaml_config["ai_goals"],
-                            "prompt_generator": yaml_config["prompt_generator"],
-                            "command_registry": yaml_config["command_registry"]}
-                    cls.__configs.append(config)
+        for i, row in enumerate(config_params):
+            config = {'ai_name': row["ai_name"],
+                    "ai_role": row["ai_role"],
+                    "ai_goals": row["ai_goals"],
+                    "prompt_generator": row["prompt_generator"],
+                    "command_registry": row["command_registry"]}
+            
+            cls.__configs.append(config) 
+
+            # ai_name = row.get("ai_name", "")
+            # ai_role = row.get("ai_role", "")
+            # ai_goals = row.get("ai_goals", [])
+            # prompt_generator = row.get("prompt_generator", None)
+            # command_registry = row.get("command_registry", None)
+            # cls.__configs.append({"ai_name": ai_name, "ai_role": ai_role, "ai_goals": ai_goals, "prompt_generator": prompt_generator,"command_registry": command_registry })
 
                 # ai_name = row.get("ai_name", "")
                 # ai_role = row.get("ai_role", "")
