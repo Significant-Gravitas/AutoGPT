@@ -7,6 +7,7 @@ import openai
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError
 
+from autogpt.api_manager import api_manager
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.types.openai import Message
@@ -96,7 +97,7 @@ def create_chat_completion(
         backoff = 2 ** (attempt + 2)
         try:
             if CFG.use_azure:
-                response = openai.ChatCompletion.create(
+                response = api_manager.create_chat_completion(
                     deployment_id=CFG.get_azure_deployment_id_for_model(model),
                     model=model,
                     messages=messages,
@@ -104,7 +105,7 @@ def create_chat_completion(
                     max_tokens=max_tokens,
                 )
             else:
-                response = openai.ChatCompletion.create(
+                response = api_manager.create_chat_completion(
                     model=model,
                     messages=messages,
                     temperature=temperature,
@@ -152,24 +153,22 @@ def create_chat_completion(
         resp = plugin.on_response(resp)
     return resp
 
+def get_embedding(text, model_name="text-embedding-ada-002"):
+    text = text.replace("\n", " ")
+    return api_manager.embedding_create(
+        text_list=[text], model=model_name
+    )
+
 
 def create_embedding(text, model_name="text-embedding-ada-002") -> list:
-    """Create a embedding with text-ada-002 using the OpenAI SDK"""
+    """Create a embedding with model_name using the OpenAI SDK"""
     num_retries = 10
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
-            if CFG.use_azure:
-                return openai.Embedding.create(
-                    input=[text],
-                    engine=CFG.get_azure_deployment_id_for_model(
-                        model_name
-                    ),
-                )["data"][0]["embedding"]
-            else:
-                return openai.Embedding.create(
-                    input=[text], model=model_name
-                )["data"][0]["embedding"]
+            return api_manager.embedding_create(
+                text_list=[text], model=model_name
+            )
         except RateLimitError:
             pass
         except APIError as e:

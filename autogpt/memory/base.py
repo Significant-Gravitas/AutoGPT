@@ -1,9 +1,9 @@
 """Base class for memory providers."""
 import abc
 
-import openai
+from autogpt.config import AbstractSingleton, Config
 
-from autogpt.config import AbstractSingleton
+cfg = Config()
 
 
 class MemoryProviderSingleton(AbstractSingleton):

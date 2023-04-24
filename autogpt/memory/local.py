@@ -4,6 +4,7 @@ import uuid
 import datetime
 import chromadb
 import logging
+from autogpt.llm_utils import create_embedding
 from autogpt.memory.base import MemoryProviderSingleton
 from autogpt.llm_utils import create_embedding
 from chromadb.errors import NoIndexException
