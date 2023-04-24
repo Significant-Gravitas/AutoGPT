@@ -48,6 +48,8 @@ jobs:
         event_ref: ${{ github.event.ref }}
         event_ref_type: ${{ github.event.ref}}
 
+        build_type: ${{ matrix.build-type }}
+
         prod_branch: stable
         dev_branch: master
         repository: ${{ github.repository }}

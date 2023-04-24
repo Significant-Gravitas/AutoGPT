@@ -26,6 +26,7 @@ $(docker history --no-trunc --format "{{.CreatedSince}}\t{{.Size}}\t\`{{.Created
     | sed 's/ ago//'             `# fix Layer age`\
     | sed 's/ # buildkit//'      `# remove buildkit comment from instructions`\
     | sed 's/\$/\\$/'            `# escape variable and shell expansions`\
+    | sed 's/|/\\|/'             `# escape pipes so they don't interfere with column separators`\
     | column -t -s$'\t' -o' | '  `# align columns and add separator`\
     | sed 's/^/| /; s/$/ |/'     `# add table row start and end pipes`)
 </details>
