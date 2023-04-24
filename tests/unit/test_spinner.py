@@ -30,28 +30,29 @@ PLEASE_WAIT = "Please wait..."
 
 
 class TestSpinner(unittest.TestCase):
-    # Tests that the spinner initializes with default values.
     def test_spinner_initializes_with_default_values(self):
+        """Tests that the spinner initializes with default values."""
         with Spinner() as spinner:
             self.assertEqual(spinner.message, "Loading...")
             self.assertEqual(spinner.delay, 0.1)
 
-    # Tests that the spinner initializes with custom message and delay values.
     def test_spinner_initializes_with_custom_values(self):
+        """Tests that the spinner initializes with custom message and delay values."""
         with Spinner(message=PLEASE_WAIT, delay=0.2) as spinner:
             self.assertEqual(spinner.message, PLEASE_WAIT)
             self.assertEqual(spinner.delay, 0.2)
 
-    # Tests that the spinner starts spinning and stops spinning without errors.
+    #
     def test_spinner_stops_spinning(self):
+        """Tests that the spinner starts spinning and stops spinning without errors."""
         with Spinner() as spinner:
             time.sleep(1)
             spinner.update_message(ALMOST_DONE_MESSAGE)
             time.sleep(1)
         self.assertFalse(spinner.running)
 
-    # Tests that the spinner message can be updated while the spinner is running and the spinner continues spinning.
     def test_spinner_updates_message_and_still_spins(self):
+        """Tests that the spinner message can be updated while the spinner is running and the spinner continues spinning."""
         with Spinner() as spinner:
             self.assertTrue(spinner.running)
             time.sleep(1)
@@ -60,9 +61,8 @@ class TestSpinner(unittest.TestCase):
             self.assertEqual(spinner.message, ALMOST_DONE_MESSAGE)
         self.assertFalse(spinner.running)
 
-        # Tests that the spinner can be used as a context manager.
-
     def test_spinner_can_be_used_as_context_manager(self):
+        """Tests that the spinner can be used as a context manager."""
         with Spinner() as spinner:
             self.assertTrue(spinner.running)
         self.assertFalse(spinner.running)

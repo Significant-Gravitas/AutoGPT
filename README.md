@@ -59,37 +59,37 @@ Your support is greatly appreciated. Development of this free, open-source proje
 
 ## 📋 Requirements
 
-- Environment (pick one)
+Choose an environment to run Auto-GPT in (pick one):
+
+  - [Docker](https://docs.docker.com/get-docker/) (*recommended*)
   - Python 3.10 or later (instructions: [for Windows](https://www.tutorialspoint.com/how-to-install-python-in-windows))
-  - Docker [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt)
   - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
 
 ## Quickstart
 
 1. Set up your OpenAI [API Keys](https://platform.openai.com/account/api-keys)
 2. Download the [latest release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
-3. Install the [dependencies](/docs/installation.md) and set your [environment variables](/docs/installation.md)
-4. Configure any additional features you want, or install some [plugins](/docs/plugins.md)
-5. [Run](/docs/usage.md) the app
+3. Follow the [installation instructions][docs/install]
+4. Configure any additional features you want, or install some [plugins][docs/plugins]
+5. [Run][docs/usage] the app
 
-Please see the [documentation](/docs) linked below for full setup instructions and configuration options.
+Please see the [documentation][docs] linked below for full setup instructions and configuration options.
 
-## 💾 Documentation
+[docs]: https://significant-gravitas.github.io/Auto-GPT/
 
-[Installation](/docs/installation.md)
+## 📖 Documentation
+* [⚙️ Installation][docs/install]
+* [💻 Usage][docs/usage]
+* [🔌 Plugins][docs/plugins]
+* Configuration
+  * [🔍 Web Search](https://significant-gravitas.github.io/Auto-GPT/configuration/search/)
+  * [🧠 Memory](https://significant-gravitas.github.io/Auto-GPT/configuration/memory/)
+  * [🗣️ Voice (TTS)](https://significant-gravitas.github.io/Auto-GPT/configuration/voice/)
+  * [🖼️ Image Generation](https://significant-gravitas.github.io/Auto-GPT/configuration/imagegen/)
 
-[Usage](/docs/usage.md)
-
-[Speech](/docs/configuration/voice.md)
-
-[Search](/docs/configuration/search.md)
-
-[Plugins](/docs/plugins.md)
-
-[Memory](/docs/configuration/memory.md)
-
-[Image Generation](/docs/configuration/imagegen.md)
-
+[docs/install]: https://significant-gravitas.github.io/Auto-GPT/installation/
+[docs/usage]: https://significant-gravitas.github.io/Auto-GPT/usage/
+[docs/plugins]: https://significant-gravitas.github.io/Auto-GPT/plugins/
 
 ## ⚠️ Limitations
 
