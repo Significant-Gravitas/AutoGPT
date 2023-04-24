@@ -145,7 +145,7 @@ def main(
         
         ai_config = construct_main_ai_config()
         ai_config.command_registry = command_registry
-        ai_name = ai_config.get_current_config['ai_name']
+        ai_name = ai_config.get_current_config()['ai_name']
         # print(prompt)
         # Initialize variables
         full_message_history = []
