@@ -39,8 +39,8 @@ jobs:
         tags: ${{ env.IMAGE_NAME }}
         load: true    # save to docker images
         # cache layers in GitHub Actions cache to speed up builds
-        cache-from: 'type=gha'
-        cache-to: type=gha,mode=max
+        cache-from: type=gha,scope=docker-${{ matrix.build-type }}
+        cache-to: type=gha,scope=docker-${{ matrix.build-type }},mode=max
 
     - name: Generate build report
       env:
@@ -89,8 +89,8 @@ jobs:
         tags: ${{ env.IMAGE_NAME }}
         load: true                  # save to docker images
         # cache layers in GitHub Actions cache to speed up builds
-        cache-from: 'type=gha'
-        cache-to: type=gha,mode=max
+        cache-from: type=gha,scope=docker-dev
+        cache-to: type=gha,scope=docker-dev,mode=max
 
     - id: test
       name: Run tests

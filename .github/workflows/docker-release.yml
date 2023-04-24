@@ -50,8 +50,8 @@ jobs:
           ${{ env.DEPLOY_IMAGE_NAME }}:${{ steps.sanitize_tag.outputs.tag }}
 
         # cache layers in GitHub Actions cache to speed up builds
-        cache-from: ${{ !inputs.no_cache && 'type=gha' || '' }}
-        cache-to: type=gha,mode=max
+        cache-from: ${{ !inputs.no_cache && 'type=gha' || '' }},scope=docker-release
+        cache-to: type=gha,scope=docker-release,mode=max
 
     - name: Push image to Docker Hub
       run: docker push --all-tags ${{ env.DEPLOY_IMAGE_NAME }}
