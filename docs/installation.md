@@ -8,7 +8,7 @@ To use OpenAI API key for Auto-GPT, you **NEED** to have billing set up (AKA pai
 
 You can set up paid account at https://platform.openai.com/account/billing/overview.
 
-Important: It's highly recommended that you track your usage on [the Usage page](https://platform.openai.com/account/usage)
+Important: It's highly recommended that you track your usage on [the Usage page](https://platform.openai.com/account/usage).
 You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
 
 ![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./imgs/openai-api-key-billing-paid-account.png)
