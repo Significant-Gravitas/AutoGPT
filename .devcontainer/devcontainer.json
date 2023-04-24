@@ -6,10 +6,13 @@
 	"features": {
 		"ghcr.io/devcontainers/features/common-utils:2": {
 			"installZsh": "true",
+			"username": "vscode",
+			"userUid": "6942",
+			"userGid": "6942",
 			"upgradePackages": "true"
 		},
 		"ghcr.io/devcontainers/features/desktop-lite:1": {},
-        "ghcr.io/devcontainers/features/node": "none",
+		"ghcr.io/devcontainers/features/node": "none",
 		"ghcr.io/devcontainers/features/python:1": "none",
 		"ghcr.io/devcontainers/features/git:1": {
 			"version": "latest",
@@ -31,5 +34,5 @@
 	// "forwardPorts": [],
 
 	// Set `remoteUser` to `root` to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
-    "remoteUser": "vscode"
+	"remoteUser": "vscode"
 }
