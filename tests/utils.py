@@ -1,3 +1,4 @@
+import functools
 import os
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 
 def requires_api_key(env_var):
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             if not os.environ.get(env_var):
                 pytest.skip(
