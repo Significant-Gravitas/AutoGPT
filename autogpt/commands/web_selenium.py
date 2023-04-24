@@ -93,8 +93,11 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
             options.add_argument("--headless")
             options.add_argument("--disable-gpu")
 
+        if CFG.selenium_proxy_server:
+            options.add_argument(f'--proxy-server={CFG.selenium_proxy_server}')
+        executable_path = ChromeDriverManager().install()
         driver = webdriver.Chrome(
-            executable_path=ChromeDriverManager().install(), options=options
+            executable_path=executable_path, options=options
         )
     driver.get(url)
 
