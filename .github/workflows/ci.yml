@@ -50,6 +50,7 @@ jobs:
       # python-coverage-comment-action branch, and for editing existing
       # comments (to avoid publishing multiple comments in the same PR)
       contents: write
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     strategy:
       matrix:
