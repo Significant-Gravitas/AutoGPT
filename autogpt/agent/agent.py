@@ -1,3 +1,4 @@
+import yaml
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -277,8 +278,12 @@ class Agent:
             str: A feedback response generated using the provided thoughts dictionary.
         """
 
+        with open("ai_settings.yaml", "r") as yaml_file:
+            parsed_yaml = yaml.safe_load(yaml_file)
+            ai_role = parsed_yaml["ai_role"]
 
-        feedback_prompt = ("Below is a message from an AI agent. Please review the provided Thought, Reasoning, Plan, and Criticism. If these are accurate and contribute positively to the assumed goal, respond with the letter 'Y' followed by a space and then an explanation for its effectiveness. If not suitable for achieving the assumed goal, provide a sentence or sentences addressing the issue and suggesting a resolution."
+
+        feedback_prompt = (f"Below is a message from an AI agent with the role of {ai_role}. Please review the provided Thought, Reasoning, Plan, and Criticism. If these elements accurately contribute to the successful execution of the assumed role, respond with the letter 'Y' followed by a space, and then explain why it is effective. If the provided information is not suitable for achieving the role's objectives, please provide one or more sentences addressing the issue and suggesting a resolution."
         )
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
