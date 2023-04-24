@@ -36,6 +36,7 @@ class AimCallback:
         self.system_tracking_interval = system_tracking_interval
         self.log_system_params = log_system_params
         self.capture_terminal_logs = capture_terminal_logs
+        self.log_keys = log_keys
         self._run = None
         self._run_hash = None
 
@@ -90,7 +91,7 @@ class AimCallback:
         args = args.__dict__
         keys = list(args.keys())
         for key in keys:
-            if key.endswith("_key"):
+            if not self.log_keys and key.endswith("_key"):
                 args.pop(key)
                 continue
             try:
