@@ -26,6 +26,9 @@ WORKDIR /home/appuser
 RUN chown appuser:appuser /home/appuser
 USER appuser
 
+# Copy the data_ingestion.py file for memory pre-seeding
+COPY --chown=appuser:appuser data_ingestion.py .
+
 # Copy the requirements.txt file and install the requirements
 COPY --chown=appuser:appuser requirements.txt .
 RUN sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
