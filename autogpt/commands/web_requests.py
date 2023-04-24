@@ -9,11 +9,9 @@ from requests import Response
 from requests.compat import urljoin
 
 from autogpt.config import Config
-from autogpt.memory import get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 
 CFG = Config()
-memory = get_memory(CFG)
 
 session = requests.Session()
 session.headers.update({"User-Agent": CFG.user_agent})

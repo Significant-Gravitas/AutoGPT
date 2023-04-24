@@ -11,16 +11,19 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
+permissions:
+  contents: write
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v2
-      - run: pip install --upgrade pip && pip install mkdocs mkdocs-gen-files
-      - run: git config user.name 'github-actions[bot]' && git config user.email 'github-actions[bot]@users.noreply.github.com'
-      - name: Publish docs
-        run: mkdocs gh-deploy
+          python-version: 3.x
+      - uses: actions/cache@v2
+        with:
+          key: ${{ github.ref }}
+          path: .cache
+      - run: pip install mkdocs-material 
+      - run: mkdocs gh-deploy --force
