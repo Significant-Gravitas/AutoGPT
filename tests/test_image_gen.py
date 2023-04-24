@@ -180,6 +180,28 @@ class TestImageGenFailure(unittest.TestCase):
         # Verify retry was not called.
         mock_sleep.assert_not_called()
 
+    @patch("requests.post")
+    def test_huggingface_fail_request_bad_image(self, mock_post):
+        self.config.huggingface_api_token = "1"
+
+        mock_post.return_value.status_code = 200
+
+        self.config.image_provider = "huggingface"
+
+        # Verify request fails.
+        self.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+        result = generate_image("astronaut riding a horse", 512)
+        self.assertTrue(result == "Error creating image.")
+
+    @patch("requests.post")
+    def test_huggingface_fail_missing_api_token(self, mock_post):
+        self.config.image_provider = "huggingface"
+
+        # Verify request fails.
+        self.config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
+        with self.assertRaises(ValueError):
+            generate_image("astronaut riding a horse", 512)
+
 
 if __name__ == "__main__":
     unittest.main()
