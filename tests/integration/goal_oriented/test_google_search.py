@@ -7,7 +7,7 @@ import vcr
 from autogpt.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.commands.file_operations import delete_file, read_file
-from autogpt.commands import google
+from autogpt.commands import google_search  
 from autogpt.config import AIConfig, Config
 from autogpt.memory import get_memory
 from tests.integration.goal_oriented.vcr_helper import before_record_request
@@ -56,7 +56,7 @@ def test_write_file(workspace) -> None:
 def create_writer_agent(workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.commands.google")
+    command_registry.import_commands("autogpt.commands.google_search")
     command_registry.import_commands("autogpt.app")
 
     ai_config = AIConfig(
