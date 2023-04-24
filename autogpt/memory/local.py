@@ -72,7 +72,7 @@ class LocalCache(MemoryProviderSingleton):
 
     def clear(self) -> str:
         """
-        Resets the Chroma database.
+        Clears the data in memory.
 
         Returns: A message indicating that the db has been cleared.
         """

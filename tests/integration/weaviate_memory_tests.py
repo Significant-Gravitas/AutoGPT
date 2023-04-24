@@ -16,6 +16,7 @@ class TestWeaviateMemory(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        """Set up the test environment for the WeaviateMemory tests."""
         # only create the connection to weaviate once
         cls.cfg = Config()
 
@@ -47,6 +48,7 @@ class TestWeaviateMemory(unittest.TestCase):
     """
 
     def setUp(self):
+        """Set up the test environment for the WeaviateMemory tests."""
         try:
             self.client.schema.delete_class(self.index)
         except:
@@ -55,6 +57,7 @@ class TestWeaviateMemory(unittest.TestCase):
         self.memory = WeaviateMemory(self.cfg)
 
     def test_add(self):
+        """Test adding a text to the cache"""
         doc = "You are a Titan name Thanos and you are looking for the Infinity Stones"
         self.memory.add(doc)
         result = self.client.query.get(self.index, ["raw_text"]).do()
@@ -64,8 +67,9 @@ class TestWeaviateMemory(unittest.TestCase):
         self.assertEqual(actual[0]["raw_text"], doc)
 
     def test_get(self):
+        """Test getting a text from the cache"""
         doc = "You are an Avenger and swore to defend the Galaxy from a menace called Thanos"
-
+        # add the document to the cache
         with self.client.batch as batch:
             batch.add_data_object(
                 uuid=get_valid_uuid(uuid4()),
@@ -82,6 +86,7 @@ class TestWeaviateMemory(unittest.TestCase):
         self.assertEqual(actual[0], doc)
 
     def test_get_stats(self):
+        """Test getting the stats of the cache"""
         docs = [
             "You are now about to count the number of docs in this index",
             "And then you about to find out if you can count correctly",
@@ -96,6 +101,7 @@ class TestWeaviateMemory(unittest.TestCase):
         self.assertEqual(stats["count"], 2)
 
     def test_clear(self):
+        """Test clearing the cache"""
         docs = [
             "Shame this is the last test for this class",
             "Testing is fun when someone else is doing it",
