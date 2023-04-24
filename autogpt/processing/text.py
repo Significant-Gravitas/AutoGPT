@@ -11,7 +11,6 @@ from autogpt.logs import logger
 from autogpt.memory import get_memory
 
 CFG = Config()
-MEMORY = get_memory(CFG)
 
 
 def split_text(
@@ -110,7 +109,8 @@ def summarize_text(
 
         memory_to_add = f"Source: {url}\n" f"Raw content part#{i + 1}: {chunk}"
 
-        MEMORY.add(memory_to_add)
+        memory = get_memory(CFG)
+        memory.add(memory_to_add)
 
         messages = [create_message(chunk, question)]
         tokens_for_chunk = token_counter.count_message_tokens(messages, model)
@@ -129,7 +129,7 @@ def summarize_text(
 
         memory_to_add = f"Source: {url}\n" f"Content summary part#{i + 1}: {summary}"
 
-        MEMORY.add(memory_to_add)
+        memory.add(memory_to_add)
 
     logger.info(f"Summarized {len(chunks)} chunks.")
 
