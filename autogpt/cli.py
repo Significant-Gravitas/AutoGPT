@@ -47,6 +47,7 @@ import click
     is_flag=True,
     help="Specifies whether to suppress the output of latest news on startup.",
 )
+@click.option("--aim-repo", type=str, help="Aim repository path")
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -62,6 +63,7 @@ def main(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
+    aim_repo: str,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -81,6 +83,7 @@ def main(
     from autogpt.memory import get_memory
     from autogpt.prompt import construct_prompt
     from autogpt.utils import get_current_git_branch, get_latest_bulletin
+    from autogpt.aim import AimCallback
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -140,6 +143,8 @@ def main(
             "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
         )
         logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
+        aim_callback = AimCallback(aim_repo)
+        aim_callback.setup({"cfg": cfg})
         agent = Agent(
             ai_name=ai_name,
             memory=memory,
@@ -147,6 +152,7 @@ def main(
             next_action_count=next_action_count,
             system_prompt=system_prompt,
             triggering_prompt=triggering_prompt,
+            aim_callback=aim_callback,
         )
         agent.start_interaction_loop()
 

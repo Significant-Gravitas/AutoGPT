@@ -30,6 +30,8 @@ class Agent:
             CONTEXTUAL INFORMATION (memory, previous conversations, anything relevant)
             TRIGGERING PROMPT
 
+        aim_callback: The Aim callback that tracks input prompts and agent replies.
+
         The triggering prompt reminds the AI about its short term meta task (defining the next task)
     """
 
@@ -41,6 +43,7 @@ class Agent:
         next_action_count,
         system_prompt,
         triggering_prompt,
+        aim_callback,
     ):
         self.ai_name = ai_name
         self.memory = memory
@@ -48,6 +51,7 @@ class Agent:
         self.next_action_count = next_action_count
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
+        self.aim_callback = aim_callback
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -56,6 +60,9 @@ class Agent:
         command_name = None
         arguments = None
         user_input = ""
+
+        self.aim_callback.track_text(self.system_prompt, name="system_prompt")
+        self.aim_callback.track_text(self.triggering_prompt, name="triggering_prompt")
 
         while True:
             # Discontinue if continuous limit is reached
@@ -79,6 +86,12 @@ class Agent:
                     self.memory,
                     cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+
+            self.aim_callback.track_text(
+                assistant_reply,
+                name="assistant_reply",
+                context={"loop_count": loop_count},
+            )
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
 
