@@ -16,6 +16,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build-type: [release, dev]
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
@@ -32,6 +35,8 @@ jobs:
       name: Build image
       uses: docker/build-push-action@v3
       with:
+        build-args: BUILD_TYPE=${{ matrix.build-type }}
+        tags: ${{ env.IMAGE_NAME }}
         load: true    # save to docker images
         # cache layers in GitHub Actions cache to speed up builds
         cache-from: 'type=gha'
@@ -80,8 +85,8 @@ jobs:
       uses: docker/build-push-action@v3
       with:
         build-args: BUILD_TYPE=dev  # include pytest
-        load: true                  # save to docker images
         tags: ${{ env.IMAGE_NAME }}
+        load: true                  # save to docker images
         # cache layers in GitHub Actions cache to speed up builds
         cache-from: 'type=gha'
         cache-to: type=gha,mode=max
