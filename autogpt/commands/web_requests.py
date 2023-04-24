@@ -21,14 +21,10 @@ session.headers.update({"User-Agent": CFG.user_agent})
 
 JSONType = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 
+@validate_url
 @command("make_http_request", "Make an HTTP request", '"url": "<url>", "method": "<method>", "auth_token": "<auth_token>", "data": "<data>"')
 def make_http_request(url: str, method: str = "GET", auth_token: str = None, data: JSONType = None):
-    if not is_valid_url(url):
-        logger.error(f"Invalid URL: {url}")
-        return "Error: Invalid URL"
-
-    sanitized_url: str = sanitize_url(url)
-    logger._log(f"Sending HTTP request: {method} {sanitized_url}")
+    logger._log(f"Sending HTTP request: {method} {url}")
 
     # Set up headers with API key
     headers = {}
@@ -40,7 +36,7 @@ def make_http_request(url: str, method: str = "GET", auth_token: str = None, dat
 
     # Send request
     try:
-        response = requests.request(method, sanitized_url, json=data, headers=headers)
+        response = requests.request(method, url, json=data, headers=headers)
         logger._log(f"HTTP request sent successfully: {response.status_code}")
         return response
     except Exception as e:
