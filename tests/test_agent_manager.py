@@ -1,5 +1,6 @@
-import pytest
 from typing import List
+
+import pytest
 
 from autogpt.agent.agent_manager import AgentManager
 from tests.utils import requires_api_key
