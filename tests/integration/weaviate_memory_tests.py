@@ -5,7 +5,7 @@ from weaviate import Client
 from weaviate.util import get_valid_uuid
 
 from autogpt.config import Config
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm_utils import get_embedding
 from autogpt.memory.weaviate import WeaviateMemory
 
 
@@ -71,7 +71,7 @@ class TestWeaviateMemory(unittest.TestCase):
                 uuid=get_valid_uuid(uuid4()),
                 data_object={"raw_text": doc},
                 class_name=self.index,
-                vector=get_ada_embedding(doc),
+                vector=get_embedding(doc),
             )
 
             batch.flush()

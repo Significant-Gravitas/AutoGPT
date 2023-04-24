@@ -3,7 +3,7 @@ from weaviate import Client
 from weaviate.embedded import EmbeddedOptions
 from weaviate.util import generate_uuid5
 
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm_utils import get_embedding
 from autogpt.memory.base import MemoryProviderSingleton
 
 
@@ -70,7 +70,7 @@ class WeaviateMemory(MemoryProviderSingleton):
             return None
 
     def add(self, data):
-        vector = get_ada_embedding(data)
+        vector = get_embedding(data)
 
         doc_uuid = generate_uuid5(data, self.index)
         data_object = {"raw_text": data}
@@ -99,7 +99,7 @@ class WeaviateMemory(MemoryProviderSingleton):
         return "Obliterated"
 
     def get_relevant(self, data, num_relevant=5):
-        query_embedding = get_ada_embedding(data)
+        query_embedding = get_embedding(data)
         try:
             results = (
                 self.client.query.get(self.index, ["raw_text"])

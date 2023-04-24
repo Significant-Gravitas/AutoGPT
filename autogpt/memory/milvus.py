@@ -4,7 +4,7 @@ import re
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
 
 from autogpt.config import Config
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm_utils import get_embedding
 from autogpt.memory.base import MemoryProviderSingleton
 
 
@@ -99,7 +99,7 @@ class MilvusMemory(MemoryProviderSingleton):
         Returns:
             str: log.
         """
-        embedding = get_ada_embedding(data)
+        embedding = get_embedding(data)
         result = self.collection.insert([[embedding], [data]])
         _text = (
             "Inserting data into memory at primary key: "
@@ -141,7 +141,7 @@ class MilvusMemory(MemoryProviderSingleton):
             list: The top-k relevant data.
         """
         # search the embedding and return the most relevant text.
-        embedding = get_ada_embedding(data)
+        embedding = get_embedding(data)
         search_params = {
             "metrics_type": "IP",
             "params": {"nprobe": 8},
