@@ -117,10 +117,11 @@ class TestImageGenFailure(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.workspace_path)
 
-    @requires_api_key("HUGGINGFACE_API_TOKEN")
     @patch("time.sleep")
     @patch("requests.post")
     def test_huggingface_fail_request_with_delay(self, mock_post, mock_sleep):
+        self.config.huggingface_api_token = "1"
+
         mock_post.return_value.status_code = 500
         mock_post.return_value.ok = False
         mock_post.return_value.text = '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading","estimated_time":0}'
@@ -135,10 +136,11 @@ class TestImageGenFailure(unittest.TestCase):
         # Verify retry was called with delay.
         mock_sleep.assert_called_with(0)
 
-    @requires_api_key("HUGGINGFACE_API_TOKEN")
     @patch("time.sleep")
     @patch("requests.post")
     def test_huggingface_fail_request_no_delay(self, mock_post, mock_sleep):
+        self.config.huggingface_api_token = "1"
+
         mock_post.return_value.status_code = 500
         mock_post.return_value.ok = False
         mock_post.return_value.text = (
@@ -155,10 +157,11 @@ class TestImageGenFailure(unittest.TestCase):
         # Verify retry was not called.
         mock_sleep.assert_not_called()
 
-    @requires_api_key("HUGGINGFACE_API_TOKEN")
     @patch("time.sleep")
     @patch("requests.post")
     def test_huggingface_fail_request_bad_json(self, mock_post, mock_sleep):
+        self.config.huggingface_api_token = "1"
+
         mock_post.return_value.status_code = 500
         mock_post.return_value.ok = False
         mock_post.return_value.text = '{"error:}'
