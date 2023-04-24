@@ -5,7 +5,8 @@ import unittest
 import orjson
 import pytest
 
-from autogpt.memory.local import EMBED_DIM, SAVE_OPTIONS
+from autogpt.memory.base import EMBED_DIM
+from autogpt.memory.local import SAVE_OPTIONS
 from autogpt.memory.local import LocalCache as LocalCache_
 from tests.utils import requires_api_key
 
@@ -19,9 +20,9 @@ def LocalCache():
 
 
 @pytest.fixture
-def mock_embed_with_ada(mocker):
+def mock_embed(mocker):
     mocker.patch(
-        "autogpt.memory.local.create_embedding_with_ada",
+        "autogpt.memory.get_embedding",
         return_value=[0.1] * EMBED_DIM,
     )
 
@@ -60,14 +61,14 @@ def test_init_with_backing_file(LocalCache, config, workspace):
     assert cache_file.read_text() == "{}"
 
 
-def test_add(LocalCache, config, mock_embed_with_ada):
+def test_add(LocalCache, config, mock_embed):
     cache = LocalCache(config)
     cache.add("test")
     assert cache.data.texts == ["test"]
     assert cache.data.embeddings.shape == (1, EMBED_DIM)
 
 
-def test_clear(LocalCache, config, mock_embed_with_ada):
+def test_clear(LocalCache, config, mock_embed):
     cache = LocalCache(config)
     assert cache.data.texts == []
     assert cache.data.embeddings.shape == (0, EMBED_DIM)
@@ -81,7 +82,7 @@ def test_clear(LocalCache, config, mock_embed_with_ada):
     assert cache.data.embeddings.shape == (0, EMBED_DIM)
 
 
-def test_get(LocalCache, config, mock_embed_with_ada):
+def test_get(LocalCache, config, mock_embed):
     cache = LocalCache(config)
     assert cache.get("test") == []
 
@@ -101,7 +102,7 @@ def test_get_relevant(LocalCache, config) -> None:
     assert result == [text1]
 
 
-def test_get_stats(LocalCache, config, mock_embed_with_ada) -> None:
+def test_get_stats(LocalCache, config, mock_embed) -> None:
     cache = LocalCache(config)
     text = "Sample text"
     cache.add(text)
