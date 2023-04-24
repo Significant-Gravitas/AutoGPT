@@ -26,6 +26,6 @@ jobs:
         pip install -r requirements.txt
     - name: benchmark
       run: |
-         python benchmark/benchmark_entrepeneur_gpt_with_undecisive_user.py
+         python benchmark/benchmark_entrepreneur_gpt_with_undecisive_user.py
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

@@ -1,4 +1,5 @@
-""" Brian speech module for autogpt """
+import logging
+
 import requests
 
 from autogpt.speech.playback import play_audio
@@ -30,6 +31,9 @@ class BrianSpeech(VoiceBase):
             play_audio(response.content)
             return True
         else:
-            print("Request failed with status code:", response.status_code)
-            print("Response content:", response.content)
+            logging.error(
+                "Request failed with status code: %s, response content: %s",
+                response.status_code,
+                response.content,
+            )
             return False
