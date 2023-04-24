@@ -136,6 +136,26 @@ def main(
                     "Please consider upgrading to Python 3.10 or higher.",
                 )
 
+        # TODO: have this directory live outside the repository (e.g. in a user's
+        #   home directory) and have it come in as a command line argument or part of
+        #   the env file.
+        if workspace_directory is None:
+            workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
+        else:
+            workspace_directory = Path(workspace_directory)
+        # TODO: pass in the ai_settings file and the env file and have them cloned into
+        #   the workspace directory so we can bind them to the agent.
+        workspace_directory = Workspace.make_workspace(workspace_directory)
+        cfg.workspace_path = str(workspace_directory)
+
+        # HACK: doing this here to collect some globals that depend on the workspace.
+        file_logger_path = workspace_directory / "file_logger.txt"
+        if not file_logger_path.exists():
+            with file_logger_path.open(mode="w", encoding="utf-8") as f:
+                f.write("File Operation Logger ")
+
+        cfg.file_logger_path = str(file_logger_path)
+
         cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
         # Create a CommandRegistry instance and scan default folder
         command_registry = CommandRegistry()
@@ -174,26 +194,6 @@ def main(
         system_prompt = ai_config.construct_full_prompt()
         if cfg.debug_mode:
             logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
-
-        # TODO: have this directory live outside the repository (e.g. in a user's
-        #   home directory) and have it come in as a command line argument or part of
-        #   the env file.
-        if workspace_directory is None:
-            workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
-        else:
-            workspace_directory = Path(workspace_directory)
-        # TODO: pass in the ai_settings file and the env file and have them cloned into
-        #   the workspace directory so we can bind them to the agent.
-        workspace_directory = Workspace.make_workspace(workspace_directory)
-        cfg.workspace_path = str(workspace_directory)
-
-        # HACK: doing this here to collect some globals that depend on the workspace.
-        file_logger_path = workspace_directory / "file_logger.txt"
-        if not file_logger_path.exists():
-            with file_logger_path.open(mode="w", encoding="utf-8") as f:
-                f.write("File Operation Logger ")
-
-        cfg.file_logger_path = str(file_logger_path)
 
         agent = Agent(
             ai_name=ai_name,
