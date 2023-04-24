@@ -55,12 +55,6 @@ import click
     type=click.Path(),
     hidden=True,
 )
-@click.option(
-    "--install-plugin-deps",
-    is_flag=True,
-    help="Installs external dependencies for 3rd party plugins.",
-)
-
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -77,7 +71,6 @@ def main(
     allow_downloads: bool,
     skip_news: bool,
     workspace_directory: str,
-    install_plugin_deps: bool,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -119,7 +112,6 @@ def main(
             browser_name,
             allow_downloads,
             skip_news,
-            install_plugin_deps,
         )
         logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
         if not cfg.skip_news:
@@ -144,7 +136,7 @@ def main(
                     "Please consider upgrading to Python 3.10 or higher.",
                 )
 
-        cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode, cfg.install_plugin_deps))
+        cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
         # Create a CommandRegistry instance and scan default folder
         command_registry = CommandRegistry()
         command_registry.import_commands("autogpt.commands.analyze_code")

@@ -23,7 +23,6 @@ def create_config(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
-    install_plugin_deps: bool,
 ) -> None:
     """Updates the config object with the given arguments.
 
@@ -40,7 +39,6 @@ def create_config(
         browser_name (str): The name of the browser to use when using selenium to scrape the web
         allow_downloads (bool): Whether to allow Auto-GPT to download files natively
         skips_news (bool): Whether to suppress the output of latest news on startup
-        install_plugin_deps (bool): Whether to install plugin dependencies
     """
     CFG.set_debug_mode(False)
     CFG.set_continuous_mode(False)
@@ -134,5 +132,3 @@ def create_config(
 
     if skip_news:
         CFG.skip_news = True
-
-    CFG.install_plugin_deps = True if install_plugin_deps else False
