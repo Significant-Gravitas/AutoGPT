@@ -8,7 +8,8 @@ try:
     from autogpt.memory.milvus import MilvusMemory
 
     def mock_config() -> dict:
-        """Mock the Config class"""
+        """Mock the config object for testing purposes."""
+        # Return a mock config object with the required attributes
         return type(
             "MockConfig",
             (object,),
