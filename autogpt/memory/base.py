@@ -1,19 +1,9 @@
 """Base class for memory providers."""
 import abc
 
-import openai
-
-from autogpt.api_manager import api_manager
 from autogpt.config import AbstractSingleton, Config
 
 cfg = Config()
-
-
-def get_ada_embedding(text):
-    text = text.replace("\n", " ")
-    return api_manager.embedding_create(
-        text_list=[text], model="text-embedding-ada-002"
-    )
 
 
 class MemoryProviderSingleton(AbstractSingleton):
