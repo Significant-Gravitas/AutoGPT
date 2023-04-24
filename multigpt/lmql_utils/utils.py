@@ -1,4 +1,5 @@
 import asyncio
+import re
 import time
 
 from openai.error import RateLimitError
@@ -133,6 +134,16 @@ def lmql_chat_with_ai(
             time.sleep(10)
 
 
+def lmql_generate_experts(task, min_experts, max_experts):
+    async def _query_generate_experts():
+        result = (await _queries.generate_experts(task, min_experts, max_experts))
+        return result
+
+    loop = asyncio.get_event_loop()
+    lmql_result = loop.run_until_complete(_query_generate_experts())
+    return _parse_experts(lmql_result[0].variables['RESULT'])
+
+
 def lmql_create_chat_completion(model="gpt-3.5-turbo", messages=None, max_tokens=0):
     async def _query_chat_completion():
         if model == "gpt-4":
@@ -183,3 +194,24 @@ def _extract_response(input_string, first_char):
         if first_occurrence_index != -1:
             return input_string[first_occurrence_index:]
     return None
+
+
+def _parse_experts(experts: str):
+    # personas = experts.split(r"[0-9]\. ")
+    experts = re.sub("\n", "", experts)
+    personas = re.split(r"[0-9]\. ", experts)[1:]
+    # print(personas)
+    res = []
+    for persona in personas:
+        try:
+            tmp = re.split(r"[0-9][a-c]\) ", persona)
+            # print(tmp)
+            name, description = tmp[0].split(":")[:2]
+            # print(name, description)
+            goals = tmp[1:]
+            # print(name, description, goals)
+            res.append((name, description, goals))
+        except:
+            print("Error parsing expert")
+    # TODO: assert res length is not larger than MAX_EXPERTS
+    return res
