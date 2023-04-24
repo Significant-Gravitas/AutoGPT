@@ -29,6 +29,7 @@ class Config(metaclass=Singleton):
         self.allow_downloads = False
         self.skip_news = False
 
+        self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings_file.yaml")
         self.ai_session = os.getenv("AI_SESSION", "ai_session.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")

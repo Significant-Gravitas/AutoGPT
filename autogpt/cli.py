@@ -43,10 +43,12 @@ import click
     help="Dangerous: Allows Auto-GPT to download files natively.",
 )
 @click.option(
-    "--project-name",
-    is_flag=True,
-    prompt="Enter project name",
+    "--project",
     help="Name of the project to get agents from.",
+)
+@click.option(
+    "--skip-project",
+    help="Skips the prompt to create a project.",
 )
 @click.option(
     "--skip-news",
@@ -80,7 +82,8 @@ def main(
     memory_type: str,
     browser_name: str,
     allow_downloads: bool,
-    project_name: str,
+    project: str,
+    skip_project: bool,
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
@@ -106,7 +109,8 @@ def main(
             memory_type,
             browser_name,
             allow_downloads,
-            project_name,
+            project,
+            skip_project,
             skip_news,
             workspace_directory,
             install_plugin_deps,

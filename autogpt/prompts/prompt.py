@@ -84,7 +84,7 @@ def construct_main_ai_config() -> AIConfig:
         str: The prompt string
     """
     config = AIConfig.load(CFG.ai_session)
-    if CFG.skip_project and config.project_name:
+    if config.project_name and CFG.skip_reprompt:
         logger.typewriter_log("Project:", Fore.GREEN, config.project_name)
         logger.typewriter_log("AI Name:", Fore.GREEN, config.ai_name)
         logger.typewriter_log("AI Role:", Fore.GREEN, config.ai_role)
@@ -94,7 +94,7 @@ def construct_main_ai_config() -> AIConfig:
             Fore.GREEN,
             "infinite" if config.api_budget <= 0 else f"${config.api_budget}",
         )
-    elif config.project_name:
+    elif not CFG.skip_project and config.project_name:
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,

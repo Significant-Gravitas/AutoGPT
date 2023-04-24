@@ -54,19 +54,23 @@ class ProjectManager:
         agent_files = project_manager.get_agents(project_name)
 
         if not agent_files:
-            click.echo("No YAML files found in the specified path.")
+            click.echo("Not a valid project or no agents found.")
             return
 
-        click.echo("Available agent files:")
+        click.echo("Available AI-Assistants:")
+        click.echo(f"Available {project_name} AI-Assistants:")
         agent_files_sorted = sorted(agent_files, key=lambda file: project_manager.read_ai_name(file))
         for idx, file in enumerate(agent_files_sorted, start=1):
             ai_name = project_manager.read_ai_name(file)
-            click.echo(f"{idx}. {file.name} (ai_name: {ai_name})")
+            click.echo(f"{idx}. {ai_name} (Config: {file.name})")
 
-        choice = click.prompt("Please select an agent file by entering the corresponding number", type=int)
+        choice = click.prompt("Select an AI-Assistant by entering the corresponding number", type=int)
 
         if 1 <= choice <= len(agent_files_sorted):
             selected_file = agent_files_sorted[choice - 1]
-            click.echo(f"You have selected: {selected_file.name}")
+            selected_ai_name = project_manager.read_ai_name(selected_file)
+            click.echo(f"{selected_ai_name} is now getting to work.")
+            return selected_file
         else:
-            click.echo("Invalid choice. Exiting.")
+            click.echo("Invalid choice.")
+            project_manager.project_agents(project_name)
