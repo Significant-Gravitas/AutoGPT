@@ -2,6 +2,8 @@
 """Tests for the MilvusMemory class."""
 import unittest
 
+import pytest
+
 try:
     from autogpt.memory.milvus import MilvusMemory
 
