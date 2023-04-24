@@ -78,7 +78,7 @@ For related settings, see [Memory > Redis setup](./configuration/memory.md#redis
 You can also build and run it with "vanilla" docker commands:
 ``` shell
 docker build -t auto-gpt .
-docker run -it --env-file=.env -v .:/app auto-gpt
+docker run -it --env-file=.env -v $PWD:/app auto-gpt
 ```
 
 You can pass extra arguments, for instance, running with `--gpt3only` and `--continuous` mode:
@@ -86,7 +86,7 @@ You can pass extra arguments, for instance, running with `--gpt3only` and `--con
 docker-compose run --rm auto-gpt --gpt3only --continuous
 ```
 ``` shell
-docker run -it --env-file=.env -v .:/app --rm auto-gpt --gpt3only --continuous
+docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuous
 ```
 
 Alternatively, you can pull the latest release directly from [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt) and run that:
@@ -96,7 +96,7 @@ docker run -it --env OPENAI_API_KEY='your-key-here' --rm significantgravitas/aut
 
 Or with `ai_settings.yml` presets mounted:
 ```shell
-docker run -it --env OPENAI_API_KEY='your-key-here' -v ./ai_settings.yaml:/app/ai_settings.yaml --rm significantgravitas/auto-gpt
+docker run -it --env OPENAI_API_KEY='your-key-here' -v $PWD/ai_settings.yaml:/app/ai_settings.yaml --rm significantgravitas/auto-gpt
 ```
 
 
