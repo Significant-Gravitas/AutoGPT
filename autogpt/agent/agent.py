@@ -39,6 +39,7 @@ class Agent:
 
         The triggering prompt reminds the AI about its short term meta task
         (defining the next task)
+        ai_guidelines: The guidelines object that monitors history for ethical and performance rule violations
     """
 
     def __init__(
@@ -52,6 +53,7 @@ class Agent:
         system_prompt,
         triggering_prompt,
         workspace_directory,
+        ai_guidelines,
     ):
         cfg = Config()
         self.ai_name = ai_name
@@ -63,6 +65,7 @@ class Agent:
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
+        self.ai_guidelines = ai_guidelines
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -232,7 +235,16 @@ class Agent:
                     logger.typewriter_log(
                         "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                     )
-
+                # For now we perform this check AFTER the action has been taken, it may be too
+                # late for this time but if there was a violation, it will appear in the message
+                # history
+                self.ai_guidelines.exec_monitor(
+                        self.system_prompt,
+                        self.full_message_history,
+                        self.memory,
+                        cfg.fast_token_limit,
+                        cfg.fast_llm_model,
+                )
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
             command_args["directory"] = str(self.workspace.root)
