@@ -8,7 +8,7 @@ from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from dotenv import load_dotenv
 
-from autogpt.config.singleton import Singleton
+from autogpt.singleton import Singleton
 
 load_dotenv(verbose=True, override=True)
 
@@ -20,6 +20,9 @@ class Config(metaclass=Singleton):
 
     def __init__(self) -> None:
         """Initialize the Config class"""
+        self.workspace_path = None
+        self.file_logger_path = None
+
         self.debug_mode = False
         self.continuous_mode = False
         self.continuous_limit = 0
@@ -85,9 +88,12 @@ class Config(metaclass=Singleton):
             os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
         )
 
-        # milvus configuration, e.g., localhost:19530.
+        # milvus or zilliz cloud configuration.
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
+        self.milvus_username = os.getenv("MILVUS_USERNAME")
+        self.milvus_password = os.getenv("MILVUS_PASSWORD")
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
+        self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
@@ -259,9 +265,9 @@ class Config(metaclass=Singleton):
         """Set the temperature value."""
         self.temperature = value
 
-    def set_memory_backend(self, value: int) -> None:
-        """Set the temperature value."""
-        self.memory_backend = value
+    def set_memory_backend(self, name: str) -> None:
+        """Set the memory backend name."""
+        self.memory_backend = name
 
 
 def check_openai_api_key() -> None:
