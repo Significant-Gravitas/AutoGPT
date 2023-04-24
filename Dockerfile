@@ -31,6 +31,22 @@ COPY --chown=appuser:appuser requirements.txt .
 RUN sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
 	pip install --no-cache-dir --user -r requirements.txt
 
+# Unleash Start
+### This is where we add things that we see it get stuck on, frequently, if our mission is to make the exploratory road easier
+RUN apt-get update \
+    && apt-get install -y build-essential curl apt-utils sudo git openssh-client sbcl
+
+# ssh key sorts github out
+RUN ssh-keygen -q -t rsa -N '' -f ~/.ssh/id_rsa
+
+# if it wants to play with Rust, why not?
+RUN curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
+
+# requirements-docker.txt is where to dump extra libraries that we get frequently stuck on
+COPY --chown=appuser:appuser requirements-docker.txt .
+RUN pip install --no-cache-dir --user -r requirements-docker.txt
+# Unleash end
+
 # Copy the application files
 COPY --chown=appuser:appuser autogpt/ ./autogpt
 
