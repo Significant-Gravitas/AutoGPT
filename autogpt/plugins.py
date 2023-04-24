@@ -18,6 +18,29 @@ from autogpt.config import Config
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
 
+def install_plugin_dependencies(zip_path: str, debug: bool = False) -> None:
+    """
+    Inspect a zipfile for a requirements file and install if exists. Only
+    searches at top level for now.
+
+    Args:
+        zip_path (str): Path to the zipfile.
+        debug (bool, optional): Enable debug logging. Defaults to False.
+
+    Returns:
+        None
+    """
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zfile:
+            basedir = zfile.namelist()[0]
+            basereqs = os.path.join(basedir, 'requirements.txt')
+            extracted = zfile.extract(basereqs)
+            os.system(f"pip install -r {extracted}")
+    except KeyError:
+        if debug:
+            print("Couldn't find a requirements file to load for {zip_path}")
+
+
 def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
     """
     Inspect a zipfile for a modules.
@@ -194,7 +217,9 @@ def instantiate_openai_plugin_clients(
     return plugins
 
 
-def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate]:
+def scan_plugins(
+    cfg: Config, debug: bool = False, install_plugin_deps = False
+) -> List[AutoGPTPluginTemplate]:
     """Scan the plugins directory for plugins and loads them.
 
     Args:
@@ -208,6 +233,8 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
     # Generic plugins
     plugins_path_path = Path(cfg.plugins_dir)
     for plugin in plugins_path_path.glob("*.zip"):
+        if install_plugin_deps:
+            install_plugin_dependencies(str(plugin), debug)
         if moduleList := inspect_zip_for_modules(str(plugin), debug):
             for module in moduleList:
                 plugin = Path(plugin)
