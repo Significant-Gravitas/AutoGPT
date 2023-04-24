@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 
+
 def scrape_text(url: str) -> str:
     """Scrape text from a webpage
 
