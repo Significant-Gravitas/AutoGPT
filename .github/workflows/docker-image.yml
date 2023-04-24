@@ -18,4 +18,4 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag autogpt:$(date +%s)
+      run: docker build . --build-arg BUILD_TYPE=release --tag autogpt:$(date +%s)
