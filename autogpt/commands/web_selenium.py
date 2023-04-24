@@ -18,13 +18,21 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 
 import autogpt.processing.text as summary
+from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpt.url_utils.validators import validate_url
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
 
 
+@command(
+    "browse_website",
+    "Browse Website",
+    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+)
+@validate_url
 def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     """Browse a website and return the answer and links to the user
 
@@ -87,8 +95,13 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
             options.add_argument("--headless")
             options.add_argument("--disable-gpu")
 
+        chromium_driver_path = Path("/usr/bin/chromedriver")
+
         driver = webdriver.Chrome(
-            executable_path=ChromeDriverManager().install(), options=options
+            executable_path=chromium_driver_path
+            if chromium_driver_path.exists()
+            else ChromeDriverManager().install(),
+            options=options,
         )
     driver.get(url)
 

@@ -1,5 +1,3 @@
-import uuid
-
 import weaviate
 from weaviate import Client
 from weaviate.embedded import EmbeddedOptions
@@ -23,7 +21,7 @@ def default_schema(weaviate_index):
 
 
 class WeaviateMemory(MemoryProviderSingleton):
-    def __init__(self, cfg):
+    def __init__(self, cfg: Config):
         auth_credentials = self._build_auth_credentials(cfg)
 
         url = f"{cfg.weaviate_protocol}://{cfg.weaviate_host}:{cfg.weaviate_port}"
@@ -51,6 +49,7 @@ class WeaviateMemory(MemoryProviderSingleton):
         # weaviate uses capitalised index names
         # The python client uses the following code to format
         # index names before the corresponding class is created
+        index = index.replace("-", "_")
         if len(index) == 1:
             return index.capitalize()
         return index[0].capitalize() + index[1:]

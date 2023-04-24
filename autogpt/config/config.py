@@ -1,14 +1,16 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
+from typing import List
 
 import openai
 import yaml
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from dotenv import load_dotenv
 
 from autogpt.config.singleton import Singleton
 
-load_dotenv(verbose=True)
+load_dotenv(verbose=True, override=True)
 
 
 class Config(metaclass=Singleton):
@@ -18,6 +20,9 @@ class Config(metaclass=Singleton):
 
     def __init__(self) -> None:
         """Initialize the Config class"""
+        self.workspace_path = None
+        self.file_logger_path = None
+
         self.debug_mode = False
         self.continuous_mode = False
         self.continuous_limit = 0
@@ -31,13 +36,19 @@ class Config(metaclass=Singleton):
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
-        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 8192))
+        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 3000))
+        self.browse_spacy_language_model = os.getenv(
+            "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
+        )
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.temperature = float(os.getenv("TEMPERATURE", "1"))
+        self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
+        )
+        self.restrict_to_workspace = (
+            os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True"
         )
 
         if self.use_azure:
@@ -77,15 +88,24 @@ class Config(metaclass=Singleton):
             os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
         )
 
-        # milvus configuration, e.g., localhost:19530.
+        # milvus or zilliz cloud configuration.
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
+        self.milvus_username = os.getenv("MILVUS_USERNAME")
+        self.milvus_password = os.getenv("MILVUS_PASSWORD")
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
+        self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
+        self.image_size = int(os.getenv("IMAGE_SIZE", 256))
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
+        self.huggingface_image_model = os.getenv(
+            "HUGGINGFACE_IMAGE_MODEL", "CompVis/stable-diffusion-v1-4"
+        )
         self.huggingface_audio_to_text_model = os.getenv(
             "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
         )
+        self.sd_webui_url = os.getenv("SD_WEBUI_URL", "http://localhost:7860")
+        self.sd_webui_auth = os.getenv("SD_WEBUI_AUTH")
 
         # Selenium browser settings
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
@@ -112,6 +132,17 @@ class Config(metaclass=Singleton):
         # Initialize the OpenAI API client
         openai.api_key = self.openai_api_key
 
+        self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
+        self.plugins: List[AutoGPTPluginTemplate] = []
+        self.plugins_openai = []
+
+        plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
+        if plugins_allowlist:
+            self.plugins_allowlist = plugins_allowlist.split(",")
+        else:
+            self.plugins_allowlist = []
+        self.plugins_denylist = []
+
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
         Returns the relevant deployment id for the model specified.
@@ -137,7 +168,7 @@ class Config(metaclass=Singleton):
         else:
             return ""
 
-    AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "azure.yaml")
+    AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
 
     def load_azure_config(self, config_file: str = AZURE_CONFIG_FILE) -> None:
         """
@@ -150,17 +181,14 @@ class Config(metaclass=Singleton):
         Returns:
             None
         """
-        try:
-            with open(config_file) as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
-        except FileNotFoundError:
-            config_params = {}
+        with open(config_file) as file:
+            config_params = yaml.load(file, Loader=yaml.FullLoader)
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
         self.openai_api_version = (
             config_params.get("azure_api_version") or "2023-03-15-preview"
         )
-        self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", [])
+        self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", {})
 
     def set_continuous_mode(self, value: bool) -> None:
         """Set the continuous mode value."""
@@ -229,6 +257,18 @@ class Config(metaclass=Singleton):
     def set_debug_mode(self, value: bool) -> None:
         """Set the debug mode value."""
         self.debug_mode = value
+
+    def set_plugins(self, value: list) -> None:
+        """Set the plugins value."""
+        self.plugins = value
+
+    def set_temperature(self, value: int) -> None:
+        """Set the temperature value."""
+        self.temperature = value
+
+    def set_memory_backend(self, value: int) -> None:
+        """Set the temperature value."""
+        self.memory_backend = value
 
 
 def check_openai_api_key() -> None:
