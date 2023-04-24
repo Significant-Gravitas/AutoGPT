@@ -4,7 +4,7 @@ import re
 from colorama import Fore, Style
 
 from autogpt import utils
-from autogpt.config import Config, AIConfig
+from autogpt.config import AIConfig, Config
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
 
