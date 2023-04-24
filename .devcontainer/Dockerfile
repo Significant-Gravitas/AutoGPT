@@ -1,5 +1,5 @@
 # Use an official Python base image from the Docker Hub
-FROM python:3.10-slim
+FROM python:3.10
 
 # 'dev' or 'release' container build
 ARG BUILD_TYPE=dev
@@ -11,11 +11,6 @@ RUN apt-get update && apt-get install -y \
 
 # Install utilities
 RUN apt-get install -y curl jq wget git
-
-# Set environment variables
-ENV PIP_NO_CACHE_DIR=yes \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 /
 
 # Install the required python packages globally
 ENV PATH="$PATH:/root/.local/bin"
