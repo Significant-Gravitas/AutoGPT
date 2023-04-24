@@ -25,12 +25,15 @@ def main():
     plugins_dir = Path(os.getenv("PLUGINS_DIR", "plugins"))
     for plugin in plugins_dir.glob("*.zip"):
         with zipfile.ZipFile(str(plugin), "r") as zfile:
-            basedir = zfile.namelist()[0]
-            basereqs = os.path.join(basedir, 'requirements.txt')
-            required_packages += [
-                line.decode('utf-8').strip().split("#")[0].strip()
-                for line in zfile.open(basereqs).readlines()
-            ]
+            try:
+                basedir = zfile.namelist()[0]
+                basereqs = os.path.join(basedir, 'requirements.txt')
+                required_packages += [
+                    line.decode('utf-8').strip().split("#")[0].strip()
+                    for line in zfile.open(basereqs).readlines()
+                ]
+            except KeyError:
+                continue
 
     missing_packages = []
     for package in required_packages:

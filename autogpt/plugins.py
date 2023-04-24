@@ -4,6 +4,8 @@ import importlib
 import json
 import os
 import zipfile
+import subprocess
+import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
@@ -21,7 +23,7 @@ from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 def install_plugin_dependencies(zip_path: str, debug: bool = False) -> None:
     """
     Inspect a zipfile for a requirements file and install if exists. Only
-    searches at top level for now.
+    searches at top level.
 
     Args:
         zip_path (str): Path to the zipfile.
@@ -35,7 +37,7 @@ def install_plugin_dependencies(zip_path: str, debug: bool = False) -> None:
             basedir = zfile.namelist()[0]
             basereqs = os.path.join(basedir, 'requirements.txt')
             extracted = zfile.extract(basereqs)
-            os.system(f"pip install -r {extracted}")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", extracted])
     except KeyError:
         if debug:
             print("Couldn't find a requirements file to load for {zip_path}")
