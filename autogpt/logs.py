@@ -21,9 +21,6 @@ class Logger(metaclass=Singleton):
     For console handler: simulates typing
     """
 
-    log_file = "activity.log"
-    error_file = "error.log"
-
     def __init__(self):
         # create log directory if it doesn't exist
         this_files_dir_path = os.path.dirname(__file__)
