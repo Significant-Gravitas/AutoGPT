@@ -2,19 +2,19 @@
 
 1. Open a terminal and run the startup script:
     * On Linux/MacOS:
-        ```shell
+        ``` shell
         ./run.sh
         ```
     * On Windows:
-        ```shell
+        ``` shell
         .\run.bat
         ```
     * Using Docker:
-        ```shell
+        ``` shell
         docker-compose run --rm auto-gpt
         ```
     Running with `--help` lists all the possible command line arguments you can pass:
-    ```shell
+    ``` shell
     ./run.sh --help
 
     # or with docker
@@ -34,15 +34,15 @@ Here are some common arguments you can use when running Auto-GPT:
 > Replace anything in angled brackets (<>) to a value you want to specify
 
 * View all available command line arguments
-    ```    
+    ``` shell
     python -m autogpt --help
     ```
 * Run Auto-GPT with a different AI Settings file
-    ```    
+    ``` shell
     python -m autogpt --ai-settings <filename>
     ```
 * Specify a memory backend
-    ```    
+    ``` shell
     python -m autogpt --use-memory  <memory-backend>
     ```
 
@@ -65,7 +65,7 @@ Use at your own risk.
 
 1. Run the `autogpt` python module in your terminal:
 
-    ```    
+    ``` shell
     python -m autogpt --continuous
     ```
 
