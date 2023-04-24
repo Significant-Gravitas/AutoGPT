@@ -1,15 +1,25 @@
 # Usage
 
-1. Run the `autogpt` Python module in your terminal.
-* On Linux/MacOS:
-   ```   
-   ./run.sh
-   ```
-* On Windows:
-   ```   
-   .\run.bat
-   ```
-   Running with `--help` after `.\run.bat` lists all the possible command line arguments you can pass.
+1. Open a terminal and run the startup script:
+    * On Linux/MacOS:
+        ```shell
+        ./run.sh
+        ```
+    * On Windows:
+        ```shell
+        .\run.bat
+        ```
+    * Using Docker:
+        ```shell
+        docker-compose run --rm auto-gpt
+        ```
+    Running with `--help` lists all the possible command line arguments you can pass:
+    ```shell
+    ./run.sh --help
+
+    # or with docker
+    docker-compose run --rm auto-gpt --help
+    ```
 
 2. After each response from Auto-GPT, choose from the options to authorize command(s),
 exit the program, or provide feedback to the AI.
