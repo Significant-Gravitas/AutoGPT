@@ -154,6 +154,13 @@ def create_chat_completion(
     return resp
 
 
+def get_ada_embedding(text):
+    text = text.replace("\n", " ")
+    return api_manager.embedding_create(
+        text_list=[text], model="text-embedding-ada-002"
+    )
+
+
 def create_embedding_with_ada(text) -> list:
     """Create an embedding with text-ada-002 using the OpenAI SDK"""
     num_retries = 10
