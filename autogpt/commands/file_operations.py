@@ -5,6 +5,7 @@ import os
 import os.path
 from typing import Generator
 
+import chardet
 import requests
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
@@ -86,7 +87,10 @@ def read_file(filename: str) -> str:
         str: The contents of the file
     """
     try:
-        with open(filename, "r", encoding="utf-8") as f:
+        with open(filename, "rb") as f:
+            raw_data = f.read()
+            encoding = chardet.detect(raw_data)["encoding"]
+        with open(filename, "r", encoding=encoding) as f:
             content = f.read()
         return content
     except Exception as e:
