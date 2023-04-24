@@ -6,12 +6,10 @@ from bs4 import BeautifulSoup
 from requests import Response
 
 from autogpt.config import Config
-from autogpt.memory import get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
 
 CFG = Config()
-memory = get_memory(CFG)
 
 session = requests.Session()
 session.headers.update({"User-Agent": CFG.user_agent})
