@@ -55,10 +55,9 @@ jobs:
 
         current_ref: ${{ github.ref_name }}
         commit_hash: ${{ github.event.after }}
-        source_url: ${{ github.event.head_commit.url }}
+        source_url: ${{ format('{0}/tree/{1}', github.event.repository.url, github.event.release && github.event.release.tag_name || github.sha) }}
         push_forced_label: ${{ github.event.forced && '☢️ forced' || '' }}
 
-        head_compare_url: ${{ github.event.compare }}
         new_commits_json: ${{ toJSON(github.event.commits) }}
         compare_url_template: ${{ format('/{0}/compare/{{base}}...{{head}}', github.repository) }}
 

@@ -1,5 +1,6 @@
 #!/bin/bash
 meta=$(docker image inspect "$IMAGE_NAME" | jq '.[0]')
+head_compare_url=$(sed "s/{base}/$base_branch/; s/{head}/$current_ref/" <<< $compare_url_template)
 ref_compare_url=$(sed "s/{base}/$base_branch/; s/{head}/$commit_hash/" <<< $compare_url_template)
 
 EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
@@ -26,6 +27,7 @@ $(docker history --no-trunc --format "{{.CreatedSince}}\t{{.Size}}\t\`{{.Created
     | cut -f-3                   `# yeet Comment column`\
     | sed 's/ ago//'             `# fix Layer age`\
     | sed 's/ # buildkit//'      `# remove buildkit comment from instructions`\
+    | sed 's/\$/\\$/'            `# escape variable and shell expansions`\
     | column -t -s$'\t' -o' | '  `# align columns and add separator`\
     | sed 's/^/| /; s/$/ |/'     `# add table row start and end pipes`)
 </details>

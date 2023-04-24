@@ -25,6 +25,7 @@ $(docker history --no-trunc --format "{{.CreatedSince}}\t{{.Size}}\t\`{{.Created
     | cut -f-3                   `# yeet Comment column`\
     | sed 's/ ago//'             `# fix Layer age`\
     | sed 's/ # buildkit//'      `# remove buildkit comment from instructions`\
+    | sed 's/\$/\\$/'            `# escape variable and shell expansions`\
     | column -t -s$'\t' -o' | '  `# align columns and add separator`\
     | sed 's/^/| /; s/$/ |/'     `# add table row start and end pipes`)
 </details>
@@ -54,7 +55,7 @@ $meta
 </details>
 
 ## Build details
-**Build trigger:** $event_name \`$event_ref\`
+**Build trigger:** $event_name \`$current_ref\`
 
 | Parameter      | Value        |
 | -------------- | ------------ |
