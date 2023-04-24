@@ -13,17 +13,25 @@ on:
 
 permissions:
   contents: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v4
         with:
           python-version: 3.x
-      - uses: actions/cache@v2
+
+      - name: Set up workflow cache
+        uses: actions/cache@v3
         with:
           key: ${{ github.ref }}
           path: .cache
-      - run: pip install mkdocs-material 
+
+      - run: pip install mkdocs-material
+
       - run: mkdocs gh-deploy --force
