@@ -1,8 +1,8 @@
 """ElevenLabs speech module"""
 import os
-from playsound import playsound
 
 import requests
+from playsound import playsound
 
 from autogpt.config import Config
 from autogpt.speech.base import VoiceBase
@@ -14,7 +14,7 @@ class ElevenLabsSpeech(VoiceBase):
     """ElevenLabs speech class"""
 
     def _setup(self) -> None:
-        """Setup the voices, API key, etc.
+        """Set up the voices, API key, etc.
 
         Returns:
             None: None

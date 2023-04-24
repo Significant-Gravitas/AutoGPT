@@ -1,19 +1,31 @@
-import tweepy
+"""A module that contains a command to send a tweet."""
 import os
+
+import tweepy
 from dotenv import load_dotenv
+
+from autogpt.commands.command import command
 
 load_dotenv()
 
 
-def send_tweet(tweet_text):
+@command(
+    "send_tweet",
+    "Send Tweet",
+    '"tweet_text": "<tweet_text>"',
+)
+def send_tweet(tweet_text: str) -> str:
     """
     Sends a tweet with the given text to the authenticated user's Twitter account.
+    
     Args:
         tweet_text (str): The text of the tweet to be sent. The tweet text must not exceed the Twitter character limit (currently 280 characters).
+    
     Returns:
-        None
-    Raises:
-        tweepy.TweepyException: If there is an error during the authentication process or while sending the tweet.
+        str: A string indicating whether the tweet was sent successfully or if there was an error.
+    
+    Exceptions:
+        None, errors are handled by the return message.
     """
     consumer_key = os.environ.get("TW_CONSUMER_KEY")
     consumer_secret = os.environ.get("TW_CONSUMER_SECRET")
@@ -29,6 +41,6 @@ def send_tweet(tweet_text):
     # Send tweet
     try:
         api.update_status(tweet_text)
-        print("Tweet sent successfully!")
+        return "Tweet sent successfully!"
     except tweepy.TweepyException as e:
-        print("Error sending tweet: {}".format(e.reason))
+        return f"Error sending tweet: {e.reason}"
