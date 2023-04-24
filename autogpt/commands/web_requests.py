@@ -78,14 +78,15 @@ def scrape_text(url: str) -> str:
     return text
 
 
-def scrape_links(url: str) -> str | list[str]:
+def scrape_links(url: str, max_links: int = 40) -> str | list[str]:
     """Scrape links from a webpage
 
     Args:
         url (str): The URL to scrape links from
+        max_links (int): The maximum number of links to return (optional)
 
     Returns:
-       str | list[str]: The scraped links
+        str | list[str]: The scraped links
     """
     response, error_message = get_response(url)
     if error_message:
@@ -98,6 +99,8 @@ def scrape_links(url: str) -> str | list[str]:
         script.extract()
 
     hyperlinks = extract_hyperlinks(soup, url)
+    if max_links is not None and len(hyperlinks) > max_links:
+        hyperlinks = hyperlinks[:max_links]
 
     return format_hyperlinks(hyperlinks)
 
