@@ -32,6 +32,10 @@ def run_auto_gpt(
     skip_news: bool,
     workspace_directory: str,
 ):
+    # Configure logging before we do anything else.
+    logger.set_level(logging.DEBUG if debug else logging.INFO)
+    logger.speak_mode = speak
+
     cfg = Config()
     # TODO: fill in llm values here
     check_openai_api_key()
@@ -49,7 +53,7 @@ def run_auto_gpt(
         allow_downloads,
         skip_news,
     )
-    logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
+
     if not cfg.skip_news:
         motd = get_latest_bulletin()
         if motd:
