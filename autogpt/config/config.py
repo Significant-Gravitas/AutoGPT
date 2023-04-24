@@ -20,6 +20,9 @@ class Config(metaclass=Singleton):
 
     def __init__(self) -> None:
         """Initialize the Config class"""
+        self.workspace_path = None
+        self.file_logger_path = None
+
         self.debug_mode = False
         self.continuous_mode = False
         self.continuous_limit = 0
