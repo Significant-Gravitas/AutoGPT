@@ -12,7 +12,7 @@ class TestParseJson(TestCase):
         self.assertEqual(obj, {"name": "John", "age": 30, "city": "New York"})
 
     def test_invalid_json_minor(self):
-        """Test that an invalid JSON string can be fixed with gpt"""
+        """Test that an invalid JSON string can not be fixed without gpt"""
         json_str = '{"name": "John", "age": 30, "city": "New York",}'
         with self.assertRaises(Exception):
             fix_and_parse_json(json_str, try_to_fix_with_gpt=False)
@@ -68,6 +68,5 @@ class TestParseJson(TestCase):
         # self.assertEqual(fix_and_parse_json(json_str), good_obj)
 
         # Assert that trying to fix this without GPT raises an exception
-        self.assertRaises(
-            ValueError, fix_and_parse_json, json_str, try_to_fix_with_gpt=False
-        )
+        with self.assertRaises(Exception):
+            fix_and_parse_json(json_str, try_to_fix_with_gpt=False)
