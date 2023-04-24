@@ -1,27 +1,39 @@
 """Selenium web scraping module."""
-from selenium import webdriver
-from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
-import autogpt.processing.text as summary
-from bs4 import BeautifulSoup
-from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.firefox import GeckoDriverManager
-from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from selenium.webdriver.safari.options import Options as SafariOptions
+from __future__ import annotations
+
 import logging
 from pathlib import Path
+from sys import platform
+
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.safari.options import Options as SafariOptions
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.firefox import GeckoDriverManager
+
+import autogpt.processing.text as summary
+from autogpt.commands.command import command
 from autogpt.config import Config
-from typing import List, Tuple, Union
+from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpt.url_utils.validators import validate_url
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
 
 
-def browse_website(url: str, question: str) -> Tuple[str, WebDriver]:
+@command(
+    "browse_website",
+    "Browse Website",
+    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+)
+@validate_url
+def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -43,7 +55,7 @@ def browse_website(url: str, question: str) -> Tuple[str, WebDriver]:
     return f"Answer gathered from website: {summary_text} \n \n Links: {links}", driver
 
 
-def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
+def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     """Scrape text from a website using selenium
 
     Args:
@@ -74,8 +86,22 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
     else:
+        if platform == "linux" or platform == "linux2":
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--remote-debugging-port=9222")
+
+        options.add_argument("--no-sandbox")
+        if CFG.selenium_headless:
+            options.add_argument("--headless")
+            options.add_argument("--disable-gpu")
+
+        chromium_driver_path = Path("/usr/bin/chromedriver")
+
         driver = webdriver.Chrome(
-            executable_path=ChromeDriverManager().install(), options=options
+            executable_path=chromium_driver_path
+            if chromium_driver_path.exists()
+            else ChromeDriverManager().install(),
+            options=options,
         )
     driver.get(url)
 
@@ -97,7 +123,7 @@ def scrape_text_with_selenium(url: str) -> Tuple[WebDriver, str]:
     return driver, text
 
 
-def scrape_links_with_selenium(driver: WebDriver, url: str) -> List[str]:
+def scrape_links_with_selenium(driver: WebDriver, url: str) -> list[str]:
     """Scrape links from a website using selenium
 
     Args:

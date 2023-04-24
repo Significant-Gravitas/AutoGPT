@@ -1,5 +1,6 @@
-beautifulsoup4
+beautifulsoup4>=4.12.2
 colorama==0.4.6
+distro==1.8.0
 openai==0.27.2
 playsound==1.2.2
 python-dotenv==1.0.0
@@ -15,16 +16,38 @@ pinecone-client==2.2.1
 redis
 orjson
 Pillow
-selenium
+selenium==4.1.4
 webdriver-manager
+jsonschema
+tweepy
+click
+spacy>=3.0.0,<4.0.0
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl
+
+##Dev
 coverage
 flake8
 numpy
 pre-commit
 black
-sourcery
 isort
 gitpython==3.1.31
+auto-gpt-plugin-template
+mkdocs
+
+
+# OpenAI and Generic plugins import
+openapi-python-client==0.13.4
+
+# Items below this point will not be included in the Docker Image
+
+# Testing dependencies
 pytest
+asynctest
+pytest-asyncio
+pytest-benchmark
+pytest-cov
+pytest-integration
 pytest-mock
-tweepy
+vcrpy
+pytest-vcr
