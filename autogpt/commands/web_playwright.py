@@ -10,8 +10,6 @@ except ImportError:
 from bs4 import BeautifulSoup
 
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
-from autogpt.url_utils.validators import validate_url
-
 
 def scrape_text(url: str) -> str:
     """Scrape text from a webpage
