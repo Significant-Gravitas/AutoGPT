@@ -5,8 +5,9 @@ from typing import List, Optional
 
 import openai
 from colorama import Fore, Style
-from openai.error import APIError, RateLimitError
+from openai.error import APIError, RateLimitError, Timeout
 
+from autogpt.api_manager import api_manager
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.types.openai import Message
@@ -96,7 +97,7 @@ def create_chat_completion(
         backoff = 2 ** (attempt + 2)
         try:
             if CFG.use_azure:
-                response = openai.ChatCompletion.create(
+                response = api_manager.create_chat_completion(
                     deployment_id=CFG.get_azure_deployment_id_for_model(model),
                     model=model,
                     messages=messages,
@@ -104,7 +105,7 @@ def create_chat_completion(
                     max_tokens=max_tokens,
                 )
             else:
-                response = openai.ChatCompletion.create(
+                response = api_manager.create_chat_completion(
                     model=model,
                     messages=messages,
                     temperature=temperature,
@@ -122,7 +123,7 @@ def create_chat_completion(
                     + f"You can read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
                 )
                 warned_user = True
-        except APIError as e:
+        except (APIError, Timeout) as e:
             if e.http_status != 502:
                 raise
             if attempt == num_retries - 1:
@@ -153,26 +154,25 @@ def create_chat_completion(
     return resp
 
 
+def get_ada_embedding(text):
+    text = text.replace("\n", " ")
+    return api_manager.embedding_create(
+        text_list=[text], model="text-embedding-ada-002"
+    )
+
+
 def create_embedding_with_ada(text) -> list:
     """Create an embedding with text-ada-002 using the OpenAI SDK"""
     num_retries = 10
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
-            if CFG.use_azure:
-                return openai.Embedding.create(
-                    input=[text],
-                    engine=CFG.get_azure_deployment_id_for_model(
-                        "text-embedding-ada-002"
-                    ),
-                )["data"][0]["embedding"]
-            else:
-                return openai.Embedding.create(
-                    input=[text], model="text-embedding-ada-002"
-                )["data"][0]["embedding"]
+            return api_manager.embedding_create(
+                text_list=[text], model="text-embedding-ada-002"
+            )
         except RateLimitError:
             pass
-        except APIError as e:
+        except (APIError, Timeout) as e:
             if e.http_status != 502:
                 raise
             if attempt == num_retries - 1:
