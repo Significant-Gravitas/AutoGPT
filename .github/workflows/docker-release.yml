@@ -41,6 +41,7 @@ jobs:
       name: Build image
       uses: docker/build-push-action@v3
       with:
+        build-args: BUILD_TYPE=release
         load: true    # save to docker images
         # push: true  # TODO: uncomment when this issue is fixed: https://github.com/moby/buildkit/issues/1555
         tags: >
