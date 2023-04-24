@@ -1,0 +1,20 @@
+site_name: Auto-GPT
+site_url: https://github.com/Significant-Gravitas/Auto-GPT
+repo_url: https://github.com/Significant-Gravitas/Auto-GPT
+nav:
+    - Home: index.md
+    - Installation: installation.md
+    - Usage: usage.md
+    - Plugins: plugins.md
+    - Testing: testing.md
+    - Configuration: 
+      - Search: configuration/search.md
+      - Memory: configuration/memory.md
+      - Voice: configuration/voice.md
+      - Image Generation: configuration/imagegen.md
+
+    - Code of Conduct: ../CODE_OF_CONDUCT.md
+    - Contributing: ../CONTRIBUTING.md
+    - License: ../LICENSE
+    
+theme: readthedocs
