@@ -1,38 +1,33 @@
 # Use an official Python base image from the Docker Hub
 FROM python:3.10-slim
 
-# Install git
-RUN apt-get -y update
-RUN apt-get -y install git chromium-driver
+# 'dev' or 'release' container build
+ARG BUILD_TYPE=dev
 
-# Install Xvfb and other dependencies for headless browser testing
-RUN apt-get update \
-    && apt-get install -y wget gnupg2 libgtk-3-0 libdbus-glib-1-2 dbus-x11 xvfb ca-certificates
+# Install browsers
+RUN apt-get update && apt-get install -y \
+    chromium-driver firefox-esr \
+    ca-certificates
 
-# Install Firefox / Chromium
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
-    && apt-get update \
-    && apt-get install -y chromium firefox-esr
+# Install utilities
+RUN apt-get install -y curl jq wget git
 
 # Set environment variables
 ENV PIP_NO_CACHE_DIR=yes \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Create a non-root user and set permissions
-RUN useradd --create-home appuser
-WORKDIR /home/appuser
-RUN chown appuser:appuser /home/appuser
-USER appuser
+# Install the required python packages globally
+ENV PATH="$PATH:/root/.local/bin"
+COPY requirements.txt .
 
-# Copy the requirements.txt file and install the requirements
-COPY --chown=appuser:appuser requirements.txt .
-RUN sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
-	pip install --no-cache-dir --user -r requirements.txt
+# Only install dev dependencies in dev container builds
+RUN [ '${BUILD_TYPE}' = 'dev' ] || sed -i '/Items below this point will not be included in the Docker Image/,$d' requirements.txt && \
+	pip install --no-cache-dir -r requirements.txt
 
 # Copy the application files
-COPY --chown=appuser:appuser autogpt/ ./autogpt
+WORKDIR /app
+COPY autogpt/ ./autogpt
 
 # Set the entrypoint
 ENTRYPOINT ["python", "-m", "autogpt"]
