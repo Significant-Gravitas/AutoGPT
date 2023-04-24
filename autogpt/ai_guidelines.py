@@ -27,15 +27,17 @@ def create_chat_message(role, content):
 class AIGuidelines:
     # SAVE_FILE = "ai_guidelines.yaml"
 
-    def __init__(self, filename, ai_guidelines=[]) -> None:
+    def __init__(self, filename, ai_guidelines=[], bsilent=False) -> None:
         # self.print_to_console = print_to_console
         self.filename = filename
         self.ai_guidelines = ai_guidelines
 
         self.load()
-        self.create_guidelines()
-        self.save()
+        if not bsilent:
+            self.create_guidelines()
+            self.save()
         self.gprompt = self.construct_full_prompt()
+        self.bsilent = bsilent
 
 
     def load(self):
@@ -145,6 +147,9 @@ is even more important than success at achieving your goals:\n\n
     def exec_monitor(self, goals, full_message_history, permanent_memory, token_limit, model):
         """Interact with the OpenAI API, sending the prompt, user input, message history,
         and permanent memory."""
+        if self.bsilent:
+            return 'continue'
+
         while True:
             try:
                 """
