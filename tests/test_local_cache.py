@@ -27,7 +27,7 @@ def mock_embed_with_ada(mocker):
 
 
 def test_init_without_backing_file(LocalCache, config, workspace):
-    cache_file = workspace.root / f"{config.memory_index}.json"
+    cache_file = workspace.root / f"{config.local_cache_index}.json"
 
     assert not cache_file.exists()
     LocalCache(config)
@@ -36,7 +36,7 @@ def test_init_without_backing_file(LocalCache, config, workspace):
 
 
 def test_init_with_backing_empty_file(LocalCache, config, workspace):
-    cache_file = workspace.root / f"{config.memory_index}.json"
+    cache_file = workspace.root / f"{config.local_cache_index}.json"
     cache_file.touch()
 
     assert cache_file.exists()
@@ -46,7 +46,7 @@ def test_init_with_backing_empty_file(LocalCache, config, workspace):
 
 
 def test_init_with_backing_file(LocalCache, config, workspace):
-    cache_file = workspace.root / f"{config.memory_index}.json"
+    cache_file = workspace.root / f"{config.local_cache_index}.json"
     cache_file.touch()
 
     raw_data = {"texts": ["test"]}
