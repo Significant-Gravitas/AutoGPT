@@ -265,9 +265,9 @@ class Config(metaclass=Singleton):
         """Set the temperature value."""
         self.temperature = value
 
-    def set_memory_backend(self, value: int) -> None:
-        """Set the temperature value."""
-        self.memory_backend = value
+    def set_memory_backend(self, name: str) -> None:
+        """Set the memory backend name."""
+        self.memory_backend = name
 
 
 def check_openai_api_key() -> None:
