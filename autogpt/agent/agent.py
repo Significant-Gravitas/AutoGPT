@@ -277,9 +277,7 @@ class Agent:
         if current_window == self.code_window_name:
             if key == KeyCode.from_char("P") and self.shift_pressed:
                 if self.pause_count >= 2:
-                    print(
-                        "FEEDBACK REQUEST DETECTED. Please wait for the next loop."
-                    )
+                    print("FEEDBACK REQUEST DETECTED. Please wait for the next loop.")
                 self.pause_count += 1
             elif key == Key.shift:
                 self.shift_pressed = True
