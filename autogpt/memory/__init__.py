@@ -69,8 +69,8 @@ def get_memory(cfg, init=False):
     elif cfg.memory_backend == "milvus":
         if not MilvusMemory:
             print(
-                "Error: Milvus sdk is not installed."
-                "Please install pymilvus to use Milvus as memory backend."
+                "Error: pymilvus sdk is not installed."
+                "Please install pymilvus to use Milvus or Zilliz Cloud as memory backend."
             )
         else:
             memory = MilvusMemory(cfg)
