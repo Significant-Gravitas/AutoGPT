@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import time
 from typing import List, Optional
 
@@ -13,8 +14,52 @@ from autogpt.logs import logger
 from autogpt.types.openai import Message
 
 CFG = Config()
-
 openai.api_key = CFG.openai_api_key
+
+
+def retry_openai_api(
+    num_retries: int = 10,
+    backoff_base: int = 2,
+    warn_user: bool = True,
+):
+    retry_limit_msg = (
+        f"{Fore.RED}Error: ",
+        f"Reached rate limit, passing...{Fore.RESET}",
+    )
+    api_key_error_msg = (
+        f"Please double check that you have setup a "
+        f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
+        f"read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
+    )
+    backoff_msg = (
+        f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
+    )
+
+    def _wrapper(func):
+        @functools.wraps(func)
+        def _wrapped(*args, **kwargs):
+            user_warned = not warn_user
+            for attempt in range(num_retries):
+                try:
+                    return func(*args, **kwargs)
+
+                except RateLimitError:
+                    logger.debug(retry_limit_msg)
+                    if not user_warned:
+                        logger.double_check(api_key_error_msg)
+                        user_warned = True
+
+                except APIError as e:
+                    if (e.http_status != 502) or (attempt == num_retries - 1):
+                        raise
+
+                backoff = backoff_base ** (attempt + 2)
+                logger.debug(backoff_msg.format(backoff=backoff))
+                time.sleep(backoff)
+
+        return _wrapped
+
+    return _wrapper
 
 
 def call_ai_function(
@@ -154,32 +199,24 @@ def create_chat_completion(
     return resp
 
 
-def get_ada_embedding(text):
+def get_ada_embedding(text: str):
+    model = "text-embedding-ada-002"
     text = text.replace("\n", " ")
-    return api_manager.embedding_create(
-        text_list=[text], model="text-embedding-ada-002"
+    embedding = create_embedding(text=text, model=model)
+    api_manager.update_cost(
+        prompt_tokens=embedding.usage.prompt_tokens,
+        completion_tokens=0,
+        model=model,
     )
+    return embedding["data"][0]["embedding"]
 
 
-def create_embedding_with_ada(text) -> list:
-    """Create an embedding with text-ada-002 using the OpenAI SDK"""
-    num_retries = 10
-    for attempt in range(num_retries):
-        backoff = 2 ** (attempt + 2)
-        try:
-            return api_manager.embedding_create(
-                text_list=[text], model="text-embedding-ada-002"
-            )
-        except RateLimitError:
-            pass
-        except APIError as e:
-            if e.http_status != 502:
-                raise
-            if attempt == num_retries - 1:
-                raise
-        if CFG.debug_mode:
-            print(
-                f"{Fore.RED}Error: ",
-                f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
-            )
-        time.sleep(backoff)
+@retry_openai_api()
+def create_embedding(
+    text: str, model: str = "text-embedding-ada-002"
+) -> openai.Embedding:
+    if CFG.use_azure:
+        other_kwargs = {"engine": CFG.get_azure_deployment_id_for_model(model)}
+    else:
+        other_kwargs = {"model": model}
+    return openai.Embedding.create(input=[text], **other_kwargs)

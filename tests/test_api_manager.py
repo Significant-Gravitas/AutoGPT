@@ -86,37 +86,6 @@ class TestApiManager:
             assert api_manager.get_total_completion_tokens() == 20
             assert api_manager.get_total_cost() == (10 * 0.002 + 20 * 0.002) / 1000
 
-    @staticmethod
-    def test_embedding_create_invalid_model():
-        """Test if an invalid model for embedding raises a KeyError."""
-        text_list = ["Hello, how are you?"]
-        model = "invalid-model"
-
-        with patch("openai.Embedding.create") as mock_create:
-            mock_response = MagicMock()
-            mock_response.usage.prompt_tokens = 5
-            mock_create.side_effect = KeyError("Invalid model")
-            with pytest.raises(KeyError):
-                api_manager.embedding_create(text_list, model=model)
-
-    @staticmethod
-    def test_embedding_create_valid_inputs():
-        """Test if valid inputs for embedding result in correct tokens and cost."""
-        text_list = ["Hello, how are you?"]
-        model = "text-embedding-ada-002"
-
-        with patch("openai.Embedding.create") as mock_create:
-            mock_response = MagicMock()
-            mock_response.usage.prompt_tokens = 5
-            mock_response["data"] = [{"embedding": [0.1, 0.2, 0.3]}]
-            mock_create.return_value = mock_response
-
-            api_manager.embedding_create(text_list, model=model)
-
-            assert api_manager.get_total_prompt_tokens() == 5
-            assert api_manager.get_total_completion_tokens() == 0
-            assert api_manager.get_total_cost() == (5 * 0.0004) / 1000
-
     def test_getter_methods(self):
         """Test the getter methods for total tokens, cost, and budget."""
         api_manager.update_cost(60, 120, "gpt-3.5-turbo")
