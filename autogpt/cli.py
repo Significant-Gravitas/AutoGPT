@@ -94,6 +94,7 @@ def main(
     from autogpt.prompts.prompt import construct_main_ai_config
     from autogpt.utils import get_current_git_branch, get_latest_bulletin
     from autogpt.workspace import Workspace
+    from autogpt.ai_guidelines import AIGuidelines
 
     if ctx.invoked_subcommand is None:
         cfg = Config()
@@ -114,6 +115,7 @@ def main(
             skip_news,
         )
         logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
+        guidelines_mgr = AIGuidelines(cfg.ai_guidelines_file)
         if not cfg.skip_news:
             motd = get_latest_bulletin()
             if motd:
@@ -205,6 +207,7 @@ def main(
             system_prompt=system_prompt,
             triggering_prompt=triggering_prompt,
             workspace_directory=workspace_directory,
+            ai_guidelines=guidelines_mgr,
         )
         agent.start_interaction_loop()
 
