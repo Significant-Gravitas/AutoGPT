@@ -9,6 +9,8 @@ from autogpt.memory import get_supported_memory_backends
 
 CFG = Config()
 
+GPT_4_MODEL = "gpt-4"
+GPT_3_MODEL = "gpt-3.5-turbo"
 
 def create_config(
     continuous: bool,
@@ -75,11 +77,15 @@ def create_config(
 
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        CFG.set_smart_llm_model(CFG.fast_llm_model)
+        # --gpt3only should always use gpt-3.4-turbo, despite user's FAST_LLM_MODEL config
+        CFG.set_fast_llm_model(GPT_3_MODEL)
+        CFG.set_smart_llm_model(GPT_3_MODEL)
 
     if gpt4only:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
-        CFG.set_fast_llm_model(CFG.smart_llm_model)
+        # --gpt4only should always use gpt-4, despite user's SMART_LLM_MODEL config
+        CFG.set_fast_llm_model(GPT_4_MODEL)
+        CFG.set_smart_llm_model(GPT_4_MODEL)
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
