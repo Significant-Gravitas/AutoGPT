@@ -74,6 +74,13 @@ azure_model_map:
 
 ## Docker
 
+Copy the Dockerfile and docker-compose templates and adjust as necessary. (They work well out of the box)
+
+```
+cp Dockerfile.template Dockerfile
+cp docker-compose.yml.template docker-compose.yml
+```
+
 You can also build this into a docker image and run it:
 
 ``` shell
