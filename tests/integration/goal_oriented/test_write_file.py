@@ -11,6 +11,8 @@ from autogpt.config import AIConfig, Config
 from autogpt.memory import get_memory
 from tests.integration.goal_oriented.vcr_helper import before_record_request
 from tests.utils import requires_api_key
+from autogpt.ai_guidelines import AIGuidelines
+
 
 current_file_dir = os.path.dirname(os.path.abspath(__file__))
 # tests_directory = os.path.join(current_file_dir, 'tests')
@@ -73,6 +75,8 @@ def create_writer_agent(workspace):
         " format specified above:"
     )
     system_prompt = ai_config.construct_full_prompt()
+    cfg = Config()
+    guidelines_mgr = AIGuidelines(cfg.ai_guidelines_file, bsilent=True)
 
     agent = Agent(
         ai_name="",
@@ -84,6 +88,7 @@ def create_writer_agent(workspace):
         system_prompt=system_prompt,
         triggering_prompt=triggering_prompt,
         workspace_directory=workspace.root,
+        ai_guidelines=guidelines_mgr,
     )
     CFG.set_continuous_mode(True)
     CFG.set_memory_backend("no_memory")
