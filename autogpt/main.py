@@ -15,7 +15,6 @@ from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import construct_main_ai_config
 from autogpt.utils import get_current_git_branch, get_latest_bulletin
 from autogpt.workspace import Workspace
-
 from scripts.install_plugin_deps import install_plugin_dependencies
 
 
