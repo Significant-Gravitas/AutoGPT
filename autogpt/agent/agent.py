@@ -280,7 +280,7 @@ class Agent:
             str: A feedback response generated using the provided thoughts dictionary.
         """
 
-        with open("ai_settings.yaml", "r") as yaml_file:
+        with open(Config().ai_settings_file, "r") as yaml_file:
             parsed_yaml = yaml.safe_load(yaml_file)
             ai_role = parsed_yaml["ai_role"]
 
