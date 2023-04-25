@@ -173,6 +173,15 @@ Step 3: Connect to Postgres using an SQL IDE or <a href="https://www.postgresql.
 ```bash
 postgres://postgres@localhost:5433/pgml_development
 ```
+
+**Install `postgresql` command line utility**
+
+Ubuntu: `sudo apt install libpq-dev`
+
+Centos/Fedora/Cygwin/Babun.: `sudo yum install libpq-devel`
+
+Mac: `brew install postgresql`
+
 #### Setting up environment variables
 
 In your `.env` file set the following:
