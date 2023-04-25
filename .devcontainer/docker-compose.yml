@@ -7,7 +7,7 @@ services:
     depends_on:
       - redis
     build:
-      dockerfile: ./Dockerfile
+      dockerfile: ./.devcontainer/Dockerfile
       context: ../
     tty: true
     environment:
