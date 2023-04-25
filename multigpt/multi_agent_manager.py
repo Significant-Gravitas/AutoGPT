@@ -28,14 +28,10 @@ class MultiAgentManager(metaclass=Singleton):
         self.agents = []
         self.agent_counter = 0
         self.next_action_count = 0
-        self.experts = []
         self.last_active_agent = None
         self.current_active_agent = None
         self.chat_buffer = []
         self.chat_buffer_size = 10
-
-    def set_experts(self, experts):
-        self.experts = experts
 
     def create_agent(self, expert):
         slugified_filename = slugify(expert.ai_name, separator="_", lowercase=True) + "_settings.yaml"
@@ -49,7 +45,8 @@ class MultiAgentManager(metaclass=Singleton):
             os.mkdir(saved_agents_directory)
         # TODO: sometimes doesn't find the file, because it hasn't finished saving yet
         filepath = os.path.join(saved_agents_directory, f"{slugified_filename}")
-        expert.save(filepath)
+        if not os.path.exists(filepath):
+            expert.save(filepath)
 
         user_input = (
             "Determine which next command to use, and respond using the"

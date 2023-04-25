@@ -148,3 +148,53 @@ class Expert(AIConfig):
 
         full_prompt += f"\n\n{self.get_prompt()}"
         return full_prompt
+
+
+    @staticmethod
+    def load(config_file: str = "") -> "Expert":
+        """
+        Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from
+          yaml file if yaml file exists,
+        else returns class with no parameters.
+
+        Parameters:
+           config_file (int): The path to the config yaml file.
+             DEFAULT: "../ai_settings.yaml"
+
+        Returns:
+            cls (object): An instance of given cls object
+        """
+
+        try:
+            with open(config_file, encoding="utf-8") as file:
+                config_params = yaml.load(file, Loader=yaml.SafeLoader)
+        except FileNotFoundError:
+            config_params = {}
+
+        ai_name = config_params.get("ai_name", "")
+        ai_role = config_params.get("ai_role", "")
+        ai_goals = config_params.get("ai_goals", [])
+        ai_traits = config_params.get("ai_traits", [])
+        # type: Type[Expert]
+        return Expert(ai_name, ai_role, ai_goals, ai_traits)
+
+    def save(self, config_file: str = "") -> None:
+        """
+        Saves the class parameters to the specified file yaml file path as a yaml file.
+
+        Parameters:
+            config_file(str): The path to the config yaml file.
+              DEFAULT: "../ai_settings.yaml"
+
+        Returns:
+            None
+        """
+
+        config = {
+            "ai_name": self.ai_name,
+            "ai_role": self.ai_role,
+            "ai_goals": self.ai_goals,
+            "ai_traits": self.ai_traits
+        }
+        with open(config_file, "w", encoding="utf-8") as file:
+            yaml.dump(config, file, allow_unicode=True)

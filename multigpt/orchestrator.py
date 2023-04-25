@@ -33,6 +33,7 @@ class Orchestrator(Expert):
         prompt_generator.add_constraint(
             'Exclusively use the commands listed in double quotes e.g. "command name"'
         )
+        prompt_generator.add_constraint("ALWAYS say something to your team.")
 
         # Define the command list
         commands = [
