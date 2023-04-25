@@ -133,12 +133,13 @@ class Config(metaclass=Singleton):
         self.plugins: List[AutoGPTPluginTemplate] = []
         self.plugins_openai = []
 
-        plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
-        if plugins_allowlist:
-            self.plugins_allowlist = plugins_allowlist.split(",")
-        else:
-            self.plugins_allowlist = []
-        self.plugins_denylist = []
+        self.plugins_allowed = os.getenv("ALLOWED_PLUGINS", [])
+        if self.plugins_allowed:
+            self.plugins_allowed = self.plugins_allowed.split(",")
+
+        self.plugins_denied = os.getenv("DENIED_PLUGINS")
+        if self.plugins_denied:
+            self.plugins_denied = self.plugins_denied.split(",")
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
