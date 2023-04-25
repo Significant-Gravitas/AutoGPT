@@ -1,19 +1,12 @@
 # 💾 Installation
 
-## ⚠️ OpenAI API Keys Configuration
+## Prerequisites
+- [Git](https://git-scm.com/)
+- [OpenAI API key](https://platform.openai.com/account/api-keys)
+- [Paid OpenAI Account](https://platform.openai.com/account/billing/overview)
+- [ElevenLabs API key](https://elevenlabs.io) (optional)
 
-Get your OpenAI API key from: https://platform.openai.com/account/api-keys.
-
-To use OpenAI API key for Auto-GPT, you **NEED** to have billing set up (AKA paid account).
-
-You can set up paid account at https://platform.openai.com/account/billing/overview.
-
-Important: It's highly recommended that you track your usage on [the Usage page](https://platform.openai.com/account/usage).
-You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
-
-![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./imgs/openai-api-key-billing-paid-account.png)
-
-**PLEASE ENSURE YOU HAVE DONE THIS STEP BEFORE PROCEEDING. OTHERWISE, NOTHING WILL WORK!**
+**Important!** You **must** have a paid account via ![OpenAI API > Billing](./docs/imgs/openai-api-key-billing-paid-account.png). We also highly recommend tracking your usage on the [Usage](https://platform.openai.com/account/usage) page, and setting a spending limit on the [Usage limits](https://platform.openai.com/account/billing/limits) page.
 
 ## General setup
 
@@ -45,8 +38,7 @@ You can also set limits on how much you spend on [the Usage limits page](https:/
    You have now configured Auto-GPT.
 
    Notes:
-   - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to get your OpenAI API key.
-   - Get your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+
    - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
      - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section:
        - `fast_llm_model_deployment_id` - your gpt-3.5-turbo or gpt-4 deployment ID
@@ -63,7 +55,7 @@ You can also set limits on how much you spend on [the Usage limits page](https:/
      - Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
      - If you're on Windows you may need to install https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170
 
-4. Follow the further instructions for running Auto-GPT with [Docker](#run-with-docker) (*recommended*), or [Docker-less](#run-docker-less)
+6. Follow the further instructions for running Auto-GPT with [Docker](#run-with-docker) (*recommended*), or [Docker-less](#run-docker-less)
 
 ### Run with Docker
 
