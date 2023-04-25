@@ -39,7 +39,7 @@ def build_default_prompt_generator() -> PromptGenerator:
 
     # Define the command list
     commands = [
-        ("Do Nothing", "do_nothing", {}),
+        ("Do Nothing", "do_nothing", {"reason": "<reason>"}),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
     ]
 
