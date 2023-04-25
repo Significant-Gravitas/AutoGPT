@@ -103,3 +103,12 @@ docker run -it --env OPENAI_API_KEY='your-key-here' -v $PWD/ai_settings.yaml:/ap
 ### Run Docker-less
 
 Simply run `./run.sh` (Linux/macOS) or `.\run.bat` (Windows) in your terminal.
+
+### Run with Dev Container
+
+1. Install the [Remote - Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension in VS Code.
+
+2. Open command palette and type in Dev Containers: Open Folder in Container.
+
+3. Run `./run.sh`.
+
