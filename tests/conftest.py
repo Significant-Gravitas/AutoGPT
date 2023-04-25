@@ -3,9 +3,9 @@ from pathlib import Path
 import pytest
 
 from autogpt.api_manager import ApiManager
-from autogpt.api_manager import api_manager as api_manager_
 from autogpt.config import Config
 from autogpt.workspace import Workspace
+from tests.vcr.openai_filter import before_record_request
 
 
 @pytest.fixture()
@@ -32,7 +32,6 @@ def config(workspace: Workspace) -> Config:
 
 @pytest.fixture()
 def api_manager() -> ApiManager:
-    old_attrs = api_manager_.__dict__.copy()
-    api_manager_.reset()
-    yield api_manager_
-    api_manager_.__dict__.update(old_attrs)
+    if ApiManager in ApiManager._instances:
+        del ApiManager._instances[ApiManager]
+    return ApiManager()

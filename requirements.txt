@@ -51,4 +51,4 @@ pytest-cov
 pytest-integration
 pytest-mock
 vcrpy
-pytest-vcr
+pytest-recording
