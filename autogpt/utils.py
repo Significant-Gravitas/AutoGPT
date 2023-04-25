@@ -52,7 +52,7 @@ def clean_input(prompt: str = "", talk=False):
                     "negative",
                 ]:
                     return "n"
-                if not plugin_response or plugin_response == "":
+                if not plugin_response:
                     continue
                 return plugin_response
 
