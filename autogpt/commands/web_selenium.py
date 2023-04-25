@@ -76,30 +76,31 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
+    for opt in CFG.driver_extra_options.split():
+        options.add_argument(opt)
 
     if CFG.selenium_web_browser == "firefox":
         if CFG.selenium_headless:
             options.headless = True
             options.add_argument("--disable-gpu")
+        executable_path = CFG.driver_executable_path or GeckoDriverManager().install()
         driver = webdriver.Firefox(
-            executable_path=GeckoDriverManager().install(), options=options
+            executable_path=executable_path, options=options
         )
     elif CFG.selenium_web_browser == "safari":
         # Requires a bit more setup on the users end
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
     else:
+        options.add_argument("--no-sandbox")
         if platform == "linux" or platform == "linux2":
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--remote-debugging-port=9222")
-
-        options.add_argument("--no-sandbox")
         if CFG.selenium_headless:
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
-
-        chromium_driver_path = Path("/usr/bin/chromedriver")
-
+        driver_executable_path = CFG.driver_executable_path or "/usr/bin/chromedriver"
+        chromium_driver_path = Path(driver_executable_path)
         driver = webdriver.Chrome(
             executable_path=chromium_driver_path
             if chromium_driver_path.exists()
