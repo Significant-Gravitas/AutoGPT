@@ -181,7 +181,7 @@ class Agent:
                     console_input = clean_input(
                         Fore.MAGENTA + "Input:" + Style.RESET_ALL
                     )
-                    # <<<<<<< HEAD
+
                     new_command_name, self.next_action_count, user_input = \
                         calculate_next_command_from_user_input(console_input)
                     # If there was a parsing error, go back to the prompt
