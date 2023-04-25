@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import time
+from itertools import islice
 from typing import List, Optional
 
+import numpy as np
 import openai
+import tiktoken
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, Timeout
 
@@ -156,9 +159,24 @@ def create_chat_completion(
 
 def get_ada_embedding(text):
     text = text.replace("\n", " ")
-    return api_manager.embedding_create(
-        text_list=[text], model="text-embedding-ada-002"
-    )
+    return api_manager.embedding_create(text_list=[text], model=CFG.CFG.embedding_model)
+
+
+def batched(iterable, n):
+    """Batch data into tuples of length n. The last batch may be shorter."""
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if n < 1:
+        raise ValueError("n must be at least one")
+    it = iter(iterable)
+    while batch := tuple(islice(it, n)):
+        yield batch
+
+
+def chunked_tokens(text, encoding_name, chunk_length):
+    encoding = tiktoken.get_encoding(encoding_name)
+    tokens = encoding.encode(text)
+    chunks_iterator = batched(tokens, chunk_length)
+    yield from chunks_iterator
 
 
 def create_embedding_with_ada(text) -> list:
@@ -167,9 +185,28 @@ def create_embedding_with_ada(text) -> list:
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
-            return api_manager.embedding_create(
-                text_list=[text], model="text-embedding-ada-002"
-            )
+            chunk_embeddings = []
+            chunk_lens = []
+            for chunk in chunked_tokens(
+                text,
+                encoding_name=CFG.embedding_encoding,
+                chunk_length=CFG.embedding_token_limit,
+            ):
+                chunk_embeddings.append(
+                    api_manager.embedding_create(
+                        text_list=[chunk], model=CFG.embedding_model
+                    )
+                )
+                chunk_lens.append(len(chunk))
+
+            # do weighted avg
+            chunk_embeddings = np.average(chunk_embeddings, axis=0, weights=chunk_lens)
+            chunk_embeddings = chunk_embeddings / np.linalg.norm(
+                chunk_embeddings
+            )  # normalize the length to one
+            chunk_embeddings = chunk_embeddings.tolist()
+            return chunk_embeddings
+
         except RateLimitError:
             pass
         except (APIError, Timeout) as e:
