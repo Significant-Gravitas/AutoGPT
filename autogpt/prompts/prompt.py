@@ -1,6 +1,6 @@
 from colorama import Fore
 
-from autogpt.config.ai_config import AIConfig
+from autogpt.config.ai_config import AIConfigBroker
 from autogpt.config.config import Config
 from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
@@ -118,14 +118,14 @@ def goals_to_string(goals) -> str:
     return "\n".join(goals)
 
 
-def construct_main_ai_config() -> AIConfig:
+def construct_main_ai_config() -> AIConfigBroker:
     """
     Load or create an AI configuration for the main AI assistant.
     Returns:
         AIConfig: The selected or created AI configuration.
     """
-    ai_configs = AIConfig(config_file=CFG.ai_settings_file)
-    config_list = ai_configs.get_configs()
+    ai_configs = AIConfigBroker(config_file=CFG.ai_settings_file)
+    config_list = ai_configs.get_projects()
     number_of_config = len(config_list)
     config_number = -1
 
@@ -138,8 +138,8 @@ def construct_main_ai_config() -> AIConfig:
 
     if number_of_config == 1:
         config_number = 0
-        ai_configs.set_config_number(config_number)
-        config = ai_configs.get_current_config()
+        ai_configs.set_project_number(config_number)
+        config = ai_configs.get_current_project()
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
@@ -178,8 +178,8 @@ def construct_main_ai_config() -> AIConfig:
         ai_configs.save(CFG.ai_settings_file)
 
     else :
-        ai_configs.set_config_number(new_config_number=config_number)
-        config = ai_configs.get_current_config()
+        ai_configs.set_project_number(new_project_number=config_number)
+        config = ai_configs.get_current_project()
     
     return ai_configs
 # =======

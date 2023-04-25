@@ -5,14 +5,14 @@ from colorama import Fore, Style
 
 from autogpt import utils
 from autogpt.config import Config
-from autogpt.config.ai_config import AIConfig
+from autogpt.config.ai_config import AIConfigBroker
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
 
 CFG = Config()
 
 
-def prompt_user(config_number : int) -> AIConfig:
+def prompt_user(config_number : int) -> AIConfigBroker:
     """Prompt the user for input
 
     Returns:
@@ -67,7 +67,7 @@ def prompt_user(config_number : int) -> AIConfig:
             return generate_aiconfig_manual(config_number = config_number)
 
 
-def generate_aiconfig_manual(config_number : int) -> AIConfig:
+def generate_aiconfig_manual(config_number : int) -> AIConfigBroker:
     """
     Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
 
@@ -133,16 +133,16 @@ def generate_aiconfig_manual(config_number : int) -> AIConfig:
             "Develop and manage multiple businesses autonomously",
         ]
 
-    configs = AIConfig()
-    configs.set_config(config_number =  config_number, 
+    configs = AIConfigBroker()
+    configs.create_project(config_number =  config_number, 
                     ai_name = ai_name, 
                     ai_role = ai_role, 
                     ai_goals = ai_goals, 
                     prompt_generator = '', 
                     command_registry = '')
-    return configs.get_current_config()
+    return configs.get_current_project()
 
-def generate_aiconfig_automatic(user_prompt, config_number : int) -> AIConfig:
+def generate_aiconfig_automatic(user_prompt, config_number : int) -> AIConfigBroker:
     """Generates an AIConfig object from the given string.
 
     Returns:
@@ -199,13 +199,13 @@ Goals:
     )
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
 
-    configs = AIConfig()
-    configs.set_config(config_number =  config_number, 
+    configs = AIConfigBroker()
+    configs.create_project(config_number =  config_number, 
                     ai_name = ai_name, 
                     ai_role = ai_role, 
                     ai_goals = ai_goals, 
                     prompt_generator = '', 
                     command_registry = '')
-    return configs.get_current_config()
-    return AIConfig(ai_name, ai_role, ai_goals)
+    return configs.get_current_project()
+    return AIConfigBroker(ai_name, ai_role, ai_goals)
 

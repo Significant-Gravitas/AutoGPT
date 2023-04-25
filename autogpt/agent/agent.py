@@ -2,7 +2,7 @@ from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
 from autogpt.chat import chat_with_ai, create_chat_message
-from autogpt.config import Config , AIConfig
+from autogpt.config import Config , AIConfigBroker
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import validate_json
 from autogpt.logs import logger, print_assistant_thoughts
@@ -67,10 +67,10 @@ class Agent:
         command_name = None
         arguments = None
         user_input = ""
-        ai_configs = AIConfig()
+        ai_configs = AIConfigBroker()
         while True:
             # Save any change to the config so we continue where we quited
-            ai_configs.set_config( config_number = ai_configs.get_config_number() ,
+            ai_configs.create_project( config_number = ai_configs.get_current_project_id() ,
             ai_name = self.config["ai_name"], 
             ai_role = self.config["ai_role"], 
             ai_goals = self.config["ai_goals"], 
