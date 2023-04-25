@@ -161,5 +161,8 @@ vicuna-*
 
 openai/
 
+# Redis stuff
+redis-data/*
+
 # news
 CURRENT_BULLETIN.md
