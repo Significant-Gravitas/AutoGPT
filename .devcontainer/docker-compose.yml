@@ -9,16 +9,11 @@ services:
     build:
       dockerfile: ./Dockerfile
       context: ../
-    image: auto-gpt
     tty: true
-    env_file:
-      - ../.env
     environment:
       MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
       REDIS_HOST: ${REDIS_HOST:-redis}
     volumes:
       - ../:/workspace/Auto-GPT
-    working_dir: /workspace/Auto-GPT
-
   redis:
     image: 'redis/redis-stack-server:latest'
