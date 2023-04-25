@@ -89,7 +89,7 @@ class Config(metaclass=Singleton):
         self.milvus_password = os.getenv("MILVUS_PASSWORD")
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
         self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
-        self.milvus_type = os.getenv("MILVUS_TYPE")
+        self.milvus_type = os.getenv("MILVUS_TYPE", "lite")
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
