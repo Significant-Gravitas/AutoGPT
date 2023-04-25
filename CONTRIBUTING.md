@@ -74,6 +74,7 @@ isort .
 ```
 
 ### Pre-Commit Hooks
+
 We use pre-commit hooks to ensure that code formatting and other checks are performed automatically before each commit. To set up pre-commit hooks for this project, follow these steps:
 
 Install the pre-commit package using pip:
@@ -93,5 +94,14 @@ If you encounter any issues or have questions, feel free to reach out to the mai
 Happy coding, and once again, thank you for your contributions!
 
 Maintainers will look at PR that have no merge conflicts when deciding what to add to the project. Make sure your PR shows up here:
-
 https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-label%3Aconflicts
+
+## Testing your changes
+
+If you add or change code, make sure the updated code is covered by tests.
+
+To increase coverage if necessary, [write tests using `pytest`].
+
+For more info on running tests, please refer to ["Running tests"](https://significant-gravitas.github.io/Auto-GPT/testing/).
+
+[write tests using `pytest`]: https://realpython.com/pytest-python-testing/
