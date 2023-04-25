@@ -182,6 +182,10 @@ Centos/Fedora/Cygwin/Babun.: `sudo yum install libpq-devel`
 
 Mac: `brew install postgresql`
 
+**Install `psycopg2`**
+
+`pip install psycopg2`
+
 #### Setting up environment variables
 
 In your `.env` file set the following:
