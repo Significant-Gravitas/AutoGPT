@@ -11,7 +11,6 @@ RUN apt-get update && apt-get install -y \
 
 # Install utilities
 RUN apt-get install -y curl jq wget git
-RUN pip3 install pymilvus retry
 
 # Set environment variables
 ENV PIP_NO_CACHE_DIR=yes \
