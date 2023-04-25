@@ -14,7 +14,13 @@ class MilvusMemory(MemoryProviderSingleton):
             cfg (Config): Auto-GPT global config.
         """
         # connect to milvus server.
-        connections.connect(address=cfg.milvus_addr)
+        if cfg.milvus_type == "lite":
+            from milvus import default_server
+            print("Starting Milvus Lite")
+            default_server.start()
+            connections.connect(host='127.0.0.1', port=default_server.listen_port)
+        else:
+            connections.connect(address=cfg.milvus_addr)
         fields = [
             FieldSchema(name="pk", dtype=DataType.INT64, is_primary=True, auto_id=True),
             FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=1536),
