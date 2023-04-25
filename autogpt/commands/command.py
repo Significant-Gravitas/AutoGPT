@@ -1,3 +1,4 @@
+import functools
 import importlib
 import inspect
 from typing import Any, Callable, Optional
@@ -142,12 +143,14 @@ def command(
             disabled_reason=disabled_reason,
         )
 
+        @functools.wraps(func)
         def wrapper(*args, **kwargs) -> Any:
             return func(*args, **kwargs)
 
         wrapper.command = cmd
 
         setattr(wrapper, AUTO_GPT_COMMAND_IDENTIFIER, True)
+
         return wrapper
 
     return decorator
