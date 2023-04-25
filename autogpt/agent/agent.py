@@ -9,6 +9,7 @@ from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
+from autogpt.workspace import Workspace
 
 
 class Agent:
@@ -50,6 +51,7 @@ class Agent:
         config,
         system_prompt,
         triggering_prompt,
+        workspace_directory,
     ):
         self.agent_name = agent_name # TODO : Remove Agent.agent_name ?
         self.memory = memory
@@ -59,6 +61,7 @@ class Agent:
         self.config = config.get_current_config()
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
+        self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -116,6 +119,8 @@ class Agent:
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
+                    arguments = self._resolve_pathlike_command_args(arguments)
+
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
@@ -243,4 +248,13 @@ class Agent:
                         "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                     )
 
-
+    def _resolve_pathlike_command_args(self, command_args):
+        if "directory" in command_args and command_args["directory"] in {"", "/"}:
+            command_args["directory"] = str(self.workspace.root)
+        else:
+            for pathlike in ["filename", "directory", "clone_path"]:
+                if pathlike in command_args:
+                    command_args[pathlike] = str(
+                        self.workspace.get_path(command_args[pathlike])
+                    )
+        return command_args

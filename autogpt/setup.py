@@ -51,11 +51,11 @@ def prompt_user(config_number : int) -> Project:
             Fore.GREEN,
             speak_text=True,
         )
-        return generate_aiconfig_manual(config_number = config_number)
+        return generate_agentproject_manual(config_number = config_number)
 
     else:
         try:
-            return generate_aiconfig_automatic(user_desire)
+            return generate_agentproject_automatic(user_desire)
         except Exception as e:
             logger.typewriter_log(
                 "Unable to automatically generate AI Config based on user desire.",
@@ -64,10 +64,10 @@ def prompt_user(config_number : int) -> Project:
                 speak_text=True,
             )
 
-            return generate_aiconfig_manual(config_number = config_number)
+            return generate_agentproject_manual(config_number = config_number)
 
 
-def generate_aiconfig_manual(config_number : int) -> AIConfigBroker:
+def generate_agentproject_manual(config_number : int) -> AIConfigBroker:
     """
     Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
 
@@ -140,9 +140,30 @@ def generate_aiconfig_manual(config_number : int) -> AIConfigBroker:
                     agent_goals = agent_goals, 
                     prompt_generator = '', 
                     command_registry = '')
+    # Get API Budget from User
+    logger.typewriter_log(
+        "Enter your budget for API calls: ",
+        Fore.GREEN,
+        "For example: $1.50",
+    )
+    print("Enter nothing to let the AI run without monetary limit", flush=True)
+    api_budget_input = utils.clean_input(
+        f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
+    )
+    if api_budget_input == "":
+        api_budget = 0.0
+    else:
+        try:
+            api_budget = float(api_budget_input.replace("$", ""))
+        except ValueError:
+            logger.typewriter_log(
+                "Invalid budget input. Setting budget to unlimited.", Fore.RED
+            )
+            api_budget = 0.0
+
     return configs.get_current_project()
 
-def generate_aiconfig_automatic(user_prompt, config_number : int) -> AIConfigBroker:
+def generate_agentproject_automatic(user_prompt, config_number : int) -> Project:
     """Generates an AIConfig object from the given string.
 
     Returns:
@@ -206,6 +227,10 @@ Goals:
                     agent_goals = agent_goals, 
                     prompt_generator = '', 
                     command_registry = '')
+
+    ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
+    api_budget = 0.0  # TODO: parse api budget using a regular expression
+
+
     return configs.get_current_project()
     return AIConfigBroker(agent_name, agent_role, agent_goals)
-

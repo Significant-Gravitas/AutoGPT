@@ -33,6 +33,7 @@ class AIConfigBroker(AbstractSingleton):
             "agent_goals": agent_goals, 
             "prompt_generator": prompt_generator,
             "command_registry": command_registry 
+            api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
             })
         # TODO __version (str): Version of the app
     """
@@ -88,6 +89,7 @@ class AIConfigBroker(AbstractSingleton):
             version = version # Not supported for the moment
         for project in config_params.get("projects", []):
             project_name = project["project_name"]
+            project_name = project["budget"]
 
             lead_agent_data = project["lead_agent"]
             lead_agent = AgentConfig(
@@ -112,7 +114,7 @@ class AIConfigBroker(AbstractSingleton):
 
             cls._projects.append(Project(project_name =  project_name,lead_agent = lead_agent, delegated_agents = delegated_agents_list))
             
-            break 
+            #break 
             """
             # 
             This break allows to push the new YAML back-end
@@ -205,7 +207,7 @@ class AIConfigBroker(AbstractSingleton):
 
         Returns:
             full_prompt (str): A string containing the initial prompt for the user
-                including the agent_name, agent_role and agent_goals.
+                including the agent_name, agent_role, agent_goals , and api_budget.
         """
         if self._current_project_id is None or self._current_project_id >= len(self._projects):
             raise ValueError("No project is currently selected.")
@@ -252,6 +254,9 @@ class AIConfigBroker(AbstractSingleton):
         full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self._projects[self._current_project_id].lead_agent.agent_goals):
             full_prompt += f"{i+1}. {goal}\n"
+        if self.api_budget > 0.0:
+            full_prompt += f"\nIt takes money to let you run. Your API budget is ${self._projects[self._current_project_id].api_budget:.3f}"
+        
         self._projects[self._current_project_id].lead_agent.prompt_generator = prompt_generator
         full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
         return full_prompt
