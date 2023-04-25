@@ -10,7 +10,8 @@ from logging import LogRecord
 
 from colorama import Fore, Style
 
-from autogpt.config import Config, Singleton
+from autogpt.config import Config
+from autogpt.singleton import Singleton
 from autogpt.speech import say_text
 
 CFG = Config()
