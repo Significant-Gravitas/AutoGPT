@@ -1,4 +1,3 @@
-import yaml
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -150,7 +149,9 @@ class Agent:
                             "",
                         )
                         thoughts = assistant_reply_json.get("thoughts", {})
-                        self_feedback_resp = self.get_self_feedback(thoughts)
+                        self_feedback_resp = self.get_self_feedback(
+                            thoughts, cfg.fast_llm_model
+                        )
                         logger.typewriter_log(
                             f"SELF FEEDBACK: {self_feedback_resp}",
                             Fore.YELLOW,
@@ -266,8 +267,7 @@ class Agent:
                     )
         return command_args
 
-    @staticmethod
-    def get_self_feedback(thoughts: dict) -> str:
+    def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
         """Generates a feedback response based on the provided thoughts dictionary.
         This method takes in a dictionary of thoughts containing keys such as 'reasoning',
         'plan', 'thoughts', and 'criticism'. It combines these elements into a single
@@ -279,10 +279,7 @@ class Agent:
         Returns:
             str: A feedback response generated using the provided thoughts dictionary.
         """
-
-        with open(Config().ai_settings_file, "r") as yaml_file:
-            parsed_yaml = yaml.safe_load(yaml_file)
-            ai_role = parsed_yaml["ai_role"]
+        ai_role = self.config.ai_role
 
         feedback_prompt = f"Below is a message from an AI agent with the role of {ai_role}. Please review the provided Thought, Reasoning, Plan, and Criticism. If these elements accurately contribute to the successful execution of the assumed role, respond with the letter 'Y' followed by a space, and then explain why it is effective. If the provided information is not suitable for achieving the role's objectives, please provide one or more sentences addressing the issue and suggesting a resolution."
         reasoning = thoughts.get("reasoning", "")
@@ -290,8 +287,7 @@ class Agent:
         thought = thoughts.get("thoughts", "")
         criticism = thoughts.get("criticism", "")
         feedback_thoughts = thought + reasoning + plan + criticism
-        feedback_response = create_chat_completion(
+        return create_chat_completion(
             [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
-            "gpt-3.5-turbo",
-        )  # * This hardcodes the model to use GPT3.5. should be an argument
-        return feedback_response
+            llm_model,
+        )
