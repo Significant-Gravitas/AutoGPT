@@ -1,5 +1,24 @@
 import lmql
 
+
+@lmql.query
+async def generate_experts(task, min_experts, max_experts):
+    '''
+    argmax(max_len=2000)
+    """
+        The task is: {task}.
+        Help me determine which historical or renowned experts in various fields would be best suited to complete a given task, taking into account their specific expertise and access to the internet. Name between {min_experts} and {max_experts} experts and list three goals for them to help the overall task. Follow the format precisely:
+        1. <Name of the person>: <Description of how they are useful>
+        1a) <Goal a>
+        1b) <Goal b>
+        1c) <Goal c>
+        [RESULT]
+    """
+    from
+        'openai/gpt-4'
+    '''
+
+
 @lmql.query
 async def smart_select_agent(message_history, list_of_participants):
     '''
