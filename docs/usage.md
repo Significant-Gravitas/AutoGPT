@@ -71,6 +71,10 @@ Use at your own risk.
 
 2. To exit the program, press Ctrl + C
 
+### ♻️ Self-Feedback Mode ⚠️
+
+Running Self-Feedback will **INCREASE** token use and thus cost more. This feature enables the agent to provide self-feedback by verifying its own actions and checking if they align with its current goals. If not, it will provide better feedback for the next loop. To enable this feature for the current loop, input `S` into the input field.
+
 ### GPT3.5 ONLY Mode
 
 If you don't have access to the GPT4 api, this mode will allow you to use Auto-GPT!

@@ -88,7 +88,6 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
     Returns:
         str: The filename of the image
     """
-    openai.api_key = CFG.openai_api_key
 
     # Check for supported image sizes
     if size not in [256, 512, 1024]:
@@ -103,6 +102,7 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
         n=1,
         size=f"{size}x{size}",
         response_format="b64_json",
+        api_key=CFG.openai_api_key,
     )
 
     logger.info(f"Image Generated for prompt:{prompt}")
