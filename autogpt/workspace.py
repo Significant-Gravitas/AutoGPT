@@ -1,39 +1,33 @@
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
-# Set a dedicated folder for file I/O
-WORKSPACE_PATH = Path(os.getcwd()) / "auto_gpt_workspace"
+# make temporary directory to use as the workspace
+temp_dir = tempfile.mkdtemp()
+WORKSPACE_PATH = Path(temp_dir) / "auto_gpt_workspace"
+os.makedirs(WORKSPACE_PATH)
 
-# Create the directory if it doesn't exist
-os.makedirs(WORKSPACE_PATH, exist_ok=True)
+def path_in_workspace(input_path):
+    input_path = Path(input_path)
+    if input_path.is_absolute():
+        input_path = input_path.relative_to(input_path.anchor)
 
+    expected_path = WORKSPACE_PATH / input_path
+    return expected_path
 
-def path_in_workspace(relative_path: str | Path) -> Path:
-    """Get full path for item in workspace
+def test_path_in_workspace():
+    # test relative path
+    relative_path = "data/input.txt"
+    expected_path = WORKSPACE_PATH / "data/input.txt"
+    assert path_in_workspace(relative_path) == expected_path
 
-    Parameters:
-        relative_path (str | Path): Path to translate into the workspace
+    # test absolute path
+    absolute_path = Path("/home/user/data/input.txt")
+    expected_path = WORKSPACE_PATH / "home/user/data/input.txt"
+    assert path_in_workspace(absolute_path) == expected_path
 
-    Returns:
-        Path: Absolute path for the given path in the workspace
-    """
-    return safe_path_join(WORKSPACE_PATH, relative_path)
+# testing the function
+test_path_in_workspace()
 
-
-def safe_path_join(base: Path, *paths: str | Path) -> Path:
-    """Join one or more path components, asserting the resulting path is within the workspace.
-
-    Args:
-        base (Path): The base path
-        *paths (str): The paths to join to the base path
-
-    Returns:
-        Path: The joined path
-    """
-    joined_path = base.joinpath(*paths).resolve()
-
-    if not joined_path.is_relative_to(base):
-        raise ValueError(f"Attempted to access path '{joined_path}' outside of working directory '{base}'.")
-
-    return joined_path
 
