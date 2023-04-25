@@ -35,7 +35,5 @@
   // "forwardPorts": [],
 
   // Set `remoteUser` to `root` to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
-  "remoteUser": "vscode",
-
-  "postCreateCommand": "pip install -r requirements.txt"
+  "remoteUser": "vscode"
 }
