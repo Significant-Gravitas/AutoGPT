@@ -34,6 +34,7 @@ isort
 gitpython==3.1.31
 auto-gpt-plugin-template
 mkdocs
+pymdown-extensions
 
 
 # OpenAI and Generic plugins import
