@@ -209,14 +209,14 @@ def create_chat_completion(
     return resp
 
 
-def get_ada_embedding(text: str) -> List[int]:
+def get_ada_embedding(text: str) -> List[float]:
     """Get an embedding from the ada model.
 
     Args:
         text (str): The text to embed.
 
     Returns:
-        List[int]: The embedding.
+        List[float]: The embedding.
     """
     cfg = Config()
     model = "text-embedding-ada-002"
