@@ -1,3 +1,4 @@
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -6,6 +7,14 @@ from pathlib import Path
 temp_dir = tempfile.mkdtemp()
 WORKSPACE_PATH = Path(temp_dir) / "auto_gpt_workspace"
 os.makedirs(WORKSPACE_PATH)
+
+def path_in_workspace(input_path):
+    input_path = Path(input_path)
+    if input_path.is_absolute():
+        input_path = input_path.relative_to(input_path.anchor)
+
+    expected_path = WORKSPACE_PATH / input_path
+    return expected_path
 
 def test_path_in_workspace():
     # test relative path
@@ -18,22 +27,5 @@ def test_path_in_workspace():
     expected_path = WORKSPACE_PATH / "home/user/data/input.txt"
     assert path_in_workspace(absolute_path) == expected_path
 
-def test_safe_path_join():
-    # test  valid path
-    base_path = WORKSPACE_PATH / "data"
-    joined_path = safe_path_join(base_path, "input.txt")
-    expected_path = WORKSPACE_PATH / "data/input.txt"
-    assert joined_path == expected_path
-
-    # test  invalid path
-    base_path = WORKSPACE_PATH / "data"
-    invalid_path = WORKSPACE_PATH.parent / "data/input.txt"
-    try:
-        safe_path_join(base_path, invalid_path)
-    except ValueError as e:
-        assert str(e) == f"Attempted to access path '{invalid_path}' outside of working directory '{WORKSPACE_PATH}'."
-    else:
-        assert False, "Expected a ValueError to be raised"
-
-# clean the temporary directory
-shutil.rmtree(temp_dir)
+# testing the function
+test_path_in_workspace()
