@@ -17,7 +17,7 @@ You can also set limits on how much you spend on [the Usage limits page](https:/
 
 ## General setup
 
-1. Make sure you have one of the environments listed under [**requirements**](../README.md#-requirements) set up.
+1. Make sure you have one of the environments listed under [**requirements**](https://github.com/Significant-Gravitas/Auto-GPT/blob/master/README.md#-requirements) set up.
 
     _To execute the following commands, open a CMD, Bash, or Powershell window by navigating to a folder on your computer and typing `CMD` in the folder path at the top, then press enter._
 
