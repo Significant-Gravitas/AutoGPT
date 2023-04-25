@@ -17,8 +17,6 @@ services:
     profiles: ["exclude-from-up"]
 
   redis-stack:
-    container_name: redisStack
-    hostname: redisStack
     image: redis/redis-stack:latest
     restart: always
     volumes:
