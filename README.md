@@ -34,14 +34,47 @@ Your support is greatly appreciated. Development of this free, open-source proje
 <p align="center">
 <div align="center" class="logo-container">
 
-<a href="https://www.zilliz.com/"><img src="https://user-images.githubusercontent.com/22963551/233313799-74105a64-258d-4f99-8e50-1d7d823a7ba6.png" height="40px" alt="Zilliz" /></a>
-<a href="https://roost.ai"><img src="https://user-images.githubusercontent.com/22963551/233059778-055502b4-fa2e-4334-82b6-9a12252fd9e1.png" height="40px" alt="Roost.AI" /></a>
-<a href="https://nuclei.ai/"><img src="https://user-images.githubusercontent.com/22963551/233059785-28ce2549-62de-42c2-925a-c0aa08aef6bd.png" height="40px" alt="NucleiAI" /></a>
-<a href="https://www.algohash.org/"><img src="https://user-images.githubusercontent.com/22963551/233061211-9a9ec216-9fc0-46fd-a124-bf951057207c.png" height="40px" alt="Algohash" /></a>
-<a href="https://www.typingmind.com/?utm_source=autogpt"><img src="https://user-images.githubusercontent.com/22963551/233202971-61e77209-58a0-47d9-9f7e-dd081111437b.png" height="40px" alt="TypingMind" /></a>
-</div>
+<p align="center">
+<div align="center" class="logo-container">
+<a href="https://www.zilliz.com/">
+<picture height="40px">
+  <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/22963551/234158272-7917382e-ff80-469e-8d8c-94f4477b8b5a.png">
+  <img src="https://user-images.githubusercontent.com/22963551/234158222-30e2d7a7-f0a9-433d-a305-e3aa0b194444.png" height="40px" alt="Zilliz" />
+</picture>
+</a>
 
-</br>
+<a href="https://roost.ai">
+<img src="https://user-images.githubusercontent.com/22963551/234180283-b58cb03c-c95a-4196-93c1-28b52a388e9d.png" height="40px" alt="Roost.AI" />
+</a>
+<a href="https://nuclei.ai/">
+<picture height="40px">
+  <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/22963551/234153428-24a6f31d-c0c6-4c9b-b3f4-9110148f67b4.png">
+  <img src="https://user-images.githubusercontent.com/22963551/234181283-691c5d71-ca94-4646-a1cf-6e818bd86faa.png" height="40px" alt="NucleiAI" />
+</picture>
+</a>
+
+<a href="https://www.algohash.org/">
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/22963551/234180375-1365891c-0ba6-4d49-94c3-847c85fe03b0.png" >
+  <img src="https://user-images.githubusercontent.com/22963551/234180359-143e4a7a-4a71-4830-99c8-9b165cde995f.png" height="40px" alt="Algohash" />
+</picture>
+</a>
+
+<a href="https://www.typingmind.com/?utm_source=autogpt">
+<picture height="40px">
+  <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/22963551/233202971-61e77209-58a0-47d9-9f7e-dd081111437b.png">
+  <img src="https://user-images.githubusercontent.com/22963551/234157731-f908b5db-8fe7-4036-89b6-7b2a21f87e3a.png" height="40px" alt="TypingMind" />
+</picture>
+</a>
+
+<a href="https://github.com/weaviate/weaviate">
+<picture height="40px">
+  <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/22963551/234181699-3d7f6ea8-5a7f-4e98-b812-37be1081be4b.png">
+  <img src="https://user-images.githubusercontent.com/22963551/234181695-fc895159-b921-4895-9a13-65e6eff5b0e7.png" height="40px" alt="TypingMind" />
+</picture>
+</a>
+
+</div>
 </br>
 
 
