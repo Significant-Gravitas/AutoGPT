@@ -47,6 +47,21 @@ import click
     is_flag=True,
     help="Specifies whether to suppress the output of latest news on startup.",
 )
+@click.option(
+    "--ai-name",
+    type=str,
+    help="AI name override passed through command line.",
+)
+@click.option(
+    "--ai-role",
+    type=str,
+    help="AI role override passed through command line.",
+)
+@click.option(
+    "--ai-goals",
+    type=str,
+    help="Comma separated list of AI goals passed through command line.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -62,6 +77,9 @@ def main(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
+    ai_name: str,
+    ai_role: str,
+    ai_goals: str,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -101,9 +119,13 @@ def main(
             browser_name,
             allow_downloads,
             skip_news,
+            ai_name,
+            ai_role,
+            ai_goals,
         )
         logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
-        ai_name = ""
+        if not ai_name:
+            ai_name = ""
         if not cfg.skip_news:
             motd = get_latest_bulletin()
             if motd:
@@ -142,7 +164,8 @@ def main(
         command_registry.import_commands("autogpt.commands.web_selenium")
         command_registry.import_commands("autogpt.commands.write_tests")
         command_registry.import_commands("autogpt.app")
-        ai_name = ""
+        if not ai_name:
+            ai_name = ""
         ai_config = construct_main_ai_config()
         ai_config.command_registry = command_registry
         # print(prompt)

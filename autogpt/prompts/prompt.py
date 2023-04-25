@@ -81,12 +81,12 @@ def construct_main_ai_config() -> AIConfig:
     Returns:
         str: The prompt string
     """
-    config = AIConfig.load(CFG.ai_settings_file)
-    if CFG.skip_reprompt and config.ai_name:
+    config = AIConfig.load(CFG.ai_settings_file, CFG.ai_name, CFG.ai_role, CFG.ai_goals)
+    if CFG.skip_reprompt and all([config.ai_name, config.ai_role, config.ai_goals]):
         logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
         logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
         logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
-    elif config.ai_name:
+    elif config.ai_name and all([config.ai_name, config.ai_role, config.ai_goals]):
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
@@ -103,8 +103,8 @@ Continue (y/n): """
         if should_continue.lower() == "n":
             config = AIConfig()
 
-    if not config.ai_name:
-        config = prompt_user()
+    if any([not config.ai_name, not config.ai_role, not config.ai_goals]):
+        config = prompt_user(config)
         config.save(CFG.ai_settings_file)
 
     return config

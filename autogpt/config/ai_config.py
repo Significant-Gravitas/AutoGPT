@@ -50,10 +50,13 @@ class AIConfig:
         self.command_registry = None
 
     @staticmethod
-    def load(config_file: str = SAVE_FILE) -> "AIConfig":
+    def load(config_file: str = SAVE_FILE,
+             ai_name: str = None,
+             ai_role: str = None,
+             ai_goals: list[str] = None) -> "AIConfig":
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from
-          yaml file if yaml file exists,
+          command line overrides if supplied, then yaml file if yaml file exists,
         else returns class with no parameters.
 
         Parameters:
@@ -64,11 +67,19 @@ class AIConfig:
             cls (object): An instance of given cls object
         """
 
-        try:
-            with open(config_file, encoding="utf-8") as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
-        except FileNotFoundError:
-            config_params = {}
+        # If we have any overrides, use them and ignore local file config
+        if any([ai_name, ai_role, ai_goals]):
+            config_params = {
+                "ai_name": ai_name,
+                "ai_role": ai_role,
+                "ai_goals": ai_goals,
+            }
+        else:
+            try:
+                with open(config_file, encoding="utf-8") as file:
+                    config_params = yaml.load(file, Loader=yaml.FullLoader)
+            except FileNotFoundError:
+                config_params = {}
 
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")

@@ -23,6 +23,9 @@ def create_config(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
+    ai_name: str,
+    ai_role: str,
+    ai_goals: str
 ) -> None:
     """Updates the config object with the given arguments.
 
@@ -39,6 +42,9 @@ def create_config(
         browser_name (str): The name of the browser to use when using selenium to scrape the web
         allow_downloads (bool): Whether to allow Auto-GPT to download files natively
         skips_news (bool): Whether to suppress the output of latest news on startup
+        ai_name (str): AI name override passed through command line
+        ai_role (str): AI role override passed through command line
+        ai_goals (str): Comma separated list of AI goals passed through command line
     """
     CFG.set_debug_mode(False)
     CFG.set_continuous_mode(False)
@@ -98,7 +104,21 @@ def create_config(
         logger.typewriter_log("Skip Re-prompt: ", Fore.GREEN, "ENABLED")
         CFG.skip_reprompt = True
 
-    if ai_settings_file:
+    # Command line AI overrides take priority over settings file
+    if any([ai_name, ai_role, ai_goals]):
+        if ai_name:
+            logger.typewriter_log(f"AI name provided by command line arg: {ai_name}")
+            CFG.ai_name = ai_name
+
+        if ai_role:
+            logger.typewriter_log(f"AI role provided by command line arg: {ai_role}")
+            CFG.ai_role = ai_role
+        
+        if ai_goals:
+            logger.typewriter_log(f"AI goals provided by command line arg: {ai_goals}")
+            CFG.ai_goals = ai_goals.split(",")
+
+    elif ai_settings_file:
         file = ai_settings_file
 
         # Validate file
