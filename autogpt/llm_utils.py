@@ -14,7 +14,6 @@ from autogpt.logs import logger
 from autogpt.types.openai import Message
 
 CFG = Config()
-openai.api_key = CFG.openai_api_key
 
 
 def retry_openai_api(
@@ -248,5 +247,8 @@ def create_embedding(
     Returns:
         openai.Embedding: The embedding object.
     """
-
-    return openai.Embedding.create(input=[text], **kwargs)
+    return openai.Embedding.create(
+        input=[text],
+        api_key=CFG.openai_api_key,
+        **kwargs,
+    )

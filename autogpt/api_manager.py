@@ -7,7 +7,6 @@ from autogpt.logs import logger
 from autogpt.modelsinfo import COSTS
 
 cfg = Config()
-openai.api_key = cfg.openai_api_key
 print_total_cost = cfg.debug_mode
 
 
@@ -50,6 +49,7 @@ class ApiManager:
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                api_key=cfg.openai_api_key,
             )
         else:
             response = openai.ChatCompletion.create(
@@ -57,6 +57,7 @@ class ApiManager:
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                api_key=cfg.openai_api_key,
             )
         if self.debug:
             logger.debug(f"Response: {response}")
