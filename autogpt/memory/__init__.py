@@ -37,6 +37,14 @@ except ImportError:
     # print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
 
+try:
+    from autogpt.memory.postgresml import PostgresMLMemory
+
+    supported_memory.append("postgresml")
+except ImportError:
+    # print("PostgresML is not installed. Skipping import.")
+    PostgresMLMemory = None
+
 
 def get_memory(cfg, init=False):
     memory = None
@@ -74,6 +82,14 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "postgresml":
+        if not PostgresMLMemory:
+            print(
+                "Error: PostgresML is not installed."
+                "Check https://postgresml.org/docs/guides/setup/quick_start_with_docker"
+            )
+        else:
+            memory = PostgresMLMemory(cfg)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
