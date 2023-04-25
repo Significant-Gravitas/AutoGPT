@@ -25,9 +25,9 @@ def retry_openai_api(
     """Retry an OpenAI API call.
 
     Args:
-        num_retries (int, optional): Number of retries. Defaults to 10.
-        backoff_base (int, optional): Base for exponential backoff. Defaults to 2.
-        warn_user (bool, optional): Whether to warn the user. Defaults to True.
+        num_retries int: Number of retries. Defaults to 10.
+        backoff_base float: Base for exponential backoff. Defaults to 2.
+        warn_user bool: Whether to warn the user. Defaults to True.
     """
     retry_limit_msg = f"{Fore.RED}Error: " f"Reached rate limit, passing...{Fore.RESET}"
     api_key_error_msg = (
@@ -207,14 +207,14 @@ def create_chat_completion(
     return resp
 
 
-def get_ada_embedding(text: str):
+def get_ada_embedding(text: str) -> List[int]:
     """Get an embedding from the ada model.
 
     Args:
         text (str): The text to embed.
 
     Returns:
-        str: The embedding.
+        List[int]: The embedding.
     """
     model = "text-embedding-ada-002"
     text = text.replace("\n", " ")
