@@ -23,3 +23,11 @@
 **/values.dev.yaml
 LICENSE
 README.md
+.*
+*.template
+*.yaml
+*.yml
+
+*.md
+*.png
+!BULLETIN.md
