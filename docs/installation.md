@@ -110,5 +110,5 @@ Simply run `./run.sh` (Linux/macOS) or `.\run.bat` (Windows) in your terminal.
 
 2. Open command palatte and type in Dev Containers: Open Folder in Container.
 
-3. Run `./run.sh` (Linux/macOS).
+3. Run `./run.sh`.
 
