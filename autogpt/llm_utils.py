@@ -175,9 +175,7 @@ def create_embedding_with_ada(text) -> list:
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
         try:
-            return api_manager.embedding_create(
-                text_list=[text], model=model
-            )
+            return api_manager.embedding_create(text_list=[text], model=model)
         except RateLimitError:
             pass
         except (APIError, Timeout) as e:
