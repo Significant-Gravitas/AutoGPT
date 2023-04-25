@@ -1,3 +1,4 @@
+import yaml
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -9,10 +10,12 @@ from autogpt.json_fixes.bracket_termination import (
 from autogpt.json_fixes.master_json_fix_method import fix_json_using_multiple_techniques
 from autogpt.json_validation.validate_json import validate_json
 from autogpt.kill_switch import check_kill_switch
+from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
+from autogpt.workspace import Workspace
 
 
 class Agent:
@@ -54,7 +57,9 @@ class Agent:
         config,
         system_prompt,
         triggering_prompt,
+        workspace_directory,
     ):
+        cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
         self.full_message_history = full_message_history
@@ -63,6 +68,7 @@ class Agent:
         self.config = config
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
+        self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -130,10 +136,14 @@ class Agent:
                 validate_json(assistant_reply_json, "llm_response_format_1")
                 # Get command name and arguments
                 try:
-                    print_assistant_thoughts(self.ai_name, assistant_reply_json)
+                    print_assistant_thoughts(
+                        self.ai_name, assistant_reply_json, cfg.speak_mode
+                    )
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
+                    arguments = self._resolve_pathlike_command_args(arguments)
+
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
@@ -148,8 +158,8 @@ class Agent:
                     f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
                 print(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous "
-                    "commands, 'n' to exit program, or enter feedback for "
+                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands"
+                    "'n' to exit program, or enter feedback for "
                     f"{self.ai_name}...",
                     flush=True,
                 )
@@ -159,6 +169,24 @@ class Agent:
                     )
                     if console_input.lower().strip() == "y":
                         user_input = "GENERATE NEXT COMMAND JSON"
+                        break
+                    elif console_input.lower().strip() == "s":
+                        logger.typewriter_log(
+                            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
+                            Fore.GREEN,
+                            "",
+                        )
+                        thoughts = assistant_reply_json.get("thoughts", {})
+                        self_feedback_resp = self.get_self_feedback(thoughts)
+                        logger.typewriter_log(
+                            f"SELF FEEDBACK: {self_feedback_resp}",
+                            Fore.YELLOW,
+                            "",
+                        )
+                        if self_feedback_resp[0].lower().strip() == "y":
+                            user_input = "GENERATE NEXT COMMAND JSON"
+                        else:
+                            user_input = self_feedback_resp
                         break
                     elif console_input.lower().strip() == "":
                         print("Invalid input format.")
@@ -253,3 +281,44 @@ class Agent:
                     logger.typewriter_log(
                         "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                     )
+
+    def _resolve_pathlike_command_args(self, command_args):
+        if "directory" in command_args and command_args["directory"] in {"", "/"}:
+            command_args["directory"] = str(self.workspace.root)
+        else:
+            for pathlike in ["filename", "directory", "clone_path"]:
+                if pathlike in command_args:
+                    command_args[pathlike] = str(
+                        self.workspace.get_path(command_args[pathlike])
+                    )
+        return command_args
+
+    @staticmethod
+    def get_self_feedback(thoughts: dict) -> str:
+        """Generates a feedback response based on the provided thoughts dictionary.
+        This method takes in a dictionary of thoughts containing keys such as 'reasoning',
+        'plan', 'thoughts', and 'criticism'. It combines these elements into a single
+        feedback message and uses the create_chat_completion() function to generate a
+        response based on the input message.
+        Args:
+            thoughts (dict): A dictionary containing thought elements like reasoning,
+            plan, thoughts, and criticism.
+        Returns:
+            str: A feedback response generated using the provided thoughts dictionary.
+        """
+
+        with open(Config().ai_settings_file, "r") as yaml_file:
+            parsed_yaml = yaml.safe_load(yaml_file)
+            ai_role = parsed_yaml["ai_role"]
+
+        feedback_prompt = f"Below is a message from an AI agent with the role of {ai_role}. Please review the provided Thought, Reasoning, Plan, and Criticism. If these elements accurately contribute to the successful execution of the assumed role, respond with the letter 'Y' followed by a space, and then explain why it is effective. If the provided information is not suitable for achieving the role's objectives, please provide one or more sentences addressing the issue and suggesting a resolution."
+        reasoning = thoughts.get("reasoning", "")
+        plan = thoughts.get("plan", "")
+        thought = thoughts.get("thoughts", "")
+        criticism = thoughts.get("criticism", "")
+        feedback_thoughts = thought + reasoning + plan + criticism
+        feedback_response = create_chat_completion(
+            [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
+            "gpt-3.5-turbo",
+        )  # * This hardcodes the model to use GPT3.5. should be an argument
+        return feedback_response
