@@ -5,8 +5,16 @@ import zipfile
 from pathlib import Path
 
 
-def main():
-    # Plugin packages
+def install_plugin_dependencies():
+    """
+    Installs dependencies for all plugins in the plugins dir.
+
+    Args:
+        None
+
+    Returns:
+        None
+    """
     plugins_dir = Path(os.getenv("PLUGINS_DIR", "plugins"))
     for plugin in plugins_dir.glob("*.zip"):
         with zipfile.ZipFile(str(plugin), "r") as zfile:
@@ -24,4 +32,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    install_plugin_dependencies()
