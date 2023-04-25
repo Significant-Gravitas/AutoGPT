@@ -20,6 +20,10 @@ In the `.env` file set:
 - `ELEVENLABS_VOICE_1_ID` (example: _"premade/Adam"_)
 
 ### List of available voices
+
+!!! note
+    You can use either the name or the voice ID to configure a voice
+
 | Name   | Voice ID |
 | ------ | -------- |
 | Rachel | `21m00Tcm4TlvDq8ikWAM` |
