@@ -1,14 +1,11 @@
 from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
 
 from autogpt.api_manager import ApiManager
 from autogpt.api_manager import api_manager as api_manager_
 from autogpt.config import Config
 from autogpt.workspace import Workspace
-
-load_dotenv()
 
 
 @pytest.fixture()
