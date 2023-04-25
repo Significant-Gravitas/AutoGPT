@@ -218,7 +218,13 @@ def get_ada_embedding(text: str):
     """
     model = "text-embedding-ada-002"
     text = text.replace("\n", " ")
-    embedding = create_embedding(text=text, model=model)
+
+    if CFG.use_azure:
+        kwargs = {"engine": CFG.get_azure_deployment_id_for_model(model)}
+    else:
+        kwargs = {"model": model}
+
+    embedding = create_embedding(text, **kwargs)
     api_manager.update_cost(
         prompt_tokens=embedding.usage.prompt_tokens,
         completion_tokens=0,
@@ -229,19 +235,18 @@ def get_ada_embedding(text: str):
 
 @retry_openai_api()
 def create_embedding(
-    text: str, model: str = "text-embedding-ada-002"
+    text: str,
+    *_,
+    **kwargs,
 ) -> openai.Embedding:
     """Create an embedding using the OpenAI API
 
     Args:
         text (str): The text to embed.
-        model (str, optional): The model to use. Defaults to "text-embedding-ada-002".
+        kwargs: Other arguments to pass to the OpenAI API embedding creation call.
 
     Returns:
         openai.Embedding: The embedding object.
     """
-    if CFG.use_azure:
-        other_kwargs = {"engine": CFG.get_azure_deployment_id_for_model(model)}
-    else:
-        other_kwargs = {"model": model}
-    return openai.Embedding.create(input=[text], **other_kwargs)
+
+    return openai.Embedding.create(input=[text], **kwargs)

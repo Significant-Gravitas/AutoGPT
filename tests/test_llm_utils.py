@@ -1,7 +1,8 @@
 import pytest
 from openai.error import APIError, RateLimitError
 
-from autogpt.llm_utils import retry_openai_api
+from autogpt.llm_utils import get_ada_embedding, retry_openai_api
+from autogpt.modelsinfo import COSTS
 
 
 @pytest.fixture(params=[RateLimitError, APIError])
@@ -10,6 +11,16 @@ def error(request):
         return request.param("Error", http_status=502)
     else:
         return request.param("Error")
+
+
+@pytest.fixture
+def mock_create_embedding(mocker):
+    mock_response = mocker.MagicMock()
+    mock_response.usage.prompt_tokens = 5
+    mock_response.__getitem__.side_effect = lambda key: [{"embedding": [0.1, 0.2, 0.3]}]
+    return mocker.patch(
+        "autogpt.llm_utils.create_embedding", return_value=mock_response
+    )
 
 
 def error_factory(error_instance, error_count, retry_count, warn_user=True):
@@ -155,3 +166,18 @@ def test_retry_openapi_other_api_error(capsys):
 
     output = capsys.readouterr()
     assert output.out == ""
+
+
+def test_get_ada_embedding(mock_create_embedding, api_manager):
+    model = "text-embedding-ada-002"
+    embedding = get_ada_embedding("test")
+    mock_create_embedding.assert_called_once_with(
+        "test", model="text-embedding-ada-002"
+    )
+
+    assert embedding == [0.1, 0.2, 0.3]
+
+    cost = COSTS[model]["prompt"]
+    assert api_manager.get_total_prompt_tokens() == 5
+    assert api_manager.get_total_completion_tokens() == 0
+    assert api_manager.get_total_cost() == (5 * cost) / 1000
