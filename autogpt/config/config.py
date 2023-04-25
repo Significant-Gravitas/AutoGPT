@@ -8,7 +8,7 @@ from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 from dotenv import load_dotenv
 
-from autogpt.config.singleton import Singleton
+from autogpt.singleton import Singleton
 
 load_dotenv(verbose=True, override=True)
 
@@ -131,8 +131,6 @@ class Config(metaclass=Singleton):
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
-        # Initialize the OpenAI API client
-        openai.api_key = self.openai_api_key
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
@@ -268,9 +266,9 @@ class Config(metaclass=Singleton):
         """Set the temperature value."""
         self.temperature = value
 
-    def set_memory_backend(self, value: int) -> None:
-        """Set the temperature value."""
-        self.memory_backend = value
+    def set_memory_backend(self, name: str) -> None:
+        """Set the memory backend name."""
+        self.memory_backend = name
 
 
 def check_openai_api_key() -> None:
@@ -280,6 +278,7 @@ def check_openai_api_key() -> None:
         print(
             Fore.RED
             + "Please set your OpenAI API key in .env or as an environment variable."
+            + Fore.RESET
         )
         print("You can get your key from https://platform.openai.com/account/api-keys")
         exit(1)

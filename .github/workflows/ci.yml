@@ -2,12 +2,12 @@ name: Python CI
 
 on:
   push:
-    branches: [master]
+    branches: [ master ]
   pull_request:
-    branches: [master]
+    branches: [ master ]
 
 concurrency:
-  group: ${{ format('ci-{0}', format('pr-{0}', github.event.pull_request.number) || github.sha) }}
+  group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -17,7 +17,7 @@ jobs:
       min-python-version: "3.10"
 
     steps:
-      - name: Check out repository
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Set up Python ${{ env.min-python-version }}
@@ -74,11 +74,6 @@ jobs:
           pytest --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      - name: Generate coverage report
-        run: |
-          coverage report
-          coverage xml
-        if: success() || failure()
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3

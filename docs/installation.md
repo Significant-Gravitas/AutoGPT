@@ -8,7 +8,7 @@ To use OpenAI API key for Auto-GPT, you **NEED** to have billing set up (AKA pai
 
 You can set up paid account at https://platform.openai.com/account/billing/overview.
 
-Important: It's highly recommended that you track your usage on [the Usage page](https://platform.openai.com/account/usage)
+Important: It's highly recommended that you track your usage on [the Usage page](https://platform.openai.com/account/usage).
 You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
 
 ![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./imgs/openai-api-key-billing-paid-account.png)
@@ -103,3 +103,12 @@ docker run -it --env OPENAI_API_KEY='your-key-here' -v $PWD/ai_settings.yaml:/ap
 ### Run Docker-less
 
 Simply run `./run.sh` (Linux/macOS) or `.\run.bat` (Windows) in your terminal.
+
+### Run with Dev Container
+
+1. Install the [Remote - Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension in VS Code.
+
+2. Open command palette and type in Dev Containers: Open Folder in Container.
+
+3. Run `./run.sh`.
+
