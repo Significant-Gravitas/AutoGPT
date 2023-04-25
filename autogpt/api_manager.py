@@ -65,32 +65,6 @@ class ApiManager:
         self.update_cost(prompt_tokens, completion_tokens, model)
         return response
 
-    def embedding_create(
-        self,
-        text_list: List[str],
-        model: str = "text-embedding-ada-002",
-    ) -> List[float]:
-        """
-        Create an embedding for the given input text using the specified model.
-
-        Args:
-        text_list (List[str]): Input text for which the embedding is to be created.
-        model (str, optional): The model to use for generating the embedding.
-
-        Returns:
-        List[float]: The generated embedding as a list of float values.
-        """
-        if cfg.use_azure:
-            response = openai.Embedding.create(
-                input=text_list,
-                engine=cfg.get_azure_deployment_id_for_model(model),
-            )
-        else:
-            response = openai.Embedding.create(input=text_list, model=model)
-
-        self.update_cost(response.usage.prompt_tokens, 0, model)
-        return response["data"][0]["embedding"]
-
     def update_cost(self, prompt_tokens, completion_tokens, model):
         """
         Update the total cost, prompt tokens, and completion tokens.
