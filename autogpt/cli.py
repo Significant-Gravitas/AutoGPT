@@ -55,6 +55,11 @@ import autogpt.prompts.prompt
     type=click.Path(),
     hidden=True,
 )
+@click.option(
+    "--install-plugin-deps",
+    is_flag=True,
+    help="Installs external dependencies for 3rd party plugins.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -71,6 +76,7 @@ def main(
     allow_downloads: bool,
     skip_news: bool,
     workspace_directory: str,
+    install_plugin_deps: bool,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -96,10 +102,7 @@ def main(
     from autogpt.workspace import Workspace
 
     if ctx.invoked_subcommand is None:
-        cfg = Config()
-        # TODO: fill in llm values here
-        check_openai_api_key()
-        create_config(
+        run_auto_gpt(
             continuous,
             continuous_limit,
             ai_settings,
@@ -205,7 +208,6 @@ def main(
             triggering_prompt=triggering_prompt,
             workspace_directory=workspace_directory,
         )
-        agent.start_interaction_loop()
 
 
 if __name__ == "__main__":
