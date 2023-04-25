@@ -131,6 +131,12 @@ class TestConfig(TestCase):
         """
         CFG = Config()
         configurator.create_config(False, 0, None, False, False, False, False, 
+                                   False, "local", "chrome", True, True, None, None, None)
+        self.assertEqual(CFG.ai_name, None)
+        self.assertEqual(CFG.ai_role, None)
+        self.assertEqual(CFG.ai_goals, None)
+
+        configurator.create_config(False, 0, None, False, False, False, False, 
                                    False, "local", "chrome", True, True, "testGPT", None, None)
         
         self.assertEqual(CFG.ai_name, "testGPT")
