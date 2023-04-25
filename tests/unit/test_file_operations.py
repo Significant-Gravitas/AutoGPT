@@ -110,7 +110,7 @@ class TestFileOperations(unittest.TestCase):
         files = search_files(str(self.workspace.root))
         self.assertIn(file_a.name, files)
         self.assertIn(file_b.name, files)
-        self.assertIn(f"{Path(self.test_directory).name}/{file_a.name}", files)
+        self.assertIn(os.path.join(Path(self.test_directory).name, file_a.name), files)
 
         # Clean up
         os.remove(file_a)
