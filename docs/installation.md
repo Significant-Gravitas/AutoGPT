@@ -91,12 +91,12 @@ docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuou
 
 Alternatively, you can pull the latest release directly from [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt) and run that:
 ``` shell
-docker run -it --env OPENAI_API_KEY='your-key-here' --rm significantgravitas/auto-gpt
+docker run -it --env OPENAI_API_KEY='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. ' --rm significantgravitas/auto-gpt
 ```
 
 Or with `ai_settings.yml` presets mounted:
 ``` shell
-docker run -it --env OPENAI_API_KEY='your-key-here' -v $PWD/ai_settings.yaml:/app/ai_settings.yaml --rm significantgravitas/auto-gpt
+docker run -it --env OPENAI_API_KEY=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' -v $PWD/ai_settings.yaml:/app/ai_settings.yaml --rm significantgravitas/auto-gpt
 ```
 
 
