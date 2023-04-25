@@ -29,5 +29,3 @@ def test_path_in_workspace():
 
 # testing the function
 test_path_in_workspace()
-
-
