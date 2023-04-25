@@ -17,13 +17,14 @@ cfg = Config()
 
 
 def send_chat_message_to_user(report: str):
-    if cfg.chat_messages_enabled:
-        for plugin in enumerate(cfg.plugins):
-            if not hasattr(plugin, "can_handle_report"):
-                continue
-            if not plugin.can_handle_report():
-                continue
-            plugin.send_message(report)
+    if not cfg.chat_messages_enabled:
+        return
+    for plugin in enumerate(cfg.plugins):
+        if not hasattr(plugin, "can_handle_report"):
+            continue
+        if not plugin.can_handle_report():
+            continue
+        plugin.send_message(report)
 
 
 def clean_input(prompt: str = "", talk=False):
@@ -35,7 +36,9 @@ def clean_input(prompt: str = "", talk=False):
                 if not plugin.can_handle_user_input():
                     continue
                 plugin_response = plugin.user_input(prompt, talk)
-                if plugin_response in [
+                if not plugin_response:
+                    continue
+                if plugin_response.str.lower() in [
                     "yes",
                     "yeah",
                     "y",
@@ -45,15 +48,13 @@ def clean_input(prompt: str = "", talk=False):
                     "alright",
                 ]:
                     return "y"
-                elif plugin_response in [
+                elif plugin_response.str.lower() in [
                     "no",
                     "nope",
                     "n",
                     "negative",
                 ]:
                     return "n"
-                if not plugin_response:
-                    continue
                 return plugin_response
 
         # ask for input, default when just pressing Enter is y
