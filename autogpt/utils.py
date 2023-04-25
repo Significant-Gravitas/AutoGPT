@@ -33,12 +33,12 @@ def clean_input(prompt: str = "", talk=False):
             for plugin in cfg.plugins:
                 if not hasattr(plugin, "can_handle_user_input"):
                     continue
-                if not plugin.can_handle_user_input():
+                if not plugin.can_handle_user_input(user_input=prompt):
                     continue
-                plugin_response = plugin.user_input(prompt, talk)
+                plugin_response = plugin.user_input(user_input=prompt)
                 if not plugin_response:
                     continue
-                if plugin_response.str.lower() in [
+                if plugin_response.lower() in [
                     "yes",
                     "yeah",
                     "y",
@@ -48,7 +48,7 @@ def clean_input(prompt: str = "", talk=False):
                     "alright",
                 ]:
                     return "y"
-                elif plugin_response.str.lower() in [
+                elif plugin_response.lower() in [
                     "no",
                     "nope",
                     "n",
