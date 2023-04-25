@@ -53,88 +53,34 @@ def test_retry_open_api_no_error(capsys):
     assert output.err == ""
 
 
-def test_retry_open_api_passing(capsys, error):
-    error_count = 2
-    retry_count = 10
+@pytest.mark.parametrize(
+    "error_count, retry_count, failure",
+    [(2, 10, False), (2, 2, False), (10, 2, True), (3, 2, True), (1, 0, True)],
+    ids=["passing", "passing_edge", "failing", "failing_edge", "failing_no_retries"],
+)
+def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure):
+    call_count = min(error_count, retry_count) + 1
 
     raises = error_factory(error, error_count, retry_count)
-    result = raises()
-    call_count = min(error_count, retry_count) + 1
-    assert result == call_count
+    if failure:
+        with pytest.raises(type(error)):
+            raises()
+    else:
+        result = raises()
+        assert result == call_count
+
     assert raises.count == call_count
 
     output = capsys.readouterr()
 
-    if type(error) == RateLimitError:
-        assert "Reached rate limit, passing..." in output.out
-        assert "Please double check" in output.out
-
-
-def test_retry_open_api_passing_edge(capsys, error):
-    error_count = 2
-    retry_count = 2
-
-    raises = error_factory(error, error_count, retry_count)
-    result = raises()
-    call_count = min(error_count, retry_count) + 1
-    assert result == call_count
-    assert raises.count == call_count
-
-    output = capsys.readouterr()
-
-    if type(error) == RateLimitError:
-        assert "Reached rate limit, passing..." in output.out
-        assert "Please double check" in output.out
-
-
-def test_retry_open_api_failing(capsys, error):
-    error_count = 10
-    retry_count = 2
-
-    raises = error_factory(error, error_count, retry_count)
-
-    with pytest.raises(type(error)):
-        raises()
-
-    call_count = min(error_count, retry_count) + 1
-    assert raises.count == call_count
-
-    output = capsys.readouterr()
-    if type(error) == RateLimitError:
-        assert "Reached rate limit, passing..." in output.out
-        assert "Please double check" in output.out
-
-
-def test_retry_open_api_failing_edge(capsys, error):
-    error_count = 3
-    retry_count = 2
-    raises = error_factory(error, error_count, retry_count)
-
-    with pytest.raises(type(error)):
-        raises()
-
-    call_count = min(error_count, retry_count) + 1
-    assert raises.count == call_count
-
-    output = capsys.readouterr()
-    if type(error) == RateLimitError:
-        assert "Reached rate limit, passing..." in output.out
-        assert "Please double check" in output.out
-
-
-def test_retry_open_api_failing_no_retries(capsys, error):
-    error_count = 1
-    retry_count = 0
-    raises = error_factory(error, error_count, retry_count)
-
-    with pytest.raises(type(error)):
-        raises()
-
-    call_count = min(error_count, retry_count) + 1
-    assert raises.count == call_count
-
-    output = capsys.readouterr()
-    assert output.out == ""
+    if error_count and retry_count:
+        if type(error) == RateLimitError:
+            assert "Reached rate limit, passing..." in output.out
+            assert "Please double check" in output.out
+        if type(error) == APIError:
+            assert "API Bad gateway" in output.out
+    else:
+        assert output.out == ""
 
 
 def test_retry_open_api_rate_limit_no_warn(capsys):
