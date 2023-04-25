@@ -10,7 +10,7 @@ from tests.utils import requires_api_key
 
 
 @pytest.fixture
-def LocalCache():
+def LocalCacheFixture():
     # Hack, real gross. Singletons are not good times.
     if LocalCache_ in LocalCache_._instances:
         del LocalCache_._instances[LocalCache_]
@@ -29,24 +29,24 @@ def mock_embed_with_ada(mocker):
 class TestLocalCache:
     """Tests for the LocalCache class."""
 
-    def test_init_without_backing_file(LocalCache, config, workspace):
+    def test_init_without_backing_file(LocalCacheFixture, config, workspace):
         cache_file = workspace.root / f"{config.memory_index}.json"
 
         assert not cache_file.exists()
-        LocalCache(config)
+        LocalCacheFixture(config)
         assert cache_file.exists()
         assert cache_file.read_text() == "{}"
 
-    def test_init_with_backing_empty_file(LocalCache, config, workspace):
+    def test_init_with_backing_empty_file(LocalCacheFixture, config, workspace):
         cache_file = workspace.root / f"{config.memory_index}.json"
         cache_file.touch()
 
         assert cache_file.exists()
-        LocalCache(config)
+        LocalCacheFixture(config)
         assert cache_file.exists()
         assert cache_file.read_text() == "{}"
 
-    def test_init_with_backing_file(LocalCache, config, workspace):
+    def test_init_with_backing_file(LocalCacheFixture, config, workspace):
         cache_file = workspace.root / f"{config.memory_index}.json"
         cache_file.touch()
 
@@ -56,18 +56,18 @@ class TestLocalCache:
             f.write(data)
 
         assert cache_file.exists()
-        LocalCache(config)
+        LocalCacheFixture(config)
         assert cache_file.exists()
         assert cache_file.read_text() == "{}"
 
-    def test_add(LocalCache, config, mock_embed_with_ada):
-        cache = LocalCache(config)
+    def test_add(LocalCacheFixture, config, mock_embed_with_ada):
+        cache = LocalCacheFixture(config)
         cache.add("test")
         assert cache.data.texts == ["test"]
         assert cache.data.embeddings.shape == (1, EMBED_DIM)
 
-    def test_clear(LocalCache, config, mock_embed_with_ada):
-        cache = LocalCache(config)
+    def test_clear(LocalCacheFixture, config, mock_embed_with_ada):
+        cache = LocalCacheFixture(config)
         assert cache.data.texts == []
         assert cache.data.embeddings.shape == (0, EMBED_DIM)
 
@@ -79,16 +79,16 @@ class TestLocalCache:
         assert cache.data.texts == []
         assert cache.data.embeddings.shape == (0, EMBED_DIM)
 
-    def test_get(LocalCache, config, mock_embed_with_ada):
-        cache = LocalCache(config)
+    def test_get(LocalCacheFixture, config, mock_embed_with_ada):
+        cache = LocalCacheFixture(config)
         assert cache.get("test") == []
 
         cache.add("test")
         assert cache.get("test") == ["test"]
 
     @requires_api_key("OPENAI_API_KEY")
-    def test_get_relevant(LocalCache, config) -> None:
-        cache = LocalCache(config)
+    def test_get_relevant(LocalCacheFixture, config) -> None:
+        cache = LocalCacheFixture(config)
         text1 = "Sample text 1"
         text2 = "Sample text 2"
         cache.add(text1)
@@ -97,8 +97,8 @@ class TestLocalCache:
         result = cache.get_relevant(text1, 1)
         assert result == [text1]
 
-    def test_get_stats(LocalCache, config, mock_embed_with_ada) -> None:
-        cache = LocalCache(config)
+    def test_get_stats(LocalCacheFixture, config, mock_embed_with_ada) -> None:
+        cache = LocalCacheFixture(config)
         text = "Sample text"
         cache.add(text)
         stats = cache.get_stats()
