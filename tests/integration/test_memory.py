@@ -1,6 +1,5 @@
 import random
 import string
-import sys
 import unittest
 from pathlib import Path
 
@@ -8,6 +7,7 @@ import pytest
 
 from autogpt.config import Config
 from autogpt.memory.local import LocalCache
+from tests.utils import requires_api_key
 
 
 @pytest.mark.integration_test
@@ -35,6 +35,7 @@ class TestLocalCache(unittest.TestCase):
         for _ in range(5):
             self.cache.add(self.generate_random_string(10))
 
+    @requires_api_key("OPENAI_API_KEY")
     def test_get_relevant(self):
         """Test getting relevant texts from the cache."""
         query = "I'm interested in artificial intelligence and NLP"
@@ -49,5 +50,3 @@ class TestLocalCache(unittest.TestCase):
         self.assertIn(self.example_texts[1], relevant_texts)
 
 
-if __name__ == "__main__":
-    unittest.main()
