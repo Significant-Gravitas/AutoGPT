@@ -1,7 +1,7 @@
 from unittest import TestCase
 
 from autogpt.config import Config
-
+from autogpt import configurator
 
 class TestConfig(TestCase):
     """
@@ -124,3 +124,21 @@ class TestConfig(TestCase):
 
         # Reset debug mode
         self.config.set_debug_mode(debug_mode)
+
+    def test_command_line_ai_params(self):
+        """
+        Test setting AI parameters overrides such as ai goals and name from the command line.
+        """
+        CFG = Config()
+        configurator.create_config(False, 0, None, False, False, False, False, 
+                                   False, "local", "chrome", True, True, "testGPT", None, None)
+        
+        self.assertEqual(CFG.ai_name, "testGPT")
+
+        configurator.create_config(False, 0, None, False, False, False, False, 
+                            False, "local", "chrome", True, True, "testGPT2", "testRole1", "testGoal1,testGoal2")
+        
+        self.assertEqual(CFG.ai_name, "testGPT2")
+        self.assertEqual(CFG.ai_role, "testRole1")
+        self.assertEqual(CFG.ai_goals, ["testGoal1", "testGoal2"])
+        
