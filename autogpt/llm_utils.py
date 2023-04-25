@@ -22,6 +22,13 @@ def retry_openai_api(
     backoff_base: int = 2,
     warn_user: bool = True,
 ):
+    """Retry an OpenAI API call.
+
+    Args:
+        num_retries (int, optional): Number of retries. Defaults to 10.
+        backoff_base (int, optional): Base for exponential backoff. Defaults to 2.
+        warn_user (bool, optional): Whether to warn the user. Defaults to True.
+    """
     retry_limit_msg = (
         f"{Fore.RED}Error: ",
         f"Reached rate limit, passing...{Fore.RESET}",
@@ -200,6 +207,14 @@ def create_chat_completion(
 
 
 def get_ada_embedding(text: str):
+    """Get an embedding from the ada model.
+
+    Args:
+        text (str): The text to embed.
+
+    Returns:
+        str: The embedding.
+    """
     model = "text-embedding-ada-002"
     text = text.replace("\n", " ")
     embedding = create_embedding(text=text, model=model)
@@ -215,6 +230,15 @@ def get_ada_embedding(text: str):
 def create_embedding(
     text: str, model: str = "text-embedding-ada-002"
 ) -> openai.Embedding:
+    """Create an embedding using the OpenAI API
+
+    Args:
+        text (str): The text to embed.
+        model (str, optional): The model to use. Defaults to "text-embedding-ada-002".
+
+    Returns:
+        openai.Embedding: The embedding object.
+    """
     if CFG.use_azure:
         other_kwargs = {"engine": CFG.get_azure_deployment_id_for_model(model)}
     else:
