@@ -4,13 +4,15 @@ Note:
 This section is optional. use the official google api if you are having issues with error 429 when running a google search.
 To use the `google_official_search` command, you need to set up your Google API keys in your environment variables.
 
-Create your project:
+Create your project
+
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
 2. If you don't already have an account, create one and log in.
 3. Create a new project by clicking on the "Select a Project" dropdown at the top of the page and clicking "New Project". 
 4. Give it a name and click "Create".
 
 Set up a custom search API and add to your .env file:
+
 5. Go to the [APIs & Services Dashboard](https://console.cloud.google.com/apis/dashboard).
 6. Click "Enable APIs and Services". 
 7. Search for "Custom Search API" and click on it.
@@ -23,6 +25,7 @@ Set up a custom search API and add to your .env file:
 14. [Enable](https://console.developers.google.com/apis/api/customsearch.googleapis.com) the Custom Search API on your project. (Might need to wait few minutes to propagate)
 
 Set up a custom search engine and add to your .env file:
+
 15. Go to the [Custom Search Engine](https://cse.google.com/cse/all) page.
 16. Click "Add".
 17. Set up your search engine by following the prompts. You can choose to search the entire web or specific sites.
