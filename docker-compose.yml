@@ -5,7 +5,7 @@ version: "3.9"
 services:
   auto-gpt:
     depends_on:
-      - redisStack
+      - redis-stack
     build: ./
     env_file:
       - .env
