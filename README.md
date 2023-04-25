@@ -33,9 +33,6 @@ Your support is greatly appreciated. Development of this free, open-source proje
 
 <p align="center">
 <div align="center" class="logo-container">
-
-<p align="center">
-<div align="center" class="logo-container">
 <a href="https://www.zilliz.com/">
 <picture height="40px">
   <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/22963551/234158272-7917382e-ff80-469e-8d8c-94f4477b8b5a.png">
