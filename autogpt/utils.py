@@ -19,7 +19,7 @@ cfg = Config()
 def send_chat_message_to_user(report: str):
     if not cfg.chat_messages_enabled:
         return
-    for plugin in enumerate(cfg.plugins):
+    for plugin in cfg.plugins:
         if not hasattr(plugin, "can_handle_report"):
             continue
         if not plugin.can_handle_report():
@@ -30,7 +30,7 @@ def send_chat_message_to_user(report: str):
 def clean_input(prompt: str = "", talk=False):
     try:
         if cfg.chat_messages_enabled:
-            for plugin in enumerate(cfg.plugins):
+            for plugin in cfg.plugins:
                 if not hasattr(plugin, "can_handle_user_input"):
                     continue
                 if not plugin.can_handle_user_input():
