@@ -17,20 +17,10 @@ from autogpt.memory import get_memory
 
 from autogpt.spinner import Spinner
 from multigpt import lmql_utils
+from multigpt.agent_traits import AgentTraits
 from multigpt.expert import Expert
 from multigpt.multi_config import MultiConfig
 from multigpt.multi_agent_manager import MultiAgentManager
-
-EXPERT_TRAITS_PROMPT = """
-    Rate {name} on a scale from 0 (extremly low degree of) to 10 (extremly high degree of) on the following five traits: Openness, Agreeableness, Conscientiousness, Emotional Stability and Assertiveness. Follow the format precisely:
-    [Name of Person]
-    Openness: [0-10]
-    Agreeableness: [0-10]
-    Conscientiousness: [0-10]
-    Emotional Stability: [0-10]
-    Assertiveness: [0-10]
-    [Short description of personality traits of {name}]
-"""
 
 
 def main() -> None:
@@ -65,7 +55,12 @@ def main() -> None:
     logger.typewriter_log(f"Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
 
     for name, description, goals in experts:
-        expert = Expert(name, description, goals)
+
+        with Spinner(f"Generating trait profile for {name}... "):
+            traits_list = list(lmql_utils.lmql_generate_trait_profile(name).values())
+            expert_traits = AgentTraits(*traits_list)
+
+        expert = Expert(name, description, goals, expert_traits)
         logger.typewriter_log(
             f"{name}", Fore.BLUE,
             f"{description}", speak_text=True
@@ -76,13 +71,9 @@ def main() -> None:
         logger.typewriter_log(
             f"Goals:", Fore.GREEN, goals_str
         )
-        messages = [{"role": "system", "content": EXPERT_TRAITS_PROMPT.format(name=expert.ai_name)}]
-        with Spinner(f"Generating trait profile for {expert.ai_name}... "):
-            expert_traits = create_chat_completion(messages=messages, model=cfg.smart_llm_model, max_tokens=1000)
-        expert.set_traits(expert_traits)
         logger.typewriter_log(
             "\nTrait profile:", Fore.RED,
-            expert_traits, speak_text=True
+            str(expert_traits), speak_text=True
         )
         multi_agent_manager.create_agent(expert)
 

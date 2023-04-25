@@ -171,6 +171,15 @@ def lmql_get_emotional_state(message):
     return emotion
 
 
+def lmql_generate_trait_profile(name):
+    async def _query_generate_trait_profile():
+        result = (await _queries.generate_trait_profile(name))
+        return result
+    loop = asyncio.get_event_loop()
+    lmql_result = loop.run_until_complete(_query_generate_trait_profile())[0]
+    return lmql_result.variables
+
+
 def lmql_smart_select(message_history, list_of_participants):
     async def _query_smart_select_agent():
         result = (await _queries.smart_select_agent(message_history, list_of_participants))

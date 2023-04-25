@@ -4,23 +4,22 @@ import yaml
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from multigpt.multi_prompt_generator import MultiPromptGenerator
+from multigpt.agent_traits import AgentTraits
 
 
 class Expert(AIConfig):
     expert_instances = []
 
     def __init__(
-            self, ai_name: str = "", ai_role: str = "", ai_goals: list | None = None
+            self, ai_name: str = "", ai_role: str = "", ai_goals: list | None = None, ai_traits: AgentTraits = None
     ) -> None:
         super().__init__(ai_name=ai_name, ai_role=ai_role, ai_goals=ai_goals)
-        self.ai_traits = ""
+        self.ai_traits = ai_traits
         Expert.expert_instances.append(self)
 
     def __del__(self):
         Expert.expert_instances.remove(self)
 
-    def set_traits(self, traits : str):
-        self.ai_traits = traits
     @classmethod
     def get_experts(cls):
         return cls.expert_instances

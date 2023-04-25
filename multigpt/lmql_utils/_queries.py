@@ -2,6 +2,28 @@ import lmql
 
 
 @lmql.query
+async def generate_trait_profile(name):
+    '''
+    argmax(max_len=2000)
+    """
+        Rate {name} on a scale from 0 (extremly low degree of) to 10 (extremly high degree of) on the following five traits: Openness, Agreeableness, Conscientiousness, Emotional Stability and Assertiveness. Follow the format precisely:
+
+        Openness: [OPENNESS]
+        Agreeableness: [AGREEABLENESS]
+        Conscientiousness: [CONSCIENTIOUSNESS]
+        Emotional Stability: [EMOTIONAL_STABILITY]
+        Assertiveness: [ASSERTIVENESS]
+
+        Short description of personality traits of {name}:
+        [DESCRIPTION]
+    """
+    from
+        'openai/text-davinci-003'
+    where
+        INT(OPENNESS) and INT(AGREEABLENESS) and INT(CONSCIENTIOUSNESS) and INT(EMOTIONAL_STABILITY) and INT(ASSERTIVENESS)
+    '''
+
+@lmql.query
 async def generate_experts(task, min_experts, max_experts):
     '''
     argmax(max_len=2000)
