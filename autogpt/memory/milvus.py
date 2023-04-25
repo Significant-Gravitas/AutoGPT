@@ -1,5 +1,6 @@
 """ Milvus memory storage provider."""
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
+import importlib
 
 from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
 
@@ -14,7 +15,16 @@ class MilvusMemory(MemoryProviderSingleton):
             cfg (Config): Auto-GPT global config.
         """
         # connect to milvus server.
-        connections.connect(address=cfg.milvus_addr)
+        if cfg.milvus_type == "lite":
+            try:
+                milvus = importlib.import_module("milvus")
+            except:
+                print("Milvus Lite not installed, please `pip install milvus` and try again.")
+            print("Starting Milvus Lite")
+            milvus.default_server.start()
+            connections.connect(host="127.0.0.1", port=milvus.default_server.listen_port)
+        else:
+            connections.connect(address=cfg.milvus_addr)
         fields = [
             FieldSchema(name="pk", dtype=DataType.INT64, is_primary=True, auto_id=True),
             FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=1536),
