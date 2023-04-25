@@ -101,7 +101,7 @@ class LocalCache(MemoryProviderSingleton):
         return self.get_relevant(data, 1)
 
     def get_relevant(self, text: str, k: int) -> list[Any]:
-        """ "
+        """
         matrix-vector mult to find score-for-each-row-of-matrix
          get indices for top-k winning scores
          return texts for those indices
