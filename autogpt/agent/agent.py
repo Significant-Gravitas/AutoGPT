@@ -1,4 +1,3 @@
-import yaml
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -12,48 +11,6 @@ from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
-
-
-def should_prompt_user(continuous_mode, next_action_count):
-    return not continuous_mode and next_action_count == 0
-
-
-def generate_user_feedback_message(ai_name):
-    return "Enter 'y' to authorise command, 'y -N' to run N continuous commands, " \
-           "'s' to run self-feedback commands, " \
-           "'n' to exit program, or enter feedback for " \
-           f"{ai_name}... "
-
-
-def calculate_next_command_from_user_input(console_input):
-    command_name = None
-    next_action_count = 0
-
-    if console_input.lower().rstrip() == "y":
-        user_input = "GENERATE NEXT COMMAND JSON"
-    elif console_input.lower().startswith("y -"):
-        try:
-            next_action_count = abs(
-                int(console_input.split(" ")[1])
-            )
-            user_input = "GENERATE NEXT COMMAND JSON"
-        except ValueError:
-            command_name = "input error"
-            user_input = "Invalid input format. Please enter 'y -n' where n is" \
-                         " the number of continuous tasks."
-    elif console_input.lower().strip() == "":
-        command_name = "input error"
-        user_input = "Invalid input format."
-    elif console_input.lower().strip() == "n":
-        user_input = "EXIT"
-    elif console_input.lower().strip() == "s":
-        user_input = None
-        command_name = "self_feedback"
-    else:
-        user_input = console_input
-        command_name = "human_feedback"
-
-    return command_name, next_action_count, user_input
 
 
 class Agent:
@@ -86,16 +43,16 @@ class Agent:
     """
 
     def __init__(
-            self,
-            ai_name,
-            memory,
-            full_message_history,
-            next_action_count,
-            command_registry,
-            config,
-            system_prompt,
-            triggering_prompt,
-            workspace_directory,
+        self,
+        ai_name,
+        memory,
+        full_message_history,
+        next_action_count,
+        command_registry,
+        config,
+        system_prompt,
+        triggering_prompt,
+        workspace_directory,
     ):
         cfg = Config()
         self.ai_name = ai_name
@@ -120,9 +77,9 @@ class Agent:
             # Discontinue if continuous limit is reached
             loop_count += 1
             if (
-                    cfg.continuous_mode
-                    and cfg.continuous_limit > 0
-                    and loop_count > cfg.continuous_limit
+                cfg.continuous_mode
+                and cfg.continuous_limit > 0
+                and loop_count > cfg.continuous_limit
             ):
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
@@ -162,7 +119,7 @@ class Agent:
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
-            if should_prompt_user(cfg.continuous_mode, self.next_action_count):
+            if self.should_prompt_user(cfg.continuous_mode, self.next_action_count):
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -172,7 +129,7 @@ class Agent:
                     f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
                     f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
-                user_feedback_message = generate_user_feedback_message(self.ai_name)
+                user_feedback_message = self.generate_user_feedback_message(self.ai_name)
                 print(
                     user_feedback_message,
                     flush=True,
@@ -183,7 +140,7 @@ class Agent:
                     )
 
                     new_command_name, self.next_action_count, user_input = \
-                        calculate_next_command_from_user_input(console_input)
+                        self.calculate_next_command_from_user_input(console_input)
                     # If there was a parsing error, go back to the prompt
                     # Otherwise if new command name is not None, update command name
                     if new_command_name == "input error":
@@ -293,8 +250,7 @@ class Agent:
                     )
         return command_args
 
-    @staticmethod
-    def get_self_feedback(thoughts: dict) -> str:
+    def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
         """Generates a feedback response based on the provided thoughts dictionary.
         This method takes in a dictionary of thoughts containing keys such as 'reasoning',
         'plan', 'thoughts', and 'criticism'. It combines these elements into a single
@@ -306,10 +262,7 @@ class Agent:
         Returns:
             str: A feedback response generated using the provided thoughts dictionary.
         """
-
-        with open(Config().ai_settings_file, "r") as yaml_file:
-            parsed_yaml = yaml.safe_load(yaml_file)
-            ai_role = parsed_yaml["ai_role"]
+        ai_role = self.config.ai_role
 
         feedback_prompt = f"Below is a message from an AI agent with the role of {ai_role}. Please review the provided Thought, Reasoning, Plan, and Criticism. If these elements accurately contribute to the successful execution of the assumed role, respond with the letter 'Y' followed by a space, and then explain why it is effective. If the provided information is not suitable for achieving the role's objectives, please provide one or more sentences addressing the issue and suggesting a resolution."
         reasoning = thoughts.get("reasoning", "")
@@ -317,8 +270,49 @@ class Agent:
         thought = thoughts.get("thoughts", "")
         criticism = thoughts.get("criticism", "")
         feedback_thoughts = thought + reasoning + plan + criticism
-        feedback_response = create_chat_completion(
+        return create_chat_completion(
             [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
-            "gpt-3.5-turbo",
-        )  # * This hardcodes the model to use GPT3.5. should be an argument
-        return feedback_response
+            llm_model,
+        )
+
+    @staticmethod
+    def should_prompt_user(continuous_mode, next_action_count):
+        return not continuous_mode and next_action_count == 0
+
+    @staticmethod
+    def generate_user_feedback_message(ai_name):
+        return "Enter 'y' to authorise command, 'y -N' to run N continuous commands, " \
+               "'s' to run self-feedback commands, " \
+               "'n' to exit program, or enter feedback for " \
+               f"{ai_name}... "
+
+    @staticmethod
+    def calculate_next_command_from_user_input(console_input):
+        command_name = None
+        next_action_count = 0
+
+        if console_input.lower().rstrip() == "y":
+            user_input = "GENERATE NEXT COMMAND JSON"
+        elif console_input.lower().startswith("y -"):
+            try:
+                next_action_count = abs(
+                    int(console_input.split(" ")[1])
+                )
+                user_input = "GENERATE NEXT COMMAND JSON"
+            except ValueError:
+                command_name = "input error"
+                user_input = "Invalid input format. Please enter 'y -n' where n is" \
+                             " the number of continuous tasks."
+        elif console_input.lower().strip() == "":
+            command_name = "input error"
+            user_input = "Invalid input format."
+        elif console_input.lower().strip() == "n":
+            user_input = "EXIT"
+        elif console_input.lower().strip() == "s":
+            user_input = None
+            command_name = "self_feedback"
+        else:
+            user_input = console_input
+            command_name = "human_feedback"
+
+        return command_name, next_action_count, user_input
