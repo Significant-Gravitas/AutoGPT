@@ -236,6 +236,10 @@ def get_ada_embedding(text: str) -> List[int]:
     return embedding["data"][0]["embedding"]
 
 
+def truncate_text(text: str, max_length: int) -> str:
+    """Truncate the text to the specified maximum length."""
+    return text[:max_length]
+
 @retry_openai_api()
 def create_embedding(
     text: str,
@@ -251,9 +255,16 @@ def create_embedding(
     Returns:
         openai.Embedding: The embedding object.
     """
+    # Define the model's maximum context length (in tokens)
+    max_context_length = 8191
+
+    # Truncate the input text if it exceeds the maximum context length
+    truncated_text = truncate_text(text, max_context_length)
+
     cfg = Config()
     return openai.Embedding.create(
-        input=[text],
+        input=[truncated_text],
         api_key=cfg.openai_api_key,
         **kwargs,
     )
+
