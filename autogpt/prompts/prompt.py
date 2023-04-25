@@ -105,9 +105,9 @@ Name:  {config.ai_name}
 Role:  {config.ai_role}
 Goals: {config.ai_goals}
 API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-Continue (y/n): """
+Continue (y/n) or (1/0): """
         )
-        if should_continue.lower() == "n":
+        if should_continue.lower() in ("n", "0"):
             config = AIConfig()
 
     if not config.ai_name:

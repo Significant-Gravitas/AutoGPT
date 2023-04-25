@@ -179,7 +179,9 @@ class Agent:
                     elif console_input.lower().strip() == "":
                         print("Invalid input format.")
                         continue
-                    elif console_input.lower().startswith("y -"):
+                    elif console_input.lower().startswith(
+                        "y -"
+                    ) or console_input.lower().startswith("1 -"):
                         try:
                             self.next_action_count = abs(
                                 int(console_input.split(" ")[1])
@@ -187,12 +189,12 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             print(
-                                "Invalid input format. Please enter 'y -n' where n is"
+                                "Invalid input format. Please enter 'y -N' or '1 -N' where N is"
                                 " the number of continuous tasks."
                             )
                             continue
                         break
-                    elif console_input.lower() == "n":
+                    elif console_input.lower() in ("n", "0"):
                         user_input = "EXIT"
                         break
                     else:
