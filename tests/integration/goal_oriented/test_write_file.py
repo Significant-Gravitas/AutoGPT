@@ -12,6 +12,7 @@ from autogpt.config import AIConfigBroker, Config, check_openai_api_key
 from autogpt.memory import get_memory
 from tests.integration.goal_oriented.vcr_helper import before_record_request
 from tests.utils import requires_api_key
+from autogpt.prompts.prompt import construct_full_prompt
 
 current_file_dir = os.path.dirname(os.path.abspath(__file__))
 # tests_directory = os.path.join(current_file_dir, 'tests')
@@ -73,7 +74,7 @@ def create_writer_agent(workspace):
         "Determine which next command to use, and respond using the"
         " format specified above:"
     )
-    system_prompt = ai_config.construct_full_prompt()
+    system_prompt = construct_full_prompt(ai_config)
 
     agent = Agent(
         agent_name="",

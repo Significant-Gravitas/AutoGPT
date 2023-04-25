@@ -1,6 +1,6 @@
 """Main script for the autogpt package."""
 import click
-
+import autogpt.prompts.prompt 
 
 @click.group(invoke_without_command=True)
 @click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
@@ -91,7 +91,7 @@ def main(
     from autogpt.logs import logger
     from autogpt.memory import get_memory
     from autogpt.plugins import scan_plugins
-    from autogpt.prompts.prompt import construct_main_ai_config
+    from autogpt.prompts.prompt import construct_main_project_config , construct_full_prompt
     from autogpt.utils import get_current_git_branch, get_latest_bulletin
     from autogpt.workspace import Workspace
 
@@ -172,9 +172,9 @@ def main(
         command_registry.import_commands("autogpt.commands.write_tests")
         command_registry.import_commands("autogpt.app")
         
-        ai_config = construct_main_ai_config()
-        ai_config.command_registry = command_registry
-        ai_name = ai_config.get_current_project().project_name
+        project_config = construct_main_project_config()
+        project_config.command_registry = command_registry
+        agent_name = project_config.get_current_project().project_name
         # print(prompt)
         # Initialize variables
         full_message_history = []
@@ -191,16 +191,16 @@ def main(
             "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
         )
         logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
-        system_prompt = ai_config.construct_full_prompt()
+        system_prompt = construct_full_prompt(project_config)
         if cfg.debug_mode:
             logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
         agent = Agent(
-            ai_name=ai_name,
+            agent_name=agent_name,
             memory=memory,
             full_message_history=full_message_history,
             next_action_count=next_action_count,
             command_registry=command_registry,
-            config=ai_config,
+            config=project_config,
             system_prompt=system_prompt,
             triggering_prompt=triggering_prompt,
             workspace_directory=workspace_directory,

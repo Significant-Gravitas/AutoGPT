@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import List, Optional
+from typing import  Optional
 
 import openai
 from colorama import Fore, Style
@@ -40,7 +40,7 @@ def call_ai_function(
     args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma separated string
     args: str = ", ".join(args)
-    messages: List[Message] = [
+    messages: list[Message] = [
         {
             "role": "system",
             "content": f"You are now the following python function: ```# {description}"

@@ -12,7 +12,7 @@ from autogpt.logs import logger
 CFG = Config()
 
 
-def prompt_user(config_number : int) -> Project:
+def prompt_user(new_project_number : int) -> Project:
     """Prompt the user for input
 
     Returns:
@@ -51,11 +51,11 @@ def prompt_user(config_number : int) -> Project:
             Fore.GREEN,
             speak_text=True,
         )
-        return generate_agentproject_manual(config_number = config_number)
+        return generate_agentproject_manual(project_id = new_project_number)
 
     else:
         try:
-            return generate_agentproject_automatic(user_desire)
+            return generate_agentproject_automatic(user_desire, new_project_number = new_project_number)
         except Exception as e:
             logger.typewriter_log(
                 "Unable to automatically generate AI Config based on user desire.",
@@ -64,10 +64,10 @@ def prompt_user(config_number : int) -> Project:
                 speak_text=True,
             )
 
-            return generate_agentproject_manual(config_number = config_number)
+            return generate_agentproject_manual(project_id = new_project_number)
 
 
-def generate_agentproject_manual(config_number : int) -> AIConfigBroker:
+def generate_agentproject_manual(project_id : int) -> Project:
     """
     Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
 
@@ -133,13 +133,6 @@ def generate_agentproject_manual(config_number : int) -> AIConfigBroker:
             "Develop and manage multiple businesses autonomously",
         ]
 
-    configs = AIConfigBroker()
-    configs.create_project(config_number =  config_number, 
-                    agent_name = agent_name, 
-                    agent_role = agent_role, 
-                    agent_goals = agent_goals, 
-                    prompt_generator = '', 
-                    command_registry = '')
     # Get API Budget from User
     logger.typewriter_log(
         "Enter your budget for API calls: ",
@@ -161,9 +154,20 @@ def generate_agentproject_manual(config_number : int) -> AIConfigBroker:
             )
             api_budget = 0.0
 
+    configs = AIConfigBroker()
+
+    configs.create_project(project_id =  project_id, 
+                    agent_name = agent_name, 
+                    api_budget = api_budget,
+                    agent_role = agent_role, 
+                    agent_goals = agent_goals, 
+                    prompt_generator = '', 
+                    command_registry = '',
+                    project_name= agent_name)
+    
     return configs.get_current_project()
 
-def generate_agentproject_automatic(user_prompt, config_number : int) -> Project:
+def generate_agentproject_automatic(user_prompt, new_project_number : int) -> Project:
     """Generates an AIConfig object from the given string.
 
     Returns:
@@ -209,28 +213,23 @@ Goals:
 
     # Parse the output
     agent_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output, re.IGNORECASE).group(1)
-    agent_role = (
-        re.search(
-            r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
-            output,
-            re.IGNORECASE | re.DOTALL,
-        )
-        .group(1)
-        .strip()
-    )
+    agent_role = ''
+    regex = re.search(r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",output,re.IGNORECASE | re.DOTALL, )
+    if (regex):
+        agent_role = regex.group(1).strip()
     agent_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
+    api_budget = 0.0  # TODO: parse api budget using a regular expression
 
     configs = AIConfigBroker()
-    configs.create_project(config_number =  config_number, 
+    configs.create_project(project_id =  new_project_number, 
+                           api_budget =  api_budget, 
                     agent_name = agent_name, 
                     agent_role = agent_role, 
                     agent_goals = agent_goals, 
                     prompt_generator = '', 
-                    command_registry = '')
+                    command_registry = '',
+                    project_name= agent_name)
 
-    ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
-    api_budget = 0.0  # TODO: parse api budget using a regular expression
 
 
     return configs.get_current_project()
-    return AIConfigBroker(agent_name, agent_role, agent_goals)

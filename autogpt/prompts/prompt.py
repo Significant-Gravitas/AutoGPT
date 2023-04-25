@@ -1,6 +1,9 @@
 from colorama import Fore
+from typing import  Optional
+import platform
+import distro
 
-from autogpt.config.ai_config import AIConfigBroker
+from autogpt.config.ai_config import AIConfigBroker, AgentConfig , Project
 from autogpt.api_manager import api_manager
 from autogpt.config.config import Config
 from autogpt.logs import logger
@@ -119,7 +122,7 @@ def goals_to_string(goals) -> str:
     return "\n".join(goals)
 
 
-def construct_main_ai_config() -> AIConfigBroker:
+def construct_main_project_config() -> AIConfigBroker:
     """
     Load or create an AI configuration for the main AI assistant.
     Returns:
@@ -141,25 +144,6 @@ def construct_main_ai_config() -> AIConfigBroker:
         project_number = 0
         configuration_broker.set_project_number(project_number)
         config = configuration_broker.get_current_project()
-    
-
-    elif config.ai_name:
-        logger.typewriter_log(
-            "Welcome back! ",
-            Fore.GREEN,
-            f"Would you like me to return to being {config.lead_agent.agent_name}?",
-            speak_text=True,
-        )
-        should_continue = clean_input(
-            f"""Continue with the last settings?\n
-            Name:  {config.lead_agent.agent_name}\n
-            Role:  {config.lead_agent.agent_role}\n
-            PI Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-            Goals: {goals_to_string(config.lead_agent.agent_goals)}\n
-            Continue (y/n): """
-        )
-        if should_continue.lower() == "n":
-            project_number -1
 
     elif number_of_project > 1:
         logger.typewriter_log(
@@ -172,7 +156,7 @@ def construct_main_ai_config() -> AIConfigBroker:
             logger.typewriter_log(
                 f"Project {i + 1} : ",
                 Fore.GREEN,
-                f"""Name:  {config.lead_agent.agent_name}\nRole:  {config.lead_agent.agent_role}\nGoals: {goals_to_string(config.lead_agent.agent_agent_goals)}: """,
+                f"""Name:  {config.lead_agent.agent_name}\nRole:  {config.lead_agent.agent_role}\nGoals: {goals_to_string(config.lead_agent.agent_goals)}: """,
             )
 
         project_number = get_ai_project_index(number_of_project)
@@ -184,10 +168,10 @@ def construct_main_ai_config() -> AIConfigBroker:
             project_number = prompt_for_replacing_project(number_of_project)
 
         config = prompt_user(project_number)
-        configuration_broker.save(CFG.ai_settings_file)
+        # configuration_broker.save(CFG.ai_settings_file)
 
     else :
-        configuration_broker.set_project_number(new_project_number=project_number)
+        configuration_broker.set_project_number(new_project_id=project_number)
         config = configuration_broker.get_current_project()
     
 
@@ -201,7 +185,8 @@ def construct_main_ai_config() -> AIConfigBroker:
         "has been created with the following details:",
         speak_text=True,
     )
-
+    
+    print(config.lead_agent)
     # Print the ai config details
     # Name
     logger.typewriter_log("Name:", Fore.GREEN, config.lead_agent.agent_name, speak_text=False)
@@ -220,3 +205,70 @@ def construct_main_ai_config() -> AIConfigBroker:
 
     return configuration_broker
 
+
+def construct_full_prompt(config : AIConfigBroker
+                            , prompt_generator: Optional[PromptGenerator] = None
+    ) -> str:
+    """
+    Returns a prompt to the user with the class information in an organized fashion.
+
+    Parameters:
+        None
+
+    Returns:
+        full_prompt (str): A string containing the initial prompt for the user
+            including the agent_name, agent_role, agent_goals , and api_budget.
+    """
+
+    all_projects = config.get_projects()
+    if config.get_current_project_id() < 0 or config.get_current_project_id() >= len(all_projects):
+        raise ValueError("No project is currently selected.")
+
+    current_project = config.get_current_project()
+
+    prompt_start = (
+        "Your decisions must always be made independently without"
+        " seeking user assistance. Play to your strengths as an LLM and pursue"
+        " simple strategies with no legal complications."
+        ""
+    )
+
+    from autogpt.config import Config
+    from autogpt.prompts.prompt import build_default_prompt_generator
+
+    cfg = Config()
+    if prompt_generator is None:
+        prompt_generator = build_default_prompt_generator()
+
+    #prompt_generator.project_name = current_project.project_name
+
+    prompt_generator.goals = current_project.lead_agent.agent_goals
+    prompt_generator.name = current_project.lead_agent.agent_name
+    prompt_generator.role = current_project.lead_agent.agent_role
+    prompt_generator.command_registry = current_project.lead_agent.command_registry
+    for plugin in cfg.plugins:
+        if not plugin.can_handle_post_prompt():
+            continue
+        prompt_generator = plugin.post_prompt(prompt_generator)
+
+    if cfg.execute_local_commands:
+        # add OS info to prompt
+        os_name = platform.system()
+        os_info = (
+            platform.platform(terse=True)
+            if os_name != "Linux"
+            else distro.name(pretty=True)
+        )
+
+        prompt_start += f"\nThe OS you are running on is: {os_info}"
+
+    # Construct full prompt
+    full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
+    for i, goal in enumerate(current_project.lead_agent.agent_goals):
+        full_prompt += f"{i+1}. {goal}\n"
+    if current_project.api_budget > 0.0:
+        full_prompt += f"\nIt takes money to let you run. Your API budget is ${current_project.api_budget:.3f}"
+    
+    current_project.lead_agent.prompt_generator = prompt_generator
+    full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
+    return full_prompt

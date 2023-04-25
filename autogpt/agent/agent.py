@@ -58,10 +58,10 @@ class Agent:
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
         self.command_registry = command_registry
-        self.config = config.get_current_config()
+        self.config = config.get_current_project()
         self.system_prompt = system_prompt
-        self.triggering_prompt = triggering_prompt
-        self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
+        self.triggering_prompt = triggering_prompt 
+        self.workspace = Workspace(workspace_directory, True or cfg.restrict_to_workspace) # Todo fix
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -73,12 +73,13 @@ class Agent:
         ai_configs = AIConfigBroker()
         while True:
             # Save any change to the config so we continue where we quited
-            ai_configs.create_project( config_number = ai_configs.get_current_project_id() ,
-            agent_name = self.config["agent_name"], 
-            agent_role = self.config["agent_role"], 
-            agent_goals = self.config["agent_goals"], 
-            prompt_generator = self.config["prompt_generator"], 
-            command_registry = self.config["command_registry"] )
+            # ai_configs.create_project( project_id = ai_configs.get_current_project_id() ,
+            # agent_name = self.config.lead_agent."agent_name"], 
+            # agent_role = self.config.lead_agent."agent_role"], 
+            # agent_goals = self.config.lead_agent."agent_goals"], 
+            # prompt_generator = self.config.lead_agent."prompt_generator"], 
+            # command_registry = self.config.lead_agent."command_registry"],
+            # project_name=self.config.project_name)
             #ai_configs.save()
 
             # Discontinue if continuous limit is reached
@@ -115,7 +116,7 @@ class Agent:
                 validate_json(assistant_reply_json, "llm_response_format_1")
                 # Get command name and arguments
                 try:
-                    print_assistant_thoughts(self.agent_name, assistant_reply_json)
+                    print_assistant_thoughts(self.config.lead_agent.agent_name, assistant_reply_json)
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
@@ -137,7 +138,7 @@ class Agent:
                 print(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous "
                     "commands, 'n' to exit program, or enter feedback for "
-                    f"{self.agent_name}...",
+                    f"{self.config.lead_agent.agent_name}...",
                     flush=True,
                 )
                 while True:
@@ -178,7 +179,7 @@ class Agent:
                         "",
                     )
                     logger.typewriter_log(
-                        self.config['agent_name'] + " : ",
+                        self.config.project_name + " : ",
                         Fore.BLUE,
                         "",
                     )
@@ -212,7 +213,7 @@ class Agent:
                     self.command_registry,
                     command_name,
                     arguments,
-                    self.config['prompt_generator'],
+                    self.config.lead_agent.prompt_generator,
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
 
@@ -231,7 +232,7 @@ class Agent:
 
                 self.memory.add( memory_to_add)
                 # TODO : adapt memory
-                # self.memory.add(self.config['agent_name'], memory_to_add)
+                # self.memory.add(self.config.project_name:self.config.lead_agent.agent_name, memory_to_add)
 
                 # Check if there's a result from the command append it to the message
                 # history

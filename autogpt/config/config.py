@@ -23,7 +23,7 @@ class Config(metaclass=Singleton):
         self.workspace_path = None
         self.file_logger_path = None
 
-        self.debug_mode = False
+        self.debug_mode = True
         self.continuous_mode = False
         self.continuous_limit = 0
         self.speak_mode = False
