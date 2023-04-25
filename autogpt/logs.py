@@ -12,7 +12,7 @@ from colorama import Fore, Style
 
 from autogpt.config import Config, Singleton
 from autogpt.speech import say_text
-from autogpt.utils import clean_chat_message_to_user
+from autogpt.utils import send_chat_message_to_user
 
 CFG = Config()
 
@@ -85,9 +85,7 @@ class Logger(metaclass=Singleton):
         if speak_text and CFG.speak_mode:
             say_text(f"{title}. {content}")
 
-        if CFG.chat_messages_enabled:
-            message = f"{title}. {content}"
-            clean_chat_message_to_user(message)
+        send_chat_message_to_user(f"{title}. {content}")
 
         if content:
             if isinstance(content, list):

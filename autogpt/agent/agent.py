@@ -8,7 +8,7 @@ from autogpt.json_utils.utilities import validate_json
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
-from autogpt.utils import clean_chat_message_to_user, clean_input
+from autogpt.utils import clean_input, send_chat_message_to_user
 from autogpt.workspace import Workspace
 
 
@@ -83,10 +83,11 @@ class Agent:
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
+                send_chat_message_to_user(
+                    f"Continuous Limit Reached: \n {cfg.continuous_limit}"
+                )
                 break
-            if cfg.chat_messages_enabled:
-                message = "Thinking... \n"
-                clean_chat_message_to_user(message)
+            send_chat_message_to_user("Thinking... \n")
             # Send message to AI, get response
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
@@ -113,9 +114,8 @@ class Agent:
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
-                    if cfg.chat_messages_enabled:
-                        message = "Thinking... \n"
-                        clean_chat_message_to_user(message)
+
+                    send_chat_message_to_user("Thinking... \n")
                     arguments = self._resolve_pathlike_command_args(arguments)
 
                 except Exception as e:
@@ -126,11 +126,10 @@ class Agent:
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 self.user_input = ""
-                if cfg.chat_messages_enabled:
-                    clean_chat_message_to_user(
-                        "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
-                        f"ARGUMENTS = {arguments}"
-                    )
+                send_chat_message_to_user(
+                    "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
+                    f"ARGUMENTS = {arguments}"
+                )
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
@@ -185,17 +184,15 @@ class Agent:
                         "",
                     )
                 elif user_input == "EXIT":
-                    if cfg.chat_messages_enabled:
-                        clean_chat_message_to_user("Exiting...")
+                    send_chat_message_to_user("Exiting...")
                     print("Exiting...", flush=True)
                     break
             else:
                 # Print command
-                if cfg.chat_messages_enabled:
-                    clean_chat_message_to_user(
-                        "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
-                        f"ARGUMENTS = {arguments}"
-                    )
+                send_chat_message_to_user(
+                    "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
+                    f"ARGUMENTS = {arguments}"
+                )
 
                 logger.typewriter_log(
                     "NEXT ACTION: ",

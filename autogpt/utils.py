@@ -16,13 +16,14 @@ from autogpt.config import Config
 cfg = Config()
 
 
-def clean_chat_message_to_user(report: str):
-    for plugin in enumerate(cfg.plugins):
-        if not hasattr(plugin, "can_handle_report"):
-            continue
-        if not plugin.can_handle_report():
-            continue
-        plugin.send_message(report)
+def send_chat_message_to_user(report: str):
+    if cfg.chat_messages_enabled:
+        for plugin in enumerate(cfg.plugins):
+            if not hasattr(plugin, "can_handle_report"):
+                continue
+            if not plugin.can_handle_report():
+                continue
+            plugin.send_message(report)
 
 
 def clean_input(prompt: str = "", talk=False):
@@ -37,33 +38,23 @@ def clean_input(prompt: str = "", talk=False):
                 if plugin_response in [
                     "yes",
                     "yeah",
-                    "yep",
-                    "yup",
                     "y",
                     "ok",
                     "okay",
                     "sure",
-                    "affirmative",
-                    "aye",
-                    "aye aye",
                     "alright",
-                    "alrighty",
                 ]:
                     return "y"
                 elif plugin_response in [
                     "no",
                     "nope",
                     "n",
-                    "nah",
                     "negative",
-                    "nay",
-                    "nay nay",
                 ]:
                     return "n"
                 if not plugin_response or plugin_response == "":
                     continue
-                if plugin_response:
-                    return plugin_response
+                return plugin_response
 
         # ask for input, default when just pressing Enter is y
         print("Asking user via keyboard...")
