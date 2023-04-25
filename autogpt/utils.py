@@ -24,7 +24,7 @@ def send_chat_message_to_user(report: str):
             continue
         if not plugin.can_handle_report():
             continue
-        plugin.send_message(report)
+        plugin.report(report)
 
 
 def clean_input(prompt: str = "", talk=False):
