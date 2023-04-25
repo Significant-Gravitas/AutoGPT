@@ -19,10 +19,10 @@ class TestAutoGPT(unittest.TestCase):
             ai_config = prompt_user()
 
         self.assertIsInstance(ai_config, AIConfigBroker)
-        self.assertIsNotNone(ai_config.ai_name)
-        self.assertIsNotNone(ai_config.ai_role)
-        self.assertGreaterEqual(len(ai_config.ai_goals), 1)
-        self.assertLessEqual(len(ai_config.ai_goals), 5)
+        self.assertIsNotNone(ai_config.agent_name)
+        self.assertIsNotNone(ai_config.agent_role)
+        self.assertGreaterEqual(len(ai_config.agent_goals), 1)
+        self.assertLessEqual(len(ai_config.agent_goals), 5)
 
     @requires_api_key("OPENAI_API_KEY")
     def test_generate_aiconfig_automatic_typical(self):
@@ -30,10 +30,10 @@ class TestAutoGPT(unittest.TestCase):
         ai_config = generate_aiconfig_automatic(user_prompt)
 
         self.assertIsInstance(ai_config, AIConfigBroker)
-        self.assertIsNotNone(ai_config.ai_name)
-        self.assertIsNotNone(ai_config.ai_role)
-        self.assertGreaterEqual(len(ai_config.ai_goals), 1)
-        self.assertLessEqual(len(ai_config.ai_goals), 5)
+        self.assertIsNotNone(ai_config.agent_name)
+        self.assertIsNotNone(ai_config.agent_role)
+        self.assertGreaterEqual(len(ai_config.agent_goals), 1)
+        self.assertLessEqual(len(ai_config.agent_goals), 5)
 
     def test_generate_aiconfig_automatic_fallback(self):
         user_inputs = [
@@ -48,9 +48,9 @@ class TestAutoGPT(unittest.TestCase):
             ai_config = prompt_user()
 
         self.assertIsInstance(ai_config, AIConfigBroker)
-        self.assertEqual(ai_config.ai_name, "Chef-GPT")
-        self.assertEqual(ai_config.ai_role, "an AI designed to browse bake a cake.")
-        self.assertEqual(ai_config.ai_goals, ["Purchase ingredients", "Bake a cake"])
+        self.assertEqual(ai_config.agent_name, "Chef-GPT")
+        self.assertEqual(ai_config.agent_role, "an AI designed to browse bake a cake.")
+        self.assertEqual(ai_config.agent_goals, ["Purchase ingredients", "Bake a cake"])
 
     def test_prompt_user_manual_mode(self):
         user_inputs = [
@@ -65,9 +65,9 @@ class TestAutoGPT(unittest.TestCase):
             ai_config = prompt_user()
 
         self.assertIsInstance(ai_config, AIConfigBroker)
-        self.assertEqual(ai_config.ai_name, "Chef-GPT")
-        self.assertEqual(ai_config.ai_role, "an AI designed to browse bake a cake.")
-        self.assertEqual(ai_config.ai_goals, ["Purchase ingredients", "Bake a cake"])
+        self.assertEqual(ai_config.agent_name, "Chef-GPT")
+        self.assertEqual(ai_config.agent_role, "an AI designed to browse bake a cake.")
+        self.assertEqual(ai_config.agent_goals, ["Purchase ingredients", "Bake a cake"])
 
 
 if __name__ == "__main__":

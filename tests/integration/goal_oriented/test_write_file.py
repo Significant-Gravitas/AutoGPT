@@ -72,9 +72,9 @@ def create_writer_agent():
     command_registry.import_commands("autogpt.app")
 
     ai_config = AIConfigBroker(
-        ai_name="write_to_file-GPT",
-        ai_role="an AI designed to use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\" and then use the task_complete command to complete the task.",
-        ai_goals=[
+        agent_name="write_to_file-GPT",
+        agent_role="an AI designed to use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\" and then use the task_complete command to complete the task.",
+        agent_goals=[
             "Use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\".",
             "Use the task_complete command to complete the task.",
             "Do not use any other commands.",
@@ -89,7 +89,7 @@ def create_writer_agent():
     system_prompt = ai_config.construct_full_prompt()
 
     agent = Agent(
-        ai_name="",
+        agent_name="",
         memory=memory,
         full_message_history=[],
         command_registry=command_registry,

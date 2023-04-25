@@ -47,7 +47,7 @@ class AIConfigBroker(AbstractSingleton):
         Returns:
             None
         """
-    def __init__(self, project_number: int = None, config_file: str = None) -> None:
+    def __init__(self, project_number: int = -1, config_file: str = None) -> None:
         """_summary_
 
         Args:
@@ -89,8 +89,8 @@ class AIConfigBroker(AbstractSingleton):
         for project in config_params.get("projects", []):
             project_name = project["project_name"]
 
-            lead_agent_data = project["lead_ai"]
-            lead_ai = AgentConfig(
+            lead_agent_data = project["lead_agent"]
+            lead_agent = AgentConfig(
                 agent_name=lead_agent_data["agent_name"],
                 agent_role=lead_agent_data["agent_role"],
                 agent_goals=lead_agent_data["agent_goals"],
@@ -98,19 +98,19 @@ class AIConfigBroker(AbstractSingleton):
                 
             )
 
-            if (project["delegated_ai"]) :
-                delegated_agent_list = []
-                for delegated_agent_data in project["delegated_ai"]:
-                    delegated_ai = AgentConfig(
-                        agent_name=delegated_agent_data["agent_name"],
-                        agent_role=delegated_agent_data["agent_role"],
-                        agent_goals=delegated_agent_data["agent_goals"],
-                        agent_model=delegated_agent_data.get("agent_model", None),
-                        agent_model_type=delegated_agent_data.get("agent_model_type", None),
+            if (project["delegated_agents"]) :
+                delegated_agents_list = []
+                for delegated_agents_data in project["delegated_agents"]:
+                    delegated_agents = AgentConfig(
+                        agent_name=delegated_agents_data["agent_name"],
+                        agent_role=delegated_agents_data["agent_role"],
+                        agent_goals=delegated_agents_data["agent_goals"],
+                        agent_model=delegated_agents_data.get("agent_model", None),
+                        agent_model_type=delegated_agents_data.get("agent_model_type", None),
                     )
-                    delegated_agent_list.append(delegated_ai)
+                    delegated_agents_list.append(delegated_agents)
 
-            cls._projects.append(Project(project_name =  project_name,lead_ai = lead_ai, delegated_ai = delegated_agent_list))
+            cls._projects.append(Project(project_name =  project_name,lead_agent = lead_agent, delegated_agents = delegated_agents_list))
             
             break 
             """
@@ -165,28 +165,28 @@ class AIConfigBroker(AbstractSingleton):
         """
         project_data = []
         for project in self._projects:
-            delegated_ai_data = []
-            for delegated_agent in project["delegated_ai"]:
-                delegated_ai_data.append(
+            delegated_agents_data = []
+            for delegated_agents in project["delegated_agents"]:
+                delegated_agents_data.append(
                     {
-                        "agent_name": delegated_agent.agent_name,
-                        "agent_role": delegated_agent.agent_role,
-                        "agent_goals": delegated_agent.agent_goals,
-                        "agent_model": delegated_agent.agent_model,
-                        "agent_model_type": delegated_agent.agent_model_type,
+                        "agent_name": delegated_agents.agent_name,
+                        "agent_role": delegated_agents.agent_role,
+                        "agent_goals": delegated_agents.agent_goals,
+                        "agent_model": delegated_agents.agent_model,
+                        "agent_model_type": delegated_agents.agent_model_type,
                     }
                 )
             project_data.append(
                 {
                     "project_name": project["project_name"],
-                    "lead_ai": {
-                        "agent_name": project["lead_ai"].agent_name,
-                        "agent_role": project["lead_ai"].agent_role,
-                        "agent_goals": project["lead_ai"].agent_goals,
-                        "agent_model": project["lead_ai"].agent_model,
-                        "agent_model_type": project["lead_ai"].agent_model_type,
+                    "lead_agent": {
+                        "agent_name": project["lead_agent"].agent_name,
+                        "agent_role": project["lead_agent"].agent_role,
+                        "agent_goals": project["lead_agent"].agent_goals,
+                        "agent_model": project["lead_agent"].agent_model,
+                        "agent_model_type": project["lead_agent"].agent_model_type,
                     },
-                    "delegated_ai": delegated_ai_data,
+                    "delegated_agents": delegated_agents_data,
                 }
             )
 
@@ -228,10 +228,10 @@ class AIConfigBroker(AbstractSingleton):
 
         #prompt_generator.project_name = self._projects[self._current_project_id].project_name
 
-        prompt_generator.goals = current_project.lead_ai.agent_goals
-        prompt_generator.name = current_project.lead_ai.agent_name
-        prompt_generator.role = current_project.lead_ai.agent_role
-        prompt_generator.command_registry = current_project.lead_ai.command_registry
+        prompt_generator.goals = current_project.lead_agent.agent_goals
+        prompt_generator.name = current_project.lead_agent.agent_name
+        prompt_generator.role = current_project.lead_agent.agent_role
+        prompt_generator.command_registry = current_project.lead_agent.command_registry
         for plugin in cfg.plugins:
             if not plugin.can_handle_post_prompt():
                 continue
@@ -250,9 +250,9 @@ class AIConfigBroker(AbstractSingleton):
 
         # Construct full prompt
         full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
-        for i, goal in enumerate(self._projects[self._current_project_id].lead_ai.agent_goals):
+        for i, goal in enumerate(self._projects[self._current_project_id].lead_agent.agent_goals):
             full_prompt += f"{i+1}. {goal}\n"
-        self._projects[self._current_project_id].lead_ai.prompt_generator = prompt_generator
+        self._projects[self._current_project_id].lead_agent.prompt_generator = prompt_generator
         full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
         return full_prompt
 
@@ -334,7 +334,7 @@ class AIConfigBroker(AbstractSingleton):
         """
         return self._current_project_id
 
-    def get_current_project(self) -> AgentConfig:
+    def get_current_project(self) -> Project:
         """
         Gets the current project dictionary.
 
@@ -378,10 +378,10 @@ class AIConfigBroker(AbstractSingleton):
         return self._projects
     
 class Project:
-    def __init__(self, project_name : str, lead_ai : AgentConfig, delegated_ai : List[AgentConfig] = []):
+    def __init__(self, project_name : str, lead_agent : AgentConfig, delegated_agents : List[AgentConfig] = []):
         self.project_name = project_name
-        self.lead_ai = lead_ai
-        self.delegated_ai = delegated_ai
+        self.lead_agent = lead_agent
+        self.delegated_agents = delegated_agents
         
 class AgentConfig(): 
     """_summary_

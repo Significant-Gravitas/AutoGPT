@@ -5,20 +5,20 @@ from colorama import Fore, Style
 
 from autogpt import utils
 from autogpt.config import Config
-from autogpt.config.ai_config import AIConfigBroker
+from autogpt.config.ai_config import AIConfigBroker, Project
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
 
 CFG = Config()
 
 
-def prompt_user(config_number : int) -> AIConfigBroker:
+def prompt_user(config_number : int) -> Project:
     """Prompt the user for input
 
     Returns:
         AIConfig: The AIConfig object tailored to the user's input
     """
-    ai_name = ""
+    agent_name = ""
     ai_config = None
 
     # Construct the prompt
@@ -92,12 +92,12 @@ def generate_aiconfig_manual(config_number : int) -> AIConfigBroker:
     logger.typewriter_log(
         "Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'"
     )
-    ai_name = utils.clean_input("AI Name: ")
-    if ai_name == "":
-        ai_name = "Entrepreneur-GPT"
+    agent_name = utils.clean_input("AI Name: ")
+    if agent_name == "":
+        agent_name = "Entrepreneur-GPT"
 
     logger.typewriter_log(
-        f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
+        f"{agent_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
     )
 
     # Get AI Role from User
@@ -107,9 +107,9 @@ def generate_aiconfig_manual(config_number : int) -> AIConfigBroker:
         "For example, 'an AI designed to autonomously develop and run businesses with"
         " the sole goal of increasing your net worth.'",
     )
-    ai_role = utils.clean_input(f"{ai_name} is: ")
-    if ai_role == "":
-        ai_role = "an AI designed to autonomously develop and run businesses with the"
+    agent_role = utils.clean_input(f"{agent_name} is: ")
+    if agent_role == "":
+        agent_role = "an AI designed to autonomously develop and run businesses with the"
         " sole goal of increasing your net worth."
 
     # Enter up to 5 goals for the AI
@@ -120,14 +120,14 @@ def generate_aiconfig_manual(config_number : int) -> AIConfigBroker:
         " multiple businesses autonomously'",
     )
     print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
-    ai_goals = []
+    agent_goals = []
     for i in range(5):
         ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
         if ai_goal == "":
             break
-        ai_goals.append(ai_goal)
-    if not ai_goals:
-        ai_goals = [
+        agent_goals.append(ai_goal)
+    if not agent_goals:
+        agent_goals = [
             "Increase net worth",
             "Grow Twitter Account",
             "Develop and manage multiple businesses autonomously",
@@ -135,9 +135,9 @@ def generate_aiconfig_manual(config_number : int) -> AIConfigBroker:
 
     configs = AIConfigBroker()
     configs.create_project(config_number =  config_number, 
-                    ai_name = ai_name, 
-                    ai_role = ai_role, 
-                    ai_goals = ai_goals, 
+                    agent_name = agent_name, 
+                    agent_role = agent_role, 
+                    agent_goals = agent_goals, 
                     prompt_generator = '', 
                     command_registry = '')
     return configs.get_current_project()
@@ -187,8 +187,8 @@ Goals:
     logger.debug(f"AI Config Generator Raw Output: {output}")
 
     # Parse the output
-    ai_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output, re.IGNORECASE).group(1)
-    ai_role = (
+    agent_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output, re.IGNORECASE).group(1)
+    agent_role = (
         re.search(
             r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
             output,
@@ -197,15 +197,15 @@ Goals:
         .group(1)
         .strip()
     )
-    ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
+    agent_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
 
     configs = AIConfigBroker()
     configs.create_project(config_number =  config_number, 
-                    ai_name = ai_name, 
-                    ai_role = ai_role, 
-                    ai_goals = ai_goals, 
+                    agent_name = agent_name, 
+                    agent_role = agent_role, 
+                    agent_goals = agent_goals, 
                     prompt_generator = '', 
                     command_registry = '')
     return configs.get_current_project()
-    return AIConfigBroker(ai_name, ai_role, ai_goals)
+    return AIConfigBroker(agent_name, agent_role, agent_goals)
 

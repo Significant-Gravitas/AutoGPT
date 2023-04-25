@@ -15,14 +15,14 @@ class Agent:
     """Agent class for interacting with Auto-GPT.
 
     Attributes:
-        ai_name: The name of the agent.
+        agent_name: The name of the agent.
         memory: The memory object to use.
         full_message_history: The full message history.
         next_action_count: The number of actions to execute.
         system_prompt: The system prompt is the initial prompt that defines everything
           the AI needs to know to achieve its task successfully.
         Currently, the dynamic and customizable information in the system prompt are
-          ai_name, description and goals.
+          agent_name, description and goals.
 
         triggering_prompt: The last sentence the AI will see before answering.
             For Auto-GPT, this prompt is:
@@ -42,7 +42,7 @@ class Agent:
 
     def __init__(
         self,
-        ai_name, # TODO : Remove Agent.ai_name ?
+        agent_name, # TODO : Remove Agent.agent_name ?
         memory,
         full_message_history,
         next_action_count,
@@ -51,7 +51,7 @@ class Agent:
         system_prompt,
         triggering_prompt,
     ):
-        self.ai_name = ai_name # TODO : Remove Agent.ai_name ?
+        self.agent_name = agent_name # TODO : Remove Agent.agent_name ?
         self.memory = memory
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
@@ -71,9 +71,9 @@ class Agent:
         while True:
             # Save any change to the config so we continue where we quited
             ai_configs.create_project( config_number = ai_configs.get_current_project_id() ,
-            ai_name = self.config["ai_name"], 
-            ai_role = self.config["ai_role"], 
-            ai_goals = self.config["ai_goals"], 
+            agent_name = self.config["agent_name"], 
+            agent_role = self.config["agent_role"], 
+            agent_goals = self.config["agent_goals"], 
             prompt_generator = self.config["prompt_generator"], 
             command_registry = self.config["command_registry"] )
             #ai_configs.save()
@@ -112,7 +112,7 @@ class Agent:
                 validate_json(assistant_reply_json, "llm_response_format_1")
                 # Get command name and arguments
                 try:
-                    print_assistant_thoughts(self.ai_name, assistant_reply_json)
+                    print_assistant_thoughts(self.agent_name, assistant_reply_json)
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
@@ -132,7 +132,7 @@ class Agent:
                 print(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous "
                     "commands, 'n' to exit program, or enter feedback for "
-                    f"{self.ai_name}...",
+                    f"{self.agent_name}...",
                     flush=True,
                 )
                 while True:
@@ -173,7 +173,7 @@ class Agent:
                         "",
                     )
                     logger.typewriter_log(
-                        self.config['ai_name'] + " : ",
+                        self.config['agent_name'] + " : ",
                         Fore.BLUE,
                         "",
                     )
@@ -226,7 +226,7 @@ class Agent:
 
                 self.memory.add( memory_to_add)
                 # TODO : adapt memory
-                # self.memory.add(self.config['ai_name'], memory_to_add)
+                # self.memory.add(self.config['agent_name'], memory_to_add)
 
                 # Check if there's a result from the command append it to the message
                 # history

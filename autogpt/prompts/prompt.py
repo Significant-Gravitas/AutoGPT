@@ -75,7 +75,7 @@ def build_default_prompt_generator() -> PromptGenerator:
     prompt_generator.add_performance_evaluation("Write all code to a file.")
     return prompt_generator
 
-def get_ai_config_index(number_of_config: int) -> int:
+def get_ai_project_index(number_of_project: int) -> int:
     """
     Prompt the user to select one of the existing AI configurations or start with new settings.
     Returns:
@@ -83,16 +83,16 @@ def get_ai_config_index(number_of_config: int) -> int:
     """
     while True:
         user_input = clean_input(
-            f"Type 1 to {number_of_config} to continue with the saved settings or 'n' to start with new settings: "
+            f"Type 1 to {number_of_project} to continue with the saved settings or 'n' to start with new settings: "
         )
         if user_input.lower() == "n":
             return -1
         if user_input.isdigit():
             index = int(user_input)
-            if 1 <= index <= number_of_config:
+            if 1 <= index <= number_of_project:
                 return index - 1
 
-def prompt_for_replacing_config(number_of_config: int) -> int:
+def prompt_for_replacing_project(number_of_project: int) -> int:
     """
     Prompt the user to choose which AI configuration to replace when the maximum number of configurations is reached.
     Returns:
@@ -100,11 +100,11 @@ def prompt_for_replacing_config(number_of_config: int) -> int:
     """
     while True:
         user_input = clean_input(
-            f"There is a maximum of {number_of_config}. To create a new config, type the number of the config to replace (1 to {number_of_config}): "
+            f"There is a maximum of {number_of_project}. To create a new config, type the number of the config to replace (1 to {number_of_project}): "
         )
         if user_input.isdigit():
             index = int(user_input)
-            if 1 <= index <= number_of_config:
+            if 1 <= index <= number_of_project:
                 return index - 1
 
 def goals_to_string(goals) -> str:
@@ -124,82 +124,81 @@ def construct_main_ai_config() -> AIConfigBroker:
     Returns:
         AIConfig: The selected or created AI configuration.
     """
-    ai_configs = AIConfigBroker(config_file=CFG.ai_settings_file)
-    config_list = ai_configs.get_projects()
-    number_of_config = len(config_list)
-    config_number = -1
+    configuration_broker = AIConfigBroker(config_file=CFG.ai_settings_file)
+    project_list = configuration_broker.get_projects()
+    number_of_project = len(project_list)
+    project_number = -1
 
-    if number_of_config == 0 or CFG.skip_reprompt:
+    if number_of_project == 0 or CFG.skip_reprompt:
         logger.typewriter_log(
             "skip_reprompt: Not supported in the current version",
             Fore.GREEN,
-            config_list.ai_name,
+            project_list.agent_name,
         )
 
-    if number_of_config == 1:
-        config_number = 0
-        ai_configs.set_project_number(config_number)
-        config = ai_configs.get_current_project()
+    if number_of_project == 1:
+        project_number = 0
+        configuration_broker.set_project_number(project_number)
+        config = configuration_broker.get_current_project()
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
-            f"Would you like me to return to being {config['ai_name']}?",
+            f"Would you like me to return to being {config.lead_agent.agent_name}?",
             speak_text=True,
         )
         should_continue = clean_input(
-            f"""Continue with the last settings?\nName:  {config['ai_name']}\nRole:  {config['ai_role']}\nGoals: {goals_to_string(config['ai_goals'])}\nContinue (y/n): """
+            f"""Continue with the last settings?\nName:  {config.lead_agent.agent_name}\nRole:  {config.lead_agent.agent_role}\nGoals: {goals_to_string(config.lead_agent.agent_goals)}\nContinue (y/n): """
         )
         if should_continue.lower() == "n":
-            config_number -1
+            project_number -1
 
-    elif number_of_config > 1:
+    elif number_of_project > 1:
         logger.typewriter_log(
             "Welcome back! ",
             Fore.GREEN,
-            f"Select one of the following configurations : ",
+            f"Select one of the following projects : ",
             speak_text=True,
         )
-        for i, config in enumerate(config_list):
+        for i, config in enumerate(project_list):
             logger.typewriter_log(
-                f"Config {i + 1} : ",
+                f"Project {i + 1} : ",
                 Fore.GREEN,
-                f"""Name:  {config['ai_name']}\nRole:  {config['ai_role']}\nGoals: {goals_to_string(config['ai_goals'])}: """,
+                f"""Name:  {config.lead_agent.agent_name}\nRole:  {config.lead_agent.agent_role}\nGoals: {goals_to_string(config.lead_agent.agent_agent_goals)}: """,
             )
 
-        config_number = get_ai_config_index(number_of_config)
+        project_number = get_ai_project_index(number_of_project)
 
-    if config_number == -1:
-        if number_of_config < MAX_AI_CONFIG:
-            config_number = number_of_config
+    if project_number == -1:
+        if number_of_project < MAX_AI_CONFIG:
+            project_number = number_of_project
         else:
-            config_number = prompt_for_replacing_config(number_of_config)
+            project_number = prompt_for_replacing_project(number_of_project)
 
-        config = prompt_user(config_number)
-        ai_configs.save(CFG.ai_settings_file)
+        config = prompt_user(project_number)
+        configuration_broker.save(CFG.ai_settings_file)
 
     else :
-        ai_configs.set_project_number(new_project_number=config_number)
-        config = ai_configs.get_current_project()
+        configuration_broker.set_project_number(new_project_number=project_number)
+        config = configuration_broker.get_current_project()
     
-    return ai_configs
-# =======
-#     # Agent Created, print message
-#     logger.typewriter_log(
-#         config.ai_name,
-#         Fore.LIGHTBLUE_EX,
-#         "has been created with the following details:",
-#         speak_text=True,
-#     )
 
-#     # Print the ai config details
-#     # Name
-#     logger.typewriter_log("Name:", Fore.GREEN, config.ai_name, speak_text=False)
-#     # Role
-#     logger.typewriter_log("Role:", Fore.GREEN, config.ai_role, speak_text=False)
-#     # Goals
-#     logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
-#     for goal in config.ai_goals:
-#         logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
+    # Agent Created, print message
+    logger.typewriter_log(
+        config.project_name,
+        Fore.LIGHTBLUE_EX,
+        "has been created with the following details:",
+        speak_text=True,
+    )
 
-#     return config
-# >>>>>>> master
+    # Print the ai config details
+    # Name
+    logger.typewriter_log("Name:", Fore.GREEN, config.lead_agent.agent_name, speak_text=False)
+    # Role
+    logger.typewriter_log("Role:", Fore.GREEN, config.lead_agent.agent_role, speak_text=False)
+    # Goals
+    logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
+    for goal in config.lead_agent.agent_goals:
+        logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
+
+    return configuration_broker
+
