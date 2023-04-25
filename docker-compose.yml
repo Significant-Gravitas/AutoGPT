@@ -16,7 +16,7 @@ services:
       - ./:/app
     profiles: ["exclude-from-up"]
 
-  redisStack:
+  redis-stack:
     container_name: redisStack
     hostname: redisStack
     image: redis/redis-stack:latest
