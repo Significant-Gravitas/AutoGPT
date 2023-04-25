@@ -19,7 +19,7 @@ openai.api_key = CFG.openai_api_key
 
 def retry_openai_api(
     num_retries: int = 10,
-    backoff_base: int = 2,
+    backoff_base: float = 2.0,
     warn_user: bool = True,
 ):
     """Retry an OpenAI API call.
@@ -29,10 +29,7 @@ def retry_openai_api(
         backoff_base (int, optional): Base for exponential backoff. Defaults to 2.
         warn_user (bool, optional): Whether to warn the user. Defaults to True.
     """
-    retry_limit_msg = (
-        f"{Fore.RED}Error: ",
-        f"Reached rate limit, passing...{Fore.RESET}",
-    )
+    retry_limit_msg = f"{Fore.RED}Error: " f"Reached rate limit, passing...{Fore.RESET}"
     api_key_error_msg = (
         f"Please double check that you have setup a "
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
@@ -46,18 +43,22 @@ def retry_openai_api(
         @functools.wraps(func)
         def _wrapped(*args, **kwargs):
             user_warned = not warn_user
-            for attempt in range(num_retries):
+            num_attempts = num_retries + 1  # +1 for the first attempt
+            for attempt in range(1, num_attempts + 1):
                 try:
                     return func(*args, **kwargs)
 
                 except RateLimitError:
+                    if attempt == num_attempts:
+                        raise
+
                     logger.debug(retry_limit_msg)
                     if not user_warned:
                         logger.double_check(api_key_error_msg)
                         user_warned = True
 
                 except APIError as e:
-                    if (e.http_status != 502) or (attempt == num_retries - 1):
+                    if (e.http_status != 502) or (attempt == num_attempts):
                         raise
 
                 backoff = backoff_base ** (attempt + 2)
