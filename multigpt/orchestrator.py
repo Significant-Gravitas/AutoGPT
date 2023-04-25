@@ -24,6 +24,7 @@ class Orchestrator(MultiAgent):
             user_input=user_input,
             agent_id=agent_id,
         )
+        prompt_generator.add_constraint("ALWAYS say something to your team.")
 
         self.auditory_buffer = []  # contains the non processed parts of the conversation
         self.avatar_url = 'https://static01.nyt.com/images/2018/05/15/arts/01hal-voice1/merlin_135847308_098289a6-90ee-461b-88e2-20920469f96a-articleLarge.jpg'
