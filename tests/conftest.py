@@ -7,6 +7,7 @@ from autogpt.api_manager import ApiManager
 from autogpt.api_manager import api_manager as api_manager_
 from autogpt.config import Config
 from autogpt.workspace import Workspace
+from tests.vcr.openai_filter import before_record_request
 
 load_dotenv()
 
@@ -39,3 +40,35 @@ def api_manager() -> ApiManager:
     api_manager_.reset()
     yield api_manager_
     api_manager_.__dict__.update(old_attrs)
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--use-api-key",
+        action="store_true",
+        help="Use api key for the tests that need an api key AND whose behavior changes with your code. This will save Open AI answers for future use.",
+    )
+
+
+def pytest_configure(config):
+    pytest.use_api_key = config.getoption("--use-api-key")
+
+
+@pytest.fixture
+def vcr_config():
+    return {
+        "record_mode": "new_episodes",
+    }
+
+
+@pytest.fixture
+def vcr_config():
+    return {
+        "record_mode": "new_episodes",
+        "before_record_request": before_record_request,
+        "filter_headers": [
+            "authorization",
+            "X-OpenAI-Client-User-Agent",
+            "User-Agent",
+        ],
+    }

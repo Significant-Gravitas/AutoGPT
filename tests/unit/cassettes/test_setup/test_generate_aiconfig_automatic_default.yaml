@@ -1,0 +1,95 @@
+interactions:
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "\nYour
+      task is to devise up to 5 highly effective goals and an appropriate role-based
+      name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned
+      with the successful completion of its assigned task.\n\nThe user will provide
+      the task, you will provide only the output in the exact format specified below
+      with no explanation or conversation.\n\nExample input:\nHelp me with marketing
+      my business\n\nExample output:\nName: CMOGPT\nDescription: a professional digital
+      marketer AI that assists Solopreneurs in growing their businesses by providing
+      world-class expertise in solving marketing problems for SaaS, content products,
+      agencies, and more.\nGoals:\n- Engage in effective problem-solving, prioritization,
+      planning, and supporting execution to address your marketing needs as your virtual
+      Chief Marketing Officer.\n\n- Provide specific, actionable, and concise advice
+      to help you make informed decisions without the use of platitudes or overly
+      wordy explanations.\n\n- Identify and prioritize quick wins and cost-effective
+      campaigns that maximize results with minimal time and budget investment.\n\n-
+      Proactively take the lead in guiding you and offering suggestions when faced
+      with unclear information or uncertainty to ensure your marketing strategy remains
+      on track.\n"}, {"role": "user", "content": "Task: ''Write a wikipedia style
+      article about the project: https://github.com/significant-gravitas/Auto-GPT''\nRespond
+      only with the output in the exact format specified in the system prompt, with
+      no explanation or conversation.\n"}], "temperature": 0, "max_tokens": null}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '1669'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA1xSS2/UMBC+8ytGvnBJVt3ti+YKBQRSVSQQohRVXns2Gep40plJl1XV/47iLKVw
+        tD3zPf3gKLrGhc5b6IdUn55d3l0sVb58/ng3Xg1vPy1PN9+uLj9cYf/+3FWO1z8x2H5jEbgfEhpx
+        dpULgt4wumZ58mp1dPrq5HhZuZ4jJte4drD6cHFc2yhrrg8OD5aucqP6Fl3z4AbhfrAb41vM6prV
+        2WHl/mI/3S9XZ5UzNp+ero5Wq8fKhY4poLrm+4PrUf/ACid0jfOqpOazTSI5G+bJwIXvsYGvdEvv
+        Lj9f5zeoQWiY+BrwGfxonLnnUcG3mA0iKrUZIxjDjAiUwTqEYpw4A28K3oCRfK22SwhejEJChfUO
+        BuF7ipRb2LKkWIfkVQF/DShGihOcoKKX0FWwFTLKbQU+R9iw9N6m8+I6v2OftLnONbzmHMdgYB0L
+        j233tA48K2vpHjMYDxQm2Zh1FAQfwig+7Ar0PmbMqDoZoDyTEefFxPFVyBA6arv6bvSJbAf7DME6
+        b0AKmFvfFq1Py/c4C99iSrWajMFGwVjBhlPi7ZRB0TdSxEQZtUxPJUUvUf9Jssh4W3DL0j7SyQZL
+        idP47/RLhX3yOT7Dn7SFNJbxQXhAgUBWbM7cghsUzAF1MUebkl+zeEPYknWFeVSUiYxyYBnmR+uQ
+        BDaIce3DbYHq/S1CxjB9RNmB4D1p4TF+bqDwnM+VlCifm+sRTf9xldn8mkoB/8U2VZCopXXC6afA
+        MK4ThblC91i5DWXS7kbQK2fXODUeXOUoR/zlmoPHH48vfgMAAP//AwCcgL7LBwQAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bdba2940e041567-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 26 Apr 2023 03:11:02 GMT
+      Server:
+      - cloudflare
+      Transfer-Encoding:
+      - chunked
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '10980'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-request-id:
+      - 2eca538c465884727f547829ca3712a9
+    status:
+      code: 200
+      message: OK
+version: 1

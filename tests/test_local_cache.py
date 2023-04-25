@@ -1,9 +1,13 @@
 # sourcery skip: snake-case-functions
 """Tests for LocalCache class"""
-import unittest
+import inspect
+import json
+import os
+import re
 
 import orjson
 import pytest
+import vcr
 
 from autogpt.memory.local import EMBED_DIM, SAVE_OPTIONS
 from autogpt.memory.local import LocalCache as LocalCache_
@@ -90,14 +94,15 @@ def test_get(LocalCache, config, mock_embed_with_ada):
 
 
 @requires_api_key("OPENAI_API_KEY")
-def test_get_relevant(LocalCache, config) -> None:
+@pytest.mark.vcr
+def test_get_relevant(request, LocalCache, config) -> None:
     cache = LocalCache(config)
     text1 = "Sample text 1"
     text2 = "Sample text 2"
     cache.add(text1)
     cache.add(text2)
-
     result = cache.get_relevant(text1, 1)
+
     assert result == [text1]
 
 

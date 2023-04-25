@@ -1,0 +1,89 @@
+interactions:
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "\nYour
+      task is to devise up to 5 highly effective goals and an appropriate role-based
+      name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned
+      with the successful completion of its assigned task.\n\nThe user will provide
+      the task, you will provide only the output in the exact format specified below
+      with no explanation or conversation.\n\nExample input:\nHelp me with marketing
+      my business\n\nExample output:\nName: CMOGPT\nDescription: a professional digital
+      marketer AI that assists Solopreneurs in growing their businesses by providing
+      world-class expertise in solving marketing problems for SaaS, content products,
+      agencies, and more.\nGoals:\n- Engage in effective problem-solving, prioritization,
+      planning, and supporting execution to address your marketing needs as your virtual
+      Chief Marketing Officer.\n\n- Provide specific, actionable, and concise advice
+      to help you make informed decisions without the use of platitudes or overly
+      wordy explanations.\n\n- Identify and prioritize quick wins and cost-effective
+      campaigns that maximize results with minimal time and budget investment.\n\n-
+      Proactively take the lead in guiding you and offering suggestions when faced
+      with unclear information or uncertainty to ensure your marketing strategy remains
+      on track.\n"}, {"role": "user", "content": "Task: ''T&GF\u00a3OIBECC()!*''\nRespond
+      only with the output in the exact format specified in the system prompt, with
+      no explanation or conversation.\n"}], "temperature": 0, "max_tokens": null}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '1590'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA0yOTUsDMRCG7/6KYS5esmW3ra7mJhSkICgogoiUaXZsYzeZkMzWj9L/LgW13l7e
+        L54d+g4tujWpC6mv2stb9xg/7+vZ1/Jm1m6b8HCV2rvpUD/V12hQlm/s9GcxchJSz+olokGXmZQ7
+        tM35xXjaTi6nrcEgHfdocZW0mozOKh3yUqp6UjdocCi0YrQ7TFlC0oXKhmNBO76oDR6///xJY1BF
+        qf/nNHuDbi3ecUH7vMPA5fc1S89okUrxRSnqgVGicjzwz08DFMn508AcHMUoCinL1ncMFEEGTYPC
+        u9e1DAoEW+p9B0plM4K7nqnwsf4vhFfJEBhUYMWRMykDpZQlZX/QK6G+AMUOCA581ZIKdxAp8Aj3
+        Bl999GW9yExFIlosKgkN+tjxB9p6/7I/+QYAAP//AwDEwZtgswEAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bdb2fba9848cea8-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 26 Apr 2023 01:52:30 GMT
+      Server:
+      - cloudflare
+      Transfer-Encoding:
+      - chunked
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '2964'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-request-id:
+      - 4431c63f64a27ef1ff756d960c4b40df
+    status:
+      code: 200
+      message: OK
+version: 1
