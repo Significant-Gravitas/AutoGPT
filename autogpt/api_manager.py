@@ -1,6 +1,8 @@
 from typing import List
 
+import numpy as np
 import openai
+import spacy
 
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -80,16 +82,48 @@ class ApiManager:
         Returns:
         List[float]: The generated embedding as a list of float values.
         """
-        if cfg.use_azure:
-            response = openai.Embedding.create(
-                input=text_list,
-                engine=cfg.get_azure_deployment_id_for_model(model),
-            )
-        else:
-            response = openai.Embedding.create(input=text_list, model=model)
 
-        self.update_cost(response.usage.prompt_tokens, 0, model)
-        return response["data"][0]["embedding"]
+        # Define the maximum context length and chunk size
+        max_context_length = self.get_total_completion_tokens()
+        spacy_max_length = spacy_max_length = 1_000_000
+
+        # This needs to be text, not a list
+        text = " ".join(text_list)
+
+        # Tokenize the input text using spaCy and process it in chunks
+        nlp = spacy.load("en_core_web_sm")
+        tokens = []
+        for start in range(0, len(text), spacy_max_length):
+            chunk_text = text[start:start+spacy_max_length]
+            doc = nlp(chunk_text)
+            tokens.extend(token.text for token in doc)
+
+        # Split the tokens into smaller chunks
+        text_chunks = [tokens[i:i+max_context_length] for i in range(0, len(tokens), max_context_length)]
+        embeddings = []
+
+        # Create embeddings and average together
+        for chunk in text_chunks:
+            # Convert tokens back to text for each chunk
+            chunk_text = " ".join(chunk)
+            
+            # Submit
+            if cfg.use_azure:
+                response = openai.Embedding.create(
+                    input=chunk_text,
+                    engine=cfg.get_azure_deployment_id_for_model(model),
+                )
+            else:
+                response = openai.Embedding.create(input=chunk_text, model=model)
+
+            # Update cost and embeddings bits
+            self.update_cost(response.usage.prompt_tokens, 0, model)
+            embedding_for_chunk = response["data"][0]["embedding"]
+            embeddings.append(embedding_for_chunk)
+
+        combined_embedding = np.mean(embeddings, axis=0)
+
+        return combined_embedding.tolist()
 
     def update_cost(self, prompt_tokens, completion_tokens, model):
         """
