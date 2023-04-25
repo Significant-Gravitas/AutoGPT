@@ -19,7 +19,8 @@ def test_should_prompt_user_given_in_continuous_mode_and_next_action_count_is_gr
 
 
 def test_generate_user_feedback_message_should_format_message_with_ai_name():
-    expected_message = "Enter 'y' to authorise command, 'y -N' to run N continuous commands," \
+    expected_message = "Enter 'y' to authorise command, 'y -N' to run N continuous commands, " \
+                       "'s' to run self-feedback commands, " \
                        "'n' to exit program, or enter feedback for the_ai_name... "
     assert generate_user_feedback_message("the_ai_name") == expected_message
 
@@ -58,6 +59,14 @@ def test_calculate_next_command_from_user_input_given_user_text_result_is_feedba
     assert command_name == "human_feedback"
     assert next_count == 0
     assert user_input == the_input
+
+
+def test_calculate_next_command_from_user_input_given_s_turn_on_verify_feedback():
+    the_input = "s"
+    command_name, next_count, user_input = calculate_next_command_from_user_input(the_input)
+    assert command_name == "self_feedback"
+    assert next_count == 0
+    assert user_input is None
 
 
 def test_calculate_next_command_from_user_input_given_no_value_print_error():
