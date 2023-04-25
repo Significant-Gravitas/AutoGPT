@@ -108,7 +108,7 @@ Simply run `./run.sh` (Linux/macOS) or `.\run.bat` (Windows) in your terminal.
 
 1. Install the [Remote - Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension in VS Code.
 
-2. Open command palatte and type in Dev Containers: Open Folder in Container.
+2. Open command palette and type in Dev Containers: Open Folder in Container.
 
 3. Run `./run.sh`.
 
