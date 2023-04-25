@@ -6,6 +6,10 @@ from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.modelsinfo import COSTS
 
+from retry import retry
+import requests.exceptions
+from openai.error import APIError
+
 cfg = Config()
 openai.api_key = cfg.openai_api_key
 print_total_cost = cfg.debug_mode
@@ -24,7 +28,8 @@ class ApiManager:
         self.total_completion_tokens = 0
         self.total_cost = 0
         self.total_budget = 0.0
-
+     
+    @retry(exceptions=(requests.exceptions.ReadTimeout, requests.exceptions.RequestException, APIError), tries=3, delay=2, backoff=2)
     def create_chat_completion(
         self,
         messages: list,  # type: ignore
