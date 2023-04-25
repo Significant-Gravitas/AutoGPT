@@ -18,7 +18,8 @@ from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from multigpt.multi_agent import MultiAgent
 from multigpt.agent_selection import AgentSelection
-from multigpt import lmql_utils
+from multigpt import lmql_utils, discord_utils
+from multigpt.orchestrator import Orchestrator
 
 
 class MultiAgentManager(metaclass=Singleton):
@@ -33,6 +34,23 @@ class MultiAgentManager(metaclass=Singleton):
         self.current_active_agent = None
         self.chat_buffer = []
         self.chat_buffer_size = 10
+
+        agent_id = self.agent_counter
+        self.agent_counter += 1
+        #Initialize system_agent/orchestrator
+        memory = get_memory(self.cfg, ai_key=agent_id, init=True)
+        if not self.cfg.chat_only_mode:
+            logger.typewriter_log(
+                f"Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
+            )
+
+        self.system_agent = Orchestrator(
+            ai_name="SYSTEM",
+            memory=memory,
+            full_message_history=[],
+            prompt="You are the orchestrator. This prompt is just a placeholder.",
+            user_input="This is a placeholder user input",
+            agent_id=agent_id)
 
     def set_experts(self, experts):
         self.experts = experts
@@ -139,7 +157,7 @@ class MultiAgentManager(metaclass=Singleton):
         if speaker is None or message_is_empty():
             return False
         for agent in self.agents:
-            agent.send_message(speaker, message)
+            agent.receive_message(speaker, message)
         self.add_message_to_chat_buffer(speaker, message)
         return True
 
@@ -186,7 +204,7 @@ class MultiAgentManager(metaclass=Singleton):
 
             # Print Assistant thoughts
 
-            assistant_reply_object = print_assistant_thoughts(active_agent.ai_name, assistant_reply)
+            assistant_reply_object = print_assistant_thoughts(active_agent, assistant_reply)
             if assistant_reply_object is not None:
                 try:
                     speak_value = assistant_reply_object.get('thoughts', {}).get('speak')
@@ -280,6 +298,36 @@ class MultiAgentManager(metaclass=Singleton):
                         f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
                         f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                     )
+                else:
+                    logger.typewriter_log(
+                        "NEXT ACTION: ",
+                        Fore.CYAN,
+                        f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
+                        f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                    )
+                    action_string = f"_{active_agent.ai_name}"
+                    if command_name == 'google':
+                        action_string += f" is googling: {arguments['input']}"
+                    elif command_name == 'memory_add':
+                        action_string += f" wants to remember {arguments['string']}"
+                    elif command_name == 'browse_website':
+                        action_string += f" is browsing {arguments['url']}"
+                    elif command_name == 'get_text_summary':
+                        action_string += f" is skimming {arguments['url']}"
+                    elif command_name == 'read_file':
+                        action_string += f" is reading {arguments['file']}"
+                    elif command_name == 'write_to_file' or command_name == 'append_to_file':
+                        action_string += f" is writing to {arguments['file']}"
+                    elif command_name == 'delete_file':
+                        action_string += f" is deleting {arguments['file']}"
+                    elif command_name == 'search_files':
+                        action_string += f" is searching for something in {arguments['file']}"
+                    else:
+                        action_string = None
+                    if action_string is not None:
+                        action_string += "._"
+                        self.system_agent.send_message_discord(action_string)
+
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):

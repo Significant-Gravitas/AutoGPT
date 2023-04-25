@@ -15,8 +15,8 @@ class MultiConfig(Config):
         else:
             self.next_agent_selection = AgentSelection.ROUND_ROBIN
 
-        self.min_experts = os.getenv("MIN_EXPERTS", 2)
-        self.max_experts = os.getenv("MAX_EXPERTS", 5)
+        self.min_experts = os.getenv("MIN_EXPERTS", 1)
+        self.max_experts = os.getenv("MAX_EXPERTS", 2)
         self.chat_only_mode = (
             os.getenv("CHAT_ONLY_MODE", "True") == "True"
         )

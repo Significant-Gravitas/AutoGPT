@@ -198,7 +198,7 @@ def remove_color_codes(s: str) -> str:
 logger = Logger()
 
 
-def print_assistant_thoughts(ai_name, assistant_reply):
+def print_assistant_thoughts(active_agent, assistant_reply):
     """Prints the assistant's thoughts to the console"""
     from autogpt.json_fixes.bracket_termination import (
         attempt_to_fix_json_by_finding_outermost_brackets,
@@ -247,13 +247,12 @@ def print_assistant_thoughts(ai_name, assistant_reply):
 
         if CFG.chat_only_mode:
             if assistant_thoughts_speak is not None and len(assistant_thoughts_speak) > 0:
-                logger.typewriter_log(f"{ai_name.upper()}:", Fore.YELLOW, f"{assistant_thoughts_speak}")
+                logger.typewriter_log(f"{active_agent.ai_name.upper()}:", Fore.YELLOW, f"{assistant_thoughts_speak}")
                 from multigpt.discord_utils import send_message
-                send_message(username=ai_name.upper(), content=assistant_thoughts_speak)
-
+                active_agent.send_message_discord(assistant_thoughts_speak)
         else:
             logger.typewriter_log(
-                f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
+                f"{active_agent.ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
             )
             logger.typewriter_log(
                 "REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}"
