@@ -248,10 +248,10 @@ class Agent:
                                  No new data can be stored.
                                  Clear index? Continue (y/n):"""
                         )
-                    if should_clear.lower() == "y":
-                        self.memory.clear
-                    else:
-                        pass
+                        if should_clear.lower() == "y":
+                            self.memory.clear
+                        else:
+                            pass
 
                 self.memory.add(memory_to_add)
 
