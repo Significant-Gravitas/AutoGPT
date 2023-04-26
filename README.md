@@ -93,7 +93,7 @@ Your support is greatly appreciated. Development of this free, open-source proje
 
 1. Get an OpenAI [API Key](https://platform.openai.com/account/api-keys)
 2. Download the [latest release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
-3. Follow the [installation instructions][docs/setup]
+3. Follow the [installation instructions](https://significant-gravitas.github.io/Auto-GPT/installation/)
 4. Configure any additional features you want, or install some [plugins][docs/plugins]
 5. [Run][docs/usage] the app
 
