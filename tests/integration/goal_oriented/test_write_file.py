@@ -10,23 +10,14 @@ from autogpt.commands.command import CommandRegistry
 from autogpt.commands.file_operations import LOG_FILE, delete_file, read_file
 from autogpt.config import ProjectConfigBroker, Config, check_openai_api_key
 from autogpt.memory import get_memory
-from tests.integration.goal_oriented.vcr_helper import before_record_request
 from tests.utils import requires_api_key
 from autogpt.prompts.prompt import construct_full_prompt
-
-current_file_dir = os.path.dirname(os.path.abspath(__file__))
-# tests_directory = os.path.join(current_file_dir, 'tests')
-
-my_vcr = vcr.VCR(
-    cassette_library_dir=os.path.join(current_file_dir, "cassettes"),
-    record_mode="new_episodes",
-    before_record_request=before_record_request,
-)
 
 CFG = Config()
 
 @pytest.mark.integration_test
 @requires_api_key("OPENAI_API_KEY")
+@pytest.mark.vcr
 def test_write_file(workspace) -> None:
     CFG.workspace_path = workspace.root
     CFG.file_logger_path = os.path.join(workspace.root, "file_logger.txt")
@@ -34,20 +25,12 @@ def test_write_file(workspace) -> None:
     file_name = str(workspace.get_path("hello_world.txt"))
     agent = create_writer_agent(workspace)
     try:
-        with my_vcr.use_cassette(
-            "write_file.vcr.yml",
-            filter_headers=[
-                "authorization",
-                "X-OpenAI-Client-User-Agent",
-                "User-Agent",
-            ],
-        ):
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(agent.start_interaction_loop)
-                try:
-                    result = future.result(timeout=45)
-                except concurrent.futures.TimeoutError:
-                    assert False, "The process took longer than 45 seconds to complete."
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(agent.start_interaction_loop)
+            try:
+                result = future.result(timeout=45)
+            except concurrent.futures.TimeoutError:
+                assert False, "The process took longer than 45 seconds to complete."
     # catch system exit exceptions
     except SystemExit:  # the agent returns an exception when it shuts down
         content = read_file(file_name)

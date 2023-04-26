@@ -39,7 +39,7 @@ import distro
 
 from autogpt.project.project import AgentConfig , Project
 from autogpt.project.project_config_broker import ProjectConfigBroker
-from autogpt.api_manager import api_manager
+from autogpt.api_manager import ApiManager
 from autogpt.config.config import Config
 from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
@@ -222,6 +222,7 @@ def construct_main_project() -> ProjectConfigBroker:
     
 
     # set the total api budget
+    api_manager = ApiManager()
     api_manager.set_total_budget(config.api_budget)
 
     # Agent Created, print message
