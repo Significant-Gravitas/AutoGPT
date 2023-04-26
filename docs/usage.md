@@ -1,25 +1,33 @@
 # Usage
 
-1. Open a terminal and run the startup script:
-    * On Linux/MacOS:
-        ``` shell
-        ./run.sh
-        ```
-    * On Windows:
-        ``` shell
-        .\run.bat
-        ```
-    * Using Docker:
-        ``` shell
-        docker-compose run --rm auto-gpt
-        ```
-    Running with `--help` lists all the possible command line arguments you can pass:
-    ``` shell
-    ./run.sh --help
+Open a terminal and run the startup script:
 
-    # or with docker
-    docker-compose run --rm auto-gpt --help
-    ```
+- On Linux/MacOS:
+
+``` shell
+./run.sh
+```
+
+- On Windows:
+
+``` shell
+.\run.bat
+```
+
+- Using Docker:
+
+``` shell
+docker-compose run --rm auto-gpt
+```
+
+Running with `--help` lists all the possible command line arguments you can pass:
+
+``` shell
+./run.sh --help
+
+# or with docker
+docker-compose run --rm auto-gpt --help
+```
 
 2. After each response from Auto-GPT, choose from the options to authorize command(s),
 exit the program, or provide feedback to the AI.
@@ -34,17 +42,17 @@ Here are some common arguments you can use when running Auto-GPT:
 > Replace anything in angled brackets (<>) to a value you want to specify
 
 * View all available command line arguments
-    ``` shell
-    python -m autogpt --help
-    ```
+``` shell
+python -m autogpt --help
+```
 * Run Auto-GPT with a different AI Settings file
-    ``` shell
-    python -m autogpt --ai-settings <filename>
-    ```
+``` shell
+python -m autogpt --ai-settings <filename>
+```
 * Specify a memory backend
-    ``` shell
-    python -m autogpt --use-memory  <memory-backend>
-    ```
+``` shell
+python -m autogpt --use-memory  <memory-backend>
+```
 
 > **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python -m autogpt --help` for more information
 
@@ -65,9 +73,9 @@ Use at your own risk.
 
 1. Run the `autogpt` python module in your terminal:
 
-    ``` shell
-    python -m autogpt --continuous
-    ```
+``` shell
+python -m autogpt --continuous
+```
 
 2. To exit the program, press Ctrl + C
 
