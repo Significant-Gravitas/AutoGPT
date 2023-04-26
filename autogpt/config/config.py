@@ -6,11 +6,8 @@ import openai
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
-from dotenv import load_dotenv
 
 from autogpt.singleton import Singleton
-
-load_dotenv(verbose=True, override=True)
 
 
 class Config(metaclass=Singleton):
