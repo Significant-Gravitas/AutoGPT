@@ -45,6 +45,7 @@ def test_agent_initialization(agent):
     assert agent.system_prompt == "System prompt"
     assert agent.triggering_prompt == "Triggering prompt"
 
+
 class CustomPlugin:
     def __init__(self, should_handle):
         self.should_handle = should_handle
@@ -71,4 +72,3 @@ def test_plugin_post_command_handling(agent):
     plugin.should_handle = False
     unmodified_result = agent._handle_plugin_post_command(command_name, result)
     assert unmodified_result == result
-

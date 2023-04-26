@@ -261,7 +261,6 @@ class Agent:
             result = plugin.post_command(command_name, result)
         return result
 
-
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
             command_args["directory"] = str(self.workspace.root)
