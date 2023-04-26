@@ -11,7 +11,7 @@ from regex import regex
 
 from autogpt.config import Config
 from autogpt.json_utils.json_fix_general import correct_json
-from autogpt.llm_utils import call_ai_function
+from autogpt.llm_utils import call_agent_function
 from autogpt.logs import logger
 from autogpt.speech import say_text
 
@@ -62,7 +62,7 @@ def auto_fix_json(json_string: str, schema: str) -> str:
     # If it doesn't already start with a "`", add one:
     if not json_string.startswith("`"):
         json_string = "```json\n" + json_string + "\n```"
-    result_string = call_ai_function(
+    result_string = call_agent_function(
         function_string, args, description_string, model=CFG.fast_llm_model
     )
     logger.debug("------------ JSON FIX ATTEMPT ---------------")
@@ -147,10 +147,10 @@ def fix_and_parse_json(
         maybe_fixed_json = maybe_fixed_json[: last_brace_index + 1]
         return json.loads(maybe_fixed_json)
     except (json.JSONDecodeError, ValueError) as e:
-        return try_ai_fix(try_to_fix_with_gpt, e, json_to_load)
+        return try_agent_fix(try_to_fix_with_gpt, e, json_to_load)
 
 
-def try_ai_fix(
+def try_agent_fix(
     try_to_fix_with_gpt: bool, exception: Exception, json_to_load: str
 ) -> Dict[Any, Any]:
     """Try to fix the JSON with the AI
@@ -175,11 +175,11 @@ def try_ai_fix(
             " your prompt is confusing the AI. Try changing it up"
             " slightly."
         )
-    # Now try to fix this up using the ai_functions
-    ai_fixed_json = auto_fix_json(json_to_load, JSON_SCHEMA)
+    # Now try to fix this up using the agent_functions
+    agent_fixed_json = auto_fix_json(json_to_load, JSON_SCHEMA)
 
-    if ai_fixed_json != "failed":
-        return json.loads(ai_fixed_json)
+    if agent_fixed_json != "failed":
+        return json.loads(agent_fixed_json)
     # This allows the AI to react to the error message,
     #   which usually results in it correcting its ways.
     # logger.error("Failed to fix AI output, telling the AI.")

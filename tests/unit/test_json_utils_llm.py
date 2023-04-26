@@ -47,8 +47,8 @@ class TestFixJsonUsingMultipleTechniques:
         # Happy path test case where the JSON string contains only whitespace characters
         json_string = "   \n\t   "
 
-        # mock try_ai_fix to avoid calling the AI model:
-        mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
+        # mock try_agent_fix to avoid calling the AI model:
+        mocker.patch("autogpt.json_utils.json_fix_llm.try_agent_fix", return_value={})
 
         expected_output = {}
         assert fix_json_using_multiple_techniques(json_string) == expected_output
@@ -66,8 +66,8 @@ class TestFixJsonUsingMultipleTechniques:
         # Edge case test case where the JSON string is not parseable and cannot be fixed using either technique
         json_string = "This is not a JSON string"
 
-        # mock try_ai_fix to avoid calling the AI model:
-        mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
+        # mock try_agent_fix to avoid calling the AI model:
+        mocker.patch("autogpt.json_utils.json_fix_llm.try_agent_fix", return_value={})
 
         expected_output = {}
 
@@ -83,8 +83,8 @@ class TestFixJsonUsingMultipleTechniques:
         json_string = ""
 
         # Act
-        # mock try_ai_fix to avoid calling the AI model:
-        mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
+        # mock try_agent_fix to avoid calling the AI model:
+        mocker.patch("autogpt.json_utils.json_fix_llm.try_agent_fix", return_value={})
 
         result = fix_and_parse_json(json_string)
 

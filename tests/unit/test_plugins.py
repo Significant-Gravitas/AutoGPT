@@ -88,7 +88,7 @@ def config_with_plugins():
 
 
 @pytest.fixture
-def mock_config_openai_plugin():
+def mock_config_openagent_plugin():
     """Mock config object for testing the scan_plugins function"""
 
     class MockConfig:
@@ -102,9 +102,9 @@ def mock_config_openai_plugin():
     return MockConfig()
 
 
-def test_scan_plugins_openai(mock_config_openai_plugin):
+def test_scan_plugins_openai(mock_config_openagent_plugin):
     # Test that the function returns the correct number of plugins
-    result = scan_plugins(mock_config_openai_plugin, debug=True)
+    result = scan_plugins(mock_config_openagent_plugin, debug=True)
     assert len(result) == 1
 
 

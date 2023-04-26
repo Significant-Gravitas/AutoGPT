@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from autogpt.commands.command import command
-from autogpt.llm_utils import call_ai_function
+from autogpt.llm_utils import call_agent_function
 
 
 @command(
@@ -32,4 +32,4 @@ def improve_code(suggestions: list[str], code: str) -> str:
         " provided, making no other changes."
     )
 
-    return call_ai_function(function_string, args, description_string)
+    return call_agent_function(function_string, args, description_string)

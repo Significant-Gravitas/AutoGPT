@@ -7,12 +7,12 @@ def benchmark_entrepreneur_gpt_with_difficult_user():
     # Test case to check if the write_file command can successfully write 'Hello World' to a file
     # named 'hello_world.txt'.
 
-    # Read the current ai_settings.yaml file and store its content.
-    ai_settings = None
-    if os.path.exists("ai_settings.yaml"):
-        with open("ai_settings.yaml", "r") as f:
-            ai_settings = f.read()
-        os.remove("ai_settings.yaml")
+    # Read the current agent_settings.yaml file and store its content.
+    agent_settings = None
+    if os.path.exists("agent_settings.yaml"):
+        with open("agent_settings.yaml", "r") as f:
+            agent_settings = f.read()
+        os.remove("agent_settings.yaml")
 
     input_data = """Entrepreneur-GPT
 an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.

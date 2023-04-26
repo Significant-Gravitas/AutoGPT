@@ -1,7 +1,7 @@
 import pytest
 from openai.error import APIError, RateLimitError
 
-from autogpt.llm_utils import get_ada_embedding, retry_openai_api
+from autogpt.llm_utils import get_ada_embedding, retry_openagent_api
 from autogpt.modelsinfo import COSTS
 
 
@@ -28,7 +28,7 @@ def error_factory(error_instance, error_count, retry_count, warn_user=True):
         def __init__(self):
             self.count = 0
 
-        @retry_openai_api(
+        @retry_openagent_api(
             num_retries=retry_count, backoff_base=0.001, warn_user=warn_user
         )
         def __call__(self):
@@ -41,7 +41,7 @@ def error_factory(error_instance, error_count, retry_count, warn_user=True):
 
 
 def test_retry_open_api_no_error(capsys):
-    @retry_openai_api()
+    @retry_openagent_api()
     def f():
         return 1
 

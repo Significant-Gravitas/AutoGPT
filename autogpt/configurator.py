@@ -13,7 +13,7 @@ CFG = Config()
 def create_config(
     continuous: bool,
     continuous_limit: int,
-    ai_settings_file: str,
+    agent_settings_file: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -29,7 +29,7 @@ def create_config(
     Args:
         continuous (bool): Whether to run in continuous mode
         continuous_limit (int): The number of times to run in continuous mode
-        ai_settings_file (str): The path to the ai_settings.yaml file
+        agent_settings_file (str): The path to the agent_settings.yaml file
         skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
         speak (bool): Whether to enable speak mode
         debug (bool): Whether to enable debug mode
@@ -98,8 +98,8 @@ def create_config(
         logger.typewriter_log("Skip Re-prompt: ", Fore.GREEN, "ENABLED")
         CFG.skip_reprompt = True
 
-    if ai_settings_file:
-        file = ai_settings_file
+    if agent_settings_file:
+        file = agent_settings_file
 
         # Validate file
         (validated, message) = utils.validate_yaml_file(file)
@@ -109,7 +109,7 @@ def create_config(
             exit(1)
 
         logger.typewriter_log("Using AI Settings File:", Fore.GREEN, file)
-        CFG.ai_settings_file = file
+        CFG.agent_settings_file = file
         CFG.skip_reprompt = True
 
     if browser_name:

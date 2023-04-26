@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 
 from autogpt.commands.command import command
-from autogpt.llm_utils import call_ai_function
+from autogpt.llm_utils import call_agent_function
 
 
 @command(
@@ -34,4 +34,4 @@ def write_tests(code: str, focus: list[str]) -> str:
         " specific areas if required."
     )
 
-    return call_ai_function(function_string, args, description_string)
+    return call_agent_function(function_string, args, description_string)

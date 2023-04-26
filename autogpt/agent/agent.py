@@ -17,14 +17,14 @@ class Agent:
     """Agent class for interacting with Auto-GPT.
 
     Attributes:
-        ai_name: The name of the agent.
+        agent_name: The name of the agent.
         memory: The memory object to use.
         full_message_history: The full message history.
         next_action_count: The number of actions to execute.
         system_prompt: The system prompt is the initial prompt that defines everything
           the AI needs to know to achieve its task successfully.
         Currently, the dynamic and customizable information in the system prompt are
-          ai_name, description and goals.
+          agent_name, description and goals.
 
         triggering_prompt: The last sentence the AI will see before answering.
             For Auto-GPT, this prompt is:
@@ -44,7 +44,7 @@ class Agent:
 
     def __init__(
         self,
-        ai_name,
+        agent_name,
         memory,
         full_message_history,
         next_action_count,
@@ -55,7 +55,7 @@ class Agent:
         workspace_directory,
     ):
         cfg = Config()
-        self.ai_name = ai_name
+        self.agent_name = agent_name
         self.memory = memory
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
@@ -109,7 +109,7 @@ class Agent:
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, cfg.speak_mode
+                        self.agent_name, assistant_reply_json, cfg.speak_mode
                     )
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
@@ -132,7 +132,7 @@ class Agent:
                 print(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands"
                     "'n' to exit program, or enter feedback for "
-                    f"{self.ai_name}...",
+                    f"{self.agent_name}...",
                     flush=True,
                 )
                 while True:
@@ -279,9 +279,9 @@ class Agent:
         Returns:
             str: A feedback response generated using the provided thoughts dictionary.
         """
-        ai_role = self.config.ai_role
+        agent_role = self.config.agent_role
 
-        feedback_prompt = f"Below is a message from an AI agent with the role of {ai_role}. Please review the provided Thought, Reasoning, Plan, and Criticism. If these elements accurately contribute to the successful execution of the assumed role, respond with the letter 'Y' followed by a space, and then explain why it is effective. If the provided information is not suitable for achieving the role's objectives, please provide one or more sentences addressing the issue and suggesting a resolution."
+        feedback_prompt = f"Below is a message from an AI agent with the role of {agent_role}. Please review the provided Thought, Reasoning, Plan, and Criticism. If these elements accurately contribute to the successful execution of the assumed role, respond with the letter 'Y' followed by a space, and then explain why it is effective. If the provided information is not suitable for achieving the role's objectives, please provide one or more sentences addressing the issue and suggesting a resolution."
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
         thought = thoughts.get("thoughts", "")

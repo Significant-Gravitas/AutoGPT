@@ -1,5 +1,5 @@
 from autogpt.agent.agent import Agent
-from autogpt.config import AIConfig
+from autogpt.config import ProjectConfigBroker
 from autogpt.llm_utils import create_chat_completion
 
 
@@ -27,7 +27,7 @@ def test_get_self_feedback(mocker):
     agent_mock = mocker.MagicMock(spec=Agent)
 
     # Mock the config attribute of the Agent instance
-    agent_mock.config = AIConfig()
+    agent_mock.config = ProjectConfigBroker()
 
     # Call the get_self_feedback method
     feedback = Agent.get_self_feedback(

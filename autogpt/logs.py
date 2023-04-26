@@ -203,7 +203,7 @@ logger = Logger()
 
 
 def print_assistant_thoughts(
-    ai_name: object,
+    agent_name: object,
     assistant_reply_json_valid: object,
     speak_mode: bool = False,
 ) -> None:
@@ -220,7 +220,7 @@ def print_assistant_thoughts(
         assistant_thoughts_criticism = assistant_thoughts.get("criticism")
         assistant_thoughts_speak = assistant_thoughts.get("speak")
     logger.typewriter_log(
-        f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
+        f"{agent_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
     )
     logger.typewriter_log("REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}")
     if assistant_thoughts_plan:

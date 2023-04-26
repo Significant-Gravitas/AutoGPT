@@ -13,7 +13,7 @@ import click
 @click.option(
     "--ai-settings",
     "-C",
-    help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
+    help="Specifies which agent_settings.yaml file to use, will also automatically skip the re-prompt.",
 )
 @click.option(
     "-l",
@@ -65,7 +65,7 @@ def main(
     ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
-    ai_settings: str,
+    agent_settings: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -90,7 +90,7 @@ def main(
         run_auto_gpt(
             continuous,
             continuous_limit,
-            ai_settings,
+            agent_settings,
             skip_reprompt,
             speak,
             debug,

@@ -95,9 +95,9 @@ Alternatively, you can pull the latest release directly from [Docker Hub](https:
 docker run -it --env OPENAI_API_KEY='your-key-here' --rm significantgravitas/auto-gpt
 ```
 
-Or with `ai_settings.yml` presets mounted:
+Or with `agent_settings.yml` presets mounted:
 ``` shell
-docker run -it --env OPENAI_API_KEY='your-key-here' -v $PWD/ai_settings.yaml:/app/ai_settings.yaml --rm significantgravitas/auto-gpt
+docker run -it --env OPENAI_API_KEY='your-key-here' -v $PWD/agent_settings.yaml:/app/agent_settings.yaml --rm significantgravitas/auto-gpt
 ```
 
 

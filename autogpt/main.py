@@ -7,12 +7,12 @@ from colorama import Fore
 
 from autogpt.agent.agent import Agent
 from autogpt.commands.command import CommandRegistry
-from autogpt.config import Config, check_openai_api_key
+from autogpt.config import Config, check_openagent_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.plugins import scan_plugins
-from autogpt.prompts.prompt import construct_main_ai_config
+from autogpt.prompts.prompt import construct_main_agent_config
 from autogpt.utils import get_current_git_branch, get_latest_bulletin
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
@@ -21,7 +21,7 @@ from scripts.install_plugin_deps import install_plugin_dependencies
 def run_auto_gpt(
     continuous: bool,
     continuous_limit: int,
-    ai_settings: str,
+    agent_settings: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -40,11 +40,11 @@ def run_auto_gpt(
 
     cfg = Config()
     # TODO: fill in llm values here
-    check_openai_api_key()
+    check_openagent_api_key()
     create_config(
         continuous,
         continuous_limit,
-        ai_settings,
+        agent_settings,
         skip_reprompt,
         speak,
         debug,
@@ -88,7 +88,7 @@ def run_auto_gpt(
         workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
     else:
         workspace_directory = Path(workspace_directory)
-    # TODO: pass in the ai_settings file and the env file and have them cloned into
+    # TODO: pass in the agent_settings file and the env file and have them cloned into
     #   the workspace directory so we can bind them to the agent.
     workspace_directory = Workspace.make_workspace(workspace_directory)
     cfg.workspace_path = str(workspace_directory)
@@ -117,9 +117,9 @@ def run_auto_gpt(
     command_registry.import_commands("autogpt.commands.write_tests")
     command_registry.import_commands("autogpt.app")
 
-    ai_name = ""
-    ai_config = construct_main_ai_config()
-    ai_config.command_registry = command_registry
+    agent_name = ""
+    agent_config = construct_main_agent_config()
+    agent_config.command_registry = command_registry
     # print(prompt)
     # Initialize variables
     full_message_history = []
@@ -136,17 +136,17 @@ def run_auto_gpt(
         "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
     logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
-    system_prompt = ai_config.construct_full_prompt()
+    system_prompt = agent_config.construct_full_prompt()
     if cfg.debug_mode:
         logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
 
     agent = Agent(
-        ai_name=ai_name,
+        agent_name=agent_name,
         memory=memory,
         full_message_history=full_message_history,
         next_action_count=next_action_count,
         command_registry=command_registry,
-        config=ai_config,
+        config=agent_config,
         system_prompt=system_prompt,
         triggering_prompt=triggering_prompt,
         workspace_directory=workspace_directory,

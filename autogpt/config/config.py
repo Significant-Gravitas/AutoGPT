@@ -28,7 +28,7 @@ class Config(metaclass=Singleton):
         self.allow_downloads = False
         self.skip_news = False
 
-        self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
+        self.agent_settings_file = os.getenv("AI_SETTINGS_FILE", "agent_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
@@ -38,7 +38,7 @@ class Config(metaclass=Singleton):
             "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
         )
 
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openagent_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
@@ -50,9 +50,9 @@ class Config(metaclass=Singleton):
 
         if self.use_azure:
             self.load_azure_config()
-            openai.api_type = self.openai_api_type
-            openai.api_base = self.openai_api_base
-            openai.api_version = self.openai_api_version
+            openai.api_type = self.openagent_api_type
+            openai.api_base = self.openagent_api_base
+            openai.api_version = self.openagent_api_version
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
@@ -177,9 +177,9 @@ class Config(metaclass=Singleton):
         """
         with open(config_file) as file:
             config_params = yaml.load(file, Loader=yaml.FullLoader)
-        self.openai_api_type = config_params.get("azure_api_type") or "azure"
-        self.openai_api_base = config_params.get("azure_api_base") or ""
-        self.openai_api_version = (
+        self.openagent_api_type = config_params.get("azure_api_type") or "azure"
+        self.openagent_api_base = config_params.get("azure_api_base") or ""
+        self.openagent_api_version = (
             config_params.get("azure_api_version") or "2023-03-15-preview"
         )
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", {})
@@ -216,9 +216,9 @@ class Config(metaclass=Singleton):
         """Set the browse_website command chunk max length value."""
         self.browse_chunk_max_length = value
 
-    def set_openai_api_key(self, value: str) -> None:
+    def set_openagent_api_key(self, value: str) -> None:
         """Set the OpenAI API key value."""
-        self.openai_api_key = value
+        self.openagent_api_key = value
 
     def set_elevenlabs_api_key(self, value: str) -> None:
         """Set the ElevenLabs API key value."""
@@ -265,10 +265,10 @@ class Config(metaclass=Singleton):
         self.memory_backend = name
 
 
-def check_openai_api_key() -> None:
+def check_openagent_api_key() -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     cfg = Config()
-    if not cfg.openai_api_key:
+    if not cfg.openagent_api_key:
         print(
             Fore.RED
             + "Please set your OpenAI API key in .env or as an environment variable."

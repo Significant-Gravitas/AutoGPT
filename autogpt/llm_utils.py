@@ -14,7 +14,7 @@ from autogpt.logs import logger
 from autogpt.types.openai import Message
 
 
-def retry_openai_api(
+def retry_openagent_api(
     num_retries: int = 10,
     backoff_base: float = 2.0,
     warn_user: bool = True,
@@ -67,7 +67,7 @@ def retry_openai_api(
     return _wrapper
 
 
-def call_ai_function(
+def call_agent_function(
     function: str, args: list, description: str, model: str | None = None
 ) -> str:
     """Call an AI function
@@ -236,7 +236,7 @@ def get_ada_embedding(text: str) -> List[float]:
     return embedding["data"][0]["embedding"]
 
 
-@retry_openai_api()
+@retry_openagent_api()
 def create_embedding(
     text: str,
     *_,
@@ -254,6 +254,6 @@ def create_embedding(
     cfg = Config()
     return openai.Embedding.create(
         input=[text],
-        api_key=cfg.openai_api_key,
+        api_key=cfg.openagent_api_key,
         **kwargs,
     )

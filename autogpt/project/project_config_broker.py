@@ -15,57 +15,57 @@ import yaml
 from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
-SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
+SAVE_FILE = str(Path(os.getcwd()) / "agent_settings.yaml")
 
 
-class AIConfig:
+class ProjectConfigBroker:
     """
     A class object that contains the configuration information for the AI
 
     Attributes:
-        ai_name (str): The name of the AI.
-        ai_role (str): The description of the AI's role.
-        ai_goals (list): The list of objectives the AI is supposed to complete.
+        agent_name (str): The name of the AI.
+        agent_role (str): The description of the AI's role.
+        agent_goals (list): The list of objectives the AI is supposed to complete.
         api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
     """
 
     def __init__(
         self,
-        ai_name: str = "",
-        ai_role: str = "",
-        ai_goals: list | None = None,
+        agent_name: str = "",
+        agent_role: str = "",
+        agent_goals: list | None = None,
         api_budget: float = 0.0,
     ) -> None:
         """
         Initialize a class instance
 
         Parameters:
-            ai_name (str): The name of the AI.
-            ai_role (str): The description of the AI's role.
-            ai_goals (list): The list of objectives the AI is supposed to complete.
+            agent_name (str): The name of the AI.
+            agent_role (str): The description of the AI's role.
+            agent_goals (list): The list of objectives the AI is supposed to complete.
             api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
         Returns:
             None
         """
-        if ai_goals is None:
-            ai_goals = []
-        self.ai_name = ai_name
-        self.ai_role = ai_role
-        self.ai_goals = ai_goals
+        if agent_goals is None:
+            agent_goals = []
+        self.agent_name = agent_name
+        self.agent_role = agent_role
+        self.agent_goals = agent_goals
         self.api_budget = api_budget
         self.prompt_generator = None
         self.command_registry = None
 
     @staticmethod
-    def load(config_file: str = SAVE_FILE) -> "AIConfig":
+    def load(config_file: str = SAVE_FILE) -> "ProjectConfigBroker":
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
+        Returns class object with parameters (agent_name, agent_role, agent_goals, api_budget) loaded from
           yaml file if yaml file exists,
         else returns class with no parameters.
 
         Parameters:
            config_file (int): The path to the config yaml file.
-             DEFAULT: "../ai_settings.yaml"
+             DEFAULT: "../agent_settings.yaml"
 
         Returns:
             cls (object): An instance of given cls object
@@ -77,12 +77,12 @@ class AIConfig:
         except FileNotFoundError:
             config_params = {}
 
-        ai_name = config_params.get("ai_name", "")
-        ai_role = config_params.get("ai_role", "")
-        ai_goals = config_params.get("ai_goals", [])
+        agent_name = config_params.get("agent_name", "")
+        agent_role = config_params.get("agent_role", "")
+        agent_goals = config_params.get("agent_goals", [])
         api_budget = config_params.get("api_budget", 0.0)
         # type: Type[AIConfig]
-        return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+        return ProjectConfigBroker(agent_name, agent_role, agent_goals, api_budget)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
@@ -90,16 +90,16 @@ class AIConfig:
 
         Parameters:
             config_file(str): The path to the config yaml file.
-              DEFAULT: "../ai_settings.yaml"
+              DEFAULT: "../agent_settings.yaml"
 
         Returns:
             None
         """
 
         config = {
-            "ai_name": self.ai_name,
-            "ai_role": self.ai_role,
-            "ai_goals": self.ai_goals,
+            "agent_name": self.agent_name,
+            "agent_role": self.agent_role,
+            "agent_goals": self.agent_goals,
             "api_budget": self.api_budget,
         }
         with open(config_file, "w", encoding="utf-8") as file:
@@ -116,7 +116,7 @@ class AIConfig:
 
         Returns:
             full_prompt (str): A string containing the initial prompt for the user
-              including the ai_name, ai_role, ai_goals, and api_budget.
+              including the agent_name, agent_role, agent_goals, and api_budget.
         """
 
         prompt_start = (
@@ -132,9 +132,9 @@ class AIConfig:
         cfg = Config()
         if prompt_generator is None:
             prompt_generator = build_default_prompt_generator()
-        prompt_generator.goals = self.ai_goals
-        prompt_generator.name = self.ai_name
-        prompt_generator.role = self.ai_role
+        prompt_generator.goals = self.agent_goals
+        prompt_generator.name = self.agent_name
+        prompt_generator.role = self.agent_role
         prompt_generator.command_registry = self.command_registry
         for plugin in cfg.plugins:
             if not plugin.can_handle_post_prompt():
@@ -154,7 +154,7 @@ class AIConfig:
 
         # Construct full prompt
         full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
-        for i, goal in enumerate(self.ai_goals):
+        for i, goal in enumerate(self.agent_goals):
             full_prompt += f"{i+1}. {goal}\n"
         if self.api_budget > 0.0:
             full_prompt += f"\nIt takes money to let you run. Your API budget is ${self.api_budget:.3f}"
