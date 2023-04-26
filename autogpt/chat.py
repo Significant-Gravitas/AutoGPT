@@ -3,7 +3,7 @@ import time
 from openai.error import RateLimitError
 
 from autogpt import token_counter
-from autogpt.api_manager import api_manager
+from autogpt.api_manager import ApiManager
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
@@ -134,6 +134,7 @@ def chat_with_ai(
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
 
+            api_manager = ApiManager()
             # inform the AI about its remaining budget (if it has one)
             if api_manager.get_total_budget() > 0.0:
                 remaining_budget = (
