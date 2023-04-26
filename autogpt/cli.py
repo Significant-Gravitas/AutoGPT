@@ -1,4 +1,28 @@
-"""Main script for the autogpt package."""
+""""
+This script provides the entry point for the AutoGPT package. It uses the Click library to create a command-line interface for the AutoGPT system.
+
+Description:
+
+This script provides a command-line interface to start the AutoGPT assistant with various options.
+The user can enable/disable Continuous Mode, Speak Mode, Debug Mode, GPT3.5 Only Mode, or GPT4 Only Mode.
+The user can specify the number of times to run in continuous mode and which memory backend to use.
+The user can allow dangerous file downloads, specify the web browser to use, and suppress output of latest news on startup.
+The user can install external dependencies for 3rd party plugins.
+Functions:
+
+main(ctx, continuous, continuous_limit, ai_settings, skip_reprompt, speak, debug, gpt3only, gpt4only, memory_type, browser_name, allow_downloads, skip_news, workspace_directory, install_plugin_deps) -> None:
+Starts the AutoGPT assistant with the specified options.
+Classes:
+
+None
+Global Variables:
+
+None
+Dependencies:
+
+click: A third-party module for creating command-line interfaces.
+autogpt.main: A module containing the run_auto_gpt() function which starts the AutoGPT assistant.
+"""
 import click
 
 
@@ -13,7 +37,7 @@ import click
 @click.option(
     "--ai-settings",
     "-C",
-    help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
+    help="Specifies which agent_settings.yaml file to use, will also automatically skip the re-prompt.",
 )
 @click.option(
     "-l",

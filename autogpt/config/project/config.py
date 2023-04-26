@@ -1,3 +1,31 @@
+"""
+This module provides a class representing an AI project with a name, API budget, lead agent, and delegated agents.
+
+Classes:
+- Project: A class representing an AI project with a name, API budget, lead agent, and delegated agents.
+
+Functions:
+- None
+
+Global Variables:
+- None
+
+Dependencies:
+- typing: A built-in module for type hints and annotations.
+- AgentConfig: A class representing the configuration settings for an AI agent.
+
+Attributes:
+- project_name (str): The name of the project.
+- api_budget (float): The budget allocated for using the OpenAI API.
+- lead_agent (AgentConfig): The lead agent for the project.
+- delegated_agents (List[AgentConfig]): A list of delegated agents for the project.
+
+Methods:
+- __init__(self, project_name: str, api_budget: float, lead_agent: AgentConfig, delegated_agents: List[AgentConfig] = []): Initializes a new Project object with the given parameters.
+- __str__(self) -> str: Returns a string representation of the Project object.
+- __toDict__(self) -> dict: Returns a dictionary representation of the Project object.
+- to_dict(self) -> dict: Converts the Project object to a dictionary representation.
+"""
 
 from typing import Optional, Type, List
 from autogpt.config.project.agent.config import AgentConfig

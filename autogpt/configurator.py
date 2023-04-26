@@ -29,7 +29,7 @@ def create_config(
     Args:
         continuous (bool): Whether to run in continuous mode
         continuous_limit (int): The number of times to run in continuous mode
-        ai_settings_file (str): The path to the ai_settings.yaml file
+        ai_settings_file (str): The path to the agent_settings.yaml file
         skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
         speak (bool): Whether to enable speak mode
         debug (bool): Whether to enable debug mode

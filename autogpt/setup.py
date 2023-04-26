@@ -1,4 +1,31 @@
-"""Set up the AI and its goals"""
+"""
+Set up the AI and its goals
+
+This module provides functions for setting up the AutoGPT AI assistant and its goals.
+
+Functions:
+
+prompt_user(new_project_number: int) -> Project: Prompts the user to create an AI-assistant either manually or automatically and returns an instance of the Project class.
+generate_agentproject_manual(project_id: int) -> Project: Interactively creates an AI configuration by prompting the user to provide the name, role, and goals of the AI. Returns an instance of the Project class.
+generate_agentproject_automatic(user_prompt: str, new_project_number: int) -> Project: Automatically generates an AI configuration from the given string. Returns an instance of the Project class.
+Classes:
+
+None
+Global Variables:
+
+CFG: An instance of the Config class containing system configuration settings.
+Dependencies:
+
+colorama: A third-party module for adding colored text to the terminal output.
+re: A built-in module for working with regular expressions.
+autogpt: The main package of the AutoGPT project.
+autogpt.utils: A module containing various utility functions used throughout the project.
+autogpt.config: A module containing classes for managing configuration settings.
+autogpt.config.ProjectConfigBroker: A class for managing the configuration settings for AutoGPT projects.
+autogpt.config.project.config: A module containing the Project class representing an AutoGPT project.
+autogpt.llm_utils: A module containing functions for interacting with the GPT-3 language model.
+autogpt.logs.logger: A module for logging output to the terminal.
+"""
 import re
 
 from colorama import Fore, Style

@@ -1,6 +1,31 @@
-# sourcery skip: do-not-use-staticmethod
 """
-A module that contains the AgentConfig class object that contains the configuration
+A module containing the ProjectConfigBroker class, which is used to manage the configuration settings for AI projects.
+
+Description:
+This module contains the ProjectConfigBroker class object which can be used to manage the configuration settings for AI projects. It provides methods to create a new project, set the current project, get the current project, get all the projects and get a specific project instance. It uses the Project and AgentConfig class objects from the autogpt.config.project module.
+
+Functions:
+None
+
+Classes:
+- ProjectConfigBroker:
+A class object that contains the configuration information for the AI.
+
+Global Variables:
+- SAVE_FILE (str):
+The path to the file where the configuration settings will be saved.
+- MAX_AI_CONFIG (int):
+The maximum number of AI configurations allowed.
+
+Dependencies:
+- os
+- pathlib
+- yaml
+- shutil
+- autogpt.prompts.generator.PromptGenerator
+- autogpt.config.project.config.Project
+- autogpt.config.project.agent.config.AgentConfig
+- autogpt.singleton.AbstractSingleton
 """
 from __future__ import annotations
 import os

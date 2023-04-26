@@ -1,4 +1,29 @@
-"""Configuration class to store the state of bools for different scripts access."""
+"""
+Configuration class to store the state of bools for different scripts access.
+
+Description:
+This module defines the Config class which is used to store the state of boolean values for different scripts access. It includes various settings and configurations such as file paths, model types, API keys, and other environment variables.
+
+Functions:
+check_openai_api_key() -> None
+Check if the OpenAI API key is set in config.py or as an environment variable.
+
+Classes:
+Config
+A singleton class representing the configuration settings for the system.
+
+Global Variables:
+None
+
+Dependencies:
+- os
+- typing
+- openai
+- yaml
+- auto_gpt_plugin_template
+- colorama
+- autogpt.singleton
+"""
 import os
 from typing import List
 
@@ -28,7 +53,7 @@ class Config(metaclass=Singleton):
         self.allow_downloads = False
         self.skip_news = False
 
-        self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
+        self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "agent_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
