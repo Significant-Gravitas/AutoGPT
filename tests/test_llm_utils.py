@@ -15,9 +15,6 @@ def error(request):
 
 @pytest.fixture
 def mock_create_embedding(mocker):
-    # mock_response = mocker.MagicMock()
-    # mock_response.usage.prompt_tokens = 5
-    # mock_response.__getitem__.side_effect = lambda key: [0.1, 0.2, 0.3]
     return mocker.patch(
         "autogpt.llm_utils.create_embedding", return_value=[0.1, 0.2, 0.3]
     )
