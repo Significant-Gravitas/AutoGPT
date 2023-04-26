@@ -13,8 +13,8 @@ nav:
       - Voice: configuration/voice.md
       - Image Generation: configuration/imagegen.md
 
-    - Code of Conduct: ../CODE_OF_CONDUCT.md
-    - Contributing: ../CONTRIBUTING.md
-    - License: ../LICENSE
-    
+    - Code of Conduct: code-of-conduct.md
+    - Contributing: contributing.md
+    - License: LICENSE
+
 theme: readthedocs
