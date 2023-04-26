@@ -2,11 +2,11 @@
 
 ## ⚠️ OpenAI API Keys Configuration
 
-Get your OpenAI API key from: https://platform.openai.com/account/api-keys.
+Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys).
 
 To use OpenAI API key for Auto-GPT, you **NEED** to have billing set up (AKA paid account).
 
-You can set up paid account at https://platform.openai.com/account/billing/overview.
+You can set up paid account at [https://platform.openai.com/account/billing/overview](https://platform.openai.com/account/billing/overview).
 
 Important: It's highly recommended that you track your usage on [the Usage page](https://platform.openai.com/account/usage).
 You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
@@ -19,19 +19,19 @@ You can also set limits on how much you spend on [the Usage limits page](https:/
 
 1. Make sure you have one of the environments listed under [**requirements**](../README.md#-requirements) set up.
 
-    _To execute the following commands, open a CMD, Bash, or Powershell window by navigating to a folder on your computer and typing `CMD` in the folder path at the top, then press enter._
+    _To execute the following commands, open a CMD, Bash, or Powershell window by navigating to a folder on your computer and typing `CMD` in the folder path at the top, then press enter.  Make sure you have [Git](https://git-scm.com/downloads) installed for your O/S._
 
 2. Clone the repository using Git, or download the [latest stable release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest) (`Source code (zip)`, at the bottom of the page).
 
-    ``` shell
+``` shell
     git clone -b stable https://github.com/Significant-Gravitas/Auto-GPT.git
-    ```
+```
 
 3. Navigate to the directory where you downloaded the repository.
 
-    ``` shell
+``` shell
     cd Auto-GPT
-    ```
+```
 
 5. Configure Auto-GPT:
    1. Find the file named `.env.template` in the main `Auto-GPT` folder. This file may be hidden by default in some operating systems due to the dot prefix. To reveal hidden files, follow the instructions for your specific operating system (e.g., in Windows, click on the "View" tab in File Explorer and check the "Hidden items" box; in macOS, press Cmd + Shift + .).
@@ -45,23 +45,24 @@ You can also set limits on how much you spend on [the Usage limits page](https:/
    You have now configured Auto-GPT.
 
    Notes:
+   
    - See [OpenAI API Keys Configuration](#openai-api-keys-configuration) to get your OpenAI API key.
-   - Get your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
+   - Get your ElevenLabs API key from: [ElevenLabs](https://elevenlabs.io). You can view your xi-api-key using the "Profile" tab on the website.
    - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
      - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section:
        - `fast_llm_model_deployment_id` - your gpt-3.5-turbo or gpt-4 deployment ID
        - `smart_llm_model_deployment_id` - your gpt-4 deployment ID
        - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID
 
-     - Please specify all of these values as double-quoted strings
-        ``` shell
-        # Replace string in angled brackets (<>) to your own ID
-        azure_model_map:
-            fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
-            ...
-        ```
-     - Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
-     - If you're on Windows you may need to install https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170
+``` shell
+# Please specify all of these values as double-quoted strings
+# Replace string in angled brackets (<>) to your own ID
+azure_model_map:
+    fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
+        ...
+```
+Details can be found here: [https://pypi.org/project/openai/](https://pypi.org/project/openai/) in the `Microsoft Azure Endpoints` section and here: [learn.microsoft.com](https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line) for the embedding model.
+If you're on Windows you may need to install [msvc-170](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170)
 
 4. Follow the further instructions for running Auto-GPT with [Docker](#run-with-docker) (*recommended*), or [Docker-less](#run-docker-less)
 
@@ -100,9 +101,9 @@ docker run -it --env OPENAI_API_KEY='your-key-here' -v $PWD/ai_settings.yaml:/ap
 ```
 
 
-### Run Docker-less
+### Run without Docker
 
-Simply run `./run.sh` (Linux/macOS) or `.\run.bat` (Windows) in your terminal.
+Simply run `./run.sh` (Linux/macOS) or `.\run.bat` (Windows) in your terminal.  This will install any necessary Python packages and launch Auto-GPT.
 
 ### Run with Dev Container
 
