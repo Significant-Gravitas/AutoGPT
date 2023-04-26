@@ -33,7 +33,7 @@ class TestFileOperations(unittest.TestCase):
         self.test_file = str(self.workspace.get_path("test_file.txt"))
         self.test_file2 = "test_file2.txt"
         self.test_directory = str(self.workspace.get_path("test_directory"))
-        test.test_nested_file = os.path.join(self.test_directory, self.test_file)
+        self.test_nested_file = os.path.join(self.test_directory, self.test_file)
         self.file_content = "This is a test file.\n"
         self.file_logger_logs = "file_logger.txt"
 
