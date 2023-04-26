@@ -198,7 +198,7 @@ class Agent:
             elif self.next_action_count > 0 and not cfg.continuous_mode:
                 # Print authorized commands left value
                 logger.typewriter_log(
-                    f"{Fore.CYAN}PREAUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
+                    f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
                 )
                 # Print command
                 logger.typewriter_log(
