@@ -12,6 +12,8 @@ auto_gpt_workspace/*
 azure.yaml
 agent_settings.yaml
 last_run_agent_settings.yaml
+ai_settings.yaml
+last_run_ai_settings.yaml
 .vscode
 .idea/*
 auto-gpt.json
