@@ -7,7 +7,7 @@ import vcr
 from autogpt.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.commands.file_operations import delete_file, read_file
-from autogpt.config import ProjectConfigBroker, Config
+from autogpt.config import AgentConfig, Config
 from autogpt.memory import get_memory
 from tests.integration.goal_oriented.vcr_helper import before_record_request
 from tests.utils import requires_api_key
@@ -57,7 +57,7 @@ def create_writer_agent(workspace):
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
 
-    agent_config = ProjectConfigBroker(
+    agent_config = AgentConfig(
         agent_name="write_to_file-GPT",
         agent_role="an AI designed to use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\" and then use the task_complete command to complete the task.",
         agent_goals=[

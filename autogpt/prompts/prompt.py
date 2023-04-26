@@ -1,7 +1,7 @@
 from colorama import Fore
 
 from autogpt.api_manager import ApiManager
-from autogpt.project.project_config_broker import ProjectConfigBroker
+from autogpt.project.agent.config import AgentConfig
 from autogpt.config.config import Config
 from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
@@ -76,13 +76,13 @@ def build_default_prompt_generator() -> PromptGenerator:
     return prompt_generator
 
 
-def construct_main_agent_config() -> ProjectConfigBroker:
+def construct_main_agent_config() -> AgentConfig:
     """Construct the prompt for the AI to respond to
 
     Returns:
         str: The prompt string
     """
-    config = ProjectConfigBroker.load(CFG.agent_settings_file)
+    config = AgentConfig.load(CFG.agent_settings_file)
     if CFG.skip_reprompt and config.agent_name:
         logger.typewriter_log("Name :", Fore.GREEN, config.agent_name)
         logger.typewriter_log("Role :", Fore.GREEN, config.agent_role)
@@ -108,7 +108,7 @@ API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
 Continue (y/n): """
         )
         if should_continue.lower() == "n":
-            config = ProjectConfigBroker()
+            config = AgentConfig()
 
     if not config.agent_name:
         config = prompt_user()

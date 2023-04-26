@@ -5,14 +5,14 @@ from colorama import Fore, Style
 
 from autogpt import utils
 from autogpt.config import Config
-from autogpt.project.project_config_broker import ProjectConfigBroker
+from autogpt.project.agent.config import AgentConfig
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
 
 CFG = Config()
 
 
-def prompt_user() -> ProjectConfigBroker:
+def prompt_user() -> AgentConfig:
     """Prompt the user for input
 
     Returns:
@@ -67,7 +67,7 @@ def prompt_user() -> ProjectConfigBroker:
             return generate_aiconfig_manual()
 
 
-def generate_aiconfig_manual() -> ProjectConfigBroker:
+def generate_aiconfig_manual() -> AgentConfig:
     """
     Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
 
@@ -154,10 +154,10 @@ def generate_aiconfig_manual() -> ProjectConfigBroker:
             )
             api_budget = 0.0
 
-    return ProjectConfigBroker(agent_name, agent_role, agent_goals, api_budget)
+    return AgentConfig(agent_name, agent_role, agent_goals, api_budget)
 
 
-def generate_aiconfig_automatic(user_prompt) -> ProjectConfigBroker:
+def generate_aiconfig_automatic(user_prompt) -> AgentConfig:
     """Generates an AIConfig object from the given string.
 
     Returns:
@@ -215,4 +215,4 @@ Goals:
     agent_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
     api_budget = 0.0  # TODO: parse api budget using a regular expression
 
-    return ProjectConfigBroker(agent_name, agent_role, agent_goals, api_budget)
+    return AgentConfig(agent_name, agent_role, agent_goals, api_budget)

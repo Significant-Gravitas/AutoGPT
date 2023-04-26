@@ -18,7 +18,7 @@ from autogpt.prompts.generator import PromptGenerator
 SAVE_FILE = str(Path(os.getcwd()) / "agent_settings.yaml")
 
 
-class ProjectConfigBroker:
+class AgentConfig:
     """
     A class object that contains the configuration information for the AI
 
@@ -57,7 +57,7 @@ class ProjectConfigBroker:
         self.command_registry = None
 
     @staticmethod
-    def load(config_file: str = SAVE_FILE) -> "ProjectConfigBroker":
+    def load(config_file: str = SAVE_FILE) -> "AgentConfig":
         """
         Returns class object with parameters (agent_name, agent_role, agent_goals, api_budget) loaded from
           yaml file if yaml file exists,
@@ -82,7 +82,7 @@ class ProjectConfigBroker:
         agent_goals = config_params.get("agent_goals", [])
         api_budget = config_params.get("api_budget", 0.0)
         # type: Type[AIConfig]
-        return ProjectConfigBroker(agent_name, agent_role, agent_goals, api_budget)
+        return AgentConfig(agent_name, agent_role, agent_goals, api_budget)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
