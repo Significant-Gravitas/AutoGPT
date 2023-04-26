@@ -195,6 +195,18 @@ class Agent:
                 elif user_input == "EXIT":
                     print("Exiting...", flush=True)
                     break
+            elif self.next_action_count > 0 and not cfg.continuous_mode:
+                # Print authorized commands left value
+                logger.typewriter_log(
+                    f"{Fore.CYAN}PREAUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
+                )
+                # Print command
+                logger.typewriter_log(
+                    "NEXT ACTION: ",
+                    Fore.CYAN,
+                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
+                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                )
             else:
                 # Print command
                 logger.typewriter_log(
