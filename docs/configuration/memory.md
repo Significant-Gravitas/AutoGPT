@@ -144,60 +144,6 @@ USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
 MEMORY_INDEX="Autogpt" # name of the index to create for the application
 ```
 
-### PostgresML Setup
-PostgresML is a machine learning extension to PostgreSQL that enables you to perform training and inference on text and tabular data using SQL queries. With PostgresML, you can enhance your existing DB as a VectorDB generating embeddings from text stored in the database and indexing them for fast query.
-
-**Installation**
-
-PostgresML installation consists of three parts: PostgreSQL database, Postgres extension for machine learning and a dashboard app. The extension provides all the machine learning functionality and can be used independently using any SQL IDE. The dashboard app provides an easy to use interface for writing SQL notebooks, performing and tracking ML experiments and ML models.
-
-**Free trial**
-
-If you want to check out the functionality quickly, [sign up for a free PostgresML account](https://postgresml.org/signup). We will provide 5GiB of storage for your data.
-
-**Docker**
-
-Step 1: Clone this repository
-
-```bash
-git clone git@github.com:postgresml/postgresml.git
-```
-
-Step 2: Start dockerized services. PostgresML will run on port 5433, just in case you already have Postgres running. You can find Docker installation instructions [here](https://docs.docker.com/desktop/)
-```bash
-cd postgresml
-docker-compose up
-```
-
-Step 3: Connect to Postgres using an SQL IDE or <a href="https://www.postgresql.org/docs/current/app-psql.html" target="_blank">psql</a>
-```bash
-postgres://postgres@localhost:5433/pgml_development
-```
-
-**Install `postgresql` command line utility**
-
-Ubuntu: `sudo apt install libpq-dev`
-
-Centos/Fedora/Cygwin/Babun.: `sudo yum install libpq-devel`
-
-Mac: `brew install postgresql`
-
-**Install `psycopg2`**
-
-`pip install psycopg2`
-
-#### Setting up environment variables
-
-In your `.env` file set the following:
-```shell
-POSTGRESML_HOST=localhost
-POSTGRESML_PORT=5443
-POSTGRESML_USERNAME=postgres
-POSTGRESML_PASSWORD=""
-POSTGRESML_DATABASE=pgml_development
-POSTGRESML_TABLENAME =autogpt_text_embeddings
-```
-
 ## View Memory Usage
 
 View memory usage by using the `--debug` flag :)
