@@ -1,7 +1,7 @@
 import psycopg2
 from psycopg2 import sql
 from typing import Any
-from autogpt.llm_utils import create_embedding_with_ada
+from autogpt.llm_utils import get_ada_embedding
 from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton
 
@@ -37,7 +37,7 @@ class PostgresMLMemory(MemoryProviderSingleton):
         conn.close()
 
     def add(self, data):
-        vector = create_embedding_with_ada(data)
+        vector = get_ada_embedding(data)
         conn = psycopg2.connect(**self.conn_params)
         cur = conn.cursor()
 
@@ -98,7 +98,7 @@ class PostgresMLMemory(MemoryProviderSingleton):
 
         Returns: A list of the most relevant data.
         """
-        query_embedding = create_embedding_with_ada(data)
+        query_embedding = get_ada_embedding(data)
         query_embedding = ",".join(str(v) for v in query_embedding)
         query_statement = (
             "SELECT data FROM %s ORDER BY %s.embedding <-> ARRAY[%s]::vector LIMIT %d;"
