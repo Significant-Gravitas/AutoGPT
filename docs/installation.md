@@ -49,9 +49,9 @@ You can also set limits on how much you spend on [the Usage limits page](https:/
    - Get your ElevenLabs API key from: https://elevenlabs.io. You can view your xi-api-key using the "Profile" tab on the website.
    - If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and then follow these steps:
      - Rename `azure.yaml.template` to `azure.yaml` and provide the relevant `azure_api_base`, `azure_api_version` and all the deployment IDs for the relevant models in the `azure_model_map` section:
-       - `fast_llm_model_deployment_id` - your gpt-3.5-turbo or gpt-4 deployment ID
-       - `smart_llm_model_deployment_id` - your gpt-4 deployment ID
-       - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID
+       - `fast_llm_model_deployment_id` - your gpt-3.5-turbo or gpt-4 deployment ID.
+       - `smart_llm_model_deployment_id` - your gpt-4 deployment ID.
+       - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID.
 
      - Please specify all of these values as double-quoted strings
         ``` shell
