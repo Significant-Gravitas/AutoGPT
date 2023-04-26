@@ -53,7 +53,7 @@ You can also set limits on how much you spend on [the Usage limits page](https:/
        - `smart_llm_model_deployment_id` - your gpt-4 deployment ID.
        - `embedding_model_deployment_id` - your text-embedding-ada-002 v2 deployment ID.
 
-     - Please specify all of these values as double-quoted strings
+     - Please specify all of these values as double-quoted strings:
         ``` shell
         # Replace string in angled brackets (<>) to your own ID
         azure_model_map:
