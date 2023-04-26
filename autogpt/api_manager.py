@@ -1,5 +1,3 @@
-from typing import List
-
 import openai
 
 from autogpt.config import Config
@@ -7,7 +5,6 @@ from autogpt.logs import logger
 from autogpt.modelsinfo import COSTS
 
 cfg = Config()
-print_total_cost = cfg.debug_mode
 
 
 class ApiManager:
@@ -30,17 +27,18 @@ class ApiManager:
         model: str | None = None,
         temperature: float = cfg.temperature,
         max_tokens: int | None = None,
-        deployment_id=None,
+        deployment_id: str | None = None,
     ) -> str:
         """
         Create a chat completion and update the cost.
         Args:
-        messages (list): The list of messages to send to the API.
-        model (str): The model to use for the API call.
-        temperature (float): The temperature to use for the API call.
-        max_tokens (int): The maximum number of tokens for the API call.
+            messages (list): The list of messages to send to the API.
+            model (str): The model to use for the API call.
+            temperature (float): The temperature to use for the API call.
+            max_tokens (int): The maximum number of tokens for the API call.
+            deployment_id (str): The deployment id to use for the API call.
         Returns:
-        str: The AI's response.
+            str: The AI's response.
         """
         if deployment_id is not None:
             response = openai.ChatCompletion.create(
@@ -71,9 +69,9 @@ class ApiManager:
         Update the total cost, prompt tokens, and completion tokens.
 
         Args:
-        prompt_tokens (int): The number of tokens used in the prompt.
-        completion_tokens (int): The number of tokens used in the completion.
-        model (str): The model used for the API call.
+            prompt_tokens (int): The number of tokens used in the prompt.
+            completion_tokens (int): The number of tokens used in the completion.
+            model (str): The model used for the API call.
         """
         self.total_prompt_tokens += prompt_tokens
         self.total_completion_tokens += completion_tokens
@@ -81,7 +79,7 @@ class ApiManager:
             prompt_tokens * COSTS[model]["prompt"]
             + completion_tokens * COSTS[model]["completion"]
         ) / 1000
-        if print_total_cost:
+        if self.debug:
             print(f"Total running cost: ${self.total_cost:.3f}")
 
     def set_total_budget(self, total_budget):
@@ -89,7 +87,7 @@ class ApiManager:
         Sets the total user-defined budget for API calls.
 
         Args:
-        prompt_tokens (int): The number of tokens used in the prompt.
+            total_budget (float): The total user-defined budget for API calls.
         """
         self.total_budget = total_budget
 
@@ -98,7 +96,7 @@ class ApiManager:
         Get the total number of prompt tokens.
 
         Returns:
-        int: The total number of prompt tokens.
+            int: The total number of prompt tokens.
         """
         return self.total_prompt_tokens
 
@@ -107,7 +105,7 @@ class ApiManager:
         Get the total number of completion tokens.
 
         Returns:
-        int: The total number of completion tokens.
+            int: The total number of completion tokens.
         """
         return self.total_completion_tokens
 
@@ -116,7 +114,7 @@ class ApiManager:
         Get the total cost of API calls.
 
         Returns:
-        float: The total cost of API calls.
+            float: The total cost of API calls.
         """
         return self.total_cost
 
@@ -125,7 +123,7 @@ class ApiManager:
         Get the total user-defined budget for API calls.
 
         Returns:
-        float: The total budget for API calls.
+            float: The total budget for API calls.
         """
         return self.total_budget
 
