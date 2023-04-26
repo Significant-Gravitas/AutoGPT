@@ -147,20 +147,24 @@ class Config(metaclass=Singleton):
         Returns:
             The matching deployment id if found, otherwise an empty string.
         """
-        if model == self.fast_llm_model:
-            return self.azure_model_to_deployment_id_map[
-                "fast_llm_model_deployment_id"
-            ]  # type: ignore
-        elif model == self.smart_llm_model:
-            return self.azure_model_to_deployment_id_map[
-                "smart_llm_model_deployment_id"
-            ]  # type: ignore
-        elif model == "text-embedding-ada-002":
-            return self.azure_model_to_deployment_id_map[
-                "embedding_model_deployment_id"
-            ]  # type: ignore
-        else:
-            return ""
+        match model:
+            case self.fast_llm_model:
+                return self.azure_model_to_deployment_id_map[
+                    "fast_llm_model_deployment_id"
+                ]  # type: ignore
+    
+            case self.smart_llm_model:
+                return self.azure_model_to_deployment_id_map[
+                    "smart_llm_model_deployment_id"
+                ]  # type: ignore
+    
+            case "text-embedding-ada-002":
+                return self.azure_model_to_deployment_id_map[
+                    "embedding_model_deployment_id"
+                ]  # type: ignore
+            
+            case _:
+                return ""
 
     AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
 
