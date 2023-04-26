@@ -41,7 +41,7 @@ def get_prompt() -> str:
 
     # Define the command list
     commands = [
-        ("Google Search", "google", {"input": "<search>"}),
+        ("Google", "google", {"input": "<search>"}),
         (
             "Browse Website",
             "browse_website",
@@ -121,7 +121,7 @@ def get_prompt() -> str:
     prompt_generator.add_resource(
         "Internet access for searches and information gathering."
     )
-    prompt_generator.add_resource("Long Term memory management.")
+    prompt_generator.add_resource("Long Term memory.")
     prompt_generator.add_resource(
         "GPT-3.5 powered Agents for delegation of simple tasks."
     )
@@ -133,14 +133,20 @@ def get_prompt() -> str:
         " the best of your abilities."
     )
     prompt_generator.add_performance_evaluation(
-        "Constructively self-criticize your big-picture behavior constantly."
+        "Constructively self-criticize if you are making progress."
     )
     prompt_generator.add_performance_evaluation(
         "Reflect on past decisions and strategies to refine your approach."
+        " Do not try things again that did not work in the past."
     )
     prompt_generator.add_performance_evaluation(
         "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
         " the least number of steps."
+    )
+
+    prompt_generator.add_performance_evaluation(
+        "If you do not make progress, you will be deactivated."
+        " Agreeing with others might prevent you from making progress towards your own goals!"
     )
 
     # Generate the prompt string

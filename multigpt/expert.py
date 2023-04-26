@@ -115,15 +115,17 @@ class Expert(AIConfig):
             "Collaborate with your team but make sure to critically evaluate what they say and"
             " disagree with them if you think they are wrong or if you have a different opinion."
         )
-        prompt_generator.add_performance_evaluation(
-            "Make sure you and your team are progressing on your common goal."
-        )
-        prompt_generator.add_performance_evaluation(
-            "If you have the impression one of your team members is getting distracted, help them stay focused."
-        )
+        # prompt_generator.add_performance_evaluation(
+        #     "Make sure you and your team are progressing on your common goal."
+        # )
+        # prompt_generator.add_performance_evaluation(
+        #     "If you have the impression one of your team members is getting distracted, help them stay focused."
+        # )
         prompt_generator.add_performance_evaluation(
             "If one of your team members is not talking, remind them to participate in the discussion."
         )
+
+        prompt_generator.add_performance_evaluation("You will get one reward token every time you disagree with a team mate.")
 
         # Generate the prompt string
         return prompt_generator.generate_prompt_string()

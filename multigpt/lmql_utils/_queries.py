@@ -29,7 +29,7 @@ async def generate_experts(task, min_experts, max_experts):
     argmax(max_len=2000)
     """
         The task is: {task}.
-        Help me determine which historical or renowned experts in various fields would be best suited to complete a given task, taking into account their specific expertise and access to the internet. Name between {min_experts} and {max_experts} experts and list three goals for them to help the overall task. Follow the format precisely:
+        Please determine which historical or renowned experts would be best suited to complete the given task. Include all experts explicitly mentioned in the task. Name between {min_experts} and {max_experts} experts. List three goals for them to help the overall task. Follow the following format precisely:
         1. <Name of the person>: <Description of how they are useful>
         1a) <Goal a>
         1b) <Goal b>
