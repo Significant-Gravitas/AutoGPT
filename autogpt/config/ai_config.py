@@ -4,7 +4,6 @@ A module that contains the AIConfig class object that contains the configuration
 """
 from __future__ import annotations
 
-import os
 import platform
 from pathlib import Path
 from typing import Optional, Type
@@ -15,7 +14,7 @@ import yaml
 from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
-SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
+SAVE_FILE = str(Path().cwd() / "ai_settings.yaml")
 
 
 class AIConfig:
