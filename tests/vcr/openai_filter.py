@@ -26,6 +26,12 @@ def replace_timestamp_in_request(request):
     return request
 
 
+def before_record_response(response):
+    if "Transfer-Encoding" in response["headers"]:
+        del response["headers"]["Transfer-Encoding"]
+    return response
+
+
 def before_record_request(request):
     filtered_request = filter_hostnames(request)
     filtered_request_without_dynamic_data = replace_timestamp_in_request(
