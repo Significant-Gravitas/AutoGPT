@@ -1,6 +1,7 @@
 import os
 import random
 import re
+from enum import Enum
 
 from colorama import Fore, Style
 from slugify import slugify
@@ -9,6 +10,7 @@ from autogpt.app import get_command, execute_command
 from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Singleton
 from autogpt.json_fixes.bracket_termination import attempt_to_fix_json_by_finding_outermost_brackets
+from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger, print_assistant_thoughts
 from multigpt.memory import get_memory
 from autogpt.speech import say_text

@@ -26,10 +26,10 @@ JSON_SCHEMA = """
     "thoughts":
     {
         "text": "Thoughts you keep to yourself. They are NOT shared with your team.",
-        "reasoning": "reasoning",
+        "reasoning": "Reasoning behind your thoughts",
         "plan": "- short bulleted\n- list that conveys\n- long-term plan",
-        "criticism": "constructive self-criticism",
-        "speak": "Thoughts you say out loud. They ARE shared with your team."
+        "criticism": "Constructive self-criticism",
+        "speak": "What you want to say to your team."
     }
 }
 """
