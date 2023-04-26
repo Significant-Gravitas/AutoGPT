@@ -1,6 +1,9 @@
+import os
+import time
 from typing import List
 
 import openai
+import requests
 
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -8,6 +11,7 @@ from autogpt.modelsinfo import COSTS
 
 cfg = Config()
 print_total_cost = cfg.debug_mode
+session = requests.Session()
 
 
 class ApiManager:
@@ -42,6 +46,21 @@ class ApiManager:
         Returns:
         str: The AI's response.
         """
+        if os.environ.get("USE_HUGGINGFACE", "False") != "False":
+            convo_id = get_convo_id()
+            time.sleep(1)
+            return (
+                generate_output(
+                    "\n".join(
+                        f'{message["role"]}: {message["message"]}'
+                        for message in messages
+                    ),
+                    convo_id,
+                )[0]["generated_text"]
+                .split("<|assistant|>")[1]
+                .strip()
+            )
+
         if deployment_id is not None:
             response = openai.ChatCompletion.create(
                 deployment_id=deployment_id,
@@ -131,3 +150,41 @@ class ApiManager:
 
 
 api_manager = ApiManager(cfg.debug_mode)
+
+
+def get_convo_id():
+    resp = session.post(
+        "https://huggingface.co/chat/conversation",
+        headers={"content-type": "application/json", "accept": "application/json"},
+    )
+    return resp.json()["conversationId"]
+
+
+def generate_output(prompt, conversation_id):
+    resp = session.post(
+        f"https://huggingface.co/chat/conversation/{conversation_id}",
+        headers={
+            "content-type": "application/json",
+            "accept": "application/json",
+            "referrer": f"https://huggingface.co/chat/conversation/{conversation_id}",
+        },
+        json={
+            "inputs": prompt,
+            "options": {
+                "use_cache": False,
+                "parameters": {
+                    "max_new_tokens": 1024,
+                    "temperature": 0.9,
+                    "top_p": 0.95,
+                    "top_k": 50,
+                    "repetition_penalty": 1.2,
+                    "return_full_text": False,
+                    "stop": ["<|endoftext|>"],
+                    "truncate": 1024,
+                    "watermark": False,
+                },
+            },
+            "stream": False,
+        },
+    )
+    print(resp.json())
