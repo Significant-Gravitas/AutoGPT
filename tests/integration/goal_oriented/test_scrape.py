@@ -30,7 +30,7 @@ def test_browse_website(workspace) -> None:
     CFG.file_logger_path = os.path.join(workspace.root, "file_logger.txt")
 
     file_name = str(workspace.get_path("test_scrape.txt"))
-    agent = create_writer_agent(workspace)
+    agent = create_browse_agent(workspace)
     try:
         with my_vcr.use_cassette(
             "scrape_text.vcr.yml",
@@ -52,7 +52,7 @@ def test_browse_website(workspace) -> None:
         assert "£25.89" in content, f"Expected £25.89, got {content}"
 
 
-def create_writer_agent(workspace):
+def create_browse_agent(workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.commands.web_requests")
