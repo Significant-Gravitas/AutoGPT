@@ -95,13 +95,15 @@ class Config(metaclass=Singleton):
         self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
 
         # postgresml configuration
-        self.postgresml_host = os.getenv("POSTGRESML_HOST","localhost")
-        self.postgresml_port = os.getenv("POSTGRESML_PORT","5433")
-        self.postgresml_username = os.getenv("POSTGRESML_USERNAME","postgres")
-        self.postgresml_password = os.getenv("POSTGRESML_PASSWORD","")
-        self.postgresml_database = os.getenv("POSTGRESML_DATABASE","pgml_development")
-        self.postgresml_tablename = os.getenv("POSTGRESML_TABLENAME","autogpt_text_embeddings")
-        
+        self.postgresml_host = os.getenv("POSTGRESML_HOST", "localhost")
+        self.postgresml_port = os.getenv("POSTGRESML_PORT", "5433")
+        self.postgresml_username = os.getenv("POSTGRESML_USERNAME", "postgres")
+        self.postgresml_password = os.getenv("POSTGRESML_PASSWORD", "")
+        self.postgresml_database = os.getenv("POSTGRESML_DATABASE", "pgml_development")
+        self.postgresml_tablename = os.getenv(
+            "POSTGRESML_TABLENAME", "autogpt_text_embeddings"
+        )
+
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")

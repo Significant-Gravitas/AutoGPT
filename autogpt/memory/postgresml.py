@@ -5,6 +5,7 @@ from autogpt.llm_utils import create_embedding_with_ada
 from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton
 
+
 class PostgresMLMemory(MemoryProviderSingleton):
     def __init__(self, cfg) -> None:
         postgresml_host = cfg.postgresml_host
@@ -41,10 +42,19 @@ class PostgresMLMemory(MemoryProviderSingleton):
         cur = conn.cursor()
 
         # Insert the vector and text into the database
-        insert_statement = sql.SQL('INSERT INTO {} (data, embedding) VALUES ({}, {})').format(sql.Identifier(self.postgresml_tablename),sql.Literal(data),sql.Literal(vector))
-        
+        insert_statement = sql.SQL(
+            "INSERT INTO {} (data, embedding) VALUES ({}, {})"
+        ).format(
+            sql.Identifier(self.postgresml_tablename),
+            sql.Literal(data),
+            sql.Literal(vector),
+        )
+
         cur.execute(insert_statement)
-        index_statement = "CREATE INDEX ON %s USING ivfflat (embedding vector_cosine_ops)"%self.postgresml_tablename
+        index_statement = (
+            "CREATE INDEX ON %s USING ivfflat (embedding vector_cosine_ops)"
+            % self.postgresml_tablename
+        )
         cur.execute(index_statement)
 
         # Commit the transaction
@@ -109,7 +119,9 @@ class PostgresMLMemory(MemoryProviderSingleton):
         """
         conn = psycopg2.connect(**self.conn_params)
         cur = conn.cursor()
-        pgstats_statement = "SELECT * FROM pg_stats WHERE tablename = '%s'"%self.postgresml_tablename
+        pgstats_statement = (
+            "SELECT * FROM pg_stats WHERE tablename = '%s'" % self.postgresml_tablename
+        )
         cur.execute(pgstats_statement)
         result = cur.fetchall()
         cur.close()
