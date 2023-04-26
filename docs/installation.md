@@ -61,7 +61,7 @@ You can also set limits on how much you spend on [the Usage limits page](https:/
             ...
         ```
      - Details can be found here: https://pypi.org/project/openai/ in the `Microsoft Azure Endpoints` section and here: https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line for the embedding model.
-     - If you're on Windows you may need to install https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170
+     - If you're on Windows you may need to install https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170.
 
 4. Follow the further instructions for running Auto-GPT with [Docker](#run-with-docker) (*recommended*), or [Docker-less](#run-docker-less)
 
