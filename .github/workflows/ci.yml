@@ -75,11 +75,5 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
-      - name: Generate coverage report
-        run: |
-          coverage report
-          coverage xml
-        if: success() || failure()
-
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
