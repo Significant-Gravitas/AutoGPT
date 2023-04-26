@@ -15,7 +15,7 @@ from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from openapi_python_client.cli import Config as OpenAPIConfig
 
 from autogpt.config import Config
-from autogpt.models.base_open_agent_plugin import BaseOpenAIPlugin
+from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
 
 def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:

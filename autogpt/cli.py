@@ -65,7 +65,7 @@ def main(
     ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
-    agent_settings: str,
+    ai_settings: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -90,7 +90,7 @@ def main(
         run_auto_gpt(
             continuous,
             continuous_limit,
-            agent_settings,
+            ai_settings,
             skip_reprompt,
             speak,
             debug,
