@@ -94,5 +94,56 @@ def test_project_str(lead_agent, delegated_agent):
 
     assert str(project) == str(project.to_dict())
 
+
+
+def test_project_init_unittest_style():
+    lead_agent = AgentConfig(
+        agent_name="Lead Agent",
+        agent_role="Lead",
+        agent_goals=["Goal 1", "Goal 2"],
+        agent_model="Model 1",
+        agent_model_type="Type 1",
+    )
+    delegated_agents = [
+        AgentConfig(
+            agent_name="Delegated Agent 1",
+            agent_role="Delegated",
+            agent_goals=["Goal 3"],
+            agent_model="Model 2",
+            agent_model_type="Type 2",
+        ),
+        AgentConfig(
+            agent_name="Delegated Agent 2",
+            agent_role="Delegated",
+            agent_goals=["Goal 4", "Goal 5"],
+            agent_model="Model 3",
+            agent_model_type="Type 3",
+        ),
+    ]
+
+    project = Project(
+        project_name="Project 1",
+        api_budget=500.0,
+        lead_agent=lead_agent,
+        delegated_agents=delegated_agents,
+    )
+
+    assert project.project_name == "Project 1"
+    assert project.api_budget == 500.0
+    assert project.lead_agent.agent_name == "Lead Agent"
+    assert project.lead_agent.agent_role == "Lead"
+    assert project.lead_agent.agent_goals == ["Goal 1", "Goal 2"]
+    assert project.lead_agent.agent_model == "Model 1"
+    assert project.lead_agent.agent_model_type == "Type 1"
+    assert project.delegated_agents[0].agent_name == "Delegated Agent 1"
+    assert project.delegated_agents[0].agent_role == "Delegated"
+    assert project.delegated_agents[0].agent_goals == ["Goal 3"]
+    assert project.delegated_agents[0].agent_model == "Model 2"
+    assert project.delegated_agents[0].agent_model_type == "Type 2"
+    assert project.delegated_agents[1].agent_name == "Delegated Agent 2"
+    assert project.delegated_agents[1].agent_role == "Delegated"
+    assert project.delegated_agents[1].agent_goals == ["Goal 4", "Goal 5"]
+
+    
 if __name__ == "__main__":
     pytest.main([__file__])

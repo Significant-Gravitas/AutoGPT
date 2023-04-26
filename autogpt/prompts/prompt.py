@@ -1,9 +1,44 @@
+"""
+This module provides functions for configuring and setting up the AutoGPT system.
+
+Functions:
+- build_default_prompt_generator(): Generates a default prompt string for the user.
+- get_ai_project_index(number_of_project: int) -> int: Prompts the user to select an existing AI configuration or start with new settings.
+- prompt_for_replacing_project(number_of_project: int) -> int: Prompts the user to choose which AI configuration to replace when the maximum number of configurations is reached.
+- goals_to_string(goals) -> str: Converts a list of goals into a formatted string for display.
+- construct_main_project() -> ProjectConfigBroker: Loads or creates an AI configuration for the main AI assistant.
+- construct_full_prompt(config : ProjectConfigBroker, prompt_generator: Optional[PromptGenerator] = None) -> str: Generates a prompt string for the user with information about the AI configuration.
+
+Classes:
+- None
+
+Global Variables:
+- CFG: An instance of the Config class containing system configuration settings.
+- MAX_AI_CONFIG: The maximum number of AI configurations that can be stored.
+
+Dependencies:
+- colorama: A third-party module for adding colored text to the terminal output.
+- typing: A built-in module for type hints and annotations.
+- platform: A built-in module for obtaining information about the system platform.
+- distro: A third-party module for obtaining information about the system distribution.
+- ProjectConfigBroker: A class for managing the configuration settings for AutoGPT projects.
+- AgentConfig: A class representing the configuration settings for an AI agent.
+- Project: A class representing an AutoGPT project.
+- api_manager: A module for managing the GPT-3 API connection.
+- Config: A class representing the system configuration settings.
+- logger: A module for logging output to the terminal.
+- PromptGenerator: A class for generating prompt strings for the user.
+- prompt_user: A function for prompting the user for input.
+- clean_input: A function for cleaning user input before processing.
+
+"""
 from colorama import Fore
 from typing import  Optional
 import platform
 import distro
 
-from autogpt.config.project.config import ProjectConfigBroker, AgentConfig , Project
+from autogpt.config.project.config import AgentConfig , Project
+from autogpt.config.ProjectConfigBroker import ProjectConfigBroker
 from autogpt.api_manager import api_manager
 from autogpt.config.config import Config
 from autogpt.logs import logger
@@ -18,10 +53,10 @@ MAX_AI_CONFIG = 5
 def build_default_prompt_generator() -> PromptGenerator:
     """
     This function generates a prompt string that includes various constraints,
-        commands, resources, and performance evaluations.
+    commands, resources, and performance evaluations.
 
     Returns:
-        str: The generated prompt string.
+        PromptGenerator: A PromptGenerator object containing the generated prompt.
     """
 
     # Initialize the PromptGenerator object
@@ -82,6 +117,10 @@ def build_default_prompt_generator() -> PromptGenerator:
 def get_ai_project_index(number_of_project: int) -> int:
     """
     Prompt the user to select one of the existing AI configurations or start with new settings.
+
+    Args:
+        number_of_project (int): The number of existing AI configurations.
+
     Returns:
         int: The index of the selected AI configuration or -1 for new settings.
     """
@@ -99,6 +138,10 @@ def get_ai_project_index(number_of_project: int) -> int:
 def prompt_for_replacing_project(number_of_project: int) -> int:
     """
     Prompt the user to choose which AI configuration to replace when the maximum number of configurations is reached.
+
+    Args:
+        number_of_project (int): The maximum number of AI configurations.
+
     Returns:
         int: The index of the AI configuration to be replaced.
     """
@@ -114,19 +157,22 @@ def prompt_for_replacing_project(number_of_project: int) -> int:
 def goals_to_string(goals) -> str:
     """
     Convert the list of goals into a formatted string for display.
+
     Args:
         goals (list): A list of goal strings.
+
     Returns:
         str: A formatted string containing the goals.
     """
     return "\n".join(goals)
 
 
-def construct_main_project_config() -> ProjectConfigBroker:
+def construct_main_project() -> ProjectConfigBroker:
     """
     Load or create an AI configuration for the main AI assistant.
+
     Returns:
-        AIConfig: The selected or created AI configuration.
+        ProjectConfigBroker: The selected or created AI configuration.
     """
     configuration_broker = ProjectConfigBroker(config_file=CFG.ai_settings_file)
     project_list = configuration_broker.get_projects()
@@ -186,7 +232,6 @@ def construct_main_project_config() -> ProjectConfigBroker:
         speak_text=True,
     )
     
-    print(config.lead_agent)
     # Print the ai config details
     # Name
     logger.typewriter_log("Name:", Fore.GREEN, config.lead_agent.agent_name, speak_text=False)
@@ -212,12 +257,13 @@ def construct_full_prompt(config : ProjectConfigBroker
     """
     Returns a prompt to the user with the class information in an organized fashion.
 
-    Parameters:
-        None
+    Args:
+        config (ProjectConfigBroker): The current AI configuration.
+        prompt_generator (Optional[PromptGenerator]): An optional PromptGenerator object.
 
     Returns:
-        full_prompt (str): A string containing the initial prompt for the user
-            including the agent_name, agent_role, agent_goals , and api_budget.
+        str: A string containing the initial prompt for the user including the agent_name,
+             agent_role, agent_goals , and api_budget.
     """
 
     all_projects = config.get_projects()

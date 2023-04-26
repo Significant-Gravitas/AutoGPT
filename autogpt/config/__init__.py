@@ -1,7 +1,7 @@
 """
 This module contains the configuration classes for AutoGPT.
 """
-from autogpt.config.project.config import ProjectConfigBroker
+from autogpt.config.ProjectConfigBroker import ProjectConfigBroker
 from autogpt.config.config import Config, check_openai_api_key
 
 __all__ = [

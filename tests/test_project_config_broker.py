@@ -5,6 +5,7 @@ from autogpt.config.project.config import Project
 from autogpt.config.project.agent.config import AgentConfig
 from autogpt.config.project import ProjectConfigBroker
 
+
 CONFIG_FILE = str(Path(os.getcwd()) / "test_agent_settings.yaml")
 
 @pytest.fixture
@@ -12,100 +13,80 @@ def project_config_broker():
     return ProjectConfigBroker(config_file=CONFIG_FILE)
 
 
-def test_load(project_config_broker):
-    projects = project_config_broker._load(CONFIG_FILE)
-    assert isinstance(projects, list)
-
-
-def test_save(project_config_broker):
-    project_config_broker._save(CONFIG_FILE)
-    assert os.path.exists(CONFIG_FILE)
-
-
-def test_create_project(project_config_broker):
-    result = project_config_broker.create_project(
-        project_id=0,
-        api_budget=1.0,
-        agent_name="Test Agent",
-        agent_role="Test Role",
-        agent_goals=["Test Goal 1", "Test Goal 2"],
-        prompt_generator="Test Prompt Generator",
-        command_registry="Test Command Registry",
-        overwrite=True,
-        project_name="Test Project"
+@pytest.fixture
+def lead_agent():
+    return AgentConfig(
+        agent_name="Lead Agent",
+        agent_role="Lead",
+        agent_goals=["Lead goal 1", "Lead goal 2"],
+        agent_model="Lead model",
+        agent_model_type="Lead type",
+        prompt_generator=None,
+        command_registry=None,
     )
-    assert result
-
-    # Test creating a project with the same ID without overwrite
-    with pytest.raises(ValueError):
-        project_config_broker.create_project(
-            project_id=0,
-            api_budget=1.0,
-            agent_name="Test Agent",
-            agent_role="Test Role",
-            agent_goals=["Test Goal 1", "Test Goal 2"],
-            prompt_generator="Test Prompt Generator",
-            command_registry="Test Command Registry",
-            overwrite=False,
-            project_name="Test Project"
-        )
-
-    # Test creating a project with an invalid ID
-    with pytest.raises(ValueError):
-        project_config_broker.create_project(
-            project_id=-1,
-            api_budget=1.0,
-            agent_name="Test Agent",
-            agent_role="Test Role",
-            agent_goals=["Test Goal 1", "Test Goal 2"],
-            prompt_generator="Test Prompt Generator",
-            command_registry="Test Command Registry",
-            overwrite=True,
-            project_name="Test Project"
-        )
 
 
-def test_set_project_number(project_config_broker):
-    result = project_config_broker.set_project_number(new_project_id=0)
-    assert result
-
-    # Test setting an invalid project number
-    with pytest.raises(ValueError):
-        project_config_broker.set_project_number(new_project_id=-1)
-
-
-def test_get_current_project_id(project_config_broker):
-    project_id = project_config_broker.get_current_project_id()
-    assert isinstance(project_id, int)
-
-
-def test_get_current_project(project_config_broker):
-    project = project_config_broker.get_current_project()
-    assert isinstance(project, Project)
+@pytest.fixture
+def delegated_agent1():
+    return AgentConfig(
+        agent_name="Delegated Agent 1",
+        agent_role="Delegated",
+        agent_goals=["Delegated goal 1", "Delegated goal 2"],
+        agent_model="Delegated model",
+        agent_model_type="Delegated type",
+        prompt_generator=None,
+        command_registry=None,
+    )
 
 
-def test_get_project(project_config_broker):
-    project = project_config_broker.get_project(project_number=0)
-    assert isinstance(project, AgentConfig)
+@pytest.fixture
+def delegated_agent2():
+    return AgentConfig(
+        agent_name="Delegated Agent 2",
+        agent_role="Delegated",
+        agent_goals=["Delegated goal 1", "Delegated goal 2"],
+        agent_model="Delegated model",
+        agent_model_type="Delegated type",
+        prompt_generator=None,
+        command_registry=None,
+    )
 
-    # Test getting a project with an invalid number
-    with pytest.raises(ValueError):
-        project_config_broker.get_project(project_number=-1)
+
+# Test whether the set_project_name() method sets the project name correctly
+def test_set_project_name(project_config_broker):
+    project_name = "Project1"
+    project_config_broker.set_project_name(project_name)
+    assert project_config_broker.get_project_name() == project_name
 
 
-def test_get_projects(project_config_broker):
-    projects = project_config_broker.get_projects()
-    assert isinstance(projects, list)
+# Test whether the set_lead_agent() method sets the lead agent correctly
+def test_set_lead_agent(project_config_broker, lead_agent):
+    project_config_broker.set_lead_agent(lead_agent)
+    assert project_config_broker.get_lead_agent() == lead_agent
 
 
-def test_delete_project(project_config_broker):
-    project_count = len(project_config_broker.get_projects())
+# Test whether the add_delegated_agent() method adds a delegated agent correctly
+def test_add_delegated_agent(project_config_broker, delegated_agent1):
+    project_config_broker.add_delegated_agent(delegated_agent1)
+    assert delegated_agent1 in project_config_broker.get_delegated_agents()
 
-    # Test deleting a project
-    project_config_broker.delete_project(project_number=0)
-    new_project_count = len(project_config_broker.get_projects())
-    assert new_project_count == project_count - 1
 
-    # Test deleting a project with an invalid number
-    with pytest.raises(ValueError):
-        project_config_broker.delete_project(project_number=-1)
+# Test whether the get_total_api_budget() method calculates the total API budget correctly
+def test_get_total_api_budget(project_config_broker, lead_agent, delegated_agent1, delegated_agent2):
+    project = Project(
+        project_name="Project1",
+        api_budget=1000.0,
+        lead_agent=lead_agent,
+        delegated_agents=[delegated_agent1, delegated_agent2],
+    )
+    project_config_broker.set_project(project)
+    assert project_config_broker.get_total_api_budget() == 3000.0  # 1000.0 + 1000.0 + 1000.0
+
+
+# Test whether the get_delegated_agent_by_name() method returns the correct delegated agent
+def test_get_delegated_agent_by_name(project_config_broker, delegated_agent1, delegated_agent2):
+    project_config_broker.add_delegated_agent(delegated_agent1)
+    project_config_broker.add_delegated_agent(delegated_agent2)
+    assert project_config_broker.get_delegated_agent_by_name("Delegated Agent 1") == delegated_agent1
+    assert project_config_broker.get_delegated_agent_by_name("Delegated Agent 2") == delegated_agent2
+    assert project_config_broker.get_delegated_agent_by_name("Invalid agent name") is None
