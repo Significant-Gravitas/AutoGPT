@@ -6,11 +6,8 @@ import openai
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
-from dotenv import load_dotenv
 
 from autogpt.singleton import Singleton
-
-load_dotenv(verbose=True, override=True)
 
 
 class Config(metaclass=Singleton):
@@ -63,6 +60,8 @@ class Config(metaclass=Singleton):
 
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
+
+        self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
 
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
@@ -128,8 +127,6 @@ class Config(metaclass=Singleton):
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
-        # Initialize the OpenAI API client
-        openai.api_key = self.openai_api_key
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
@@ -277,6 +274,7 @@ def check_openai_api_key() -> None:
         print(
             Fore.RED
             + "Please set your OpenAI API key in .env or as an environment variable."
+            + Fore.RESET
         )
         print("You can get your key from https://platform.openai.com/account/api-keys")
         exit(1)
