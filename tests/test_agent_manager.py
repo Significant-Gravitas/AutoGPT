@@ -8,6 +8,9 @@ from tests.utils import requires_api_key
 
 @pytest.fixture
 def agent_manager():
+    # Hack, real gross. Singletons are not good times.
+    if AgentManager in AgentManager._instances:
+        del AgentManager._instances[AgentManager]
     return AgentManager()
 
 
@@ -23,7 +26,7 @@ def prompt():
 
 @pytest.fixture
 def model():
-    return "gpt-4"
+    return "gpt-3.5-turbo"
 
 
 @requires_api_key("OPENAI_API_KEY")
