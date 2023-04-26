@@ -4,3 +4,13 @@ coverage:
       default:
         target: auto
         threshold: 1%
+        informational: true
+    patch:
+      default:
+        target: 80%     
+
+# flags:
+#   unit-tests:
+#     carryforward: true
+#   integration-tests:
+#     carryforward: true
