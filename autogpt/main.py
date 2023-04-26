@@ -30,6 +30,8 @@ def run_auto_gpt(
     memory_type: str,
     browser_name: str,
     allow_downloads: bool,
+    project: str,
+    skip_project: bool,
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
@@ -53,6 +55,8 @@ def run_auto_gpt(
         memory_type,
         browser_name,
         allow_downloads,
+        project,
+        skip_project,
         skip_news,
     )
 

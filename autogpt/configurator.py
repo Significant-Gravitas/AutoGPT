@@ -137,7 +137,8 @@ def create_config(
 
     if project:
         # List project agents
-        agent = ProjectManager.project_agents(project)
+        project_name = project
+        agent = ProjectManager().project_agents(project_name)
 
         CFG.ai_session = agent
         CFG.skip_reprompt = True

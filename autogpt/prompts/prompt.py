@@ -144,9 +144,8 @@ Continue (y/n): """
         for config in configs:
             config.save()
     
-    print("this CONFIG", config)
     if config.project_name:
-        ProjectManager.project_agents(config.project_name)
+        ProjectManager().project_agents(config.project_name)
 
     # set the total api budget
     api_manager = ApiManager()

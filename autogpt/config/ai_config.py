@@ -107,23 +107,21 @@ class AIConfig:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
         except FileNotFoundError:
             config_params = {}
-            
-        agent = config_params.get("agent", "") if config_params else ""
 
-        if not agent:
+        if not config_params.get("ai_name", ""):
             return AIConfig()
-
-        try:
-            with open(agent, encoding="utf-8") as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
-        except FileNotFoundError:
-            return AIConfig()
-
-        project_name = config_params.get("project_name", "")
-        ai_name = config_params.get("ai_name", "")
-        ai_role = config_params.get("ai_role", "")
-        ai_goals = config_params.get("ai_goals", [])
-        api_budget = config_params.get("api_budget", 0.0)
+        
+        if not config_params.get("project_name", ""):
+            ai_name = config_params.get("ai_name", "")
+            ai_role = config_params.get("ai_role", "")
+            ai_goals = config_params.get("ai_goals", [])
+            api_budget = config_params.get("api_budget", 0.0)
+        else:
+            project_name = config_params.get("project_name", "")
+            ai_name = config_params.get("ai_name", "")
+            ai_role = config_params.get("ai_role", "")
+            ai_goals = config_params.get("ai_goals", [])
+            api_budget = config_params.get("api_budget", 0.0)
 
         return AIConfig(project_name, ai_name, ai_role, ai_goals, api_budget)
 

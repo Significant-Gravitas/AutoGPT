@@ -9,6 +9,7 @@ from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
+from autogpt.project.project_manager import ProjectManager
 
 CFG = Config()
 
@@ -40,6 +41,14 @@ def prompt_user() -> List[AIConfig]:
             "Name your Project", Fore.GREEN
         )
         project_name = utils.clean_input("Project name: ")
+
+        # Get Project description from User
+        logger.typewriter_log(
+            "Describe your Project", Fore.GREEN
+        )
+        project_description = utils.clean_input("Project description: ")
+
+        ProjectManager().create_project_config(project_name, project_description)
 
     ai_workers = []
     add_another_worker = True
