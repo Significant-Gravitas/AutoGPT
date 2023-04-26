@@ -147,9 +147,9 @@ class TypingConsoleHandler(logging.StreamHandler):
 
         msg = self.format(record)
         try:
-            words = re.split('[ \t]+', msg)
+            words = re.split("[ \t]+", msg)
             for i, word in enumerate(words):
-                if word.endswith('\n'):
+                if word.endswith("\n"):
                     print(word, end="\n", flush=True)
                 else:
                     print(word, end="", flush=True)
