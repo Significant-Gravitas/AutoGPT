@@ -144,7 +144,6 @@ USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
 MEMORY_INDEX="Autogpt" # name of the index to create for the application
 ```
 
-=======
 ### PostgresML Setup
 PostgresML is a machine learning extension to PostgreSQL that enables you to perform training and inference on text and tabular data using SQL queries. With PostgresML, you can enhance your existing DB as a VectorDB generating embeddings from text stored in the database and indexing them for fast query.
 
