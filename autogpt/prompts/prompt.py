@@ -37,8 +37,8 @@ from typing import  Optional
 import platform
 import distro
 
-from autogpt.config.project.config import AgentConfig , Project
-from autogpt.config.ProjectConfigBroker import ProjectConfigBroker
+from autogpt.project.project import AgentConfig , Project
+from autogpt.project.project_config_broker import ProjectConfigBroker
 from autogpt.api_manager import api_manager
 from autogpt.config.config import Config
 from autogpt.logs import logger

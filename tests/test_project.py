@@ -1,6 +1,6 @@
 import pytest
-from autogpt.config.project.agent.config import AgentConfig
-from autogpt.config.project import Project
+from autogpt.project.agent.config import AgentConfig
+from autogpt.project import Project
 
 
 @pytest.fixture

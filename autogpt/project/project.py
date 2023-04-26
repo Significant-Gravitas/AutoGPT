@@ -28,7 +28,7 @@ Methods:
 """
 
 from typing import Optional, Type, List
-from autogpt.config.project.agent.config import AgentConfig
+from autogpt.project.agent.config import AgentConfig
 
 
 class Project:

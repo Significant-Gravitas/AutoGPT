@@ -21,8 +21,8 @@ re: A built-in module for working with regular expressions.
 autogpt: The main package of the AutoGPT project.
 autogpt.utils: A module containing various utility functions used throughout the project.
 autogpt.config: A module containing classes for managing configuration settings.
-autogpt.config.ProjectConfigBroker: A class for managing the configuration settings for AutoGPT projects.
-autogpt.config.project.config: A module containing the Project class representing an AutoGPT project.
+autogpt.projectConfigBroker: A class for managing the configuration settings for AutoGPT projects.
+autogpt.project.config: A module containing the Project class representing an AutoGPT project.
 autogpt.llm_utils: A module containing functions for interacting with the GPT-3 language model.
 autogpt.logs.logger: A module for logging output to the terminal.
 """
@@ -32,8 +32,8 @@ from colorama import Fore, Style
 
 from autogpt import utils
 from autogpt.config import Config
-from autogpt.config.ProjectConfigBroker import ProjectConfigBroker
-from autogpt.config.project.config import Project
+from autogpt.project.project_config_broker import ProjectConfigBroker
+from autogpt.project.project import Project
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
 
