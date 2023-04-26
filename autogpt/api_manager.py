@@ -175,14 +175,14 @@ def generate_output(prompt, conversation_id):
             "options": {
                 "use_cache": False,
                 "parameters": {
-                    "max_new_tokens": 1024,
+                    "max_new_tokens": 2048,
                     "temperature": 0.9,
                     "top_p": 0.95,
                     "top_k": 50,
                     "repetition_penalty": 1.2,
                     "return_full_text": False,
                     "stop": ["<|endoftext|>"],
-                    "truncate": 1024,
+                    "truncate": 2048,
                     "watermark": False,
                 },
             },
