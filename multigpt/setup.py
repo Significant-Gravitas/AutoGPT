@@ -1,9 +1,8 @@
 """Setup the AI and its goals"""
 import glob
 import os
-from typing import List
 
-from colorama import Fore, Style
+from colorama import Fore
 from autogpt import utils
 from autogpt.spinner import Spinner
 from multigpt import lmql_utils

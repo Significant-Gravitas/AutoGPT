@@ -1,7 +1,6 @@
 import os
 import random
 import re
-from enum import Enum
 
 from colorama import Fore, Style
 from slugify import slugify
@@ -10,7 +9,6 @@ from autogpt.app import get_command, execute_command
 from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Singleton
 from autogpt.json_fixes.bracket_termination import attempt_to_fix_json_by_finding_outermost_brackets
-from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger, print_assistant_thoughts
 from multigpt.memory import get_memory
 from autogpt.speech import say_text
@@ -19,6 +17,7 @@ from autogpt.utils import clean_input
 from multigpt.multi_agent import MultiAgent
 from multigpt.agent_selection import AgentSelection
 from multigpt import lmql_utils
+from multigpt.orchestrator import Orchestrator
 
 
 class MultiAgentManager(metaclass=Singleton):
@@ -26,12 +25,28 @@ class MultiAgentManager(metaclass=Singleton):
     def __init__(self, cfg):
         self.cfg = cfg
         self.agents = []
-        self.agent_counter = 0
+        self.agent_id_counter = 1       #start at 1 since system agent is getting initialized with ID 0
         self.next_action_count = 0
         self.last_active_agent = None
         self.current_active_agent = None
         self.chat_buffer = []
         self.chat_buffer_size = 10
+
+        # initialize system agent/orchestrator with ID 0
+        system_agent_id = 0
+        memory = get_memory(self.cfg, ai_key=system_agent_id, init=True)
+        if not self.cfg.chat_only_mode:
+            logger.typewriter_log(
+                f"Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
+            )
+
+        self.system_agent = Orchestrator(
+            ai_name="SYSTEM",
+            memory=memory,
+            full_message_history=[],
+            prompt="You are the orchestrator. This prompt is just a placeholder.",
+            user_input="This is a placeholder user input",
+            agent_id=system_agent_id)
 
     def create_agent(self, expert):
         slugified_filename = slugify(expert.ai_name, separator="_", lowercase=True) + "_settings.yaml"
@@ -54,8 +69,8 @@ class MultiAgentManager(metaclass=Singleton):
         )
         prompt = expert.construct_full_prompt()
 
-        agent_id = self.agent_counter
-        self.agent_counter += 1
+        agent_id = self.agent_id_counter
+        self.agent_id_counter += 1
 
         memory = get_memory(self.cfg, ai_key=agent_id, init=True)
         if not self.cfg.chat_only_mode:
@@ -136,7 +151,7 @@ class MultiAgentManager(metaclass=Singleton):
         if speaker is None or message_is_empty():
             return False
         for agent in self.agents:
-            agent.send_message(speaker, message)
+            agent.receive_message(speaker, message)
         self.add_message_to_chat_buffer(speaker, message)
         return True
 
@@ -183,7 +198,7 @@ class MultiAgentManager(metaclass=Singleton):
 
             # Print Assistant thoughts
 
-            assistant_reply_object = print_assistant_thoughts(active_agent.ai_name, assistant_reply)
+            assistant_reply_object = print_assistant_thoughts(active_agent, assistant_reply)
             if assistant_reply_object is not None:
                 try:
                     speak_value = assistant_reply_object.get('thoughts', {}).get('speak')

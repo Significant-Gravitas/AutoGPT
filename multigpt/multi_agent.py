@@ -23,5 +23,5 @@ class MultiAgent(Agent):
         self.agent_id = agent_id
         self.auditory_buffer = []  # contains the non processed parts of the conversation
 
-    def send_message(self, speaker, message):
+    def receive_message(self, speaker, message):
         self.auditory_buffer.append((speaker.ai_name, message))
