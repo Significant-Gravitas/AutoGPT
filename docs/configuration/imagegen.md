@@ -9,6 +9,9 @@ IMAGE_PROVIDER=huggingface
 HUGGINGFACE_API_TOKEN=YOUR_HUGGINGFACE_API_TOKEN
 ```
 
+To use your own self-hosted Stable Diffusion with SDWeb API, set IMAGE_PROVIDER=sdwebui in your '.env'. Make sure you are running Stable Diffusion Web with '--api'  enabled. 
+
+
 ## Selenium
 ``` shell
 sudo Xvfb :10 -ac -screen 0 1024x768x24 & DISPLAY=:10 <YOUR_CLIENT>
