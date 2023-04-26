@@ -168,7 +168,7 @@ def lmql_get_emotional_state(message):
     # If emotion is neutral with P(CLASSIFICATION) < threshold, return second result instead
     if emotion == ' neutral' and p < 0.999:
         emotion, _ = p_emotions.pop()
-    return emotion
+    return emotion[1:]
 
 
 def lmql_generate_trait_profile(name):
