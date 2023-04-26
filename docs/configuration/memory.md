@@ -173,6 +173,30 @@ Step 3: Connect to Postgres using an SQL IDE or <a href="https://www.postgresql.
 postgres://postgres@localhost:5433/pgml_development
 ```
 
+**Install `postgresql` command line utility**
+
+Ubuntu: `sudo apt install libpq-dev`
+
+Centos/Fedora/Cygwin/Babun.: `sudo yum install libpq-devel`
+
+Mac: `brew install postgresql`
+
+**Install `psycopg2`**
+
+`pip install psycopg2`
+
+#### Setting up environment variables
+
+In your `.env` file set the following:
+```shell
+POSTGRESML_HOST=localhost
+POSTGRESML_PORT=5443
+POSTGRESML_USERNAME=postgres
+POSTGRESML_PASSWORD=""
+POSTGRESML_DATABASE=pgml_development
+POSTGRESML_TABLENAME =autogpt_text_embeddings
+```
+
 ## View Memory Usage
 
 View memory usage by using the `--debug` flag :)
