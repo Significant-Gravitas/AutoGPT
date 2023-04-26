@@ -3,14 +3,16 @@ import time
 from openai.error import RateLimitError
 
 from autogpt import token_counter
+from autogpt.api_manager import ApiManager
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
+from autogpt.types.openai import Message
 
 cfg = Config()
 
 
-def create_chat_message(role, content):
+def create_chat_message(role, content) -> Message:
     """
     Create a chat message with the given role and content.
 
@@ -51,7 +53,7 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
 
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
-    prompt, user_input, full_message_history, permanent_memory, token_limit
+    agent, prompt, user_input, full_message_history, permanent_memory, token_limit
 ):
     """Interact with the OpenAI API, sending the prompt, user input, message history,
     and permanent memory."""
@@ -132,8 +134,50 @@ def chat_with_ai(
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
 
+            api_manager = ApiManager()
+            # inform the AI about its remaining budget (if it has one)
+            if api_manager.get_total_budget() > 0.0:
+                remaining_budget = (
+                    api_manager.get_total_budget() - api_manager.get_total_cost()
+                )
+                if remaining_budget < 0:
+                    remaining_budget = 0
+                system_message = (
+                    f"Your remaining API budget is ${remaining_budget:.3f}"
+                    + (
+                        " BUDGET EXCEEDED! SHUT DOWN!\n\n"
+                        if remaining_budget == 0
+                        else " Budget very nearly exceeded! Shut down gracefully!\n\n"
+                        if remaining_budget < 0.005
+                        else " Budget nearly exceeded. Finish up.\n\n"
+                        if remaining_budget < 0.01
+                        else "\n\n"
+                    )
+                )
+                logger.debug(system_message)
+                current_context.append(create_chat_message("system", system_message))
+
             # Append user input, the length of this is accounted for above
             current_context.extend([create_chat_message("user", user_input)])
+
+            plugin_count = len(cfg.plugins)
+            for i, plugin in enumerate(cfg.plugins):
+                if not plugin.can_handle_on_planning():
+                    continue
+                plugin_response = plugin.on_planning(
+                    agent.prompt_generator, current_context
+                )
+                if not plugin_response or plugin_response == "":
+                    continue
+                tokens_to_add = token_counter.count_message_tokens(
+                    [create_chat_message("system", plugin_response)], model
+                )
+                if current_tokens_used + tokens_to_add > send_token_limit:
+                    if cfg.debug_mode:
+                        print("Plugin response too long, skipping:", plugin_response)
+                        print("Plugins remaining at stop:", plugin_count - i)
+                    break
+                current_context.append(create_chat_message("system", plugin_response))
 
             # Calculate remaining tokens
             tokens_remaining = token_limit - current_tokens_used
