@@ -154,6 +154,24 @@ PostgresML installation consists of three parts: PostgreSQL database, Postgres e
 
 If you want to check out the functionality quickly, [sign up for a free PostgresML account](https://postgresml.org/signup). We will provide 5GiB of storage for your data.
 
+**Docker**
+
+Step 1: Clone this repository
+
+```bash
+git clone git@github.com:postgresml/postgresml.git
+```
+
+Step 2: Start dockerized services. PostgresML will run on port 5433, just in case you already have Postgres running. You can find Docker installation instructions [here](https://docs.docker.com/desktop/)
+```bash
+cd postgresml
+docker-compose up
+```
+
+Step 3: Connect to Postgres using an SQL IDE or <a href="https://www.postgresql.org/docs/current/app-psql.html" target="_blank">psql</a>
+```bash
+postgres://postgres@localhost:5433/pgml_development
+```
 
 ## View Memory Usage
 
