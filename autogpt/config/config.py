@@ -152,17 +152,17 @@ class Config(metaclass=Singleton):
                 return self.azure_model_to_deployment_id_map[
                     "fast_llm_model_deployment_id"
                 ]  # type: ignore
-    
+
             case self.smart_llm_model:
                 return self.azure_model_to_deployment_id_map[
                     "smart_llm_model_deployment_id"
                 ]  # type: ignore
-    
+
             case "text-embedding-ada-002":
                 return self.azure_model_to_deployment_id_map[
                     "embedding_model_deployment_id"
                 ]  # type: ignore
-            
+
             case _:
                 return ""
 
