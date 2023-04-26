@@ -26,6 +26,14 @@ def replace_timestamp_in_request(request):
     return request
 
 
+def before_record_request(request):
+    filtered_request = filter_hostnames(request)
+    filtered_request_without_dynamic_data = replace_timestamp_in_request(
+        filtered_request
+    )
+    return filtered_request_without_dynamic_data
+
+
 def filter_hostnames(request):
     allowed_hostnames = ["api.openai.com"]  # List of hostnames you want to allow
 
@@ -33,11 +41,3 @@ def filter_hostnames(request):
         return request
     else:
         return None
-
-
-def before_record_request(request):
-    filtered_request = filter_hostnames(request)
-    filtered_request_without_dynamic_data = replace_timestamp_in_request(
-        filtered_request
-    )
-    return filtered_request_without_dynamic_data
