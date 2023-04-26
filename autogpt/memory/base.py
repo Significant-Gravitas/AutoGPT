@@ -9,21 +9,26 @@ cfg = Config()
 
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
-    def add(self, agent_name : str,  data):
+    def add(self, data):
+        """Adds to memory"""
         pass
 
     @abc.abstractmethod
-    def get(self, agent_name : str, data):
+    def get(self, data):
+        """Gets from memory"""
         pass
 
     @abc.abstractmethod
-    def clear(self, agent_name : str):
+    def clear(self):
+        """Clears memory"""
         pass
 
     @abc.abstractmethod
-    def get_relevant(self, agent_name : str, data, num_relevant=5):
+    def get_relevant(self, data, num_relevant=5):
+        """Gets relevant memory for"""
         pass
 
     @abc.abstractmethod
     def get_stats(self):
+        """Get stats from memory"""
         pass
