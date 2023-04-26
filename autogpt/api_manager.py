@@ -53,7 +53,7 @@ class ApiManager:
             return (
                 generate_output(
                     "\n".join(
-                        f'{message["role"]}: {message["message"]}'
+                        f'{message["role"]}: {message["content"]}'
                         for message in messages
                     ),
                     convo_id,
