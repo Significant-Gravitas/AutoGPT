@@ -55,6 +55,11 @@ import click
     type=click.Path(),
     hidden=True,
 )
+@click.option(
+    "--install-plugin-deps",
+    is_flag=True,
+    help="Installs external dependencies for 3rd party plugins.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -71,6 +76,7 @@ def main(
     allow_downloads: bool,
     skip_news: bool,
     workspace_directory: str,
+    install_plugin_deps: bool,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -95,6 +101,7 @@ def main(
             allow_downloads,
             skip_news,
             workspace_directory,
+            install_plugin_deps,
         )
 
 
