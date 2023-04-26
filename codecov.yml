@@ -8,9 +8,10 @@ coverage:
     patch:
       default:
         target: 80%     
-
+ 
+## Please add this section once you've separated your coverage uploads for unit and integration tests
 # flags:
 #   unit-tests:
-#     carryforward: true
+#     carryforward: true 
 #   integration-tests:
 #     carryforward: true
