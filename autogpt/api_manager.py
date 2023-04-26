@@ -1,22 +1,19 @@
-from typing import List
+from __future__ import annotations
 
 import openai
 
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.modelsinfo import COSTS
-
-cfg = Config()
-print_total_cost = cfg.debug_mode
+from autogpt.singleton import Singleton
 
 
-class ApiManager:
-    def __init__(self, debug=False):
+class ApiManager(metaclass=Singleton):
+    def __init__(self):
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
         self.total_cost = 0
         self.total_budget = 0
-        self.debug = debug
 
     def reset(self):
         self.total_prompt_tokens = 0
@@ -28,7 +25,7 @@ class ApiManager:
         self,
         messages: list,  # type: ignore
         model: str | None = None,
-        temperature: float = cfg.temperature,
+        temperature: float = None,
         max_tokens: int | None = None,
         deployment_id=None,
     ) -> str:
@@ -42,6 +39,9 @@ class ApiManager:
         Returns:
         str: The AI's response.
         """
+        cfg = Config()
+        if temperature is None:
+            temperature = cfg.temperature
         if deployment_id is not None:
             response = openai.ChatCompletion.create(
                 deployment_id=deployment_id,
@@ -59,8 +59,7 @@ class ApiManager:
                 max_tokens=max_tokens,
                 api_key=cfg.openai_api_key,
             )
-        if self.debug:
-            logger.debug(f"Response: {response}")
+        logger.debug(f"Response: {response}")
         prompt_tokens = response.usage.prompt_tokens
         completion_tokens = response.usage.completion_tokens
         self.update_cost(prompt_tokens, completion_tokens, model)
@@ -81,8 +80,7 @@ class ApiManager:
             prompt_tokens * COSTS[model]["prompt"]
             + completion_tokens * COSTS[model]["completion"]
         ) / 1000
-        if print_total_cost:
-            print(f"Total running cost: ${self.total_cost:.3f}")
+        logger.debug(f"Total running cost: ${self.total_cost:.3f}")
 
     def set_total_budget(self, total_budget):
         """
@@ -128,6 +126,3 @@ class ApiManager:
         float: The total budget for API calls.
         """
         return self.total_budget
-
-
-api_manager = ApiManager(cfg.debug_mode)
