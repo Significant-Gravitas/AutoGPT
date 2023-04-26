@@ -5,6 +5,7 @@ import pytest
 from autogpt.api_manager import ApiManager
 from autogpt.config import Config
 from autogpt.workspace import Workspace
+from tests.vcr.openai_filter import before_record_request
 
 
 @pytest.fixture()
