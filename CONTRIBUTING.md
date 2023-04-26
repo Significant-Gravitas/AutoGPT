@@ -4,21 +4,11 @@ First of all, thank you for considering contributing to our project! We apprecia
 
 This document provides guidelines and best practices to help you contribute effectively.
 
-## Table of Contents
-
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [How to Contribute](#how-to-contribute)
-  - [Reporting Bugs](#reporting-bugs)
-  - [Suggesting Enhancements](#suggesting-enhancements)
-  - [Submitting Pull Requests](#submitting-pull-requests)
-- [Style Guidelines](#style-guidelines)
-  - [Code Formatting](#code-formatting)
-  - [Pre-Commit Hooks](#pre-commit-hooks)
-
 ## Code of Conduct
 
-By participating in this project, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md). Please read it to understand the expectations we have for everyone who contributes to this project.
+By participating in this project, you agree to abide by our [Code of Conduct]. Please read it to understand the expectations we have for everyone who contributes to this project.
+
+[Code of Conduct]: https://significant-gravitas.github.io/Auto-GPT/code-of-conduct.md
 
 ## 📢 A Quick Word
 Right now we will not be accepting any Contributions that add non-essential commands to Auto-GPT.
@@ -84,6 +74,7 @@ isort .
 ```
 
 ### Pre-Commit Hooks
+
 We use pre-commit hooks to ensure that code formatting and other checks are performed automatically before each commit. To set up pre-commit hooks for this project, follow these steps:
 
 Install the pre-commit package using pip:
@@ -103,7 +94,14 @@ If you encounter any issues or have questions, feel free to reach out to the mai
 Happy coding, and once again, thank you for your contributions!
 
 Maintainers will look at PR that have no merge conflicts when deciding what to add to the project. Make sure your PR shows up here:
+https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-label%3Aconflicts
 
-https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-is%3Aconflict+
+## Testing your changes
 
-## Testing
+If you add or change code, make sure the updated code is covered by tests.
+
+To increase coverage if necessary, [write tests using `pytest`].
+
+For more info on running tests, please refer to ["Running tests"](https://significant-gravitas.github.io/Auto-GPT/testing/).
+
+[write tests using `pytest`]: https://realpython.com/pytest-python-testing/
