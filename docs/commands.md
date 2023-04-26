@@ -9,7 +9,7 @@ The OpenAPI command is used to generate a OpenAPI client and command from a give
 It's also compatible with OpenAI Plugins as they are effectively are OpenAPI(Swagger) specification,
 with OpenAI Plugin metadata on top of it.
 
-To start using it you need to add REST API or OpenAI plugin config to your [openapi_commands.yaml](openapi_commands.yaml)
+To start using it you need to add REST API or OpenAI plugin config to your [openapi_commands.yaml](../openapi_commands.yaml)
 and add the name to OPENAPI_APIS in ENVS, so it would be enabled for usage in Auto-GPT.
 
 For any REST API added to the config, following steps are performed:

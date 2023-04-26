@@ -6,7 +6,7 @@ Enter this command to use TTS _(Text-to-Speech)_ for Auto-GPT
 python -m autogpt --speak
 ```
 
-Eleven Labs provides voice technologies such as voice design, speech synthesis, and premade voices that auto gpt can use for speech.
+Eleven Labs provides voice technologies such as voice design, speech synthesis, and premade voices that Auto-GPT can use for speech.
 
 1. Go to [Eleven Labs](https://beta.elevenlabs.io/) and make an account if you don't already have one.
 2. Choose and setup the `Starter` plan.

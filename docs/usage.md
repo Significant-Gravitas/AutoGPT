@@ -1,15 +1,33 @@
 # Usage
 
-1. Run the `autogpt` Python module in your terminal.
-* On Linux/MacOS:
-   ```   
-   ./run.sh
-   ```
-* On Windows:
-   ```   
-   .\run.bat
-   ```
-   Running with `--help` after `.\run.bat` lists all the possible command line arguments you can pass.
+Open a terminal and run the startup script:
+
+- On Linux/MacOS:
+
+``` shell
+./run.sh
+```
+
+- On Windows:
+
+``` shell
+.\run.bat
+```
+
+- Using Docker:
+
+``` shell
+docker-compose run --rm auto-gpt
+```
+
+Running with `--help` lists all the possible command line arguments you can pass:
+
+``` shell
+./run.sh --help
+
+# or with docker
+docker-compose run --rm auto-gpt --help
+```
 
 2. After each response from Auto-GPT, choose from the options to authorize command(s),
 exit the program, or provide feedback to the AI.
@@ -24,17 +42,17 @@ Here are some common arguments you can use when running Auto-GPT:
 > Replace anything in angled brackets (<>) to a value you want to specify
 
 * View all available command line arguments
-    ```    
-    python -m autogpt --help
-    ```
+``` shell
+python -m autogpt --help
+```
 * Run Auto-GPT with a different AI Settings file
-    ```    
-    python -m autogpt --ai-settings <filename>
-    ```
+``` shell
+python -m autogpt --ai-settings <filename>
+```
 * Specify a memory backend
-    ```    
-    python -m autogpt --use-memory  <memory-backend>
-    ```
+``` shell
+python -m autogpt --use-memory  <memory-backend>
+```
 
 > **NOTE**: There are shorthands for some of these flags, for example `-m` for `--use-memory`. Use `python -m autogpt --help` for more information
 
@@ -55,11 +73,15 @@ Use at your own risk.
 
 1. Run the `autogpt` python module in your terminal:
 
-    ```    
-    python -m autogpt --continuous
-    ```
+``` shell
+python -m autogpt --continuous
+```
 
 2. To exit the program, press Ctrl + C
+
+### ♻️ Self-Feedback Mode ⚠️
+
+Running Self-Feedback will **INCREASE** token use and thus cost more. This feature enables the agent to provide self-feedback by verifying its own actions and checking if they align with its current goals. If not, it will provide better feedback for the next loop. To enable this feature for the current loop, input `S` into the input field.
 
 ### GPT3.5 ONLY Mode
 

@@ -20,6 +20,8 @@ def test_inspect_zip_for_modules():
 @pytest.fixture
 def mock_config_denylist_allowlist_check():
     class MockConfig:
+        """Mock config object for testing the denylist_allowlist_check function"""
+
         plugins_denylist = ["BadPlugin"]
         plugins_allowlist = ["GoodPlugin"]
 
@@ -29,6 +31,7 @@ def mock_config_denylist_allowlist_check():
 def test_denylist_allowlist_check_denylist(
     mock_config_denylist_allowlist_check, monkeypatch
 ):
+    # Test that the function returns False when the plugin is in the denylist
     monkeypatch.setattr("builtins.input", lambda _: "y")
     assert not denylist_allowlist_check(
         "BadPlugin", mock_config_denylist_allowlist_check
@@ -38,6 +41,7 @@ def test_denylist_allowlist_check_denylist(
 def test_denylist_allowlist_check_allowlist(
     mock_config_denylist_allowlist_check, monkeypatch
 ):
+    # Test that the function returns True when the plugin is in the allowlist
     monkeypatch.setattr("builtins.input", lambda _: "y")
     assert denylist_allowlist_check("GoodPlugin", mock_config_denylist_allowlist_check)
 
@@ -45,6 +49,7 @@ def test_denylist_allowlist_check_allowlist(
 def test_denylist_allowlist_check_user_input_yes(
     mock_config_denylist_allowlist_check, monkeypatch
 ):
+    # Test that the function returns True when the user inputs "y"
     monkeypatch.setattr("builtins.input", lambda _: "y")
     assert denylist_allowlist_check(
         "UnknownPlugin", mock_config_denylist_allowlist_check
@@ -54,6 +59,7 @@ def test_denylist_allowlist_check_user_input_yes(
 def test_denylist_allowlist_check_user_input_no(
     mock_config_denylist_allowlist_check, monkeypatch
 ):
+    # Test that the function returns False when the user inputs "n"
     monkeypatch.setattr("builtins.input", lambda _: "n")
     assert not denylist_allowlist_check(
         "UnknownPlugin", mock_config_denylist_allowlist_check
@@ -63,6 +69,7 @@ def test_denylist_allowlist_check_user_input_no(
 def test_denylist_allowlist_check_user_input_invalid(
     mock_config_denylist_allowlist_check, monkeypatch
 ):
+    # Test that the function returns False when the user inputs an invalid value
     monkeypatch.setattr("builtins.input", lambda _: "invalid")
     assert not denylist_allowlist_check(
         "UnknownPlugin", mock_config_denylist_allowlist_check
@@ -70,6 +77,9 @@ def test_denylist_allowlist_check_user_input_invalid(
 
 @pytest.fixture
 def mock_config_generic_plugin():
+    """Mock config object for testing the scan_plugins function"""
+
+    # Test that the function returns the correct number of plugins
     class MockConfig:
         plugins_dir = PLUGINS_TEST_DIR
         plugins_openai = []
@@ -80,5 +90,6 @@ def mock_config_generic_plugin():
 
 
 def test_scan_plugins_generic(mock_config_generic_plugin):
+    # Test that the function returns the correct number of plugins
     result = scan_plugins(mock_config_generic_plugin, debug=True)
     assert len(result) == 1
