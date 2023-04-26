@@ -102,7 +102,12 @@ class PostgresMLMemory(MemoryProviderSingleton):
         query_embedding = ",".join(str(v) for v in query_embedding)
         query_statement = (
             "SELECT data FROM %s ORDER BY %s.embedding <-> ARRAY[%s]::vector LIMIT %d;"
-            % (self.postgresml_tablename, self.postgresml_tablename, query_embedding, 5)
+            % (
+                self.postgresml_tablename,
+                self.postgresml_tablename,
+                query_embedding,
+                num_relevant,
+            )
         )
 
         conn = psycopg2.connect(**self.conn_params)
