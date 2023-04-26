@@ -1,10 +1,7 @@
 """Base class for memory providers."""
 import abc
 
-from autogpt.config import Config
 from autogpt.singleton import AbstractSingleton
-
-cfg = Config()
 
 
 def save_vec_num(vec_num):
