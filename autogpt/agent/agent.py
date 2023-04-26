@@ -1,3 +1,18 @@
+"""
+Auto-GPT Agent
+
+This file contains the implementation of the Agent class, which serves as the primary
+interface for interacting with Auto-GPT. The Agent class contains methods for
+starting an interaction loop with the AI, executing commands, and handling user input
+and feedback.
+
+Dependencies:
+- colorama
+- autogpt
+
+Classes:
+- Agent: The main class for interacting with Auto-GPT.
+"""
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -16,31 +31,48 @@ from autogpt.workspace import Workspace
 class Agent:
     """Agent class for interacting with Auto-GPT.
 
+    This class represents an agent that can interact with the Auto-GPT system. It contains several attributes that store the 
+    agent's state, such as memory, full message history, next action count, command registry, configuration, system prompt,
+    and triggering prompt. The agent can start an interaction loop with the AI, receive responses, and execute next actions 
+    based on those responses. The agent can also provide human feedback to the AI, which is saved in the memory object.
+
+    Dependencies:
+    - colorama
+    - autogpt
+
     Attributes:
-        ai_name: The name of the agent.
-        memory: The memory object to use.
-        full_message_history: The full message history.
-        next_action_count: The number of actions to execute.
-        system_prompt: The system prompt is the initial prompt that defines everything
-          the AI needs to know to achieve its task successfully.
-        Currently, the dynamic and customizable information in the system prompt are
-          ai_name, description and goals.
+        agent_name (str): The name of the agent.
+        memory (object): The memory object to use.
+        full_message_history (list): The full message history.
+        next_action_count (int): The number of actions to execute.
+        command_registry (object): The command registry object.
+        config (object): The configuration object.
+        system_prompt (str): The system prompt is the initial prompt that defines everything the AI needs to know to achieve 
+            its task successfully. The dynamic and customizable information in the system prompt are agent_name, description, 
+            and goals.
+        triggering_prompt (str): The last sentence the AI will see before answering. The triggering prompt is not part of the 
+            system prompt because between the system prompt and the triggering prompt we have contextual information that can 
+            distract the AI and make it forget that its goal is to find the next task to achieve.
 
-        triggering_prompt: The last sentence the AI will see before answering.
-            For Auto-GPT, this prompt is:
-            Determine which next command to use, and respond using the format specified
-              above:
-            The triggering prompt is not part of the system prompt because between the
-              system prompt and the triggering
-            prompt we have contextual information that can distract the AI and make it
-              forget that its goal is to find the next task to achieve.
-            SYSTEM PROMPT
-            CONTEXTUAL INFORMATION (memory, previous conversations, anything relevant)
-            TRIGGERING PROMPT
+    Methods:
+        __init__(self, agent_name, memory, full_message_history, next_action_count, command_registry, config, system_prompt, 
+            triggering_prompt, workspace_directory):
+            Initializes an instance of the Agent class.
+        
+        start_interaction_loop(self):
+            Starts the interaction loop between the agent and the Auto-GPT system. Sends messages to the AI, receives 
+            responses, and executes next actions based on those responses. If continuous limit is reached or the agent 
+            decides to exit the program, the loop terminates. The agent can also provide human feedback to the AI, which 
+            is saved in the memory object.
 
-        The triggering prompt reminds the AI about its short term meta task
-        (defining the next task)
-    """
+        _resolve_pathlike_command_args(self, command_args):
+            Resolves path-like arguments in the command arguments by converting them to the absolute path.
+
+        get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
+            Generates a feedback response based on the provided thoughts dictionary. Combines the elements of the 
+            thoughts dictionary into a single feedback message and uses the create_chat_completion() function to 
+            generate a response based on the input message.
+        """
 
     def __init__(
         self,
@@ -66,6 +98,23 @@ class Agent:
         self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
 
     def start_interaction_loop(self):
+        """
+        Starts the main interaction loop with the AI. This method handles user input and
+        feedback, executes commands, and communicates with the AI to generate responses.
+
+        Parameters:
+        None.
+
+        Returns:
+        None.
+
+        Raises:
+        None.
+
+        Side Effects:
+        - Modifies the Agent's memory and full message history.
+        - Executes commands based on user input and the AI's responses.
+        """
         # Interaction Loop
         cfg = Config()
         loop_count = 0
