@@ -187,4 +187,4 @@ def generate_output(prompt, conversation_id):
             "stream": False,
         },
     )
-    print(resp.json())
+    return resp.json()
