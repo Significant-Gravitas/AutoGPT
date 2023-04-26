@@ -33,7 +33,7 @@ You can also set limits on how much you spend on [the Usage limits page](https:/
     cd Auto-GPT
 ```
 
-5. Configure Auto-GPT:
+4. Configure Auto-GPT:
    1. Find the file named `.env.template` in the main `Auto-GPT` folder. This file may be hidden by default in some operating systems due to the dot prefix. To reveal hidden files, follow the instructions for your specific operating system (e.g., in Windows, click on the "View" tab in File Explorer and check the "Hidden items" box; in macOS, press Cmd + Shift + .).
    2. Create a copy of this file and call it `.env` by removing the `template` extension.  The easiest way is to do this in a command prompt/terminal window `cp .env.template .env`.
    3. Open the `.env` file in a text editor.
