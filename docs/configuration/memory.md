@@ -143,6 +143,17 @@ WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate" # this is optional and i
 USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
 MEMORY_INDEX="Autogpt" # name of the index to create for the application
 ```
+### PostgresML Setup
+PostgresML is a machine learning extension to PostgreSQL that enables you to perform training and inference on text and tabular data using SQL queries. With PostgresML, you can enhance your existing DB as a VectorDB generating embeddings from text stored in the database and indexing them for fast query.
+
+**Installation**
+
+PostgresML installation consists of three parts: PostgreSQL database, Postgres extension for machine learning and a dashboard app. The extension provides all the machine learning functionality and can be used independently using any SQL IDE. The dashboard app provides an easy to use interface for writing SQL notebooks, performing and tracking ML experiments and ML models.
+
+**Free trial**
+
+If you want to check out the functionality quickly, [sign up for a free PostgresML account](https://postgresml.org/signup). We will provide 5GiB of storage for your data.
+
 
 ## View Memory Usage
 
