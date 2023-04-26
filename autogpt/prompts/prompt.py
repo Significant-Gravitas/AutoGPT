@@ -3,7 +3,7 @@ from typing import  Optional
 import platform
 import distro
 
-from autogpt.config.ai_config import AIConfigBroker, AgentConfig , Project
+from autogpt.config.project.config import ProjectConfigBroker, AgentConfig , Project
 from autogpt.api_manager import api_manager
 from autogpt.config.config import Config
 from autogpt.logs import logger
@@ -122,13 +122,13 @@ def goals_to_string(goals) -> str:
     return "\n".join(goals)
 
 
-def construct_main_project_config() -> AIConfigBroker:
+def construct_main_project_config() -> ProjectConfigBroker:
     """
     Load or create an AI configuration for the main AI assistant.
     Returns:
         AIConfig: The selected or created AI configuration.
     """
-    configuration_broker = AIConfigBroker(config_file=CFG.ai_settings_file)
+    configuration_broker = ProjectConfigBroker(config_file=CFG.ai_settings_file)
     project_list = configuration_broker.get_projects()
     number_of_project = len(project_list)
     project_number = -1
@@ -206,7 +206,7 @@ def construct_main_project_config() -> AIConfigBroker:
     return configuration_broker
 
 
-def construct_full_prompt(config : AIConfigBroker
+def construct_full_prompt(config : ProjectConfigBroker
                             , prompt_generator: Optional[PromptGenerator] = None
     ) -> str:
     """

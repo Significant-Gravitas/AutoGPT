@@ -1,6 +1,6 @@
 # sourcery skip: do-not-use-staticmethod
 """
-A module that contains the AIConfig class object that contains the configuration
+A module that contains the AgentConfig class object that contains the configuration
 """
 from __future__ import annotations
 import os
@@ -11,14 +11,17 @@ import shutil
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
+from autogpt.config.project.config import Project
+from autogpt.config.project.agent.config import AgentConfig
+from autogpt.singleton import AbstractSingleton
+
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 SAVE_FILE = str(Path(os.getcwd()) / "agent_settings.yaml")
 MAX_AI_CONFIG = 5
 
-from .singleton import AbstractSingleton
 
-class AIConfigBroker(AbstractSingleton):   
+class ProjectConfigBroker(AbstractSingleton):   
     """
     A class object that contains the configuration information for the AI
 
@@ -32,16 +35,18 @@ class AIConfigBroker(AbstractSingleton):
             "command_registry": command_registry 
             api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
             })
-        # TODO __version (str): Version of the app
+        __version (str): Version of the app
+        config_file (str): The path to the config yaml file.
     """
 
     def __init__(self, project_number: int = -1, config_file: str = None) -> None:
-        """_summary_
-
-        Args:
-            project_number (int, optional): _description_. Defaults to -1.
-            config_file (str, optional): _description_. Defaults to None.
         """
+    Initializes an AIConfigBroker instance with the specified project number and config file.
+
+    Args:
+        project_number (int, optional): The project number to be set as the current project. Defaults to -1.
+        config_file (str, optional): The path to the config yaml file. Defaults to None.
+    """
         self.config_file = config_file or SAVE_FILE
         self._current_project_id = project_number
         self._load(self.config_file)
@@ -52,14 +57,13 @@ class AIConfigBroker(AbstractSingleton):
 
     def _load(self, config_file: str = SAVE_FILE) -> list:
         """
-        Loads the projects from the specified YAML file and returns a list of dictionaries containing the project parameters.
+        Loads the projects from the specified YAML file and returns a list of Project instances containing the project parameters.
 
-        Parameters:
-            config_file(str): The path to the config yaml file.
-            DEFAULT: "../agent_settings.yaml"
+        Args:
+            config_file (str): The path to the config yaml file. DEFAULT: "../agent_settings.yaml"
         
         Returns:
-            agent_configs (list): A list of dictionaries containing the project parameters for each entry.
+            list: A list of Project instances containing the project parameters for each entry.
         """
         
         if not os.path.exists(config_file):
@@ -122,13 +126,10 @@ class AIConfigBroker(AbstractSingleton):
 
     def _save(self , config_file: str = SAVE_FILE) -> None:
         """
-        Saves the current projecturation to the specified file yaml file path as a yaml file.
+        Saves the current configuration to the specified file yaml file path as a yaml file.
 
-        Parameters:
-            config_file(str): The path to the config yaml file.
-            DEFAULT: "../agent_settings.yaml"
-        Returns:
-            None
+        Args:
+            config_file (str): The path to the config yaml file. DEFAULT: "../agent_settings.yaml"
         """
   
         if not os.path.exists(config_file):
@@ -156,49 +157,6 @@ class AIConfigBroker(AbstractSingleton):
         with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(data_to_save, file, allow_unicode=True)
 
- 
-
-    # def _save(self, config_file: str = SAVE_FILE) -> None:
-    #     """
-    #     Saves the current projecturation to the specified file yaml file path as a yaml file.
-
-    #     Parameters:
-    #         config_file(str): The path to the config yaml file.
-    #         DEFAULT: "../agent_settings.yaml"
-    #     Returns:
-    #         None
-    #     """
-    #     project_data = []
-    #     for project in self._projects:
-    #         delegated_agents_data = []
-    #         for delegated_agents in project.delegated_agents:
-    #             delegated_agents_data.append(
-    #                 {
-    #                     "agent_name": delegated_agents.agent_name,
-    #                     "agent_role": delegated_agents.agent_role,
-    #                     "agent_goals": delegated_agents.agent_goals,
-    #                     "agent_model": delegated_agents.agent_model,
-    #                     "agent_model_type": delegated_agents.agent_model_type,
-    #                 }
-    #             )
-    #         project_data.append(
-    #             {
-    #                 "project_name": project.project_name,
-    #                 "lead_agent": {
-    #                     "agent_name": project.lead_agent.agent_name,
-    #                     "agent_role": project.lead_agent.agent_role,
-    #                     "agent_goals": project.lead_agent.agent_goals,
-    #                     "agent_model": project.lead_agent.agent_model,
-    #                     "agent_model_type": project.lead_agent.agent_model_type,
-    #                 },
-    #                 "delegated_agents": delegated_agents_data,
-    #             }
-    #         )
-
-    #     data_to_save = {"version": "X.Y.X", "projects": project_data}
-    #     with open(config_file, "w", encoding="utf-8") as file:
-    #         yaml.dump(data_to_save, file, allow_unicode=True)
-
     def create_project(self, 
                     project_id : int,
                     api_budget :float,  
@@ -210,18 +168,21 @@ class AIConfigBroker(AbstractSingleton):
                     overwrite : bool = False,
                     project_name : str = '' ) -> bool:
         """
-        Sets the project parameters for the given configuration number.
+        Creates a new project with the specified parameters and adds it to the list of projects.
 
-        Parameters:
-            project_number (int): The project number to be updated.
+        Args:
+            project_id (int): The project ID.
+            api_budget (float): The maximum dollar value for API calls (0.0 means infinite).
             agent_name (str): The AI name.
             agent_role (str): The AI role.
             agent_goals (list): The AI goals.
-            prompt_generator (Optional[PromptGenerator]): The prompt generator instance.
-            command_registry: The command registry instance.
+            prompt_generator (str): The prompt generator instance.
+            command_registry (str): The command registry instance.
+            overwrite (bool, optional): Overwrite the project if it exists. Defaults to False.
+            project_name (str, optional): The name of the project. Defaults to ''.
 
         Returns:
-            success (bool): True if the configuration is successfully updated, False otherwise.
+            bool: True if the project is successfully created, False otherwise.
         """
         project_name = agent_name # TODO : Allow to give a project name :-)
 
@@ -261,14 +222,15 @@ class AIConfigBroker(AbstractSingleton):
            
     def set_project_number(self, new_project_id: int) -> bool:
         """
-        Sets the current projecturation number.
+        Sets the current project number.
 
-        Parameters:
-            new_project_number (int): The new project number to be set.
+        Args:
+            new_project_id (int): The new project number to be set.
 
         Returns:
-            None
+            bool: True if the project number is successfully set, False otherwise.
         """
+
         if new_project_id < 0 or new_project_id >= len(self._projects):
             raise ValueError(f"set_project_number: Value must be between 0 and {len(self._projects)-1}")
         self._current_project_id = new_project_id
@@ -276,25 +238,25 @@ class AIConfigBroker(AbstractSingleton):
 
     def get_current_project_id(self) -> int:
         """
-        Gets the current projecturation number.
+        Gets the current project number.
 
         Parameters:
             None
-
+        
         Returns:
-            __current_project_id (int): The current projecturation number.
+            int: The current project number.
         """
         return self._current_project_id
 
     def get_current_project(self) -> Project:
         """
-        Gets the current project dictionary.
+        Gets the current project instance.
 
         Parameters:
             None
 
         Returns:
-            current_project (dict): The current project dictionary.
+            Project: The current project instance.
         """
         if self._current_project_id == -1:
             raise ValueError(f"get_current_project: Value {self._current_project_id } not expected")
@@ -302,13 +264,16 @@ class AIConfigBroker(AbstractSingleton):
     
     def get_project(self, project_number : int ) -> AgentConfig:
         """
-        Gets the current project dictionary.
+        Gets the specified project instance.
 
         Parameters:
             None
 
+        Args:
+            project_number (int): The project number.
+
         Returns:
-            current_project (dict): The current project dictionary.
+            AgentConfig: The specified project instance.
         """
         if 0 <= project_number <= len(self._projects):
             raise ValueError(f"get_config: Value {project_number } not expected")     
@@ -329,81 +294,3 @@ class AIConfigBroker(AbstractSingleton):
 
         return self._projects
     
-class Project:
-    def __init__(self, project_name : str, api_budget : float , lead_agent : AgentConfig, delegated_agents : List[AgentConfig] = []):
-        self.project_name = project_name
-        self.api_budget= api_budget
-        self.lead_agent = lead_agent
-        self.delegated_agents = delegated_agents
-    
-    #saving in Yaml
-    def __str__(self) -> str:
-
-        return str(self.to_dict())
-    
-    def __toDict__(self) -> dict :
-
-        return self.to_dict()
-    
-    def to_dict(self) -> dict:
-        lead_agent_dict = {
-            "agent_name": self.lead_agent.agent_name,
-            "agent_role": self.lead_agent.agent_role,
-            "agent_goals": self.lead_agent.agent_goals,
-            "agent_model": self.lead_agent.agent_model,
-            "agent_model_type": self.lead_agent.agent_model_type,
-            "prompt_generator": self.lead_agent.prompt_generator,
-            "command_registry": self.lead_agent.command_registry
-        }
-        delegated_agents_list = []
-        for agent in self.delegated_agents:
-            agent_dict = {
-                "agent_name": agent.agent_name,
-                "agent_role": agent.agent_role,
-                "agent_goals": agent.agent_goals,
-                "agent_model": agent.agent_model,
-                "agent_model_type": agent.agent_model_type,
-                "prompt_generator": agent.prompt_generator,
-                "command_registry": agent.command_registry
-            }
-            delegated_agents_list.append(agent_dict)
-        dict_representation = {
-            "project_name": self.project_name,
-            "api_budget": self.api_budget,
-            "lead_agent": lead_agent_dict,
-            "delegated_agents": delegated_agents_list
-        }
-        return dict_representation
-
-    
-
-
-        
-class AgentConfig(): 
-    """_summary_
-    """
-    def __init__(self, 
-            agent_name: str,
-            agent_role: str,
-            agent_goals: List,
-            agent_model: Optional[str] = None,
-            agent_model_type: Optional[str] = None,
-            prompt_generator =  None,
-            command_registry =  None) -> None:
-        """_summary_
-
-        Args:
-            agent_name (_type_): _description_
-            agent_role (_type_): _description_
-            agent_goals (_type_): _description_
-            prompt_generator (_type_): _description_
-            command_registry (_type_): _description_
-        """
-
-        self.agent_name = agent_name
-        self.agent_role = agent_role
-        self.agent_goals = agent_goals
-        self.agent_model = agent_model
-        self.agent_model_type = agent_model_type
-        self.prompt_generator= prompt_generator
-        self.command_registry= command_registry

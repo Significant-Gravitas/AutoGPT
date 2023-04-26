@@ -2,7 +2,7 @@ import unittest
 from io import StringIO
 from unittest.mock import patch
 
-from autogpt.config.ai_config import AIConfigBroker
+from autogpt.config.project.config import ProjectConfigBroker
 from autogpt.setup import (
     generate_aiconfig_automatic,
     generate_aiconfig_manual,
@@ -18,7 +18,7 @@ class TestAutoGPT(unittest.TestCase):
         with patch("builtins.input", side_effect=user_inputs):
             ai_config = prompt_user()
 
-        self.assertIsInstance(ai_config, AIConfigBroker)
+        self.assertIsInstance(ai_config, ProjectConfigBroker)
         self.assertIsNotNone(ai_config.agent_name)
         self.assertIsNotNone(ai_config.agent_role)
         self.assertGreaterEqual(len(ai_config.agent_goals), 1)
@@ -29,7 +29,7 @@ class TestAutoGPT(unittest.TestCase):
         user_prompt = "Help me create a rock opera about cybernetic giraffes"
         ai_config = generate_aiconfig_automatic(user_prompt)
 
-        self.assertIsInstance(ai_config, AIConfigBroker)
+        self.assertIsInstance(ai_config, ProjectConfigBroker)
         self.assertIsNotNone(ai_config.agent_name)
         self.assertIsNotNone(ai_config.agent_role)
         self.assertGreaterEqual(len(ai_config.agent_goals), 1)
@@ -49,7 +49,7 @@ class TestAutoGPT(unittest.TestCase):
         with patch("builtins.input", side_effect=user_inputs):
             ai_config = prompt_user()
 
-        self.assertIsInstance(ai_config, AIConfigBroker)
+        self.assertIsInstance(ai_config, ProjectConfigBroker)
         self.assertEqual(ai_config.agent_name, "Chef-GPT")
         self.assertEqual(ai_config.agent_role, "an AI designed to browse bake a cake.")
         self.assertEqual(ai_config.agent_goals, ["Purchase ingredients", "Bake a cake"])
@@ -68,7 +68,7 @@ class TestAutoGPT(unittest.TestCase):
         with patch("builtins.input", side_effect=user_inputs):
             ai_config = prompt_user()
 
-        self.assertIsInstance(ai_config, AIConfigBroker)
+        self.assertIsInstance(ai_config, ProjectConfigBroker)
         self.assertEqual(ai_config.agent_name, "Chef-GPT")
         self.assertEqual(ai_config.agent_role, "an AI designed to browse bake a cake.")
         self.assertEqual(ai_config.agent_goals, ["Purchase ingredients", "Bake a cake"])
