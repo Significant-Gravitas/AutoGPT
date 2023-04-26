@@ -7,6 +7,7 @@ from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import validate_json
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger, print_assistant_thoughts
+from autogpt.memory.pinecone import PineconeMemory
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
@@ -238,6 +239,19 @@ class Agent:
                     f"\nResult: {result} "
                     f"\nHuman Feedback: {user_input} "
                 )
+                if isinstance(self.memory, PineconeMemory):
+                    stats = self.memory.get_stats()
+                    index_fullness = stats.index_fullness
+                    if index_fullness == 1:
+                        should_clear = clean_input(
+                            f"""Your Pinecone index is {Fore.RED}100% full{Style.RESET_ALL}.
+                                 No new data can be stored.
+                                 Clear index? Continue (y/n):"""
+                        )
+                    if should_clear.lower() == "y":
+                        self.memory.clear
+                    else:
+                        pass
 
                 self.memory.add(memory_to_add)
 
