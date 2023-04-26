@@ -1,6 +1,6 @@
 from colorama import Fore
 
-from autogpt.api_manager import api_manager
+from autogpt.api_manager import ApiManager
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.logs import logger
@@ -115,6 +115,7 @@ Continue (y/n): """
         config.save(CFG.ai_settings_file)
 
     # set the total api budget
+    api_manager = ApiManager()
     api_manager.set_total_budget(config.api_budget)
 
     # Agent Created, print message
