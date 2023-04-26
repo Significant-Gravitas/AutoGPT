@@ -33,6 +33,7 @@ class TestFileOperations(unittest.TestCase):
         self.test_file = str(self.workspace.get_path("test_file.txt"))
         self.test_file2 = "test_file2.txt"
         self.test_directory = str(self.workspace.get_path("test_directory"))
+        test.test_nested_file = os.path.join(self.test_directory, self.test_file)
         self.file_content = "This is a test file.\n"
         self.file_logger_logs = "file_logger.txt"
 
@@ -69,7 +70,7 @@ class TestFileOperations(unittest.TestCase):
 
     def test_write_to_file(self):
         new_content = "This is new content.\n"
-        write_to_file(self.test_file, new_content)
+        write_to_file(self.test_nested_file, new_content)
         with open(self.test_file, "r") as f:
             content = f.read()
         self.assertEqual(content, new_content)
@@ -79,7 +80,7 @@ class TestFileOperations(unittest.TestCase):
             content_before = f.read()
 
         append_text = "This is appended text.\n"
-        append_to_file(self.test_file, append_text)
+        append_to_file(self.test_nested_file, append_text)
         with open(self.test_file, "r") as f:
             content = f.read()
 
