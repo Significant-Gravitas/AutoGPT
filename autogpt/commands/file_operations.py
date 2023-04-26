@@ -167,6 +167,9 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
         str: A message indicating success or failure
     """
     try:
+        directory = os.path.dirname(filename)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
         with open(filename, "a") as f:
             f.write(text)
 
@@ -236,6 +239,9 @@ def download_file(url, filename):
         filename (str): Filename to save the file as
     """
     try:
+        directory = os.path.dirname(filename)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
         message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
         with Spinner(message) as spinner:
             session = requests.Session()
