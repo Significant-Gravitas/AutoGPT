@@ -15,6 +15,7 @@ from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import construct_main_ai_config
 from autogpt.utils import get_current_git_branch, get_latest_bulletin
 from autogpt.workspace import Workspace
+from scripts.install_plugin_deps import install_plugin_dependencies
 
 
 def run_auto_gpt(
@@ -31,7 +32,12 @@ def run_auto_gpt(
     allow_downloads: bool,
     skip_news: bool,
     workspace_directory: str,
+    install_plugin_deps: bool,
 ):
+    # Configure logging before we do anything else.
+    logger.set_level(logging.DEBUG if debug else logging.INFO)
+    logger.speak_mode = speak
+
     cfg = Config()
     # TODO: fill in llm values here
     check_openai_api_key()
@@ -49,7 +55,7 @@ def run_auto_gpt(
         allow_downloads,
         skip_news,
     )
-    logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
+
     if not cfg.skip_news:
         motd = get_latest_bulletin()
         if motd:
@@ -71,6 +77,9 @@ def run_auto_gpt(
                 "parts of Auto-GPT with this version. "
                 "Please consider upgrading to Python 3.10 or higher.",
             )
+
+    if install_plugin_deps:
+        install_plugin_dependencies()
 
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
