@@ -45,6 +45,30 @@ def test_agent_initialization(agent):
     assert agent.system_prompt == "System prompt"
     assert agent.triggering_prompt == "Triggering prompt"
 
+class CustomPlugin:
+    def __init__(self, should_handle):
+        self.should_handle = should_handle
 
-# More test methods can be added for specific agent interactions
-# For example, mocking chat_with_ai and testing the agent's interaction loop
+    def can_handle_post_command(self):
+        return self.should_handle
+
+    def post_command(self, command_name, result):
+        return f"Modified: {result}"
+
+
+def test_plugin_post_command_handling(agent):
+    # Test with a plugin that handles post_command
+    plugin = CustomPlugin(should_handle=True)
+    agent.config.plugins.append(plugin)
+
+    command_name = "test_command"
+    result = "Test result"
+
+    modified_result = agent._handle_plugin_post_command(command_name, result)
+    assert modified_result == f"Modified: {result}"
+
+    # Test with a plugin that doesn't handle post_command
+    plugin.should_handle = False
+    unmodified_result = agent._handle_plugin_post_command(command_name, result)
+    assert unmodified_result == result
+
