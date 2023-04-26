@@ -133,10 +133,7 @@ class Config(metaclass=Singleton):
         self.plugins_openai = []
 
         plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
-        if plugins_allowlist:
-            self.plugins_allowlist = plugins_allowlist.split(",")
-        else:
-            self.plugins_allowlist = []
+        self.plugins_allowlist = plugins_allowlist.split(",") if plugins_allowlist else []
         self.plugins_denylist = []
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
