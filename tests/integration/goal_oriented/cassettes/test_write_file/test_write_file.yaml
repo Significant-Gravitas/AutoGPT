@@ -86,8 +86,6 @@ interactions:
       - Wed, 26 Apr 2023 16:40:03 GMT
       Server:
       - cloudflare
-      Transfer-Encoding:
-      - chunked
       access-control-allow-origin:
       - '*'
       alt-svc:
@@ -213,8 +211,6 @@ interactions:
       - Wed, 26 Apr 2023 16:40:20 GMT
       Server:
       - cloudflare
-      Transfer-Encoding:
-      - chunked
       access-control-allow-origin:
       - '*'
       alt-svc:
