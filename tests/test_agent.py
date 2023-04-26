@@ -50,14 +50,14 @@ class CustomPlugin:
     def __init__(self, should_handle):
         self.should_handle = should_handle
 
-    def can_handle_post_command(self):
-        return True
-
     def can_handle_pre_instruction(self):
         return False
 
     def can_handle_on_instruction(self):
         return False
+
+    def can_handle_post_command(self):
+        return self.should_handle
 
     def post_command(self, command_name, result):
         return f"Modified: {result}"
