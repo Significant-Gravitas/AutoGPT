@@ -107,3 +107,12 @@ Maintainers will look at PR that have no merge conflicts when deciding what to a
 https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-is%3Aconflict+
 
 ## Testing
+
+Execute the test suite by calling `pytest` from your CLI
+
+You can specify which tests you want to run by calling `pytest tests/test_filename.py`
+
+Use pytest over unit test for creating tests.
+Use `pytest` over `unittest` for creating tests.
+
+run `black . && isort .` before committing your work
