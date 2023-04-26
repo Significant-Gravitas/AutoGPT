@@ -241,14 +241,14 @@ def print_assistant_thoughts(
     logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
     if api_manager.get_total_budget() > 0:
         logger.typewriter_log(
-            "BUDGET:", Fore.YELLOW, f"{remaining_budget_description()}"
+            "BUDGET:", Fore.YELLOW, f"{_remaining_budget_description()}"
         )
     # Speak the assistant's thoughts
     if speak_mode and assistant_thoughts_speak:
         say_text(assistant_thoughts_speak)
 
 
-def remaining_budget_description():
+def _remaining_budget_description():
     from autogpt.api_manager import api_manager  # required to avoid circular import
 
     remaining_budget = api_manager.get_total_budget() - api_manager.get_total_cost()
