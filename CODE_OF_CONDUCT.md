@@ -40,4 +40,3 @@ This Code of Conduct is adapted from the [Contributor Covenant](https://www.cont
 ## 6. Contact
 
 If you have any questions or concerns, please contact the project maintainers.
-

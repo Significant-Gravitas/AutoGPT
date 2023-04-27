@@ -10,6 +10,7 @@ from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.speech import say_text
+from autogpt.url_utils.validators import validate_url
 
 CFG = Config()
 AGENT_MANAGER = AgentManager()
@@ -118,8 +119,6 @@ def execute_command(
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
-        elif command_name == "do_nothing":
-            return "No action performed."
         elif command_name == "task_complete":
             shutdown()
         else:
@@ -141,6 +140,7 @@ def execute_command(
 @command(
     "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
 )
+@validate_url
 def get_text_summary(url: str, question: str) -> str:
     """Return the results of a Google search
 
@@ -157,6 +157,7 @@ def get_text_summary(url: str, question: str) -> str:
 
 
 @command("get_hyperlinks", "Get text summary", '"url": "<url>"')
+@validate_url
 def get_hyperlinks(url: str) -> Union[str, List[str]]:
     """Return the results of a Google search
 
