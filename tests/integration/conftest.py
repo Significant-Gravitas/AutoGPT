@@ -3,7 +3,7 @@ import pytest
 from tests.vcr.openai_filter import before_record_request, before_record_response
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def vcr_config():
     # this fixture is called by the pytest-recording vcr decorator.
     return {
