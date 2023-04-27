@@ -105,3 +105,18 @@ To increase coverage if necessary, [write tests using `pytest`].
 For more info on running tests, please refer to ["Running tests"](https://significant-gravitas.github.io/Auto-GPT/testing/).
 
 [write tests using `pytest`]: https://realpython.com/pytest-python-testing/
+
+ 
+In Pytest, we use VCRpy. It's a package that allows us to save OpenAI and other API providers' responses.
+When you run Pytest locally:
+
+- If no prompt change: you will not consume API tokens because there are no new OpenAI calls required.
+- If the prompt changes in a way that the cassettes are not reusable:
+    - If no API key, the test fails. It requires a new cassette. So, add an API key to .env.
+    - If the API key is present, the tests will make a real call to OpenAI.
+        - If the test ends up being successful, your prompt changes didn't introduce regressions. This is good. Commit your cassettes to your PR.
+        - If the test is unsuccessful:
+            - Either: Your change made Auto-GPT less capable, in that case, you have to change your code.
+            - Or: The test might be poorly written. In that case, you can make suggestions to change the test.
+
+In our CI pipeline, Pytest will use the cassettes and not call paid API providers, so we need your help to record the replays that you break.
