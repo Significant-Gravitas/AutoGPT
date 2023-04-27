@@ -7,6 +7,7 @@ from autogpt.app import list_agents, start_agent
 from tests.utils import requires_api_key
 
 
+@pytest.mark.vcr
 @pytest.mark.integration_test
 @requires_api_key("OPENAI_API_KEY")
 def test_make_agent() -> None:
