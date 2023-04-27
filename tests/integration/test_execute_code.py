@@ -22,7 +22,7 @@ def random_string():
     return "".join(random.choice(string.ascii_lowercase) for _ in range(10))
 
 
-def test_execute_python_file(mocker, mock_config, random_string):
+def test_execute_python_file(mock_config, random_string):
     with tempfile.NamedTemporaryFile(delete=True, suffix=".py") as temp_file:
         temp_file.write(str.encode(f"print('Hello {random_string}!')"))
         temp_file.flush()
