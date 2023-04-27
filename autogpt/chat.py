@@ -1,5 +1,5 @@
 import time
-from random import choice, shuffle
+from random import shuffle
 
 from openai.error import RateLimitError
 
