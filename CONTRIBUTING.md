@@ -99,15 +99,22 @@ https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-labe
 ## Testing your changes
 
 If you add or change code, make sure the updated code is covered by tests.
-
-To increase coverage if necessary, [write tests using `pytest`].
+To increase coverage if necessary, [write tests using pytest].
 
 For more info on running tests, please refer to ["Running tests"](https://significant-gravitas.github.io/Auto-GPT/testing/).
 
-[write tests using `pytest`]: https://realpython.com/pytest-python-testing/
+[write tests using pytest]: https://realpython.com/pytest-python-testing/
 
- 
-In Pytest, we use VCRpy. It's a package that allows us to save OpenAI and other API providers' responses.
+### API-dependent tests
+
+To run tests that involve making calls to the OpenAI API, we use VCRpy. It caches known
+requests and matching responses in so-called *cassettes*, allowing us to run the tests
+in CI without needing actual API access.
+
+When changes cause a test prompt to be generated differently, it will likely miss the
+cache and make a request to the API, updating the cassette with the new request+response.
+*Be sure to include the updated cassette in your PR!*
+
 When you run Pytest locally:
 
 - If no prompt change: you will not consume API tokens because there are no new OpenAI calls required.
