@@ -109,6 +109,7 @@ For more info on running tests, please refer to ["Running tests"](https://signif
  
 In Pytest, we use VCRpy. It's a package that allows us to save OpenAI and other API providers' responses.
 When you run Pytest locally:
+
 - If no prompt change: you will not consume API tokens because there are no new OpenAI calls required.
 - If the prompt changes in a way that the cassettes are not reusable:
     - If no API key, the test fails. It requires a new cassette. So, add an API key to .env.
