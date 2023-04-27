@@ -50,6 +50,9 @@ def create_writer_agent(workspace):
         ],
     )
     ai_config.command_registry = command_registry
+    CFG.set_continuous_mode(True)
+    CFG.set_memory_backend("no_memory")
+    CFG.set_temperature(0)
     memory = get_memory(CFG, init=True)
     triggering_prompt = (
         "Determine which next command to use, and respond using the"
@@ -68,9 +71,7 @@ def create_writer_agent(workspace):
         triggering_prompt=triggering_prompt,
         workspace_directory=workspace.root,
     )
-    CFG.set_continuous_mode(True)
-    CFG.set_memory_backend("no_memory")
-    CFG.set_temperature(0)
+
     os.environ["TIKTOKEN_CACHE_DIR"] = ""
 
     return agent
