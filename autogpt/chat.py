@@ -1,4 +1,5 @@
 import time
+from random import choice, shuffle
 
 from openai.error import RateLimitError
 
@@ -84,7 +85,11 @@ def chat_with_ai(
             relevant_memory = (
                 ""
                 if len(full_message_history) == 0
-                else permanent_memory.get_relevant(str(full_message_history[-9:]), 10)
+                else shuffle(
+                    permanent_memory.get_relevant(
+                        str(shuffle(full_message_history[-5:])), 5
+                    )
+                )
             )
 
             logger.debug(f"Memory Stats: {permanent_memory.get_stats()}")
