@@ -223,9 +223,9 @@ def batched(iterable, n):
         yield batch
 
 
-def chunked_tokens(text, encoding_name, chunk_length):
-    encoding = tiktoken.get_encoding(encoding_name)
-    tokens = encoding.encode(text)
+def chunked_tokens(text, tokenizer_name, chunk_length):
+    tokenizer = tiktoken.get_encoding(tokenizer_name)
+    tokens = tokenizer.encode(text)
     chunks_iterator = batched(tokens, chunk_length)
     yield from chunks_iterator
 
@@ -269,10 +269,10 @@ def create_embedding(
     """
     cfg = Config()
     chunk_embeddings = []
-    chunk_lens = []
+    chunk_lengths = []
     for chunk in chunked_tokens(
         text,
-        encoding_name=cfg.embedding_encoding,
+        tokenizer_name=cfg.embedding_tokenizer,
         chunk_length=cfg.embedding_token_limit,
     ):
         embedding = openai.Embedding.create(
@@ -287,10 +287,10 @@ def create_embedding(
             model=cfg.embedding_model,
         )
         chunk_embeddings.append(embedding["data"][0]["embedding"])
-        chunk_lens.append(len(chunk))
+        chunk_lengths.append(len(chunk))
 
     # do weighted avg
-    chunk_embeddings = np.average(chunk_embeddings, axis=0, weights=chunk_lens)
+    chunk_embeddings = np.average(chunk_embeddings, axis=0, weights=chunk_lengths)
     chunk_embeddings = chunk_embeddings / np.linalg.norm(
         chunk_embeddings
     )  # normalize the length to one
