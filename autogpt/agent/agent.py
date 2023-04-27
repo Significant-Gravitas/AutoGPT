@@ -268,12 +268,12 @@ class Agent:
                             self.memory.clear
                         else:
                             pass
-            else:
+                            
                 memory_to_add = (
-                    f"Assistant Reply: {assistant_reply} "
-                    f"\nResult: {result} "
-                    f"\nHuman Feedback: {user_input} "
-                )
+                        f"Assistant Reply: {assistant_reply} "
+                        f"\nResult: {result} "
+                        f"\nHuman Feedback: {user_input} "
+                    )
 
             self.memory.add(memory_to_add)
 
