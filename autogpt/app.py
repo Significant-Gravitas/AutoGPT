@@ -119,8 +119,6 @@ def execute_command(
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
-        elif command_name == "do_nothing":
-            return f"Error: No action performed. Reason: {arguments['reason']}"
         elif command_name == "task_complete":
             shutdown()
         else:

@@ -10,6 +10,10 @@ from autogpt.utils import clean_input
 
 CFG = Config()
 
+DEFAULT_TRIGGERING_PROMPT = (
+    "Determine which next command to use, and respond using the format specified above:"
+)
+
 
 def build_default_prompt_generator() -> PromptGenerator:
     """
@@ -39,7 +43,6 @@ def build_default_prompt_generator() -> PromptGenerator:
 
     # Define the command list
     commands = [
-        ("Do Nothing", "do_nothing", {"reason": "<reason>"}),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
     ]
 
