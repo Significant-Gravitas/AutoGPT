@@ -47,14 +47,14 @@ def clean_input(prompt: str = "", talk=False):
                     "sure",
                     "alright",
                 ]:
-                    return "y"
+                    return cfg.authorise_key
                 elif plugin_response.lower() in [
                     "no",
                     "nope",
                     "n",
                     "negative",
                 ]:
-                    return "n"
+                    return cfg.exit_key
                 return plugin_response
 
         # ask for input, default when just pressing Enter is y
