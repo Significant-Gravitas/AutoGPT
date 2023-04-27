@@ -3,7 +3,7 @@ from colorama import Fore, Style
 
 from autogpt.llm_utils import get_ada_embedding
 from autogpt.logs import logger
-from autogpt.memory.base import MemoryProviderSingleton, load_vec_num, save_vec_num
+from autogpt.memory.base import MemoryProviderSingleton
 from autogpt.utils import clean_input
 
 
@@ -16,8 +16,6 @@ class PineconeMemory(MemoryProviderSingleton):
         metric = "cosine"
         pod_type = "p1"
         table_name = "auto-gpt"
-        # use load_vec_num to read last saved vec_num from local .txt.
-        self.vec_num = load_vec_num()
 
         try:
             pinecone.whoami()
@@ -41,26 +39,38 @@ class PineconeMemory(MemoryProviderSingleton):
             )
         self.index = pinecone.Index(table_name)
         # gets stats for index pod, extracts index_fullness, converts to percentage.
-        # prompts user to clear or not based on preference.
+        # prompts user to clear or not based on preference; extracts vector count
+        # and assigns it to self.vec_num
+        # index fullness percentage and vector count are displayed in prompt
         index_stats = self.index.describe_index_stats()
+        namespaces = index_stats.get("namespaces", {})
+        default_namespace = namespaces.get("", {})
+        self.vec_num = default_namespace.get("vector_count", None)
+        if self.vec_num == None:
+            self.vec_num = "0"
         index_fullness = index_stats.index_fullness * 100
 
-        if index_fullness >= 90:
-            fullness_percent = f"{Fore.RED}{index_fullness}%{Style.RESET_ALL}"
+        if index_fullness == 90:
+            fullness_percent = f"{Fore.YELLOW}{index_fullness}%{Style.RESET_ALL}"
         elif index_fullness < 10:
-            fullness_percent = f"{Fore.LIGHTGREEN_EX}<10%{Style.RESET_ALL}"
+            fullness_percent = f"{Fore.GREEN}<10%{Style.RESET_ALL}"
         else:
-            fullness_percent = f"{index_fullness}%"
+            fullness_percent = f"{Fore.GREEN}{index_fullness}%{Style.RESET_ALL}"
 
         should_clear = clean_input(
             f"""{Fore.CYAN}Memory storage:{Style.RESET_ALL} Your Pinecone index pod is currently at 
-                {fullness_percent} of capacity. Clear the index?
-                (y,n): """
+                {fullness_percent} of capacity, with {self.vec_num} vector(s). Clear the index?
+                {Fore.MAGENTA}(y/n): {Style.RESET_ALL}"""
         )
 
         if should_clear.lower() == "y":
             self.index.delete(delete_all=True)
-        else:
+            print(
+                f"""
+{Fore.GREEN}Pinecone index cleared.{Style.RESET_ALL}"""
+            )
+            return None
+        elif should_clear.lower() == "n":
             pass
 
     def add(self, data):
@@ -69,9 +79,6 @@ class PineconeMemory(MemoryProviderSingleton):
         self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})])
         _text = f"Inserting data into memory at index: {self.vec_num}:\n data: {data}"
         self.vec_num += 1
-        # save current vector number to local .txt
-        # this allows assigning self.vec_num upon startup
-        save_vec_num(self.vec_num)
         return _text
 
     def get(self, data):
