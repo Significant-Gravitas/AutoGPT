@@ -6,8 +6,8 @@ Functions:
 - get_ai_project_index(number_of_project: int) -> int: Prompts the user to select an existing AI configuration or start with new settings.
 - prompt_for_replacing_project(number_of_project: int) -> int: Prompts the user to choose which AI configuration to replace when the maximum number of configurations is reached.
 - goals_to_string(goals) -> str: Converts a list of goals into a formatted string for display.
-- construct_main_project() -> ProjectConfigBroker: Loads or creates an AI configuration for the main AI assistant.
-- construct_full_prompt(config : ProjectConfigBroker, prompt_generator: Optional[PromptGenerator] = None) -> str: Generates a prompt string for the user with information about the AI configuration.
+- construct_main_project() -> ProjectBroker: Loads or creates an AI configuration for the main AI assistant.
+- construct_full_prompt(config : ProjectBroker, prompt_generator: Optional[PromptGenerator] = None) -> str: Generates a prompt string for the user with information about the AI configuration.
 
 Classes:
 - None
@@ -21,8 +21,8 @@ Dependencies:
 - typing: A built-in module for type hints and annotations.
 - platform: A built-in module for obtaining information about the system platform.
 - distro: A third-party module for obtaining information about the system distribution.
-- ProjectConfigBroker: A class for managing the configuration settings for AutoGPT projects.
-- AgentConfig: A class representing the configuration settings for an AI agent.
+- ProjectBroker: A class for managing the configuration settings for AutoGPT projects.
+- AgentModel: A class representing the configuration settings for an AI agent.
 - Project: A class representing an AutoGPT project.
 - api_manager: A module for managing the GPT-3 API connection.
 - Config: A class representing the system configuration settings.
@@ -37,8 +37,8 @@ from typing import  Optional
 import platform
 import distro
 
-from autogpt.projects.project import AgentConfig , Project
-from autogpt.projects.project_config_broker import ProjectConfigBroker
+from autogpt.projects.project import AgentModel , Project
+from autogpt.projects.projects_broker import ProjectBroker
 from autogpt.api_manager import ApiManager
 from autogpt.config.config import Config
 from autogpt.logs import logger
@@ -170,14 +170,14 @@ def goals_to_string(goals) -> str:
     return "\n".join(goals)
 
 
-def construct_main_project() -> ProjectConfigBroker:
+def construct_main_project() -> ProjectBroker:
     """
     Load or create an AI configuration for the main AI assistant.
 
     Returns:
-        ProjectConfigBroker: The selected or created AI configuration.
+        ProjectBroker: The selected or created AI configuration.
     """
-    configuration_broker = ProjectConfigBroker(config_file=CFG.ai_settings_file)
+    configuration_broker = ProjectBroker(config_file=CFG.ai_settings_file)
     project_list = configuration_broker.get_projects()
     number_of_project = len(project_list)
     project_number = -1
@@ -255,14 +255,14 @@ def construct_main_project() -> ProjectConfigBroker:
     return configuration_broker
 
 
-def construct_full_prompt(config : ProjectConfigBroker
+def construct_full_prompt(config : ProjectBroker
                             , prompt_generator: Optional[PromptGenerator] = None
     ) -> str:
     """
     Returns a prompt to the user with the class information in an organized fashion.
 
     Args:
-        config (ProjectConfigBroker): The current AI configuration.
+        config (ProjectBroker): The current AI configuration.
         prompt_generator (Optional[PromptGenerator]): An optional PromptGenerator object.
 
     Returns:
