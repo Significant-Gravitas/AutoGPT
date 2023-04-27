@@ -13,11 +13,12 @@ from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
+import hashlib
 
 CFG = Config()
 
 
-def check_duplicate_operation(operation: str, filename: str) -> bool:
+def check_duplicate_operation(operation: str, filename: str, hash: str = None) -> bool:
     """Check if the operation has already been performed on the given file
 
     Args:
@@ -27,19 +28,30 @@ def check_duplicate_operation(operation: str, filename: str) -> bool:
     Returns:
         bool: True if the operation has already been performed on the file
     """
-    log_content = read_file(LOG_FILE)
-    log_entry = f"{operation}: {filename}\n"
+    log_content = read_file(CFG.file_logger_path)
+    log_entry = f"{operation}: {filename}"
+    if hash is not None:
+        log_entry += f"-{hash}\n"
+    else:
+        log_entry += "\n"
+
     return log_entry in log_content
 
 
-def log_operation(operation: str, filename: str) -> None:
+def log_operation(operation: str, filename: str, hash: str = None) -> None:
     """Log the file operation to the file_logger.txt
 
     Args:
         operation (str): The operation to log
         filename (str): The name of the file the operation was performed on
     """
-    log_entry = f"{operation}: {filename}\n"
+    log_entry = f"{operation}: {filename}"
+    if hash is not None:
+        log_entry += f"-{hash}\n"
+    else:
+        log_entry += "\n"
+
+    print(log_entry)
     append_to_file(CFG.file_logger_path, log_entry, should_log=False)
 
 
@@ -145,7 +157,8 @@ def write_to_file(filename: str, text: str) -> str:
         os.makedirs(directory, exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:
             f.write(text)
-        log_operation("write", filename)
+
+        log_operation("write", filename, hashlib.sha256(text.encode("utf-8")).hexdigest())
         return "File written to successfully."
     except Exception as e:
         return f"Error: {str(e)}"
@@ -172,7 +185,7 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
             f.write(text)
 
         if should_log:
-            log_operation("append", filename)
+            log_operation("append", filename, hashlib.sha256(text.encode("utf-8")).hexdigest())
 
         return "Text appended successfully."
     except Exception as e:
@@ -189,11 +202,15 @@ def delete_file(filename: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
+    if os.path.exists(filename):
+        with open(filename) as f:
+            content = f.read()
+
     if check_duplicate_operation("delete", filename):
         return "Error: File has already been deleted."
     try:
         os.remove(filename)
-        log_operation("delete", filename)
+        log_operation("delete", filename, hashlib.sha256(content.encode("utf-8")).hexdigest())
         return "File deleted successfully."
     except Exception as e:
         return f"Error: {str(e)}"
