@@ -17,6 +17,7 @@ SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
 def create_default_embeddings(embed_dim: int):
     return np.zeros((0, embed_dim)).astype(np.float32)
 
+
 @dataclasses.dataclass
 class CacheContent:
     texts: List[str] = dataclasses.field(default_factory=list)
