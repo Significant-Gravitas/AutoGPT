@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import pytest
 
 from autogpt.agent import Agent
@@ -31,6 +32,19 @@ def memory_none(agent_test_config: Config):
 
 @pytest.fixture
 def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace):
+=======
+import os
+
+from autogpt.agent import Agent
+from autogpt.app import CFG
+from autogpt.commands.command import CommandRegistry
+from autogpt.config import AIConfig
+from autogpt.memory import get_memory
+from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
+
+
+def create_browser_agent(workspace):
+>>>>>>> 5d2360d (Refactor test browse website)
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.commands.web_selenium")
@@ -47,12 +61,24 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
         ],
     )
     ai_config.command_registry = command_registry
+<<<<<<< HEAD
 
+=======
+    CFG.set_continuous_mode(True)
+    CFG.set_memory_backend("no_memory")
+    CFG.set_temperature(0)
+
+    memory = get_memory(CFG, init=True)
+>>>>>>> 5d2360d (Refactor test browse website)
     system_prompt = ai_config.construct_full_prompt()
 
     agent = Agent(
         ai_name="",
+<<<<<<< HEAD
         memory=memory_none,
+=======
+        memory=memory,
+>>>>>>> 5d2360d (Refactor test browse website)
         full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
@@ -65,8 +91,12 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
     return agent
 
 
+<<<<<<< HEAD
 @pytest.fixture
 def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace):
+=======
+def create_writer_agent(workspace):
+>>>>>>> 5d2360d (Refactor test browse website)
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -81,7 +111,14 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
         ],
     )
     ai_config.command_registry = command_registry
+<<<<<<< HEAD
 
+=======
+    CFG.set_continuous_mode(True)
+    CFG.set_memory_backend("no_memory")
+    CFG.set_temperature(0)
+    memory = get_memory(CFG, init=True)
+>>>>>>> 5d2360d (Refactor test browse website)
     triggering_prompt = (
         "Determine which next command to use, and respond using the"
         " format specified above:"
@@ -90,7 +127,11 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
 
     agent = Agent(
         ai_name="",
+<<<<<<< HEAD
         memory=memory_none,
+=======
+        memory=memory,
+>>>>>>> 5d2360d (Refactor test browse website)
         full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
