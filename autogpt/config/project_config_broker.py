@@ -66,7 +66,7 @@ class ProjectConfigBroker(AbstractSingleton):
 
     def __init__(self, project_number: int = -1, config_file: str = None) -> None:
         """
-    Initializes an AIConfigBroker instance with the specified project number and config file.
+    Initializes an ProjectConfigBroker instance with the specified project number and config file.
 
     Args:
         project_number (int, optional): The project number to be set as the current project. Defaults to -1.

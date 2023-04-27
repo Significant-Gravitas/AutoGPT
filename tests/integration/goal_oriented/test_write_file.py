@@ -8,7 +8,8 @@ import vcr
 from autogpt.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.commands.file_operations import LOG_FILE, delete_file, read_file
-from autogpt.config import ProjectConfigBroker, Config, check_openai_api_key
+from autogpt.config import Config, check_openai_api_key
+from autogpt.projects.project_config_broker import ProjectConfigBroker
 from autogpt.memory import get_memory
 from tests.utils import requires_api_key
 from autogpt.prompts.prompt import construct_full_prompt

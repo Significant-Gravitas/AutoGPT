@@ -32,8 +32,8 @@ from colorama import Fore, Style
 
 from autogpt import utils
 from autogpt.config import Config
-from autogpt.project.project_config_broker import ProjectConfigBroker
-from autogpt.project.project import Project
+from autogpt.projects.project_config_broker import ProjectConfigBroker
+from autogpt.projects.project import Project
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
 

@@ -1,5 +1,5 @@
 import pytest
-from autogpt.project.agent.config import AgentConfig
+from autogpt.projects.agent.config import AgentConfig
 
 
 def test_agent_config_init():

@@ -2,7 +2,7 @@ import unittest
 from io import StringIO
 from unittest.mock import patch
 
-from autogpt.project.project_config_broker import ProjectConfigBroker
+from autogpt.projects.project_config_broker import ProjectConfigBroker
 from autogpt.setup import (
     generate_aiconfig_automatic,
     generate_aiconfig_manual,
