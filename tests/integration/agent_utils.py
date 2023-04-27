@@ -1,7 +1,9 @@
-import concurrent
+import concurrent.futures
+
+from autogpt.agent.agent import Agent
 
 
-def run_interaction_loop(agent, timeout):
+def run_interaction_loop(agent: Agent, timeout: float | None):
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future = executor.submit(agent.start_interaction_loop)
         try:
