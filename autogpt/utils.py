@@ -41,11 +41,13 @@ def clean_input(prompt: str = "", talk=False):
                 if plugin_response.lower() in [
                     "yes",
                     "yeah",
+                    "yep",
                     "y",
                     "ok",
                     "okay",
                     "sure",
                     "alright",
+                    "1",
                 ]:
                     return "y"
                 elif plugin_response.lower() in [
@@ -53,6 +55,7 @@ def clean_input(prompt: str = "", talk=False):
                     "nope",
                     "n",
                     "negative",
+                    "0",
                 ]:
                     return "n"
                 return plugin_response
