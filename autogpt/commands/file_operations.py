@@ -157,7 +157,9 @@ def write_to_file(filename: str, text: str) -> str:
         with open(filename, "w", encoding="utf-8") as f:
             f.write(text)
 
-        log_operation("write", filename, hashlib.sha256(text.encode("utf-8")).hexdigest())
+        log_operation(
+            "write", filename, hashlib.sha256(text.encode("utf-8")).hexdigest()
+        )
         return "File written to successfully."
     except Exception as e:
         return f"Error: {str(e)}"
@@ -184,7 +186,9 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
             f.write(text)
 
         if should_log:
-            log_operation("append", filename, hashlib.sha256(text.encode("utf-8")).hexdigest())
+            log_operation(
+                "append", filename, hashlib.sha256(text.encode("utf-8")).hexdigest()
+            )
 
         return "Text appended successfully."
     except Exception as e:
@@ -209,7 +213,9 @@ def delete_file(filename: str) -> str:
         return "Error: File has already been deleted."
     try:
         os.remove(filename)
-        log_operation("delete", filename, hashlib.sha256(content.encode("utf-8")).hexdigest())
+        log_operation(
+            "delete", filename, hashlib.sha256(content.encode("utf-8")).hexdigest()
+        )
         return "File deleted successfully."
     except Exception as e:
         return f"Error: {str(e)}"

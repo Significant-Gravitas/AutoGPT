@@ -46,7 +46,13 @@ class TestFileOperations(unittest.TestCase):
 
     def test_check_duplicate_operation(self):
         write_to_file(self.test_file, "testcontent1")
-        self.assertTrue(check_duplicate_operation("write", self.test_file, hashlib.sha256("testcontent1".encode("utf-8")).hexdigest()))
+        self.assertTrue(
+            check_duplicate_operation(
+                "write",
+                self.test_file,
+                hashlib.sha256("testcontent1".encode("utf-8")).hexdigest(),
+            )
+        )
 
     # Test logging a file operation
     def test_log_operation(self):
