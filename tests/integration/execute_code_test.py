@@ -26,7 +26,9 @@ class TestExecuteCode(TestCase):
         random_string = "".join(
             random.choice(string.ascii_lowercase) for _ in range(10)
         )
-        config_mock = MagicMock(wraps=sut.CFG, workspace_path="/", execute_local_commands=True)
+        config_mock = MagicMock(
+            wraps=sut.CFG, workspace_path="/", execute_local_commands=True
+        )
         with patch("autogpt.commands.execute_code.CFG", config_mock):
             result = sut.execute_shell(f"echo 'Hello {random_string}!'")
             self.assertIn(f"Hello {random_string}!", result)
