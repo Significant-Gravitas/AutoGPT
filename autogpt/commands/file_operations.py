@@ -1,6 +1,7 @@
 """File operations for AutoGPT"""
 from __future__ import annotations
 
+import hashlib
 import os
 import os.path
 from typing import Generator
@@ -13,7 +14,6 @@ from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
-import hashlib
 
 CFG = Config()
 
@@ -51,7 +51,6 @@ def log_operation(operation: str, filename: str, hash: str = None) -> None:
     else:
         log_entry += "\n"
 
-    print(log_entry)
     append_to_file(CFG.file_logger_path, log_entry, should_log=False)
 
 
