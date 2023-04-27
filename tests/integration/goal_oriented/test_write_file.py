@@ -1,17 +1,7 @@
-<<<<<<< HEAD
 import pytest
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
-=======
-import os
-
-import pytest
-
-from autogpt.commands.file_operations import read_file
-from autogpt.config import Config
-from tests.integration.agent_factory import create_writer_agent
->>>>>>> 5d2360d (Refactor test browse website)
 from tests.integration.agent_utils import run_interaction_loop
 from tests.utils import requires_api_key
 
@@ -21,11 +11,7 @@ from tests.utils import requires_api_key
 def test_write_file(writer_agent: Agent) -> None:
     file_path = str(writer_agent.workspace.get_path("hello_world.txt"))
     try:
-<<<<<<< HEAD
         run_interaction_loop(writer_agent, 40)
-=======
-        run_interaction_loop(agent, 40)
->>>>>>> 5d2360d (Refactor test browse website)
     # catch system exit exceptions
     except SystemExit:  # the agent returns an exception when it shuts down
         content = read_file(file_path)
