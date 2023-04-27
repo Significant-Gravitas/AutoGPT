@@ -13,11 +13,8 @@ from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
-from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
 
 CFG = Config()
-LOG_FILE = "file_logger.txt"
-LOG_FILE_PATH = WORKSPACE_PATH / LOG_FILE
 
 
 def check_duplicate_operation(operation: str, filename: str) -> bool:
@@ -30,7 +27,7 @@ def check_duplicate_operation(operation: str, filename: str) -> bool:
     Returns:
         bool: True if the operation has already been performed on the file
     """
-    log_content = read_file(LOG_FILE)
+    log_content = read_file(CFG.file_logger_path)
     log_entry = f"{operation}: {filename}\n"
     return log_entry in log_content
 
@@ -43,12 +40,7 @@ def log_operation(operation: str, filename: str) -> None:
         filename (str): The name of the file the operation was performed on
     """
     log_entry = f"{operation}: {filename}\n"
-
-    # Create the log file if it doesn't exist
-    if not os.path.exists(LOG_FILE_PATH):
-        with open(LOG_FILE_PATH, "w", encoding="utf-8") as f:
-            f.write("File Operation Logger ")
-    append_to_file(str(LOG_FILE_PATH), log_entry, should_log=False)
+    append_to_file(CFG.file_logger_path, log_entry, should_log=False)
 
 
 def split_file(
@@ -93,9 +85,8 @@ def read_file(filename: str) -> str:
     Returns:
         str: The contents of the file
     """
-    filepath = path_in_workspace(filename)
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filename, "r", encoding="utf-8") as f:
             content = f.read()
         return content
     except Exception as e:
@@ -150,11 +141,10 @@ def write_to_file(filename: str, text: str) -> str:
     if check_duplicate_operation("write", filename):
         return "Error: File has already been updated."
     try:
-        filepath = path_in_workspace(filename)
-        directory = os.path.dirname(filepath)
+        directory = os.path.dirname(filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
-        with open(filepath, "w", encoding="utf-8") as f:
+        with open(filename, "w", encoding="utf-8") as f:
             f.write(text)
         log_operation("write", filename)
         return "File written to successfully."
@@ -177,8 +167,7 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
         str: A message indicating success or failure
     """
     try:
-        filepath = path_in_workspace(filename)
-        with open(filepath, "a") as f:
+        with open(filename, "a") as f:
             f.write(text)
 
         if should_log:
@@ -202,8 +191,7 @@ def delete_file(filename: str) -> str:
     if check_duplicate_operation("delete", filename):
         return "Error: File has already been deleted."
     try:
-        filepath = path_in_workspace(filename)
-        os.remove(filepath)
+        os.remove(filename)
         log_operation("delete", filename)
         return "File deleted successfully."
     except Exception as e:
@@ -222,16 +210,13 @@ def search_files(directory: str) -> list[str]:
     """
     found_files = []
 
-    if directory in {"", "/"}:
-        search_directory = WORKSPACE_PATH
-    else:
-        search_directory = path_in_workspace(directory)
-
-    for root, _, files in os.walk(search_directory):
+    for root, _, files in os.walk(directory):
         for file in files:
             if file.startswith("."):
                 continue
-            relative_path = os.path.relpath(os.path.join(root, file), WORKSPACE_PATH)
+            relative_path = os.path.relpath(
+                os.path.join(root, file), CFG.workspace_path
+            )
             found_files.append(relative_path)
 
     return found_files
@@ -250,7 +235,6 @@ def download_file(url, filename):
         url (str): URL of the file to download
         filename (str): Filename to save the file as
     """
-    safe_filename = path_in_workspace(filename)
     try:
         message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
         with Spinner(message) as spinner:
@@ -268,7 +252,7 @@ def download_file(url, filename):
                 total_size = int(r.headers.get("Content-Length", 0))
                 downloaded_size = 0
 
-                with open(safe_filename, "wb") as f:
+                with open(filename, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
                         downloaded_size += len(chunk)

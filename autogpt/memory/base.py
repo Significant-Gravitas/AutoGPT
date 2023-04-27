@@ -1,43 +1,31 @@
 """Base class for memory providers."""
 import abc
 
-import openai
-
-from autogpt.config import AbstractSingleton, Config
-
-cfg = Config()
-
-
-def get_ada_embedding(text):
-    text = text.replace("\n", " ")
-    if cfg.use_azure:
-        return openai.Embedding.create(
-            input=[text],
-            engine=cfg.get_azure_deployment_id_for_model("text-embedding-ada-002"),
-        )["data"][0]["embedding"]
-    else:
-        return openai.Embedding.create(input=[text], model="text-embedding-ada-002")[
-            "data"
-        ][0]["embedding"]
+from autogpt.singleton import AbstractSingleton
 
 
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
     def add(self, data):
+        """Adds to memory"""
         pass
 
     @abc.abstractmethod
     def get(self, data):
+        """Gets from memory"""
         pass
 
     @abc.abstractmethod
     def clear(self):
+        """Clears memory"""
         pass
 
     @abc.abstractmethod
     def get_relevant(self, data, num_relevant=5):
+        """Gets relevant memory for"""
         pass
 
     @abc.abstractmethod
     def get_stats(self):
+        """Get stats from memory"""
         pass
