@@ -3,7 +3,10 @@
 A module that contains the PromptConfig class object that contains the configuration
 """
 import yaml
+from colorama import Fore
 from autogpt.config.config import Config
+from autogpt import utils
+from autogpt.logs import logger
 
 CFG = Config()
 
@@ -33,11 +36,15 @@ class PromptConfig:
         Returns:
             None
         """
-        try:
-            with open(config_file, encoding="utf-8") as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
-        except FileNotFoundError:
-            raise ValueError("Prompt configuration file '" + config_file + "' not found")
+        # Validate file
+        (validated, message) = utils.validate_yaml_file(config_file)
+        if not validated:
+            logger.typewriter_log("FAILED FILE VALIDATION", Fore.RED, message)
+            logger.double_check()
+            exit(1)
+
+        with open(config_file, encoding="utf-8") as file:
+            config_params = yaml.load(file, Loader=yaml.FullLoader)
 
         self.constraints = config_params.get("constraints", [])
         self.resources = config_params.get("resources", [])
