@@ -262,6 +262,6 @@ def denylist_allowlist_check(plugin_name: str, cfg: Config) -> bool:
         return True
     ack = input(
         f"WARNING: Plugin {plugin_name} found. But not in the"
-        " allowlist... Load? (y/n): "
+        f" allowlist... Load? ({cfg.authorise_key}/{cfg.exit_key}): "
     )
-    return ack.lower() == "y"
+    return ack.lower() == cfg.authorise_key
