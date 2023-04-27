@@ -99,9 +99,31 @@ https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-labe
 ## Testing your changes
 
 If you add or change code, make sure the updated code is covered by tests.
-
-To increase coverage if necessary, [write tests using `pytest`].
+To increase coverage if necessary, [write tests using pytest].
 
 For more info on running tests, please refer to ["Running tests"](https://significant-gravitas.github.io/Auto-GPT/testing/).
 
-[write tests using `pytest`]: https://realpython.com/pytest-python-testing/
+[write tests using pytest]: https://realpython.com/pytest-python-testing/
+
+### API-dependent tests
+
+To run tests that involve making calls to the OpenAI API, we use VCRpy. It caches known
+requests and matching responses in so-called *cassettes*, allowing us to run the tests
+in CI without needing actual API access.
+
+When changes cause a test prompt to be generated differently, it will likely miss the
+cache and make a request to the API, updating the cassette with the new request+response.
+*Be sure to include the updated cassette in your PR!*
+
+When you run Pytest locally:
+
+- If no prompt change: you will not consume API tokens because there are no new OpenAI calls required.
+- If the prompt changes in a way that the cassettes are not reusable:
+    - If no API key, the test fails. It requires a new cassette. So, add an API key to .env.
+    - If the API key is present, the tests will make a real call to OpenAI.
+        - If the test ends up being successful, your prompt changes didn't introduce regressions. This is good. Commit your cassettes to your PR.
+        - If the test is unsuccessful:
+            - Either: Your change made Auto-GPT less capable, in that case, you have to change your code.
+            - Or: The test might be poorly written. In that case, you can make suggestions to change the test.
+
+In our CI pipeline, Pytest will use the cassettes and not call paid API providers, so we need your help to record the replays that you break.
