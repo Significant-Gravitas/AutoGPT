@@ -81,6 +81,16 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "chroma":
+        if not ChromaMemory:
+            print(
+                "Error: Chroma is not installed. Please install chroma-sdk to"
+                " use Chroma as a memory backend."
+            )
+        else:
+            memory = ChromaMemory(cfg)
+            if init:
+                memory.clear()
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
