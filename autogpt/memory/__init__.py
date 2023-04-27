@@ -37,6 +37,14 @@ except ImportError:
     # print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
 
+try:
+    from autogpt.memory.vectara import VectaraMemory
+
+    supported_memory.append("vectara")
+except ImportError:
+    # print("vectara not installed. Skipping import.")
+    VectaraMemory = None
+
 
 def get_memory(cfg, init=False):
     memory = None
@@ -74,6 +82,14 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = MilvusMemory(cfg)
+    elif cfg.memory_backend == "vectara":
+        if not VectaraMemory:
+            print(
+                "Error: Vectara is not installed. Please install vectara-py to"
+                " use Vectara as a memory backend."
+            )
+        else:
+            memory = VectaraMemory(cfg)
     elif cfg.memory_backend == "no_memory":
         memory = NoMemory(cfg)
 
@@ -96,4 +112,5 @@ __all__ = [
     "NoMemory",
     "MilvusMemory",
     "WeaviateMemory",
+    "VectaraMemory",
 ]

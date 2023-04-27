@@ -94,6 +94,11 @@ class Config(metaclass=Singleton):
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
         self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
 
+        # Vectara configuration.
+        self.vectara_customer_id = int(os.getenv("VECTARA_CUSTOMER_ID", "0"))
+        self.vectara_app_id = os.getenv("VECTARA_APP_CLIENT_ID", None)
+        self.vectara_app_secret = os.getenv("VECTARA_APP_CLIENT_SECRET", None)
+
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
