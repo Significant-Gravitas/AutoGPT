@@ -6,11 +6,8 @@ import openai
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
-from dotenv import load_dotenv
 
 from autogpt.singleton import Singleton
-
-load_dotenv(verbose=True, override=True)
 
 
 class Config(metaclass=Singleton):
@@ -63,6 +60,8 @@ class Config(metaclass=Singleton):
 
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
+
+        self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
 
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")

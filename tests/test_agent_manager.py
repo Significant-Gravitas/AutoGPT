@@ -1,9 +1,7 @@
-from typing import List
-
 import pytest
 
 from autogpt.agent.agent_manager import AgentManager
-from tests.utils import requires_api_key
+from autogpt.llm_utils import create_chat_completion
 
 
 @pytest.fixture
@@ -29,7 +27,16 @@ def model():
     return "gpt-3.5-turbo"
 
 
-@requires_api_key("OPENAI_API_KEY")
+@pytest.fixture(autouse=True)
+def mock_create_chat_completion(mocker):
+    mock_create_chat_completion = mocker.patch(
+        "autogpt.agent.agent_manager.create_chat_completion",
+        wraps=create_chat_completion,
+    )
+    mock_create_chat_completion.return_value = "irrelevant"
+    return mock_create_chat_completion
+
+
 def test_create_agent(agent_manager, task, prompt, model):
     key, agent_reply = agent_manager.create_agent(task, prompt, model)
     assert isinstance(key, int)
@@ -37,7 +44,6 @@ def test_create_agent(agent_manager, task, prompt, model):
     assert key in agent_manager.agents
 
 
-@requires_api_key("OPENAI_API_KEY")
 def test_message_agent(agent_manager, task, prompt, model):
     key, _ = agent_manager.create_agent(task, prompt, model)
     user_message = "Please translate 'Good morning' to French."
@@ -45,7 +51,6 @@ def test_message_agent(agent_manager, task, prompt, model):
     assert isinstance(agent_reply, str)
 
 
-@requires_api_key("OPENAI_API_KEY")
 def test_list_agents(agent_manager, task, prompt, model):
     key, _ = agent_manager.create_agent(task, prompt, model)
     agents_list = agent_manager.list_agents()
@@ -53,7 +58,6 @@ def test_list_agents(agent_manager, task, prompt, model):
     assert (key, task) in agents_list
 
 
-@requires_api_key("OPENAI_API_KEY")
 def test_delete_agent(agent_manager, task, prompt, model):
     key, _ = agent_manager.create_agent(task, prompt, model)
     success = agent_manager.delete_agent(key)
