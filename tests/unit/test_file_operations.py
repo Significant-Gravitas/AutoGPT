@@ -80,7 +80,7 @@ class TestFileOperations(unittest.TestCase):
         append_to_file(self.test_nested_file, append_text)
         with open(self.test_nested_file, "r") as f:
             content = f.read()
-        
+
         append_to_file(self.test_nested_file, append_text)
 
         with open(self.test_nested_file, "r") as f:
