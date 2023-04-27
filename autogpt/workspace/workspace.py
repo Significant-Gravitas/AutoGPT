@@ -112,7 +112,7 @@ class Workspace:
         if root is None:
             return Path(relative_path).resolve()
 
-        root, relative_path = Path(root), Path(relative_path)
+        root, relative_path = Path(root).resolve(), Path(relative_path)
 
         if relative_path.is_absolute():
             raise ValueError(
