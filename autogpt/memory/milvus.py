@@ -61,13 +61,13 @@ class MilvusMemory(MemoryProviderSingleton):
             if self.uri.startswith("https"):
                 self.secure = True
 
-        # Zilliz Cloud requires AutoIndex.
-        if re.match(r"^https://(.*)\.zillizcloud\.(com|cn)", self.address) is not None:
-            self.index_params = {
-                "metric_type": "IP",
-                "index_type": "AUTOINDEX",
-                "params": {},
-            }
+            # Zilliz Cloud requires AutoIndex.
+            if re.match(r"^https://(.*)\.zillizcloud\.(com|cn)", self.uri) is not None:
+                self.index_params = {
+                    "metric_type": "IP",
+                    "index_type": "AUTOINDEX",
+                    "params": {},
+                }
 
     def init_collection(self) -> None:
         """Initialize collection in vector database."""

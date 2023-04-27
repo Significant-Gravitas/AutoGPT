@@ -3,9 +3,10 @@ from pathlib import Path
 import pytest
 
 from autogpt.api_manager import ApiManager
-from autogpt.api_manager import api_manager as api_manager_
 from autogpt.config import Config
 from autogpt.workspace import Workspace
+
+pytest_plugins = ["tests.integration.agent_factory"]
 
 
 @pytest.fixture()
@@ -25,14 +26,18 @@ def config(workspace: Workspace) -> Config:
 
     # Do a little setup and teardown since the config object is a singleton
     old_ws_path = config.workspace_path
+    old_file_logger_path = config.file_logger_path
+
     config.workspace_path = workspace.root
+    config.file_logger_path = workspace.get_path("file_logger.txt")
     yield config
+
+    config.file_logger_path = old_file_logger_path
     config.workspace_path = old_ws_path
 
 
 @pytest.fixture()
 def api_manager() -> ApiManager:
-    old_attrs = api_manager_.__dict__.copy()
-    api_manager_.reset()
-    yield api_manager_
-    api_manager_.__dict__.update(old_attrs)
+    if ApiManager in ApiManager._instances:
+        del ApiManager._instances[ApiManager]
+    return ApiManager()
