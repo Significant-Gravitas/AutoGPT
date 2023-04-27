@@ -205,7 +205,11 @@ def construct_main_project() -> ProjectBroker:
             logger.typewriter_log(
                 f"Project {i + 1} : ",
                 Fore.GREEN,
-                f"""Name:  {config.lead_agent.agent_name}\nRole:  {config.lead_agent.agent_role}\nGoals: {goals_to_string(config.lead_agent.agent_goals)}: """,
+                f"""Name:  {config.lead_agent.agent_name}\n
+                Role:  {config.lead_agent.agent_role}\n
+                Goals: {goals_to_string(config.lead_agent.agent_goals)}: 
+                API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
+                Continue ({CFG.authorise_key}/{CFG.exit_key}): """,
             )
 
         project_number = get_ai_project_index(number_of_project)
