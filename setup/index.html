@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://significantgravitas.github.io/Auto-GPT/setup/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Setup - Auto-GPT</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Setup";
+        var mkdocs_page_input_path = "setup.md";
+        var mkdocs_page_url = "/Auto-GPT/setup/";
+      </script>
+    
+    <script src="../js/jquery-3.6.0.min.js" defer></script>
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/highlight.min.js"></script>
+      <script>hljs.initHighlightingOnLoad();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Auto-GPT
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="./">Setup</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#requirements">📋 Requirements</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#getting-an-api-key">🗝️ Getting an API key</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#setting-up-auto-gpt_1">Setting up Auto-GPT</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#set-up-with-docker">Set up with Docker</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#set-up-with-git">Set up with Git</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#set-up-without-gitdocker">Set up without Git/Docker</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#configuration">Configuration</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#running-auto-gpt">Running Auto-GPT</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#run-with-docker">Run with Docker</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#run-with-dev-container">Run with Dev Container</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#run-without-docker">Run without Docker</a>
+    </li>
+        </ul>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../usage/">Usage</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../plugins/">Plugins</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/search/">Search</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/memory/">Memory</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/voice/">Voice</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/imagegen/">Image Generation</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../contributing/">Contribution guide</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../testing/">Running tests</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../code-of-conduct/">Code of Conduct</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/Significant-Gravitas/Auto-GPT/blob/master/LICENSE">License</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Auto-GPT</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" alt="Docs"></a> &raquo;</li>
+      <li>Setup</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT/edit/master/docs/setup.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="setting-up-auto-gpt">Setting up Auto-GPT</h1>
+<h2 id="requirements">📋 Requirements</h2>
+<p>Choose an environment to run Auto-GPT in (pick one):</p>
+<ul>
+<li><a href="https://docs.docker.com/get-docker/">Docker</a> (<em>recommended</em>)</li>
+<li>Python 3.10 or later (instructions: <a href="https://www.tutorialspoint.com/how-to-install-python-in-windows">for Windows</a>)</li>
+<li><a href="https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers">VSCode + devcontainer</a></li>
+</ul>
+<h2 id="getting-an-api-key">🗝️ Getting an API key</h2>
+<p>Get your OpenAI API key from: <a href="https://platform.openai.com/account/api-keys">https://platform.openai.com/account/api-keys</a>.</p>
+<div class="admonition attention">
+<p class="admonition-title">Attention</p>
+<p>To use the OpenAI API with Auto-GPT, we strongly recommend <strong>setting up billing</strong>
+(AKA paid account). Free accounts are <a href="https://platform.openai.com/docs/guides/rate-limits/overview#:~:text=Free%20trial%20users,RPM%0A40%2C000%20TPM">limited</a> to 3 API calls per
+minute, which can cause the application to crash.</p>
+<p>You can set up a paid account at <a href="https://platform.openai.com/account/billing/overview">Manage account &gt; Billing &gt; Overview</a>.</p>
+</div>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>It's highly recommended that you keep keep track of your API costs on <a href="https://platform.openai.com/account/usage">the Usage page</a>.
+You can also set limits on how much you spend on <a href="https://platform.openai.com/account/billing/limits">the Usage limits page</a>.</p>
+</div>
+<p><img alt="For OpenAI API key to work, set up paid account at OpenAI API &gt; Billing" src="../imgs/openai-api-key-billing-paid-account.png" /></p>
+<h2 id="setting-up-auto-gpt_1">Setting up Auto-GPT</h2>
+<h3 id="set-up-with-docker">Set up with Docker</h3>
+<ol>
+<li>Make sure you have Docker installed, see <a href="#requirements">requirements</a></li>
+<li>
+<p>Pull the latest image from <a href="https://hub.docker.com/r/significantgravitas/auto-gpt">Docker Hub</a></p>
+<div class="codehilite"><pre><span></span><code>docker<span class="w"> </span>pull<span class="w"> </span>significantgravitas/auto-gpt
+</code></pre></div>
+
+</li>
+<li>
+<p>Create a folder for Auto-GPT</p>
+</li>
+<li>
+<p>In the folder, create a file called <code>docker-compose.yml</code> with the following contents:</p>
+<div class="codehilite"><pre><span></span><code><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3.9&quot;</span>
+<span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">auto-gpt</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">significantgravitas/auto-gpt</span>
+<span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">redis</span>
+<span class="w">    </span><span class="nt">env_file</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.env</span>
+<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">MEMORY_BACKEND</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${MEMORY_BACKEND:-redis}</span>
+<span class="w">      </span><span class="nt">REDIS_HOST</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${REDIS_HOST:-redis}</span>
+<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./:/app</span>
+<span class="w">    </span><span class="nt">profiles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;exclude-from-up&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">redis</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;redis/redis-stack-server:latest&quot;</span>
+</code></pre></div>
+
+</li>
+<li>
+<p>Create the necessary <a href="#configuration">configuration</a> files. If needed, you can find
+    templates in the <a href="https://github.com/Significant-Gravitas/Auto-GPT">repository</a>.</p>
+</li>
+<li>Continue to <a href="#run-with-docker">Run with Docker</a></li>
+</ol>
+<h3 id="set-up-with-git">Set up with Git</h3>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>Make sure you have <a href="https://git-scm.com/downloads">Git</a> installed for your OS.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Info</p>
+<p>To execute the given commands, open a CMD, Bash, or Powershell window.<br />
+On Windows: press <span class="keys"><kbd class="key-windows">Win</kbd><span>+</span><kbd class="key-x">X</kbd></span> and pick <em>Terminal</em>, or <span class="keys"><kbd class="key-windows">Win</kbd><span>+</span><kbd class="key-r">R</kbd></span> and enter <code>cmd</code></p>
+</div>
+<ol>
+<li>
+<p>Clone the repository</p>
+<div class="codehilite"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>-b<span class="w"> </span>stable<span class="w"> </span>https://github.com/Significant-Gravitas/Auto-GPT.git
+</code></pre></div>
+
+</li>
+<li>
+<p>Navigate to the directory where you downloaded the repository</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>Auto-GPT
+</code></pre></div>
+
+</li>
+</ol>
+<h3 id="set-up-without-gitdocker">Set up without Git/Docker</h3>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>We recommend to use Git or Docker, to make updating easier.</p>
+</div>
+<ol>
+<li>Download <code>Source code (zip)</code> from the <a href="https://github.com/Significant-Gravitas/Auto-GPT/releases/latest">latest stable release</a></li>
+<li>Extract the zip-file into a folder</li>
+</ol>
+<h3 id="configuration">Configuration</h3>
+<ol>
+<li>Find the file named <code>.env.template</code> in the main <code>Auto-GPT</code> folder. This file may
+    be hidden by default in some operating systems due to the dot prefix. To reveal
+    hidden files, follow the instructions for your specific operating system:
+    <a href="https://support.microsoft.com/en-us/windows/view-hidden-files-and-folders-in-windows-97fbc472-c603-9d90-91d0-1166d1d9f4b5">Windows</a>, <a href="https://www.pcmag.com/how-to/how-to-access-your-macs-hidden-files">macOS</a>.</li>
+<li>Create a copy of <code>.env.template</code> and call it <code>.env</code>;
+    if you're already in a command prompt/terminal window: <code>cp .env.template .env</code>.</li>
+<li>Open the <code>.env</code> file in a text editor.</li>
+<li>Find the line that says <code>OPENAI_API_KEY=</code>.</li>
+<li>After the <code>=</code>, enter your unique OpenAI API Key <em>without any quotes or spaces</em>.</li>
+<li>
+<p>Enter any other API keys or tokens for services you would like to use.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>To activate and adjust a setting, remove the <code>#</code> prefix.</p>
+</div>
+</li>
+<li>
+<p>Save and close the <code>.env</code> file.</p>
+</li>
+</ol>
+<div class="admonition info">
+<p class="admonition-title">Info</p>
+<p>Get your ElevenLabs API key from: <a href="https://elevenlabs.io">ElevenLabs</a>. You can view your xi-api-key using the "Profile" tab on the website.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">Using a GPT Azure-instance</p>
+<p>If you want to use GPT on an Azure instance, set <code>USE_AZURE</code> to <code>True</code> and
+make an Azure configuration file:</p>
+<ul>
+<li>Rename <code>azure.yaml.template</code> to <code>azure.yaml</code> and provide the relevant <code>azure_api_base</code>, <code>azure_api_version</code> and all the deployment IDs for the relevant models in the <code>azure_model_map</code> section:<ul>
+<li><code>fast_llm_model_deployment_id</code>: your gpt-3.5-turbo or gpt-4 deployment ID</li>
+<li><code>smart_llm_model_deployment_id</code>: your gpt-4 deployment ID</li>
+<li><code>embedding_model_deployment_id</code>: your text-embedding-ada-002 v2 deployment ID</li>
+</ul>
+</li>
+</ul>
+<p>Example:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Please specify all of these values as double-quoted strings</span>
+<span class="c1"># Replace string in angled brackets (&lt;&gt;) to your own ID</span>
+<span class="nt">azure_model_map</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">fast_llm_model_deployment_id</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;my-fast-llm-deployment-id&gt;&quot;</span>
+<span class="w">        </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+</code></pre></div>
+
+<p>Details can be found in the <a href="https://github.com/openai/openai-python#microsoft-azure-endpoints">openai-python docs</a>, and in the <a href="https://learn.microsoft.com/en-us/azure/cognitive-services/openai/tutorials/embeddings?tabs=command-line">Azure OpenAI docs</a> for the embedding model.
+If you're on Windows you may need to install an <a href="https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170">MSVC library</a>.</p>
+</div>
+<h2 id="running-auto-gpt">Running Auto-GPT</h2>
+<h3 id="run-with-docker">Run with Docker</h3>
+<p>Easiest is to use <code>docker-compose</code>. Run the commands below in your Auto-GPT folder.</p>
+<ol>
+<li>
+<p>Build the image. If you have pulled the image from Docker Hub, skip this step.</p>
+<div class="codehilite"><pre><span></span><code>docker-compose<span class="w"> </span>build<span class="w"> </span>auto-gpt
+</code></pre></div>
+
+</li>
+<li>
+<p>Run Auto-GPT</p>
+<div class="codehilite"><pre><span></span><code>docker-compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>auto-gpt
+</code></pre></div>
+
+<p>By default, this will also start and attach a Redis memory backend. If you do not
+want this, comment or remove the <code>depends: - redis</code> and <code>redis:</code> sections from
+<code>docker-compose.yml</code>.</p>
+<p>For related settings, see <a href="../configuration/memory/#redis-setup">Memory &gt; Redis setup</a>.</p>
+</li>
+</ol>
+<p>You can pass extra arguments, e.g. running with <code>--gpt3only</code> and <code>--continuous</code>:</p>
+<div class="codehilite"><pre><span></span><code>docker-compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>auto-gpt<span class="w"> </span>--gpt3only<span class="w"> </span>--continuous
+</code></pre></div>
+
+<p>If you dare, you can also build and run it with "vanilla" docker commands:</p>
+<div class="codehilite"><pre><span></span><code>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>auto-gpt<span class="w"> </span>.
+docker<span class="w"> </span>run<span class="w"> </span>-it<span class="w"> </span>--env-file<span class="o">=</span>.env<span class="w"> </span>-v<span class="w"> </span><span class="nv">$PWD</span>:/app<span class="w"> </span>auto-gpt
+docker<span class="w"> </span>run<span class="w"> </span>-it<span class="w"> </span>--env-file<span class="o">=</span>.env<span class="w"> </span>-v<span class="w"> </span><span class="nv">$PWD</span>:/app<span class="w"> </span>--rm<span class="w"> </span>auto-gpt<span class="w"> </span>--gpt3only<span class="w"> </span>--continuous
+</code></pre></div>
+
+<h3 id="run-with-dev-container">Run with Dev Container</h3>
+<ol>
+<li>
+<p>Install the <a href="https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers">Remote - Containers</a> extension in VS Code.</p>
+</li>
+<li>
+<p>Open command palette with <span class="keys"><kbd class="key-f1">F1</kbd></span> and type <code>Dev Containers: Open Folder in Container</code>.</p>
+</li>
+<li>
+<p>Run <code>./run.sh</code>.</p>
+</li>
+</ol>
+<h3 id="run-without-docker">Run without Docker</h3>
+<p>Simply run the startup script in your terminal. This will install any necessary Python
+packages and launch Auto-GPT.</p>
+<ul>
+<li>
+<p>On Linux/MacOS:</p>
+<div class="codehilite"><pre><span></span><code>./run.sh
+</code></pre></div>
+
+</li>
+<li>
+<p>On Windows:</p>
+<div class="codehilite"><pre><span></span><code>.<span class="se">\r</span>un.bat
+</code></pre></div>
+
+</li>
+</ul>
+<p>If this gives errors, make sure you have a compatible Python version installed. See also
+the <a href="./installation.md#requirements">requirements</a>.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href=".." class="btn btn-neutral float-left" title="Home"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../usage/" class="btn btn-neutral float-right" title="Usage">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href=".." style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../usage/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script>var base_url = '..';</script>
+    <script src="../js/theme_extra.js" defer></script>
+    <script src="../js/theme.js" defer></script>
+      <script src="../search/main.js" defer></script>
+    <script defer>
+        window.onload = function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        };
+    </script>
+
+</body>
+</html>

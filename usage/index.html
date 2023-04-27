@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://significantgravitas.github.io/Auto-GPT/usage/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Usage - Auto-GPT</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Usage";
+        var mkdocs_page_input_path = "usage.md";
+        var mkdocs_page_url = "/Auto-GPT/usage/";
+      </script>
+    
+    <script src="../js/jquery-3.6.0.min.js" defer></script>
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/highlight.min.js"></script>
+      <script>hljs.initHighlightingOnLoad();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Auto-GPT
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../setup/">Setup</a>
+                </li>
+              </ul>
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href="./">Usage</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#command-line-arguments">Command Line Arguments</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#speak-mode">Speak Mode</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#continuous-mode">💀 Continuous Mode ⚠️</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#self-feedback-mode">♻️ Self-Feedback Mode ⚠️</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#gpt-35-only-mode">GPT-3.5 ONLY Mode</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#gpt-4-only-mode">GPT-4 ONLY Mode</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#logs">Logs</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../plugins/">Plugins</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/search/">Search</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/memory/">Memory</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/voice/">Voice</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/imagegen/">Image Generation</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../contributing/">Contribution guide</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../testing/">Running tests</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../code-of-conduct/">Code of Conduct</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/Significant-Gravitas/Auto-GPT/blob/master/LICENSE">License</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Auto-GPT</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" alt="Docs"></a> &raquo;</li>
+      <li>Usage</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT/edit/master/docs/usage.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="usage">Usage</h1>
+<h2 id="command-line-arguments">Command Line Arguments</h2>
+<p>Running with <code>--help</code> lists all the possible command line arguments you can pass:</p>
+<div class="codehilite"><pre><span></span><code>./run.sh<span class="w"> </span>--help<span class="w">     </span><span class="c1"># on Linux / macOS</span>
+
+.<span class="se">\r</span>un.bat<span class="w"> </span>--help<span class="w">    </span><span class="c1"># on Windows</span>
+</code></pre></div>
+
+<div class="admonition info">
+<p class="admonition-title">Info</p>
+<p>For use with Docker, replace the script in the examples with
+<code>docker-compose run --rm auto-gpt</code>:</p>
+<div class="codehilite"><pre><span></span><code>docker-compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>auto-gpt<span class="w"> </span>--help
+docker-compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>auto-gpt<span class="w"> </span>--ai-settings<span class="w"> </span>&lt;filename&gt;
+</code></pre></div>
+
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Replace anything in angled brackets (&lt;&gt;) to a value you want to specify</p>
+</div>
+<p>Here are some common arguments you can use when running Auto-GPT:</p>
+<ul>
+<li>
+<p>Run Auto-GPT with a different AI Settings file</p>
+<div class="codehilite"><pre><span></span><code>./run.sh<span class="w"> </span>--ai-settings<span class="w"> </span>&lt;filename&gt;
+</code></pre></div>
+
+</li>
+<li>
+<p>Specify a memory backend</p>
+<div class="codehilite"><pre><span></span><code>./run.sh<span class="w"> </span>--use-memory<span class="w">  </span>&lt;memory-backend&gt;
+</code></pre></div>
+
+</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>There are shorthands for some of these flags, for example <code>-m</code> for <code>--use-memory</code>.<br />
+Use <code>./run.sh --help</code> for more information.</p>
+</div>
+<h3 id="speak-mode">Speak Mode</h3>
+<p>Enter this command to use TTS <em>(Text-to-Speech)</em> for Auto-GPT</p>
+<div class="codehilite"><pre><span></span><code>./run.sh<span class="w"> </span>--speak
+</code></pre></div>
+
+<h3 id="continuous-mode">💀 Continuous Mode ⚠️</h3>
+<p>Run the AI <strong>without</strong> user authorization, 100% automated.
+Continuous mode is NOT recommended.
+It is potentially dangerous and may cause your AI to run forever or carry out actions you would not usually authorize.
+Use at your own risk.</p>
+<div class="codehilite"><pre><span></span><code>./run.sh<span class="w"> </span>--continuous
+</code></pre></div>
+
+<p>To exit the program, press <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-c">C</kbd></span></p>
+<h3 id="self-feedback-mode">♻️ Self-Feedback Mode ⚠️</h3>
+<p>Running Self-Feedback will <strong>INCREASE</strong> token use and thus cost more. This feature enables the agent to provide self-feedback by verifying its own actions and checking if they align with its current goals. If not, it will provide better feedback for the next loop. To enable this feature for the current loop, input <code>S</code> into the input field.</p>
+<h3 id="gpt-35-only-mode">GPT-3.5 ONLY Mode</h3>
+<p>If you don't have access to GPT-4, this mode allows you to use Auto-GPT!</p>
+<div class="codehilite"><pre><span></span><code>./run.sh<span class="w"> </span>--gpt3only
+</code></pre></div>
+
+<p>You can achieve the same by setting <code>SMART_LLM_MODEL</code> in <code>.env</code> to <code>gpt-3.5-turbo</code>.</p>
+<h3 id="gpt-4-only-mode">GPT-4 ONLY Mode</h3>
+<p>If you have access to GPT-4, this mode allows you to use Auto-GPT solely with GPT-4.
+This may give your bot increased intelligence.</p>
+<div class="codehilite"><pre><span></span><code>./run.sh<span class="w"> </span>--gpt4only
+</code></pre></div>
+
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Since GPT-4 is more expensive to use, running Auto-GPT in GPT-4-only mode will
+increase your API costs.</p>
+</div>
+<h2 id="logs">Logs</h2>
+<p>Activity and error logs are located in the <code>./output/logs</code></p>
+<p>To print out debug logs:</p>
+<div class="codehilite"><pre><span></span><code>./run.sh<span class="w"> </span>--debug
+</code></pre></div>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../setup/" class="btn btn-neutral float-left" title="Setup"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../plugins/" class="btn btn-neutral float-right" title="Plugins">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href="../setup/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../plugins/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script>var base_url = '..';</script>
+    <script src="../js/theme_extra.js" defer></script>
+    <script src="../js/theme.js" defer></script>
+      <script src="../search/main.js" defer></script>
+    <script defer>
+        window.onload = function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        };
+    </script>
+
+</body>
+</html>

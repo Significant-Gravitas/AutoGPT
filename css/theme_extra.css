@@ -1,0 +1,191 @@
+/*
+ * Wrap inline code samples otherwise they shoot of the side and
+ * can't be read at all.
+ *
+ * https://github.com/mkdocs/mkdocs/issues/313
+ * https://github.com/mkdocs/mkdocs/issues/233
+ * https://github.com/mkdocs/mkdocs/issues/834
+ */
+.rst-content code {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    padding: 2px 5px;
+}
+
+/**
+ * Make code blocks display as blocks and give them the appropriate
+ * font size and padding.
+ *
+ * https://github.com/mkdocs/mkdocs/issues/855
+ * https://github.com/mkdocs/mkdocs/issues/834
+ * https://github.com/mkdocs/mkdocs/issues/233
+ */
+.rst-content pre code {
+    white-space: pre;
+    word-wrap: normal;
+    display: block;
+    padding: 12px;
+    font-size: 12px;
+}
+
+/**
+ * Fix code colors
+ *
+ * https://github.com/mkdocs/mkdocs/issues/2027
+ */
+.rst-content code {
+    color: #E74C3C;
+}
+
+.rst-content pre code {
+    color: #000;
+    background: #f8f8f8;
+}
+
+/*
+ * Fix link colors when the link text is inline code.
+ *
+ * https://github.com/mkdocs/mkdocs/issues/718
+ */
+a code {
+    color: #2980B9;
+}
+a:hover code {
+    color: #3091d1;
+}
+a:visited code {
+    color: #9B59B6;
+}
+
+/*
+ * The CSS classes from highlight.js seem to clash with the
+ * ReadTheDocs theme causing some code to be incorrectly made
+ * bold and italic.
+ *
+ * https://github.com/mkdocs/mkdocs/issues/411
+ */
+pre .cs, pre .c {
+    font-weight: inherit;
+    font-style: inherit;
+}
+
+/*
+ * Fix some issues with the theme and non-highlighted code
+ * samples. Without and highlighting styles attached the
+ * formatting is broken.
+ *
+ * https://github.com/mkdocs/mkdocs/issues/319
+ */
+.rst-content .no-highlight {
+    display: block;
+    padding: 0.5em;
+    color: #333;
+}
+
+
+/*
+ * Additions specific to the search functionality provided by MkDocs
+ */
+
+.search-results {
+    margin-top: 23px;
+}
+
+.search-results article {
+    border-top: 1px solid #E1E4E5;
+    padding-top: 24px;
+}
+
+.search-results article:first-child {
+    border-top: none;
+}
+
+form .search-query {
+    width: 100%;
+    border-radius: 50px;
+    padding: 6px 12px;  /* csslint allow: box-model */
+    border-color: #D1D4D5;
+}
+
+/*
+ * Improve inline code blocks within admonitions.
+ *
+ * https://github.com/mkdocs/mkdocs/issues/656
+ */
+ .rst-content .admonition code {
+    color: #404040;
+    border: 1px solid #c7c9cb;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    background: #f8fbfd;
+    background: rgba(255, 255, 255, 0.7);
+}
+
+/*
+ * Account for wide tables which go off the side.
+ * Override borders to avoid weirdness on narrow tables.
+ *
+ * https://github.com/mkdocs/mkdocs/issues/834
+ * https://github.com/mkdocs/mkdocs/pull/1034
+ */
+.rst-content .section .docutils {
+    width: 100%;
+    overflow: auto;
+    display: block;
+    border: none;
+}
+
+td, th {
+    border: 1px solid #e1e4e5 !important; /* csslint allow: important */
+    border-collapse: collapse;
+}
+
+/*
+ * Without the following amendments, the navigation in the theme will be
+ * slightly cut off. This is due to the fact that the .wy-nav-side has a
+ * padding-bottom of 2em, which must not necessarily align with the font-size of
+ * 90 % on the .rst-current-version container, combined with the padding of 12px
+ * above and below. These amendments fix this in two steps: First, make sure the
+ * .rst-current-version container has a fixed height of 40px, achieved using
+ * line-height, and then applying a padding-bottom of 40px to this container. In
+ * a second step, the items within that container are re-aligned using flexbox.
+ *
+ * https://github.com/mkdocs/mkdocs/issues/2012
+ */
+ .wy-nav-side {
+    padding-bottom: 40px;
+}
+
+/*
+ * The second step of above amendment: Here we make sure the items are aligned
+ * correctly within the .rst-current-version container. Using flexbox, we
+ * achieve it in such a way that it will look like the following:
+ *
+ * [No repo_name]
+ *         Next >>                    // On the first page
+ * << Previous     Next >>            // On all subsequent pages
+ *
+ * [With repo_name]
+ *    <repo_name>        Next >>      // On the first page
+ * <repo_name>  << Previous  Next >>  // On all subsequent pages
+ *
+ * https://github.com/mkdocs/mkdocs/issues/2012
+ */
+.rst-versions .rst-current-version {
+    padding: 0 12px;
+    display: flex;
+    font-size: initial;
+    justify-content: space-between;
+    align-items: center;
+    line-height: 40px;
+}
+
+/*
+ * Please note that this amendment also involves removing certain inline-styles
+ * from the file ./mkdocs/themes/readthedocs/versions.html.
+ *
+ * https://github.com/mkdocs/mkdocs/issues/2012
+ */
+.rst-current-version span {
+    flex: 1;
+    text-align: center;
+}

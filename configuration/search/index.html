@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://significantgravitas.github.io/Auto-GPT/configuration/search/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Search - Auto-GPT</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Search";
+        var mkdocs_page_input_path = "configuration/search.md";
+        var mkdocs_page_url = "/Auto-GPT/configuration/search/";
+      </script>
+    
+    <script src="../../js/jquery-3.6.0.min.js" defer></script>
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/highlight.min.js"></script>
+      <script>hljs.initHighlightingOnLoad();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Auto-GPT
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../setup/">Setup</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../usage/">Usage</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../plugins/">Plugins</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul class="current">
+                  <li class="toctree-l1 current"><a class="reference internal current" href="./">Search</a>
+    <ul class="current">
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../memory/">Memory</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../voice/">Voice</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../imagegen/">Image Generation</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../contributing/">Contribution guide</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../testing/">Running tests</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../code-of-conduct/">Code of Conduct</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/Significant-Gravitas/Auto-GPT/blob/master/LICENSE">License</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Auto-GPT</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" alt="Docs"></a> &raquo;</li>
+          <li>Configuration &raquo;</li>
+      <li>Search</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT/edit/master/docs/configuration/search.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h2 id="google-api-keys-configuration">🔍 Google API Keys Configuration</h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This section is optional. Use the official Google API if search attempts return
+error 429. To use the <code>google_official_search</code> command, you need to set up your
+Google API key in your environment variables.</p>
+</div>
+<p>Create your project:</p>
+<ol>
+<li>Go to the <a href="https://console.cloud.google.com/">Google Cloud Console</a>.</li>
+<li>If you don't already have an account, create one and log in</li>
+<li>Create a new project by clicking on the <em>Select a Project</em> dropdown at the top of the
+    page and clicking <em>New Project</em></li>
+<li>Give it a name and click <em>Create</em></li>
+<li>Set up a custom search API and add to your .env file:<ol>
+<li>Go to the <a href="https://console.cloud.google.com/apis/dashboard">APIs &amp; Services Dashboard</a></li>
+<li>Click <em>Enable APIs and Services</em></li>
+<li>Search for <em>Custom Search API</em> and click on it</li>
+<li>Click <em>Enable</em></li>
+<li>Go to the <a href="https://console.cloud.google.com/apis/credentials">Credentials</a> page</li>
+<li>Click <em>Create Credentials</em></li>
+<li>Choose <em>API Key</em></li>
+<li>Copy the API key</li>
+<li>Set it as the <code>GOOGLE_API_KEY</code> in your <code>.env</code> file</li>
+</ol>
+</li>
+<li><a href="https://console.developers.google.com/apis/api/customsearch.googleapis.com">Enable</a>
+    the Custom Search API on your project. (Might need to wait few minutes to propagate.)
+    Set up a custom search engine and add to your .env file:<ol>
+<li>Go to the <a href="https://cse.google.com/cse/all">Custom Search Engine</a> page</li>
+<li>Click <em>Add</em></li>
+<li>Set up your search engine by following the prompts.
+    You can choose to search the entire web or specific sites</li>
+<li>Once you've created your search engine, click on <em>Control Panel</em></li>
+<li>Click <em>Basics</em></li>
+<li>Copy the <em>Search engine ID</em></li>
+<li>Set it as the <code>CUSTOM_SEARCH_ENGINE_ID</code> in your <code>.env</code> file</li>
+</ol>
+</li>
+</ol>
+<p><em>Remember that your free daily custom search quota allows only up to 100 searches. To increase this limit, you need to assign a billing account to the project to profit from up to 10K daily searches.</em></p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../../plugins/" class="btn btn-neutral float-left" title="Plugins"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../memory/" class="btn btn-neutral float-right" title="Memory">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href="../../plugins/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../memory/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script>var base_url = '../..';</script>
+    <script src="../../js/theme_extra.js" defer></script>
+    <script src="../../js/theme.js" defer></script>
+      <script src="../../search/main.js" defer></script>
+    <script defer>
+        window.onload = function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        };
+    </script>
+
+</body>
+</html>

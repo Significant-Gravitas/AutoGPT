@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://significantgravitas.github.io/Auto-GPT/contributing/" />
+      <link rel="shortcut icon" href="../img/favicon.ico" />
+    <title>Contribution guide - Auto-GPT</title>
+    <link rel="stylesheet" href="../css/theme.css" />
+    <link rel="stylesheet" href="../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Contribution guide";
+        var mkdocs_page_input_path = "contributing.md";
+        var mkdocs_page_url = "/Auto-GPT/contributing/";
+      </script>
+    
+    <script src="../js/jquery-3.6.0.min.js" defer></script>
+    <!--[if lt IE 9]>
+      <script src="../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/highlight.min.js"></script>
+      <script>hljs.initHighlightingOnLoad();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href=".." class="icon icon-home"> Auto-GPT
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../setup/">Setup</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../usage/">Usage</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../plugins/">Plugins</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/search/">Search</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/memory/">Memory</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/voice/">Voice</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../configuration/imagegen/">Image Generation</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul class="current">
+                  <li class="toctree-l1 current"><a class="reference internal current" href="./">Contribution guide</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#code-of-conduct">Code of Conduct</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#a-quick-word">📢 A Quick Word</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#getting-started">Getting Started</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#how-to-contribute">How to Contribute</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#reporting-bugs">Reporting Bugs</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#suggesting-enhancements">Suggesting Enhancements</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#submitting-pull-requests">Submitting Pull Requests</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#style-guidelines">Style Guidelines</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#code-formatting">Code Formatting</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#pre-commit-hooks">Pre-Commit Hooks</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#testing-your-changes">Testing your changes</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../testing/">Running tests</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../code-of-conduct/">Code of Conduct</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/Significant-Gravitas/Auto-GPT/blob/master/LICENSE">License</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="..">Auto-GPT</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href=".." class="icon icon-home" alt="Docs"></a> &raquo;</li>
+          <li>Contributing &raquo;</li>
+      <li>Contribution guide</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT/edit/master/docs/contributing.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="contributing-to-auto-gpt">Contributing to Auto-GPT</h1>
+<p>First of all, thank you for considering contributing to our project! We appreciate your time and effort, and we value any contribution, whether it's reporting a bug, suggesting a new feature, or submitting a pull request.</p>
+<p>This document provides guidelines and best practices to help you contribute effectively.</p>
+<h2 id="code-of-conduct">Code of Conduct</h2>
+<p>By participating in this project, you agree to abide by our <a href="https://significant-gravitas.github.io/Auto-GPT/code-of-conduct.md">Code of Conduct</a>. Please read it to understand the expectations we have for everyone who contributes to this project.</p>
+<h2 id="a-quick-word">📢 A Quick Word</h2>
+<p>Right now we will not be accepting any Contributions that add non-essential commands to Auto-GPT.</p>
+<p>However, you absolutely can still add these commands to Auto-GPT in the form of plugins.
+Please check out this <a href="https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template">template</a>.</p>
+<h2 id="getting-started">Getting Started</h2>
+<ol>
+<li>Fork the repository and clone your fork.</li>
+<li>Create a new branch for your changes (use a descriptive name, such as <code>fix-bug-123</code> or <code>add-new-feature</code>).</li>
+<li>Make your changes in the new branch.</li>
+<li>Test your changes thoroughly.</li>
+<li>Commit and push your changes to your fork.</li>
+<li>Create a pull request following the guidelines in the <a href="#submitting-pull-requests">Submitting Pull Requests</a> section.</li>
+</ol>
+<h2 id="how-to-contribute">How to Contribute</h2>
+<h3 id="reporting-bugs">Reporting Bugs</h3>
+<p>If you find a bug in the project, please create an issue on GitHub with the following information:</p>
+<ul>
+<li>A clear, descriptive title for the issue.</li>
+<li>A description of the problem, including steps to reproduce the issue.</li>
+<li>Any relevant logs, screenshots, or other supporting information.</li>
+</ul>
+<h3 id="suggesting-enhancements">Suggesting Enhancements</h3>
+<p>If you have an idea for a new feature or improvement, please create an issue on GitHub with the following information:</p>
+<ul>
+<li>A clear, descriptive title for the issue.</li>
+<li>A detailed description of the proposed enhancement, including any benefits and potential drawbacks.</li>
+<li>Any relevant examples, mockups, or supporting information.</li>
+</ul>
+<h3 id="submitting-pull-requests">Submitting Pull Requests</h3>
+<p>When submitting a pull request, please ensure that your changes meet the following criteria:</p>
+<ul>
+<li>Your pull request should be atomic and focus on a single change.</li>
+<li>Your pull request should include tests for your change. We automatically enforce this with <a href="https://docs.codecov.com/docs/commit-status">CodeCov</a></li>
+<li>You should have thoroughly tested your changes with multiple different prompts.</li>
+<li>You should have considered potential risks and mitigations for your changes.</li>
+<li>You should have documented your changes clearly and comprehensively.</li>
+<li>You should not include any unrelated or "extra" small tweaks or changes.</li>
+</ul>
+<h2 id="style-guidelines">Style Guidelines</h2>
+<h3 id="code-formatting">Code Formatting</h3>
+<p>We use the <code>black</code> and <code>isort</code> code formatters to maintain a consistent coding style across the project. Please ensure that your code is formatted properly before submitting a pull request.</p>
+<p>To format your code, run the following commands in the project's root directory:</p>
+<div class="codehilite"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>black<span class="w"> </span>.
+python<span class="w"> </span>-m<span class="w"> </span>isort<span class="w"> </span>.
+</code></pre></div>
+
+<p>Or if you have these tools installed globally:</p>
+<div class="codehilite"><pre><span></span><code>black<span class="w"> </span>.
+isort<span class="w"> </span>.
+</code></pre></div>
+
+<h3 id="pre-commit-hooks">Pre-Commit Hooks</h3>
+<p>We use pre-commit hooks to ensure that code formatting and other checks are performed automatically before each commit. To set up pre-commit hooks for this project, follow these steps:</p>
+<p>Install the pre-commit package using pip:</p>
+<div class="codehilite"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>pre-commit
+</code></pre></div>
+
+<p>Run the following command in the project's root directory to install the pre-commit hooks:</p>
+<div class="codehilite"><pre><span></span><code>pre-commit<span class="w"> </span>install
+</code></pre></div>
+
+<p>Now, the pre-commit hooks will run automatically before each commit, checking your code formatting and other requirements.</p>
+<p>If you encounter any issues or have questions, feel free to reach out to the maintainers or open a new issue on GitHub. We're here to help and appreciate your efforts to contribute to the project.</p>
+<p>Happy coding, and once again, thank you for your contributions!</p>
+<p>Maintainers will look at PR that have no merge conflicts when deciding what to add to the project. Make sure your PR shows up here:
+https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-label%3Aconflicts</p>
+<h2 id="testing-your-changes">Testing your changes</h2>
+<p>If you add or change code, make sure the updated code is covered by tests.</p>
+<p>To increase coverage if necessary, [write tests using <code>pytest</code>].</p>
+<p>For more info on running tests, please refer to <a href="https://significant-gravitas.github.io/Auto-GPT/testing/">"Running tests"</a>.</p>
+<p>In Pytest, we use VCRpy. It's a package that allows us to save OpenAI and other API providers' responses.
+When you run Pytest locally:</p>
+<ul>
+<li>If no prompt change: you will not consume API tokens because there are no new OpenAI calls required.</li>
+<li>If the prompt changes in a way that the cassettes are not reusable:<ul>
+<li>If no API key, the test fails. It requires a new cassette. So, add an API key to .env.</li>
+<li>If the API key is present, the tests will make a real call to OpenAI.<ul>
+<li>If the test ends up being successful, your prompt changes didn't introduce regressions. This is good. Commit your cassettes to your PR.</li>
+<li>If the test is unsuccessful:<ul>
+<li>Either: Your change made Auto-GPT less capable, in that case, you have to change your code.</li>
+<li>Or: The test might be poorly written. In that case, you can make suggestions to change the test.</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>In our CI pipeline, Pytest will use the cassettes and not call paid API providers, so we need your help to record the replays that you break.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../configuration/imagegen/" class="btn btn-neutral float-left" title="Image Generation"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../testing/" class="btn btn-neutral float-right" title="Running tests">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href="../configuration/imagegen/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../testing/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script>var base_url = '..';</script>
+    <script src="../js/theme_extra.js" defer></script>
+    <script src="../js/theme.js" defer></script>
+      <script src="../search/main.js" defer></script>
+    <script defer>
+        window.onload = function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        };
+    </script>
+
+</body>
+</html>

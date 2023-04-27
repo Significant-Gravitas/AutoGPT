@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://significantgravitas.github.io/Auto-GPT/configuration/memory/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Memory - Auto-GPT</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Memory";
+        var mkdocs_page_input_path = "configuration/memory.md";
+        var mkdocs_page_url = "/Auto-GPT/configuration/memory/";
+      </script>
+    
+    <script src="../../js/jquery-3.6.0.min.js" defer></script>
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/highlight.min.js"></script>
+      <script>hljs.initHighlightingOnLoad();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Auto-GPT
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../setup/">Setup</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../usage/">Usage</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../plugins/">Plugins</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../search/">Search</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="./">Memory</a>
+    <ul class="current">
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../voice/">Voice</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../imagegen/">Image Generation</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../contributing/">Contribution guide</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../testing/">Running tests</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../code-of-conduct/">Code of Conduct</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/Significant-Gravitas/Auto-GPT/blob/master/LICENSE">License</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Auto-GPT</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" alt="Docs"></a> &raquo;</li>
+          <li>Configuration &raquo;</li>
+      <li>Memory</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT/edit/master/docs/configuration/memory.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h2 id="setting-your-cache-type">Setting Your Cache Type</h2>
+<p>By default, Auto-GPT set up with Docker Compose will use Redis as its memory backend.
+Otherwise, the default is LocalCache (which stores memory in a JSON file).</p>
+<p>To switch to a different backend, change the <code>MEMORY_BACKEND</code> in <code>.env</code>
+to the value that you want:</p>
+<ul>
+<li><code>local</code> uses a local JSON cache file</li>
+<li><code>pinecone</code> uses the Pinecone.io account you configured in your ENV settings</li>
+<li><code>redis</code> will use the redis cache that you configured</li>
+<li><code>milvus</code> will use the milvus cache that you configured</li>
+<li><code>weaviate</code> will use the weaviate cache that you configured</li>
+</ul>
+<h2 id="memory-backend-setup">Memory Backend Setup</h2>
+<p>Links to memory backends</p>
+<ul>
+<li><a href="https://www.pinecone.io/">Pinecone</a></li>
+<li><a href="https://milvus.io/">Milvus</a> &ndash; <a href="https://milvus.io/docs">self-hosted</a>, or managed with <a href="https://zilliz.com/">Zilliz Cloud</a></li>
+<li><a href="https://redis.io">Redis</a></li>
+<li><a href="https://weaviate.io">Weaviate</a></li>
+</ul>
+<h3 id="redis-setup">Redis Setup</h3>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>If you have set up Auto-GPT using Docker Compose, then Redis is included, no further
+setup needed.</p>
+</div>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>This setup is not intended to be publicly accessible and lacks security measures.
+Avoid exposing Redis to the internet without a password or at all!</p>
+</div>
+<ol>
+<li>
+<p>Launch Redis container</p>
+<div class="codehilite"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>redis-stack-server<span class="w"> </span>-p<span class="w"> </span><span class="m">6379</span>:6379<span class="w"> </span>redis/redis-stack-server:latest
+</code></pre></div>
+
+</li>
+<li>
+<p>Set the following settings in <code>.env</code></p>
+<div class="codehilite"><pre><span></span><code><span class="na">MEMORY_BACKEND</span><span class="o">=</span><span class="s">redis</span>
+<span class="na">REDIS_HOST</span><span class="o">=</span><span class="s">localhost</span>
+<span class="na">REDIS_PORT</span><span class="o">=</span><span class="s">6379</span>
+<span class="na">REDIS_PASSWORD</span><span class="o">=</span><span class="s">&lt;PASSWORD&gt;</span>
+</code></pre></div>
+
+<p>Replace <code>&lt;PASSWORD&gt;</code> by your password, omitting the angled brackets (&lt;&gt;).</p>
+<p>Optional configuration:</p>
+<ul>
+<li><code>WIPE_REDIS_ON_START=False</code> to persist memory stored in Redis between runs.</li>
+<li><code>MEMORY_INDEX=&lt;WHATEVER&gt;</code> to specify a name for the memory index in Redis.
+    The default is <code>auto-gpt</code>.</li>
+</ul>
+</li>
+</ol>
+<div class="admonition info">
+<p class="admonition-title">Info</p>
+<p>See <a href="https://hub.docker.com/r/redis/redis-stack-server">redis-stack-server</a> for
+setting a password and additional configuration.</p>
+</div>
+<h3 id="pinecone-api-key-setup">🌲 Pinecone API Key Setup</h3>
+<p>Pinecone lets you store vast amounts of vector-based memory, allowing the agent to load only relevant memories at any given time.</p>
+<ol>
+<li>Go to <a href="https://app.pinecone.io/">pinecone</a> and make an account if you don't already have one.</li>
+<li>Choose the <code>Starter</code> plan to avoid being charged.</li>
+<li>Find your API key and region under the default project in the left sidebar.</li>
+</ol>
+<p>In the <code>.env</code> file set:</p>
+<ul>
+<li><code>PINECONE_API_KEY</code></li>
+<li><code>PINECONE_ENV</code> (example: <code>us-east4-gcp</code>)</li>
+<li><code>MEMORY_BACKEND=pinecone</code></li>
+</ul>
+<h3 id="milvus-setup">Milvus Setup</h3>
+<p><a href="https://milvus.io/">Milvus</a> is an open-source, highly scalable vector database to store
+huge amounts of vector-based memory and provide fast relevant search. It can be quickly
+deployed with docker, or as a cloud service provided by <a href="https://zilliz.com/">Zilliz Cloud</a>.</p>
+<ol>
+<li>
+<p>Deploy your Milvus service, either locally using docker or with a managed Zilliz Cloud database:</p>
+<ul>
+<li>
+<p><a href="https://milvus.io/docs/install_standalone-operator.md">Install and deploy Milvus locally</a></p>
+</li>
+<li>
+<p>Set up a managed Zilliz Cloud database</p>
+<ol>
+<li>Go to <a href="https://zilliz.com/">Zilliz Cloud</a> and sign up if you don't already have account.</li>
+<li>In the <em>Databases</em> tab, create a new database.<ul>
+<li>Remember your username and password</li>
+<li>Wait until the database status is changed to RUNNING.</li>
+</ul>
+</li>
+<li>In the <em>Database detail</em> tab of the database you have created, the public cloud endpoint, such as:
+<code>https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443</code>.</li>
+</ol>
+</li>
+</ul>
+</li>
+<li>
+<p>Run <code>pip3 install pymilvus</code> to install the required client library.
+    Make sure your PyMilvus version and Milvus version are <a href="https://github.com/milvus-io/pymilvus#compatibility">compatible</a>
+    to avoid issues.
+    See also the <a href="https://github.com/milvus-io/pymilvus#installation">PyMilvus installation instructions</a>.</p>
+</li>
+<li>
+<p>Update <code>.env</code>:</p>
+<ul>
+<li><code>MEMORY_BACKEND=milvus</code></li>
+<li>One of:<ul>
+<li><code>MILVUS_ADDR=host:ip</code> (for local instance)</li>
+<li><code>MILVUS_ADDR=https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443</code> (for Zilliz Cloud)</li>
+</ul>
+</li>
+</ul>
+<p>The following settings are <strong>optional</strong>:</p>
+<ul>
+<li><code>MILVUS_USERNAME='username-of-your-milvus-instance'</code></li>
+<li><code>MILVUS_PASSWORD='password-of-your-milvus-instance'</code></li>
+<li><code>MILVUS_SECURE=True</code> to use a secure connection.
+    Only use if your Milvus instance has TLS enabled.
+    <em>Note: setting <code>MILVUS_ADDR</code> to a <code>https://</code> URL will override this setting.</em></li>
+<li><code>MILVUS_COLLECTION</code> to change the collection name to use in Milvus.
+    Defaults to <code>autogpt</code>.</li>
+</ul>
+</li>
+</ol>
+<h3 id="weaviate-setup">Weaviate Setup</h3>
+<p><a href="https://weaviate.io/">Weaviate</a> is an open-source vector database. It allows to store
+data objects and vector embeddings from ML-models and scales seamlessly to billion of
+data objects. To set up a Weaviate database, check out their <a href="https://weaviate.io/developers/weaviate/quickstart">Quickstart Tutorial</a>.</p>
+<p>Although still experimental, <a href="https://weaviate.io/developers/weaviate/installation/embedded">Embedded Weaviate</a>
+is supported which allows the Auto-GPT process itself to start a Weaviate instance.
+To enable it, set <code>USE_WEAVIATE_EMBEDDED</code> to <code>True</code> and make sure you <code>pip install "weaviate-client&gt;=3.15.4"</code>.</p>
+<h4 id="install-the-weaviate-client">Install the Weaviate client</h4>
+<p>Install the Weaviate client before usage.</p>
+<div class="codehilite"><pre><span></span><code>$<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>weaviate-client
+</code></pre></div>
+
+<h4 id="setting-up-environment-variables">Setting up environment variables</h4>
+<p>In your <code>.env</code> file set the following:</p>
+<div class="codehilite"><pre><span></span><code><span class="na">MEMORY_BACKEND</span><span class="o">=</span><span class="s">weaviate</span>
+<span class="na">WEAVIATE_HOST</span><span class="o">=</span><span class="s">&quot;127.0.0.1&quot;</span><span class="w"> </span><span class="c1"># the IP or domain of the running Weaviate instance</span>
+<span class="na">WEAVIATE_PORT</span><span class="o">=</span><span class="s">&quot;8080&quot;</span><span class="w"> </span>
+<span class="na">WEAVIATE_PROTOCOL</span><span class="o">=</span><span class="s">&quot;http&quot;</span>
+<span class="na">WEAVIATE_USERNAME</span><span class="o">=</span><span class="s">&quot;your username&quot;</span>
+<span class="na">WEAVIATE_PASSWORD</span><span class="o">=</span><span class="s">&quot;your password&quot;</span>
+<span class="na">WEAVIATE_API_KEY</span><span class="o">=</span><span class="s">&quot;your weaviate API key if you have one&quot;</span>
+<span class="na">WEAVIATE_EMBEDDED_PATH</span><span class="o">=</span><span class="s">&quot;/home/me/.local/share/weaviate&quot;</span><span class="w"> </span><span class="c1"># this is optional and indicates where the data should be persisted when running an embedded instance</span>
+<span class="na">USE_WEAVIATE_EMBEDDED</span><span class="o">=</span><span class="s">False</span><span class="w"> </span><span class="c1"># set to True to run Embedded Weaviate</span>
+<span class="na">MEMORY_INDEX</span><span class="o">=</span><span class="s">&quot;Autogpt&quot;</span><span class="w"> </span><span class="c1"># name of the index to create for the application</span>
+</code></pre></div>
+
+<h2 id="view-memory-usage">View Memory Usage</h2>
+<p>View memory usage by using the <code>--debug</code> flag :)</p>
+<h2 id="memory-pre-seeding">🧠 Memory pre-seeding</h2>
+<p>Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.</p>
+<div class="codehilite"><pre><span></span><code>$<span class="w"> </span>python<span class="w"> </span>data_ingestion.py<span class="w"> </span>-h<span class="w"> </span>
+usage:<span class="w"> </span>data_ingestion.py<span class="w"> </span><span class="o">[</span>-h<span class="o">]</span><span class="w"> </span><span class="o">(</span>--file<span class="w"> </span>FILE<span class="w"> </span><span class="p">|</span><span class="w"> </span>--dir<span class="w"> </span>DIR<span class="o">)</span><span class="w"> </span><span class="o">[</span>--init<span class="o">]</span><span class="w"> </span><span class="o">[</span>--overlap<span class="w"> </span>OVERLAP<span class="o">]</span><span class="w"> </span><span class="o">[</span>--max_length<span class="w"> </span>MAX_LENGTH<span class="o">]</span>
+
+Ingest<span class="w"> </span>a<span class="w"> </span>file<span class="w"> </span>or<span class="w"> </span>a<span class="w"> </span>directory<span class="w"> </span>with<span class="w"> </span>multiple<span class="w"> </span>files<span class="w"> </span>into<span class="w"> </span>memory.<span class="w"> </span>Make<span class="w"> </span>sure<span class="w"> </span>to<span class="w"> </span><span class="nb">set</span><span class="w"> </span>your<span class="w"> </span>.env<span class="w"> </span>before<span class="w"> </span>running<span class="w"> </span>this<span class="w"> </span>script.
+
+options:
+<span class="w">  </span>-h,<span class="w"> </span>--help<span class="w">               </span>show<span class="w"> </span>this<span class="w"> </span><span class="nb">help</span><span class="w"> </span>message<span class="w"> </span>and<span class="w"> </span><span class="nb">exit</span>
+<span class="w">  </span>--file<span class="w"> </span>FILE<span class="w">              </span>The<span class="w"> </span>file<span class="w"> </span>to<span class="w"> </span>ingest.
+<span class="w">  </span>--dir<span class="w"> </span>DIR<span class="w">                </span>The<span class="w"> </span>directory<span class="w"> </span>containing<span class="w"> </span>the<span class="w"> </span>files<span class="w"> </span>to<span class="w"> </span>ingest.
+<span class="w">  </span>--init<span class="w">                   </span>Init<span class="w"> </span>the<span class="w"> </span>memory<span class="w"> </span>and<span class="w"> </span>wipe<span class="w"> </span>its<span class="w"> </span>content<span class="w"> </span><span class="o">(</span>default:<span class="w"> </span>False<span class="o">)</span>
+<span class="w">  </span>--overlap<span class="w"> </span>OVERLAP<span class="w">        </span>The<span class="w"> </span>overlap<span class="w"> </span>size<span class="w"> </span>between<span class="w"> </span>chunks<span class="w"> </span>when<span class="w"> </span>ingesting<span class="w"> </span>files<span class="w"> </span><span class="o">(</span>default:<span class="w"> </span><span class="m">200</span><span class="o">)</span>
+<span class="w">  </span>--max_length<span class="w"> </span>MAX_LENGTH<span class="w">  </span>The<span class="w"> </span>max_length<span class="w"> </span>of<span class="w"> </span>each<span class="w"> </span>chunk<span class="w"> </span>when<span class="w"> </span>ingesting<span class="w"> </span>files<span class="w"> </span><span class="o">(</span>default:<span class="w"> </span><span class="m">4000</span><span class="o">)</span>
+
+<span class="c1"># python data_ingestion.py --dir DataFolder --init --overlap 100 --max_length 2000</span>
+</code></pre></div>
+
+<p>In the example above, the script initializes the memory, ingests all files within the <code>Auto-Gpt/autogpt/auto_gpt_workspace/DataFolder</code> directory into memory with an overlap between chunks of 100 and a maximum length of each chunk of 2000.</p>
+<p>Note that you can also use the <code>--file</code> argument to ingest a single file into memory and that data_ingestion.py will only ingest files within the <code>/auto_gpt_workspace</code> directory.</p>
+<p>The DIR path is relative to the auto_gpt_workspace directory, so <code>python data_ingestion.py --dir . --init</code> will ingest everything in <code>auto_gpt_workspace</code> directory.</p>
+<p>You can adjust the <code>max_length</code> and <code>overlap</code> parameters to fine-tune the way the
+    documents are presented to the AI when it "recall" that memory:</p>
+<ul>
+<li>Adjusting the overlap value allows the AI to access more contextual information
+    from each chunk when recalling information, but will result in more chunks being
+    created and therefore increase memory backend usage and OpenAI API requests.</li>
+<li>Reducing the <code>max_length</code> value will create more chunks, which can save prompt
+    tokens by allowing for more message history in the context, but will also
+    increase the number of chunks.</li>
+<li>Increasing the <code>max_length</code> value will provide the AI with more contextual
+    information from each chunk, reducing the number of chunks created and saving on
+    OpenAI API requests. However, this may also use more prompt tokens and decrease
+    the overall context available to the AI.</li>
+</ul>
+<p>Memory pre-seeding is a technique for improving AI accuracy by ingesting relevant data
+into its memory. Chunks of data are split and added to memory, allowing the AI to access
+them quickly and generate more accurate responses. It's useful for large datasets or when
+specific information needs to be accessed quickly. Examples include ingesting API or
+GitHub documentation before running Auto-GPT.</p>
+<div class="admonition attention">
+<p class="admonition-title">Attention</p>
+<p>If you use Redis for memory, make sure to run Auto-GPT with <code>WIPE_REDIS_ON_START=False</code></p>
+<p>For other memory backends, we currently forcefully wipe the memory when starting
+Auto-GPT. To ingest data with those memory backends, you can call the
+<code>data_ingestion.py</code> script anytime during an Auto-GPT run.</p>
+</div>
+<p>Memories will be available to the AI immediately as they are ingested, even if ingested
+while Auto-GPT is running.</p>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../search/" class="btn btn-neutral float-left" title="Search"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../voice/" class="btn btn-neutral float-right" title="Voice">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href="../search/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../voice/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script>var base_url = '../..';</script>
+    <script src="../../js/theme_extra.js" defer></script>
+    <script src="../../js/theme.js" defer></script>
+      <script src="../../search/main.js" defer></script>
+    <script defer>
+        window.onload = function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        };
+    </script>
+
+</body>
+</html>

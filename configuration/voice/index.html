@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="canonical" href="https://significantgravitas.github.io/Auto-GPT/configuration/voice/" />
+      <link rel="shortcut icon" href="../../img/favicon.ico" />
+    <title>Voice - Auto-GPT</title>
+    <link rel="stylesheet" href="../../css/theme.css" />
+    <link rel="stylesheet" href="../../css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Voice";
+        var mkdocs_page_input_path = "configuration/voice.md";
+        var mkdocs_page_url = "/Auto-GPT/configuration/voice/";
+      </script>
+    
+    <script src="../../js/jquery-3.6.0.min.js" defer></script>
+    <!--[if lt IE 9]>
+      <script src="../../js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.5.0/highlight.min.js"></script>
+      <script>hljs.initHighlightingOnLoad();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="../.." class="icon icon-home"> Auto-GPT
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../..">Home</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../setup/">Setup</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../usage/">Usage</a>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="../../plugins/">Plugins</a>
+                </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Configuration</span></p>
+              <ul class="current">
+                  <li class="toctree-l1"><a class="reference internal" href="../search/">Search</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../memory/">Memory</a>
+                  </li>
+                  <li class="toctree-l1 current"><a class="reference internal current" href="./">Voice</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#list-of-available-voices">List of available voices</a>
+    </li>
+    </ul>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../imagegen/">Image Generation</a>
+                  </li>
+              </ul>
+              <p class="caption"><span class="caption-text">Contributing</span></p>
+              <ul>
+                  <li class="toctree-l1"><a class="reference internal" href="../../contributing/">Contribution guide</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../testing/">Running tests</a>
+                  </li>
+                  <li class="toctree-l1"><a class="reference internal" href="../../code-of-conduct/">Code of Conduct</a>
+                  </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="" href="https://github.com/Significant-Gravitas/Auto-GPT/blob/master/LICENSE">License</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../..">Auto-GPT</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="../.." class="icon icon-home" alt="Docs"></a> &raquo;</li>
+          <li>Configuration &raquo;</li>
+      <li>Voice</li>
+    <li class="wy-breadcrumbs-aside">
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT/edit/master/docs/configuration/voice.md" class="icon icon-github"> Edit on GitHub</a>
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="text-to-speech">Text to Speech</h1>
+<p>Enter this command to use TTS <em>(Text-to-Speech)</em> for Auto-GPT</p>
+<div class="codehilite"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>autogpt<span class="w"> </span>--speak
+</code></pre></div>
+
+<p>Eleven Labs provides voice technologies such as voice design, speech synthesis, and
+premade voices that Auto-GPT can use for speech.</p>
+<ol>
+<li>Go to <a href="https://beta.elevenlabs.io/">ElevenLabs</a> and make an account if you don't
+    already have one.</li>
+<li>Choose and setup the <code>Starter</code> plan.</li>
+<li>Click the top right icon and find "Profile" to locate your API Key.</li>
+</ol>
+<p>In the <code>.env</code> file set:</p>
+<ul>
+<li><code>ELEVENLABS_API_KEY</code></li>
+<li><code>ELEVENLABS_VOICE_1_ID</code> (example: <em>"premade/Adam"</em>)</li>
+</ul>
+<h3 id="list-of-available-voices">List of available voices</h3>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>You can use either the name or the voice ID to configure a voice</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Voice ID</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rachel</td>
+<td><code>21m00Tcm4TlvDq8ikWAM</code></td>
+</tr>
+<tr>
+<td>Domi</td>
+<td><code>AZnzlk1XvdvUeBnXmlld</code></td>
+</tr>
+<tr>
+<td>Bella</td>
+<td><code>EXAVITQu4vr4xnSDxMaL</code></td>
+</tr>
+<tr>
+<td>Antoni</td>
+<td><code>ErXwobaYiN019PkySvjV</code></td>
+</tr>
+<tr>
+<td>Elli</td>
+<td><code>MF3mGyEYCl7XYWbV9V6O</code></td>
+</tr>
+<tr>
+<td>Josh</td>
+<td><code>TxGEqnHWrfWFTfGW9XjX</code></td>
+</tr>
+<tr>
+<td>Arnold</td>
+<td><code>VR6AewLTigWG4xSOukaG</code></td>
+</tr>
+<tr>
+<td>Adam</td>
+<td><code>pNInz6obpgDQGcFmaJgB</code></td>
+</tr>
+<tr>
+<td>Sam</td>
+<td><code>yoZ06aMxZJJ28mfd3POQ</code></td>
+</tr>
+</tbody>
+</table>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="../memory/" class="btn btn-neutral float-left" title="Memory"><span class="icon icon-circle-arrow-left"></span> Previous</a>
+        <a href="../imagegen/" class="btn btn-neutral float-right" title="Image Generation">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+        <span>
+          <a href="https://github.com/Significant-Gravitas/Auto-GPT" class="fa fa-github" style="color: #fcfcfc"> GitHub</a>
+        </span>
+    
+    
+      <span><a href="../memory/" style="color: #fcfcfc">&laquo; Previous</a></span>
+    
+    
+      <span><a href="../imagegen/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script>var base_url = '../..';</script>
+    <script src="../../js/theme_extra.js" defer></script>
+    <script src="../../js/theme.js" defer></script>
+      <script src="../../search/main.js" defer></script>
+    <script defer>
+        window.onload = function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        };
+    </script>
+
+</body>
+</html>
