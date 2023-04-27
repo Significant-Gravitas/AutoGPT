@@ -1,4 +1,6 @@
 ## Original ignores
+individual_commits
+split_commits.py
 autogpt/keys.py
 autogpt/*json
 autogpt/node_modules/
