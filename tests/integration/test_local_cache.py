@@ -21,7 +21,7 @@ def LocalCache():
 @pytest.fixture
 def mock_embed_with_ada(mocker):
     mocker.patch(
-        "autogpt.memory.local.create_embedding_with_ada",
+        "autogpt.memory.local.get_ada_embedding",
         return_value=[0.1] * EMBED_DIM,
     )
 
@@ -89,6 +89,7 @@ def test_get(LocalCache, config, mock_embed_with_ada):
     assert cache.get("test") == ["test"]
 
 
+@pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_get_relevant(LocalCache, config) -> None:
     cache = LocalCache(config)
