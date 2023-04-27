@@ -1,0 +1,44 @@
+
+version: 1.2.0
+project_name: ProfitMaximizer
+project_budget: 500000
+project_memory: 64GB RAM # additional not used anywhere in MASTER but the place holder exists
+project_working_directory: /home/user/ProfitMaximizer/ # additional not used anywhere in MASTER but the place holder exists
+project_env: /home/user/ProfitMaximizer/.env # additional not used anywhere in MASTER but the place holder exists
+project_log_activity: /home/user/ProfitMaximizer/logs/activity.log # additional not used anywhere in MASTER but the place holder exists
+project_log_env: /home/user/ProfitMaximizer/logs/error.log # additional not used anywhere in MASTER but the place holder exists
+agent_team:
+  team_name: ProfitMaximizerTeam # additional not used anywhere in MASTER but the place holder exists
+  lead_agent:
+    agent_goals:
+    - goal_name : Increase net worth
+      agent_team: # additional not used anywhere in MASTER but the place holder exists
+      ### RECURSIVE PART###
+    - goal_name : Grow Twitter Account
+      agent_team: # additional not used anywhere in MASTER but the place holder exists
+      ### RECURSIVE PART###
+    agent_role: Produce high-quality and well-detailed documentation and tutorial for Python Developers # additional to be used by project & team of agent developper
+    agent_model: GPT-4 # additional to be used by project & team of agent developper
+    agent_model_type: Langua
+###############################################################################################
+####### THIS PART IS FOR PEOPLE WHO MANAGE TEAM OF AGENT not to be used anywhere in MASTER  ###
+###############################################################################################
+  delegated_agents: # additional to be used by project & team of agent developper
+  - agent_name: PythonGPT # additional to be used by project & team of agent developper
+    agent_goals: # additional to be used by project & team of agent developper
+    - There are files located in the folder ./python_doc/ , I want you to go through them and produce a detailed summary aimed at engineers and save these summaries in files located in the folder ./python_summary # additional to be used by project & team of agent developper
+    - Analyze the code in the ./python_doc/ folder and provide suggestions for improvements and optimizations # additional to be used by project & team of agent developper
+    - Create a list of frequently asked questions (FAQs) related to the content in the ./python_doc/ folder # additional to be used by project & team of agent developper
+    agent_role: Produce high-quality and well-detailed documentation and tutorial for Python Developers # additional to be used by project & team of agent developper
+    agent_model: GPT-4 # additional to be used by project & team of agent developper
+    agent_model_type: Language Model # additional to be used by project & team of agent developper
+  - agent_name: PythonGPT # additional to be
+    agent_goals: # additional to be used by project & team of agent developper
+    - goal_name : There are files located in the folder ./python_doc/ , I want you to go through them and produce a detailed summary aimed at engineers and save these summaries in files located in the folder ./python_summary # additional to be used by project & team of agent developper
+      agent_team: # additional not used anywhere in MASTER but the place holder exists
+      ### RECURSIVE PART###
+    - goal_name : Analyze the code in the ./python_doc/ folder and provide suggestions for improvements and optimizations
+    - goal_name : reate a list of frequently asked questions (FAQs) related to the content in the ./python_doc/ folder # additional to be used by project & team of agent developper
+    agent_role: Produce high-quality and well-detailed documentation and tutorial for Python Developers
+    agent_model: A model
+    agent_model_type: A model type
