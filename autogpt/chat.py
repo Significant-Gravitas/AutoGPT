@@ -93,7 +93,6 @@ def chat_with_ai(
                     shuffle(relevant_memories)
                 relevant_memory = str(relevant_memories)
 
-
             logger.debug(f"Memory Stats: {permanent_memory.get_stats()}")
 
             (
