@@ -89,7 +89,8 @@ def chat_with_ai(
                 relevant_memories = permanent_memory.get_relevant(
                     str(recent_history), 5
                 )
-                shuffle(relevant_memories)
+                if relevant_memories:
+                    shuffle(relevant_memories)
                 relevant_memory = str(relevant_memories)
 
 
