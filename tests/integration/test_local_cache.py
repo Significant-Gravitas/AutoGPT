@@ -21,7 +21,7 @@ def LocalCache():
 @pytest.fixture
 def mock_embed_with_ada(mocker):
     mocker.patch(
-        "autogpt.memory.local.get_ada_embedding",
+        "autogpt.llm_utils.get_ada_embedding",
         return_value=[0.1] * EMBED_DIM,
     )
 
