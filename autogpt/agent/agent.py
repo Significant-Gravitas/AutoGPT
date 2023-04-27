@@ -158,7 +158,7 @@ class Agent:
                         break
                     elif console_input.lower().strip() == "s":
                         logger.typewriter_log(
-                            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
+                            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE CRITICISED BY AGENT -=-=-=-=-=-=-=",
                             Fore.GREEN,
                             "",
                         )
@@ -171,10 +171,8 @@ class Agent:
                             Fore.YELLOW,
                             "",
                         )
-                        if self_feedback_resp[0].lower().strip() == "y":
-                            user_input = "GENERATE NEXT COMMAND JSON"
-                        else:
-                            user_input = self_feedback_resp
+                        self_input = self_feedback_resp
+                        command_name = "self_feedback"
                         break
                     elif console_input.lower().strip() == "":
                         print("Invalid input format.")
@@ -229,6 +227,8 @@ class Agent:
                 result = (
                     f"Command {command_name} threw the following error: {arguments}"
                 )
+            elif command_name == "self_feedback":
+                result = self_input
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
             else:
@@ -298,7 +298,7 @@ class Agent:
         """
         ai_role = self.config.ai_role
 
-        feedback_prompt = f"Below is a message from an AI agent with the role of {ai_role}. Please review the provided Thought, Reasoning, Plan, and Criticism. If these elements accurately contribute to the successful execution of the assumed role, respond with the letter 'Y' followed by a space, and then explain why it is effective. If the provided information is not suitable for achieving the role's objectives, please provide one or more sentences addressing the issue and suggesting a resolution."
+        feedback_prompt = f"Below is a message from an AI agent assigned the role of {ai_role}. Please review the following elements: Thought, Reasoning, Plan, and Criticism. If these components effectively contribute to the successful execution of the role, provide feedback on how the agent can improve any or all of these elements, focusing on those most crucial for enhancement. If the components do not contribute to successful role execution, offer guidance on how the AI agent can improve in these areas. If the AI agent is not fulfilling its role optimally, provide feedback on how it can make improvements or redefine its approach to achieve its goal."
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
         thought = thoughts.get("thoughts", "")
