@@ -80,7 +80,7 @@ def add_quotes_to_property_names(json_string: str) -> str:
     def replace_func(match: re.Match) -> str:
         return f'"{match[1]}":{match[2]}'
 
-    #It matches any word followed by : and then an space or ", { or [
+    # It matches any word followed by : and then an space or ", { or [
     property_name_pattern = re.compile(r"(\w+):( ?[\"\{\[])")
     corrected_json_string = property_name_pattern.sub(replace_func, json_string)
 
