@@ -52,3 +52,4 @@ pytest-integration
 pytest-mock
 vcrpy
 pytest-recording
+freezegun~=1.2.2

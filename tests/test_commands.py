@@ -3,8 +3,10 @@ import shutil
 import sys
 from pathlib import Path
 
+import freezegun as freezegun
 import pytest
 
+from autogpt.commands import times
 from autogpt.commands.command import Command, CommandRegistry
 
 
@@ -203,3 +205,9 @@ class TestCommandRegistry:
             registry.commands["function_based"].description
             == "Function-based test command"
         )
+
+
+class TestIndividualCommands:
+    def test_get_datetime(self):
+        with freezegun.freeze_time("2023-04-27 14:56:33"):
+            assert times.get_datetime() == "Current date and time: 2023-04-27 14:56:33"
