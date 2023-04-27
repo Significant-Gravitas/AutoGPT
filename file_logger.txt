@@ -1,0 +1,6 @@
+File Operation Logger write: business_ideas.txt
+write: search_results.txt
+append: search_results.txt
+write: ai_tools_for_small_businesses.txt
+append: ai_tools_for_small_businesses.txt
+write: ai_tool.py
