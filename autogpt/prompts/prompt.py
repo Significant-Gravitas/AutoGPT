@@ -39,7 +39,6 @@ def build_default_prompt_generator() -> PromptGenerator:
 
     # Define the command list
     commands = [
-        ("Do Nothing", "do_nothing", {"reason": "<reason>"}),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
     ]
 
@@ -71,6 +70,9 @@ def build_default_prompt_generator() -> PromptGenerator:
     prompt_generator.add_performance_evaluation(
         "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
         " the least number of steps."
+    )
+    prompt_generator.add_performance_evaluation(
+        "If you cannot think of a valid command to perform start or message an agent to determine the next command."
     )
     prompt_generator.add_performance_evaluation("Write all code to a file.")
     return prompt_generator
