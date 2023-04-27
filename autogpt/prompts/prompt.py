@@ -3,6 +3,7 @@ from colorama import Fore
 from autogpt.api_manager import api_manager
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
+from autogpt.config.prompt_config import PromptConfig
 from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import prompt_user
@@ -23,19 +24,12 @@ def build_default_prompt_generator() -> PromptGenerator:
     # Initialize the PromptGenerator object
     prompt_generator = PromptGenerator()
 
+    # Initialize the PromptConfig object and load the file set in the main config (default: prompts_settings.yaml)
+    prompt_config = PromptConfig(CFG.prompt_settings_file)
+
     # Add constraints to the PromptGenerator object
-    prompt_generator.add_constraint(
-        "~4000 word limit for short term memory. Your short term memory is short, so"
-        " immediately save important information to files."
-    )
-    prompt_generator.add_constraint(
-        "If you are unsure how you previously did something or want to recall past"
-        " events, thinking about similar events will help you remember."
-    )
-    prompt_generator.add_constraint("No user assistance")
-    prompt_generator.add_constraint(
-        'Exclusively use the commands listed in double quotes e.g. "command name"'
-    )
+    for constraint in prompt_config.constraints:
+        prompt_generator.add_constraint(constraint)
 
     # Define the command list
     commands = [
@@ -48,31 +42,13 @@ def build_default_prompt_generator() -> PromptGenerator:
         prompt_generator.add_command(command_label, command_name, args)
 
     # Add resources to the PromptGenerator object
-    prompt_generator.add_resource(
-        "Internet access for searches and information gathering."
-    )
-    prompt_generator.add_resource("Long Term memory management.")
-    prompt_generator.add_resource(
-        "GPT-3.5 powered Agents for delegation of simple tasks."
-    )
-    prompt_generator.add_resource("File output.")
+    for resource in prompt_config.resources:
+        prompt_generator.add_resource(resource)
 
     # Add performance evaluations to the PromptGenerator object
-    prompt_generator.add_performance_evaluation(
-        "Continuously review and analyze your actions to ensure you are performing to"
-        " the best of your abilities."
-    )
-    prompt_generator.add_performance_evaluation(
-        "Constructively self-criticize your big-picture behavior constantly."
-    )
-    prompt_generator.add_performance_evaluation(
-        "Reflect on past decisions and strategies to refine your approach."
-    )
-    prompt_generator.add_performance_evaluation(
-        "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
-        " the least number of steps."
-    )
-    prompt_generator.add_performance_evaluation("Write all code to a file.")
+    for performance_evaluation in prompt_config.performance_evaluations:
+        prompt_generator.add_performance_evaluation(performance_evaluation)
+
     return prompt_generator
 
 
