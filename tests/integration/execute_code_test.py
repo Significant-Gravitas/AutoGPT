@@ -3,9 +3,9 @@ import random
 import string
 import tempfile
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from autogpt.commands.execute_code import execute_python_file
+import autogpt.commands.execute_code as sut
 
 
 class TestExecuteCode(TestCase):
@@ -17,7 +17,7 @@ class TestExecuteCode(TestCase):
             temp_file.write(str.encode(f"print('Hello {random_string}!')"))
             temp_file.flush()
             temp_file_path = pathlib.Path(temp_file.name).parent
-            temp_file_name = pathlib.Path(temp_file.name).name
-            with patch("autogpt.commands.execute_code.WORKSPACE_PATH", temp_file_path):
-                result = execute_python_file(temp_file_name)
+            config_mock = MagicMock(wraps=sut.CFG, workspace_path=temp_file_path)
+            with patch("autogpt.commands.execute_code.CFG", config_mock):
+                result = sut.execute_python_file(temp_file.name)
                 self.assertEqual(result, f"Hello {random_string}!\n")
