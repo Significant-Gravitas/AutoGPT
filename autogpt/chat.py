@@ -1,9 +1,10 @@
 import time
+from random import shuffle
 
 from openai.error import RateLimitError
 
 from autogpt import token_counter
-from autogpt.api_manager import api_manager
+from autogpt.api_manager import ApiManager
 from autogpt.config import Config
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
@@ -80,12 +81,17 @@ def chat_with_ai(
 
             logger.debug(f"Token limit: {token_limit}")
             send_token_limit = token_limit - 1000
-
-            relevant_memory = (
-                ""
-                if len(full_message_history) == 0
-                else permanent_memory.get_relevant(str(full_message_history[-9:]), 10)
-            )
+            if len(full_message_history) == 0:
+                relevant_memory = ""
+            else:
+                recent_history = full_message_history[-5:]
+                shuffle(recent_history)
+                relevant_memories = permanent_memory.get_relevant(
+                    str(recent_history), 5
+                )
+                if relevant_memories:
+                    shuffle(relevant_memories)
+                relevant_memory = str(relevant_memories)
 
             logger.debug(f"Memory Stats: {permanent_memory.get_stats()}")
 
@@ -134,6 +140,7 @@ def chat_with_ai(
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
 
+            api_manager = ApiManager()
             # inform the AI about its remaining budget (if it has one)
             if api_manager.get_total_budget() > 0.0:
                 remaining_budget = (

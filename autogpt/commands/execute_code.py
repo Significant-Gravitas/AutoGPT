@@ -1,6 +1,7 @@
 """Execute code in a Docker container"""
 import os
 import subprocess
+from pathlib import Path
 
 import docker
 from docker.errors import ImageNotFound
@@ -41,7 +42,6 @@ def execute_python_file(filename: str) -> str:
 
     try:
         client = docker.from_env()
-
         # You can replace this with the desired Python image/version
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
@@ -63,10 +63,9 @@ def execute_python_file(filename: str) -> str:
                     logger.info(f"{status}: {progress}")
                 elif status:
                     logger.info(status)
-
         container = client.containers.run(
             image_name,
-            f"python {filename}",
+            f"python {Path(filename).relative_to(CFG.workspace_path)}",
             volumes={
                 CFG.workspace_path: {
                     "bind": "/workspace",
