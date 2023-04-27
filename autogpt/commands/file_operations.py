@@ -17,6 +17,21 @@ from autogpt.utils import readable_file_size
 CFG = Config()
 
 
+def check_duplicate_operation(operation: str, filename: str) -> bool:
+    """Check if the operation has already been performed on the given file
+
+    Args:
+        operation (str): The operation to check for
+        filename (str): The name of the file to check for
+
+    Returns:
+        bool: True if the operation has already been performed on the file
+    """
+    log_content = read_file(LOG_FILE)
+    log_entry = f"{operation}: {filename}\n"
+    return log_entry in log_content
+
+
 def log_operation(operation: str, filename: str) -> None:
     """Log the file operation to the file_logger.txt
 
@@ -123,6 +138,8 @@ def write_to_file(filename: str, text: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
+    if check_duplicate_operation("write", filename):
+        return "Error: File has already been updated."
     try:
         directory = os.path.dirname(filename)
         if not os.path.exists(directory):
@@ -171,6 +188,8 @@ def delete_file(filename: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
+    if check_duplicate_operation("delete", filename):
+        return "Error: File has already been deleted."
     try:
         os.remove(filename)
         log_operation("delete", filename)

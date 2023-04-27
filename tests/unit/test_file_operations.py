@@ -5,6 +5,7 @@ from pathlib import Path
 
 from autogpt.commands.file_operations import (
     append_to_file,
+    check_duplicate_operation,
     delete_file,
     log_operation,
     read_file,
@@ -40,6 +41,10 @@ class TestFileOperations(unittest.TestCase):
 
     def tearDown(self) -> None:
         shutil.rmtree(self.workspace_path)
+
+    def test_check_duplicate_operation(self):
+        log_operation("write", self.test_file)
+        self.assertTrue(check_duplicate_operation("write", self.test_file))
 
     # Test logging a file operation
     def test_log_operation(self):
