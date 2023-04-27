@@ -1,6 +1,5 @@
 import time
 import openai
-from dotenv import load_dotenv
 from config import Config
 import token_counter
 from llm_utils import create_chat_completion
@@ -21,7 +20,27 @@ def create_chat_message(role, content):
     return {"role": role, "content": content}
 
 
+# call_count = 0  # Add a global variable to count the number of times the function is called
+
 def generate_context(prompt, relevant_memory, full_message_history, model):
+    # global call_count  # Access the global variable inside the function
+    # call_count += 1
+
+    # # Only include the initial messages for the first call
+    # if call_count == 1:
+    #     current_context = [
+    #         create_chat_message("system", prompt),
+    #         create_chat_message("system", f"The current time and date is {time.strftime('%c')}")
+    #     ]
+    # else:
+    #     # Check if relevant_memory contains the specified string
+    #     if "Please refer to the 'COMMANDS' list for availabe commands and only respond in the specified JSON format" in relevant_memory:
+    #         current_context = [
+    #             create_chat_message("system", prompt),
+    #             create_chat_message("system", f"The current time and date is {time.strftime('%c')}")
+    #         ]
+    #     else:
+    #         current_context = []
     current_context = [
         create_chat_message(
             "system", prompt),
@@ -64,14 +83,14 @@ def chat_with_ai(
             model = cfg.fast_llm_model # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
 
-            if cfg.debug:
+            if cfg.debug_mode:
                 print(f"Token limit: {token_limit}")
 
             send_token_limit = token_limit - 1000
 
             relevant_memory = permanent_memory.get_relevant(str(full_message_history[-5:]), 10)
 
-            if cfg.debug:
+            if cfg.debug_mode:
                 print('Memory Stats: ', permanent_memory.get_stats())
 
             next_message_to_add_index, current_tokens_used, insertion_index, current_context = generate_context(
@@ -107,22 +126,6 @@ def chat_with_ai(
 
             # Calculate remaining tokens
             tokens_remaining = token_limit - current_tokens_used
-            # assert tokens_remaining >= 0, "Tokens remaining is negative. This should never happen, please submit a bug report at https://www.github.com/Torantulino/Auto-GPT"
-
-            # Debug print the current context
-            if cfg.debug:
-                print(f"Token limit: {token_limit}")
-                print(f"Send Token Count: {current_tokens_used}")
-                print(f"Tokens remaining for response: {tokens_remaining}")
-                print("------------ CONTEXT SENT TO AI ---------------")
-                for message in current_context:
-                    # Skip printing the prompt
-                    if message["role"] == "system" and message["content"] == prompt:
-                        continue
-                    print(
-                        f"{message['role'].capitalize()}: {message['content']}")
-                    print()
-                print("----------- END OF CONTEXT ----------------")
 
             # TODO: use a model defined elsewhere, so that model can contain temperature and other settings we care about
             assistant_reply = create_chat_completion(
@@ -130,7 +133,7 @@ def chat_with_ai(
                 messages=current_context,
                 max_tokens=tokens_remaining,
             )
-
+            print(f"assistant_reply->>{assistant_reply}")
             # Update full message history
             full_message_history.append(
                 create_chat_message(
@@ -143,4 +146,4 @@ def chat_with_ai(
         except openai.error.RateLimitError:
             # TODO: WHen we switch to langchain, this is built in
             print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
-            time.sleep(10)
+            time.sleep(2)

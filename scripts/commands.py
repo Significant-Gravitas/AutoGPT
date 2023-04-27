@@ -11,11 +11,19 @@ from execute_code import execute_python_file
 from json_parser import fix_and_parse_json
 from image_gen import generate_image
 from duckduckgo_search import ddg
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+from local_llama_index import GPTSimpleVectorIndex
+from local_llama_index.prompts.prompts import QuestionAnswerPrompt
+from local_llama_index.readers.schema.base import Document
 
 cfg = Config()
-
+QUESTION_ANSWER_PROMPT_TMPL = (
+    "Context information is below. \n"
+    "---------------------\n"
+    "{context_str}"
+    "\n---------------------\n"
+    "{query_str}\n"
+)
+QUESTION_ANSWER_PROMPT = QuestionAnswerPrompt(QUESTION_ANSWER_PROMPT_TMPL)
 
 def is_valid_int(value):
     try:
@@ -53,7 +61,7 @@ def get_command(response):
 def execute_command(command_name, arguments):
     """Execute the command and return the result"""
     memory = get_memory(cfg)
-
+    print(f"execute_command command_name -> {command_name}")
     try:
         if command_name == "google":
 
@@ -168,6 +176,7 @@ def google_official_search(query, num_results=8):
 
 def browse_website(url, question):
     """Browse a website and return the summary and links"""
+    print(f"browse_website -> {url}")
     summary = get_text_summary(url, question)
     links = get_hyperlinks(url)
 
@@ -182,9 +191,14 @@ def browse_website(url, question):
 
 def get_text_summary(url, question):
     """Return the results of a google search"""
+    documents = []
     text = browse.scrape_text(url)
-    summary = browse.summarize_text(text, question)
-    return """ "Result" : """ + summary
+    document = Document(text)
+    documents.append(document)
+    index = GPTSimpleVectorIndex.from_documents(documents)
+    # summary = browse.summarize_text(text, question)
+    summary = index.query(question, text_qa_template=QUESTION_ANSWER_PROMPT)
+    return """ "Result" : """ + str(summary)
 
 
 def get_hyperlinks(url):

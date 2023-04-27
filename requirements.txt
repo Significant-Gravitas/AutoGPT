@@ -15,3 +15,9 @@ pinecone-client==2.2.1
 redis
 orjson
 Pillow
+coverage
+flake8
+numpy
+tenacity
+revChatGPT==4.2.5
+local-llama-index==0.5.11
