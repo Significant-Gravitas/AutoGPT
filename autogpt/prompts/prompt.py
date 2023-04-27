@@ -70,7 +70,7 @@ def build_default_prompt_generator() -> PromptGenerator:
     prompt_generator.add_performance_evaluation(
         "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
         " the least number of steps."
-    ) 
+    )
     prompt_generator.add_performance_evaluation(
         "If you cannot think of a valid command to perform start or message an agent to determine the next command."
     )
