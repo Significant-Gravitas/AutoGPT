@@ -1,10 +1,11 @@
-import os
-import PyPDF2
-import docx
 import json
+import os
+
+import docx
+import markdown
+import PyPDF2
 import yaml
 from bs4 import BeautifulSoup
-import markdown
 from pylatexenc.latex2text import LatexNodes2Text
 
 

@@ -10,10 +10,10 @@ from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.commands.command import command
+from autogpt.commands.file_operations_utils import read_textual_file
 from autogpt.config import Config
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
-from autogpt.commands.file_operations_utils import read_textual_file
 
 CFG = Config()
 
