@@ -64,6 +64,10 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
     templates in the [repository].
 6. Continue to [Run with Docker](#run-with-docker)
 
+!!! note "Docker only supports headless browsing"
+    Auto-GPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.
+    Please do not change this setting in combination with Docker, or Auto-GPT will crash.
+
 [Docker Hub]: https://hub.docker.com/r/significantgravitas/auto-gpt
 [repository]: https://github.com/Significant-Gravitas/Auto-GPT
 
