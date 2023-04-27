@@ -10,7 +10,7 @@ import orjson
 from autogpt.llm_utils import get_ada_embedding
 from autogpt.memory.base import MemoryProviderSingleton
 
-DEFAULT_EMBED_DIM = 1536
+EMBED_DIM = 1536
 SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
 
 
@@ -22,7 +22,7 @@ def create_default_embeddings(embed_dim: int):
 class CacheContent:
     texts: List[str] = dataclasses.field(default_factory=list)
     embeddings: np.ndarray = dataclasses.field(
-        default_factory=create_default_embeddings(DEFAULT_EMBED_DIM)
+        default_factory=create_default_embeddings(EMBED_DIM)
     )
 
     def __init__(self, embed_dim: int) -> None:
