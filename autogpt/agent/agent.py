@@ -153,7 +153,7 @@ class Agent:
                         console_input = clean_input(
                             Fore.MAGENTA + "Input:" + Style.RESET_ALL
                         )
-                    if console_input.lower().strip() == "y":
+                    if console_input.lower().strip() == cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().strip() == "s":
@@ -171,7 +171,7 @@ class Agent:
                             Fore.YELLOW,
                             "",
                         )
-                        if self_feedback_resp[0].lower().strip() == "y":
+                        if self_feedback_resp[0].lower().strip() == cfg.authorise_key:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         else:
                             user_input = self_feedback_resp
@@ -179,7 +179,7 @@ class Agent:
                     elif console_input.lower().strip() == "":
                         print("Invalid input format.")
                         continue
-                    elif console_input.lower().startswith("y -"):
+                    elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
                         try:
                             self.next_action_count = abs(
                                 int(console_input.split(" ")[1])
@@ -187,12 +187,12 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             print(
-                                "Invalid input format. Please enter 'y -n' where n is"
+                                f"Invalid input format. Please enter '{cfg.authorise_key} -N' where N is"
                                 " the number of continuous tasks."
                             )
                             continue
                         break
-                    elif console_input.lower() == "n":
+                    elif console_input.lower() == cfg.exit_key:
                         user_input = "EXIT"
                         break
                     else:
@@ -252,29 +252,26 @@ class Agent:
                     result = plugin.post_command(command_name, result)
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
-            if command_name != "do_nothing":
-                memory_to_add = (
-                    f"Assistant Reply: {assistant_reply} "
-                    f"\nResult: {result} "
-                    f"\nHuman Feedback: {user_input} "
+            memory_to_add = (
+                f"Assistant Reply: {assistant_reply} "
+                f"\nResult: {result} "
+                f"\nHuman Feedback: {user_input} "
+            )
+
+            self.memory.add(memory_to_add)
+
+            # Check if there's a result from the command append it to the message
+            # history
+            if result is not None:
+                self.full_message_history.append(create_chat_message("system", result))
+                logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
+            else:
+                self.full_message_history.append(
+                    create_chat_message("system", "Unable to execute command")
                 )
-
-                self.memory.add(memory_to_add)
-
-                # Check if there's a result from the command append it to the message
-                # history
-                if result is not None:
-                    self.full_message_history.append(
-                        create_chat_message("system", result)
-                    )
-                    logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
-                else:
-                    self.full_message_history.append(
-                        create_chat_message("system", "Unable to execute command")
-                    )
-                    logger.typewriter_log(
-                        "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
-                    )
+                logger.typewriter_log(
+                    "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
+                )
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
