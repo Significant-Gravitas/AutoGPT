@@ -169,7 +169,6 @@ def create_chat_completion(
                 )
             break
         except RateLimitError:
-            if cfg.debug_mode:
                 print(
                     f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"
                 )
