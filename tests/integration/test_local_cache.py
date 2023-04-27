@@ -89,6 +89,7 @@ def test_get(LocalCache, config, mock_embed_with_ada):
     assert cache.get("test") == ["test"]
 
 
+@pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_get_relevant(LocalCache, config) -> None:
     cache = LocalCache(config)
