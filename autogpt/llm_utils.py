@@ -8,7 +8,7 @@ import openai
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, Timeout
 
-from autogpt.api_manager import api_manager
+from autogpt.api_manager import ApiManager
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.types.openai import Message
@@ -147,6 +147,7 @@ def create_chat_completion(
             )
             if message is not None:
                 return message
+    api_manager = ApiManager()
     response = None
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
@@ -209,14 +210,14 @@ def create_chat_completion(
     return resp
 
 
-def get_ada_embedding(text: str) -> List[int]:
+def get_ada_embedding(text: str) -> List[float]:
     """Get an embedding from the ada model.
 
     Args:
         text (str): The text to embed.
 
     Returns:
-        List[int]: The embedding.
+        List[float]: The embedding.
     """
     cfg = Config()
     model = "text-embedding-ada-002"
@@ -228,6 +229,7 @@ def get_ada_embedding(text: str) -> List[int]:
         kwargs = {"model": model}
 
     embedding = create_embedding(text, **kwargs)
+    api_manager = ApiManager()
     api_manager.update_cost(
         prompt_tokens=embedding.usage.prompt_tokens,
         completion_tokens=0,
