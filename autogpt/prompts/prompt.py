@@ -1,5 +1,6 @@
 from colorama import Fore
 
+from autogpt.api_manager import ApiManager
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.logs import logger
@@ -8,6 +9,10 @@ from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
 CFG = Config()
+
+DEFAULT_TRIGGERING_PROMPT = (
+    "Determine which next command to use, and respond using the format specified above:"
+)
 
 
 def build_default_prompt_generator() -> PromptGenerator:
@@ -38,7 +43,6 @@ def build_default_prompt_generator() -> PromptGenerator:
 
     # Define the command list
     commands = [
-        ("Do Nothing", "do_nothing", {}),
         ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
     ]
 
@@ -86,6 +90,11 @@ def construct_main_ai_config() -> AIConfig:
         logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
         logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
         logger.typewriter_log("Goals:", Fore.GREEN, f"{config.ai_goals}")
+        logger.typewriter_log(
+            "API Budget:",
+            Fore.GREEN,
+            "infinite" if config.api_budget <= 0 else f"${config.api_budget}",
+        )
     elif config.ai_name:
         logger.typewriter_log(
             "Welcome back! ",
@@ -98,14 +107,19 @@ def construct_main_ai_config() -> AIConfig:
 Name:  {config.ai_name}
 Role:  {config.ai_role}
 Goals: {config.ai_goals}
-Continue (y/n): """
+API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
+Continue ({CFG.authorise_key}/{CFG.exit_key}): """
         )
-        if should_continue.lower() == "n":
+        if should_continue.lower() == CFG.exit_key:
             config = AIConfig()
 
     if not config.ai_name:
         config = prompt_user()
         config.save(CFG.ai_settings_file)
+
+    # set the total api budget
+    api_manager = ApiManager()
+    api_manager.set_total_budget(config.api_budget)
 
     # Agent Created, print message
     logger.typewriter_log(

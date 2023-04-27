@@ -26,13 +26,10 @@ def replace_timestamp_in_request(request):
     return request
 
 
-def filter_hostnames(request):
-    allowed_hostnames = ["api.openai.com"]  # List of hostnames you want to allow
-
-    if any(hostname in request.url for hostname in allowed_hostnames):
-        return request
-    else:
-        return None
+def before_record_response(response):
+    if "Transfer-Encoding" in response["headers"]:
+        del response["headers"]["Transfer-Encoding"]
+    return response
 
 
 def before_record_request(request):
@@ -41,3 +38,12 @@ def before_record_request(request):
         filtered_request
     )
     return filtered_request_without_dynamic_data
+
+
+def filter_hostnames(request):
+    allowed_hostnames = ["api.openai.com"]  # List of hostnames you want to allow
+
+    if any(hostname in request.url for hostname in allowed_hostnames):
+        return request
+    else:
+        return None
