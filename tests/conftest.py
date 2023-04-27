@@ -1,12 +1,11 @@
 from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
 
+from autogpt.api_manager import ApiManager
 from autogpt.config import Config
 from autogpt.workspace import Workspace
-
-load_dotenv()
+from tests.vcr.openai_filter import before_record_request
 
 
 @pytest.fixture()
@@ -29,3 +28,10 @@ def config(workspace: Workspace) -> Config:
     config.workspace_path = workspace.root
     yield config
     config.workspace_path = old_ws_path
+
+
+@pytest.fixture()
+def api_manager() -> ApiManager:
+    if ApiManager in ApiManager._instances:
+        del ApiManager._instances[ApiManager]
+    return ApiManager()
