@@ -12,6 +12,7 @@ services:
     volumes:
       - "./autogpt:/app"
       - ".env:/app/.env"
+      - "./auto_gpt_workspace:/home/appuser/auto_gpt_workspace"
     profiles: ["exclude-from-up"]
 
   redis:
