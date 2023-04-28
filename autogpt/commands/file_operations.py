@@ -76,9 +76,9 @@ def split_file(
         start += max_length - overlap
 
 
-@command("read_text_file", "Read file", '"filename": "<filename>"')
+@command("parse_text_document", "Read text from file file", '"filename": "<filename>"')
 def read_text_file(filename: str) -> str:
-    """Read a file and return the contents
+    """Read a text from a file and return the contents
 
     Args:
         filename (str): The name of the file to read
