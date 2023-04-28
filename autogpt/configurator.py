@@ -102,8 +102,10 @@ def create_config(
 
     if project_dir == '' : 
         logger.typewriter_log("ERROR : ", Fore.RED, "set PROJECT_DIR in your .env file")
+
     else :
         CFG.project_dir = project_dir
+        logger.double_check(additionalText='Check if PROJECT_DIR is set ')
         exit(1)
 
     if ai_settings_file:

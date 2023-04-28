@@ -34,10 +34,16 @@ import click
     is_flag=True,
     help="Skips the re-prompting messages at the beginning of the script",
 )
-@click.option(
-    "--ai-settings",
+@click.option(# TODO TO BE REMOVE
+    "--ai-settings", 
     "-C",
     help="Specifies which agent_settings.yaml file to use, will also automatically skip the re-prompt.",
+)
+
+@click.option( 
+    "--project-dir",
+    "-D",
+    help="Specifies which directory contains projects.",
 )
 @click.option(
     "-l",
@@ -90,6 +96,7 @@ def main(
     continuous: bool,
     continuous_limit: int,
     ai_settings: str,
+    project_dir:str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -115,6 +122,7 @@ def main(
             continuous,
             continuous_limit,
             ai_settings,
+            project_dir,
             skip_reprompt,
             speak,
             debug,
