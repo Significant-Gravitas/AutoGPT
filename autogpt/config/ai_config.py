@@ -80,28 +80,29 @@ class AIConfig:
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_role", "")
-        ai_goals = config_params.get("ai_goals", [])
-        ai_goals = list(map(AIConfig.sanitize_input, ai_goals))
+        ai_goals = AIConfig.coerce_goals_to_str(config_params.get("ai_goals", []))
         api_budget = config_params.get("api_budget", 0.0)
         # type: Type[AIConfig]
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
     @staticmethod
-    def sanitize_input(input: Any) -> str:
+    def coerce_goals_to_str(goals: list[Any]) -> list[str]:
         """
-        Try to return a string, in the format that the user intended.
+        Return goals as list of strings, in the format that the user intended,
+        fixing some cases where the goals are loaded from yaml as a list of dicts.
 
         Parameters:
-            goal: The input to sanitize (can be a string, dict, or other object)
+            goals: The goals to sanitize (can be a string, dict, or other object)
 
         Returns:
-            A string
+            A list of strings, where each string is a goal.
         """
-        return (
-            " ".join(f"{k}: {v}" for k, v in input.items())
-            if isinstance(input, dict)
-            else str(input)
+        coerce_goal_to_str = (
+            lambda goal: " ".join(f"{k}: {v}" for k, v in goal.items())
+            if isinstance(goal, dict)
+            else str(goal)
         )
+        return list(map(coerce_goal_to_str, goals))
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
