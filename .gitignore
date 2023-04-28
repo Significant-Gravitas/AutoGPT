@@ -167,4 +167,5 @@ openai/
 
 # news
 CURRENT_BULLETIN.md
-agent_settings.yaml
+test_click.py
+.gitignore

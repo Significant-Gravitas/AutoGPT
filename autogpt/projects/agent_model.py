@@ -161,8 +161,6 @@ class AgentModel():
             cls (AgentModel): An instance of the `AgentModel` class.
         """
 
-
-
         try:
             with open(config_file, encoding="utf-8") as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
