@@ -4,9 +4,8 @@ from typing import Dict, Generator, Optional
 import spacy
 from selenium.webdriver.remote.webdriver import WebDriver
 
-from autogpt import token_counter
 from autogpt.config import Config
-from autogpt.llm_utils import create_chat_completion
+from autogpt.llm import count_message_tokens, create_chat_completion
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 
@@ -45,7 +44,7 @@ def split_text(
         ]
 
         expected_token_usage = (
-            token_usage_of_chunk(messages=message_with_additional_sentence, model=model)
+            count_message_tokens(messages=message_with_additional_sentence, model=model)
             + 1
         )
         if expected_token_usage <= max_length:
@@ -57,7 +56,7 @@ def split_text(
                 create_message(" ".join(current_chunk), question)
             ]
             expected_token_usage = (
-                token_usage_of_chunk(messages=message_this_sentence_only, model=model)
+                count_message_tokens(messages=message_this_sentence_only, model=model)
                 + 1
             )
             if expected_token_usage > max_length:
@@ -67,10 +66,6 @@ def split_text(
 
     if current_chunk:
         yield " ".join(current_chunk)
-
-
-def token_usage_of_chunk(messages, model):
-    return token_counter.count_message_tokens(messages, model)
 
 
 def summarize_text(
@@ -113,7 +108,7 @@ def summarize_text(
         memory.add(memory_to_add)
 
         messages = [create_message(chunk, question)]
-        tokens_for_chunk = token_counter.count_message_tokens(messages, model)
+        tokens_for_chunk = count_message_tokens(messages, model)
         logger.info(
             f"Summarizing chunk {i + 1} / {len(chunks)} of length {len(chunk)} characters, or {tokens_for_chunk} tokens"
         )
