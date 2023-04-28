@@ -21,27 +21,17 @@ interactions:
       only with the output in the exact format specified in the system prompt, with
       no explanation or conversation.\n"}], "temperature": 0.0, "max_tokens": null}'
     headers:
-      Accept:
-      - '*/*'
-      Accept-Encoding:
-      - gzip, deflate
-      Connection:
-      - keep-alive
-      Content-Length:
-      - '1592'
       Content-Type:
       - application/json
-    method: POST
+    method: post
     uri: https://api.openai.com/v1/chat/completions
   response:
     body:
-      string: !!binary |
-        H4sIAAAAAAAAA0yOTUsDMRCG7/6KYS5esqUf1tqcFdSLHoqCIjKbne6mzWZCMusHpf9dCmp7e3m/
-        eHboG7ToOlLXp1Atlt3t6unbtbebl5vVc/2wWmiYbbfu+n54QINSb9jp72LkpE+B1UtEgy4zKTdo
-        J5dX0/nF/HKxNNhLwwEttkmr2Whe6ZBrqcaz8QQNDoVaRrvDlKVP+q6y5VjQTq/GBo/f//5sYlBF
-        KZw4k71B14l3XNC+7rDn8veaJTBapFJ8UYp6YJSoHA/8d+c9FMn528AdOIpRFFKWD98wUAQZNA0K
-        n147GRQIPij4BpTKdgSPganwsX4Swloy9Awq0HLkTMpAKWVJ2R90KxQKUGyA4MBX1VS4gUg9j3Bv
-        cO2jL917ZioS0WJRSWjQx4a/0I73b/uzHwAAAP//AwBPrscAswEAAA==
+      string: '{"id":"chatcmpl-7A5uTGknBjWv0DP9mBwbYZleyIpj1","object":"chat.completion","created":1682640353,"model":"gpt-3.5-turbo-0301","usage":{"prompt_tokens":280,"completion_tokens":31,"total_tokens":311},"choices":[{"message":{"role":"assistant","content":"I''m
+        sorry, I cannot provide an output without a valid task. Please provide a valid
+        task for me to generate appropriate goals and a role-based name."},"finish_reason":"stop","index":0}]}
+
+        '
     headers:
       CF-Cache-Status:
       - DYNAMIC
@@ -84,4 +74,5 @@ interactions:
     status:
       code: 200
       message: OK
+    url: https://api.openai.com/v1/chat/completions
 version: 1

@@ -22,36 +22,30 @@ interactions:
       specified in the system prompt, with no explanation or conversation.\n"}], "temperature":
       0.0, "max_tokens": null}'
     headers:
-      Accept:
-      - '*/*'
-      Accept-Encoding:
-      - gzip, deflate
-      Connection:
-      - keep-alive
-      Content-Length:
-      - '1625'
       Content-Type:
       - application/json
-    method: POST
+    method: post
     uri: https://api.openai.com/v1/chat/completions
   response:
     body:
-      string: !!binary |
-        H4sIAAAAAAAAA4yU0W/bRgzG3/dXEPcsB04ad53ehg1riwFNthXYgGUo6BMlcT4dVZJy4gT534uT
-        ZWcr9rAXAZZ5Hz/++J2eAjehDrFHj8OYVt9+1//0y+XP797n6w/DbnvTdts/9reXwzr9Fj+GKsj2
-        b4q+nLiIMoyJnCWHKkQldGpCffn6zdXmerPZXFVhkIZSqEM3+urVxWblk25ltX61vgxVmAw7CvVT
-        GFWG0T+57ChbqK/eXFfhRfvl/eXrKrg4pvOrzXr9XIXYC0eyUP/5FAayk6xKolAHNGNzzF5MSnbK
-        ZYAPOFANv97cvr39eJd/JIvKY2lXA2b4/j3M8/CeIEq2KRUB8B4dbKTImPiRDDhDT2nk3AGqs7kB
-        5gaGyTgyZoOtlv+8J1aYMn+eCPZsLNnABRK3dLGYALajdMsRUzpAQ8ZdpqYUHmco7bynxZpkkBZU
-        4g5kJEWrYFTZc1M60sNI6tBN3GCONLuyaRxFyxQqU9fL5LMaZWelcjaS2cVdfiuYrL7LK/hBUsKt
-        KDrBPXsPB5mKnYb2lGQEhLImSqm0NBc9JM50xBRx9EnJjj3MqNiQFuJhS5rJOULHim1LR2YzKQP2
-        E5iTzyPNCtJBOVo1F+/ZJkzFbLF507akLwuzqevIfIZciluiZosF0xHff+jJnhRTKhCaKc5sXYCy
-        TbqMUw6+sC7Lotxhx7mrCkFSR87zr6JHgxSReY9KJhmzL2bfURpnjmhGwzYRIDimotGAEw4F0jlA
-        FRjnjrT4jC66+F2yoQb3vUDEvATtIJMuATtjPNYn3pMCQs9dv/o8YWI/wEjaig4lIYu72zlB9L+C
-        o9QTqmGai/6BbolSdb4bS2wK5ShDET2AbM0xpmX7X6NuOeN5HYU2gutEMKA56ch0dvy76O5f4Sxf
-        E3H6emNzxiZO5fn4CKgy5QbYDZQSoVEFiUoMujnMUu44DNQwlntFdq47RcZ7UhhQd+TlROwxZ0rz
-        vVbC2APCfUGJU8N0QtlRpvk60UNkp4GyX4TnKrSc2fpPSmiSQx3MZQxV4NzQQ6jXz389f/MFAAD/
-        /wMAE8xLs6wFAAA=
+      string: '{"id":"chatcmpl-7A5uFSQylxqnSHBbiQMTMiIpMj1MT","object":"chat.completion","created":1682640339,"model":"gpt-3.5-turbo-0301","usage":{"prompt_tokens":284,"completion_tokens":206,"total_tokens":490},"choices":[{"message":{"role":"assistant","content":"Name:
+        RockOpGPT\nDescription: an AI creative consultant that specializes in helping
+        artists and musicians bring their unique visions to life. With a focus on
+        rock operas, RockOpGPT provides expert guidance and support to help you create
+        a one-of-a-kind masterpiece that tells a compelling story through music, lyrics,
+        and visuals.\nGoals:\n- Collaborate with you to develop a cohesive and engaging
+        storyline that captures the essence of cybernetic giraffes and brings it to
+        life through music and lyrics.\n- Provide expert guidance on musical composition,
+        arrangement, and production to ensure that your rock opera is of the highest
+        quality and resonates with your audience.\n- Help you create visually stunning
+        and immersive experiences that complement your music and enhance the overall
+        impact of your rock opera.\n- Offer creative solutions to any challenges or
+        roadblocks that arise during the creative process, ensuring that your vision
+        is fully realized.\n- Provide ongoing support and feedback throughout the
+        entire process, from concept to performance, to ensure that your rock opera
+        is a success."},"finish_reason":"stop","index":0}]}
+
+        '
     headers:
       CF-Cache-Status:
       - DYNAMIC
@@ -94,4 +88,5 @@ interactions:
     status:
       code: 200
       message: OK
+    url: https://api.openai.com/v1/chat/completions
 version: 1

@@ -44,30 +44,26 @@ interactions:
       "Determine which next command to use, and respond using the format specified
       above:"}], "temperature": 0, "max_tokens": 3223}'
     headers:
-      Accept:
-      - '*/*'
-      Accept-Encoding:
-      - gzip, deflate
-      Connection:
-      - keep-alive
-      Content-Length:
-      - '3490'
       Content-Type:
       - application/json
-    method: POST
+    method: post
     uri: https://api.openai.com/v1/chat/completions
   response:
     body:
-      string: !!binary |
-        H4sIAAAAAAAAA7yTT2/TQBDF73yK0VxycSI3f0jjWwUHisQFAQVhFG3tib3NesfdHSutIn93tLbT
-        tEY9gbjOG7/3m9nxEXWOCWalkqyqzXS9ubt53H+68u9+FPeON2vzcb654m/v4/vP3zFCvr2jTIYv
-        ZhlXtSHRbDHCzJESyjG5eHs5X62Wi/llhBXnZDDBopbpYraaSuNueRov4guMsPGqIEyOWDuuatkK
-        78l6TNbrZYRn76f6PI4jFBZlnkqb9bKNMCtZZ+Qx+XnEivzJ1rEhTFB5r70oKwGSrZANAxxTCwCQ
-        opTcFKX4FBMYioNADxKKKV7DQRsDjSeQkuDgtNBWeLvThiDjqlI2B+FegMkHMobhhp3JJ6CtMCjo
-        Wq2qKIdJGfTtIegzeZDJLMXoebAj5dlqW/TpX0qCgpUB7f8iJIIO8lX8YF4SVOwFVF07rp1WQrBj
-        B1IGVfn9mLQ2yvaQU/j6n7aTOS060746vY0l6vzJ+sYFBiVwDaqCxmtbdEwZO0eZnHOGZSjp5PDS
-        YQGBUMie2s3jONvXpPav30Sg+HdT98FtdDrUwfSPOw0OPdOL1Y/QlSvGJ94LofdsMeJ4YTL+LZ7N
-        dKLtiAfw1LbYRrjTVvty2x81JuiFa4xQ25weMInbX+2b3wAAAP//AwAxpIznhgQAAA==
+      string: '{"id":"chatcmpl-7A5umEChLDNQGfgLR42Suc6V62Dbr","object":"chat.completion","created":1682640372,"model":"gpt-3.5-turbo-0301","usage":{"prompt_tokens":774,"completion_tokens":201,"total_tokens":975},"choices":[{"message":{"role":"assistant","content":"{\n    \"thoughts\":
+        {\n        \"text\": \"I will use the write_to_file command to write ''Hello
+        World'' into a file named ''hello_world.txt''.\",\n        \"reasoning\":
+        \"The goal is to write ''Hello World'' into a file named ''hello_world.txt'',
+        and the write_to_file command is the most appropriate command for this task.\",\n        \"plan\":
+        \"- Use the write_to_file command to write ''Hello World'' into a file named
+        ''hello_world.txt''.\",\n        \"criticism\": \"I need to ensure that I
+        am using the correct file name and that the text is written correctly.\",\n        \"speak\":
+        \"I will use the write to file command to write ''Hello World'' into a file
+        named ''hello_world.txt''.\"\n    },\n    \"command\": {\n        \"name\":
+        \"write_to_file\",\n        \"args\": {\n            \"filename\": \"hello_world.txt\",\n            \"text\":
+        \"Hello World\"\n        }\n    }\n}"},"finish_reason":"stop","index":0}]}
+
+        '
     headers:
       CF-Cache-Status:
       - DYNAMIC
@@ -110,6 +106,7 @@ interactions:
     status:
       code: 200
       message: OK
+    url: https://api.openai.com/v1/chat/completions
 - request:
     body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
       are write_to_file-GPT, an AI designed to use the write_to_file command to write
@@ -157,41 +154,35 @@ interactions:
       \"I will use the write_to_file command to write ''Hello World'' into a file
       named ''hello_world.txt''.\",\n        \"reasoning\": \"The goal is to write
       ''Hello World'' into a file named ''hello_world.txt'', and the write_to_file
-      command is the most appropriate for this task.\",\n        \"plan\": \"- Use
-      the write_to_file command to write ''Hello World'' into a file named ''hello_world.txt''.\",\n        \"criticism\":
-      \"I need to ensure that I am using the correct file name and that the text is
-      written correctly.\",\n        \"speak\": \"I will use the write to file command
-      to write ''Hello World'' into a file named ''hello_world.txt''.\"\n    },\n    \"command\":
-      {\n        \"name\": \"write_to_file\",\n        \"args\": {\n            \"filename\":
-      \"hello_world.txt\",\n            \"text\": \"Hello World\"\n        }\n    }\n}"},
-      {"role": "system", "content": "Command write_to_file returned: File written
-      to successfully."}, {"role": "user", "content": "Determine which next command
-      to use, and respond using the format specified above:"}], "temperature": 0,
-      "max_tokens": 2970}'
+      command is the most appropriate command for this task.\",\n        \"plan\":
+      \"- Use the write_to_file command to write ''Hello World'' into a file named
+      ''hello_world.txt''.\",\n        \"criticism\": \"I need to ensure that I am
+      using the correct file name and that the text is written correctly.\",\n        \"speak\":
+      \"I will use the write to file command to write ''Hello World'' into a file
+      named ''hello_world.txt''.\"\n    },\n    \"command\": {\n        \"name\":
+      \"write_to_file\",\n        \"args\": {\n            \"filename\": \"hello_world.txt\",\n            \"text\":
+      \"Hello World\"\n        }\n    }\n}"}, {"role": "system", "content": "Command
+      write_to_file returned: File written to successfully."}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}], "temperature": 0, "max_tokens": 2969}'
     headers:
-      Accept:
-      - '*/*'
-      Accept-Encoding:
-      - gzip, deflate
-      Connection:
-      - keep-alive
-      Content-Length:
-      - '4612'
       Content-Type:
       - application/json
-    method: POST
+    method: post
     uri: https://api.openai.com/v1/chat/completions
   response:
     body:
-      string: !!binary |
-        H4sIAAAAAAAAA6SSQW8TMRCF7/yK0ZydKkuSttkbAiGFA+JQBIKtItc7Wbvx2pZnFoqi/e9om00T
-        QishcZ3x++bNPO/Q1ViisVpMm/zkann/9b3JZnm1XMnHmzfLd7b4IrL6xB++vUWF8e6ejIyKCxPb
-        5ElcDKjQZNJCNZbF5fXrxWI+my8UtrEmjyU2SSazi8VEunwXJ9PZtECFHeuGsNxhyrFNspa4pcBY
-        FtPiWuERfmzMLhVKFO2PpWIx7xUaG50hxvL7DlviAzhHT1iiZnYsOshgMwahMKywqwIAQIViY9dY
-        4QpLGItjgx5kKFa4gp/Oe+iYQCyBaN6uR4MEJratDjVIhKfa4dVFheoUmUlzDC40e+6NJWii9uD4
-        WbmCR/CLIweZJWgjC+iUckzZaSHYxAxih+4zHpLXYT9+Ap//eyOTnTjjuD1cKhA9KilwlwedFliB
-        1T/oCXZcCbgzhpg3nfe/ztGcSG9fDAD+1e4e2atD3uPzv+IOuqX9tD+ucWZK5+b8p5xGO+Z66q8+
-        X/Ko7EdvVeixV7hxwbFd70lYIktMqNCFmh6wnPa3/avfAAAA//8DAKZ6myqyAwAA
+      string: '{"id":"chatcmpl-7A5v11T6Lb7GeOm5ZBAu9Gzn3BgGS","object":"chat.completion","created":1682640387,"model":"gpt-3.5-turbo-0301","usage":{"prompt_tokens":1019,"completion_tokens":137,"total_tokens":1156},"choices":[{"message":{"role":"assistant","content":"{\n    \"thoughts\":
+        {\n        \"text\": \"I will use the task_complete command to complete the
+        task.\",\n        \"reasoning\": \"The goal is to complete the task, and the
+        task_complete command is the most appropriate command for this task.\",\n        \"plan\":
+        \"- Use the task_complete command to complete the task.\",\n        \"criticism\":
+        \"I need to ensure that I have completed the task successfully.\",\n        \"speak\":
+        \"I will use the task complete command to complete the task.\"\n    },\n    \"command\":
+        {\n        \"name\": \"task_complete\",\n        \"args\": {\n            \"reason\":
+        \"Task completed successfully.\"\n        }\n    }\n}"},"finish_reason":"stop","index":0}]}
+
+        '
     headers:
       CF-Cache-Status:
       - DYNAMIC
@@ -234,4 +225,5 @@ interactions:
     status:
       code: 200
       message: OK
+    url: https://api.openai.com/v1/chat/completions
 version: 1

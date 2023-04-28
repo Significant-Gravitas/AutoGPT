@@ -22,32 +22,25 @@ interactions:
       only with the output in the exact format specified in the system prompt, with
       no explanation or conversation.\n"}], "temperature": 0.0, "max_tokens": null}'
     headers:
-      Accept:
-      - '*/*'
-      Accept-Encoding:
-      - gzip, deflate
-      Connection:
-      - keep-alive
-      Content-Length:
-      - '1671'
       Content-Type:
       - application/json
-    method: POST
+    method: post
     uri: https://api.openai.com/v1/chat/completions
   response:
     body:
-      string: !!binary |
-        H4sIAAAAAAAAA1xSS2/UMBC+8ytGvnBJVt3tgzZHoBQkXgdQKyiqHHuSTOvMpPZkt6uq/x3FWfrg
-        aHvme/rekDeVcZ1V1w+hfHPSffy0Hz6ff6sPls3p9cHtr4tv2y8/6e3FWWMKI/U1Ot1tLJz0Q0Al
-        YVMYF9EqelMtj45XhweHR0fHhenFYzCVaQct9xeHpY6xlnJvf29pCjMm26Kp7s0QpR/0SuUGOZlq
-        dbJfmCfsx/vl6qQwKmrD49XBavVQGNcJOUym+n1vekz/YKMENJWxKVFSyzqJFFbkycBX22MF53RD
-        Z99/XPJ7TC7SMPFVYBnsqMLSy5jAtsgKHhO1jB5UYEYEYtAOIRsnYZAm4w3oyZZJtwHBRiUXMEG9
-        hSHKmjxxCxuJwZcu2JQA7waMSgknuIgJbXRdAZtIStwWYNlDI7G3Op0Xl3wmNqTqkkt4J+xHp6Cd
-        RBnb7nEdZFbW0hoZVAZyk2zkNEYE69wYrdtm6F3MyJjSZIB4JiPhxcRxHkkROmq78na0gXQLuwxB
-        O6tACZBb22atj8trnIVvMIQyaRydjhF9AY2EIJspg6xvJI+BGFOenkryNvr0Isks40PGzUu7SCcb
-        EnOcKk/TrxPskmf/DH/S5sKYx4coA0ZwpNnmzB2xwYjsMC3maEOwtUSrCBvSLjOPCeNERuwkDvOj
-        dkgRGkRfW3eToXp7g8Dopo8YtxBxTSnzqDw3kHlO50pylM/N9YiaXrhiUVtTLuC/2KYKArVUB5x+
-        CgxjHcjNFZqHwjTElLqriDYJm8oklcEUhtjjnan2Hv48vPoLAAD//wMAbCMiNQcEAAA=
+      string: '{"id":"chatcmpl-7A5u6svJ3Z39ZQMitRTaZ21y96qs1","object":"chat.completion","created":1682640330,"model":"gpt-3.5-turbo-0301","usage":{"prompt_tokens":293,"completion_tokens":129,"total_tokens":422},"choices":[{"message":{"role":"assistant","content":"Name:
+        WikiGPT\nDescription: an autonomous agent designed to assist in the creation
+        of Wikipedia-style articles by providing world-class expertise in research,
+        writing, and formatting.\nGoals:\n- Conduct thorough research on the given
+        topic to ensure accuracy and completeness of information.\n- Write high-quality
+        content that is engaging, informative, and well-structured, following the
+        guidelines and standards of Wikipedia.\n- Format the article according to
+        Wikipedia''s style and guidelines, including proper citations and references.\n-
+        Collaborate with the user to incorporate their feedback and make necessary
+        revisions to the article.\n- Ensure that the article meets Wikipedia''s notability
+        guidelines and is eligible for publication."},"finish_reason":"stop","index":0}]}
+
+        '
     headers:
       CF-Cache-Status:
       - DYNAMIC
@@ -90,4 +83,5 @@ interactions:
     status:
       code: 200
       message: OK
+    url: https://api.openai.com/v1/chat/completions
 version: 1
