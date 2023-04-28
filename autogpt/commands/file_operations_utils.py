@@ -113,7 +113,10 @@ extension_to_parser = {
     ".xml": XMLParser(),
     ".yaml": YAMLParser(),
     ".html": HTMLParser(),
+    ".htm": HTMLParser(),
+    ".xhtml": HTMLParser(),
     ".md": MarkdownParser(),
+    ".markdown": MarkdownParser(),
     ".tex": LaTeXParser(),
 }
 
