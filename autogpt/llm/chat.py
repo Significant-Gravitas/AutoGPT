@@ -5,10 +5,10 @@ from openai.error import RateLimitError
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
+from autogpt.llm.base import Message
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.token_counter import count_message_tokens
 from autogpt.logs import logger
-from autogpt.types.openai import Message
 
 cfg = Config()
 

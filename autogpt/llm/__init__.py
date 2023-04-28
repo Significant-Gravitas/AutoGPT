@@ -1,4 +1,5 @@
 from autogpt.llm.api_manager import ApiManager
+from autogpt.llm.base import Message
 from autogpt.llm.chat import chat_with_ai, create_chat_message, generate_context
 from autogpt.llm.llm_utils import (
     call_ai_function,
@@ -10,6 +11,7 @@ from autogpt.llm.token_counter import count_message_tokens, count_string_tokens
 
 __all__ = [
     "ApiManager",
+    "Message",
     "create_chat_message",
     "generate_context",
     "chat_with_ai",
