@@ -151,7 +151,7 @@ class Agent:
                         console_input = clean_input("Waiting for your response...")
                     else:
                         console_input = clean_input("Input:", ANSI_MAGENTA)
-                    if console_input.lower().strip() == "y":
+                    if console_input.lower().strip() == cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().strip() == "s":
@@ -169,7 +169,7 @@ class Agent:
                             Fore.YELLOW,
                             "",
                         )
-                        if self_feedback_resp[0].lower().strip() == "y":
+                        if self_feedback_resp[0].lower().strip() == cfg.authorise_key:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         else:
                             user_input = self_feedback_resp
@@ -177,7 +177,7 @@ class Agent:
                     elif console_input.lower().strip() == "":
                         print("Invalid input format.")
                         continue
-                    elif console_input.lower().startswith("y -"):
+                    elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
                         try:
                             self.next_action_count = abs(
                                 int(console_input.split(" ")[1])
@@ -185,12 +185,12 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             print(
-                                "Invalid input format. Please enter 'y -n' where n is"
+                                f"Invalid input format. Please enter '{cfg.authorise_key} -N' where N is"
                                 " the number of continuous tasks."
                             )
                             continue
                         break
-                    elif console_input.lower() == "n":
+                    elif console_input.lower() == cfg.exit_key:
                         user_input = "EXIT"
                         break
                     else:
