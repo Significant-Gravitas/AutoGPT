@@ -2,7 +2,7 @@
 A module containing the ProjectConfigBroker class, which is used to manage the configuration settings for AI projects.
 
 Description:
-This module contains the ProjectConfigBroker class object which can be used to manage the configuration settings for AI projects. It provides methods to create a new project, set the current project, get the current project, get all the projects and get a specific project instance. It uses the Project and AgentConfig class objects from the autogpt.config.project module.
+This module contains the ProjectConfigBroker class object which can be used to manage the configuration settings for AI projects. It provides methods to create a new project, set the current project, get the current project, get all the projects and get a specific project instance. It uses the Project and AgentConfig class objects from the autogpt.projects.project module.
 
 Functions:
 None
@@ -23,8 +23,8 @@ Dependencies:
 - yaml
 - shutil
 - autogpt.prompts.generator.PromptGenerator
-- autogpt.config.project.config.Project
-- autogpt.config.project.agent.config.AgentConfig
+- autogpt.projects.project.config.Project
+- autogpt.projects.project.agent.config.AgentConfig
 - autogpt.singleton.AbstractSingleton
 """
 from __future__ import annotations
@@ -36,8 +36,8 @@ import shutil
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
-from autogpt.config.project.config import Project
-from autogpt.config.project.agent.config import AgentConfig
+from autogpt.projects.project import Project
+from autogpt.projects.agent_model import AgentConfig
 from autogpt.singleton import AbstractSingleton
 
 
