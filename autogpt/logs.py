@@ -1,11 +1,9 @@
 """Logging module for Auto-GPT."""
-import json
 import logging
 import os
 import random
 import re
 import time
-import traceback
 from logging import LogRecord
 
 from colorama import Fore, Style
