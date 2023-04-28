@@ -10,10 +10,12 @@ def test_happy_path_role_content():
     result = create_chat_message("system", "Hello, world!")
     assert result == {"role": "system", "content": "Hello, world!"}
 
+
 def test_empty_role_content():
     """Test that the function returns a dictionary with the correct keys and values when empty strings are provided for role and content."""
     result = create_chat_message("", "")
-    assert result== {"role": "", "content": ""}
+    assert result == {"role": "", "content": ""}
+
 
 def test_generate_context_empty_inputs(mocker):
     """Test the behavior of the generate_context function when all input parameters are empty."""
@@ -46,6 +48,7 @@ def test_generate_context_empty_inputs(mocker):
         ],
     )
     assert result == expected_result
+
 
 def test_generate_context_valid_inputs():
     """Test that the function successfully generates a current_context given valid inputs."""
