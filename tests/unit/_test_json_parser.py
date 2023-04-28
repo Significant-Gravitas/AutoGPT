@@ -9,17 +9,26 @@ def test_valid_json():
     obj = fix_and_parse_json(json_str)
     assert obj == {"name": "John", "age": 30, "city": "New York"}
 
+
 def test_invalid_json_minor():
     """Test that an invalid JSON string can be fixed with gpt."""
     json_str = '{"name": "John", "age": 30, "city": "New York",}'
-    assert fix_and_parse_json(json_str, try_to_fix_with_gpt=False) == {"name": "John", "age": 30, "city": "New York"}
-    
+    assert fix_and_parse_json(json_str, try_to_fix_with_gpt=False) == {
+        "name": "John",
+        "age": 30,
+        "city": "New York",
+    }
+
 
 def test_invalid_json_major_with_gpt():
     """Test that an invalid JSON string raises an error when try_to_fix_with_gpt is False."""
     json_str = 'BEGIN: "name": "John" - "age": 30 - "city": "New York" :END'
-    assert fix_and_parse_json(json_str, try_to_fix_with_gpt=True) == {"name": "John", "age": 30, "city": "New York"}
-    
+    assert fix_and_parse_json(json_str, try_to_fix_with_gpt=True) == {
+        "name": "John",
+        "age": 30,
+        "city": "New York",
+    }
+
 
 def test_invalid_json_major_without_gpt():
     """Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False."""
@@ -27,6 +36,7 @@ def test_invalid_json_major_without_gpt():
     # Assert that this raises an exception:
     with pytest.raises(Exception):
         fix_and_parse_json(json_str, try_to_fix_with_gpt=False)
+
 
 def test_invalid_json_leading_sentence_with_gpt():
     """Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False."""
@@ -63,9 +73,8 @@ def test_invalid_json_leading_sentence_with_gpt():
         },
     }
     # Assert that this raises an exception:
-    self.assertEqual(
-        fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj
-    )
+    self.assertEqual(fix_and_parse_json(json_str, try_to_fix_with_gpt=False), good_obj)
+
 
 def test_invalid_json_leading_sentence_with_gpt(self):
     """Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False."""
@@ -102,5 +111,3 @@ def test_invalid_json_leading_sentence_with_gpt(self):
     }
     # Assert that this raises an exception:
     assert fix_and_parse_json(json_str, try_to_fix_with_gpt=False) == good_obj
-    
-
