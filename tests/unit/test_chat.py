@@ -2,7 +2,7 @@
 import time
 from unittest.mock import patch
 
-from autogpt.chat import create_chat_message, generate_context
+from autogpt.llm import create_chat_message, generate_context
 
 
 def test_happy_path_role_content():
