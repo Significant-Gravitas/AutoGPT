@@ -97,12 +97,12 @@ class AIConfig:
         Returns:
             A list of strings, where each string is a goal.
         """
-        coerce_goal_to_str = (
+        to_str = (
             lambda goal: " ".join(f"{k}: {v}" for k, v in goal.items())
             if isinstance(goal, dict)
             else str(goal)
         )
-        return list(map(coerce_goal_to_str, goals))
+        return list(map(to_str, goals))
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
