@@ -1,12 +1,12 @@
 from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
 
+from autogpt.api_manager import ApiManager
 from autogpt.config import Config
 from autogpt.workspace import Workspace
 
-load_dotenv()
+pytest_plugins = ["tests.integration.agent_factory"]
 
 
 @pytest.fixture()
@@ -26,6 +26,18 @@ def config(workspace: Workspace) -> Config:
 
     # Do a little setup and teardown since the config object is a singleton
     old_ws_path = config.workspace_path
+    old_file_logger_path = config.file_logger_path
+
     config.workspace_path = workspace.root
+    config.file_logger_path = workspace.get_path("file_logger.txt")
     yield config
+
+    config.file_logger_path = old_file_logger_path
     config.workspace_path = old_ws_path
+
+
+@pytest.fixture()
+def api_manager() -> ApiManager:
+    if ApiManager in ApiManager._instances:
+        del ApiManager._instances[ApiManager]
+    return ApiManager()
