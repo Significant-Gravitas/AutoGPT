@@ -1,20 +1,17 @@
-import pathlib
 import random
 import string
 import tempfile
-from unittest.mock import MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 
-import autogpt.commands.execute_code as sut
+import autogpt.commands.execute_code as sut  # system under testing
+from autogpt.config import Config
 
 
 @pytest.fixture(autouse=True)
-def mock_config(mocker):
-    config_mock = MagicMock(
-        wraps=sut.CFG, execute_local_commands=True, workspace_path="/"
-    )
-    yield mocker.patch("autogpt.commands.execute_code.CFG", config_mock)
+def config_allow_execute(config: Config, mocker: MockerFixture):
+    yield mocker.patch.object(config, "execute_local_commands", True)
 
 
 @pytest.fixture
@@ -22,11 +19,12 @@ def random_string():
     return "".join(random.choice(string.ascii_lowercase) for _ in range(10))
 
 
-def test_execute_python_file(mock_config, random_string):
-    with tempfile.NamedTemporaryFile(delete=True, suffix=".py") as temp_file:
+def test_execute_python_file(random_string, workspace_root):
+    with tempfile.NamedTemporaryFile(
+        dir=str(workspace_root), suffix=".py"
+    ) as temp_file:
         temp_file.write(str.encode(f"print('Hello {random_string}!')"))
         temp_file.flush()
-        mock_config.workspace_path = pathlib.Path(temp_file.name).parent
         result = sut.execute_python_file(temp_file.name)
         assert result == f"Hello {random_string}!\n"
 
