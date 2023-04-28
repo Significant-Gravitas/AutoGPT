@@ -105,7 +105,13 @@ def create_config(
 
     else :
         CFG.project_dir = project_dir
-        logger.double_check(additionalText='Check if PROJECT_DIR is set ')
+        additionalText = (
+                "Check if `PROJECT_DIR` is set in your .env file"
+                "Read https://github.com/Torantulino/Auto-GPT#readme to "
+                "double check. You can also create a github issue or join the discord"
+                " and ask there !"
+            )
+        logger.double_check(additionalText=additionalText)
         exit(1)
 
     if ai_settings_file:
