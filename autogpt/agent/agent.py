@@ -1,11 +1,10 @@
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
-from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
-from autogpt.json_utils.utilities import validate_json
-from autogpt.llm_utils import create_chat_completion
+from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
+from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.memory.pinecone import PineconeMemory
 from autogpt.speech import say_text
@@ -109,7 +108,7 @@ class Agent:
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
-                validate_json(assistant_reply_json, "llm_response_format_1")
+                validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
@@ -273,8 +272,8 @@ class Agent:
                         f"Assistant Reply: {assistant_reply} "
                         f"\nResult: {result} "
                         f"\nHuman Feedback: {user_input} "
-                    )
-
+                )
+            
             self.memory.add(memory_to_add)
 
             # Check if there's a result from the command append it to the message
