@@ -278,7 +278,5 @@ def check_openai_api_key() -> None:
             + "Please set your OpenAI API key in .env or as an environment variable."
             + Fore.RESET
         )
-        print(
-            "You can get your key from https://platform.openai.com/account/api-keys"
-        )
+        print("You can get your key from https://platform.openai.com/account/api-keys")
         exit(1)

@@ -5,7 +5,6 @@ import requests
 from playsound import playsound
 
 from autogpt.config import Config
-from autogpt.logs import logger
 from autogpt.speech.base import VoiceBase
 
 PLACEHOLDERS = {"your-voice-id"}
@@ -70,6 +69,8 @@ class ElevenLabsSpeech(VoiceBase):
         Returns:
             bool: True if the request was successful, False otherwise
         """
+        from autogpt.logs import logger
+
         tts_url = (
             f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_index]}"
         )
