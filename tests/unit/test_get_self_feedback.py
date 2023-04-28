@@ -1,6 +1,6 @@
 from autogpt.agent.agent import Agent
 from autogpt.config import AIConfig
-from autogpt.llm_utils import create_chat_completion
+from autogpt.llm import create_chat_completion
 
 
 def test_get_self_feedback(mocker):
