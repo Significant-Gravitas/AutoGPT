@@ -1,4 +1,5 @@
 """Configurator module."""
+import os
 import click
 from colorama import Back, Fore, Style
 
@@ -100,11 +101,9 @@ def create_config(
         logger.typewriter_log("Skip Re-prompt: ", Fore.GREEN, "ENABLED")
         CFG.skip_reprompt = True
 
-    if project_dir == '' : 
-        logger.typewriter_log("ERROR : ", Fore.RED, "set PROJECT_DIR in your .env file")
 
-    else :
-        CFG.project_dir = project_dir
+    if project_dir == '' and CFG.project_dir == '' : 
+        logger.typewriter_log("ERROR : ", Fore.RED, "set PROJECT_DIR in your .env file")
         additionalText = (
                 "Check if `PROJECT_DIR` is set in your .env file"
                 "Read https://github.com/Torantulino/Auto-GPT#readme to "
@@ -113,6 +112,19 @@ def create_config(
             )
         logger.double_check(additionalText=additionalText)
         exit(1)
+    else :
+        error_text = f" `PROJECT_DIR` folder {project_dir} can't be found"
+        if project_dir != '' and os.path.exists(project_dir) :
+            CFG.project_dir = project_dir
+        elif project_dir != '' :
+            logger.typewriter_log("ERROR : ", Fore.RED, error_text)
+            logger.double_check("ERROR " + error_text)
+            exit(1)
+        elif os.path.exists(CFG.project_dir) : # @NOTE sorry for code repetition but found it the best solution
+            logger.typewriter_log("ERROR : ", Fore.RED, error_text)
+            logger.double_check("ERROR " + error_text)
+            exit(1)
+
 
     if ai_settings_file:
         file = ai_settings_file

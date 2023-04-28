@@ -26,6 +26,7 @@ autogpt.main: A module containing the run_auto_gpt() function which starts the A
 import click
 from autogpt.config.config import Config
 
+CFG = Config()
 
 @click.group(invoke_without_command=True)
 @click.option("-c", "--continuous-mode", is_flag=True, help="Enable Continuous Mode")
@@ -38,12 +39,14 @@ from autogpt.config.config import Config
 @click.option(# TODO TO BE REMOVE
     "--ai-settings", 
     "-C",
+    default=CFG.ai_settings_file, 
     help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
 )
 
 @click.option( 
     "--project-dir",
     "-D",
+    default=CFG.project_dir,
     help="Specifies which directory contains projects.",
 )
 @click.option(
@@ -140,7 +143,4 @@ def main(
 
 CFG= Config()
 if __name__ == "__main__":
-    if (CFG.project_dir !='') :
-        main(project_dir = CFG.project_dir)
-    else :
-        main()
+    main()

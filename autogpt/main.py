@@ -21,7 +21,7 @@ from scripts.install_plugin_deps import install_plugin_dependencies
 def run_auto_gpt(
     continuous_mode: bool,
     continuous_limit: int,
-    ai_settings: str,
+    ai_settings_file: str,
     project_dir: str,
     skip_reprompt: bool,
     speak_mode: bool,
@@ -43,19 +43,19 @@ def run_auto_gpt(
     # TODO: fill in llm values here
     check_openai_api_key()
     create_config(
-        continuous_mode = cfg.continuous_mode,
-        continuous_limit = cfg.continuous_limit,
-        ai_settings_file = cfg.ai_settings_file,
-        project_dir = cfg.project_dir,
-        skip_reprompt = cfg.skip_reprompt,
-        speak_mode = cfg.speak_mode,
-        debug = cfg.debug_mode,
-        gpt3only = gpt3only, # @TODO technical debt
-        gpt4only = gpt4only, # @TODO technical debt
-        memory_type = cfg.memory_backend,
-        browser_name = cfg.selenium_web_browser, # @TODO technical debt (or no ?)
-        allow_downloads = cfg.allow_downloads,
-        skip_news = cfg.skip_news,
+        continuous_mode ,
+        continuous_limit ,
+        ai_settings_file ,
+        project_dir ,
+        skip_reprompt ,
+        speak_mode ,
+        debug ,
+        gpt3only ,
+        gpt4only ,
+        memory_type ,
+        browser_name ,
+        allow_downloads ,
+        skip_news ,
     )
 
     if not cfg.skip_news:
