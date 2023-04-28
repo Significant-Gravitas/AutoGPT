@@ -4,6 +4,8 @@
 [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)](https://github.com/Significant-Gravitas/Auto-GPT/stargazers)
 [![Twitter Follow](https://img.shields.io/twitter/follow/siggravitas?style=social)](https://twitter.com/SigGravitas)
 
+[English](./README.md) 简体中文
+
 ## 💡 你可以在 [常见问题](https://github.com/Significant-Gravitas/Auto-GPT/discussions/categories/q-a) 还有 [Discord服务器 💬](https://discord.gg/autogpt) 上获取帮助
 
 <hr/>
