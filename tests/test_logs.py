@@ -3,8 +3,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from autogpt.logs import _remaining_budget_description, print_assistant_thoughts
-from autogpt.logs import remove_color_codes
+from autogpt.logs import (
+    _remaining_budget_description,
+    print_assistant_thoughts,
+    remove_color_codes,
+)
 
 
 @pytest.mark.parametrize(
