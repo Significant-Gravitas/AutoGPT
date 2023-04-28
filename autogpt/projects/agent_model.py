@@ -80,3 +80,47 @@ class AgentModel():
         self.agent_model_type = agent_model_type
         self.prompt_generator= prompt_generator
         self.command_registry= command_registry
+
+    @classmethod
+    def load(cls, agent_data: dict) -> "AgentModel":
+        """
+        Loads agent data from a dictionary and returns an AgentModel instance.
+
+        Args:
+            agent_data (dict): A dictionary containing the agent's data.
+
+        Returns:
+            agent_instance (AgentModel): An AgentModel instance with the loaded data.
+        """
+        agent_name = agent_data["agent_name"]
+        agent_role = agent_data["agent_role"]
+        agent_goals = agent_data["agent_goals"]
+        agent_model = agent_data.get("agent_model", None)
+        agent_model_type = agent_data.get("agent_model_type", None)
+
+        agent_instance = cls(
+            agent_name=agent_name,
+            agent_role=agent_role,
+            agent_goals=agent_goals,
+            agent_model=agent_model,
+            agent_model_type=agent_model_type,
+        )
+        return agent_instance
+    
+    def save(self) -> dict:
+        """
+        Saves the AgentModel object as a dictionary representation.
+
+        Returns:
+            agent_dict (dict): A dictionary representation of the AgentModel object.
+        """
+        agent_dict = {
+            "agent_name": self.agent_name,
+            "agent_role": self.agent_role,
+            "agent_goals": self.agent_goals,
+            "agent_model": self.agent_model,
+            "agent_model_type": self.agent_model_type,
+            "prompt_generator": self.prompt_generator,
+            "command_registry": self.command_registry
+        }
+        return agent_dict

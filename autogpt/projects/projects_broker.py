@@ -99,53 +99,9 @@ class ProjectsBroker(AbstractSingleton):
             config_params = yaml.load(file, Loader=yaml.SafeLoader)
 
         self._projects = []
-        version =  config_params.get("version", '')
-        if version != '' :
-            self._version = version # Not supported for the moment
-        for project in config_params.get("projects", []):
-            if (project.get("project_name")) :
-                project_name = project["project_name"]
-            else :
-                raise ValueError("No project_name in the project.")
-
-            if (project.get("budget")) :
-                api_budget = project["budget"]
-            else :
-                raise ValueError("No budget in the project.")
-
-            if (project.get("lead_agent")) :
-                lead_agent_data = project["lead_agent"]
-                lead_agent = AgentModel(
-                    agent_name=lead_agent_data["agent_name"],
-                    agent_role=lead_agent_data["agent_role"],
-                    agent_goals=lead_agent_data["agent_goals"],
-                    agent_model=lead_agent_data.get("agent_model", None),
-                    
-                )
-            else :
-                raise ValueError("No lead_agent in the project.")
-
-                
-            delegated_agents_list = []
-            if (project.get("delegated_agents")) :
-                for delegated_agents_data in project["delegated_agents"]:
-                    delegated_agents = AgentModel(
-                        agent_name=delegated_agents_data["agent_name"],
-                        agent_role=delegated_agents_data["agent_role"],
-                        agent_goals=delegated_agents_data["agent_goals"],
-                        agent_model=delegated_agents_data.get("agent_model", None),
-                        agent_model_type=delegated_agents_data.get("agent_model_type", None),
-                    )
-                    delegated_agents_list.append(delegated_agents)
-
-            self._projects.append(Project(project_name =  project_name, api_budget =  api_budget,lead_agent = lead_agent, delegated_agents = delegated_agents_list))
-            
-            #break 
-            """
-            # 
-            This break allows to push the new YAML back-end
-            A PR with thisbreak will not allow multiple projects but set the new architecture for multiple model
-            """
+        for i , project_data in enumerate(config_params.get("projects", [])):
+            project_instance = Project.load(project_data)
+            self._projects[i] = project_instance
 
         return self._projects
 
@@ -182,6 +138,21 @@ class ProjectsBroker(AbstractSingleton):
         with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(data_to_save, file, allow_unicode=True)
 
+    def _save(self) -> None:
+        """
+        Saves the current state of the ProjectsBroker to the configuration file.
+        """
+        projects_list = [project.save() for project in self._projects]
+
+        config_data = {
+            "projects": projects_list,
+            "max_budget": self.max_budget
+        }
+
+        with open(self.config_filepath, "w") as config_file:
+            yaml.dump(config_data, config_file)
+            
+        
     def create_project(self, 
                     project_id : int,
                     api_budget :float,  

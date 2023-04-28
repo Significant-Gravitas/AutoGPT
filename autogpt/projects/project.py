@@ -49,7 +49,9 @@ class Project:
         __toDict__(self) -> dict
             Returns a dictionary representation of the Project object.
     """
-    def __init__(self, project_name : str, api_budget : float , 
+    def __init__(self, 
+                 project_name : str, 
+                 api_budget : float , 
                  lead_agent : AgentModel, 
                  delegated_agents : List[AgentModel] = []):        
         """
@@ -111,7 +113,63 @@ class Project:
         }
         return dict_representation
 
+    @classmethod
+    def load(cls, config_params: dict) -> "Project":
+        """
+        Loads a portion of the configuration parameters and returns a Project instance.
+
+        Args:
+            config_params (dict): A dictionary containing the configuration parameters for the project.
+
+        Returns:
+            project_instance (Project): A Project instance with the loaded configuration parameters.
+        """
+        version =  config_params.get("version", '')
+        if version != '' :
+            cls._version = version # Not supported for the moment
+
+        if (config_params.get("project_name")) :
+            project_name = config_params["project_name"]
+        else :
+            raise ValueError("No project_name in the project.")
+
+        if (config_params.get("budget")) :
+            api_budget = config_params["budget"]
+        else :
+            raise ValueError("No budget in the project.")
+
+        if config_params.get("lead_agent"):
+            lead_agent_data = config_params["lead_agent"]
+            lead_agent = AgentModel.load(lead_agent_data)
+        else:
+            raise ValueError("No lead_agent in the project.")
+
+        delegated_agents_list = []
+        if config_params.get("delegated_agents"):
+            for delegated_agent_data in config_params["delegated_agents"]:
+                delegated_agent = AgentModel.load(delegated_agent_data)
+                delegated_agents_list.append(delegated_agent)
+
+        project_instance = cls(project_name, api_budget, lead_agent, delegated_agents_list)
+        return project_instance
     
+    def save(self) -> dict:
+        """
+        Saves the Project object as a dictionary representation.
+
+        Returns:
+            project_dict (dict): A dictionary representation of the Project object.
+        """
+        lead_agent_dict = self.lead_agent.save()
+        delegated_agents_list = [agent.save() for agent in self.delegated_agents]
+        
+        project_dict = {
+            "project_name": self.project_name,
+            "api_budget": self.api_budget,
+            "lead_agent": lead_agent_dict,
+            "delegated_agents": delegated_agents_list
+        }
+        return project_dict
 
 
         
