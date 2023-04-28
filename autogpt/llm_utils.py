@@ -30,7 +30,7 @@ def retry_openai_api(
     api_key_error_msg = (
         f"Please double check that you have setup a "
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
-        f"read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
+        f"read more here: {Fore.CYAN}https://significant-gravitas.github.io/Auto-GPT/setup/#getting-an-api-key{Fore.RESET}"
     )
     backoff_msg = (
         f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
@@ -176,7 +176,7 @@ def create_chat_completion(
             if not warned_user:
                 logger.double_check(
                     f"Please double check that you have setup a {Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. "
-                    + f"You can read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
+                    + f"You can read more here: {Fore.CYAN}https://significant-gravitas.github.io/Auto-GPT/setup/#getting-an-api-key{Fore.RESET}"
                 )
                 warned_user = True
         except (APIError, Timeout) as e:
