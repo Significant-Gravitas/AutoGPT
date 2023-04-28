@@ -120,7 +120,7 @@ def create_config(
             logger.typewriter_log("ERROR : ", Fore.RED, error_text)
             logger.double_check("ERROR " + error_text)
             exit(1)
-        elif os.path.exists(CFG.project_dir) : # @NOTE sorry for code repetition but found it the best solution
+        elif not os.path.exists(CFG.project_dir) : # @NOTE sorry for code repetition but found it the best solution
             logger.typewriter_log("ERROR : ", Fore.RED, error_text)
             logger.double_check("ERROR " + error_text)
             exit(1)
