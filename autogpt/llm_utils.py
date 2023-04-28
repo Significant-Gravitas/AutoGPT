@@ -8,7 +8,7 @@ import openai
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, Timeout
 
-from autogpt.api_manager import api_manager
+from autogpt.api_manager import ApiManager
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.types.openai import Message
@@ -30,7 +30,7 @@ def retry_openai_api(
     api_key_error_msg = (
         f"Please double check that you have setup a "
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
-        f"read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
+        f"read more here: {Fore.CYAN}https://significant-gravitas.github.io/Auto-GPT/setup/#getting-an-api-key{Fore.RESET}"
     )
     backoff_msg = (
         f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
@@ -147,6 +147,7 @@ def create_chat_completion(
             )
             if message is not None:
                 return message
+    api_manager = ApiManager()
     response = None
     for attempt in range(num_retries):
         backoff = 2 ** (attempt + 2)
@@ -175,7 +176,7 @@ def create_chat_completion(
             if not warned_user:
                 logger.double_check(
                     f"Please double check that you have setup a {Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. "
-                    + f"You can read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
+                    + f"You can read more here: {Fore.CYAN}https://significant-gravitas.github.io/Auto-GPT/setup/#getting-an-api-key{Fore.RESET}"
                 )
                 warned_user = True
         except (APIError, Timeout) as e:
@@ -228,6 +229,7 @@ def get_ada_embedding(text: str) -> List[float]:
         kwargs = {"model": model}
 
     embedding = create_embedding(text, **kwargs)
+    api_manager = ApiManager()
     api_manager.update_cost(
         prompt_tokens=embedding.usage.prompt_tokens,
         completion_tokens=0,
