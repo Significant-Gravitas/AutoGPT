@@ -119,9 +119,7 @@ def generate_aiconfig_manual() -> AIConfig:
         "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage"
         " multiple businesses autonomously'",
     )
-    logger.info(
-        "Enter nothing to load defaults, enter nothing when finished."
-    )
+    logger.info("Enter nothing to load defaults, enter nothing when finished.")
     ai_goals = []
     for i in range(5):
         ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")

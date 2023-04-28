@@ -119,11 +119,19 @@ class Logger(metaclass=Singleton):
     def error(self, title, message=""):
         self._log(title, Fore.RED, message, logging.ERROR)
 
-    def _log(self, title:str="", title_color:str="", message:str="", level=logging.INFO):
+    def _log(
+        self,
+        title: str = "",
+        title_color: str = "",
+        message: str = "",
+        level=logging.INFO,
+    ):
         if message:
             if isinstance(message, list):
                 message = " ".join(message)
-        self.logger.log(level, message, extra={"title": str(title), "color": str(title_color)})
+        self.logger.log(
+            level, message, extra={"title": str(title), "color": str(title_color)}
+        )
 
     def set_level(self, level):
         self.logger.setLevel(level)
