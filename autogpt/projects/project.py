@@ -29,7 +29,7 @@ Methods:
 
 from typing import Optional, Type, List
 from autogpt.projects.agent_model import AgentModel
-
+from autogpt.projects.projects_broker import ProjectsBroker
 
 class Project:
     """
@@ -175,19 +175,25 @@ class Project:
                    version, project_memory, project_working_directory, project_env,
                    project_log_activity, project_log_env, team_name)
     
-    def save(self) -> dict:
+    def save(self, is_creation : bool = False , creation_position : int = -1 ) -> dict:
         """
         Saves the Project object as a dictionary representation.
 
         Returns:
             project_dict (dict): A dictionary representation of the Project object.
         """
+
+        if (is_creation) :
+            ProjectsBroker.project_dir_create(self, 
+                                              creation_position = creation_position,  
+                                              project_name = self.project_name)
+
         lead_agent_dict = self.lead_agent.save()
         delegated_agents_list = [agent.save() for agent in self.delegated_agents]
         
         project_dict = {
             "project_name": self.project_name,
-            "api_budget": self.api_budget,
+            "project_budget": self.project_budget,
             "lead_agent": lead_agent_dict,
             "delegated_agents": delegated_agents_list
         }
