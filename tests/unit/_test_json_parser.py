@@ -80,22 +80,22 @@ def test_invalid_json_leading_sentence_with_gpt(self):
     """Test that a REALLY invalid JSON string raises an error when try_to_fix_with_gpt is False."""
     json_str = """I will first need to browse the repository (https://github.com/Torantulino/Auto-GPT) and identify any potential bugs that need fixing. I will use the "browse_website" command for this.
 
-{
-"command": {
-    "name": "browse_website",
-    "args":{
-        "url": "https://github.com/Torantulino/Auto-GPT"
+    {
+    "command": {
+        "name": "browse_website",
+        "args":{
+            "url": "https://github.com/Torantulino/Auto-GPT"
+        }
+    },
+    "thoughts":
+    {
+        "text": "Browsing the repository to identify potential bugs",
+        "reasoning": "Before fixing bugs, I need to identify what needs fixing. I will use the 'browse_website' command to analyze the repository.",
+        "plan": "- Analyze the repository for potential bugs and areas of improvement",
+        "criticism": "I need to ensure I am thorough and pay attention to detail while browsing the repository.",
+        "speak": "I am browsing the repository to identify potential bugs."
     }
-},
-"thoughts":
-{
-    "text": "Browsing the repository to identify potential bugs",
-    "reasoning": "Before fixing bugs, I need to identify what needs fixing. I will use the 'browse_website' command to analyze the repository.",
-    "plan": "- Analyze the repository for potential bugs and areas of improvement",
-    "criticism": "I need to ensure I am thorough and pay attention to detail while browsing the repository.",
-    "speak": "I am browsing the repository to identify potential bugs."
-}
-}"""
+    }"""
     good_obj = {
         "command": {
             "name": "browse_website",
@@ -109,5 +109,5 @@ def test_invalid_json_leading_sentence_with_gpt(self):
             "speak": "I am browsing the repository to identify potential bugs.",
         },
     }
-    # Assert that this raises an exception:
+
     assert fix_and_parse_json(json_str, try_to_fix_with_gpt=False) == good_obj
