@@ -5,7 +5,7 @@ from autogpt.projects.project import Project
 from autogpt.projects.agent_model import AgentModel
 from autogpt.projects.projects_broker import ProjectsBroker
 
-CONFIG_FILE = str(Path(os.getcwd()) / "test_agent_settings.yaml")
+CONFIG_FILE = str(Path(os.getcwd()) / "test_ai_settings.yaml")
 
 @pytest.fixture
 def project_config_broker():

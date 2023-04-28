@@ -99,7 +99,7 @@ body:
     attributes:
       label: Your prompt 📝
       description: >
-        If applicable please provide the prompt you are using. Your prompt is stored in your `agent_settings.yaml` file.
+        If applicable please provide the prompt you are using. Your prompt is stored in your `ai_settings.yaml` file.
       value: |
         ```yaml
         # Paste your prompt here

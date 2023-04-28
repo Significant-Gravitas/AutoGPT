@@ -24,13 +24,13 @@ def create_config(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
-) -> None:
+) -> Config:
     """Updates the config object with the given arguments.
 
     Args:
         continuous (bool): Whether to run in continuous mode
         continuous_limit (int): The number of times to run in continuous mode
-        ai_settings_file (str): The path to the agent_settings.yaml file
+        ai_settings_file (str): The path to the ai_settings.yaml file
         project_dir: (str) the path to the project structure
         skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
         speak (bool): Whether to enable speak mode
@@ -148,4 +148,6 @@ def create_config(
 
     if skip_news:
         CFG.skip_news = True
+
+    return CFG
 
