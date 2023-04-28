@@ -72,8 +72,6 @@ jobs:
       - name: Run unittest tests with coverage
         run: |
           pytest --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3

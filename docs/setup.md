@@ -64,6 +64,10 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
     templates in the [repository].
 6. Continue to [Run with Docker](#run-with-docker)
 
+!!! note "Docker only supports headless browsing"
+    Auto-GPT uses a browser in headless mode by default: `HEADLESS_BROWSER=True`.
+    Please do not change this setting in combination with Docker, or Auto-GPT will crash.
+
 [Docker Hub]: https://hub.docker.com/r/significantgravitas/auto-gpt
 [repository]: https://github.com/Significant-Gravitas/Auto-GPT
 
@@ -73,7 +77,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 !!! important
     Make sure you have [Git](https://git-scm.com/downloads) installed for your OS.
 
-!!! info
+!!! info "Executing commands"
     To execute the given commands, open a CMD, Bash, or Powershell window.  
     On Windows: press ++win+x++ and pick *Terminal*, or ++win+r++ and enter `cmd`
 
@@ -114,9 +118,6 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
         To activate and adjust a setting, remove the `# ` prefix.
 
 7. Save and close the `.env` file.
-
-!!! info
-    Get your ElevenLabs API key from: [ElevenLabs](https://elevenlabs.io). You can view your xi-api-key using the "Profile" tab on the website.
 
 !!! info "Using a GPT Azure-instance"
     If you want to use GPT on an Azure instance, set `USE_AZURE` to `True` and
