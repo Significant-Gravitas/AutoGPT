@@ -28,6 +28,8 @@ class Config(metaclass=Singleton):
         self.allow_downloads = False
         self.skip_news = False
 
+        self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
+        self.exit_key = os.getenv("EXIT_KEY", "n")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
