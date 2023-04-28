@@ -100,6 +100,14 @@ class Logger(metaclass=Singleton):
     ):
         self._log(title, title_color, message, logging.DEBUG)
 
+    def info(
+        self,
+        message,
+        title="",
+        title_color="",
+    ):
+        self._log(title, title_color, message, logging.INFO)
+
     def warn(
         self,
         message,
