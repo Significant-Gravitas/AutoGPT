@@ -2,7 +2,6 @@
 import hashlib
 import json
 import logging
-import time
 
 import requests
 from colorama import Fore, Style
@@ -10,45 +9,35 @@ from colorama import Fore, Style
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton
+from autogpt.utils import JWTTokenProvider
 
 
-class JWTTokenProvider:
-    """Provides OAuth2 JWT tokens for authorization."""
+def _error_msg(response):
+    """Returns an error message constructed from the passed http response."""
+    return f"(code {response.status_code}, reason {response.reason}, details {response.text})"
 
-    def __init__(self, customer_id, app_id, app_secret):
-        self._app_id = app_id
-        self._app_secret = app_secret
-        self._token_endpoint = f"https://vectara-prod-{customer_id}.auth.us-west-2.amazoncognito.com/oauth2/token"
-        self._token = None
-        self._token_refresh_ts = 0
 
-    def get_jwt_token(self):
-        """Returns JWT that can be attached for authorization."""
-        from authlib.integrations.requests_client import OAuth2Session
+def _ok(status):
+    """Returns whether the status represents success.
 
-        # Refresh token every 5 mins.
-        if (time.time() - self._token_refresh_ts) < 5 * 60:
-            return self._token
-
-        logging.debug(
-            "Refreshing JWT token after %s secs.", time.time() - self._token_refresh_ts
-        )
-        session = OAuth2Session(self._app_id, self._app_secret, scope="")
-        token = session.fetch_token(
-            self._token_endpoint, grant_type="client_credentials"
-        )  # authorization_code
-
-        self._token_refresh_ts = time.time()
-        self._token = token["access_token"]
-        return self._token
+    Vectara APIs contain a 'status' field in their response. This is modelled after
+    gRPC's status proto (https://github.com/grpc/grpc/blob/master/src/proto/grpc/status/status.proto).
+    The status contains a code, which can denote success or an error code. In case of error, the
+    field contains an error messge as well. Declaration of the status field is at:
+    https://github.com/vectara/protos/blob/main/status.proto
+    """
+    return status is None or status["code"] == "OK"
 
 
 class VectaraMemory(MemoryProviderSingleton):
     """A memory provider backed by Vectara (https://vectara.com)."""
 
     def __init__(self, cfg):
+        self._session = requests.Session()  # to resuse connections
         self._jwt_provider = JWTTokenProvider(
-            cfg.vectara_customer_id, cfg.vectara_app_id, cfg.vectara_app_secret
+            cfg.vectara_app_id,
+            cfg.vectara_app_secret,
+            f"https://vectara-prod-{cfg.vectara_customer_id}.auth.us-west-2.amazoncognito.com/oauth2/token",
         )
         self._customer_id = cfg.vectara_customer_id
         self._corpus_id = self.get_corpus_id(cfg.memory_index)
@@ -70,7 +59,7 @@ class VectaraMemory(MemoryProviderSingleton):
         If a corpus with the name already exists, its id is returned. Otherwise, a new
         corpus is created with the name, and its id is returned.
         """
-        response = requests.post(
+        response = self._session.post(
             url="https://api.vectara.io/v1/list-corpora",
             headers=self._get_post_headers(),
             data=json.dumps({"numResults": 2, "filter": f"^{index_name}$"}),
@@ -80,22 +69,18 @@ class VectaraMemory(MemoryProviderSingleton):
             logger.typewriter_log(
                 "FAILED TO LIST VECTARA CORPORA",
                 Fore.RED,
-                Style.BRIGHT
-                + (
-                    f"code {response.status_code}, reason {response.reason}, details {response.text}"
-                )
-                + Style.RESET_ALL,
+                Style.BRIGHT + _error_msg(response) + Style.RESET_ALL,
             )
             logger.double_check(
-                "Please ensure you have setup and configured Vectara properly for use."
-                f"You can check out {Fore.CYAN + Style.BRIGHT}"
+                "Please ensure you have setup and configured Vectara properly for use "
+                f"{_error_msg(response)}. You can check out {Fore.CYAN + Style.BRIGHT}"
                 "https://github.com/Torantulino/Auto-GPT#-vectara-setup"
                 f"{Style.RESET_ALL} to ensure you've set up everything correctly."
             )
             exit(1)
         result = response.json()
 
-        if result["status"]:
+        if not _ok(result["status"]):
             logger.typewriter_log(
                 "LIST VECTARA CORPORA CALL RETURNED ERROR. CONTACT support@vectara.com FOR HELP.",
                 Fore.RED,
@@ -120,7 +105,7 @@ class VectaraMemory(MemoryProviderSingleton):
             exit(1)
 
         # Auto-GPT corpus doesn't exist. Create it.
-        response = requests.post(
+        response = self._session.post(
             url="https://api.vectara.io/v1/create-corpus",
             headers=self._get_post_headers(),
             data=json.dumps(
@@ -139,17 +124,13 @@ class VectaraMemory(MemoryProviderSingleton):
                 "VECTARA CORPUS CREATION FAILED",
                 Fore.RED,
                 Style.BRIGHT
-                + (
-                    f"Create Corpus failed with code {response.status_code}, "
-                    f"reason {response.reason}, text {response.text}. "
-                    "Contact support@vectara.com for help"
-                )
+                + f"Create Corpus failed {_error_msg(response)}. Contact support@vectara.com for help"
                 + Style.RESET_ALL,
             )
             exit(1)
         result = response.json()
 
-        if result["status"] and result["status"]["code"] != "OK":
+        if not _ok(result["status"]):
             logger.typewriter_log(
                 "VECTARA CORPUS CREATION FAILED. CONTACT support@vectara.com FOR HELP.",
                 Fore.RED,
@@ -168,7 +149,7 @@ class VectaraMemory(MemoryProviderSingleton):
         request["document"] = {"document_id": doc_id, "parts": [{"text": data}]}
 
         logging.debug("Sending request %s", json.dumps(request))
-        response = requests.post(
+        response = self._session.post(
             headers=self._get_post_headers(),
             url="https://api.vectara.io/v1/core/index",
             data=json.dumps(request),
@@ -176,10 +157,7 @@ class VectaraMemory(MemoryProviderSingleton):
         )
 
         if response.status_code != 200:
-            error = (
-                f"REST upload failed with code {response.status_code}, "
-                f"reason {response.reason}, text {response.text}"
-            )
+            error = f"REST upload failed {_error_msg(response)}"
             logging.warning(error)
             return error
         result = response.json()
@@ -200,7 +178,7 @@ class VectaraMemory(MemoryProviderSingleton):
 
     def clear(self):
         """Clears the index (remove all data in it)."""
-        response = requests.post(
+        response = self._session.post(
             headers=self._get_post_headers(),
             url="https://api.vectara.io/v1/reset-corpus",
             data=json.dumps(
@@ -210,10 +188,7 @@ class VectaraMemory(MemoryProviderSingleton):
         )
 
         if response.status_code != 200:
-            error = (
-                f"Reset Corpus failed with code {response.status_code}, "
-                f"reason {response.reason}, text {response.text}"
-            )
+            error = f"Reset Corpus failed {_error_msg(response)}"
             logging.warning(error)
             return error
         return "Obliterated"
@@ -224,7 +199,7 @@ class VectaraMemory(MemoryProviderSingleton):
         :param data: The data to compare to.
         :param num_relevant: The number of relevant data to return. Defaults to 5
         """
-        response = requests.post(
+        response = self._session.post(
             headers=self._get_post_headers(),
             url="https://api.vectara.io/v1/query",
             data=json.dumps(
@@ -248,12 +223,7 @@ class VectaraMemory(MemoryProviderSingleton):
         )
 
         if response.status_code != 200:
-            logging.error(
-                "Query failed with code %d, reason %s, text %s",
-                response.status_code,
-                response.reason,
-                response.text,
-            )
+            logging.error("Query failed %s", _error_msg(response))
             return []
 
         result = response.json()

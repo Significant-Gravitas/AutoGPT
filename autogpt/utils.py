@@ -1,4 +1,8 @@
+"""Provides utility methods and classes."""
+
+import logging
 import os
+import time
 
 import requests
 import yaml
@@ -12,6 +16,41 @@ except:
     pass
 
 from autogpt.config import Config
+
+
+class JWTTokenProvider:
+    """Provides OAuth2 JWT tokens for authorization."""
+
+    def __init__(self, app_id, app_secret, token_endpoint):
+        self._app_id = app_id
+        self._app_secret = app_secret
+        self._token_endpoint = token_endpoint
+        self._token = None
+        self._token_refresh_ts = 0
+
+    def get_jwt_token(self):
+        """Returns JWT that can be attached for authorization."""
+        from authlib.integrations.requests_client import OAuth2Session
+
+        # Refresh token every 5 mins.
+        if (time.time() - self._token_refresh_ts) < 5 * 60:
+            return self._token
+
+        logging.debug(
+            "Refreshing JWT token after %s secs.", time.time() - self._token_refresh_ts
+        )
+        session = OAuth2Session(self._app_id, self._app_secret, scope="")
+        try:
+            token = session.fetch_token(
+                self._token_endpoint, grant_type="client_credentials"
+            )  # authorization_code
+        except requests.exceptions.HTTPError as ex:
+            logging.info("Failed to fetch Oauth2 token: %s", ex)
+            return ""
+
+        self._token_refresh_ts = time.time()
+        self._token = token["access_token"]
+        return self._token
 
 
 def send_chat_message_to_user(report: str):
