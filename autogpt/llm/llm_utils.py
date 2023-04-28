@@ -267,16 +267,21 @@ def create_embedding(
     cfg = Config()
     chunk_embeddings = []
     chunk_lengths = []
+    embedding_plugin = next((plugin for plugin in cfg.plugins if plugin.can_handle_embedding()), None)
+
     for chunk in chunked_tokens(
         text,
         tokenizer_name=cfg.embedding_tokenizer,
         chunk_length=cfg.embedding_token_limit,
     ):
-        embedding = openai.Embedding.create(
-            input=[chunk],
-            api_key=cfg.openai_api_key,
-            **kwargs,
-        )
+        if embedding_plugin is not None:
+            embedding = embedding_plugin.handle_text_embedding(chunk, **kwargs)
+        else:
+            embedding = openai.Embedding.create(
+                input=[chunk],
+                api_key=cfg.openai_api_key,
+                **kwargs,
+            )
         api_manager = ApiManager()
         api_manager.update_cost(
             prompt_tokens=embedding.usage.prompt_tokens,
