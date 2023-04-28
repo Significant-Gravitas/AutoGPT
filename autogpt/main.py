@@ -152,7 +152,6 @@ def run_auto_gpt(
     # print(prompt)
     # Initialize variables
     full_message_history = []
-    next_action_count = 0
 
     # add chat plugins capable of report to logger
     if cfg.chat_messages_enabled:
@@ -176,11 +175,11 @@ def run_auto_gpt(
         ai_name=ai_name,
         memory=memory,
         full_message_history=full_message_history,
-        next_action_count=next_action_count,
+        autonomous_cycles_budget=0,
         command_registry=command_registry,
         config=ai_config,
         system_prompt=system_prompt,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        initial_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
     )
     agent.start_interaction_loop()

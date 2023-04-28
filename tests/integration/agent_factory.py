@@ -67,10 +67,10 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
         full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
-        next_action_count=0,
+        autonomous_cycles_budget=0,
         system_prompt=system_prompt,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace.root,
+        initial_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=str(workspace.root),
     )
 
     return agent
@@ -106,10 +106,10 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
         full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
-        next_action_count=0,
+        autonomous_cycles_budget=0,
         system_prompt=system_prompt,
-        triggering_prompt=triggering_prompt,
-        workspace_directory=workspace.root,
+        initial_prompt=triggering_prompt,
+        workspace_directory=str(workspace.root),
     )
 
     return agent
@@ -142,10 +142,10 @@ def memory_management_agent(
         full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
-        next_action_count=0,
+        autonomous_cycles_budget=0,
         system_prompt=system_prompt,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace.root,
+        initial_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=str(workspace.root),
     )
 
     return agent
