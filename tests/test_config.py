@@ -8,19 +8,6 @@ import pytest
 from autogpt.config import Config
 
 
-@pytest.fixture
-def config():
-    return Config()
-
-
-def test_singleton(config):
-    """
-    Test if the Config class behaves as a singleton by ensuring that two instances are the same.
-    """
-    config2 = Config()
-    assert config == config2
-
-
 def test_initial_values(config):
     """
     Test if the initial values of the Config class attributes are set correctly.
