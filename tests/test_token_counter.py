@@ -19,11 +19,11 @@ def test_count_message_tokens_with_name():
     assert count_message_tokens(messages) == 17
 
 def test_count_message_tokens_empty_input():
-    # Empty input should return 3 tokens
+    """Empty input should return 3 tokens"""
     assert count_message_tokens([]) == 3
 
 def test_count_message_tokens_invalid_model():
-    # Invalid model should raise a KeyError
+    """Invalid model should raise a KeyError"""
     messages = [
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there!"},
@@ -50,7 +50,7 @@ def test_count_string_tokens_empty_input():
     assert count_string_tokens("", model_name="gpt-3.5-turbo-0301") == 0
 
 def test_count_message_tokens_invalid_model():
-    # Invalid model should raise a NotImplementedError
+    """Invalid model should raise a NotImplementedError"""
     messages = [
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there!"},
