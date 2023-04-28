@@ -126,6 +126,7 @@ def run_auto_gpt(
     next_action_count = 0
     # Make a constant:
     triggering_prompt = (
+        "If there are any guideline violations in message history, investigate further. "
         "Determine which next command to use, and respond using the"
         " format specified above:"
     )
