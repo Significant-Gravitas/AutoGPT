@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import List, TypedDict
 
 
@@ -8,13 +7,6 @@ class Message(TypedDict):
 
     role: str
     content: str
-
-
-class ModelType(StrEnum):
-    """The flavor of model."""
-
-    chat = "chat"
-    embedding = "embedding"
 
 
 @dataclass
@@ -27,10 +19,23 @@ class ModelInfo:
     """
 
     name: str
-    model_type: str
     prompt_token_cost: float
     completion_token_cost: float
     max_tokens: int
+
+
+@dataclass
+class ChatModelInfo(ModelInfo):
+    """Struct for chat model information."""
+
+    pass
+
+
+@dataclass
+class EmbeddingModelInfo(ModelInfo):
+    """Struct for embedding model information."""
+
+    embedding_dimensions: int
 
 
 @dataclass
@@ -43,7 +48,7 @@ class LLMResponse:
 
 
 @dataclass
-class EmbeddingResponse(LLMResponse):
+class EmbeddingModelResponse(LLMResponse):
     """Standard response struct for a response from an embedding model."""
 
     embedding: List[float] = field(default_factory=list)
@@ -54,7 +59,7 @@ class EmbeddingResponse(LLMResponse):
 
 
 @dataclass
-class ChatCompletionResponse(LLMResponse):
+class ChatModelResponse(LLMResponse):
     """Standard response struct for a response from an LLM model."""
 
     content: str = None
