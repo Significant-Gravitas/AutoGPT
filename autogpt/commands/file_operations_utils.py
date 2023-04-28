@@ -138,12 +138,17 @@ def is_file_binary_fn(file_path):
 
 
 def read_textual_file(file_path):
+    if not os.path.isfile(file_path):
+        raise FileNotFoundError(f"{file_path} not found!")
+    is_binary = is_file_binary_fn(file_path)
     file_extension = os.path.splitext(file_path)[1].lower()
     parser = extension_to_parser.get(file_extension)
     if not parser:
-        # either fallback to txt file parser (to support script and code files loading)
+        if is_binary:
+            raise ValueError(
+                "Unsupported binary file format: {}".format(file_extension)
+            )
+        # fallback to txt file parser (to support script and code files loading)
         parser = TXTParser()
-        # or raise exception
-        # raise ValueError("Unsupported file format: {}".format(file_extension))
     file_context = FileContext(parser)
     return file_context.read_file(file_path)
