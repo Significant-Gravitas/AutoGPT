@@ -28,7 +28,7 @@ Methods:
 """
 
 from typing import Optional, Type, List
-from autogpt.projects.agent.config import AgentConfig
+from autogpt.projects.agent_model import AgentModel
 
 
 class Project:
@@ -50,8 +50,8 @@ class Project:
             Returns a dictionary representation of the Project object.
     """
     def __init__(self, project_name : str, api_budget : float , 
-                 lead_agent : AgentConfig, 
-                 delegated_agents : List[AgentConfig] = []):        
+                 lead_agent : AgentModel, 
+                 delegated_agents : List[AgentModel] = []):        
         """
         Initializes the Project class with the given attributes.
 

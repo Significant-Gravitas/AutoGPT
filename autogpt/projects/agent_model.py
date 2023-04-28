@@ -33,7 +33,7 @@ Methods of `AgentConfig` class:
 
 from typing import Optional, Type, List
 
-class AgentConfig(): 
+class AgentModel(): 
     """
     A class representing the configuration settings for an AI agent.
 

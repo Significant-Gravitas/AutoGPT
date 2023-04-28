@@ -1,25 +1,25 @@
 import pytest
-from autogpt.projects.agent.config import AgentConfig
-from autogpt.project import Project
+from autogpt.projects.agent_model import AgentModel
+from autogpt.projects import Project
 
 
 @pytest.fixture
 def lead_agent():
-    return AgentConfig(agent_name="Lead Agent", agent_role="Leader", agent_goals=["Goal1"])
+    return AgentModel(agent_name="Lead Agent", agent_role="Leader", agent_goals=["Goal1"])
 
 
 @pytest.fixture
 def delegated_agent():
-    return AgentConfig(agent_name="Delegated Agent", agent_role="Delegated", agent_goals=["Goal1"])
+    return AgentModel(agent_name="Delegated Agent", agent_role="Delegated", agent_goals=["Goal1"])
 
 
 def test_project_init():
-    lead_agent = AgentConfig(
+    lead_agent = AgentModel(
         agent_name="Agent1",
         agent_role="Role1",
         agent_goals=["Goal1", "Goal2"],
     )
-    delegated_agent = AgentConfig(
+    delegated_agent = AgentModel(
         agent_name="Agent2",
         agent_role="Role2",
         agent_goals=["Goal3", "Goal4"],
@@ -37,12 +37,12 @@ def test_project_init():
 
 
 def test_project_to_dict():
-    lead_agent = AgentConfig(
+    lead_agent = AgentModel(
         agent_name="Agent1",
         agent_role="Role1",
         agent_goals=["Goal1", "Goal2"],
     )
-    delegated_agent = AgentConfig(
+    delegated_agent = AgentModel(
         agent_name="Agent2",
         agent_role="Role2",
         agent_goals=["Goal3", "Goal4"],
@@ -97,7 +97,7 @@ def test_project_str(lead_agent, delegated_agent):
 
 
 def test_project_init_unittest_style():
-    lead_agent = AgentConfig(
+    lead_agent = AgentModel(
         agent_name="Lead Agent",
         agent_role="Lead",
         agent_goals=["Goal 1", "Goal 2"],
@@ -105,14 +105,14 @@ def test_project_init_unittest_style():
         agent_model_type="Type 1",
     )
     delegated_agents = [
-        AgentConfig(
+        AgentModel(
             agent_name="Delegated Agent 1",
             agent_role="Delegated",
             agent_goals=["Goal 3"],
             agent_model="Model 2",
             agent_model_type="Type 2",
         ),
-        AgentConfig(
+        AgentModel(
             agent_name="Delegated Agent 2",
             agent_role="Delegated",
             agent_goals=["Goal 4", "Goal 5"],

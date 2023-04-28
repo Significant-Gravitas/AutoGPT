@@ -32,7 +32,7 @@ from colorama import Fore, Style
 
 from autogpt import utils
 from autogpt.config import Config
-from autogpt.projects.project_config_broker import ProjectConfigBroker
+from autogpt.projects.projects_broker import ProjectsBroker
 from autogpt.projects.project import Project
 from autogpt.llm_utils import create_chat_completion
 from autogpt.logs import logger
@@ -182,7 +182,7 @@ def generate_agentproject_manual(project_id : int) -> Project:
             )
             api_budget = 0.0
 
-    configs = ProjectConfigBroker()
+    configs = ProjectsBroker()
 
     configs.create_project(project_id =  project_id, 
                     agent_name = agent_name, 
@@ -248,7 +248,7 @@ Goals:
     agent_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
     api_budget = 0.0  # TODO: parse api budget using a regular expression
 
-    configs = ProjectConfigBroker()
+    configs = ProjectsBroker()
     configs.create_project(project_id =  new_project_number, 
                            api_budget =  api_budget, 
                     agent_name = agent_name, 

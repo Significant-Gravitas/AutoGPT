@@ -2,19 +2,19 @@ import os
 import pytest
 from pathlib import Path
 from autogpt.projects.project import Project
-from autogpt.projects.agent.config import AgentConfig
-from autogpt.projects.project_config_broker import ProjectConfigBroker
+from autogpt.projects.agent_model import AgentModel
+from autogpt.projects.projects_broker import ProjectsBroker
 
 CONFIG_FILE = str(Path(os.getcwd()) / "test_agent_settings.yaml")
 
 @pytest.fixture
 def project_config_broker():
-    return ProjectConfigBroker(config_file=CONFIG_FILE)
+    return ProjectsBroker(config_file=CONFIG_FILE)
 
 
 @pytest.fixture
 def lead_agent():
-    return AgentConfig(
+    return AgentModel(
         agent_name="Lead Agent",
         agent_role="Lead",
         agent_goals=["Lead goal 1", "Lead goal 2"],
@@ -27,7 +27,7 @@ def lead_agent():
 
 @pytest.fixture
 def delegated_agent1():
-    return AgentConfig(
+    return AgentModel(
         agent_name="Delegated Agent 1",
         agent_role="Delegated",
         agent_goals=["Delegated goal 1", "Delegated goal 2"],
@@ -40,7 +40,7 @@ def delegated_agent1():
 
 @pytest.fixture
 def delegated_agent2():
-    return AgentConfig(
+    return AgentModel(
         agent_name="Delegated Agent 2",
         agent_role="Delegated",
         agent_goals=["Delegated goal 1", "Delegated goal 2"],

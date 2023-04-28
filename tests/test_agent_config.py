@@ -1,9 +1,9 @@
 import pytest
-from autogpt.projects.agent.config import AgentConfig
+from autogpt.projects.agent_model import AgentModel
 
 
 def test_agent_config_init():
-    agent_config = AgentConfig(
+    agent_config = AgentModel(
         agent_name="Agent1",
         agent_role="Role1",
         agent_goals=["Goal1", "Goal2"],
@@ -16,7 +16,7 @@ def test_agent_config_init():
     assert agent_config.prompt_generator is None
     assert agent_config.command_registry is None
 
-    agent_config_with_model = AgentConfig(
+    agent_config_with_model = AgentModel(
         agent_name="Agent2",
         agent_role="Role2",
         agent_goals=["Goal3", "Goal4"],

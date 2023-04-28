@@ -37,7 +37,7 @@ import yaml
 
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.projects.project import Project
-from autogpt.projects.agent.config import AgentConfig
+from autogpt.projects.agent_model import AgentModel
 from autogpt.singleton import AbstractSingleton
 
 
@@ -46,7 +46,7 @@ SAVE_FILE = str(Path(os.getcwd()) / "agent_settings.yaml")
 MAX_AI_CONFIG = 5
 
 
-class ProjectConfigBroker(AbstractSingleton):   
+class ProjectsBroker(AbstractSingleton):   
     """
     A class object that contains the configuration information for the AI
 
@@ -115,7 +115,7 @@ class ProjectConfigBroker(AbstractSingleton):
 
             if (project.get("lead_agent")) :
                 lead_agent_data = project["lead_agent"]
-                lead_agent = AgentConfig(
+                lead_agent = AgentModel(
                     agent_name=lead_agent_data["agent_name"],
                     agent_role=lead_agent_data["agent_role"],
                     agent_goals=lead_agent_data["agent_goals"],
@@ -129,7 +129,7 @@ class ProjectConfigBroker(AbstractSingleton):
             delegated_agents_list = []
             if (project.get("delegated_agents")) :
                 for delegated_agents_data in project["delegated_agents"]:
-                    delegated_agents = AgentConfig(
+                    delegated_agents = AgentModel(
                         agent_name=delegated_agents_data["agent_name"],
                         agent_role=delegated_agents_data["agent_role"],
                         agent_goals=delegated_agents_data["agent_goals"],
@@ -224,7 +224,7 @@ class ProjectConfigBroker(AbstractSingleton):
                 print(f"Config with the name '{project_name}' already exists")
                 return False
 
-        lead_agent = AgentConfig(
+        lead_agent = AgentModel(
             agent_name=agent_name,
             agent_role=agent_role,
             agent_goals=agent_goals,
@@ -287,7 +287,7 @@ class ProjectConfigBroker(AbstractSingleton):
             raise ValueError(f"get_current_project: Value {self._current_project_id } not expected")
         return self._projects[self._current_project_id]
     
-    def get_project(self, project_number : int ) -> AgentConfig:
+    def get_project(self, project_number : int ) -> AgentModel:
         """
         Gets the specified project instance.
 

@@ -17,7 +17,7 @@ from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
 from autogpt.chat import chat_with_ai, create_chat_message
-from autogpt.config import Config , ProjectConfigBroker
+from autogpt.config import Config , ProjectsBroker
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import validate_json
 from autogpt.llm_utils import create_chat_completion
@@ -120,7 +120,7 @@ class Agent:
         command_name = None
         arguments = None
         user_input = ""
-        ai_configs = ProjectConfigBroker()
+        ai_configs = ProjectsBroker()
         while True:
             # Save any change to the config so we continue where we quited
             # ai_configs.create_project( project_id = ai_configs.get_current_project_id() ,
