@@ -37,13 +37,13 @@ import re
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
-from autogpt.projects.project import Project
-from autogpt.projects.agent_model import AgentModel
+#from autogpt.projects.project import Project
+#from autogpt.projects.agent_model import AgentModel
 from autogpt.singleton import AbstractSingleton
 
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
-SAVE_FILE = str(Path(os.getcwd()) / "agent_settings.yaml")
+# @TODO REMOVE SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 MAX_AI_CONFIG = 5
 
 
@@ -76,19 +76,19 @@ class ProjectsBroker(AbstractSingleton):
         self.config_file = config_file or SAVE_FILE
         self._current_project_id = project_number
         self._load(self.config_file)
-        if 0 < project_number <= len(self._projects):
+        if 0 <= project_number <= len(self._projects):
             self.set_project_number(project_number)
 
         shutil.copy(self.config_file, f"{self.config_file}.backup")
 
 
 
-    def load(self, config_file: str = SAVE_FILE) -> list:
+    def load(self, config_file: str = '') -> list:
         """
         Loads the projects from the specified YAML file and returns a list of Project instances containing the project parameters.
 
         Args:
-            config_file (str): The path to the config yaml file. DEFAULT: "../agent_settings.yaml"
+            config_file (str): The path to the config yaml file.
         
         Returns:
             list: A list of Project instances containing the project parameters for each entry.
@@ -108,12 +108,12 @@ class ProjectsBroker(AbstractSingleton):
 
         return self._projects
 
-    def _save(self , config_file: str = SAVE_FILE) -> None:
+    def _save(self , config_file: str = '') -> None:
         """
         Saves the current configuration to the specified file yaml file path as a yaml file.
 
         Args:
-            config_file (str): The path to the config yaml file. DEFAULT: "../agent_settings.yaml"
+            config_file (str): The path to the config yaml file.
         """
   
         if not os.path.exists(config_file):
@@ -139,21 +139,42 @@ class ProjectsBroker(AbstractSingleton):
         # data_to_save = {"version": self._version, "projects": config_params}
         data_to_save = config_params
         with open(config_file, "w", encoding="utf-8") as file:
-            yaml.dump(data_to_save, file, allow_unicode=True)
+           # yaml.dump(data_to_save, file, allow_unicode=True) @TODO enable
+           return
 
-    def _save(self) -> None:
+    def _save(self, project_position: int = -1) -> None:
         """
         Saves the current state of the ProjectsBroker to the configuration file.
+
+        Args:
+            project_position (int, optional): The position of the project to save. Defaults to -1.
+
+        Raises:
+            IndexError: If the project_position is out of range.
+
         """
-        projects_list = [project.save() for project in self._projects]
-
-        config_data = {
-            "projects": projects_list,
-            "max_budget": self.max_budget
-        }
-
-        with open(self.config_filepath, "w") as config_file:
-            yaml.dump(config_data, config_file)
+        if 0 <= project_position < len(self._projects):
+            self._project_dir_create(project_position, self._projects[project_position].project_name)
+            Project(
+                project_name=self._projects[project_position].project_name,
+                project_budget=self._projects[project_position].project_budget,
+                lead_agent=self._projects[project_position].lead_agent,
+                delegated_agents=self._projects[project_position].delegated_agents,
+                version=self._projects[project_position].version,
+                project_memory=self._projects[project_position].project_memory,
+                project_working_directory=self._projects[project_position].project_working_directory,
+                project_env=self._projects[project_position].project_env,
+                project_log_activity=self._projects[project_position].project_log_activity,
+                project_log_env=self._projects[project_position].project_log_env,
+                team_name=self._projects[project_position].team_name
+            ).save()
+        elif project_position == -1:
+            # Save all projects if project_position is not specified
+            for project in self._projects:
+                project.save()
+        else:
+            raise IndexError("Project index out of range.")
+ 
             
         
     def create_project(self, 
@@ -176,6 +197,7 @@ class ProjectsBroker(AbstractSingleton):
         """
         project_name = lead_agent.agent_name # TODO : Allow to give a project MIUST BE ALPHANUMERICAL + SPACE
         
+
         number_of_config = len(self._projects)
         if project_id is None and number_of_config < MAX_AI_CONFIG:
             project_id = number_of_config
@@ -184,7 +206,7 @@ class ProjectsBroker(AbstractSingleton):
             raise ValueError(f"set_config: Value {project_id} not expected")
         
         project = Project(project_name= project_name , api_budget = api_budget,lead_agent= lead_agent)
-        
+  
         if project_id >= number_of_config:
             self._projects.append(project)
             project_id = number_of_config
@@ -213,6 +235,7 @@ class ProjectsBroker(AbstractSingleton):
         ## mkdir
 
 
+           
     def set_project_number(self, new_project_id: int) -> bool:
         """
         Sets the current project number.

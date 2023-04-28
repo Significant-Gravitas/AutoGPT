@@ -38,7 +38,7 @@ from typing import Optional, Type, List
 import yaml
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
-SAVE_FILE = str(Path(os.getcwd()) / "agent_settings.yaml")
+# @TODO SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 
 class AgentModel(): 
     """
@@ -137,7 +137,7 @@ class AgentModel():
         ######## THIS IS TO MAINTAIN BACKWARD COMPATIBILITY     ########
         ########    ########    ########    ########    ########
     @staticmethod
-    def load(config_file: str = SAVE_FILE) -> "AgentModel":
+    def load(config_file: str = '') -> "AgentModel":
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
           yaml file if yaml file exists,
@@ -145,7 +145,6 @@ class AgentModel():
 
         Parameters:
            config_file (int): The path to the config yaml file.
-             DEFAULT: "../ai_settings.yaml"
 
         Returns:
             cls (object): An instance of given cls object
