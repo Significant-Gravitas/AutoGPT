@@ -121,6 +121,22 @@ extension_to_parser = {
 }
 
 
+def is_file_binary_fn(file_path):
+    """Given a file path load all its content and checks if the null bytes is present
+
+    Args:
+        file_path (_type_): _description_
+
+    Returns:
+        bool: is_binary
+    """
+    with open(file_path, "rb") as f:
+        file_data = f.read()
+    if b"\x00" in file_data:
+        return True
+    return False
+
+
 def read_textual_file(file_path):
     file_extension = os.path.splitext(file_path)[1].lower()
     parser = extension_to_parser.get(file_extension)
