@@ -13,7 +13,7 @@ from autogpt.speech import say_text
 from autogpt.url_utils.validators import validate_url
 
 CFG = Config()
-AGENT_MANAGER = AgentManager()
+AGENT_MANAGER = AgentManager
 
 
 def is_valid_int(value: str) -> bool:

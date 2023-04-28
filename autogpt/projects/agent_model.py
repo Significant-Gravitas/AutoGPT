@@ -52,14 +52,15 @@ class AgentModel():
             Initializes the `AgentConfig` instance with the given attributes.
 
     """
-    def __init__(self, 
-            agent_name: str,
-            agent_role: str,
-            agent_goals: List,
-            agent_model: Optional[str] = None,
-            agent_model_type: Optional[str] = None,
-            prompt_generator =  None,
-            command_registry =  None) -> None:
+        
+    def __init__(self, agent_name: str, 
+                 agent_goals: List, 
+                 agent_role: str, 
+                 agent_model: str, 
+                 agent_model_type: str, 
+                 team_name: Optional[str] = None,
+                prompt_generator =  None,
+                command_registry =  None) -> None:
         """
         Initializes the AgentConfig class with the given attributes.
 
@@ -72,12 +73,12 @@ class AgentModel():
             prompt_generator (Any, optional): The prompt generator instance. Defaults to None.
             command_registry (Any, optional): The command registry instance. Defaults to None.
         """
-
         self.agent_name = agent_name
-        self.agent_role = agent_role
         self.agent_goals = agent_goals
+        self.agent_role = agent_role
         self.agent_model = agent_model
         self.agent_model_type = agent_model_type
+        self.team_name = team_name
         self.prompt_generator= prompt_generator
         self.command_registry= command_registry
 
@@ -93,19 +94,19 @@ class AgentModel():
             agent_instance (AgentModel): An AgentModel instance with the loaded data.
         """
         agent_name = agent_data["agent_name"]
+        agent_goals = [goal["goal_name"] for goal in agent_data["agent_goals"]]
         agent_role = agent_data["agent_role"]
-        agent_goals = agent_data["agent_goals"]
-        agent_model = agent_data.get("agent_model", None)
-        agent_model_type = agent_data.get("agent_model_type", None)
+        agent_model = agent_data["agent_model"]
+        agent_model_type = agent_data["agent_model_type"]
+        team_name = agent_data.get("team_name")
 
-        agent_instance = cls(
+        return  cls(
             agent_name=agent_name,
             agent_role=agent_role,
             agent_goals=agent_goals,
             agent_model=agent_model,
             agent_model_type=agent_model_type,
-        )
-        return agent_instance
+            team_name=team_name)
     
     def save(self) -> dict:
         """
@@ -124,3 +125,40 @@ class AgentModel():
             "command_registry": self.command_registry
         }
         return agent_dict
+    
+    ########    ########    ########    ########    ########
+        ######## THIS IS TO MAINTAIN BACKWARD COMPATIBILITY     ########
+        ########    ########    ########    ########    ########
+    @staticmethod
+    def load(config_file: str = SAVE_FILE) -> "AgentModel":
+        """
+        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
+          yaml file if yaml file exists,
+        else returns class with no parameters.
+
+        Parameters:
+           config_file (int): The path to the config yaml file.
+             DEFAULT: "../ai_settings.yaml"
+
+        Returns:
+            cls (object): An instance of given cls object
+        """
+
+        try:
+            with open(config_file, encoding="utf-8") as file:
+                config_params = yaml.load(file, Loader=yaml.FullLoader)
+            ai_name = config_params.get("ai_name", "")
+            ai_role = config_params.get("ai_role", "")
+            ai_goals = config_params.get("ai_goals", [])
+            api_budget = config_params.get("api_budget", 0.0)
+            AgentModel(ai_name, ai_role, ai_goals, api_budget)
+            # type: Type[AIConfig]
+
+            Project.create(AgentModel)
+
+            # Move the file to the destination path
+            shutil.move(source_file, destination_path)
+
+        except FileNotFoundError:
+            ProjectsBroker.load()
+        return 

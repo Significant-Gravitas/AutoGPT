@@ -80,7 +80,9 @@ class ProjectsBroker(AbstractSingleton):
 
         shutil.copy(self.config_file, f"{self.config_file}.backup")
 
-    def _load(self, config_file: str = SAVE_FILE) -> list:
+
+
+    def load(self, config_file: str = SAVE_FILE) -> list:
         """
         Loads the projects from the specified YAML file and returns a list of Project instances containing the project parameters.
 

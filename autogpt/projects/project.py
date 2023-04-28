@@ -49,11 +49,17 @@ class Project:
         __toDict__(self) -> dict
             Returns a dictionary representation of the Project object.
     """
-    def __init__(self, 
-                 project_name : str, 
-                 api_budget : float , 
-                 lead_agent : AgentModel, 
-                 delegated_agents : List[AgentModel] = []):        
+    def __init__(self, project_name: str, 
+                 project_budget: float, 
+                 lead_agent: AgentModel,
+                 delegated_agents: List[AgentModel] = [], 
+                 version: str = "0.0.0",
+                 project_memory: Optional[str] = None, 
+                 project_working_directory: Optional[str] = None,
+                 project_env: Optional[str] = None, 
+                 project_log_activity: Optional[str] = None,
+                 project_log_env: Optional[str] = None, 
+                 team_name: Optional[str] = None):    
         """
         Initializes the Project class with the given attributes.
 
@@ -63,8 +69,15 @@ class Project:
             lead_agent (AgentConfig): The lead agent configuration.
             delegated_agents (List[AgentConfig], optional): A list of delegated agent configurations. Defaults to an empty list.
         """
+        self.version = version
         self.project_name = project_name
-        self.api_budget= api_budget
+        self.project_budget = project_budget
+        self.project_memory = project_memory
+        self.project_working_directory = project_working_directory
+        self.project_env = project_env
+        self.project_log_activity = project_log_activity
+        self.project_log_env = project_log_env
+        self.team_name = team_name
         self.lead_agent = lead_agent
         self.delegated_agents = delegated_agents
     
@@ -124,6 +137,13 @@ class Project:
         Returns:
             project_instance (Project): A Project instance with the loaded configuration parameters.
         """
+        project_memory = config_params.get("project_memory")
+        project_working_directory = config_params.get("project_working_directory")
+        project_env = config_params.get("project_env")
+        project_log_activity = config_params.get("project_log_activity")
+        project_log_env = config_params.get("project_log_env")
+        agent_team = config_params["agent_team"]
+        team_name = agent_team.get("team_name")
         version =  config_params.get("version", '')
         if version != '' :
             cls._version = version # Not supported for the moment
@@ -133,25 +153,27 @@ class Project:
         else :
             raise ValueError("No project_name in the project.")
 
-        if (config_params.get("budget")) :
-            api_budget = config_params["budget"]
+        if (config_params.get("project_budget")) :
+            project_budget = config_params["project_budget"]
         else :
             raise ValueError("No budget in the project.")
 
         if config_params.get("lead_agent"):
-            lead_agent_data = config_params["lead_agent"]
+            lead_agent_data = agent_team["lead_agent"]
             lead_agent = AgentModel.load(lead_agent_data)
         else:
             raise ValueError("No lead_agent in the project.")
+       
 
         delegated_agents_list = []
-        if config_params.get("delegated_agents"):
-            for delegated_agent_data in config_params["delegated_agents"]:
+        if agent_team.get("delegated_agents"):
+            for delegated_agent_data in agent_team["delegated_agents"]:
                 delegated_agent = AgentModel.load(delegated_agent_data)
                 delegated_agents_list.append(delegated_agent)
 
-        project_instance = cls(project_name, api_budget, lead_agent, delegated_agents_list)
-        return project_instance
+        return cls(project_name, project_budget, lead_agent, delegated_agents_list,
+                   version, project_memory, project_working_directory, project_env,
+                   project_log_activity, project_log_env, team_name)
     
     def save(self) -> dict:
         """
