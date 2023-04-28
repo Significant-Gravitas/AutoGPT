@@ -1,6 +1,8 @@
-import pytest
 from unittest.mock import Mock, patch
-from autogpt.logs import print_assistant_thoughts, _remaining_budget_description
+
+import pytest
+
+from autogpt.logs import _remaining_budget_description, print_assistant_thoughts
 
 
 # Test when total_budget is greater than 0
