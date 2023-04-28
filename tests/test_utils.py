@@ -224,6 +224,7 @@ def test_remove_color_codes():
         remove_color_codes("\x1B[1m\x1B[31mError:\x1B[0m\x1B[31m file not found")
         == "Error: file not found"
     )
+    assert remove_color_codes({"I": "am a dict"}) == f"{{'I': 'am a dict'}}"
 
 
 if __name__ == "__main__":
