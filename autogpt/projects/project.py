@@ -79,7 +79,7 @@ class Project:
         self.project_log_env = project_log_env
         self.team_name = team_name
         self.lead_agent = lead_agent
-        self.delegated_agents = delegated_agents
+        self.delegated_agents_list = delegated_agents
     
     #saving in Yaml
     def __str__(self) -> str:
@@ -107,7 +107,7 @@ class Project:
             "command_registry": self.lead_agent.command_registry
         }
         delegated_agents_list = []
-        for agent in self.delegated_agents:
+        for agent in self.delegated_agents_list:
             agent_dict = {
                 "agent_name": agent.agent_name,
                 "agent_role": agent.agent_role,
@@ -189,7 +189,7 @@ class Project:
                                               project_name = self.project_name)
 
         lead_agent_dict = self.lead_agent.save()
-        delegated_agents_list = [agent.save() for agent in self.delegated_agents]
+        delegated_agents_list = [agent.save() for agent in self.delegated_agents_list]
         
         project_dict = {
             "project_name": self.project_name,
@@ -198,6 +198,22 @@ class Project:
             "delegated_agents": delegated_agents_list
         }
         return project_dict
+    
+
+    def get_lead(self) -> AgentModel:
+        return  self.lead_agent
+    
+    def get_delegated_agents_list(self) -> list[AgentModel] : 
+        return  self.delegated_agents_list
+    
+    def delete_delegated_agents(self, position = int) -> bool: 
+        if 0 <= position <= len(self.delegated_agents_list) :
+            return  False
+        else : 
+            self.delegated_agents_list(position) # Todo implement delete an agent
+            
+            #return True
+
 
 
         

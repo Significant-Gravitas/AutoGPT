@@ -4,29 +4,17 @@ This module provides a class for configuring an AI agent's settings.
 Description:
 - This module contains the `AgentConfig` class, which represents the configuration settings for an AI agent.
 
-Classes:
-- AgentConfig: A class representing the configuration settings for an AI agent.
 
 Functions: None
 
 Global Variables: None
 
+Classes:
+- AgentConfig: A class representing the configuration settings for an AI agent.
+
 Dependencies: 
 - typing: A built-in module for type hints and annotations.
 
-Attributes of `AgentConfig` class:
-- agent_name (str): The name of the agent.
-- agent_role (str): The role of the agent.
-- agent_goals (List): A list of agent goals.
-- agent_model (Optional[str]): The agent model name, if applicable.
-- agent_model_type (Optional[str]): The agent model type, if applicable.
-- prompt_generator (Optional[Any]): An instance of the `PromptGenerator` class used to generate prompts for the user.
-- command_registry (Optional[Any]): An instance of the `CommandRegistry` class used to manage the available commands for the agent.
-
-Methods of `AgentConfig` class:
-- __init__(self, agent_name: str, agent_role: str, agent_goals: List, agent_model: Optional[str] = None,
-    agent_model_type: Optional[str] = None, prompt_generator: Optional[Any] = None, command_registry: Optional[Any] = None)
-    Initializes the `AgentConfig` instance with the given attributes.
 
 """
 
@@ -44,30 +32,33 @@ class AgentModel():
     """
     A class representing the configuration settings for an AI agent.
 
-    Attributes:
-        agent_name (str): The name of the agent.
-        agent_role (str): The role of the agent.
-        agent_goals (List): A list of agent goals.
-        agent_model (Optional[str]): The agent model name, if applicable.
-        agent_model_type (Optional[str]): The agent model type, if applicable.
-        prompt_generator (Optional[Any]): An instance of the `PromptGenerator` class used to generate prompts for the user.
-        command_registry (Optional[Any]): An instance of the `CommandRegistry` class used to manage the available commands for the agent.
 
-    Methods:
-        __init__(self, agent_name: str, agent_role: str, agent_goals: List, agent_model: Optional[str] = None,
-            agent_model_type: Optional[str] = None, prompt_generator: Optional[Any] = None, command_registry: Optional[Any] = None)
-            Initializes the `AgentConfig` instance with the given attributes.
+    Attributes of `AgentConfig` class:
+    - agent_name (str): The name of the agent.
+    - agent_role (str): The role of the agent.
+    - agent_goals (List): A list of agent goals.
+    - agent_model (Optional[str]): The agent model name, if applicable.
+    - agent_model_type (Optional[str]): The agent model type, if applicable.
+    - prompt_generator (Optional[Any]): An instance of the `PromptGenerator` class used to generate prompts for the user.
+    - command_registry (Optional[Any]): An instance of the `CommandRegistry` class used to manage the available commands for the agent.
+
+    Methods of `AgentConfig` class:
+    - __init__(self, agent_name: str, agent_role: str, agent_goals: List, agent_model: Optional[str] = None,
+    agent_model_type: Optional[str] = None, prompt_generator: Optional[Any] = None, command_registry: Optional[Any] = None)
+    Initializes the `AgentConfig` instance with the given attributes.
 
     """
         
-    def __init__(self, agent_name: str, 
+    def __init__(self, 
+                 agent_name: str, 
                  agent_goals: List, 
                  agent_role: str, 
                  agent_model: str, 
-                 agent_model_type: str, 
+                 agent_model_type: str,
                  team_name: Optional[str] = None,
-                prompt_generator =  None,
-                command_registry =  None) -> None:
+                 prompt_generator =  None,
+                command_registry =  None
+                ) -> None:
         """
         Initializes the AgentConfig class with the given attributes.
 
@@ -133,12 +124,20 @@ class AgentModel():
         }
         return agent_dict
     
-    ########    ########    ########    ########    ########
-        ######## THIS IS TO MAINTAIN BACKWARD COMPATIBILITY     ########
-        ########    ########    ########    ########    ########
+
     @staticmethod
     def load(config_file: str = '') -> "AgentModel":
+        
         """
+        TODO DEPRECATED logger warning message for developpers()
+        
+        DEPRECATED --- THIS IS TO MAINTAIN BACKWARD COMPATIBILITY 
+
+        if you work with 1 agent :     
+            AgentBroker.get_curent_project().get_lead()
+        if you work with a team of agent 
+            AgentBroker.get_curent_project().get_delegated_agents_list()
+
         Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
           yaml file if yaml file exists,
         else returns class with no parameters.

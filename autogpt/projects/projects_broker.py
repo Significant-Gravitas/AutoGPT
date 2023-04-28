@@ -75,7 +75,7 @@ class ProjectsBroker(AbstractSingleton):
     """
         self.config_file = config_file or SAVE_FILE
         self._current_project_id = project_number
-        self._load(self.config_file)
+        self.load(self.config_file)
         if 0 <= project_number <= len(self._projects):
             self.set_project_number(project_number)
 
