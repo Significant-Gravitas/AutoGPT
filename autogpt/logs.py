@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 import traceback
 from logging import LogRecord
@@ -11,7 +12,7 @@ from colorama import Fore, Style
 
 from autogpt.singleton import Singleton
 from autogpt.speech import say_text
-from autogpt.utils import remove_color_codes, send_chat_message_to_user
+from autogpt.utils import send_chat_message_to_user
 
 
 class Logger(metaclass=Singleton):
@@ -194,6 +195,11 @@ class AutoGptFormatter(logging.Formatter):
         else:
             record.message_no_color = ""
         return super().format(record)
+
+
+def remove_color_codes(s: str) -> str:
+    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+    return ansi_escape.sub("", s)
 
 
 logger = Logger()

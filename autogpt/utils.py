@@ -1,5 +1,4 @@
 import os
-import re
 
 import requests
 import yaml
@@ -130,8 +129,3 @@ def get_latest_bulletin() -> str:
         open("CURRENT_BULLETIN.md", "w", encoding="utf-8").write(new_bulletin)
         return f" {Fore.RED}::UPDATED:: {Fore.CYAN}{new_bulletin}{Fore.RESET}"
     return current_bulletin
-
-
-def remove_color_codes(s: str) -> str:
-    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
-    return ansi_escape.sub("", str(s))
