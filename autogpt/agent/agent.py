@@ -16,7 +16,7 @@ Classes:
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
-from autogpt.chat import chat_with_ai, create_chat_message
+from autogpt.llm import chat_with_ai, create_chat_message
 from autogpt.config import Config , ProjectsBroker
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import validate_json
