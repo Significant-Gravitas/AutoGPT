@@ -210,7 +210,8 @@ def print_assistant_thoughts(
     assistant_reply_json_valid: object,
     speak_mode: bool = False,
 ) -> None:
-    from autogpt.api_manager import api_manager  # required to avoid circular import
+    from autogpt.api_manager import ApiManager  # To prevent circular imports
+    api_manager = ApiManager()
 
     assistant_thoughts_reasoning = None
     assistant_thoughts_plan = None
@@ -252,7 +253,7 @@ def print_assistant_thoughts(
 
 
 def _remaining_budget_description():
-    from autogpt.api_manager import api_manager  # required to avoid circular import
-
+    from autogpt.api_manager import ApiManager  # To prevent circular imports
+    api_manager = ApiManager()
     remaining_budget = api_manager.get_total_budget() - api_manager.get_total_cost()
     return f"${remaining_budget} remaining from ${api_manager.get_total_budget()}."
