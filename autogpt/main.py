@@ -140,7 +140,7 @@ def run_auto_gpt(
         ai_name=ai_name,
         memory=memory,
         full_message_history=full_message_history,
-        next_action_count=next_action_count,
+        autonomous_cycles_budget=next_action_count,
         command_registry=command_registry,
         config=ai_config,
         system_prompt=system_prompt,

@@ -12,6 +12,8 @@ from autogpt.spinner import Spinner
 from autogpt.utils import clean_input, send_chat_message_to_user
 from autogpt.workspace import Workspace
 
+CFG = Config()
+
 
 class Agent:
     """Agent class for interacting with Auto-GPT.
@@ -47,27 +49,25 @@ class Agent:
         ai_name,
         memory,
         full_message_history,
-        next_action_count,
+        autonomous_cycles_budget,
         command_registry,
         config,
         system_prompt,
         triggering_prompt,
         workspace_directory,
     ):
-        cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
         self.full_message_history = full_message_history
-        self.next_action_count = next_action_count
+        self.autonomous_cycles_remaining = autonomous_cycles_budget
         self.command_registry = command_registry
         self.config = config
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
-        self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
+        self.workspace = Workspace(workspace_directory, CFG.restrict_to_workspace)
 
     def start_interaction_loop(self):
         # Interaction Loop
-        cfg = Config()
         loop_count = 0
         command_name = None
         arguments = None
@@ -77,15 +77,15 @@ class Agent:
             # Discontinue if continuous limit is reached
             loop_count += 1
             if (
-                cfg.continuous_mode
-                and cfg.continuous_limit > 0
-                and loop_count > cfg.continuous_limit
+                CFG.continuous_mode
+                and CFG.continuous_limit > 0
+                and loop_count > CFG.continuous_limit
             ):
                 logger.typewriter_log(
-                    "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
+                    "Continuous Limit Reached: ", Fore.YELLOW, f"{CFG.continuous_limit}"
                 )
                 send_chat_message_to_user(
-                    f"Continuous Limit Reached: \n {cfg.continuous_limit}"
+                    f"Continuous Limit Reached: \n {CFG.continuous_limit}"
                 )
                 break
             send_chat_message_to_user("Thinking... \n")
@@ -97,11 +97,11 @@ class Agent:
                     self.triggering_prompt,
                     self.full_message_history,
                     self.memory,
-                    cfg.fast_token_limit,
+                    CFG.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
-            for plugin in cfg.plugins:
+            for plugin in CFG.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
                 assistant_reply_json = plugin.post_planning(self, assistant_reply_json)
@@ -112,10 +112,10 @@ class Agent:
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, cfg.speak_mode
+                        self.ai_name, assistant_reply_json, CFG.speak_mode
                     )
                     command_name, arguments = get_command(assistant_reply_json)
-                    if cfg.speak_mode:
+                    if CFG.speak_mode:
                         say_text(f"I want to execute {command_name}")
 
                     send_chat_message_to_user("Thinking... \n")
@@ -124,7 +124,7 @@ class Agent:
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
-            if self.should_prompt_user(cfg.continuous_mode, self.next_action_count):
+            if self.should_prompt_user:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -139,14 +139,13 @@ class Agent:
                     f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
                     f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
-                user_feedback_message = self.generate_user_feedback_message(self.ai_name)
                 print(
-                    user_feedback_message,
+                    self.user_feedback_prompt,
                     flush=True,
                 )
                 while True:
                     console_input = ""
-                    if cfg.chat_messages_enabled:
+                    if CFG.chat_messages_enabled:
                         console_input = clean_input("Waiting for your response...")
                     else:
                         console_input = clean_input(
@@ -163,7 +162,7 @@ class Agent:
                         )
                         thoughts = assistant_reply_json.get("thoughts", {})
                         self_feedback_resp = self.get_self_feedback(
-                            thoughts, cfg.fast_llm_model
+                            thoughts, CFG.fast_llm_model
                         )
                         logger.typewriter_log(
                             f"SELF FEEDBACK: {self_feedback_resp}",
@@ -180,7 +179,7 @@ class Agent:
                         continue
                     elif console_input.lower().startswith("y -"):
                         try:
-                            self.next_action_count = abs(
+                            self.autonomous_cycles_remaining = abs(
                                 int(console_input.split(" ")[1])
                             )
                             user_input = "GENERATE NEXT COMMAND JSON"
@@ -202,8 +201,11 @@ class Agent:
                         Fore.MAGENTA + "Input:" + Style.RESET_ALL
                     )
 
-                    new_command_name, self.next_action_count, user_input = \
-                        self.calculate_next_command_from_user_input(console_input)
+                    (
+                        new_command_name,
+                        self.autonomous_cycles_remaining,
+                        user_input,
+                    ) = self.determine_next_command(console_input)
                     # If there was a parsing error, go back to the prompt
                     # Otherwise if new command name is not None, update command name
                     if new_command_name == "input error":
@@ -218,7 +220,8 @@ class Agent:
                     logger.typewriter_log(
                         "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
                         Fore.GREEN,
-                        "", 0
+                        "",
+                        0,
                     )
                     thoughts = assistant_reply_json.get("thoughts", {})
                     self_feedback_resp = self.get_self_feedback(thoughts)
@@ -258,7 +261,7 @@ class Agent:
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
             else:
-                for plugin in cfg.plugins:
+                for plugin in CFG.plugins:
                     if not plugin.can_handle_pre_command():
                         continue
                     command_name, arguments = plugin.pre_command(
@@ -272,12 +275,12 @@ class Agent:
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
 
-                for plugin in cfg.plugins:
+                for plugin in CFG.plugins:
                     if not plugin.can_handle_post_command():
                         continue
                     result = plugin.post_command(command_name, result)
-                if self.next_action_count > 0:
-                    self.next_action_count -= 1
+                if self.autonomous_cycles_remaining > 0:
+                    self.autonomous_cycles_remaining -= 1
             if command_name != "do_nothing":
                 memory_to_add = (
                     f"Assistant Reply: {assistant_reply} "
@@ -338,44 +341,46 @@ class Agent:
             llm_model,
         )
 
-    @staticmethod
-    def should_prompt_user(continuous_mode, next_action_count):
-        return not continuous_mode and next_action_count == 0
+    @property
+    def should_prompt_user(self) -> bool:
+        return not CFG.continuous_mode and self.autonomous_cycles_remaining == 0
+
+    @property
+    def user_feedback_prompt(self) -> str:
+        return (
+            "Enter 'y' to authorise command, 'y -N' to run N continuous commands, "
+            "'s' to run self-feedback commands, "
+            "'n' to exit program, or enter feedback for "
+            f"{self.ai_name}... "
+        )
 
     @staticmethod
-    def generate_user_feedback_message(ai_name):
-        return "Enter 'y' to authorise command, 'y -N' to run N continuous commands, " \
-               "'s' to run self-feedback commands, " \
-               "'n' to exit program, or enter feedback for " \
-               f"{ai_name}... "
-
-    @staticmethod
-    def calculate_next_command_from_user_input(console_input):
+    def determine_next_command(user_input: str):
         command_name = None
-        next_action_count = 0
+        autonomous_cycles_remaining = 0
 
-        if console_input.lower().rstrip() == "y":
+        if user_input.lower().rstrip() == "y":
             user_input = "GENERATE NEXT COMMAND JSON"
-        elif console_input.lower().startswith("y -"):
+        elif user_input.lower().startswith("y -"):
             try:
-                next_action_count = abs(
-                    int(console_input.split(" ")[1])
-                )
+                autonomous_cycles_remaining = abs(int(user_input.split(" ")[1]))
                 user_input = "GENERATE NEXT COMMAND JSON"
             except ValueError:
                 command_name = "input error"
-                user_input = "Invalid input format. Please enter 'y -n' where n is" \
-                             " the number of continuous tasks."
-        elif console_input.lower().strip() == "":
+                user_input = (
+                    "Invalid input format. Please enter 'y -n' where n is"
+                    " the number of continuous tasks."
+                )
+        elif user_input.lower().strip() == "":
             command_name = "input error"
             user_input = "Invalid input format."
-        elif console_input.lower().strip() == "n":
+        elif user_input.lower().strip() == "n":
             user_input = "EXIT"
-        elif console_input.lower().strip() == "s":
+        elif user_input.lower().strip() == "s":
             user_input = None
             command_name = "self_feedback"
         else:
-            user_input = console_input
+            user_input = user_input
             command_name = "human_feedback"
 
-        return command_name, next_action_count, user_input
+        return command_name, autonomous_cycles_remaining, user_input

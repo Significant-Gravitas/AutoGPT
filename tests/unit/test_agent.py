@@ -1,76 +1,133 @@
+from unittest.mock import MagicMock
+
+import pytest
+from pytest_mock import MockerFixture
+
 from autogpt.agent import Agent
+from autogpt.config import Config
 
 
-def test_should_prompt_user_given_not_in_continuous_mode_and_next_action_count_is_zero_returns_true():
-    assert Agent.should_prompt_user(False, 0) is True
+@pytest.fixture
+def agent():
+    ai_name = "Test AI"
+    memory = MagicMock()
+    full_message_history = []
+    autonomous_cycles_budget = 0
+    command_registry = MagicMock()
+    config = Config()
+    system_prompt = "System prompt"
+    triggering_prompt = "Triggering prompt"
+    workspace_directory = "workspace_directory"
+
+    agent = Agent(
+        ai_name,
+        memory,
+        full_message_history,
+        autonomous_cycles_budget,
+        command_registry,
+        config,
+        system_prompt,
+        triggering_prompt,
+        workspace_directory,
+    )
+    return agent
 
 
-def test_should_prompt_user_given_not_in_continuous_mode_and_next_action_count_is_greater_than_zero_returns_false():
-    assert Agent.should_prompt_user(False, 2) is False
+def test_agent_initialization(config: Config, agent: Agent):
+    assert agent.ai_name == "Test AI"
+    assert agent.memory == agent.memory
+    assert agent.full_message_history == []
+    assert agent.autonomous_cycles_remaining == 0
+    assert agent.command_registry == agent.command_registry
+    assert agent.config == agent.config
+    assert agent.system_prompt == "System prompt"
+    assert agent.triggering_prompt == "Triggering prompt"
 
 
-def test_should_prompt_user_given_in_continuous_mode_and_next_action_count_is_zero_returns_false():
-    assert Agent.should_prompt_user(True, 0) is False
+def test_should_prompt_user(config: Config, agent: Agent, mocker: MockerFixture):
+    mocker.patch.object(config, 'continuous_mode', False)
+    assert agent.should_prompt_user is True
+
+    mocker.patch.object(agent, 'autonomous_cycles_remaining', 2)
+    assert agent.should_prompt_user is False
+
+    mocker.patch.object(config, 'continuous_mode', True)
+    mocker.patch.object(agent, 'autonomous_cycles_remaining', 0)
+    assert agent.should_prompt_user is False
+
+    mocker.patch.object(agent, 'autonomous_cycles_remaining', 100)
+    assert agent.should_prompt_user is False
 
 
-def test_should_prompt_user_given_in_continuous_mode_and_next_action_count_is_greater_than_zero_returns_false():
-    assert Agent.should_prompt_user(True, 100) is False
+def test_user_feedback_prompt(agent: Agent, mocker: MockerFixture):
+    mocker.patch.object(agent, 'ai_name', 'the_ai_name')
+    expected_message = (
+        "Enter 'y' to authorise command, 'y -N' to run N continuous commands, "
+        "'s' to run self-feedback commands, "
+        "'n' to exit program, or enter feedback for the_ai_name... "
+    )
+    assert agent.user_feedback_prompt == expected_message
 
 
-def test_generate_user_feedback_message_should_format_message_with_ai_name():
-    expected_message = "Enter 'y' to authorise command, 'y -N' to run N continuous commands, " \
-                       "'s' to run self-feedback commands, " \
-                       "'n' to exit program, or enter feedback for the_ai_name... "
-    assert Agent.generate_user_feedback_message("the_ai_name") == expected_message
-
-
-def test_calculate_next_command_from_user_input_given_user_entered_y_result_is_generate_next_command():
-    command_name, next_count, user_input = Agent.calculate_next_command_from_user_input("y")
+def test_determine_next_command_from_user_input():
+    # user entered 'y' -> generate next command
+    command_name, remaining_cycles, user_input = Agent.determine_next_command(
+        "y"
+    )
     assert command_name is None
-    assert next_count == 0
+    assert remaining_cycles == 0
     assert user_input == "GENERATE NEXT COMMAND JSON"
 
-
-def test_calculate_next_command_from_user_input_given_user_entered_y_dash_number_result_generate_next_command():
-    command_name, next_count, user_input = Agent.calculate_next_command_from_user_input("y -20")
+    # user entered 'y -N' -> generate next command with N remaining cycles
+    command_name, remaining_cycles, user_input = Agent.determine_next_command(
+        "y -20"
+    )
     assert command_name is None
-    assert next_count == 20
+    assert remaining_cycles == 20
     assert user_input == "GENERATE NEXT COMMAND JSON"
 
-
-def test_calculate_next_command_from_user_input_given_user_entered_y_dash_and_invalid_number_print_error():
-    command_name, next_count, user_input = Agent.calculate_next_command_from_user_input("y -X")
+    # user entered 'y -[invalid number]' -> print error
+    command_name, remaining_cycles, user_input = Agent.determine_next_command(
+        "y -X"
+    )
     assert command_name == "input error"
-    assert next_count == 0
-    assert user_input == "Invalid input format. Please enter 'y -n' where n is the number of continuous tasks."
+    assert remaining_cycles == 0
+    assert (
+        user_input
+        == "Invalid input format. Please enter 'y -n' where n is the number of continuous tasks."
+    )
 
-
-def test_calculate_next_command_from_user_input_given_user_entered_n_result_is_exit():
-    command_name, next_count, user_input = Agent.calculate_next_command_from_user_input("n")
+    # user entered 'n' -> exit
+    command_name, remaining_cycles, user_input = Agent.determine_next_command(
+        "n"
+    )
     assert command_name is None
-    assert next_count == 0
+    assert remaining_cycles == 0
     assert user_input == "EXIT"
 
-
-def test_calculate_next_command_from_user_input_given_user_text_result_is_feedback():
+    # user entered text -> human_feedback
     the_input = "Some item to tell the AI about while it is doing stuff."
-    command_name, next_count, user_input = Agent.calculate_next_command_from_user_input(the_input)
+    command_name, remaining_cycles, user_input = Agent.determine_next_command(
+        the_input
+    )
     assert command_name == "human_feedback"
-    assert next_count == 0
+    assert remaining_cycles == 0
     assert user_input == the_input
 
-
-def test_calculate_next_command_from_user_input_given_s_turn_on_verify_feedback():
+    # user entered 's' -> self_feedback
     the_input = "s"
-    command_name, next_count, user_input = Agent.calculate_next_command_from_user_input(the_input)
+    command_name, remaining_cycles, user_input = Agent.determine_next_command(
+        the_input
+    )
     assert command_name == "self_feedback"
-    assert next_count == 0
+    assert remaining_cycles == 0
     assert user_input is None
 
-
-def test_calculate_next_command_from_user_input_given_no_value_print_error():
+    # empty input -> print error
     the_input = "      "
-    command_name, next_count, user_input = Agent.calculate_next_command_from_user_input(the_input)
+    command_name, remaining_cycles, user_input = Agent.determine_next_command(
+        the_input
+    )
     assert command_name == "input error"
-    assert next_count == 0
+    assert remaining_cycles == 0
     assert user_input == "Invalid input format."
