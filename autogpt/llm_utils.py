@@ -254,6 +254,12 @@ def create_embedding(
         openai.Embedding: The embedding object.
     """
     cfg = Config()
+    for plugin in cfg.plugins:
+        if plugin.can_handle_text_embedding(text, **kwargs):
+            embedding = plugin.handle_text_embedding(text, **kwargs)
+            if embedding is not None:
+                return embedding
+
     return openai.Embedding.create(
         input=[text],
         api_key=cfg.openai_api_key,
