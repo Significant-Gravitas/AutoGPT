@@ -1,14 +1,14 @@
 {
-  "build": {
-    "dockerfile": "./Dockerfile",
-    "context": "."
-  },
+  "dockerComposeFile": "./docker-compose.yml",
+  "service": "auto-gpt",
+  "workspaceFolder": "/workspace/Auto-GPT",
+  "shutdownAction": "stopCompose",
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
       "installZsh": "true",
       "username": "vscode",
-      "userUid": "1000",
-      "userGid": "1000",
+      "userUid": "6942",
+      "userGid": "6942",
       "upgradePackages": "true"
     },
     "ghcr.io/devcontainers/features/desktop-lite:1": {},
