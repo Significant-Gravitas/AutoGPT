@@ -90,7 +90,7 @@ class MilvusMemory(MemoryProviderSingleton):
             )
         self.collection.load()
 
-    def add(self, data) -> str:
+    async def add(self, data) -> str:
         """Add an embedding of data into memory.
 
         Args:
@@ -99,7 +99,7 @@ class MilvusMemory(MemoryProviderSingleton):
         Returns:
             str: log.
         """
-        embedding = get_ada_embedding(data)
+        embedding = await get_ada_embedding(data)
         result = self.collection.insert([[embedding], [data]])
         _text = (
             "Inserting data into memory at primary key: "
@@ -107,12 +107,12 @@ class MilvusMemory(MemoryProviderSingleton):
         )
         return _text
 
-    def get(self, data):
+    async def get(self, data):
         """Return the most relevant data in memory.
         Args:
             data: The data to compare to.
         """
-        return self.get_relevant(data, 1)
+        return await self.get_relevant(data, 1)
 
     def clear(self) -> str:
         """Drop the index in memory.
@@ -130,7 +130,7 @@ class MilvusMemory(MemoryProviderSingleton):
         self.collection.load()
         return "Obliviated"
 
-    def get_relevant(self, data: str, num_relevant: int = 5):
+    async def get_relevant(self, data: str, num_relevant: int = 5):
         """Return the top-k relevant data in memory.
         Args:
             data: The data to compare to.
@@ -141,7 +141,7 @@ class MilvusMemory(MemoryProviderSingleton):
             list: The top-k relevant data.
         """
         # search the embedding and return the most relevant text.
-        embedding = get_ada_embedding(data)
+        embedding = await get_ada_embedding(data)
         search_params = {
             "metrics_type": "IP",
             "params": {"nprobe": 8},

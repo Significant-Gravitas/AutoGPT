@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import functools
 import time
 from typing import List, Optional
@@ -38,12 +39,12 @@ def retry_openai_api(
 
     def _wrapper(func):
         @functools.wraps(func)
-        def _wrapped(*args, **kwargs):
+        async def _wrapped(*args, **kwargs):
             user_warned = not warn_user
             num_attempts = num_retries + 1  # +1 for the first attempt
             for attempt in range(1, num_attempts + 1):
                 try:
-                    return func(*args, **kwargs)
+                    return await func(*args, **kwargs)
 
                 except RateLimitError:
                     if attempt == num_attempts:
@@ -60,14 +61,14 @@ def retry_openai_api(
 
                 backoff = backoff_base ** (attempt + 2)
                 logger.debug(backoff_msg.format(backoff=backoff))
-                time.sleep(backoff)
+                await asyncio.sleep(backoff)
 
         return _wrapped
 
     return _wrapper
 
 
-def call_ai_function(
+async def call_ai_function(
     function: str, args: list, description: str, model: str | None = None
 ) -> str:
     """Call an AI function
@@ -100,12 +101,12 @@ def call_ai_function(
         {"role": "user", "content": args},
     ]
 
-    return create_chat_completion(model=model, messages=messages, temperature=0)
+    return await create_chat_completion(model=model, messages=messages, temperature=0)
 
 
 # Overly simple abstraction until we create something better
 # simple retry mechanism when getting a rate error or a bad gateway
-def create_chat_completion(
+async def create_chat_completion(
     messages: List[Message],  # type: ignore
     model: Optional[str] = None,
     temperature: float = None,
@@ -153,7 +154,7 @@ def create_chat_completion(
         backoff = 2 ** (attempt + 2)
         try:
             if cfg.use_azure:
-                response = api_manager.create_chat_completion(
+                response = await api_manager.create_chat_completion(
                     deployment_id=cfg.get_azure_deployment_id_for_model(model),
                     model=model,
                     messages=messages,
@@ -161,7 +162,7 @@ def create_chat_completion(
                     max_tokens=max_tokens,
                 )
             else:
-                response = api_manager.create_chat_completion(
+                response = await api_manager.create_chat_completion(
                     model=model,
                     messages=messages,
                     temperature=temperature,
@@ -189,7 +190,7 @@ def create_chat_completion(
                 f"{Fore.RED}Error: ",
                 f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
             )
-        time.sleep(backoff)
+        await asyncio.sleep(backoff)
     if response is None:
         logger.typewriter_log(
             "FAILED TO GET RESPONSE FROM OPENAI",
@@ -210,7 +211,7 @@ def create_chat_completion(
     return resp
 
 
-def get_ada_embedding(text: str) -> List[float]:
+async def get_ada_embedding(text: str) -> List[float]:
     """Get an embedding from the ada model.
 
     Args:
@@ -228,7 +229,7 @@ def get_ada_embedding(text: str) -> List[float]:
     else:
         kwargs = {"model": model}
 
-    embedding = create_embedding(text, **kwargs)
+    embedding = await create_embedding(text, **kwargs)
     api_manager = ApiManager()
     api_manager.update_cost(
         prompt_tokens=embedding.usage.prompt_tokens,
@@ -239,7 +240,7 @@ def get_ada_embedding(text: str) -> List[float]:
 
 
 @retry_openai_api()
-def create_embedding(
+async def create_embedding(
     text: str,
     *_,
     **kwargs,
@@ -254,7 +255,7 @@ def create_embedding(
         openai.Embedding: The embedding object.
     """
     cfg = Config()
-    return openai.Embedding.create(
+    return await openai.Embedding.acreate(
         input=[text],
         api_key=cfg.openai_api_key,
         **kwargs,

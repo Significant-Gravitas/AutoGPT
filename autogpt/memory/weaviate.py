@@ -69,8 +69,8 @@ class WeaviateMemory(MemoryProviderSingleton):
         else:
             return None
 
-    def add(self, data):
-        vector = get_ada_embedding(data)
+    async def add(self, data):
+        vector = await get_ada_embedding(data)
 
         doc_uuid = generate_uuid5(data, self.index)
         data_object = {"raw_text": data}
@@ -85,8 +85,8 @@ class WeaviateMemory(MemoryProviderSingleton):
 
         return f"Inserting data into memory at uuid: {doc_uuid}:\n data: {data}"
 
-    def get(self, data):
-        return self.get_relevant(data, 1)
+    async def get(self, data):
+        return await self.get_relevant(data, 1)
 
     def clear(self):
         self.client.schema.delete_all()
@@ -98,8 +98,8 @@ class WeaviateMemory(MemoryProviderSingleton):
 
         return "Obliterated"
 
-    def get_relevant(self, data, num_relevant=5):
-        query_embedding = get_ada_embedding(data)
+    async def get_relevant(self, data, num_relevant=5):
+        query_embedding = await get_ada_embedding(data)
         try:
             results = (
                 self.client.query.get(self.index, ["raw_text"])

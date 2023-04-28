@@ -1,6 +1,6 @@
 """ Command and Control """
 import json
-from typing import Dict, List, NoReturn, Union
+from typing import Awaitable, Dict, List, NoReturn, Union
 
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.command import CommandRegistry, command
@@ -88,7 +88,7 @@ def map_command_synonyms(command_name: str):
     return command_name
 
 
-def execute_command(
+async def execute_command(
     command_registry: CommandRegistry,
     command_name: str,
     arguments,
@@ -108,13 +108,16 @@ def execute_command(
 
         # If the command is found, call it with the provided arguments
         if cmd:
-            return cmd(**arguments)
+            result = cmd(**arguments)
+            if isinstance(result, Awaitable):
+                result = await result
+            return result
 
         # TODO: Remove commands below after they are moved to the command registry.
         command_name = map_command_synonyms(command_name.lower())
 
         if command_name == "memory_add":
-            return get_memory(CFG).add(arguments["string"])
+            return await get_memory(CFG).add(arguments["string"])
 
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
@@ -141,7 +144,7 @@ def execute_command(
     "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
 )
 @validate_url
-def get_text_summary(url: str, question: str) -> str:
+async def get_text_summary(url: str, question: str) -> str:
     """Return the results of a Google search
 
     Args:
@@ -152,7 +155,7 @@ def get_text_summary(url: str, question: str) -> str:
         str: The summary of the text
     """
     text = scrape_text(url)
-    summary = summarize_text(url, text, question)
+    summary = await summarize_text(url, text, question)
     return f""" "Result" : {summary}"""
 
 
@@ -181,7 +184,9 @@ def shutdown() -> NoReturn:
     "Start GPT Agent",
     '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"',
 )
-def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
+async def start_agent(
+    name: str, task: str, prompt: str, model=CFG.fast_llm_model
+) -> str:
     """Start an agent with a given name, task, and prompt
 
     Args:
@@ -202,23 +207,23 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     # Create agent
     if CFG.speak_mode:
         say_text(agent_intro, 1)
-    key, ack = AGENT_MANAGER.create_agent(task, first_message, model)
+    key, ack = await AGENT_MANAGER.create_agent(task, first_message, model)
 
     if CFG.speak_mode:
         say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
     # Assign task (prompt), get response
-    agent_response = AGENT_MANAGER.message_agent(key, prompt)
+    agent_response = await AGENT_MANAGER.message_agent(key, prompt)
 
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
 
 @command("message_agent", "Message GPT Agent", '"key": "<key>", "message": "<message>"')
-def message_agent(key: str, message: str) -> str:
+async def message_agent(key: str, message: str) -> str:
     """Message an agent with a given key and message"""
     # Check if the key is a valid integer
     if is_valid_int(key):
-        agent_response = AGENT_MANAGER.message_agent(int(key), message)
+        agent_response = await AGENT_MANAGER.message_agent(int(key), message)
     else:
         return "Invalid key, must be an integer."
 

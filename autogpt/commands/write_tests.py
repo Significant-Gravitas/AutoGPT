@@ -12,7 +12,7 @@ from autogpt.llm_utils import call_ai_function
     "Write Tests",
     '"code": "<full_code_string>", "focus": "<list_of_focus_areas>"',
 )
-def write_tests(code: str, focus: list[str]) -> str:
+async def write_tests(code: str, focus: list[str]) -> str:
     """
     A function that takes in code and focus topics and returns a response from create
       chat completion api call.
@@ -34,4 +34,4 @@ def write_tests(code: str, focus: list[str]) -> str:
         " specific areas if required."
     )
 
-    return call_ai_function(function_string, args, description_string)
+    return await call_ai_function(function_string, args, description_string)

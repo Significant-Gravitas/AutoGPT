@@ -22,7 +22,7 @@ try:
             },
         )
 
-    class TestMilvusMemory(unittest.TestCase):
+    class TestMilvusMemory(unittest.IsolatedAsyncioTestCase):
         """Tests for the MilvusMemory class."""
 
         def setUp(self) -> None:
@@ -30,12 +30,12 @@ try:
             self.cfg = mock_config()
             self.memory = MilvusMemory(self.cfg)
 
-        def test_add(self) -> None:
+        async def test_add(self) -> None:
             """Test adding a text to the cache"""
             text = "Sample text"
             self.memory.clear()
-            self.memory.add(text)
-            result = self.memory.get(text)
+            await self.memory.add(text)
+            result = await self.memory.get(text)
             self.assertEqual([text], result)
 
         def test_clear(self) -> None:
@@ -43,29 +43,29 @@ try:
             self.memory.clear()
             self.assertEqual(self.memory.collection.num_entities, 0)
 
-        def test_get(self) -> None:
+        async def test_get(self) -> None:
             """Test getting a text from the cache"""
             text = "Sample text"
             self.memory.clear()
-            self.memory.add(text)
-            result = self.memory.get(text)
+            await self.memory.add(text)
+            result = await self.memory.get(text)
             self.assertEqual(result, [text])
 
-        def test_get_relevant(self) -> None:
+        async def test_get_relevant(self) -> None:
             """Test getting relevant texts from the cache"""
             text1 = "Sample text 1"
             text2 = "Sample text 2"
             self.memory.clear()
-            self.memory.add(text1)
-            self.memory.add(text2)
-            result = self.memory.get_relevant(text1, 1)
+            await self.memory.add(text1)
+            await self.memory.add(text2)
+            result = await self.memory.get_relevant(text1, 1)
             self.assertEqual(result, [text1])
 
-        def test_get_stats(self) -> None:
+        async def test_get_stats(self) -> None:
             """Test getting the cache stats"""
             text = "Sample text"
             self.memory.clear()
-            self.memory.add(text)
+            await self.memory.add(text)
             stats = self.memory.get_stats()
             self.assertEqual(15, len(stats))
 

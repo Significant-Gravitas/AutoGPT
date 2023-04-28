@@ -21,7 +21,7 @@ class ApiManager(metaclass=Singleton):
         self.total_cost = 0
         self.total_budget = 0.0
 
-    def create_chat_completion(
+    async def create_chat_completion(
         self,
         messages: list,  # type: ignore
         model: str | None = None,
@@ -43,7 +43,7 @@ class ApiManager(metaclass=Singleton):
         if temperature is None:
             temperature = cfg.temperature
         if deployment_id is not None:
-            response = openai.ChatCompletion.create(
+            response = await openai.ChatCompletion.acreate(
                 deployment_id=deployment_id,
                 model=model,
                 messages=messages,
@@ -52,7 +52,7 @@ class ApiManager(metaclass=Singleton):
                 api_key=cfg.openai_api_key,
             )
         else:
-            response = openai.ChatCompletion.create(
+            response = await openai.ChatCompletion.acreate(
                 model=model,
                 messages=messages,
                 temperature=temperature,

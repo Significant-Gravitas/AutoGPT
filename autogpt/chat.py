@@ -1,3 +1,4 @@
+import asyncio
 import time
 from random import shuffle
 
@@ -53,7 +54,7 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
 
 
 # TODO: Change debug from hardcode to argument
-def chat_with_ai(
+async def chat_with_ai(
     agent, prompt, user_input, full_message_history, permanent_memory, token_limit
 ):
     """Interact with the OpenAI API, sending the prompt, user input, message history,
@@ -86,7 +87,7 @@ def chat_with_ai(
             else:
                 recent_history = full_message_history[-5:]
                 shuffle(recent_history)
-                relevant_memories = permanent_memory.get_relevant(
+                relevant_memories = await permanent_memory.get_relevant(
                     str(recent_history), 5
                 )
                 if relevant_memories:
@@ -206,7 +207,7 @@ def chat_with_ai(
 
             # TODO: use a model defined elsewhere, so that model can contain
             # temperature and other settings we care about
-            assistant_reply = create_chat_completion(
+            assistant_reply = await create_chat_completion(
                 model=model,
                 messages=current_context,
                 max_tokens=tokens_remaining,
@@ -222,4 +223,4 @@ def chat_with_ai(
         except RateLimitError:
             # TODO: When we switch to langchain, this is built in
             print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
-            time.sleep(10)
+            await asyncio.sleep(10)

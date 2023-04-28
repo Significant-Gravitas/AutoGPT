@@ -72,7 +72,7 @@ def token_usage_of_chunk(messages, model):
     return token_counter.count_message_tokens(messages, model)
 
 
-def summarize_text(
+async def summarize_text(
     url: str, text: str, question: str, driver: Optional[WebDriver] = None
 ) -> str:
     """Summarize text using the OpenAI API
@@ -109,7 +109,7 @@ def summarize_text(
         memory_to_add = f"Source: {url}\n" f"Raw content part#{i + 1}: {chunk}"
 
         memory = get_memory(CFG)
-        memory.add(memory_to_add)
+        await memory.add(memory_to_add)
 
         messages = [create_message(chunk, question)]
         tokens_for_chunk = token_counter.count_message_tokens(messages, model)
@@ -117,7 +117,7 @@ def summarize_text(
             f"Summarizing chunk {i + 1} / {len(chunks)} of length {len(chunk)} characters, or {tokens_for_chunk} tokens"
         )
 
-        summary = create_chat_completion(
+        summary = await create_chat_completion(
             model=model,
             messages=messages,
         )
@@ -128,14 +128,14 @@ def summarize_text(
 
         memory_to_add = f"Source: {url}\n" f"Content summary part#{i + 1}: {summary}"
 
-        memory.add(memory_to_add)
+        await memory.add(memory_to_add)
 
     print(f"Summarized {len(chunks)} chunks.")
 
     combined_summary = "\n".join(summaries)
     messages = [create_message(combined_summary, question)]
 
-    return create_chat_completion(
+    return await create_chat_completion(
         model=model,
         messages=messages,
     )

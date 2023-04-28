@@ -37,7 +37,7 @@ JSON_SCHEMA = """
 CFG = Config()
 
 
-def auto_fix_json(json_string: str, schema: str) -> str:
+async def auto_fix_json(json_string: str, schema: str) -> str:
     """Fix the given JSON string to make it parseable and fully compliant with
         the provided schema using GPT-3.
 
@@ -62,7 +62,7 @@ def auto_fix_json(json_string: str, schema: str) -> str:
     # If it doesn't already start with a "`", add one:
     if not json_string.startswith("`"):
         json_string = "```json\n" + json_string + "\n```"
-    result_string = call_ai_function(
+    result_string = await call_ai_function(
         function_string, args, description_string, model=CFG.fast_llm_model
     )
     logger.debug("------------ JSON FIX ATTEMPT ---------------")
@@ -82,7 +82,7 @@ def auto_fix_json(json_string: str, schema: str) -> str:
         return "failed"
 
 
-def fix_json_using_multiple_techniques(assistant_reply: str) -> Dict[Any, Any]:
+async def fix_json_using_multiple_techniques(assistant_reply: str) -> Dict[Any, Any]:
     """Fix the given JSON string to make it parseable and fully compliant with two techniques.
 
     Args:
@@ -110,10 +110,10 @@ def fix_json_using_multiple_techniques(assistant_reply: str) -> Dict[Any, Any]:
         pass
 
     # Parse and print Assistant response
-    assistant_reply_json = fix_and_parse_json(assistant_reply)
+    assistant_reply_json = await fix_and_parse_json(assistant_reply)
     logger.debug("Assistant reply JSON: %s", str(assistant_reply_json))
     if assistant_reply_json == {}:
-        assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
+        assistant_reply_json = await attempt_to_fix_json_by_finding_outermost_brackets(
             assistant_reply
         )
 
@@ -131,7 +131,7 @@ def fix_json_using_multiple_techniques(assistant_reply: str) -> Dict[Any, Any]:
     return {}
 
 
-def fix_and_parse_json(
+async def fix_and_parse_json(
     json_to_load: str, try_to_fix_with_gpt: bool = True
 ) -> Dict[Any, Any]:
     """Fix and parse JSON string
@@ -166,10 +166,10 @@ def fix_and_parse_json(
         maybe_fixed_json = maybe_fixed_json[: last_brace_index + 1]
         return json.loads(maybe_fixed_json)
     except (json.JSONDecodeError, ValueError) as e:
-        return try_ai_fix(try_to_fix_with_gpt, e, json_to_load)
+        return await try_ai_fix(try_to_fix_with_gpt, e, json_to_load)
 
 
-def try_ai_fix(
+async def try_ai_fix(
     try_to_fix_with_gpt: bool, exception: Exception, json_to_load: str
 ) -> Dict[Any, Any]:
     """Try to fix the JSON with the AI
@@ -195,7 +195,7 @@ def try_ai_fix(
             " slightly."
         )
     # Now try to fix this up using the ai_functions
-    ai_fixed_json = auto_fix_json(json_to_load, JSON_SCHEMA)
+    ai_fixed_json = await auto_fix_json(json_to_load, JSON_SCHEMA)
 
     if ai_fixed_json != "failed":
         return json.loads(ai_fixed_json)
@@ -205,7 +205,7 @@ def try_ai_fix(
     return {}
 
 
-def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
+async def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
     if CFG.speak_mode and CFG.debug_mode:
         say_text(
             "I have received an invalid JSON response from the OpenAI API. "
@@ -236,4 +236,4 @@ def attempt_to_fix_json_by_finding_outermost_brackets(json_string: str):
         logger.error("Error: Invalid JSON, setting it to empty JSON now.\n")
         json_string = {}
 
-    return fix_and_parse_json(json_string)
+    return await fix_and_parse_json(json_string)

@@ -11,12 +11,13 @@ from autogpt.setup import (
 from tests.utils import requires_api_key
 
 
+@pytest.mark.asyncio
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_default():
+async def test_generate_aiconfig_automatic_default():
     user_inputs = [""]
     with patch("builtins.input", side_effect=user_inputs):
-        ai_config = prompt_user()
+        ai_config = await prompt_user()
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name is not None
@@ -24,11 +25,12 @@ def test_generate_aiconfig_automatic_default():
     assert 1 <= len(ai_config.ai_goals) <= 5
 
 
+@pytest.mark.asyncio
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_typical():
+async def test_generate_aiconfig_automatic_typical():
     user_prompt = "Help me create a rock opera about cybernetic giraffes"
-    ai_config = generate_aiconfig_automatic(user_prompt)
+    ai_config = await generate_aiconfig_automatic(user_prompt)
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name is not None
@@ -36,9 +38,10 @@ def test_generate_aiconfig_automatic_typical():
     assert 1 <= len(ai_config.ai_goals) <= 5
 
 
+@pytest.mark.asyncio
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_fallback():
+async def test_generate_aiconfig_automatic_fallback():
     user_inputs = [
         "T&GF£OIBECC()!*",
         "Chef-GPT",
@@ -49,7 +52,7 @@ def test_generate_aiconfig_automatic_fallback():
         "",
     ]
     with patch("builtins.input", side_effect=user_inputs):
-        ai_config = prompt_user()
+        ai_config = await prompt_user()
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name == "Chef-GPT"
@@ -57,9 +60,10 @@ def test_generate_aiconfig_automatic_fallback():
     assert ai_config.ai_goals == ["Purchase ingredients", "Bake a cake"]
 
 
+@pytest.mark.asyncio
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_prompt_user_manual_mode():
+async def test_prompt_user_manual_mode():
     user_inputs = [
         "--manual",
         "Chef-GPT",
@@ -70,7 +74,7 @@ def test_prompt_user_manual_mode():
         "",
     ]
     with patch("builtins.input", side_effect=user_inputs):
-        ai_config = prompt_user()
+        ai_config = await prompt_user()
 
     assert isinstance(ai_config, AIConfig)
     assert ai_config.ai_name == "Chef-GPT"

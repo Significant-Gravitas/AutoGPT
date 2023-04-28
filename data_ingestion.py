@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import logging
 
 from autogpt.commands.file_operations import ingest_file, search_files
@@ -19,7 +20,7 @@ def configure_logging():
     return logging.getLogger("AutoGPT-Ingestion")
 
 
-def ingest_directory(directory, memory, args):
+async def ingest_directory(directory, memory, args):
     """
     Ingest all files in a directory by calling the ingest_file function for each file.
 
@@ -29,12 +30,12 @@ def ingest_directory(directory, memory, args):
     try:
         files = search_files(directory)
         for file in files:
-            ingest_file(file, memory, args.max_length, args.overlap)
+            await ingest_file(file, memory, args.max_length, args.overlap)
     except Exception as e:
         print(f"Error while ingesting directory '{directory}': {str(e)}")
 
 
-def main() -> None:
+async def main() -> None:
     logger = configure_logging()
 
     parser = argparse.ArgumentParser(
@@ -73,14 +74,14 @@ def main() -> None:
 
     if args.file:
         try:
-            ingest_file(args.file, memory, args.max_length, args.overlap)
+            await ingest_file(args.file, memory, args.max_length, args.overlap)
             print(f"File '{args.file}' ingested successfully.")
         except Exception as e:
             logger.error(f"Error while ingesting file '{args.file}': {str(e)}")
             print(f"Error while ingesting file '{args.file}': {str(e)}")
     elif args.dir:
         try:
-            ingest_directory(args.dir, memory, args)
+            await ingest_directory(args.dir, memory, args)
             print(f"Directory '{args.dir}' ingested successfully.")
         except Exception as e:
             logger.error(f"Error while ingesting directory '{args.dir}': {str(e)}")
@@ -93,4 +94,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

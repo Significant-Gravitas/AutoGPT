@@ -20,7 +20,7 @@ class AgentManager(metaclass=Singleton):
     # Create new GPT agent
     # TODO: Centralise use of create_chat_completion() to globally enforce token limit
 
-    def create_agent(self, task: str, prompt: str, model: str) -> tuple[int, str]:
+    async def create_agent(self, task: str, prompt: str, model: str) -> tuple[int, str]:
         """Create a new agent and return its key
 
         Args:
@@ -40,7 +40,7 @@ class AgentManager(metaclass=Singleton):
             if plugin_messages := plugin.pre_instruction(messages):
                 messages.extend(iter(plugin_messages))
         # Start GPT instance
-        agent_reply = create_chat_completion(
+        agent_reply = await create_chat_completion(
             model=model,
             messages=messages,
         )
@@ -71,7 +71,7 @@ class AgentManager(metaclass=Singleton):
 
         return key, agent_reply
 
-    def message_agent(self, key: str | int, message: str) -> str:
+    async def message_agent(self, key: str | int, message: str) -> str:
         """Send a message to an agent and return its response
 
         Args:
@@ -94,7 +94,7 @@ class AgentManager(metaclass=Singleton):
                     messages.append(plugin_message)
 
         # Start GPT instance
-        agent_reply = create_chat_completion(
+        agent_reply = await create_chat_completion(
             model=model,
             messages=messages,
         )

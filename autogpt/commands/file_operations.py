@@ -93,7 +93,7 @@ def read_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
-def ingest_file(
+async def ingest_file(
     filename: str, memory, max_length: int = 4000, overlap: int = 200
 ) -> None:
     """
@@ -120,7 +120,7 @@ def ingest_file(
                 f"Filename: {filename}\n" f"Content part#{i + 1}/{num_chunks}: {chunk}"
             )
 
-            memory.add(memory_to_add)
+            await memory.add(memory_to_add)
 
         print(f"Done ingesting {num_chunks} chunks from {filename}.")
     except Exception as e:

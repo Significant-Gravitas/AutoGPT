@@ -77,7 +77,7 @@ class RedisMemory(MemoryProviderSingleton):
         existing_vec_num = self.redis.get(f"{cfg.memory_index}-vec_num")
         self.vec_num = int(existing_vec_num.decode("utf-8")) if existing_vec_num else 0
 
-    def add(self, data: str) -> str:
+    async def add(self, data: str) -> str:
         """
         Adds a data point to the memory.
 
@@ -88,7 +88,7 @@ class RedisMemory(MemoryProviderSingleton):
         """
         if "Command Error:" in data:
             return ""
-        vector = get_ada_embedding(data)
+        vector = await get_ada_embedding(data)
         vector = np.array(vector).astype(np.float32).tobytes()
         data_dict = {b"data": data, "embedding": vector}
         pipe = self.redis.pipeline()
@@ -101,7 +101,7 @@ class RedisMemory(MemoryProviderSingleton):
         pipe.execute()
         return _text
 
-    def get(self, data: str) -> list[Any] | None:
+    async def get(self, data: str) -> list[Any] | None:
         """
         Gets the data from the memory that is most relevant to the given data.
 
@@ -110,7 +110,7 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: The most relevant data.
         """
-        return self.get_relevant(data, 1)
+        return await self.get_relevant(data, 1)
 
     def clear(self) -> str:
         """
@@ -121,7 +121,7 @@ class RedisMemory(MemoryProviderSingleton):
         self.redis.flushall()
         return "Obliviated"
 
-    def get_relevant(self, data: str, num_relevant: int = 5) -> list[Any] | None:
+    async def get_relevant(self, data: str, num_relevant: int = 5) -> list[Any] | None:
         """
         Returns all the data in the memory that is relevant to the given data.
         Args:
@@ -130,7 +130,7 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: A list of the most relevant data.
         """
-        query_embedding = get_ada_embedding(data)
+        query_embedding = await get_ada_embedding(data)
         base_query = f"*=>[KNN {num_relevant} @embedding $vector AS vector_score]"
         query = (
             Query(base_query)

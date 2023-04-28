@@ -11,7 +11,7 @@ from autogpt.llm_utils import call_ai_function
     "Get Improved Code",
     '"suggestions": "<list_of_suggestions>", "code": "<full_code_string>"',
 )
-def improve_code(suggestions: list[str], code: str) -> str:
+async def improve_code(suggestions: list[str], code: str) -> str:
     """
     A function that takes in code and suggestions and returns a response from create
       chat completion api call.
@@ -32,4 +32,4 @@ def improve_code(suggestions: list[str], code: str) -> str:
         " provided, making no other changes."
     )
 
-    return call_ai_function(function_string, args, description_string)
+    return await call_ai_function(function_string, args, description_string)

@@ -18,7 +18,7 @@ from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
 
-def run_auto_gpt(
+async def run_auto_gpt(
     continuous: bool,
     continuous_limit: int,
     ai_settings: str,
@@ -118,7 +118,7 @@ def run_auto_gpt(
     command_registry.import_commands("autogpt.app")
 
     ai_name = ""
-    ai_config = construct_main_ai_config()
+    ai_config = await construct_main_ai_config()
     ai_config.command_registry = command_registry
     # print(prompt)
     # Initialize variables
@@ -147,4 +147,4 @@ def run_auto_gpt(
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
     )
-    agent.start_interaction_loop()
+    await agent.start_interaction_loop()

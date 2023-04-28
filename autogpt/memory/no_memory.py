@@ -22,7 +22,7 @@ class NoMemory(MemoryProviderSingleton):
         """
         pass
 
-    def add(self, data: str) -> str:
+    async def add(self, data: str) -> str:
         """
         Adds a data point to the memory. No action is taken in NoMemory.
 
@@ -33,7 +33,7 @@ class NoMemory(MemoryProviderSingleton):
         """
         return ""
 
-    def get(self, data: str) -> list[Any] | None:
+    async def get(self, data: str) -> list[Any] | None:
         """
         Gets the data from the memory that is most relevant to the given data.
         NoMemory always returns None.
@@ -53,7 +53,7 @@ class NoMemory(MemoryProviderSingleton):
         """
         return ""
 
-    def get_relevant(self, data: str, num_relevant: int = 5) -> list[Any] | None:
+    async def get_relevant(self, data: str, num_relevant: int = 5) -> list[Any] | None:
         """
         Returns all the data in the memory that is relevant to the given data.
         NoMemory always returns None.

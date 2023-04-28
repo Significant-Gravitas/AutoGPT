@@ -9,13 +9,13 @@ from autogpt.memory.milvus import MilvusMemory
 
 try:
 
-    class TestMilvusMemory(unittest.TestCase):
+    class TestMilvusMemory(unittest.IsolatedAsyncioTestCase):
         """Unit tests for the MilvusMemory class."""
 
         def generate_random_string(self, length: int) -> str:
             return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
-        def setUp(self) -> None:
+        async def asyncSetUp(self) -> None:
             cfg = Config()
             cfg.milvus_addr = "localhost:19530"
             self.memory = MilvusMemory(cfg)
@@ -30,17 +30,17 @@ try:
             ]
 
             for text in self.example_texts:
-                self.memory.add(text)
+                await self.memory.add(text)
 
             # Add some random strings to test noise
             for _ in range(5):
-                self.memory.add(self.generate_random_string(10))
+                await self.memory.add(self.generate_random_string(10))
 
-        def test_get_relevant(self) -> None:
+        async def test_get_relevant(self) -> None:
             """Test getting relevant texts from the cache."""
             query = "I'm interested in artificial intelligence and NLP"
             num_relevant = 3
-            relevant_texts = self.memory.get_relevant(query, num_relevant)
+            relevant_texts = await self.memory.get_relevant(query, num_relevant)
 
             print(f"Top {k} relevant texts for the query '{query}':")
             for i, text in enumerate(relevant_texts, start=1):

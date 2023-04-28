@@ -8,11 +8,11 @@ from autogpt.config import Config
 from autogpt.memory.local import LocalCache
 
 
-class TestLocalCache(unittest.TestCase):
+class TestLocalCache(unittest.IsolatedAsyncioTestCase):
     def generate_random_string(self, length):
         return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
-    def setUp(self):
+    async def asyncSetUp(self):
         """Set up the test environment for the LocalCache tests."""
         cfg = cfg = Config()
         self.cache = LocalCache(cfg)
@@ -26,17 +26,17 @@ class TestLocalCache(unittest.TestCase):
             "ChatGPT is an advanced AI model for conversation",
         ]
         for text in self.example_texts:
-            self.cache.add(text)
+            await self.cache.add(text)
 
         # Add some random strings to test noise
         for _ in range(5):
-            self.cache.add(self.generate_random_string(10))
+            await self.cache.add(self.generate_random_string(10))
 
-    def test_get_relevant(self):
+    async def test_get_relevant(self):
         """Test getting relevant texts from the cache."""
         query = "I'm interested in artificial intelligence and NLP"
         k = 3
-        relevant_texts = self.cache.get_relevant(query, k)
+        relevant_texts = await self.cache.get_relevant(query, k)
 
         print(f"Top {k} relevant texts for the query '{query}':")
         for i, text in enumerate(relevant_texts, start=1):

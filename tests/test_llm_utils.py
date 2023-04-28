@@ -31,7 +31,7 @@ def error_factory(error_instance, error_count, retry_count, warn_user=True):
         @retry_openai_api(
             num_retries=retry_count, backoff_base=0.001, warn_user=warn_user
         )
-        def __call__(self):
+        async def __call__(self):
             self.count += 1
             if self.count <= error_count:
                 raise error_instance
@@ -40,12 +40,13 @@ def error_factory(error_instance, error_count, retry_count, warn_user=True):
     return RaisesError()
 
 
-def test_retry_open_api_no_error(capsys):
+@pytest.mark.asyncio
+async def test_retry_open_api_no_error(capsys):
     @retry_openai_api()
-    def f():
+    async def f():
         return 1
 
-    result = f()
+    result = await f()
     assert result == 1
 
     output = capsys.readouterr()
@@ -53,20 +54,21 @@ def test_retry_open_api_no_error(capsys):
     assert output.err == ""
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "error_count, retry_count, failure",
     [(2, 10, False), (2, 2, False), (10, 2, True), (3, 2, True), (1, 0, True)],
     ids=["passing", "passing_edge", "failing", "failing_edge", "failing_no_retries"],
 )
-def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure):
+async def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure):
     call_count = min(error_count, retry_count) + 1
 
     raises = error_factory(error, error_count, retry_count)
     if failure:
         with pytest.raises(type(error)):
-            raises()
+            await raises()
     else:
-        result = raises()
+        result = await raises()
         assert result == call_count
 
     assert raises.count == call_count
@@ -83,12 +85,13 @@ def test_retry_open_api_passing(capsys, error, error_count, retry_count, failure
         assert output.out == ""
 
 
-def test_retry_open_api_rate_limit_no_warn(capsys):
+@pytest.mark.asyncio
+async def test_retry_open_api_rate_limit_no_warn(capsys):
     error_count = 2
     retry_count = 10
 
     raises = error_factory(RateLimitError, error_count, retry_count, warn_user=False)
-    result = raises()
+    result = await raises()
     call_count = min(error_count, retry_count) + 1
     assert result == call_count
     assert raises.count == call_count
@@ -99,14 +102,15 @@ def test_retry_open_api_rate_limit_no_warn(capsys):
     assert "Please double check" not in output.out
 
 
-def test_retry_openapi_other_api_error(capsys):
+@pytest.mark.asyncio
+async def test_retry_openapi_other_api_error(capsys):
     error_count = 2
     retry_count = 10
 
     raises = error_factory(APIError("Error", http_status=500), error_count, retry_count)
 
     with pytest.raises(APIError):
-        raises()
+        await raises()
     call_count = 1
     assert raises.count == call_count
 
@@ -114,9 +118,10 @@ def test_retry_openapi_other_api_error(capsys):
     assert output.out == ""
 
 
-def test_get_ada_embedding(mock_create_embedding, api_manager):
+@pytest.mark.asyncio
+async def test_get_ada_embedding(mock_create_embedding, api_manager):
     model = "text-embedding-ada-002"
-    embedding = get_ada_embedding("test")
+    embedding = await get_ada_embedding("test")
     mock_create_embedding.assert_called_once_with(
         "test", model="text-embedding-ada-002"
     )

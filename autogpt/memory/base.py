@@ -6,12 +6,12 @@ from autogpt.singleton import AbstractSingleton
 
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
-    def add(self, data):
+    async def add(self, data):
         """Adds to memory"""
         pass
 
     @abc.abstractmethod
-    def get(self, data):
+    async def get(self, data):
         """Gets from memory"""
         pass
 
@@ -21,7 +21,7 @@ class MemoryProviderSingleton(AbstractSingleton):
         pass
 
     @abc.abstractmethod
-    def get_relevant(self, data, num_relevant=5):
+    async def get_relevant(self, data, num_relevant=5):
         """Gets relevant memory for"""
         pass
 

@@ -43,28 +43,28 @@ class PineconeMemory(MemoryProviderSingleton):
             )
         self.index = pinecone.Index(table_name)
 
-    def add(self, data):
-        vector = get_ada_embedding(data)
+    async def add(self, data):
+        vector = await get_ada_embedding(data)
         # no metadata here. We may wish to change that long term.
         self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})])
         _text = f"Inserting data into memory at index: {self.vec_num}:\n data: {data}"
         self.vec_num += 1
         return _text
 
-    def get(self, data):
-        return self.get_relevant(data, 1)
+    async def get(self, data):
+        return await self.get_relevant(data, 1)
 
     def clear(self):
         self.index.delete(deleteAll=True)
         return "Obliviated"
 
-    def get_relevant(self, data, num_relevant=5):
+    async def get_relevant(self, data, num_relevant=5):
         """
         Returns all the data in the memory that is relevant to the given data.
         :param data: The data to compare to.
         :param num_relevant: The number of relevant data to return. Defaults to 5
         """
-        query_embedding = get_ada_embedding(data)
+        query_embedding = await get_ada_embedding(data)
         results = self.index.query(
             query_embedding, top_k=num_relevant, include_metadata=True
         )

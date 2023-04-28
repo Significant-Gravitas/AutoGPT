@@ -60,19 +60,21 @@ def test_init_with_backing_file(LocalCache, config, workspace):
     assert cache_file.read_text() == "{}"
 
 
-def test_add(LocalCache, config, mock_embed_with_ada):
+@pytest.mark.asyncio
+async def test_add(LocalCache, config, mock_embed_with_ada):
     cache = LocalCache(config)
-    cache.add("test")
+    await cache.add("test")
     assert cache.data.texts == ["test"]
     assert cache.data.embeddings.shape == (1, EMBED_DIM)
 
 
-def test_clear(LocalCache, config, mock_embed_with_ada):
+@pytest.mark.asyncio
+async def test_clear(LocalCache, config, mock_embed_with_ada):
     cache = LocalCache(config)
     assert cache.data.texts == []
     assert cache.data.embeddings.shape == (0, EMBED_DIM)
 
-    cache.add("test")
+    await cache.add("test")
     assert cache.data.texts == ["test"]
     assert cache.data.embeddings.shape == (1, EMBED_DIM)
 
@@ -81,30 +83,33 @@ def test_clear(LocalCache, config, mock_embed_with_ada):
     assert cache.data.embeddings.shape == (0, EMBED_DIM)
 
 
-def test_get(LocalCache, config, mock_embed_with_ada):
+@pytest.mark.asyncio
+async def test_get(LocalCache, config, mock_embed_with_ada):
     cache = LocalCache(config)
-    assert cache.get("test") == []
+    assert await cache.get("test") == []
 
-    cache.add("test")
-    assert cache.get("test") == ["test"]
+    await cache.add("test")
+    assert await cache.get("test") == ["test"]
 
 
+@pytest.mark.asyncio
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_get_relevant(LocalCache, config) -> None:
+async def test_get_relevant(LocalCache, config) -> None:
     cache = LocalCache(config)
     text1 = "Sample text 1"
     text2 = "Sample text 2"
-    cache.add(text1)
-    cache.add(text2)
+    await cache.add(text1)
+    await cache.add(text2)
 
-    result = cache.get_relevant(text1, 1)
+    result = await cache.get_relevant(text1, 1)
     assert result == [text1]
 
 
-def test_get_stats(LocalCache, config, mock_embed_with_ada) -> None:
+@pytest.mark.asyncio
+async def test_get_stats(LocalCache, config, mock_embed_with_ada) -> None:
     cache = LocalCache(config)
     text = "Sample text"
-    cache.add(text)
+    await cache.add(text)
     stats = cache.get_stats()
     assert stats == (1, cache.data.embeddings.shape)

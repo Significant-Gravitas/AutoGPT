@@ -12,7 +12,7 @@ from autogpt.logs import logger
 CFG = Config()
 
 
-def prompt_user() -> AIConfig:
+async def prompt_user() -> AIConfig:
     """Prompt the user for input
 
     Returns:
@@ -55,7 +55,7 @@ def prompt_user() -> AIConfig:
 
     else:
         try:
-            return generate_aiconfig_automatic(user_desire)
+            return await generate_aiconfig_automatic(user_desire)
         except Exception as e:
             logger.typewriter_log(
                 "Unable to automatically generate AI Config based on user desire.",
@@ -157,7 +157,7 @@ def generate_aiconfig_manual() -> AIConfig:
     return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
 
-def generate_aiconfig_automatic(user_prompt) -> AIConfig:
+async def generate_aiconfig_automatic(user_prompt) -> AIConfig:
     """Generates an AIConfig object from the given string.
 
     Returns:
@@ -196,7 +196,7 @@ Goals:
             "content": f"Task: '{user_prompt}'\nRespond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n",
         },
     ]
-    output = create_chat_completion(messages, CFG.fast_llm_model)
+    output = await create_chat_completion(messages, CFG.fast_llm_model)
 
     # Debug LLM Output
     logger.debug(f"AI Config Generator Raw Output: {output}")

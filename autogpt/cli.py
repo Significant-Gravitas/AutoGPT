@@ -1,4 +1,6 @@
 """Main script for the autogpt package."""
+import asyncio
+
 import click
 
 
@@ -61,7 +63,7 @@ import click
     help="Installs external dependencies for 3rd party plugins.",
 )
 @click.pass_context
-def main(
+async def main(
     ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
@@ -87,7 +89,7 @@ def main(
     from autogpt.main import run_auto_gpt
 
     if ctx.invoked_subcommand is None:
-        run_auto_gpt(
+        await run_auto_gpt(
             continuous,
             continuous_limit,
             ai_settings,
@@ -106,4 +108,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

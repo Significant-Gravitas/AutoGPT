@@ -33,7 +33,7 @@ CFG = Config()
     '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
 )
 @validate_url
-def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
+async def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -45,7 +45,7 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     """
     driver, text = scrape_text_with_selenium(url)
     add_header(driver)
-    summary_text = summary.summarize_text(url, text, question, driver)
+    summary_text = await summary.summarize_text(url, text, question, driver)
     links = scrape_links_with_selenium(driver, url)
 
     # Limit links to 5

@@ -19,9 +19,10 @@ def image_size(request):
     reason="The image is too big to be put in a cassette for a CI pipeline. We're looking into a solution."
 )
 @requires_api_key("OPENAI_API_KEY")
-def test_dalle(config, workspace, image_size):
+@pytest.mark.asyncio
+async def test_dalle(config, workspace, image_size):
     """Test DALL-E image generation."""
-    generate_and_validate(
+    await generate_and_validate(
         config,
         workspace,
         image_provider="dalle",
@@ -33,13 +34,14 @@ def test_dalle(config, workspace, image_size):
     reason="The image is too big to be put in a cassette for a CI pipeline. We're looking into a solution."
 )
 @requires_api_key("HUGGINGFACE_API_TOKEN")
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "image_model",
     ["CompVis/stable-diffusion-v1-4", "stabilityai/stable-diffusion-2-1"],
 )
-def test_huggingface(config, workspace, image_size, image_model):
+async def test_huggingface(config, workspace, image_size, image_model):
     """Test HuggingFace image generation."""
-    generate_and_validate(
+    await generate_and_validate(
         config,
         workspace,
         image_provider="huggingface",
@@ -48,10 +50,11 @@ def test_huggingface(config, workspace, image_size, image_model):
     )
 
 
+@pytest.mark.asyncio
 @pytest.mark.xfail(reason="SD WebUI call does not work.")
-def test_sd_webui(config, workspace, image_size):
+async def test_sd_webui(config, workspace, image_size):
     """Test SD WebUI image generation."""
-    generate_and_validate(
+    await generate_and_validate(
         config,
         workspace,
         image_provider="sd_webui",
@@ -86,7 +89,8 @@ def lst(txt):
     return Path(txt.split(":")[1].strip())
 
 
-def generate_and_validate(
+@pytest.mark.asyncio
+async def generate_and_validate(
     config,
     workspace,
     image_size,
@@ -99,7 +103,7 @@ def generate_and_validate(
     config.huggingface_image_model = hugging_face_image_model
     prompt = "astronaut riding a horse"
 
-    image_path = lst(generate_image(prompt, image_size, **kwargs))
+    image_path = lst(await generate_image(prompt, image_size, **kwargs))
     assert image_path.exists()
     with Image.open(image_path) as img:
         assert img.size == (image_size, image_size)

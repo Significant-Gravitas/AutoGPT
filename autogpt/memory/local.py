@@ -49,7 +49,7 @@ class LocalCache(MemoryProviderSingleton):
 
         self.data = CacheContent()
 
-    def add(self, text: str):
+    async def add(self, text: str):
         """
         Add text to our list of texts, add embedding as row to our
             embeddings-matrix
@@ -63,7 +63,7 @@ class LocalCache(MemoryProviderSingleton):
             return ""
         self.data.texts.append(text)
 
-        embedding = get_ada_embedding(text)
+        embedding = await get_ada_embedding(text)
 
         vector = np.array(embedding).astype(np.float32)
         vector = vector[np.newaxis, :]
@@ -89,7 +89,7 @@ class LocalCache(MemoryProviderSingleton):
         self.data = CacheContent()
         return "Obliviated"
 
-    def get(self, data: str) -> list[Any] | None:
+    async def get(self, data: str) -> list[Any] | None:
         """
         Gets the data from the memory that is most relevant to the given data.
 
@@ -98,9 +98,9 @@ class LocalCache(MemoryProviderSingleton):
 
         Returns: The most relevant data.
         """
-        return self.get_relevant(data, 1)
+        return await self.get_relevant(data, 1)
 
-    def get_relevant(self, text: str, k: int) -> list[Any]:
+    async def get_relevant(self, text: str, k: int) -> list[Any]:
         """ "
         matrix-vector mult to find score-for-each-row-of-matrix
          get indices for top-k winning scores
@@ -111,7 +111,7 @@ class LocalCache(MemoryProviderSingleton):
 
         Returns: List[str]
         """
-        embedding = get_ada_embedding(text)
+        embedding = await get_ada_embedding(text)
 
         scores = np.dot(self.data.embeddings, embedding)
 

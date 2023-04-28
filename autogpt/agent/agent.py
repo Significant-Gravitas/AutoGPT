@@ -65,7 +65,7 @@ class Agent:
         self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
 
-    def start_interaction_loop(self):
+    async def start_interaction_loop(self):
         # Interaction Loop
         cfg = Config()
         loop_count = 0
@@ -91,7 +91,7 @@ class Agent:
             send_chat_message_to_user("Thinking... \n")
             # Send message to AI, get response
             with Spinner("Thinking... "):
-                assistant_reply = chat_with_ai(
+                assistant_reply = await chat_with_ai(
                     self,
                     self.system_prompt,
                     self.triggering_prompt,
@@ -100,7 +100,9 @@ class Agent:
                     cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
-            assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
+            assistant_reply_json = await fix_json_using_multiple_techniques(
+                assistant_reply
+            )
             for plugin in cfg.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
@@ -163,7 +165,7 @@ class Agent:
                             "",
                         )
                         thoughts = assistant_reply_json.get("thoughts", {})
-                        self_feedback_resp = self.get_self_feedback(
+                        self_feedback_resp = await self.get_self_feedback(
                             thoughts, cfg.fast_llm_model
                         )
                         logger.typewriter_log(
@@ -238,7 +240,7 @@ class Agent:
                     command_name, arguments = plugin.pre_command(
                         command_name, arguments
                     )
-                command_result = execute_command(
+                command_result = await execute_command(
                     self.command_registry,
                     command_name,
                     arguments,
@@ -258,7 +260,7 @@ class Agent:
                 f"\nHuman Feedback: {user_input} "
             )
 
-            self.memory.add(memory_to_add)
+            await self.memory.add(memory_to_add)
 
             # Check if there's a result from the command append it to the message
             # history
@@ -284,7 +286,7 @@ class Agent:
                     )
         return command_args
 
-    def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
+    async def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
         """Generates a feedback response based on the provided thoughts dictionary.
         This method takes in a dictionary of thoughts containing keys such as 'reasoning',
         'plan', 'thoughts', and 'criticism'. It combines these elements into a single
@@ -304,7 +306,7 @@ class Agent:
         thought = thoughts.get("thoughts", "")
         criticism = thoughts.get("criticism", "")
         feedback_thoughts = thought + reasoning + plan + criticism
-        return create_chat_completion(
+        return await create_chat_completion(
             [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
             llm_model,
         )

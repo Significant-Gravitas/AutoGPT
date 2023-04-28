@@ -35,15 +35,17 @@ Additional aspects:
 
 class TestFixJsonUsingMultipleTechniques:
     # Tests that the function successfully fixes and parses a JSON string that is already compliant with both techniques.
-    def test_fix_and_parse_json_happy_path(self):
+    @pytest.mark.asyncio
+    async def test_fix_and_parse_json_happy_path(self):
         # Happy path test case where the JSON string is already compliant with both techniques
         json_string = '{"text": "Hello world", "confidence": 0.9}'
         expected_output = {"text": "Hello world", "confidence": 0.9}
-        assert fix_json_using_multiple_techniques(json_string) == expected_output
+        assert await fix_json_using_multiple_techniques(json_string) == expected_output
 
     # Tests that the function successfully fixes and parses a JSON string that contains only whitespace characters.
     # @requires_api_key("OPEN_API_KEY")
-    def test_fix_and_parse_json_whitespace(self, mocker):
+    @pytest.mark.asyncio
+    async def test_fix_and_parse_json_whitespace(self, mocker):
         # Happy path test case where the JSON string contains only whitespace characters
         json_string = "   \n\t   "
 
@@ -51,18 +53,20 @@ class TestFixJsonUsingMultipleTechniques:
         mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
 
         expected_output = {}
-        assert fix_json_using_multiple_techniques(json_string) == expected_output
+        assert await fix_json_using_multiple_techniques(json_string) == expected_output
 
     # Tests that the function successfully converts a string with arrays to an array
-    def test_fix_and_parse_json_array(self):
+    @pytest.mark.asyncio
+    async def test_fix_and_parse_json_array(self):
         # Happy path test case where the JSON string contains an array of string
         json_string = '[ "Add type hints", "Move docstrings", "Consider using" ]'
         expected_output = ["Add type hints", "Move docstrings", "Consider using"]
-        assert fix_json_using_multiple_techniques(json_string) == expected_output
+        assert await fix_json_using_multiple_techniques(json_string) == expected_output
 
     # Tests that the function returns an empty dictionary when the JSON string is not parseable and cannot be fixed using either technique.
     # @requires_api_key("OPEN_API_KEY")
-    def test_fix_and_parse_json_can_not(self, mocker):
+    @pytest.mark.asyncio
+    async def test_fix_and_parse_json_can_not(self, mocker):
         # Edge case test case where the JSON string is not parseable and cannot be fixed using either technique
         json_string = "This is not a JSON string"
 
@@ -72,13 +76,14 @@ class TestFixJsonUsingMultipleTechniques:
         expected_output = {}
 
         # Use the actual function name in the test
-        result = fix_json_using_multiple_techniques(json_string)
+        result = await fix_json_using_multiple_techniques(json_string)
 
         assert result == expected_output
 
     # Tests that the function returns an empty dictionary when the JSON string is empty.
     # @requires_api_key("OPEN_API_KEY")
-    def test_fix_and_parse_json_empty_string(self, mocker):
+    @pytest.mark.asyncio
+    async def test_fix_and_parse_json_empty_string(self, mocker):
         # Arrange
         json_string = ""
 
@@ -86,29 +91,31 @@ class TestFixJsonUsingMultipleTechniques:
         # mock try_ai_fix to avoid calling the AI model:
         mocker.patch("autogpt.json_utils.json_fix_llm.try_ai_fix", return_value={})
 
-        result = fix_and_parse_json(json_string)
+        result = await fix_and_parse_json(json_string)
 
         # Assert
         assert result == {}
 
     # Tests that the function successfully fixes and parses a JSON string that contains escape characters.
-    def test_fix_and_parse_json_escape_characters(self):
+    @pytest.mark.asyncio
+    async def test_fix_and_parse_json_escape_characters(self):
         # Arrange
         json_string = '{"text": "This is a \\"test\\" string."}'
 
         # Act
-        result = fix_json_using_multiple_techniques(json_string)
+        result = await fix_json_using_multiple_techniques(json_string)
 
         # Assert
         assert result == {"text": 'This is a "test" string.'}
 
     # Tests that the function successfully fixes and parses a JSON string that contains nested objects or arrays.
-    def test_fix_and_parse_json_nested_objects(self):
+    @pytest.mark.asyncio
+    async def test_fix_and_parse_json_nested_objects(self):
         # Arrange
         json_string = '{"person": {"name": "John", "age": 30}, "hobbies": ["reading", "swimming"]}'
 
         # Act
-        result = fix_json_using_multiple_techniques(json_string)
+        result = await fix_json_using_multiple_techniques(json_string)
 
         # Assert
         assert result == {

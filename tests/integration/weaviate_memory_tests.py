@@ -9,7 +9,7 @@ from autogpt.llm_utils import get_ada_embedding
 from autogpt.memory.weaviate import WeaviateMemory
 
 
-class TestWeaviateMemory(unittest.TestCase):
+class TestWeaviateMemory(unittest.IsolatedAsyncioTestCase):
     cfg = None
     client = None
     index = None
@@ -56,17 +56,17 @@ class TestWeaviateMemory(unittest.TestCase):
 
         self.memory = WeaviateMemory(self.cfg)
 
-    def test_add(self):
+    async def test_add(self):
         """Test adding a text to the cache"""
         doc = "You are a Titan name Thanos and you are looking for the Infinity Stones"
-        self.memory.add(doc)
+        await self.memory.add(doc)
         result = self.client.query.get(self.index, ["raw_text"]).do()
         actual = result["data"]["Get"][self.index]
 
         self.assertEqual(len(actual), 1)
         self.assertEqual(actual[0]["raw_text"], doc)
 
-    def test_get(self):
+    async def test_get(self):
         """Test getting a text from the cache"""
         doc = "You are an Avenger and swore to defend the Galaxy from a menace called Thanos"
         # add the document to the cache
@@ -75,24 +75,24 @@ class TestWeaviateMemory(unittest.TestCase):
                 uuid=get_valid_uuid(uuid4()),
                 data_object={"raw_text": doc},
                 class_name=self.index,
-                vector=get_ada_embedding(doc),
+                vector=await get_ada_embedding(doc),
             )
 
             batch.flush()
 
-        actual = self.memory.get(doc)
+        actual = await self.memory.get(doc)
 
         self.assertEqual(len(actual), 1)
         self.assertEqual(actual[0], doc)
 
-    def test_get_stats(self):
+    async def test_get_stats(self):
         """Test getting the stats of the cache"""
         docs = [
             "You are now about to count the number of docs in this index",
             "And then you about to find out if you can count correctly",
         ]
 
-        [self.memory.add(doc) for doc in docs]
+        [await self.memory.add(doc) for doc in docs]
 
         stats = self.memory.get_stats()
 
@@ -100,14 +100,14 @@ class TestWeaviateMemory(unittest.TestCase):
         self.assertTrue("count" in stats)
         self.assertEqual(stats["count"], 2)
 
-    def test_clear(self):
+    async def test_clear(self):
         """Test clearing the cache"""
         docs = [
             "Shame this is the last test for this class",
             "Testing is fun when someone else is doing it",
         ]
 
-        [self.memory.add(doc) for doc in docs]
+        [await self.memory.add(doc) for doc in docs]
 
         self.assertEqual(self.memory.get_stats()["count"], 2)
 

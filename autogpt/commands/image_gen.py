@@ -14,7 +14,7 @@ CFG = Config()
 
 
 @command("generate_image", "Generate Image", '"prompt": "<prompt>"', CFG.image_provider)
-def generate_image(prompt: str, size: int = 256) -> str:
+async def generate_image(prompt: str, size: int = 256) -> str:
     """Generate an image from a prompt.
 
     Args:
@@ -28,7 +28,7 @@ def generate_image(prompt: str, size: int = 256) -> str:
 
     # DALL-E
     if CFG.image_provider == "dalle":
-        return generate_image_with_dalle(prompt, filename, size)
+        return await generate_image_with_dalle(prompt, filename, size)
     # HuggingFace
     elif CFG.image_provider == "huggingface":
         return generate_image_with_hf(prompt, filename)
@@ -76,7 +76,7 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
     return f"Saved to disk:{filename}"
 
 
-def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
+async def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
     """Generate an image with DALL-E.
 
     Args:
@@ -96,7 +96,7 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
         )
         size = closest
 
-    response = openai.Image.create(
+    response = await openai.Image.acreate(
         prompt=prompt,
         n=1,
         size=f"{size}x{size}",

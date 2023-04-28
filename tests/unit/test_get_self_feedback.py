@@ -1,9 +1,12 @@
+import pytest
+
 from autogpt.agent.agent import Agent
 from autogpt.config import AIConfig
 from autogpt.llm_utils import create_chat_completion
 
 
-def test_get_self_feedback(mocker):
+@pytest.mark.asyncio
+async def test_get_self_feedback(mocker):
     # Define a sample thoughts dictionary
     thoughts = {
         "reasoning": "Sample reasoning.",
@@ -30,7 +33,7 @@ def test_get_self_feedback(mocker):
     agent_mock.config = AIConfig()
 
     # Call the get_self_feedback method
-    feedback = Agent.get_self_feedback(
+    feedback = await Agent.get_self_feedback(
         agent_mock,
         thoughts,
         "gpt-3.5-turbo",

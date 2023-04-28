@@ -79,7 +79,7 @@ def build_default_prompt_generator() -> PromptGenerator:
     return prompt_generator
 
 
-def construct_main_ai_config() -> AIConfig:
+async def construct_main_ai_config() -> AIConfig:
     """Construct the prompt for the AI to respond to
 
     Returns:
@@ -114,7 +114,7 @@ Continue ({CFG.authorise_key}/{CFG.exit_key}): """
             config = AIConfig()
 
     if not config.ai_name:
-        config = prompt_user()
+        config = await prompt_user()
         config.save(CFG.ai_settings_file)
 
     # set the total api budget
