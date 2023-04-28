@@ -113,12 +113,6 @@ def execute_shell(command_line: str) -> str:
         str: The output of the command
     """
 
-    if not CFG.execute_local_commands:
-        return (
-            "You are not allowed to run local shell commands. To execute"
-            " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-            "in your config. Do not attempt to bypass the restriction."
-        )
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
     if not current_dir.is_relative_to(CFG.workspace_path):
@@ -154,6 +148,7 @@ def execute_shell_popen(command_line) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
+
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
     if CFG.workspace_path not in current_dir:
