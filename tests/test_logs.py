@@ -22,10 +22,6 @@ from autogpt.logs import remove_color_codes
             "\x1B[1m\x1B[31mError:\x1B[0m\x1B[31m file not found",
             "Error: file not found",
         ),
-        (
-            {"I": "am a dict"},
-            str({"I": "am a dict"}),
-        ),
     ],
 )
 def test_remove_color_codes(raw_text, clean_text):

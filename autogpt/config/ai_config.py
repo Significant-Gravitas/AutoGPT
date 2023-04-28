@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import platform
 from pathlib import Path
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 import distro
 import yaml
@@ -79,10 +79,29 @@ class AIConfig:
 
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
+        ai_goals = config_params.get("ai_role", "")
         ai_goals = config_params.get("ai_goals", [])
+        ai_goals = list(map(AIConfig.sanitize_input, ai_goals))
         api_budget = config_params.get("api_budget", 0.0)
         # type: Type[AIConfig]
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+
+    @staticmethod
+    def sanitize_input(input: Any) -> str:
+        """
+        Try to return a string, in the format that the user intended.
+
+        Parameters:
+            goal: The input to sanitize (can be a string, dict, or other object)
+
+        Returns:
+            A string
+        """
+        return (
+            " ".join(f"{k}: {v}" for k, v in input.items())
+            if isinstance(input, dict)
+            else str(input)
+        )
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
