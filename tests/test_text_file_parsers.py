@@ -9,7 +9,7 @@ import yaml
 from bs4 import BeautifulSoup
 from PyPDF2 import PdfWriter
 
-from autogpt.commands.file_operations_utils import read_textual_file
+from autogpt.commands.file_operations_utils import read_textual_file, is_file_binary_fn
 
 plain_text_str = "Hello, world!"
 
@@ -67,6 +67,7 @@ def mock_pdf_file():
         f.write(b"startxref\n")
         f.write(b"380\n")
         f.write(b"%%EOF\n")
+        f.write(b"\x00")
     return f.name
 
 
@@ -141,9 +142,13 @@ respective_file_creation_functions = {
 
 class TestConfig(TestCase):
     def test_parsers(self):
+        binary_files_extensions = [".pdf", ".doc", ".docx"]
         for (
             file_extension,
             c_file_creator,
         ) in respective_file_creation_functions.items():
-            loaded_text = read_textual_file(c_file_creator())
+            created_filepath = c_file_creator()
+            loaded_text = read_textual_file(created_filepath)
             self.assertIn(plain_text_str, loaded_text)
+            should_be_binary = file_extension in binary_files_extensions
+            self.assertEqual(should_be_binary, is_file_binary_fn(created_filepath))
