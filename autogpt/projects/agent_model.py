@@ -31,7 +31,14 @@ Methods of `AgentConfig` class:
 """
 
 
+import os
+from pathlib import Path
+from autogpt.projects.projects_broker import ProjectsBroker
 from typing import Optional, Type, List
+import yaml
+
+# Soon this will go in a folder where it remembers more stuff about the run(s)
+SAVE_FILE = str(Path(os.getcwd()) / "agent_settings.yaml")
 
 class AgentModel(): 
     """
@@ -144,6 +151,8 @@ class AgentModel():
             cls (object): An instance of given cls object
         """
 
+
+
         try:
             with open(config_file, encoding="utf-8") as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
@@ -151,13 +160,13 @@ class AgentModel():
             ai_role = config_params.get("ai_role", "")
             ai_goals = config_params.get("ai_goals", [])
             api_budget = config_params.get("api_budget", 0.0)
-            AgentModel(ai_name, ai_role, ai_goals, api_budget)
+            agent =  AgentModel(ai_name, ai_role, ai_goals, api_budget)
             # type: Type[AIConfig]
 
-            Project.create(AgentModel)
+            ProjectsBroker.create(agent)
 
             # Move the file to the destination path
-            shutil.move(source_file, destination_path)
+            #shutil.move(source_file, destination_path)
 
         except FileNotFoundError:
             ProjectsBroker.load()

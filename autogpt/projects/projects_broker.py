@@ -32,6 +32,7 @@ import os
 from pathlib import Path
 from typing import Optional, Type, List
 import shutil
+import re
 
 import yaml
 
@@ -157,54 +158,32 @@ class ProjectsBroker(AbstractSingleton):
         
     def create_project(self, 
                     project_id : int,
-                    api_budget :float,  
-                    agent_name : str, 
-                    agent_role : str, 
-                    agent_goals : list, 
-                    prompt_generator : str, 
-                    command_registry : str ,
-                    overwrite : bool = False,
-                    project_name : str = '' ) -> bool:
+                    lead_agent : AgentModel,
+                    api_budget : float,
+                    project_name : str = '',
+                    ) -> Project:
         """
         Creates a new project with the specified parameters and adds it to the list of projects.
 
         Args:
             project_id (int): The project ID.
+            lead_agent : AgentModel
             api_budget (float): The maximum dollar value for API calls (0.0 means infinite).
-            agent_name (str): The AI name.
-            agent_role (str): The AI role.
-            agent_goals (list): The AI goals.
-            prompt_generator (str): The prompt generator instance.
-            command_registry (str): The command registry instance.
-            overwrite (bool, optional): Overwrite the project if it exists. Defaults to False.
             project_name (str, optional): The name of the project. Defaults to ''.
 
         Returns:
             bool: True if the project is successfully created, False otherwise.
         """
-        project_name = agent_name # TODO : Allow to give a project name :-)
-
+        project_name = lead_agent.agent_name # TODO : Allow to give a project MIUST BE ALPHANUMERICAL + SPACE
+        
         number_of_config = len(self._projects)
         if project_id is None and number_of_config < MAX_AI_CONFIG:
             project_id = number_of_config
 
         if project_id > MAX_AI_CONFIG:
             raise ValueError(f"set_config: Value {project_id} not expected")
-
-        # Check for duplicate config names
-        for idx, config in enumerate(self._projects):
-            if config.project_name == project_name and idx != project_id:
-                print(f"Config with the name '{project_name}' already exists")
-                return False
-
-        lead_agent = AgentModel(
-            agent_name=agent_name,
-            agent_role=agent_role,
-            agent_goals=agent_goals,
-            prompt_generator=prompt_generator,
-            command_registry=command_registry)
         
-        project = Project(project_name= project_name , api_budget=api_budget,lead_agent= lead_agent )
+        project = Project(project_name= project_name , api_budget = api_budget,lead_agent= lead_agent)
         
         if project_id >= number_of_config:
             self._projects.append(project)
@@ -216,8 +195,24 @@ class ProjectsBroker(AbstractSingleton):
         self.set_project_number(new_project_id=project_id)
         self._save()
         
-        return True
+        return lead_agent
            
+    
+    @staticmethod
+    def project_dir_name_formater(project_name : str ) -> str :
+        return re.sub(r'[^a-zA-Z0-9]', '', project_name).lower()
+
+    @staticmethod
+    def project_dir_create(cls, project_position : str,  project_name) -> str : 
+        project_dirname = cls.project_dir_name_formater(project_name)
+        # Check for duplicate config names
+        for idx, config in enumerate(cls._projects):
+            if config.project_name == project_name and idx != project_position:
+                project_dirname = project_dirname + '_1'
+
+        ## mkdir
+
+
     def set_project_number(self, new_project_id: int) -> bool:
         """
         Sets the current project number.
@@ -291,4 +286,6 @@ class ProjectsBroker(AbstractSingleton):
         """
 
         return self._projects
+    
+
     
