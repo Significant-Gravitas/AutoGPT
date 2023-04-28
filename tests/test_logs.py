@@ -38,16 +38,16 @@ def test_remove_color_codes(raw_text, clean_text):
 # Test when total_budget is greater than 0
 def test_remaining_budget_description_positive_budget():
     with patch(
-        "autogpt.api_manager.ApiManager.get_total_budget", return_value=100
-    ), patch("autogpt.api_manager.ApiManager.get_total_cost", return_value=50):
+        "autogpt.llm.api_manager.ApiManager.get_total_budget", return_value=100
+    ), patch("autogpt.llm.api_manager.ApiManager.get_total_cost", return_value=50):
         assert _remaining_budget_description() == "$50 remaining from $100."
 
 
 # Test when total_budget is 0
 def test_remaining_budget_description_zero_budget():
     with patch(
-        "autogpt.api_manager.ApiManager.get_total_budget", return_value=0
-    ), patch("autogpt.api_manager.ApiManager.get_total_cost", return_value=0):
+        "autogpt.llm.api_manager.ApiManager.get_total_budget", return_value=0
+    ), patch("autogpt.llm.api_manager.ApiManager.get_total_cost", return_value=0):
         assert _remaining_budget_description() == "$0 remaining from $0."
 
 
@@ -62,8 +62,8 @@ def test_print_assistant_thoughts_budget(capfd):
     }
 
     with patch(
-        "autogpt.api_manager.ApiManager.get_total_budget", return_value=100
-    ), patch("autogpt.api_manager.ApiManager.get_total_cost", return_value=50):
+        "autogpt.llm.api_manager.ApiManager.get_total_budget", return_value=100
+    ), patch("autogpt.llm.api_manager.ApiManager.get_total_cost", return_value=50):
         print_assistant_thoughts(
             "AI_NAME", assistant_reply_json_valid, speak_mode=False
         )
@@ -84,8 +84,8 @@ def test_print_assistant_thoughts_no_budget(capfd):
     }
 
     with patch(
-        "autogpt.api_manager.ApiManager.get_total_budget", return_value=0
-    ), patch("autogpt.api_manager.ApiManager.get_total_cost", return_value=50):
+        "autogpt.llm.api_manager.ApiManager.get_total_budget", return_value=0
+    ), patch("autogpt.llm.api_manager.ApiManager.get_total_cost", return_value=50):
         print_assistant_thoughts(
             "AI_NAME", assistant_reply_json_valid, speak_mode=False
         )
