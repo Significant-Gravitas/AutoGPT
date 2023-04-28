@@ -1,0 +1,103 @@
+interactions:
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "\nYour
+      task is to devise up to 5 highly effective goals and an appropriate role-based
+      name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned
+      with the successful completion of its assigned task.\n\nThe user will provide
+      the task, you will provide only the output in the exact format specified below
+      with no explanation or conversation.\n\nExample input:\nHelp me with marketing
+      my business\n\nExample output:\nName: CMOGPT\nDescription: a professional digital
+      marketer AI that assists Solopreneurs in growing their businesses by providing
+      world-class expertise in solving marketing problems for SaaS, content products,
+      agencies, and more.\nGoals:\n- Engage in effective problem-solving, prioritization,
+      planning, and supporting execution to address your marketing needs as your virtual
+      Chief Marketing Officer.\n\n- Provide specific, actionable, and concise advice
+      to help you make informed decisions without the use of platitudes or overly
+      wordy explanations.\n\n- Identify and prioritize quick wins and cost-effective
+      campaigns that maximize results with minimal time and budget investment.\n\n-
+      Proactively take the lead in guiding you and offering suggestions when faced
+      with unclear information or uncertainty to ensure your marketing strategy remains
+      on track.\n"}, {"role": "user", "content": "Task: ''Help me create a rock opera
+      about cybernetic giraffes''\nRespond only with the output in the exact format
+      specified in the system prompt, with no explanation or conversation.\n"}], "temperature":
+      0.0, "max_tokens": null}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '1625'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA4yUQW/cRgyF7/0VxJxlw05i19UtaNq4LdoYqYGiqIuAO6Ik1qOhQnLWXhv+78Vo
+        5XUb9NCLgNVyHh8/vtFj4C60IY7ocZrT0ddvL8vt9POvP17/XoZrfGeX8fyn70b5/uPZbhOaIJu/
+        KPp64jjKNCdylhyaEJXQqQvt6fnFq/OL8zffXDRhko5SaMMw+9Hr47MjL7qRo5PXJ6ehCcVwoNA+
+        hlllmv2Tyy1lC+2rizdNeNF+eX963gQXx3R4dXZy8tSEOApHstD+8RgmsmdZlUShDWjG5pi9mpTs
+        lOsAv+BELXz8cPX+6vomvyOLynNt1wJmePsDLPPwliBKtpKqAPiIDjZTZEz8QAacYaQ0cx4A1dnc
+        AHMHUzGOjNlgo/U/H4kVSubPhWDLxpINXCBxT8erCWDbS/ccMaUddGQ8ZOpq4X6G2s5HWq1JBulB
+        Jd6CzKRoDcwqW+5qR7qfSR2Gwh3mSIsrK/MsWqdQKcMoxRc1ys5K9Wwks+Ob/F4wWXuTj+BbSQk3
+        ougEd+wj7KRUOx1tKckMCHVNlFJtaS66S5xpjyni7EXJ9j3MqNqQHuJuQ5rJOcLAin1Pe2YLKQP2
+        ZzDPPvc0G0g75WjNUrxlK5iq2WrzQ9+TvizMyjCQ+QK5FvdE3QYrpj2+/9CTLSmmVCF0JS5sXYCy
+        FV3HqQdfWNdlUR5w4Dw0lSCpI+flV9WjSarIskclk4zZV7OXlOaFI5rRtEkECI6panTghFOFdAhQ
+        A8Z5IK0+o4uuftdsqMHdKBAxr0HbSdE1YAeM+/rEW1JAGHkYjz4XTOw7mEl70akmZHV3tSSI/ldw
+        lEZCNUxL0T/QrVFqDndjjU2lHGWqojuQjTnGtG7/S9Q9Zzyso9JGcC0EE5qTzkwHx7+J3v4rnPVr
+        Ik5fbmzJWOFUnw8PgCold8BuoJQIjRpIVGMwLGGWesdhoo6x3iuyQ91zZHwkhQn1lryeiCPmTGm5
+        10oYR0C4qyixdEzPKAfKtFwnuo/sNFH24/DUhJ4z2/hJCU1yaIO5zKEJnDu6D+3J059PX/0NAAD/
+        /wMAwsfSC6wFAAA=
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bef74f55aab3a85-FRA
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 28 Apr 2023 12:55:13 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-2jkzdbkchpp265b5n8tseh39
+      openai-processing-ms:
+      - '15401'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '89617'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 254ms
+      x-request-id:
+      - 029d7e0a18a763cfe772ebc43336688e
+    status:
+      code: 200
+      message: OK
+version: 1
