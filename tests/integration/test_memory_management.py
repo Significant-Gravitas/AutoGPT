@@ -1,33 +1,35 @@
+import json
+
 import pytest
 
-from autogpt.chat import save_memory_trimmed_from_context_window
 from autogpt.config import Config
 from autogpt.memory import get_memory
+from autogpt.memory_management.store_memory import (
+    save_memory_trimmed_from_context_window,
+)
 from tests.utils import requires_api_key
 
 
 @pytest.fixture
 def message_history_fixture():
-    test = """{
-    \"thoughts\": {
-        \"text\": \"thoughts\",
-        \"reasoning\": \"reasoning\",
-        \"plan\": \"plan\",
-        \"criticism\": \"criticism\",
-        \"speak\": \"speak\"
-    },
-    \"command\": {
-        \"name\": \"google\",
-        \"args\": {
-            \"query\": \"google_query\"
-        }
+    assistant_reply = {
+        "thoughts": {
+            "text": "thoughts",
+            "reasoning": "reasoning",
+            "plan": "plan",
+            "criticism": "criticism",
+            "speak": "speak",
+        },
+        "command": {"name": "google", "args": {"query": "google_query"}},
     }
-}"""
-    return [{"content": test}, {"content": "Command Result: Important Information."}]
+    return [
+        {"content": json.dumps(assistant_reply, indent=4)},
+        {"content": "Command Result: Important Information."},
+    ]
 
 
 @pytest.fixture
-def expected_permanent_memory():
+def expected_permanent_memory() -> str:
     return """Assistant Reply: {
     "thoughts": {
         "text": "thoughts",

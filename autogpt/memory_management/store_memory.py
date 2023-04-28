@@ -1,6 +1,6 @@
 from autogpt.json_utils.utilities import (
     LLM_DEFAULT_RESPONSE_FORMAT,
-    is_string_a_valid_json,
+    is_string_valid_json,
 )
 from autogpt.logs import logger
 
@@ -24,7 +24,7 @@ def save_memory_trimmed_from_context_window(
 ):
     while next_message_to_add_index >= 0:
         message_content = full_message_history[next_message_to_add_index]["content"]
-        if is_string_a_valid_json(message_content, LLM_DEFAULT_RESPONSE_FORMAT):
+        if is_string_valid_json(message_content, LLM_DEFAULT_RESPONSE_FORMAT):
             next_message = full_message_history[next_message_to_add_index + 1]
             memory_to_add = format_memory(message_content, next_message["content"])
             logger.debug(f"Storing the following memory: {memory_to_add}")
