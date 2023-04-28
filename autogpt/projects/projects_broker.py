@@ -29,51 +29,82 @@ Dependencies:
 """
 from __future__ import annotations
 import os
-from pathlib import Path
-from typing import Optional, Type, List
 import shutil
 import re
-
 import yaml
-
-from autogpt.prompts.generator import PromptGenerator
-#from autogpt.projects.project import Project
-#from autogpt.projects.agent_model import AgentModel
 from autogpt.singleton import AbstractSingleton
+from pathlib import Path
+from typing import Optional, Type, List
+from autogpt.prompts.generator import PromptGenerator
 
+try:
+    from autogpt.projects.project import Project
+    from autogpt.projects.agent_model import AgentModel
+except ImportError as e:
+    pass
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 # @TODO REMOVE SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
-MAX_AI_CONFIG = 5
-
+MAX_NB_PROJECT = 5
 
 class ProjectsBroker(AbstractSingleton):   
     """
-    A class object that contains the configuration information for the AI
+    A singleton class that manages the configuration settings for AI projects.
+
+    This class contains the ProjectsBroker object, which can be used to create, manage, and save configurations for AI projects. It provides methods to create a new project, set the current project, get the current project, get all the projects, and get a specific project instance. The class depends on the Project and AgentConfig class objects from the autogpt.project module and the AbstractSingleton class from the autogpt.singleton module.
 
     Attributes:
-        __current_project (int): The number of the current project from 0 to 4.
-        __projects (list): A list of Dictionary (projects) :
-            {"agent_name": agent_name, 
-            "agent_role": agent_role, 
-            "agent_goals": agent_goals, 
-            "prompt_generator": prompt_generator,
-            "command_registry": command_registry 
-            api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
-            })
-        __version (str): Version of the app
+        SAVE_FILE (str): The path to the file where the configuration settings will be saved.
+        MAX_NB_PROJECT (int): The maximum number of AI configurations allowed.
+        __current_project_id (int): The number of the current project from 0 to 4.
+        __projects (list): A list of dictionaries containing project information, such as the lead agent, project budget, and prompt generator.
+        __version (str): Version of the app.
         config_file (str): The path to the config yaml file.
+
+    Methods:
+        __init__(self, project_number: int = -1, config_file: str = None) -> None:
+            Initializes a ProjectsBroker instance with the specified project number and config file.
+
+        load(self, config_file: str = '') -> list:
+            Loads the projects from the specified YAML file and returns a list of Project instances containing the project parameters.
+
+        _save(self, project_position: int = -1) -> None:
+            Saves the current state of the ProjectsBroker to the configuration file.
+
+        create_project(self, project_id: int, lead_agent: AgentModel, api_budget: float, project_name: str = '') -> AgentModel:
+            Creates a new project with the specified parameters and adds it to the list of projects.
+
+        project_dir_name_formater(project_name: str) -> str:
+            Formats a project name as a directory name.
+
+        project_dir_create(cls, project_position: str,  project_name: str) -> str:
+            Creates a directory for a project.
+
+        set_project_number(self, new_project_id: int) -> bool:
+            Sets the current project number.
+
+        get_current_project_id(self) -> int:
+            Gets the current project number.
+
+        get_current_project(self) -> Project:
+            Gets the current project instance.
+
+        get_project(self, project_number: int) -> AgentModel:
+            Gets the specified project instance.
+
+        get_projects(self) -> list:
+            Gets the list of all projects.
     """
 
     def __init__(self, project_number: int = -1, config_file: str = None) -> None:
         """
-    Initializes an ProjectConfigBroker instance with the specified project number and config file.
+        Initializes a ProjectConfigBroker instance with the specified project number and config file.
 
-    Args:
-        project_number (int, optional): The project number to be set as the current project. Defaults to -1.
-        config_file (str, optional): The path to the config yaml file. Defaults to None.
-    """
-        self.config_file = config_file or SAVE_FILE
+        Args:
+            project_number (int, optional): The project number to be set as the current project. Defaults to -1.
+            config_file (str, optional): The path to the config yaml file. Defaults to None.
+        """
+        self.config_file = config_file 
         self._current_project_id = project_number
         self.load(self.config_file)
         if 0 <= project_number <= len(self._projects):
@@ -89,9 +120,12 @@ class ProjectsBroker(AbstractSingleton):
 
         Args:
             config_file (str): The path to the config yaml file.
-        
+
         Returns:
             list: A list of Project instances containing the project parameters for each entry.
+
+        Raises:
+            FileNotFoundError: If the specified config file does not exist.
         """
         
         if not os.path.exists(config_file):
@@ -188,21 +222,24 @@ class ProjectsBroker(AbstractSingleton):
 
         Args:
             project_id (int): The project ID.
-            lead_agent : AgentModel
+            lead_agent : AgentModel: The lead agent for the project.
             api_budget (float): The maximum dollar value for API calls (0.0 means infinite).
             project_name (str, optional): The name of the project. Defaults to ''.
 
         Returns:
-            bool: True if the project is successfully created, False otherwise.
+            AgentModel: The lead agent instance for the new project.
+
+        Raises:
+            ValueError: If the project_id is greater than the maximum number of projects allowed.
         """
         project_name = lead_agent.agent_name # TODO : Allow to give a project MIUST BE ALPHANUMERICAL + SPACE
         
 
         number_of_config = len(self._projects)
-        if project_id is None and number_of_config < MAX_AI_CONFIG:
+        if project_id is None and number_of_config < MAX_NB_PROJECT:
             project_id = number_of_config
 
-        if project_id > MAX_AI_CONFIG:
+        if project_id > MAX_NB_PROJECT:
             raise ValueError(f"set_config: Value {project_id} not expected")
         
         project = Project(project_name= project_name , api_budget = api_budget,lead_agent= lead_agent)

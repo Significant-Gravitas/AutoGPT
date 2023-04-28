@@ -28,8 +28,11 @@ Methods:
 """
 
 from typing import Optional, Type, List
-from autogpt.projects.agent_model import AgentModel
-from autogpt.projects.projects_broker import ProjectsBroker
+try:
+    from autogpt.projects.agent_model import AgentModel
+    from autogpt.projects.projects_broker import ProjectsBroker
+except ImportError as e:
+    pass
 
 class Project:
     """
@@ -37,17 +40,34 @@ class Project:
 
     Attributes:
         project_name (str): The name of the project.
-        api_budget (float): The budget allocated for using the OpenAI API.
-        lead_agent (AgentConfig): The lead agent for the project.
-        delegated_agents (List[AgentConfig]): A list of delegated agents for the project.
+        project_budget (float): The budget allocated for using the OpenAI API.
+        lead_agent (AgentModel): The lead agent for the project.
+        delegated_agents_list (List[AgentModel]): A list of delegated agents for the project.
+        version (str): The version of the project.
+        project_memory (Optional[str]): The memory used by the project.
+        project_working_directory (Optional[str]): The working directory of the project.
+        project_env (Optional[str]): The environment of the project.
+        project_log_activity (Optional[str]): The log activity of the project.
+        project_log_env (Optional[str]): The log environment of the project.
+        team_name (Optional[str]): The name of the team.
 
     Methods:
-        __init__(self, project_name: str, api_budget: float, lead_agent: AgentConfig, delegated_agents: List[AgentConfig] = [])
+        __init__(self, project_name: str, project_budget: float, lead_agent: AgentModel,
+                 delegated_agents_list: List[AgentModel] = [], version: str = "0.0.0",
+                 project_memory: Optional[str] = None, project_working_directory: Optional[str] = None,
+                 project_env: Optional[str] = None, project_log_activity: Optional[str] = None,
+                 project_log_env: Optional[str] = None, team_name: Optional[str] = None) -> None
             Initializes a new Project object with the given parameters.
-        __str__(self) -> str
-            Returns a string representation of the Project object.
-        __toDict__(self) -> dict
-            Returns a dictionary representation of the Project object.
+        load(cls, config_params: dict) -> "Project"
+            Loads a portion of the configuration parameters and returns a Project instance.
+        save(self, is_creation: bool = False, creation_position: int = -1) -> dict
+            Saves the Project object as a dictionary representation.
+        get_lead(self) -> AgentModel
+            Returns the lead agent of the project.
+        get_delegated_agents_list(self) -> List[AgentModel]
+            Returns the list of delegated agents for the project.
+        delete_delegated_agents(self, position: int) -> bool
+            Deletes the delegated agent at the given position and returns True if successful.
     """
     def __init__(self, project_name: str, 
                  project_budget: float, 
@@ -61,13 +81,20 @@ class Project:
                  project_log_env: Optional[str] = None, 
                  team_name: Optional[str] = None):    
         """
-        Initializes the Project class with the given attributes.
+        Initializes a new Project object with the given parameters.
 
         Args:
             project_name (str): The name of the project.
-            api_budget (float): The API budget for the project.
-            lead_agent (AgentConfig): The lead agent configuration.
-            delegated_agents (List[AgentConfig], optional): A list of delegated agent configurations. Defaults to an empty list.
+            project_budget (float): The budget allocated for using the OpenAI API.
+            lead_agent (AgentModel): The lead agent for the project.
+            delegated_agents_list (List[AgentModel], optional): A list of delegated agents for the project. Defaults to an empty list.
+            version (str, optional): The version of the project. Defaults to "0.0.0".
+            project_memory (str, optional): The memory used by the project. Defaults to None.
+            project_working_directory (str, optional): The working directory of the project. Defaults to None.
+            project_env (str, optional): The environment of the project. Defaults to None.
+            project_log_activity (str, optional): The log activity of the project. Defaults to None.
+            project_log_env (str, optional): The log environment of the project. Defaults to None.
+            team_name (str, optional): The name of the team. Defaults to None.
         """
         self.version = version
         self.project_name = project_name
@@ -179,6 +206,10 @@ class Project:
         """
         Saves the Project object as a dictionary representation.
 
+        Args:
+            is_creation (bool, optional): Whether this is a new project creation. Defaults to False.
+            creation_position (int, optional): The position of the new project. Defaults to -1.
+
         Returns:
             project_dict (dict): A dictionary representation of the Project object.
         """
@@ -201,12 +232,33 @@ class Project:
     
 
     def get_lead(self) -> AgentModel:
+        """
+        Returns the lead agent of the project.
+
+        Returns:
+            lead_agent (AgentModel): The lead agent of the project.
+        """
         return  self.lead_agent
     
     def get_delegated_agents_list(self) -> list[AgentModel] : 
+        """
+        Returns the list of delegated agents for the project.
+
+        Returns:
+            delegated_agents_list (List[AgentModel]): The list of delegated agents for the project.
+        """
         return  self.delegated_agents_list
     
     def delete_delegated_agents(self, position = int) -> bool: 
+        """
+        Deletes the delegated agent at the given position and returns True if successful.
+
+        Args:
+            position (int): The position of the delegated agent to be deleted.
+
+        Returns:
+            success (bool): True if the delegated agent was successfully deleted, False otherwise.
+        """
         if 0 <= position <= len(self.delegated_agents_list) :
             return  False
         else : 

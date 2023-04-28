@@ -48,7 +48,7 @@ from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
 CFG = Config()
-MAX_AI_CONFIG = 5
+MAX_NB_PROJECT = 5
 
 DEFAULT_TRIGGERING_PROMPT = (
     "Determine which next command to use, and respond using the format specified above:"
@@ -216,7 +216,7 @@ def construct_main_project() -> ProjectsBroker:
         project_number = get_ai_project_index(number_of_project)
 
     if project_number == -1:
-        if number_of_project < MAX_AI_CONFIG:
+        if number_of_project < MAX_NB_PROJECT:
             project_number = number_of_project
         else:
             project_number = prompt_for_replacing_project(number_of_project)

@@ -20,10 +20,14 @@ Dependencies:
 
 
 import os
-from pathlib import Path
-from autogpt.projects.projects_broker import ProjectsBroker
-from typing import Optional, Type, List
 import yaml
+from pathlib import Path
+from typing import Optional, Type, List
+try :
+    from autogpt.projects.agent_model import AgentModel
+    from autogpt.projects.projects_broker import ProjectsBroker
+except ImportError as e:
+    pass
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 # @TODO SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
@@ -32,21 +36,36 @@ class AgentModel():
     """
     A class representing the configuration settings for an AI agent.
 
+    Attributes:
+        agent_name (str): The name of the agent.
+        agent_goals (List[str]): A list of the agent's goals.
+        agent_role (str): The role of the agent.
+        agent_model (Optional[str]): The name of the agent's model, if applicable.
+        agent_model_type (Optional[str]): The type of the agent's model, if applicable.
+        team_name (Optional[str]): The name of the team that the agent belongs to, if applicable.
+        prompt_generator (Optional[Any]): An instance of the `PromptGenerator` class used to generate prompts for the user.
+        command_registry (Optional[Any]): An instance of the `CommandRegistry` class used to manage the available commands for the agent.
 
-    Attributes of `AgentConfig` class:
-    - agent_name (str): The name of the agent.
-    - agent_role (str): The role of the agent.
-    - agent_goals (List): A list of agent goals.
-    - agent_model (Optional[str]): The agent model name, if applicable.
-    - agent_model_type (Optional[str]): The agent model type, if applicable.
-    - prompt_generator (Optional[Any]): An instance of the `PromptGenerator` class used to generate prompts for the user.
-    - command_registry (Optional[Any]): An instance of the `CommandRegistry` class used to manage the available commands for the agent.
+    Methods:
+        __init__(self, agent_name: str, agent_goals: List[str], agent_role: str, agent_model: Optional[str] = None,
+        agent_model_type: Optional[str] = None, team_name: Optional[str] = None,
+        prompt_generator: Optional[Any] = None, command_registry: Optional[Any] = None) -> None
+            Initializes the `AgentModel` instance with the given attributes.
 
-    Methods of `AgentConfig` class:
-    - __init__(self, agent_name: str, agent_role: str, agent_goals: List, agent_model: Optional[str] = None,
-    agent_model_type: Optional[str] = None, prompt_generator: Optional[Any] = None, command_registry: Optional[Any] = None)
-    Initializes the `AgentConfig` instance with the given attributes.
+        load_agent(cls, agent_data: dict) -> "AgentModel":
+            Loads agent data from a dictionary and returns an `AgentModel` instance.
 
+        save(self) -> dict:
+            Saves the `AgentModel` object as a dictionary representation.
+
+        load(config_file: str = '') -> "AgentModel":  
+            DEPRECATED - THIS IS TO MAINTAIN BACKWARD COMPATIBILITY
+            Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
+            yaml file if yaml file exists, else returns class with no parameters.
+            Parameters:
+               config_file (int): The path to the config yaml file.
+            Returns:
+                cls (object): An instance of the `AgentModel` class.
     """
         
     def __init__(self, 
@@ -60,16 +79,17 @@ class AgentModel():
                 command_registry =  None
                 ) -> None:
         """
-        Initializes the AgentConfig class with the given attributes.
+        Initializes the AgentModel instance with the given attributes.
 
         Args:
             agent_name (str): The name of the agent.
+            agent_goals (List[str]): A list of the agent's goals.
             agent_role (str): The role of the agent.
-            agent_goals (List): A list of agent goals.
-            agent_model (Optional[str], optional): The agent model name, if applicable. Defaults to None.
-            agent_model_type (Optional[str], optional): The agent model type, if applicable. Defaults to None.
-            prompt_generator (Any, optional): The prompt generator instance. Defaults to None.
-            command_registry (Any, optional): The command registry instance. Defaults to None.
+            agent_model (Optional[str], optional): The name of the agent's model, if applicable. Defaults to None.
+            agent_model_type (Optional[str], optional): The type of the agent's model, if applicable. Defaults to None.
+            team_name (Optional[str], optional): The name of the team that the agent belongs to, if applicable. Defaults to None.
+            prompt_generator (Optional[Any], optional): An instance of the `PromptGenerator` class used to generate prompts for the user. Defaults to None.
+            command_registry (Optional[Any], optional): An instance of the `CommandRegistry` class used to manage the available commands for the agent. Defaults to None.
         """
         self.agent_name = agent_name
         self.agent_goals = agent_goals
@@ -81,15 +101,15 @@ class AgentModel():
         self.command_registry= command_registry
 
     @classmethod
-    def load(cls, agent_data: dict) -> "AgentModel":
+    def load_agent(cls, agent_data: dict) -> "AgentModel":
         """
-        Loads agent data from a dictionary and returns an AgentModel instance.
+        Loads agent data from a dictionary and returns an `AgentModel` instance.
 
         Args:
             agent_data (dict): A dictionary containing the agent's data.
 
         Returns:
-            agent_instance (AgentModel): An AgentModel instance with the loaded data.
+            agent_instance (AgentModel): An `AgentModel` instance with the loaded data.
         """
         agent_name = agent_data["agent_name"]
         agent_goals = [goal["goal_name"] for goal in agent_data["agent_goals"]]
@@ -108,10 +128,10 @@ class AgentModel():
     
     def save(self) -> dict:
         """
-        Saves the AgentModel object as a dictionary representation.
+        Saves the `AgentModel` object as a dictionary representation.
 
         Returns:
-            agent_dict (dict): A dictionary representation of the AgentModel object.
+            agent_dict (dict): A dictionary representation of the `AgentModel` object.
         """
         agent_dict = {
             "agent_name": self.agent_name,
@@ -129,24 +149,16 @@ class AgentModel():
     def load(config_file: str = '') -> "AgentModel":
         
         """
-        TODO DEPRECATED logger warning message for developpers()
-        
-        DEPRECATED --- THIS IS TO MAINTAIN BACKWARD COMPATIBILITY 
-
-        if you work with 1 agent :     
-            AgentBroker.get_curent_project().get_lead()
-        if you work with a team of agent 
-            AgentBroker.get_curent_project().get_delegated_agents_list()
+        TODO DEPRECATED - THIS IS TO MAINTAIN BACKWARD COMPATIBILITY
 
         Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
-          yaml file if yaml file exists,
-        else returns class with no parameters.
+        yaml file if yaml file exists, else returns class with no parameters.
 
-        Parameters:
-           config_file (int): The path to the config yaml file.
+        Args:
+            config_file (str, optional): The path to the config yaml file. Defaults to ''.
 
         Returns:
-            cls (object): An instance of given cls object
+            cls (AgentModel): An instance of the `AgentModel` class.
         """
 
 
