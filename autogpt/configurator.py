@@ -113,7 +113,7 @@ def create_config(
         logger.double_check(additionalText=additionalText)
         exit(1)
     else :
-        error_text = f" `PROJECT_DIR` folder {project_dir} can't be found"
+        error_text = f" `PROJECT_DIR` folder {os.path.abspath(project_dir)} can't be found"
         if project_dir != '' and os.path.exists(project_dir) :
             CFG.project_dir = project_dir
         elif project_dir != '' :
