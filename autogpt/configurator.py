@@ -11,12 +11,12 @@ CFG = Config()
 
 
 def create_config(
-    continuous: bool,
+    continuous_mode: bool,
     continuous_limit: int,
     ai_settings_file: str,
     project_dir: str,
     skip_reprompt: bool,
-    speak: bool,
+    speak_mode: bool,
     debug: bool,
     gpt3only: bool,
     gpt4only: bool,
@@ -33,7 +33,7 @@ def create_config(
         ai_settings_file (str): The path to the ai_settings.yaml file
         project_dir: (str) the path to the project structure
         skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
-        speak (bool): Whether to enable speak mode
+        speak_mode (bool): Whether to enable speak mode
         debug (bool): Whether to enable debug mode
         gpt3only (bool): Whether to enable GPT3.5 only mode
         gpt4only (bool): Whether to enable GPT4 only mode
@@ -50,7 +50,7 @@ def create_config(
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_debug_mode(True)
 
-    if continuous:
+    if continuous_mode:
         logger.typewriter_log("Continuous Mode: ", Fore.RED, "ENABLED")
         logger.typewriter_log(
             "WARNING: ",
@@ -68,10 +68,10 @@ def create_config(
             CFG.set_continuous_limit(continuous_limit)
 
     # Check if continuous limit is used without continuous mode
-    if continuous_limit and not continuous:
+    if continuous_limit and not continuous_mode:
         raise click.UsageError("--continuous-limit can only be used with --continuous")
 
-    if speak:
+    if speak_mode:
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_speak_mode(True)
 

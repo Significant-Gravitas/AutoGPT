@@ -10,7 +10,7 @@ The user can allow dangerous file downloads, specify the web browser to use, and
 The user can install external dependencies for 3rd party plugins.
 Functions:
 
-main(ctx, continuous, continuous_limit, ai_settings, skip_reprompt, speak, debug, gpt3only, gpt4only, memory_type, browser_name, allow_downloads, skip_news, workspace_directory, install_plugin_deps) -> None:
+main(ctx, continuous, continuous_limit, ai_settings, project_dir, skip_reprompt, speak, debug, gpt3only, gpt4only, memory_type, browser_name, allow_downloads, skip_news, workspace_directory, install_plugin_deps) -> None:
 Starts the AutoGPT assistant with the specified options.
 Classes:
 
@@ -24,10 +24,11 @@ click: A third-party module for creating command-line interfaces.
 autogpt.main: A module containing the run_auto_gpt() function which starts the AutoGPT assistant.
 """
 import click
+from autogpt.config.config import Config
 
 
 @click.group(invoke_without_command=True)
-@click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
+@click.option("-c", "--continuous-mode", is_flag=True, help="Enable Continuous Mode")
 @click.option(
     "--skip-reprompt",
     "-y",
@@ -37,7 +38,7 @@ import click
 @click.option(# TODO TO BE REMOVE
     "--ai-settings", 
     "-C",
-    help="Specifies which agent_settings.yaml file to use, will also automatically skip the re-prompt.",
+    help="Specifies which ai_settings.yaml file to use, will also automatically skip the re-prompt.",
 )
 
 @click.option( 
@@ -51,7 +52,7 @@ import click
     type=int,
     help="Defines the number of times to run in continuous mode",
 )
-@click.option("--speak", is_flag=True, help="Enable Speak Mode")
+@click.option("-speak", "--speak-mode", is_flag=True, help="Enable Speak Mode")
 @click.option("--debug", is_flag=True, help="Enable Debug Mode")
 @click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
 @click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
@@ -93,12 +94,12 @@ import click
 @click.pass_context
 def main(
     ctx: click.Context,
-    continuous: bool,
+    continuous_mode: bool,
     continuous_limit: int,
     ai_settings: str,
     project_dir:str,
     skip_reprompt: bool,
-    speak: bool,
+    speak_mode: bool,
     debug: bool,
     gpt3only: bool,
     gpt4only: bool,
@@ -119,12 +120,12 @@ def main(
 
     if ctx.invoked_subcommand is None:
         run_auto_gpt(
-            continuous,
+            continuous_mode,
             continuous_limit,
             ai_settings,
             project_dir,
             skip_reprompt,
-            speak,
+            speak_mode,
             debug,
             gpt3only,
             gpt4only,
@@ -137,5 +138,9 @@ def main(
         )
 
 
+CFG= Config()
 if __name__ == "__main__":
-    main()
+    if (CFG.project_dir !='') :
+        main(project_dir = CFG.project_dir)
+    else :
+        main()
