@@ -45,22 +45,22 @@ def test_agent_initialization(config: Config, agent: Agent):
 
 
 def test_should_prompt_user(config: Config, agent: Agent, mocker: MockerFixture):
-    mocker.patch.object(config, 'continuous_mode', False)
+    mocker.patch.object(config, "continuous_mode", False)
     assert agent.should_prompt_user is True
 
-    mocker.patch.object(agent, 'autonomous_cycles_remaining', 2)
+    mocker.patch.object(agent, "autonomous_cycles_remaining", 2)
     assert agent.should_prompt_user is False
 
-    mocker.patch.object(config, 'continuous_mode', True)
-    mocker.patch.object(agent, 'autonomous_cycles_remaining', 0)
+    mocker.patch.object(config, "continuous_mode", True)
+    mocker.patch.object(agent, "autonomous_cycles_remaining", 0)
     assert agent.should_prompt_user is False
 
-    mocker.patch.object(agent, 'autonomous_cycles_remaining', 100)
+    mocker.patch.object(agent, "autonomous_cycles_remaining", 100)
     assert agent.should_prompt_user is False
 
 
 def test_user_feedback_prompt(agent: Agent, mocker: MockerFixture):
-    mocker.patch.object(agent, 'ai_name', 'the_ai_name')
+    mocker.patch.object(agent, "ai_name", "the_ai_name")
     expected_message = (
         "Enter 'y' to authorise command, 'y -N' to run N continuous commands, "
         "'s' to run self-feedback commands, "
@@ -71,25 +71,19 @@ def test_user_feedback_prompt(agent: Agent, mocker: MockerFixture):
 
 def test_determine_next_command_from_user_input():
     # user entered 'y' -> generate next command
-    command_name, remaining_cycles, user_input = Agent.determine_next_command(
-        "y"
-    )
+    command_name, remaining_cycles, user_input = Agent.determine_next_command("y")
     assert command_name is None
     assert remaining_cycles == 0
     assert user_input == "GENERATE NEXT COMMAND JSON"
 
     # user entered 'y -N' -> generate next command with N remaining cycles
-    command_name, remaining_cycles, user_input = Agent.determine_next_command(
-        "y -20"
-    )
+    command_name, remaining_cycles, user_input = Agent.determine_next_command("y -20")
     assert command_name is None
     assert remaining_cycles == 20
     assert user_input == "GENERATE NEXT COMMAND JSON"
 
     # user entered 'y -[invalid number]' -> print error
-    command_name, remaining_cycles, user_input = Agent.determine_next_command(
-        "y -X"
-    )
+    command_name, remaining_cycles, user_input = Agent.determine_next_command("y -X")
     assert command_name == "input error"
     assert remaining_cycles == 0
     assert (
@@ -98,36 +92,28 @@ def test_determine_next_command_from_user_input():
     )
 
     # user entered 'n' -> exit
-    command_name, remaining_cycles, user_input = Agent.determine_next_command(
-        "n"
-    )
+    command_name, remaining_cycles, user_input = Agent.determine_next_command("n")
     assert command_name is None
     assert remaining_cycles == 0
     assert user_input == "EXIT"
 
     # user entered text -> human_feedback
     the_input = "Some item to tell the AI about while it is doing stuff."
-    command_name, remaining_cycles, user_input = Agent.determine_next_command(
-        the_input
-    )
+    command_name, remaining_cycles, user_input = Agent.determine_next_command(the_input)
     assert command_name == "human_feedback"
     assert remaining_cycles == 0
     assert user_input == the_input
 
     # user entered 's' -> self_feedback
     the_input = "s"
-    command_name, remaining_cycles, user_input = Agent.determine_next_command(
-        the_input
-    )
+    command_name, remaining_cycles, user_input = Agent.determine_next_command(the_input)
     assert command_name == "self_feedback"
     assert remaining_cycles == 0
     assert user_input is None
 
     # empty input -> print error
     the_input = "      "
-    command_name, remaining_cycles, user_input = Agent.determine_next_command(
-        the_input
-    )
+    command_name, remaining_cycles, user_input = Agent.determine_next_command(the_input)
     assert command_name == "input error"
     assert remaining_cycles == 0
     assert user_input == "Invalid input format."
