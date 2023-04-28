@@ -14,6 +14,7 @@ def create_config(
     continuous: bool,
     continuous_limit: int,
     ai_settings_file: str,
+    project_dir: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -30,6 +31,7 @@ def create_config(
         continuous (bool): Whether to run in continuous mode
         continuous_limit (int): The number of times to run in continuous mode
         ai_settings_file (str): The path to the agent_settings.yaml file
+        project_dir: (str) the path to the project structure
         skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
         speak (bool): Whether to enable speak mode
         debug (bool): Whether to enable debug mode
@@ -98,6 +100,11 @@ def create_config(
         logger.typewriter_log("Skip Re-prompt: ", Fore.GREEN, "ENABLED")
         CFG.skip_reprompt = True
 
+    if project_dir == '' : 
+        logger.typewriter_log("WARNING : ", Fore.YELLOW, "set PROJECT_DIR in your .env file")
+    else :
+        CFG.project_dir = project_dir
+
     if ai_settings_file:
         file = ai_settings_file
 
@@ -132,3 +139,4 @@ def create_config(
 
     if skip_news:
         CFG.skip_news = True
+
