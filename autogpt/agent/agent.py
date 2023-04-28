@@ -241,10 +241,16 @@ class Agent:
                         "",
                     )
                 elif user_input == "EXIT":
+                    send_chat_message_to_user("Exiting...")
                     print("Exiting...", flush=True)
                     break
             else:
                 # Print command
+                send_chat_message_to_user(
+                    "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
+                    f"ARGUMENTS = {arguments}"
+                )
+
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
