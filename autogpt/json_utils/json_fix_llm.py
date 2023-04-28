@@ -167,19 +167,19 @@ def extract_longest_curly_braces_content(string):
     """
     stack = []
     start = -1
-    result = ''
+    result = ""
     longest_len = 0
-    longest_content = ''
+    longest_content = ""
     for i in range(len(string)):
-        if string[i] == '{':
+        if string[i] == "{":
             stack.append(i)
-        elif string[i] == '}':
+        elif string[i] == "}":
             if len(stack) == 0:
                 start = i
             else:
                 start = stack.pop()
                 if len(stack) == 0:
-                    content = string[start + 1:i]
+                    content = string[start + 1 : i]
                     content_len = len(content)
                     if content_len > longest_len:
                         longest_len = content_len
