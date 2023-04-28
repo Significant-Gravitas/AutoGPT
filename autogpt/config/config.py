@@ -28,6 +28,8 @@ class Config(metaclass=Singleton):
         self.allow_downloads = False
         self.skip_news = False
 
+        self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
+        self.exit_key = os.getenv("EXIT_KEY", "n")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -60,6 +62,8 @@ class Config(metaclass=Singleton):
 
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
+
+        self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
 
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
