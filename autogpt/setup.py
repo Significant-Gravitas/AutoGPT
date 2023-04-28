@@ -34,7 +34,7 @@ from autogpt import utils
 from autogpt.config import Config
 from autogpt.projects.projects_broker import ProjectsBroker
 from autogpt.projects.project import Project
-from autogpt.llm_utils import create_chat_completion
+from autogpt.llm import create_chat_completion
 from autogpt.logs import logger
 
 CFG = Config()
