@@ -8,6 +8,9 @@ from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.token_counter import count_message_tokens
 from autogpt.logs import logger
+from autogpt.memory_management.store_memory import (
+    save_memory_trimmed_from_context_window,
+)
 from autogpt.types.openai import Message
 
 cfg = Config()
@@ -124,6 +127,11 @@ def chat_with_ai(
 
                 tokens_to_add = count_message_tokens([message_to_add], model)
                 if current_tokens_used + tokens_to_add > send_token_limit:
+                    save_memory_trimmed_from_context_window(
+                        full_message_history,
+                        next_message_to_add_index,
+                        permanent_memory,
+                    )
                     break
 
                 # Add the most recent message to the start of the current context,
