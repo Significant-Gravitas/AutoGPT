@@ -1,0 +1,1454 @@
+interactions:
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are Follow-Instructions-GPT, an AI designed to read the instructions_1.txt file
+      using the read_file method and follow the instructions in the file.\nYour decisions
+      must always be made independently without seeking user assistance. Play to your
+      strengths as an LLM and pursue simple strategies with no legal complications.\n\nGOALS:\n\n1.
+      Use the command read_file to read the instructions_1.txt file\n2. Follow the
+      instructions in the instructions_1.txt file\n\n\nConstraints:\n1. ~4000 word
+      limit for short term memory. Your short term memory is short, so immediately
+      save important information to files.\n2. If you are unsure how you previously
+      did something or want to recall past events, thinking about similar events will
+      help you remember.\n3. No user assistance\n4. Exclusively use the commands listed
+      in double quotes e.g. \"command name\"\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. read_file: Read file, args:
+      \"filename\": \"<filename>\"\n4. search_files: Search Files, args: \"directory\":
+      \"<directory>\"\n5. write_to_file: Write to file, args: \"filename\": \"<filename>\",
+      \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n7.
+      get_hyperlinks: Get text summary, args: \"url\": \"<url>\"\n8. get_text_summary:
+      Get text summary, args: \"url\": \"<url>\", \"question\": \"<question>\"\n9.
+      list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT
+      Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent:
+      Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. Task Complete (Shutdown): \"task_complete\", args:
+      \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
+      information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
+      Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
+      Continuously review and analyze your actions to ensure you are performing to
+      the best of your abilities.\n2. Constructively self-criticize your big-picture
+      behavior constantly.\n3. Reflect on past decisions and strategies to refine
+      your approach.\n4. Every command has a cost, so be smart and efficient. Aim
+      to complete tasks in the least number of steps.\n5. Write all code to a file.\n\nYou
+      should only respond in JSON format as described below \nResponse Format: \n{\n    \"thoughts\":
+      {\n        \"text\": \"thought\",\n        \"reasoning\": \"reasoning\",\n        \"plan\":
+      \"- short bulleted\\n- list that conveys\\n- long-term plan\",\n        \"criticism\":
+      \"constructive self-criticism\",\n        \"speak\": \"thoughts summary to say
+      to user\"\n    },\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\":
+      {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
+      can be parsed by Python json.loads"}, {"role": "system", "content": "The current
+      time and date is Tue Jan 01 00:00:00 2000"}, {"role": "system", "content": "This
+      reminds you of these events from your past:\n\n\n"}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}], "temperature": 0, "max_tokens": 3251}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '3383'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA5yST4/aMBDF7/0U1pwdRIAFNjcuVVftZaVWldpUyDhD4l17HNmTLhTlu1chAVZQ
+        tdVe5897vzeaA5gCMtCVYu1qmyxWT3biH+vV5MHvF7Pdz4/mw1f3abN4xG/vQYLfPKHmYWOkvast
+        svEEEnRAxVhAls6Xk8X99G6ylOB8gRYyKGtOpqO7hJuw8cl4Ok5BQhNViZAdoA7e1bxm/4wUIVvM
+        5hIu2ud6Ol9KYM/Knkv36ayVoCtvNEbIvh/AYTzJBm8RMlAxmsiKuIP0xEhdgENOQgiRA1e+KSuO
+        OWRiKA4N3HFXzOFBEGIh2IuAqhBcoTAUOTS644vrdMQ7FltjsZspkDE4Q3gcJNyx0N45RUeFJuIo
+        B/naKKCKngyVvdvnv8h3/MpQvGEQXCkWF9Ctt9a/XDvVVlFvkogvsQfsIq0H8TPlv3KO8pwSsSJl
+        97/wDzBvuIIOho020V3fHCk2AU8BlRuyGSpvjbUPATXbveiMcLs12iCx3V+7xRrV88npxVjbIb39
+        Hke7/4ncM7Ty9H3DwM3zkXLY4515rhKoUF7/bN/oZi/rt8AniCPIwJNTC62ErSETq3X/kJBBZF+D
+        BEMF7iAbtz/ad78BAAD//wMAZaybHTIEAAA=
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bf9a9ff2d0d6428-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 29 Apr 2023 18:38:57 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '9047'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '85995'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.67s
+      x-request-id:
+      - 4516accaac0d04bccb540241a7538089
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"input": ["[{''role'': ''system'', ''content'': ''Command read_file returned:
+      This task_id is 2314\\nRead the file instructions_2.txt''}, {''role'': ''user'',
+      ''content'': ''Determine which next command to use, and respond using the format
+      specified above:''}, {''role'': ''assistant'', ''content'': ''{\\n    \"thoughts\":
+      {\\n        \"text\": \"I need to read the instructions_1.txt file to determine
+      the next command to use.\",\\n        \"reasoning\": \"The instructions_1.txt
+      file contains the instructions that I need to follow.\",\\n        \"plan\":
+      \"- Use the read_file command to read the instructions_1.txt file.\\\\n- Analyze
+      the instructions to determine the next command to use.\",\\n        \"criticism\":
+      \"I need to ensure that I am following the instructions correctly and efficiently.\",\\n        \"speak\":
+      \"I will use the read_file command to read the instructions_1.txt file and determine
+      the next command to use.\"\\n    },\\n    \"command\": {\\n        \"name\":
+      \"read_file\",\\n        \"args\": {\\n            \"filename\": \"instructions_1.txt\"\\n        }\\n    }\\n}''}]"],
+      "model": "text-embedding-ada-002", "encoding_format": "base64"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '1151'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        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
+        ++9//D8AAAD//wMAP557oeUgAAA=
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bf9aa48f88a6428-SJC
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 29 Apr 2023 18:39:00 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '105'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3000'
+      x-ratelimit-remaining-requests:
+      - '2999'
+      x-ratelimit-reset-requests:
+      - 20ms
+      x-request-id:
+      - 4b63030d949781709e3e3da468f83709
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are Follow-Instructions-GPT, an AI designed to read the instructions_1.txt file
+      using the read_file method and follow the instructions in the file.\nYour decisions
+      must always be made independently without seeking user assistance. Play to your
+      strengths as an LLM and pursue simple strategies with no legal complications.\n\nGOALS:\n\n1.
+      Use the command read_file to read the instructions_1.txt file\n2. Follow the
+      instructions in the instructions_1.txt file\n\n\nConstraints:\n1. ~4000 word
+      limit for short term memory. Your short term memory is short, so immediately
+      save important information to files.\n2. If you are unsure how you previously
+      did something or want to recall past events, thinking about similar events will
+      help you remember.\n3. No user assistance\n4. Exclusively use the commands listed
+      in double quotes e.g. \"command name\"\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. read_file: Read file, args:
+      \"filename\": \"<filename>\"\n4. search_files: Search Files, args: \"directory\":
+      \"<directory>\"\n5. write_to_file: Write to file, args: \"filename\": \"<filename>\",
+      \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n7.
+      get_hyperlinks: Get text summary, args: \"url\": \"<url>\"\n8. get_text_summary:
+      Get text summary, args: \"url\": \"<url>\", \"question\": \"<question>\"\n9.
+      list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT
+      Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent:
+      Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. Task Complete (Shutdown): \"task_complete\", args:
+      \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
+      information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
+      Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
+      Continuously review and analyze your actions to ensure you are performing to
+      the best of your abilities.\n2. Constructively self-criticize your big-picture
+      behavior constantly.\n3. Reflect on past decisions and strategies to refine
+      your approach.\n4. Every command has a cost, so be smart and efficient. Aim
+      to complete tasks in the least number of steps.\n5. Write all code to a file.\n\nYou
+      should only respond in JSON format as described below \nResponse Format: \n{\n    \"thoughts\":
+      {\n        \"text\": \"thought\",\n        \"reasoning\": \"reasoning\",\n        \"plan\":
+      \"- short bulleted\\n- list that conveys\\n- long-term plan\",\n        \"criticism\":
+      \"constructive self-criticism\",\n        \"speak\": \"thoughts summary to say
+      to user\"\n    },\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\":
+      {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
+      can be parsed by Python json.loads"}, {"role": "system", "content": "The current
+      time and date is Tue Jan 01 00:00:00 2000"}, {"role": "system", "content": "This
+      reminds you of these events from your past:\n[]\n\n"}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      \"I need to read the instructions_1.txt file to determine the next command to
+      use.\",\n        \"reasoning\": \"The instructions_1.txt file contains the instructions
+      that I need to follow.\",\n        \"plan\": \"- Use the read_file command to
+      read the instructions_1.txt file.\\n- Analyze the instructions to determine
+      the next command to use.\",\n        \"criticism\": \"I need to ensure that
+      I am following the instructions correctly and efficiently.\",\n        \"speak\":
+      \"I will use the read_file command to read the instructions_1.txt file and determine
+      the next command to use.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\":
+      {\n            \"filename\": \"instructions_1.txt\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command read_file returned: This task_id is 2314\nRead
+      the file instructions_2.txt"}, {"role": "user", "content": "Determine which
+      next command to use, and respond using the format specified above:"}], "temperature":
+      0, "max_tokens": 3021}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '4440'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA5yST4/TMBDF73wKa85JlW5puptbD0jLiQsIAUGV15kk3trjYE9oS5XvjtIk7apF
+        gPY6f977vdEcQReQgaolK9uYeLV+Nu92SZqo+Tb5YR+//Pyw/py2ZfpVl48QgXt6RsXjxkw52xhk
+        7QgiUB4lYwHZPL2/Wz0slm+TCKwr0EAGVcPxYraMufVPLk4WyRwiaIOsELIjNN7ZhjfstkgBsod0
+        FcFF+1yfp/cRsGNpLqX5YtlFoGqnFQbIvh3BYph0vTMIGcgQdGBJ3FM6YqQ+wTEnIYTIgWvXVjWH
+        HDIxFscG7rkv5vBeEGIh2AmPshBco9AU2LeqBwybuxnvWZTaYD9TIKO3mvA0SLhnoZy1kk4KbcBZ
+        DtFLI48yONJUDW4f/yLf80tN4YZBcC1ZXEBLZ4zbXTs1RtJgEotPYQDsI21G8TPlv3LO8pxisSZp
+        Dr/wDzCvuILymrXSwV7fHCm0HqeA0o7ZNFW3xsp5j4rNQfRGWJZaaSQ2h2u30KDcTk47bUyP9Pp7
+        nOz+J/LA0EXT940DN89H0uKAd+a5SiB9df2zQ6OfvazfAk8QJ5CRJ6cOughKTTrUm+EhIYPAroEI
+        NBW4hyzpvndvfgMAAP//AwD56qfzMwQAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bf9aa4aaaa56428-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 29 Apr 2023 18:39:10 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '10495'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '85996'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.668s
+      x-request-id:
+      - 8a4f2cccf4cb6192b63c911d82abd833
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"input": ["[{''role'': ''system'', ''content'': ''Command read_file returned:
+      Read the file instructions_3.txt''}, {''role'': ''system'', ''content'': ''Command
+      read_file returned: This task_id is 2314\\nRead the file instructions_2.txt''},
+      {''role'': ''user'', ''content'': ''Determine which next command to use, and
+      respond using the format specified above:''}, {''role'': ''assistant'', ''content'':
+      ''{\\n    \"thoughts\": {\\n        \"text\": \"I need to read the instructions_2.txt
+      file to determine the next command to use.\",\\n        \"reasoning\": \"The
+      instructions_2.txt file contains the instructions that I need to follow.\",\\n        \"plan\":
+      \"- Use the read_file command to read the instructions_2.txt file.\\\\n- Analyze
+      the instructions to determine the next command to use.\",\\n        \"criticism\":
+      \"I need to ensure that I am following the instructions correctly and efficiently.\",\\n        \"speak\":
+      \"I will use the read_file command to read the instructions_2.txt file and determine
+      the next command to use.\"\\n    },\\n    \"command\": {\\n        \"name\":
+      \"read_file\",\\n        \"args\": {\\n            \"filename\": \"instructions_2.txt\"\\n        }\\n    }\\n}''},
+      {''role'': ''assistant'', ''content'': ''{\\n    \"thoughts\": {\\n        \"text\":
+      \"I need to read the instructions_1.txt file to determine the next command to
+      use.\",\\n        \"reasoning\": \"The instructions_1.txt file contains the
+      instructions that I need to follow.\",\\n        \"plan\": \"- Use the read_file
+      command to read the instructions_1.txt file.\\\\n- Analyze the instructions
+      to determine the next command to use.\",\\n        \"criticism\": \"I need to
+      ensure that I am following the instructions correctly and efficiently.\",\\n        \"speak\":
+      \"I will use the read_file command to read the instructions_1.txt file and determine
+      the next command to use.\"\\n    },\\n    \"command\": {\\n        \"name\":
+      \"read_file\",\\n        \"args\": {\\n            \"filename\": \"instructions_1.txt\"\\n        }\\n    }\\n}''}]"],
+      "model": "text-embedding-ada-002", "encoding_format": "base64"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '2085'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        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
+        P//1/wAAAP//AwBJaieS5SAAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bf9aa9c391c6428-SJC
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 29 Apr 2023 18:39:13 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '121'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3000'
+      x-ratelimit-remaining-requests:
+      - '2999'
+      x-ratelimit-reset-requests:
+      - 20ms
+      x-request-id:
+      - bc3576feee112cf82bb99b1ab4530d16
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are Follow-Instructions-GPT, an AI designed to read the instructions_1.txt file
+      using the read_file method and follow the instructions in the file.\nYour decisions
+      must always be made independently without seeking user assistance. Play to your
+      strengths as an LLM and pursue simple strategies with no legal complications.\n\nGOALS:\n\n1.
+      Use the command read_file to read the instructions_1.txt file\n2. Follow the
+      instructions in the instructions_1.txt file\n\n\nConstraints:\n1. ~4000 word
+      limit for short term memory. Your short term memory is short, so immediately
+      save important information to files.\n2. If you are unsure how you previously
+      did something or want to recall past events, thinking about similar events will
+      help you remember.\n3. No user assistance\n4. Exclusively use the commands listed
+      in double quotes e.g. \"command name\"\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. read_file: Read file, args:
+      \"filename\": \"<filename>\"\n4. search_files: Search Files, args: \"directory\":
+      \"<directory>\"\n5. write_to_file: Write to file, args: \"filename\": \"<filename>\",
+      \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n7.
+      get_hyperlinks: Get text summary, args: \"url\": \"<url>\"\n8. get_text_summary:
+      Get text summary, args: \"url\": \"<url>\", \"question\": \"<question>\"\n9.
+      list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT
+      Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent:
+      Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. Task Complete (Shutdown): \"task_complete\", args:
+      \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
+      information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
+      Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
+      Continuously review and analyze your actions to ensure you are performing to
+      the best of your abilities.\n2. Constructively self-criticize your big-picture
+      behavior constantly.\n3. Reflect on past decisions and strategies to refine
+      your approach.\n4. Every command has a cost, so be smart and efficient. Aim
+      to complete tasks in the least number of steps.\n5. Write all code to a file.\n\nYou
+      should only respond in JSON format as described below \nResponse Format: \n{\n    \"thoughts\":
+      {\n        \"text\": \"thought\",\n        \"reasoning\": \"reasoning\",\n        \"plan\":
+      \"- short bulleted\\n- list that conveys\\n- long-term plan\",\n        \"criticism\":
+      \"constructive self-criticism\",\n        \"speak\": \"thoughts summary to say
+      to user\"\n    },\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\":
+      {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
+      can be parsed by Python json.loads"}, {"role": "system", "content": "The current
+      time and date is Tue Jan 01 00:00:00 2000"}, {"role": "system", "content": "This
+      reminds you of these events from your past:\n[]\n\n"}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      \"I need to read the instructions_1.txt file to determine the next command to
+      use.\",\n        \"reasoning\": \"The instructions_1.txt file contains the instructions
+      that I need to follow.\",\n        \"plan\": \"- Use the read_file command to
+      read the instructions_1.txt file.\\n- Analyze the instructions to determine
+      the next command to use.\",\n        \"criticism\": \"I need to ensure that
+      I am following the instructions correctly and efficiently.\",\n        \"speak\":
+      \"I will use the read_file command to read the instructions_1.txt file and determine
+      the next command to use.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\":
+      {\n            \"filename\": \"instructions_1.txt\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command read_file returned: This task_id is 2314\nRead
+      the file instructions_2.txt"}, {"role": "user", "content": "Determine which
+      next command to use, and respond using the format specified above:"}, {"role":
+      "assistant", "content": "{\n    \"thoughts\": {\n        \"text\": \"I need
+      to read the instructions_2.txt file to determine the next command to use.\",\n        \"reasoning\":
+      \"The instructions_2.txt file contains the instructions that I need to follow.\",\n        \"plan\":
+      \"- Use the read_file command to read the instructions_2.txt file.\\n- Analyze
+      the instructions to determine the next command to use.\",\n        \"criticism\":
+      \"I need to ensure that I am following the instructions correctly and efficiently.\",\n        \"speak\":
+      \"I will use the read_file command to read the instructions_2.txt file and determine
+      the next command to use.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\":
+      {\n            \"filename\": \"instructions_2.txt\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command read_file returned: Read the file instructions_3.txt"},
+      {"role": "user", "content": "Determine which next command to use, and respond
+      using the format specified above:"}], "temperature": 0, "max_tokens": 2801}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '5473'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA5ySy27bMBBF9/0KYtaSYVf1o9oF6SbbIF0UVWHQ1EhiQg4VctTINfTvBS05Duyi
+        LbKdx73nDuYAuoQcVCNZ2dak65tHc387//lt3pkm0H3/rO7K5/bhS3e7W0ACbveIiqeNmXK2Ncja
+        ESSgPErGEvLFavNx/TlbLrMErCvRQA51y2k2W6bc+Z1L59k8inVB1gj5AVrvbMtbdk9IAfLFYr1J
+        4Cx+bqw2CbBjac6l7NNqSEA1TisMkH8/gMVwEvbOIOQgQ9CBJXHEdMRIMcKhICGEKIAb19UNhwJy
+        MRWnBvYciwXcCUIsBTvhUZaCGxSaAvtORcCwzWbcs6i0wThTIqO3mvA4SNizUM5aSUeFLuCsgOSt
+        kUcZHGmqR7eHv8hHfqkpXDEIbiSLM2jljHEvl06tkTSapOJrGAFjpO0k/kr5r5yzoqBU3JA0+1/4
+        B5h3XEF5zVrpYC9vjhQ6j6eA0k7ZNNXXxsp5j4rNXkQjrCqtNBKb/aVbaFE+nZxetDER6f33ONr9
+        T+SRYUhO3zcNXD0fSYsj3ivPRQLp68ufHRtx9rx+DXyCOIJMPAUNMCRQadKh2Y4PCTkEdi0koKnE
+        HvL58GP48BsAAP//AwC/PogcNAQAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bf9aa9d7a3f6428-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 29 Apr 2023 18:39:23 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '9467'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '85995'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.67s
+      x-request-id:
+      - 10ccfb983a68d5f1e7b284af0cf6d8f2
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"input": ["[{''role'': ''assistant'', ''content'': ''{\\n    \"thoughts\":
+      {\\n        \"text\": \"I need to read the instructions_2.txt file to determine
+      the next command to use.\",\\n        \"reasoning\": \"The instructions_2.txt
+      file contains the instructions that I need to follow.\",\\n        \"plan\":
+      \"- Use the read_file command to read the instructions_2.txt file.\\\\n- Analyze
+      the instructions to determine the next command to use.\",\\n        \"criticism\":
+      \"I need to ensure that I am following the instructions correctly and efficiently.\",\\n        \"speak\":
+      \"I will use the read_file command to read the instructions_2.txt file and determine
+      the next command to use.\"\\n    },\\n    \"command\": {\\n        \"name\":
+      \"read_file\",\\n        \"args\": {\\n            \"filename\": \"instructions_2.txt\"\\n        }\\n    }\\n}''},
+      {''role'': ''assistant'', ''content'': ''{\\n    \"thoughts\": {\\n        \"text\":
+      \"I need to read the instructions_3.txt file to determine the next command to
+      use.\",\\n        \"reasoning\": \"The instructions_3.txt file contains the
+      instructions that I need to follow.\",\\n        \"plan\": \"- Use the read_file
+      command to read the instructions_3.txt file.\\\\n- Analyze the instructions
+      to determine the next command to use.\",\\n        \"criticism\": \"I need to
+      ensure that I am following the instructions correctly and efficiently.\",\\n        \"speak\":
+      \"I will use the read_file command to read the instructions_3.txt file and determine
+      the next command to use.\"\\n    },\\n    \"command\": {\\n        \"name\":
+      \"read_file\",\\n        \"args\": {\\n            \"filename\": \"instructions_3.txt\"\\n        }\\n    }\\n}''},
+      {''role'': ''system'', ''content'': ''Command read_file returned: Write the
+      task_id into the file output.txt\\nShutdown''}, {''role'': ''system'', ''content'':
+      ''Command read_file returned: Read the file instructions_3.txt''}, {''role'':
+      ''user'', ''content'': ''Determine which next command to use, and respond using
+      the format specified above:''}]"], "model": "text-embedding-ada-002", "encoding_format":
+      "base64"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '2083'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        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
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bf9aae9deb86428-SJC
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 29 Apr 2023 18:39:25 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '214'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3000'
+      x-ratelimit-remaining-requests:
+      - '2999'
+      x-ratelimit-reset-requests:
+      - 20ms
+      x-request-id:
+      - 301bbf6b8f5f18d655731e55edb09ca9
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are Follow-Instructions-GPT, an AI designed to read the instructions_1.txt file
+      using the read_file method and follow the instructions in the file.\nYour decisions
+      must always be made independently without seeking user assistance. Play to your
+      strengths as an LLM and pursue simple strategies with no legal complications.\n\nGOALS:\n\n1.
+      Use the command read_file to read the instructions_1.txt file\n2. Follow the
+      instructions in the instructions_1.txt file\n\n\nConstraints:\n1. ~4000 word
+      limit for short term memory. Your short term memory is short, so immediately
+      save important information to files.\n2. If you are unsure how you previously
+      did something or want to recall past events, thinking about similar events will
+      help you remember.\n3. No user assistance\n4. Exclusively use the commands listed
+      in double quotes e.g. \"command name\"\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. read_file: Read file, args:
+      \"filename\": \"<filename>\"\n4. search_files: Search Files, args: \"directory\":
+      \"<directory>\"\n5. write_to_file: Write to file, args: \"filename\": \"<filename>\",
+      \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n7.
+      get_hyperlinks: Get text summary, args: \"url\": \"<url>\"\n8. get_text_summary:
+      Get text summary, args: \"url\": \"<url>\", \"question\": \"<question>\"\n9.
+      list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT
+      Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent:
+      Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. Task Complete (Shutdown): \"task_complete\", args:
+      \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
+      information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
+      Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
+      Continuously review and analyze your actions to ensure you are performing to
+      the best of your abilities.\n2. Constructively self-criticize your big-picture
+      behavior constantly.\n3. Reflect on past decisions and strategies to refine
+      your approach.\n4. Every command has a cost, so be smart and efficient. Aim
+      to complete tasks in the least number of steps.\n5. Write all code to a file.\n\nYou
+      should only respond in JSON format as described below \nResponse Format: \n{\n    \"thoughts\":
+      {\n        \"text\": \"thought\",\n        \"reasoning\": \"reasoning\",\n        \"plan\":
+      \"- short bulleted\\n- list that conveys\\n- long-term plan\",\n        \"criticism\":
+      \"constructive self-criticism\",\n        \"speak\": \"thoughts summary to say
+      to user\"\n    },\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\":
+      {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
+      can be parsed by Python json.loads"}, {"role": "system", "content": "The current
+      time and date is Tue Jan 01 00:00:00 2000"}, {"role": "system", "content": "This
+      reminds you of these events from your past:\n[]\n\n"}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      \"I need to read the instructions_1.txt file to determine the next command to
+      use.\",\n        \"reasoning\": \"The instructions_1.txt file contains the instructions
+      that I need to follow.\",\n        \"plan\": \"- Use the read_file command to
+      read the instructions_1.txt file.\\n- Analyze the instructions to determine
+      the next command to use.\",\n        \"criticism\": \"I need to ensure that
+      I am following the instructions correctly and efficiently.\",\n        \"speak\":
+      \"I will use the read_file command to read the instructions_1.txt file and determine
+      the next command to use.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\":
+      {\n            \"filename\": \"instructions_1.txt\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command read_file returned: This task_id is 2314\nRead
+      the file instructions_2.txt"}, {"role": "user", "content": "Determine which
+      next command to use, and respond using the format specified above:"}, {"role":
+      "assistant", "content": "{\n    \"thoughts\": {\n        \"text\": \"I need
+      to read the instructions_2.txt file to determine the next command to use.\",\n        \"reasoning\":
+      \"The instructions_2.txt file contains the instructions that I need to follow.\",\n        \"plan\":
+      \"- Use the read_file command to read the instructions_2.txt file.\\n- Analyze
+      the instructions to determine the next command to use.\",\n        \"criticism\":
+      \"I need to ensure that I am following the instructions correctly and efficiently.\",\n        \"speak\":
+      \"I will use the read_file command to read the instructions_2.txt file and determine
+      the next command to use.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\":
+      {\n            \"filename\": \"instructions_2.txt\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command read_file returned: Read the file instructions_3.txt"},
+      {"role": "user", "content": "Determine which next command to use, and respond
+      using the format specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\":
+      {\n        \"text\": \"I need to read the instructions_3.txt file to determine
+      the next command to use.\",\n        \"reasoning\": \"The instructions_3.txt
+      file contains the instructions that I need to follow.\",\n        \"plan\":
+      \"- Use the read_file command to read the instructions_3.txt file.\\n- Analyze
+      the instructions to determine the next command to use.\",\n        \"criticism\":
+      \"I need to ensure that I am following the instructions correctly and efficiently.\",\n        \"speak\":
+      \"I will use the read_file command to read the instructions_3.txt file and determine
+      the next command to use.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\":
+      {\n            \"filename\": \"instructions_3.txt\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command read_file returned: Write the task_id
+      into the file output.txt\nShutdown"}, {"role": "user", "content": "Determine
+      which next command to use, and respond using the format specified above:"}],
+      "temperature": 0, "max_tokens": 2577}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '6526'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA6yTy27bMBBF9/0KYta0YVu1YmtXoAWSVRfpA0UVCAw1kRjzIZCj2oWhfy9ESVDs
+        oIsA2d4hDw+HnDOoEjKQtSBpGr24+fSs8Vf1o/ZSlH9uDz8PX77ep7vP97ep2AAH9/iMksYdS+lM
+        o5GUs8BBehSEJWTrdLe52SfbNOVgXIkaMqgaWiTL7YJa/+gWq2S1Bg5tEBVCdobGO9NQQe6ANkC2
+        TvYJhxk+F/ZbDuRI6Dna7nYdB1k7JTFA9vsMBsME9k4jZCBCUIGEpV7TWULbX+GcW8YYy4Fq11Y1
+        hRwyNoZjAU/UhzncMYtYMnLs6BUhoxoZiXAoVMmUJReDJ6WRuZaalpZ0IiZs2eeWhbql0h3tMgf+
+        ku9RBGeVrYZDvtXIlA3kW9lfOxRJxETslGPJDL63R6OFHRQW7HsYqJFfkCsiTTpjIuYtBy/z3M7A
+        uHp81Avg/6ykV6SkCub6CdCG1vdQQeyOCROVlK3iMdJ5j5Jey71oSPQcujIheonI6E0miP577RQa
+        FIfJ56i0Zu379Wt+qPYNPRv0Oj795nHVq89shcHB/EL16oLCV9dzMBT6tTNilr7Yfz02m2T9cTKM
+        lqNsbjvoODwpq0JdDGMAGQRyDXBQtsQTZKvuofvwDwAA//8DAIII0sehBAAA
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bf9aaeba83c6428-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 29 Apr 2023 18:39:36 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '10520'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '85990'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.672s
+      x-request-id:
+      - 40187af4864698ab7cafb098969e7421
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"input": ["[{''role'': ''system'', ''content'': ''Command read_file returned:
+      Write the task_id into the file output.txt\\nShutdown''}, {''role'': ''assistant'',
+      ''content'': ''{\\n    \"thoughts\": {\\n        \"text\": \"I need to read
+      the instructions_3.txt file to determine the next command to use.\",\\n        \"reasoning\":
+      \"The instructions_3.txt file contains the instructions that I need to follow.\",\\n        \"plan\":
+      \"- Use the read_file command to read the instructions_3.txt file.\\\\n- Analyze
+      the instructions to determine the next command to use.\",\\n        \"criticism\":
+      \"I need to ensure that I am following the instructions correctly and efficiently.\",\\n        \"speak\":
+      \"I will use the read_file command to read the instructions_3.txt file and determine
+      the next command to use.\"\\n    },\\n    \"command\": {\\n        \"name\":
+      \"read_file\",\\n        \"args\": {\\n            \"filename\": \"instructions_3.txt\"\\n        }\\n    }\\n}''},
+      {''role'': ''system'', ''content'': ''Command write_to_file returned: File written
+      to successfully.''}, {''role'': ''user'', ''content'': ''Determine which next
+      command to use, and respond using the format specified above:''}, {''role'':
+      ''assistant'', ''content'': ''{\\n    \"thoughts\": {\\n        \"text\": \"I
+      need to write the task_id into the file output.txt and then shutdown.\",\\n        \"reasoning\":
+      \"The instructions_3.txt file instructed me to write the task_id into the file
+      output.txt and then shutdown.\",\\n        \"plan\": \"- Use the write_to_file
+      command to write the task_id into the file output.txt.\\\\n- Use the task_complete
+      command to shutdown.\",\\n        \"criticism\": \"I need to ensure that I am
+      writing the correct task_id into the output.txt file and that I am shutting
+      down correctly.\",\\n        \"speak\": \"I will use the write_to_file command
+      to write the task_id into the file output.txt and then use the task_complete
+      command to shutdown.\"\\n    },\\n    \"command\": {\\n        \"name\": \"write_to_file\",\\n        \"args\":
+      {\\n            \"filename\": \"output.txt\",\\n            \"text\": \"2314\"\\n        }\\n    }\\n}''}]"],
+      "model": "text-embedding-ada-002", "encoding_format": "base64"}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '2194'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA1R6Xc+yPrfn+fMp7tynzBMRkC7+Z7yrgK0KKkwmE1AuBEXkpQW6s7/7RK+dPdkn
+        JtiaSsv6vbH+419//vxtsiq/Dn//+fP3WfbD3//1+e6WDunff/7873/9+fPnz398P//HzLzO8tut
+        fBXf6d/B8nXLp7///BH/+5v/P+mfP3/nS7xmcR/tqhmFogr5at8Qa1G90Tw+dxGEk/qkC0U/ZfNg
+        dh5oSscYWfQ2HwONK1Df0YNhrTeqHrcbAdU2jGQTNzdr2nq2DXNyaElQRGo2aegyQnqsrmSdVMtu
+        FkMoYIn6ijn5jMJu47gP6G6vkrnHZol4izY2Ul7plRDfkbpJXj9SFE7Kk10Vj2f9eqIzOggyoVKa
+        U59mZhvA835c0IrmT/+xQlGAkkhwiRPnHhpJX7na0xYGYijNKxxHZaJadDi6TBfmIJylc97AIrZC
+        ojuDky2z7GwiL8cnPG5d1Wpjs9RhFLWIuOdZyIbxuQX1/RCAuCdy72Y3nG2kPrQlMdWmrab41c6w
+        sihl60f05jSXTjHQfhFQViJWjWHf7ZFadE+snpy6YjmdH9rPeXelktuc/HYxZSZyauzg7E6OvG9v
+        Won65/PF3Edz8efCCQpARdcQu59jPh/P0YgOZSGQHPWGP/7cQIBcFGJCHmi0eB0uNgg7D4Oef4jB
+        Z+W566EfzTPb2s0i5EJmeGqW7zD7SaeXXxyn1xlNVh+yH0mPEF8ivUVdRQ0soN6w5uRVb9A1QQYh
+        R0TR++fVebCs+pJkum4jcaGoOfBgkTGyn1w+4Zscg3C9FGwnE7Wb/Jh7MO/1hphZZVfiPju68Lqj
+        F7ObSLdGlF0j9am3N7K9VddMepxv/eq6qxkzXq7AZ64bMXS3Z4lH5F67Jve2EpRKcyKxmkvZfCzf
+        VJV+4ogFC3LpxmO73cDhrdzIpfaMrn3GC0kdYvOCX69ByOoglkqwMdbJ5vP7/ja9FJCuF4fYVWJ1
+        fAqSEhZlbrLN3dE7TkO5gCPfVmQ3SE41rc7hFergTNhGdoyOS4UtwgZLlLk/Q9qNHcquEL5+JOKs
+        hphL21DdozPajlSopMbn4+FUI62iGvF9MnXTpa9FcPT1C89Ffvdr5+nb0O9eTyzsCELDECoz2su3
+        gQqJ9OLTiytXILfaIV7nrDuaP+1UU+LuRpd6MyEe3d6mesO7iPjc8UN5TydRA/uUUNVIzv68LIx8
+        kYCwZk6T+9WoEpKCnUslsfOG8fHUbs/w2S+2PecyopKzayC6/KyY+TCEsO8JbiAy72u2oZ6Tjf5E
+        BaTABVNRiXQkPThqIXw+QhIvyRtNxvr9AFS8G8qvTd/Nqa67Gk5LTle7CnVcLZmHQkMt6SBLTz4h
+        sylh2L0aKsvDwuIOXR0hm1Y6+eFOzMcf/WJqvXiuiSkaC4tFQawjtjFvbJejBg2uMotqPrYbYm6H
+        3m+rQi9ACvsns/Sms6ZGOj7QxityhgHtOKdIP8KsmG86G1XVTRtpr8C68zQqy8QNxUH/mdFj36RU
+        vM6xP3/qWxUsNyfbTUT8diqMI2TPmlJhIb0rfpquG3QT4UR8RX+h8a4tTU3u6JsYxUxDapTNDKzQ
+        f5gVAFiD3VojevfnjODGW4WDI+17OJxlTIKTM2TDKB0FiNMqYngrvfy+WzdXcNc/W+Luknc2uixo
+        4ed97Mhu9KSMrl4vETZemeOfwYm7aeiZgOqmvWM+zic+yU/zjAxlfWVEeemVlEk3DPMU9my7cJxQ
+        9guzRkvlHX3qDSp+KvwNnJA/0GE/FdZ4bQ0Kz2l1Z/6Iqs/6dgtvRfeZZc6hP5r6qdQYRCO7uPkY
+        jnv9vEeVHTlkfzSk7Gmj6wggzVustnrV0fHpnEGExZ1sUKWG8/VFIzDVImD5jmRo3qyHCN4PACwX
+        TepPWXbWv/XF1l1C/X54NSXgzj9hrfCWXZ8xZ9T8Y/Em/kDCbsLnJFCVwtTw/DCErBv1oIbjWT4w
+        V2wuaHwQdw/XY1UyHE8VGkNNPIIWaQKGHVn6NDjsIwTi5YqVo2ehpcanGgTEDPoZtyYnu6qwGt8l
+        nrZVUY2Zt23B6pOZuPdq7n75LbirO+Z4zdEaJUIwXN77PUvqPO7GKXio4O3XKyqsSO7P3muIEXos
+        FLLRHNOXFk9sI357aViWSZ0NGvqZQRm7H7Jp81PV7aSLBPPtqf7+P/bC3EaxQBy8xNEdzYL0Y4Pn
+        b13cqvojHKegV1D3XolsPefHrvu53R/a55p4TpVX9HU+KUAOypkECyJXnTWFASwK40Sse6Jnoibt
+        z9qQIJUFZ28K6fkQq6svX0zRvOt4HexBQ3vDZbFFXj4jDgbUDK+Ejlwm1fwqdAqXgzoRt8hxx+Pb
+        GwOx/AuOO0fnvapJEez59kZMyM1q5NpSAAOynujMRbzJPUOC5WiKxPAau5KzII7VRWaXxJSr2ucX
+        OgfaB18ZXkjbSiz1H4zo9pARD+umz9eFmYJf+T5Vuiqpxjioas2di5TEpWdXPAv2sZbuHm+ylomb
+        TY8YrnAThRMheHKzMVfGWZuMQ/3ht7TiZ2cdwYH7BV5GURlyy+z30Oz1NclQcs1Y0ycmkh6XNbHG
+        ecm5eGt7WFquzkw04E6WDzdBffTQ/eqhcRkMLlp4V51ePutzuaSgknNQ03ttpHzM9FxUDbXYkr3Z
+        6HxuC10BbbQIwaH0CvutflOgyJcL5i+c3mJKkKho15YjC/xEs7jWpx/+piXZ3ZzJb7rWu0I/6me2
+        m3VszVBsJUT1BpHjxrgiWoa8hjgAg0RrOUUjIbsNyt6qgCe9eWT8OkWlKuBxRxK7+cm4sB094JvO
+        p3PUNGioFDgD37x9YsaGVo0aWdcrf+8AfuLI4F8+AjXrZ3ZdSCWaf0IUg1l5A/7wHZo6lEuQAKyZ
+        Pc+JNdrFqUavjWmSWHNKa5peDxfuy5fFSCZ1Ps91q9Xkrn+ztecV1kDa4AwTSU2q/JCmm9atL6Cx
+        6w/MJdUhlO993Kof/qNXqnvZzA/HGD3EyGd7MjgdO/d7F3IRYtwdo7M1O9LVRsbGSais5Nzq2bpo
+        tI/+YjZP7ExaOz5WNzQgJAmdyuILCns4XW7AnNtwCceK4Q3sMM6J7+U3PknxMkabsizoeHJV1Bxj
+        xUPSTxqxbZDL1TxK+Rmt4HLAU9A4lvwoLBV+rpCw6z5aVezMpSM0UXRh6Su5IL4MFwoY8YCIAcbV
+        p92LuXDGATCSexmnwSGOkJnxHdUG6dnRu67nX33Fts9E7JhDp6OmRqeQ2UPVd/NHv8A221ofva9Z
+        w6osUu2r592umvmHXwDZ1XRihlXp/qzz1QiDvdjQlUwGnzVljbW5j1bkLM0Lztog8VTW9ZjhGgXd
+        CCiKoXTJk8ppk1TjFR0pHI+VQUyjsip+MgcM4/ASib2Sb9V8dD6acffoiX9x3pzqfJqBOA8bo4uz
+        RfINqyXUj+jANq5nWVNyWwgIbd41MYg8Wfyt2xjK6SgxQ5Z5OESe3QKeiyXbBM01GyO2i4HU8gar
+        tm6g8ZmFAeBqkpjRwBmNt+mlQjuFh0893ay5DFGNmr25Zp/9tiYc1DF8r7/8OCfn2wbtlw+PbXAe
+        +ZxoRa/ei+bATvmchaOtoUK1Lz8WLjcG8F99UO7biNl+5VXM5ssz3JrWYn7q0fDp3RYB2hRrzgIJ
+        1d0843EPqu/uP+cN1nhAqfe7PyaGuJMffSyh3V3ZU3CcoJP3t0KE+7TnJHW9N+dHvAKo7vsVuSk6
+        7fh0K8vVcI1eePmUF5yVt/eM1Mo94kEjyB+LdqvCbIRv9j0PNup2DeMrNsjN9iJ/6tedBNU1ckny
+        iPbVBK9Hg2gQtSxwnL6bXY8cIXmrCmbvvkKfektRc96pzDnmXti/gkekiet0h+dX9QyHIzqVKB9q
+        hayj6O2PFkpSSA1FpbTri5BHoYQhzbbALC0xkBgxJ4YqOcp4ZXtuJZrMviIa6ynWAr0Px2ffY3hc
+        oy1J8mj0+bXwCxTmAWf2TkbZHEpXCa45OTBDgAsffHTy4LQ6ejgTo9ifrOApwZbi468+4/AeTbBx
+        oDPzZ9j54/Umjtr5rlJiXucpHKvgsdEcn5+pHhtn1Md63qL38pUzPW/MTF5hUQef84F4hW5lVKCK
+        iuSQNvRcz4v/wrcyOYrMfg5R2AfeRgGps23yfV750VlvkLd3Viz1ojlrBenHRTdbODKs6gf+0bMq
+        yHKcfPz/UA0kRhE6XX6AkHRaW6NPAkHdmQUj+KiTjqtaK4B8XbTEfMtnnx8dskEfPU2nfN7xz/6I
+        aOgXWzzOs99RMRQL2B+UhJhms66keIoFUApdI1uftPw7juKDKmIWI5KNZ7Ir0Ne/eadqkfEXRvYX
+        b8kFmqwbBm8H0N6eP5SLIGRfPwzKT5wST07iilfBfoTPfLowvTSbagUKVNdExKNoxGF3w3MBFskF
+        /JySNV9eHR20m/ZYsi13HhX1FCGFDZrKX78n1VNC1ea+aonDKoJaVTdGwOegYk7azGh+OAFVZ04T
+        spuIGs7puj6q0Fge2UxVak33drdXEacybXO95LOBLoDMvZMTY1mViDGtTZH8k14IOZGfbsoUJHzx
+        gXhSJFbjXs/3qpsWMYvtnPNP/YgQPuuQEIrGrP/6seX1ZBJfRVXH+8MpBURnG0s88a0ZK0INaSRs
+        sbiStWpM+6rRar0tvn4RjY6nl6i5o5at957eTaoUltrjet4yHyWQ9dOr6DXdKy3mTU7jU4mLD7Ro
+        uiWzRMg/58NdIJ0fM+ejbyZVygroooXJgo3edCPve4CfOwqocknGbMbnaw2Lx+VJkYn0bn5LJwG5
+        udhgwfUuWf/xU7B18YHp5dzyMUHHEq73453KZvTiH7zFMCv6mzl5ZHb09aoVGA+HihidfOweW2aL
+        q04394zYU231RWsokG2PV7Z9O4+QT+GCgiJqjBgbWIZTdU4j5En4wrD4EesXz8jBXd+2bB1FW0sW
+        toqHNN0IyM5Er5Avp5MI1/v+jkU7rzN6mPYPrRaBU3gleTezsgogjxuXRSv51s176drA+a5QLN2S
+        1p/usXiEs/O44nklS3z68XYYejGq6XLOfT5esmOuff2hHs9tNbxQ3iLxHs54Pg09Gi/KmEJdmAZz
+        aSNnDXrd9/A2Qp8Fdwdbv/5/emgXcjGjNVoG63YDV+0xE8qcpc/Hkj4QckeL/GjS4M+pvrHhslUZ
+        Mcv50I0Vcz20XKd7vOh1saIjVTYQ+H6A5d4z/d/8xO08FcsDcX1pmtIjfPOHmTZvNJzXZQ+OP52p
+        CtHS769BN0MmLEdykTwzbDUHm+h5epGPHiis6f3cPuB0qhNm32Sw2AqDjhxJemGhRzvrmyfCyrd3
+        zHLzko/f57E+hCbzTVRUkyCFVLudapGYACjjfaZjeAXnI8Gov/vcdtwUsvsxZ5tLsg/76CamMClm
+        TbtznlfyUSsUbVHPR4Kb6dEN76dRg14WDgl09LDo6fUEMKKs+8035b5PMCS3uiZmCkk4Mm05wlS8
+        18w7OW63TNpA+eLpx0+UPo2meIblqItsJ6LW767ms0ZholbMCCudL6mzVdCzB0q2Sr7ik3dOTJj2
+        +pN2GTmG37wV7eqgYNdI32aSWnYjfOd7SzJ2PdykK4BPFbbRqhTxtI+PMCQrlSIv1ziLQyFF9X31
+        IGscbarxGlSz2lfUZjtfsjpxx3b6b56wDvI955/7Q7tc1pmXRtzvF4p6RY4kvohjDCfOAG11mIu3
+        x6y7nPhsgbYYxfWypkpWxXzO40UOQ6xfcFEDD9mtj3OghXklVgNa9UrLIQdXX7eYB3D1x8DTVfh5
+        QMZuHUnQvH49A9BY3NNF60HF1f4gaDuzZJhblYs+/kUFu0+Wn/xkzUW/1cdfvt1kTmFxBW1E1L9X
+        MvngWUXn8zkHdggL4uU56ibRwxHwaHGjT0fOsznX9aNmoc3E0pDQbig9J10dzkvMdke0seYs5AEy
+        BDEhThtZmeRIVxfFK2WJlY1XdfIDzwp8/CStpfkH9aUyCigwi54+19WuU0wWXKG5CjJehY7lyzcu
+        NZDt6p74HeFWT4Oefv0Klv3hiqhdFqDpZ+lEp9fg+UsuZd4KWPr+6EUrXK6DWkeR77+w8Ca3cHAI
+        ATi+lYKc1Zz9+uVvfohhozfVLBxSASXe/cJ22IvCueFIUvv74cKCPXqg/tWa+1+/Z62G2ZrvZXnV
+        lMz1sPzJR59PKY3VvfwzsCAhJ851vNK/+Ewsq6o53z7dFupVaLGNmp+zaf/U99qC2w+Cn9KmGknf
+        uWBkm4ZsJe/tz/TFjujU3n3mnOSFVX/0L0wQScypKmZNpmdREOqZ4E8eWPEm000N8V5m3t1ZZ+Mx
+        Hj0YrX5P/A26++MSRTrsD2ry69eGMhzxN1/AHz9Xtd+8fb2+BYSUiHSsCgUB8lxekd+8f81nTz1t
+        lTc1KFwsMdC4Cl+8ZfbkWiMjWELl7WXjlaAb4cTQxfyuT6e6ca0li5emalRe+8krs25eYiWHGC8f
+        xFlU+47vbk2DQgkv6V12fzr20WPf+yP4k9cOp4DOYFo8IMa5eYazO+1N7SGefbLNiF998pQIsggC
+        vFpVGh+Vc+wiiDREcEKu3SSHU6R98ju6MBH2R6dvSwVjfMcIe7tqhsKQ4A5CSSWL6OFcFXqpqXvL
+        YvjHETNpMYWm9hqbmulnP0fjeqpHtMDjnjl2dO/mXThftfmhpcy8zodwdLJDAQvuPhguJ9v/1WdR
+        W22o1npL/iYxOkOk1ReM7mRGwyilAJ/zw2rgtdl4bbc9SM37Qps6Gvw+zdIGiLW9sK2i360x1s/N
+        Fz+Is62oNdavxkNlBA/i1A3v3u9QqWFfFog4h0Hqvv7tVx9vjxHLpknRXLWSdt0nTw6qSTQbDwQ0
+        GMxSZ8mn3/3Vs80Ti2/5yj985iE/mzosOpWXDfB6tMAj7cY8iE4Wlw83gOpYqcRgVRnytN8fwZak
+        B+0WTmBxjKcZvn7cps2+Wiqv/qoGfBqJP+uvbHxn2UePjTYJJOR2jHBNRX5btuSb106rsolRl4RH
+        vFj3dzSn8eKIPvXItm4uW8MmngVN7/iajj1w3vrl+4yqfXMheiVjPluKYK5eQXQkWEctGqRYS9F7
+        r3vssveKaq5edQ+ffA0n1zz+4MVaADlz18S9RrU1yE8vgh+8S9naJw+fS1o7g1tNGXHMOUFiG/QF
+        hNujwUytqr/5nYB8Caf09clPxnv/MOEy1AW9lPmBz1Ox3YMQMv2Xj+c0lvfok88Qt0q8sChQqoBR
+        rDO8WjjPcK6mQwkfvsGj2RRobNbFXiuKFrONRdaWDNM5AOMsxkRvZj8U4SbkINQjYec0x9bYE9z+
+        3t+q9Tbhxw/ZUNc7kThasqlmT5FSVfXtPdEliKxp5pOpJXj5Yp/8xR/T7Nhqm3C6syD2JjSE67LU
+        hM79+eSFrjW8HKMAWU4Tyj/4OBSO4WknV04pspJVyFqku/AOBJUQhwi8nczqrAo+FfCi6qtwOgZ1
+        Ddu3YpLLOZ8s+nDsHi3CwWJrfwA+PKU0haWtVcw4yFP3+3x99BedCiOtBjXWHuAdi5oEdZR+88dU
+        k7jrEjtuWDf9vLoNBInik+tWKrLZiDUBId8NsTjmTfXNcyGe9ifmJ4nacVI+FPjgB9vZnuhPB2eT
+        gnI4CMT4qe5dn8RjAR/8J36d/2Tz8XydwW6cJ3GGIbZ4HOwxIuzWMIMPLeKFOcyw9sqM4dlbdbwo
+        fApceWN8vzZP1FvtJgZHCFxGTE8NZ/31EGFbrKXvfqH5Hi8a9PMQMiw/ojdi7q04auWm/fB5pXC2
+        1b3iF+9vO2cMWVJYkRZwPhJ873VLNqXLEWq9KTCykiTrz9OrRJuQ36kqRWL31UNIsrWaebHnW0O6
+        blW0eixmPOLG6OZ7LDea7hUWcXE+ZHx/ayT0eR9D1SXZV8O2r21g1wX51os/f/1zCcKTrO0m7vi1
+        sAoA3doy75bI3ZD3LwwvOJ/Y5pbs+TyZXYTKPrLwPM9z1nBCdNgI0kS8UX9YkxprNWwKh5PtrBfV
+        PJ/zK3qfdxrbZZKdLf3W3iBdvsp4sZ9q/nBKmYKom5RZYfXqHh89i97ROWXWJrfC37zsiwc7mMxQ
+        Or0GAT75DruZaJ19358hT5Bk+n3fPCnKMtf+frsC/vNff/78n2+HQd3c8uenMWDIp+Hf/90q8O/0
+        lv5bFKV/M+m3E4H2aZH//ee/mhD+vrumfg//d2ge+av/+8+flYh++w3+Ds2QPv/HwL8+6/3nv/4f
+        AAAA//8DAPp9nSnlIAAA
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bf9ab3e6de06428-SJC
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 29 Apr 2023 18:39:39 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '195'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3000'
+      x-ratelimit-remaining-requests:
+      - '2999'
+      x-ratelimit-reset-requests:
+      - 20ms
+      x-request-id:
+      - 6c805826f30e21e10011f6f0db0b02c6
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are Follow-Instructions-GPT, an AI designed to read the instructions_1.txt file
+      using the read_file method and follow the instructions in the file.\nYour decisions
+      must always be made independently without seeking user assistance. Play to your
+      strengths as an LLM and pursue simple strategies with no legal complications.\n\nGOALS:\n\n1.
+      Use the command read_file to read the instructions_1.txt file\n2. Follow the
+      instructions in the instructions_1.txt file\n\n\nConstraints:\n1. ~4000 word
+      limit for short term memory. Your short term memory is short, so immediately
+      save important information to files.\n2. If you are unsure how you previously
+      did something or want to recall past events, thinking about similar events will
+      help you remember.\n3. No user assistance\n4. Exclusively use the commands listed
+      in double quotes e.g. \"command name\"\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. read_file: Read file, args:
+      \"filename\": \"<filename>\"\n4. search_files: Search Files, args: \"directory\":
+      \"<directory>\"\n5. write_to_file: Write to file, args: \"filename\": \"<filename>\",
+      \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n7.
+      get_hyperlinks: Get text summary, args: \"url\": \"<url>\"\n8. get_text_summary:
+      Get text summary, args: \"url\": \"<url>\", \"question\": \"<question>\"\n9.
+      list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT
+      Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent:
+      Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. Task Complete (Shutdown): \"task_complete\", args:
+      \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
+      information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
+      Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
+      Continuously review and analyze your actions to ensure you are performing to
+      the best of your abilities.\n2. Constructively self-criticize your big-picture
+      behavior constantly.\n3. Reflect on past decisions and strategies to refine
+      your approach.\n4. Every command has a cost, so be smart and efficient. Aim
+      to complete tasks in the least number of steps.\n5. Write all code to a file.\n\nYou
+      should only respond in JSON format as described below \nResponse Format: \n{\n    \"thoughts\":
+      {\n        \"text\": \"thought\",\n        \"reasoning\": \"reasoning\",\n        \"plan\":
+      \"- short bulleted\\n- list that conveys\\n- long-term plan\",\n        \"criticism\":
+      \"constructive self-criticism\",\n        \"speak\": \"thoughts summary to say
+      to user\"\n    },\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\":
+      {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
+      can be parsed by Python json.loads"}, {"role": "system", "content": "The current
+      time and date is Tue Jan 01 00:00:00 2000"}, {"role": "system", "content": "This
+      reminds you of these events from your past:\n[]\n\n"}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      \"I need to read the instructions_1.txt file to determine the next command to
+      use.\",\n        \"reasoning\": \"The instructions_1.txt file contains the instructions
+      that I need to follow.\",\n        \"plan\": \"- Use the read_file command to
+      read the instructions_1.txt file.\\n- Analyze the instructions to determine
+      the next command to use.\",\n        \"criticism\": \"I need to ensure that
+      I am following the instructions correctly and efficiently.\",\n        \"speak\":
+      \"I will use the read_file command to read the instructions_1.txt file and determine
+      the next command to use.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\":
+      {\n            \"filename\": \"instructions_1.txt\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command read_file returned: This task_id is 2314\nRead
+      the file instructions_2.txt"}, {"role": "user", "content": "Determine which
+      next command to use, and respond using the format specified above:"}, {"role":
+      "assistant", "content": "{\n    \"thoughts\": {\n        \"text\": \"I need
+      to read the instructions_2.txt file to determine the next command to use.\",\n        \"reasoning\":
+      \"The instructions_2.txt file contains the instructions that I need to follow.\",\n        \"plan\":
+      \"- Use the read_file command to read the instructions_2.txt file.\\n- Analyze
+      the instructions to determine the next command to use.\",\n        \"criticism\":
+      \"I need to ensure that I am following the instructions correctly and efficiently.\",\n        \"speak\":
+      \"I will use the read_file command to read the instructions_2.txt file and determine
+      the next command to use.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\":
+      {\n            \"filename\": \"instructions_2.txt\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command read_file returned: Read the file instructions_3.txt"},
+      {"role": "user", "content": "Determine which next command to use, and respond
+      using the format specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\":
+      {\n        \"text\": \"I need to read the instructions_3.txt file to determine
+      the next command to use.\",\n        \"reasoning\": \"The instructions_3.txt
+      file contains the instructions that I need to follow.\",\n        \"plan\":
+      \"- Use the read_file command to read the instructions_3.txt file.\\n- Analyze
+      the instructions to determine the next command to use.\",\n        \"criticism\":
+      \"I need to ensure that I am following the instructions correctly and efficiently.\",\n        \"speak\":
+      \"I will use the read_file command to read the instructions_3.txt file and determine
+      the next command to use.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\":
+      {\n            \"filename\": \"instructions_3.txt\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command read_file returned: Write the task_id
+      into the file output.txt\nShutdown"}, {"role": "user", "content": "Determine
+      which next command to use, and respond using the format specified above:"},
+      {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      \"I need to write the task_id into the file output.txt and then shutdown.\",\n        \"reasoning\":
+      \"The instructions_3.txt file instructed me to write the task_id into the file
+      output.txt and then shutdown.\",\n        \"plan\": \"- Use the write_to_file
+      command to write the task_id into the file output.txt.\\n- Use the task_complete
+      command to shutdown.\",\n        \"criticism\": \"I need to ensure that I am
+      writing the correct task_id into the output.txt file and that I am shutting
+      down correctly.\",\n        \"speak\": \"I will use the write_to_file command
+      to write the task_id into the file output.txt and then use the task_complete
+      command to shutdown.\"\n    },\n    \"command\": {\n        \"name\": \"write_to_file\",\n        \"args\":
+      {\n            \"filename\": \"output.txt\",\n            \"text\": \"2314\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command write_to_file returned: File written
+      to successfully."}, {"role": "user", "content": "Determine which next command
+      to use, and respond using the format specified above:"}], "temperature": 0,
+      "max_tokens": 2331}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '7669'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA5SSP2/bMBDF936Kw82y4VRwHGsL2g4eOrUdiqowaOosMaaOKnmMHRj67oX+xY6D
+        Dh31SP3eu3s8oykwQ10p0XVjZ6vHJ+vDJ7f8oquH01d9OMT0+Rv/NH94/RkTdLsn0jL+MdeubiyJ
+        cYwJak9KqMDs7v7h42qdLlfrBGtXkMUMy0Zm6Xw5k+h3brZIF3eYYAyqJMzO2HhXN7IVdyAOHSBd
+        JHiBXw7SdYLiRNmLtLpftwnqyhlNAbNfZ6wpTGDvLGGGKgQTRLF0MR0LcTfCOWcAgBylcrGsJOSY
+        wSiOB3SSTsxxA5V6JghRawphH619gaM3IsQgFYGocNiaAgyL6wUXpYkyl5PA3liawwaYqABxEKoo
+        hTsysDvOc0yuHT2p4NhwOdh+v0JXKsCOiF99/+UFiotO9wTKE7CDffTdNxgO4qPudhq6JHtn7fsM
+        jVU82M/gR6DLfGMjBNrVdW9yGeYWor0Ro02op/1N0xOH6DuoEtiAqnuCGC6h34l23pMW+3ILDA2p
+        wwQ7Gmsh/ke2gdQmU+XjrXeNs6ppMHlDvcmifHn7WK7rGwCP1r5deP+C+gYnbPGarE83hsy5xTbB
+        vWETqu2AxAyDuAYTNFzQCbNF+7v98BcAAP//AwDI0C/ivgMAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bf9ab403fa96428-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sat, 29 Apr 2023 18:39:47 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '8206'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '85989'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.674s
+      x-request-id:
+      - 62946a2415fd4014bc6556763cc6f992
+    status:
+      code: 200
+      message: OK
+version: 1
