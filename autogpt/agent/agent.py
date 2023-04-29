@@ -1,11 +1,10 @@
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
-from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
-from autogpt.json_utils.utilities import validate_json
-from autogpt.llm_utils import create_chat_completion
+from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
+from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
@@ -108,7 +107,7 @@ class Agent:
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
-                validate_json(assistant_reply_json, "llm_response_format_1")
+                validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
@@ -153,7 +152,7 @@ class Agent:
                         console_input = clean_input(
                             Fore.MAGENTA + "Input:" + Style.RESET_ALL
                         )
-                    if console_input.lower().strip() == "y":
+                    if console_input.lower().strip() == cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().strip() == "s":
@@ -171,7 +170,7 @@ class Agent:
                             Fore.YELLOW,
                             "",
                         )
-                        if self_feedback_resp[0].lower().strip() == "y":
+                        if self_feedback_resp[0].lower().strip() == cfg.authorise_key:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         else:
                             user_input = self_feedback_resp
@@ -179,7 +178,7 @@ class Agent:
                     elif console_input.lower().strip() == "":
                         print("Invalid input format.")
                         continue
-                    elif console_input.lower().startswith("y -"):
+                    elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
                         try:
                             self.next_action_count = abs(
                                 int(console_input.split(" ")[1])
@@ -187,12 +186,12 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             print(
-                                "Invalid input format. Please enter 'y -n' where n is"
+                                f"Invalid input format. Please enter '{cfg.authorise_key} -N' where N is"
                                 " the number of continuous tasks."
                             )
                             continue
                         break
-                    elif console_input.lower() == "n":
+                    elif console_input.lower() == cfg.exit_key:
                         user_input = "EXIT"
                         break
                     else:
@@ -252,13 +251,6 @@ class Agent:
                     result = plugin.post_command(command_name, result)
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
-            memory_to_add = (
-                f"Assistant Reply: {assistant_reply} "
-                f"\nResult: {result} "
-                f"\nHuman Feedback: {user_input} "
-            )
-
-            self.memory.add(memory_to_add)
 
             # Check if there's a result from the command append it to the message
             # history
