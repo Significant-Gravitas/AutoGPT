@@ -23,14 +23,19 @@ import os
 import yaml
 from pathlib import Path
 from typing import Optional, Type, List
-try :
-    from autogpt.projects.agent_model import AgentModel
-    from autogpt.projects.projects_broker import ProjectsBroker
-except ImportError as e:
-    pass
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
-# @TODO SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
+# @TODO 
+SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
+PROJECT_DIR = "autogpt/projects"
+
+
+import sys
+if not 'autogpt.projects.projects_broker' in sys.modules:
+    from autogpt.projects.projects_broker import ProjectsBroker
+if not 'autogpt.projects.project' in sys.modules: 
+    from autogpt.projects.project import Project
+
 
 class AgentModel(): 
     """
@@ -72,8 +77,9 @@ class AgentModel():
                  agent_name: str, 
                  agent_goals: List, 
                  agent_role: str, 
-                 agent_model: str, 
-                 agent_model_type: str,
+                 agent_model: str = '', 
+                 agent_model_type: str = '',
+                 api_budget: float = 0.0, #TODO PROJECT-Deprecated to remove
                  team_name: Optional[str] = None,
                  prompt_generator =  None,
                 command_registry =  None
@@ -91,11 +97,12 @@ class AgentModel():
             prompt_generator (Optional[Any], optional): An instance of the `PromptGenerator` class used to generate prompts for the user. Defaults to None.
             command_registry (Optional[Any], optional): An instance of the `CommandRegistry` class used to manage the available commands for the agent. Defaults to None.
         """
-        self.agent_name = agent_name
-        self.agent_goals = agent_goals
-        self.agent_role = agent_role
-        self.agent_model = agent_model
-        self.agent_model_type = agent_model_type
+        self.ai_name = agent_name
+        self.ai_goals = agent_goals
+        self.ai_role = agent_role
+        self.ai_model = agent_model
+        self.ai_model_type = agent_model_type
+        self.api_budget = api_budget #TODO PROJECT-Deprecated to remove
         self.team_name = team_name
         self.prompt_generator= prompt_generator
         self.command_registry= command_registry
@@ -126,28 +133,31 @@ class AgentModel():
             agent_model_type=agent_model_type,
             team_name=team_name)
     
-    def save(self) -> dict:
+    def save(self, config_file: str = SAVE_FILE) -> dict:
         """
         Saves the `AgentModel` object as a dictionary representation.
 
         Returns:
             agent_dict (dict): A dictionary representation of the `AgentModel` object.
         """
-        agent_dict = {
-            "agent_name": self.agent_name,
-            "agent_role": self.agent_role,
-            "agent_goals": self.agent_goals,
-            "agent_model": self.agent_model,
-            "agent_model_type": self.agent_model_type,
-            "prompt_generator": self.prompt_generator,
-            "command_registry": self.command_registry
-        }
-        return agent_dict
+        subfolders = [f.path for f in os.scandir(PROJECT_DIR) if f.is_dir() and f.name != '__pycache__']       
+        if not subfolders:
+            from autogpt.projects.projects_broker import ProjectsBroker
+            projects_broker = ProjectsBroker(config_file = config_file)
+            project = projects_broker.create_project(
+                    project_position_number = 0,
+                    lead_agent = self,
+                    api_budget = self.api_budget,
+                    project_name = self.ai_name)
+            return project.lead_agent.to_dict()
+        else :
+            return self.to_dict()
     
 
-    @staticmethod
-    def load(config_file: str = '') -> "AgentModel":
-        
+    @classmethod
+    def load(cls, config_file: str = SAVE_FILE) -> "AgentModel":
+        from autogpt.config import Config
+        CGF = Config()
         """
         TODO DEPRECATED - THIS IS TO MAINTAIN BACKWARD COMPATIBILITY
 
@@ -160,22 +170,37 @@ class AgentModel():
         Returns:
             cls (AgentModel): An instance of the `AgentModel` class.
         """
-
-        try:
-            with open(config_file, encoding="utf-8") as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
+        from autogpt.projects.projects_broker import ProjectsBroker
+        subfolders = [f.path for f in os.scandir(PROJECT_DIR) if f.is_dir() and f.name != '__pycache__']       
+        if not subfolders:
+            try:
+                with open(config_file, encoding="utf-8") as file:
+                    config_params = yaml.load(file, Loader=yaml.FullLoader)
+            except FileNotFoundError:
+                config_params = {}
             ai_name = config_params.get("ai_name", "")
             ai_role = config_params.get("ai_role", "")
             ai_goals = config_params.get("ai_goals", [])
             api_budget = config_params.get("api_budget", 0.0)
-            agent =  AgentModel(ai_name, ai_role, ai_goals, api_budget)
-            # type: Type[AIConfig]
+            agent =  AgentModel(agent_name = ai_name, 
+                                agent_role = ai_role, 
+                                agent_goals = ai_goals, 
+                                api_budget = api_budget)
 
-            ProjectsBroker.create(agent)
+            return agent
+        else :   
+            return ProjectsBroker.load()[0] 
 
-            # Move the file to the destination path
-            #shutil.move(source_file, destination_path)
+    def to_dict(self) -> dict:  
+        agent_dict = {
+                "agent_name": self.ai_name,
+                "agent_role": self.ai_role,
+                "agent_goals": self.ai_goals,
+                "agent_model": self.ai_model,
+                "agent_model_type": self.ai_model_type,
+                "prompt_generator": self.prompt_generator,
+                "command_registry": self.command_registry
+            }
+        return agent_dict
 
-        except FileNotFoundError:
-            ProjectsBroker.load()
-        return 
+

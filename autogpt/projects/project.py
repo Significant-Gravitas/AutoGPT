@@ -27,12 +27,24 @@ Methods:
 - to_dict(self) -> dict: Converts the Project object to a dictionary representation.
 """
 
+import os
+import shutil
+import yaml
 from typing import Optional, Type, List
-try:
+import datetime
+
+import sys
+if not 'autogpt.projects.agent_model' in sys.modules:
+    print('#################PASS')
     from autogpt.projects.agent_model import AgentModel
+
+if not 'autogpt.projects.projects_broker' in sys.modules:
     from autogpt.projects.projects_broker import ProjectsBroker
-except ImportError as e:
-    pass
+
+
+
+AUTOGPT_VERSION = 'X.Y.Z' # TODO, implement in config.py or main or technical env file
+PROJECT_DIR = "autogpt/projects"
 
 class Project:
     """
@@ -69,11 +81,11 @@ class Project:
         delete_delegated_agents(self, position: int) -> bool
             Deletes the delegated agent at the given position and returns True if successful.
     """
+
     def __init__(self, project_name: str, 
                  project_budget: float, 
                  lead_agent: AgentModel,
-                 delegated_agents: List[AgentModel] = [], 
-                 version: str = "0.0.0",
+                 delegated_agents: List[AgentModel] = [],
                  project_memory: Optional[str] = None, 
                  project_working_directory: Optional[str] = None,
                  project_env: Optional[str] = None, 
@@ -96,7 +108,6 @@ class Project:
             project_log_env (str, optional): The log environment of the project. Defaults to None.
             team_name (str, optional): The name of the team. Defaults to None.
         """
-        self.version = version
         self.project_name = project_name
         self.project_budget = project_budget
         self.project_memory = project_memory
@@ -124,30 +135,16 @@ class Project:
         Returns:
             dict_representation (dict): A dictionary representation of the Project object.
         """
-        lead_agent_dict = {
-            "agent_name": self.lead_agent.agent_name,
-            "agent_role": self.lead_agent.agent_role,
-            "agent_goals": self.lead_agent.agent_goals,
-            "agent_model": self.lead_agent.agent_model,
-            "agent_model_type": self.lead_agent.agent_model_type,
-            "prompt_generator": self.lead_agent.prompt_generator,
-            "command_registry": self.lead_agent.command_registry
-        }
+        lead_agent_dict = self.lead_agent.to_dict() 
+
         delegated_agents_list = []
         for agent in self.delegated_agents_list:
-            agent_dict = {
-                "agent_name": agent.agent_name,
-                "agent_role": agent.agent_role,
-                "agent_goals": agent.agent_goals,
-                "agent_model": agent.agent_model,
-                "agent_model_type": agent.agent_model_type,
-                "prompt_generator": agent.prompt_generator,
-                "command_registry": agent.command_registry
-            }
+            agent_dict = agent.to_dict() 
             delegated_agents_list.append(agent_dict)
+
         dict_representation = {
             "project_name": self.project_name,
-            "api_budget": self.api_budget,
+            "project_budget": self.project_budget,
             "lead_agent": lead_agent_dict,
             "delegated_agents": delegated_agents_list
         }
@@ -164,16 +161,19 @@ class Project:
         Returns:
             project_instance (Project): A Project instance with the loaded configuration parameters.
         """
+
+        print(config_params) # TODO -REMOVE-PRINT
         project_memory = config_params.get("project_memory")
         project_working_directory = config_params.get("project_working_directory")
         project_env = config_params.get("project_env")
         project_log_activity = config_params.get("project_log_activity")
         project_log_env = config_params.get("project_log_env")
-        agent_team = config_params["agent_team"]
+        agent_team = config_params.get("agent_team", None)
         team_name = agent_team.get("team_name")
-        version =  config_params.get("version", '')
+        version =  config_params.get("version", AUTOGPT_VERSION)
         if version != '' :
-            cls._version = version # Not supported for the moment
+            cls._version = version 
+            # Not supported for the moment
 
         if (config_params.get("project_name")) :
             project_name = config_params["project_name"]
@@ -202,7 +202,8 @@ class Project:
                    version, project_memory, project_working_directory, project_env,
                    project_log_activity, project_log_env, team_name)
     
-    def save(self, is_creation : bool = False , creation_position : int = -1 ) -> dict:
+
+    def save(self, project_position_number : int, is_creation : bool = False  ) -> dict:
         """
         Saves the Project object as a dictionary representation.
 
@@ -213,22 +214,43 @@ class Project:
         Returns:
             project_dict (dict): A dictionary representation of the Project object.
         """
+        from autogpt.projects.projects_broker import ProjectsBroker
+        project_broker = ProjectsBroker()
+        project_list = project_broker.get_projects()
 
-        if (is_creation) :
-            ProjectsBroker.project_dir_create(self, 
-                                              creation_position = creation_position,  
-                                              project_name = self.project_name)
 
-        lead_agent_dict = self.lead_agent.save()
-        delegated_agents_list = [agent.save() for agent in self.delegated_agents_list]
+        if( 0 <= project_position_number) :
+            sub_folder_name = project_broker.project_dir_name_formater(project_name = self.project_name)
+            for i , project in enumerate(project_list) :
+                current_project_foldername = project_broker.project_dir_name_formater(project.project_name) 
+                if (i == project_position_number and current_project_foldername != sub_folder_name ) :
+                    # NOT_DELETING THE PROJECT BUT CREATING .backup
+                    backup = f"{current_project_foldername}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.backup"
+                    shutil.copy(current_project_foldername ,backup )
+           
+                elif i != project_position_number  and current_project_foldername== sub_folder_name :
+                    # NOT_DELETING THE PROJECT BUT ADDING EXTENTION
+                    sub_folder_name = sub_folder_name + '_1'
+                    
+            project_broker.create_project_dir(project_name = sub_folder_name)
+            
+
+        # lead_agent_dict = self.lead_agent.save()
+        # delegated_agents_list = [agent.save() for agent in self.delegated_agents_list]
         
-        project_dict = {
-            "project_name": self.project_name,
-            "project_budget": self.project_budget,
-            "lead_agent": lead_agent_dict,
-            "delegated_agents": delegated_agents_list
-        }
-        return project_dict
+        # project_dict = {
+        #     "project_name": self.project_name,
+        #     "project_budget": self.project_budget,
+        #     "lead_agent": lead_agent_dict,
+        #     "delegated_agents": delegated_agents_list
+        # }
+
+        new_path = os.path.join(PROJECT_DIR, sub_folder_name , 'settings.yaml')
+
+        with open(new_path, "w", encoding="utf-8") as file:
+            yaml.dump(self.to_dict(), file, allow_unicode=True)
+        
+        return self.to_dict()
     
 
     def get_lead(self) -> AgentModel:

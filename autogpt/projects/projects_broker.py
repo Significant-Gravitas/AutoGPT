@@ -37,14 +37,16 @@ from pathlib import Path
 from typing import Optional, Type, List
 from autogpt.prompts.generator import PromptGenerator
 
-try:
-    from autogpt.projects.project import Project
+import sys
+if not 'autogpt.projects.agent_model' in sys.modules:
     from autogpt.projects.agent_model import AgentModel
-except ImportError as e:
-    pass
+if not 'autogpt.projects.project' in sys.modules: 
+    from autogpt.projects.project import Project
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
-# @TODO REMOVE SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
+# @TODO 
+SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
+PROJECT_DIR = "autogpt/projects"
 MAX_NB_PROJECT = 5
 
 class ProjectsBroker(AbstractSingleton):   
@@ -62,7 +64,7 @@ class ProjectsBroker(AbstractSingleton):
         config_file (str): The path to the config yaml file.
 
     Methods:
-        __init__(self, project_number: int = -1, config_file: str = None) -> None:
+        __init__(self, project_positon_number: int = -1, config_file: str = None) -> None:
             Initializes a ProjectsBroker instance with the specified project number and config file.
 
         load(self, config_file: str = '') -> list:
@@ -80,7 +82,7 @@ class ProjectsBroker(AbstractSingleton):
         project_dir_create(cls, project_position: str,  project_name: str) -> str:
             Creates a directory for a project.
 
-        set_project_number(self, new_project_id: int) -> bool:
+        set_project_positon_number(self, new_project_id: int) -> bool:
             Sets the current project number.
 
         get_current_project_id(self) -> int:
@@ -89,32 +91,47 @@ class ProjectsBroker(AbstractSingleton):
         get_current_project(self) -> Project:
             Gets the current project instance.
 
-        get_project(self, project_number: int) -> AgentModel:
+        get_project(self, project_positon_number: int) -> AgentModel:
             Gets the specified project instance.
 
         get_projects(self) -> list:
             Gets the list of all projects.
     """
 
-    def __init__(self, project_number: int = -1, config_file: str = None) -> None:
+   # def __init__(self, project_positon_number: int = -1, config_file: str = None) -> None:
+    #     """
+    #     Initializes a ProjectConfigBroker instance with the specified project number and config file.
+
+    #     Args:
+    #         project_positon_number (int, optional): The project number to be set as the current project. Defaults to -1.
+    #         config_file (str, optional): The path to the config yaml file. Defaults to None.
+    #     """
+    #     self.config_file = config_file 
+    #     self._current_project_id = project_positon_number
+    #     self.load(self.config_file)
+    #     if 0 <= project_positon_number <= len(self._projects):
+    #         self.set_project_positon_number(project_positon_number)
+
+        # TODO create the back-up at a project level
+    #     shutil.copy(self.config_file, f"{self.config_file}.backup")
+
+    def __init__(self,  config_file: str = None) -> None:
         """
         Initializes a ProjectConfigBroker instance with the specified project number and config file.
 
         Args:
-            project_number (int, optional): The project number to be set as the current project. Defaults to -1.
+            project_positon_number (int, optional): The project number to be set as the current project. Defaults to -1.
             config_file (str, optional): The path to the config yaml file. Defaults to None.
         """
+        if not config_file == None or not hasattr(self, '_config_file') or self._config_file is None:
+            self._config_file = config_file
         self.config_file = config_file 
-        self._current_project_id = project_number
-        self.load(self.config_file)
-        if 0 <= project_number <= len(self._projects):
-            self.set_project_number(project_number)
-
-        shutil.copy(self.config_file, f"{self.config_file}.backup")
+        self._current_project_id = -1
+        self._projects = []
 
 
-
-    def load(self, config_file: str = '') -> list:
+    @classmethod # TODO , to maintain backward compatibility but to be removed
+    def load(cls, config_file: str = '') -> list:
         """
         Loads the projects from the specified YAML file and returns a list of Project instances containing the project parameters.
 
@@ -129,90 +146,83 @@ class ProjectsBroker(AbstractSingleton):
         """
         
         if not os.path.exists(config_file):
-            self._projects = []
-            return self._projects
+            cls._projects = []
+            return cls._projects
 
         with open(config_file, encoding="utf-8") as file:
             config_params = yaml.load(file, Loader=yaml.SafeLoader)
 
-        self._projects = []
+        cls._projects = []
         for i , project_data in enumerate(config_params.get("projects", [])):
             project_instance = Project.load(project_data)
-            self._projects[i] = project_instance
+            cls._projects[i] = project_instance
 
-        return self._projects
+        return cls._projects
 
-    def _save(self , config_file: str = '') -> None:
-        """
-        Saves the current configuration to the specified file yaml file path as a yaml file.
+    # def _save(self , config_file: str = '') -> None:
+    #     """
+    #     Saves the current configuration to the specified file yaml file path as a yaml file.
 
-        Args:
-            config_file (str): The path to the config yaml file.
-        """
+    #     Args:
+    #         config_file (str): The path to the config yaml file.
+    #     """
   
-        if not os.path.exists(config_file):
-            with open(config_file, "w", encoding="utf-8") as file:
-                yaml.dump({"projects": []}, file, allow_unicode=True)
+    #     if not os.path.exists(config_file):
+    #         with open(config_file, "w", encoding="utf-8") as file:
+    #             yaml.dump({"projects": []}, file, allow_unicode=True)
                 
-        try:
-            with open(config_file, encoding="utf-8") as file:
-                config_params = yaml.load(file, Loader=yaml.SafeLoader)
-        except FileNotFoundError:
-            config_params = {}
+    #     try:
+    #         with open(config_file, encoding="utf-8") as file:
+    #             config_params = yaml.load(file, Loader=yaml.SafeLoader)
+    #     except FileNotFoundError:
+    #         config_params = {}
 
-        current_project_str = self.get_current_project().to_dict()
+    #     current_project_str = self.get_current_project().to_dict()
 
-        if "projects" not in config_params:
-            config_params["projects"] = []
+    #     if "projects" not in config_params:
+    #         config_params["projects"] = []
 
-        if 0 <= self._current_project_id < len(config_params["projects"]):
-            config_params["projects"][self._current_project_id] = current_project_str
-        else:
-            config_params["projects"].append(current_project_str)
+    #     if 0 <= self._current_project_id < len(config_params["projects"]):
+    #         config_params["projects"][self._current_project_id] = current_project_str
+    #     else:
+    #         config_params["projects"].append(current_project_str)
 
-        # data_to_save = {"version": self._version, "projects": config_params}
-        data_to_save = config_params
-        with open(config_file, "w", encoding="utf-8") as file:
-           # yaml.dump(data_to_save, file, allow_unicode=True) @TODO enable
-           return
+    #     # data_to_save = {"version": self._version, "projects": config_params}
+    #     data_to_save = config_params
+    #     with open(config_file, "w", encoding="utf-8") as file:
+    #        # yaml.dump(data_to_save, file, allow_unicode=True) @TODO enable
+    #        return
 
-    def _save(self, project_position: int = -1) -> None:
+    def _save(self, is_creation = False, project_position_number: int = -1) -> None:
         """
-        Saves the current state of the ProjectsBroker to the configuration file.
-
+        Saves the current state of the ProjectsBroker to the configuration file if a project_position_number is passe. Else, it will save all the projects.
+        # NOTE MAY BE INTERESSANT TO SPIT WITH SAVE ALL & make Project_positionnumber mandatory
         Args:
             project_position (int, optional): The position of the project to save. Defaults to -1.
+
 
         Raises:
             IndexError: If the project_position is out of range.
 
         """
-        if 0 <= project_position < len(self._projects):
-            self._project_dir_create(project_position, self._projects[project_position].project_name)
-            Project(
-                project_name=self._projects[project_position].project_name,
-                project_budget=self._projects[project_position].project_budget,
-                lead_agent=self._projects[project_position].lead_agent,
-                delegated_agents=self._projects[project_position].delegated_agents,
-                version=self._projects[project_position].version,
-                project_memory=self._projects[project_position].project_memory,
-                project_working_directory=self._projects[project_position].project_working_directory,
-                project_env=self._projects[project_position].project_env,
-                project_log_activity=self._projects[project_position].project_log_activity,
-                project_log_env=self._projects[project_position].project_log_env,
-                team_name=self._projects[project_position].team_name
-            ).save()
-        elif project_position == -1:
+        if 0 <= project_position_number < len(self._projects):
+            """
+            in Project.save()
+            self.project_dir_create(project_position_number, self._projects[project_position_number].project_name)
+            """
+            self._projects[project_position_number].save( 
+                project_position_number = project_position_number, 
+                is_creation = is_creation)
+        elif project_position_number == -1:
             # Save all projects if project_position is not specified
             for project in self._projects:
                 project.save()
         else:
             raise IndexError("Project index out of range.")
  
-            
-        
+    
     def create_project(self, 
-                    project_id : int,
+                    project_position_number : int,
                     lead_agent : AgentModel,
                     api_budget : float,
                     project_name : str = '',
@@ -232,48 +242,64 @@ class ProjectsBroker(AbstractSingleton):
         Raises:
             ValueError: If the project_id is greater than the maximum number of projects allowed.
         """
-        project_name = lead_agent.agent_name # TODO : Allow to give a project MIUST BE ALPHANUMERICAL + SPACE
-        
+        self = ProjectsBroker()
+        # # REQUIRED FOR BACKWARD COMPATIBILITY , WILL NEED TO BE REMOVED ON LO
+        # if not self.is_loaded():
+        #     print('_projects')
+
+
+        project_name = lead_agent.ai_name # TODO : Allow to give a project MIUST BE ALPHANUMERICAL + SPACE
 
         number_of_config = len(self._projects)
-        if project_id is None and number_of_config < MAX_NB_PROJECT:
-            project_id = number_of_config
+        if project_position_number is None and number_of_config < MAX_NB_PROJECT:
+            project_position_number = number_of_config
 
-        if project_id > MAX_NB_PROJECT:
-            raise ValueError(f"set_config: Value {project_id} not expected")
+        if project_position_number > MAX_NB_PROJECT:
+            raise ValueError(f"set_config: Value {project_position_number} not expected")
         
-        project = Project(project_name= project_name , api_budget = api_budget,lead_agent= lead_agent)
-  
-        if project_id >= number_of_config:
+        project = Project(project_name= project_name ,
+                          project_budget= api_budget,
+                          lead_agent= lead_agent
+                          )
+        # project_name: str, 
+        #          project_budget: float, 
+        #          lead_agent: AgentModel,
+        #          delegated_agents: List[AgentModel] = [], 
+        #          version: str = "0.0.0",
+        #          project_memory: Optional[str] = None, 
+        #          project_working_directory: Optional[str] = None,
+        #          project_env: Optional[str] = None, 
+        #          project_log_activity: Optional[str] = None,
+        #          project_log_env: Optional[str] = None, 
+        #          team_name: Optional[str] = None
+
+        # TODO REMOVE is_creation ?
+        is_creation = False
+        if project_position_number >= number_of_config:
             self._projects.append(project)
-            project_id = number_of_config
+            project_position_number = number_of_config
+            is_creation = True
         else:
-            self._projects[project_id] = project
+            self._projects[project_position_number] = project
 
+        self.set_project_positon_number(new_project_id=project_position_number)
+        self._save(project_position_number=project_position_number ,is_creation = is_creation)
 
-        self.set_project_number(new_project_id=project_id)
-        self._save()
         
-        return lead_agent
-           
+        return project
     
-    @staticmethod
-    def project_dir_name_formater(project_name : str ) -> str :
+    @staticmethod   
+    def project_dir_name_formater( project_name : str ) -> str :
         return re.sub(r'[^a-zA-Z0-9]', '', project_name).lower()
 
-    @staticmethod
-    def project_dir_create(cls, project_position : str,  project_name) -> str : 
+    @classmethod   
+    def create_project_dir(cls, project_name) -> str : 
         project_dirname = cls.project_dir_name_formater(project_name)
-        # Check for duplicate config names
-        for idx, config in enumerate(cls._projects):
-            if config.project_name == project_name and idx != project_position:
-                project_dirname = project_dirname + '_1'
-
-        ## mkdir
+        os.mkdir(os.path.join(PROJECT_DIR, project_dirname))
 
 
-           
-    def set_project_number(self, new_project_id: int) -> bool:
+    @classmethod   
+    def set_project_positon_number(cls,  new_project_id: int) -> bool:
         """
         Sets the current project number.
 
@@ -283,10 +309,10 @@ class ProjectsBroker(AbstractSingleton):
         Returns:
             bool: True if the project number is successfully set, False otherwise.
         """
-
-        if new_project_id < 0 or new_project_id >= len(self._projects):
-            raise ValueError(f"set_project_number: Value must be between 0 and {len(self._projects)-1}")
-        self._current_project_id = new_project_id
+        projects_broker = cls()
+        if new_project_id < 0 or new_project_id >= len(projects_broker._projects):
+            raise ValueError(f"set_project_positon_number: Value must be between 0 and {len(projects_broker._projects)-1}")
+        projects_broker._current_project_id = new_project_id
         return True
 
     def get_current_project_id(self) -> int:
@@ -315,7 +341,7 @@ class ProjectsBroker(AbstractSingleton):
             raise ValueError(f"get_current_project: Value {self._current_project_id } not expected")
         return self._projects[self._current_project_id]
     
-    def get_project(self, project_number : int ) -> AgentModel:
+    def get_project(self, project_positon_number : int ) -> AgentModel:
         """
         Gets the specified project instance.
 
@@ -323,14 +349,14 @@ class ProjectsBroker(AbstractSingleton):
             None
 
         Args:
-            project_number (int): The project number.
+            project_positon_number (int): The project number.
 
         Returns:
             AgentConfig: The specified project instance.
         """
-        if 0 <= project_number <= len(self._projects):
-            raise ValueError(f"get_config: Value {project_number } not expected")     
-        return self._projects[project_number]
+        if 0 <= project_positon_number <= len(self._projects):
+            raise ValueError(f"get_config: Value {project_positon_number } not expected")     
+        return self._projects[project_positon_number]
 
  
 
@@ -346,6 +372,12 @@ class ProjectsBroker(AbstractSingleton):
         """
 
         return self._projects
+    
+    def is_loaded(self) -> bool : 
+        if hasattr(self , '_projects') and len(self._projects > 0) :
+            return False
+        else : 
+            return True
     
 
     

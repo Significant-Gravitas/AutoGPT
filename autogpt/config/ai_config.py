@@ -3,19 +3,13 @@
 Maintain backward Compatibility
 """
 
-try :
-    from autogpt.projects.agent_model import AgentModel
-    from autogpt.projects.projects_broker import ProjectsBroker
-    from autogpt.projects.project import Project
-except ImportError as e:
-    pass
 
-class AIConfig(AgentModel) :
-    pass
+from autogpt.projects.agent_model import AgentModel
 
-"""
+    
 
-from __future__ import annotations
+
+#from __future__ import annotations
 
 import os
 import platform
@@ -31,8 +25,8 @@ from autogpt.prompts.generator import PromptGenerator
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 
 
-class AIConfig:
-    
+class AIConfig(AgentModel):  
+    """
     A class object that contains the configuration information for the AI
 
     Attributes:
@@ -117,11 +111,12 @@ class AIConfig:
         }
         with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
+    """
 
     def construct_full_prompt(
         self, prompt_generator: Optional[PromptGenerator] = None
     ) -> str:
-        
+        """
         Returns a prompt to the user with the class information in an organized fashion.
 
         Parameters:
@@ -130,7 +125,7 @@ class AIConfig:
         Returns:
             full_prompt (str): A string containing the initial prompt for the user
               including the ai_name, ai_role, ai_goals, and api_budget.
-        
+        """
 
         prompt_start = (
             "Your decisions must always be made independently without"
@@ -174,4 +169,3 @@ class AIConfig:
         self.prompt_generator = prompt_generator
         full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
         return full_prompt
-"""

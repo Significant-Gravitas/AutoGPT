@@ -167,5 +167,9 @@ openai/
 
 # news
 CURRENT_BULLETIN.md
+
+#PROJECT - AUTOGPT
+/autogpt/projects/*/settings.yaml
 test_click.py
 .gitignore
+
