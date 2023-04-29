@@ -87,7 +87,7 @@ def chat_with_ai(
             # Reserve 1000 tokens for the response
             logger.debug(f"Token limit: {token_limit}")
             send_token_limit = token_limit - 1000
-            
+
             # if len(full_message_history) == 0:
             #     relevant_memory = ""
             # else:
@@ -121,13 +121,12 @@ def chat_with_ai(
             #         prompt, relevant_memory, full_message_history, model
             #     )
 
-
             current_tokens_used += count_message_tokens(
                 [create_chat_message("user", user_input)], model
             )  # Account for user input (appended later)
 
-            current_tokens_used += 500 # Account for memory (appended later) TODO: The final memory may be less than 500 tokens
-            
+            current_tokens_used += 500  # Account for memory (appended later) TODO: The final memory may be less than 500 tokens
+
             # Add Messages until the token limit is reached or there are no more messages to add.
             while next_message_to_add_index >= 0:
                 # print (f"CURRENT TOKENS USED: {current_tokens_used}")
@@ -155,10 +154,12 @@ def chat_with_ai(
                 next_message_to_add_index -= 1
 
             # Insert Memories
-            newly_trimmed_messages = get_newly_trimmed_messages(full_message_history=full_message_history, current_context=current_context)
-            memory = update_running_summary(newly_trimmed_messages) 
+            newly_trimmed_messages = get_newly_trimmed_messages(
+                full_message_history=full_message_history,
+                current_context=current_context,
+            )
+            memory = update_running_summary(newly_trimmed_messages)
             current_context.insert(insertion_index, memory)
-            
 
             api_manager = ApiManager()
             # inform the AI about its remaining budget (if it has one)
