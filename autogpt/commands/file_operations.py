@@ -4,7 +4,7 @@ import hashlib
 
 import os
 import os.path
-from typing import Dict, Generator, Tuple
+from typing import Dict, Generator, Literal, Tuple
 
 import requests
 from colorama import Back, Fore
@@ -17,13 +17,14 @@ from autogpt.utils import readable_file_size
 
 CFG = Config()
 
+Operation = Literal['write', 'append', 'delete']
 
 def text_checksum(text: str) -> str:
     """Get the hex checksum for the given text."""
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
-def operations_from_log(log_path: str) -> Generator[Tuple]:
+def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | None]]:
     with open(log_path, "r", encoding="utf-8") as log:
         for line in log:
             line = line.replace("File Operation Logger", "").strip()
@@ -64,7 +65,7 @@ def file_operations_state(log_path: str) -> Dict:
     return state
 
 
-def new_entry(operation: str, filename: str, checksum: str | None = None) -> str:
+def new_entry(operation: Operation, filename: str, checksum: str | None = None) -> str:
     """Returns the formatted log entry"""
     if checksum is None:
         return f"{operation}: {filename}\n"
@@ -72,7 +73,7 @@ def new_entry(operation: str, filename: str, checksum: str | None = None) -> str
 
 
 def is_duplicate_operation(
-    operation: str, filename: str, checksum: str | None = None
+    operation: Operation, filename: str, checksum: str | None = None
 ) -> bool:
     """Check if the operation has already been performed
 
