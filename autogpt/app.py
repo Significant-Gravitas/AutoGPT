@@ -49,29 +49,34 @@ def get_command(response_json: Dict):
     """
     try:
         if "command" not in response_json:
-            return "Error:", "Missing 'command' object in JSON"
+            return [("Error:", "Missing 'command' object in JSON")]
 
         if not isinstance(response_json, dict):
-            return "Error:", f"'response_json' object is not dictionary {response_json}"
+            return [("Error:", f"'response_json' object is not dictionary {response_json}")]
 
+        all_commands = list()
         command = response_json["command"]
-        if not isinstance(command, dict):
-            return "Error:", "'command' object is not a dictionary"
+        if not isinstance(command, list):
+            command = [command]
+        for a_command in command:
+            if not isinstance(a_command, dict):
+                all_commands.append(("Error:", "'command' object is not a dictionary"))
 
-        if "name" not in command:
-            return "Error:", "Missing 'name' field in 'command' object"
+            if "name" not in a_command:
+                all_commands.append(("Error:", "Missing 'name' field in 'command' object"))
 
-        command_name = command["name"]
+            command_name = a_command["name"]
 
-        # Use an empty dictionary if 'args' field is not present in 'command' object
-        arguments = command.get("args", {})
+            # Use an empty dictionary if 'args' field is not present in 'command' object
+            arguments = a_command.get("args", {})
 
-        return command_name, arguments
+            all_commands.append((command_name, arguments))
+        return all_commands
     except json.decoder.JSONDecodeError:
-        return "Error:", "Invalid JSON"
+        return [("Error:", "Invalid JSON")]
     # All other errors, return "Error: + error message"
     except Exception as e:
-        return "Error:", str(e)
+        return [("Error:", str(e))]
 
 
 def map_command_synonyms(command_name: str):

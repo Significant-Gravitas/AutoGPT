@@ -30,7 +30,10 @@ class PromptGenerator:
                 "criticism": "constructive self-criticism",
                 "speak": "thoughts summary to say to user",
             },
-            "command": {"name": "command name", "args": {"arg name": "value"}},
+            "command": [
+                {"name": "command name", "args": {"arg name": "value"}},
+                {"name": "command name", "args": {"arg name": "value"}},
+            ]
         }
 
     def add_constraint(self, constraint: str) -> None:
@@ -151,5 +154,5 @@ class PromptGenerator:
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
             "You should only respond in JSON format as described below \nResponse"
             f" Format: \n{formatted_response_format} \nEnsure the response can be"
-            " parsed by Python json.loads"
+            " parsed by Python json.loads. Always come up with more than ten independent, unique commands."
         )

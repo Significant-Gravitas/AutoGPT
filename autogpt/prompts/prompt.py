@@ -40,6 +40,9 @@ def build_default_prompt_generator() -> PromptGenerator:
     prompt_generator.add_constraint(
         'Exclusively use the commands listed in double quotes e.g. "command name"'
     )
+    prompt_generator.add_constraint(
+        "Come up with more than one independent unique commands to execute."
+    )
 
     # Add resources to the PromptGenerator object
     prompt_generator.add_resource(

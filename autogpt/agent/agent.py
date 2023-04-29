@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 
 from colorama import Fore, Style
@@ -125,6 +126,7 @@ class Agent:
                     continue
                 assistant_reply_json = plugin.post_planning(assistant_reply_json)
 
+            commands = list()
             # Print Assistant thoughts
             if assistant_reply_json != {}:
                 validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
@@ -133,12 +135,7 @@ class Agent:
                     print_assistant_thoughts(
                         self.ai_name, assistant_reply_json, cfg.speak_mode
                     )
-                    command_name, arguments = get_command(assistant_reply_json)
-                    if cfg.speak_mode:
-                        say_text(f"I want to execute {command_name}")
-
-                    arguments = self._resolve_pathlike_command_args(arguments)
-
+                    commands = get_command(assistant_reply_json)
                 except Exception as e:
                     logger.error("Error: \n", str(e))
             self.log_cycle_handler.log_cycle(
@@ -149,153 +146,158 @@ class Agent:
                 NEXT_ACTION_FILE_NAME,
             )
 
-            if not cfg.continuous_mode and self.next_action_count == 0:
-                # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
-                # Get key press: Prompt the user to press enter to continue or escape
-                # to exit
-                self.user_input = ""
-                logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                    f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-                )
+            loop = asyncio.get_running_loop()
+            for command_name, arguments in commands:
+                loop.run_in_executor(None, self.run_command, cfg, assistant_reply_json, command_name, arguments)
 
-                logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands or "
-                    "'n' to exit program, or enter feedback for "
-                    f"{self.ai_name}..."
-                )
-                while True:
-                    if cfg.chat_messages_enabled:
-                        console_input = clean_input("Waiting for your response...")
-                    else:
-                        console_input = clean_input(
-                            Fore.MAGENTA + "Input:" + Style.RESET_ALL
-                        )
-                    if console_input.lower().strip() == cfg.authorise_key:
-                        user_input = "GENERATE NEXT COMMAND JSON"
-                        break
-                    elif console_input.lower().strip() == "s":
-                        logger.typewriter_log(
-                            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
-                            Fore.GREEN,
-                            "",
-                        )
-                        thoughts = assistant_reply_json.get("thoughts", {})
-                        self_feedback_resp = self.get_self_feedback(
-                            thoughts, cfg.fast_llm_model
-                        )
-                        logger.typewriter_log(
-                            f"SELF FEEDBACK: {self_feedback_resp}",
-                            Fore.YELLOW,
-                            "",
-                        )
-                        user_input = self_feedback_resp
-                        command_name = "self_feedback"
-                        break
-                    elif console_input.lower().strip() == "":
-                        logger.warn("Invalid input format.")
-                        continue
-                    elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
-                        try:
-                            self.next_action_count = abs(
-                                int(console_input.split(" ")[1])
-                            )
-                            user_input = "GENERATE NEXT COMMAND JSON"
-                        except ValueError:
-                            logger.warn(
-                                "Invalid input format. Please enter 'y -n' where n is"
-                                " the number of continuous tasks."
-                            )
-                            continue
-                        break
-                    elif console_input.lower() == cfg.exit_key:
-                        user_input = "EXIT"
-                        break
-                    else:
-                        user_input = console_input
-                        command_name = "human_feedback"
-                        self.log_cycle_handler.log_cycle(
-                            self.config.ai_name,
-                            self.created_at,
-                            self.cycle_count,
-                            user_input,
-                            USER_INPUT_FILE_NAME,
-                        )
-                        break
+    def run_command(self, cfg, assistant_reply_json, command_name, arguments):
+        if not cfg.continuous_mode and self.next_action_count == 0:
+            # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+            # Get key press: Prompt the user to press enter to continue or escape
+            # to exit
+            self.user_input = ""
+            logger.typewriter_log(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+                f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+            )
 
-                if user_input == "GENERATE NEXT COMMAND JSON":
+            logger.info(
+                "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands or "
+                "'n' to exit program, or enter feedback for "
+                f"{self.ai_name}..."
+            )
+            while True:
+                if cfg.chat_messages_enabled:
+                    console_input = clean_input("Waiting for your response...")
+                else:
+                    console_input = clean_input(
+                        Fore.MAGENTA + "Input:" + Style.RESET_ALL
+                    )
+                if console_input.lower().strip() == cfg.authorise_key:
+                    user_input = "GENERATE NEXT COMMAND JSON"
+                    break
+                elif console_input.lower().strip() == "s":
                     logger.typewriter_log(
-                        "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
-                        Fore.MAGENTA,
+                        "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
+                        Fore.GREEN,
                         "",
                     )
-                elif user_input == "EXIT":
-                    logger.info("Exiting...")
-                    break
-            else:
-                # Print command
-                logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
-                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-                )
-
-            # Execute command
-            if command_name is not None and command_name.lower().startswith("error"):
-                result = (
-                    f"Command {command_name} threw the following error: {arguments}"
-                )
-            elif command_name == "human_feedback":
-                result = f"Human feedback: {user_input}"
-            elif command_name == "self_feedback":
-                result = f"Self feedback: {user_input}"
-            else:
-                for plugin in cfg.plugins:
-                    if not plugin.can_handle_pre_command():
-                        continue
-                    command_name, arguments = plugin.pre_command(
-                        command_name, arguments
+                    thoughts = assistant_reply_json.get("thoughts", {})
+                    self_feedback_resp = self.get_self_feedback(
+                        thoughts, cfg.fast_llm_model
                     )
-                command_result = execute_command(
-                    self.command_registry,
-                    command_name,
-                    arguments,
-                    self.config.prompt_generator,
-                )
-                result = f"Command {command_name} returned: " f"{command_result}"
-
-                result_tlength = count_string_tokens(
-                    str(command_result), cfg.fast_llm_model
-                )
-                memory_tlength = count_string_tokens(
-                    str(self.summary_memory), cfg.fast_llm_model
-                )
-                if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
-                    result = f"Failure: command {command_name} returned too much output. \
-                        Do not execute this command again with the same arguments."
-
-                for plugin in cfg.plugins:
-                    if not plugin.can_handle_post_command():
+                    logger.typewriter_log(
+                        f"SELF FEEDBACK: {self_feedback_resp}",
+                        Fore.YELLOW,
+                        "",
+                    )
+                    user_input = self_feedback_resp
+                    command_name = "self_feedback"
+                    break
+                elif console_input.lower().strip() == "":
+                    logger.warn("Invalid input format.")
+                    continue
+                elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
+                    try:
+                        self.next_action_count = abs(
+                            int(console_input.split(" ")[1])
+                        )
+                        user_input = "GENERATE NEXT COMMAND JSON"
+                    except ValueError:
+                        logger.warn(
+                            "Invalid input format. Please enter 'y -n' where n is"
+                            " the number of continuous tasks."
+                        )
                         continue
-                    result = plugin.post_command(command_name, result)
-                if self.next_action_count > 0:
-                    self.next_action_count -= 1
+                    break
+                elif console_input.lower() == cfg.exit_key:
+                    user_input = "EXIT"
+                    break
+                else:
+                    user_input = console_input
+                    command_name = "human_feedback"
+                    self.log_cycle_handler.log_cycle(
+                        self.config.ai_name,
+                        self.created_at,
+                        self.cycle_count,
+                        user_input,
+                        USER_INPUT_FILE_NAME,
+                    )
+                    break
 
-            # Check if there's a result from the command append it to the message
-            # history
-            if result is not None:
-                self.full_message_history.append(create_chat_message("system", result))
-                logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
-            else:
-                self.full_message_history.append(
-                    create_chat_message("system", "Unable to execute command")
-                )
+            if user_input == "GENERATE NEXT COMMAND JSON":
                 logger.typewriter_log(
-                    "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
+                    "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                    Fore.MAGENTA,
+                    "",
                 )
+            elif user_input == "EXIT":
+                logger.info("Exiting...")
+                break
+        else:
+            # Print command
+            logger.typewriter_log(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
+                f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+            )
+
+        # Execute command
+        if command_name is not None and command_name.lower().startswith("error"):
+            result = (
+                f"Command {command_name} threw the following error: {arguments}"
+            )
+        elif command_name == "human_feedback":
+            result = f"Human feedback: {user_input}"
+        elif command_name == "self_feedback":
+            result = f"Self feedback: {user_input}"
+        else:
+            for plugin in cfg.plugins:
+                if not plugin.can_handle_pre_command():
+                    continue
+                command_name, arguments = plugin.pre_command(
+                    command_name, arguments
+                )
+            command_result = execute_command(
+                self.command_registry,
+                command_name,
+                arguments,
+                self.config.prompt_generator,
+            )
+            result = f"Command {command_name} returned: " f"{command_result}"
+
+            result_tlength = count_string_tokens(
+                str(command_result), cfg.fast_llm_model
+            )
+            memory_tlength = count_string_tokens(
+                str(self.summary_memory), cfg.fast_llm_model
+            )
+            if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
+                result = f"Failure: command {command_name} returned too much output. \
+                    Do not execute this command again with the same arguments."
+
+            for plugin in cfg.plugins:
+                if not plugin.can_handle_post_command():
+                    continue
+                result = plugin.post_command(command_name, result)
+            if self.next_action_count > 0:
+                self.next_action_count -= 1
+
+        # Check if there's a result from the command append it to the message
+        # history
+        if result is not None:
+            self.full_message_history.append(create_chat_message("system", result))
+            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
+        else:
+            self.full_message_history.append(
+                create_chat_message("system", "Unable to execute command")
+            )
+            logger.typewriter_log(
+                "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
+            )
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
