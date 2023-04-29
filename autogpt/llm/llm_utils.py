@@ -222,7 +222,11 @@ def get_ada_embedding(text: str) -> List[float]:
     cfg = Config()
     model = "text-embedding-ada-002"
     text = text.replace("\n", " ")
-
+    for plugin in cfg.plugins:
+        if plugin.can_handle_text_embedding(text):
+            embedding = plugin.handle_text_embedding(text)
+            if embedding is not None:
+                return embedding
     if cfg.use_azure:
         kwargs = {"engine": cfg.get_azure_deployment_id_for_model(model)}
     else:
