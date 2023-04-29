@@ -3,7 +3,7 @@ import string
 import pytest
 from numpy.random import RandomState
 
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm.llm_utils import get_ada_embedding
 from tests.utils import requires_api_key
 
 
