@@ -37,10 +37,7 @@ def get_newly_trimmed_messages(full_message_history, current_context):
         new_index = full_message_history.index(last_message)
 
     prev_index = new_index
-
-    print(f"New messages not in context:\n {new_messages_not_in_context}\n")
-    print(f"Prev index updated to: {prev_index}")
-
+    
     return new_messages_not_in_context
 
 
