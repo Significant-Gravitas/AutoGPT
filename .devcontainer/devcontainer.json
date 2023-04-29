@@ -4,20 +4,12 @@
     "context": "."
   },
   "features": {
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": "true",
-      "username": "vscode",
-      "userUid": "1000",
-      "userGid": "1000",
-      "upgradePackages": "true"
-    },
+    "ghcr.io/devcontainers/features/common-utils:2": {},
     "ghcr.io/devcontainers/features/desktop-lite:1": {},
-    "ghcr.io/devcontainers/features/python:1": "none",
-    "ghcr.io/devcontainers/features/node:1": "none",
-    "ghcr.io/devcontainers/features/git:1": {
-      "version": "latest",
-      "ppa": "false"
-    }
+    "ghcr.io/devcontainers/features/python:1": {},
+    "ghcr.io/devcontainers/features/node:1": {},
+	"ghcr.io/devcontainers/features/git:1": {},
+	"ghcr.io/jarrodcolburn/features/android-sdk:0": {}
   },
   // Configure tool-specific properties.
   "customizations": {
@@ -25,7 +17,10 @@
     "vscode": {
       // Set *default* container specific settings.json values on container create.
       "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python"
+        "python.defaultInterpreterPath": "/root
+        
+        /local/bin/python.json
+
       }
     }
   },
@@ -36,5 +31,70 @@
   // "postCreateCommand": "pip3 install --user -r requirements.txt",
 
   // Set `remoteUser` to `root` to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
-  "remoteUser": "vscode"
+  `root`
+
+
+   pip3 install `--user -r requirements.txt
+
+
+
+  pip3 install --user -r requirements.txt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+'
+set remoteuser to root
+ 
+ --user -r requirements.txt\
+ 
+ --root -r requirements.txt
+
+ "onCreateCommand": "--root -r reqiurements.txt
+ "
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+ 
+
+ 
+
+
+
+
+
+
+  
+
+"onCreateCommand: "devcontainer.json>"additionalProperties": {
+
+
 }
+
+
+scripts/check_requirements.py
+
+

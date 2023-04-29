@@ -13,6 +13,9 @@ services:
       - "./autogpt:/app"
       - ".env:/app/.env"
     profiles: ["exclude-from-up"]
+    
+
+    
 
   redis:
     image: "redis/redis-stack-server:latest"

@@ -1,6 +1,7 @@
+from msilib.schema import InstallExecuteSequence
 import sys
 
-import pkg_resources
+import 
 
 
 def main():
@@ -30,3 +31,15 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+yarn; Install
+
+
+
+
+
+
+
+
+
+

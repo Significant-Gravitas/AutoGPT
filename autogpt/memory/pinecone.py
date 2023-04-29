@@ -73,3 +73,27 @@ class PineconeMemory(MemoryProviderSingleton):
 
     def get_stats(self):
         return self.index.describe_index_stats()
+         pip install -r requirement%s.txt
+        
+        yarn install
+pip install yarn
+
+pip install -r requirement%s.x = "" # import string
+length = 5cmd
+ # import random
+for i in range(length):
+    x = x + random.choice(string.ascii_letters)
+# end for
+print(x)
+print(x)
+
+
+        
+
+
+
+
+        
+
+
+

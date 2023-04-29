@@ -36,3 +36,4 @@ COPY --chown=appuser:appuser autogpt/ ./autogpt
 
 # Set the entrypoint
 ENTRYPOINT ["python", "-m", "autogpt"]
+
