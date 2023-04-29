@@ -196,7 +196,7 @@ class Agent:
                         "",
                     )
                 elif user_input == "EXIT":
-                    logger.info("Exiting...", flush=True)
+                    logger.info("Exiting...")
                     break
             else:
                 # Print command
