@@ -122,7 +122,7 @@ def generate_aiconfig_manual(configOverrides: AIConfig = None) -> AIConfig:
             " the sole goal of increasing your net worth.'",
         )
         ai_role = utils.clean_input(f"{ai_name} is: ")
-    
+
     if ai_role == "":
         ai_role = "an AI designed to autonomously develop and run businesses with the"
         " sole goal of increasing your net worth."
@@ -137,14 +137,18 @@ def generate_aiconfig_manual(configOverrides: AIConfig = None) -> AIConfig:
             "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage"
             " multiple businesses autonomously'",
         )
-        print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
+        print(
+            "Enter nothing to load defaults, enter nothing when finished.", flush=True
+        )
         ai_goals = []
         for i in range(5):
-            ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
+            ai_goal = utils.clean_input(
+                f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: "
+            )
             if ai_goal == "":
                 break
             ai_goals.append(ai_goal)
-            
+
     if not ai_goals:
         ai_goals = [
             "Increase net worth",

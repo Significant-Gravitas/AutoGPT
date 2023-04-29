@@ -119,25 +119,70 @@ def test_set_debug_mode(config):
     # Reset debug mode
     config.set_debug_mode(debug_mode)
 
+
 def test_command_line_ai_params(config):
     """
     Test setting AI parameters overrides such as ai goals and name from the command line.
     """
-    configurator.create_config(False, 0, None, False, False, False, False, 
-                                False, "local", "chrome", True, True, None, None, None)
+    configurator.create_config(
+        False,
+        0,
+        None,
+        False,
+        False,
+        False,
+        False,
+        False,
+        "local",
+        "chrome",
+        True,
+        True,
+        None,
+        None,
+        None,
+    )
     assert config.ai_name == None
     assert config.ai_role == None
     assert config.ai_goals == None
 
-    configurator.create_config(False, 0, None, False, False, False, False, 
-                                False, "local", "chrome", True, True, "testGPT", None, None)
-    
+    configurator.create_config(
+        False,
+        0,
+        None,
+        False,
+        False,
+        False,
+        False,
+        False,
+        "local",
+        "chrome",
+        True,
+        True,
+        "testGPT",
+        None,
+        None,
+    )
+
     assert config.ai_name == "testGPT"
 
-    configurator.create_config(False, 0, None, False, False, False, False, 
-                        False, "local", "chrome", True, True, "testGPT2", "testRole1", "testGoal1,testGoal2")
-    
+    configurator.create_config(
+        False,
+        0,
+        None,
+        False,
+        False,
+        False,
+        False,
+        False,
+        "local",
+        "chrome",
+        True,
+        True,
+        "testGPT2",
+        "testRole1",
+        "testGoal1,testGoal2",
+    )
+
     assert config.ai_name == "testGPT2"
     assert config.ai_role == "testRole1"
     assert config.ai_goals == ["testGoal1", "testGoal2"]
-        

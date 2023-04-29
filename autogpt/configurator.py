@@ -25,7 +25,7 @@ def create_config(
     skip_news: bool,
     ai_name: str,
     ai_role: str,
-    ai_goals: str
+    ai_goals: str,
 ) -> None:
     """Updates the config object with the given arguments.
 
@@ -113,7 +113,7 @@ def create_config(
         if ai_role:
             logger.typewriter_log(f"AI role provided by command line arg: {ai_role}")
             CFG.ai_role = ai_role
-        
+
         if ai_goals:
             logger.typewriter_log(f"AI goals provided by command line arg: {ai_goals}")
             CFG.ai_goals = ai_goals.split(",")

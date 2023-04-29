@@ -57,10 +57,12 @@ class AIConfig:
         self.command_registry = None
 
     @staticmethod
-    def load(config_file: str = SAVE_FILE,
-             ai_name: str = None,
-             ai_role: str = None,
-             ai_goals: list[str] = None) -> "AIConfig":
+    def load(
+        config_file: str = SAVE_FILE,
+        ai_name: str = None,
+        ai_role: str = None,
+        ai_goals: list[str] = None,
+    ) -> "AIConfig":
         """
         Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
           command line overrides if supplied, then yaml file if yaml file exists,
