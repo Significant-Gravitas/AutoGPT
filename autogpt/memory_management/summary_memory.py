@@ -21,8 +21,12 @@ def get_newly_trimmed_messages(
         last_memory_index (int): An integer representing the previous index.
 
     Returns:
+<<<<<<< HEAD
         list: A list of dictionaries that are in full_message_history with an index higher than last_memory_index and absent from current_context.
         int: The new index value for use in the next loop.
+=======
+        list: A list of dictionaries that are in full_message_history with an index higher than prev_index and absent from current_context.
+>>>>>>> f103292 (Update autogpt/memory_management/summary_memory.py)
     """
     # Select messages in full_message_history with an index higher than last_memory_index
     new_messages = [msg for i, msg in enumerate(full_message_history) if i > last_memory_index]
