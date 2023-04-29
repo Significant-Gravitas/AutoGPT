@@ -1,13 +1,17 @@
 import time
+from random import shuffle
 
 from openai.error import RateLimitError
 
-from autogpt import token_counter
-from autogpt.api_manager import api_manager
 from autogpt.config import Config
-from autogpt.llm_utils import create_chat_completion
+from autogpt.llm.api_manager import ApiManager
+from autogpt.llm.base import Message
+from autogpt.llm.llm_utils import create_chat_completion
+from autogpt.llm.token_counter import count_message_tokens
 from autogpt.logs import logger
-from autogpt.types.openai import Message
+from autogpt.memory_management.store_memory import (
+    save_memory_trimmed_from_context_window,
+)
 
 cfg = Config()
 
@@ -42,7 +46,7 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
     next_message_to_add_index = len(full_message_history) - 1
     insertion_index = len(current_context)
     # Count the currently used tokens
-    current_tokens_used = token_counter.count_message_tokens(current_context, model)
+    current_tokens_used = count_message_tokens(current_context, model)
     return (
         next_message_to_add_index,
         current_tokens_used,
@@ -80,12 +84,17 @@ def chat_with_ai(
 
             logger.debug(f"Token limit: {token_limit}")
             send_token_limit = token_limit - 1000
-
-            relevant_memory = (
-                ""
-                if len(full_message_history) == 0
-                else permanent_memory.get_relevant(str(full_message_history[-9:]), 10)
-            )
+            if len(full_message_history) == 0:
+                relevant_memory = ""
+            else:
+                recent_history = full_message_history[-5:]
+                shuffle(recent_history)
+                relevant_memories = permanent_memory.get_relevant(
+                    str(recent_history), 5
+                )
+                if relevant_memories:
+                    shuffle(relevant_memories)
+                relevant_memory = str(relevant_memories)
 
             logger.debug(f"Memory Stats: {permanent_memory.get_stats()}")
 
@@ -108,7 +117,7 @@ def chat_with_ai(
                     prompt, relevant_memory, full_message_history, model
                 )
 
-            current_tokens_used += token_counter.count_message_tokens(
+            current_tokens_used += count_message_tokens(
                 [create_chat_message("user", user_input)], model
             )  # Account for user input (appended later)
 
@@ -116,10 +125,13 @@ def chat_with_ai(
                 # print (f"CURRENT TOKENS USED: {current_tokens_used}")
                 message_to_add = full_message_history[next_message_to_add_index]
 
-                tokens_to_add = token_counter.count_message_tokens(
-                    [message_to_add], model
-                )
+                tokens_to_add = count_message_tokens([message_to_add], model)
                 if current_tokens_used + tokens_to_add > send_token_limit:
+                    save_memory_trimmed_from_context_window(
+                        full_message_history,
+                        next_message_to_add_index,
+                        permanent_memory,
+                    )
                     break
 
                 # Add the most recent message to the start of the current context,
@@ -134,6 +146,7 @@ def chat_with_ai(
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
 
+            api_manager = ApiManager()
             # inform the AI about its remaining budget (if it has one)
             if api_manager.get_total_budget() > 0.0:
                 remaining_budget = (
@@ -168,7 +181,7 @@ def chat_with_ai(
                 )
                 if not plugin_response or plugin_response == "":
                     continue
-                tokens_to_add = token_counter.count_message_tokens(
+                tokens_to_add = count_message_tokens(
                     [create_chat_message("system", plugin_response)], model
                 )
                 if current_tokens_used + tokens_to_add > send_token_limit:

@@ -6,11 +6,8 @@ import openai
 import yaml
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
-from dotenv import load_dotenv
 
 from autogpt.singleton import Singleton
-
-load_dotenv(verbose=True, override=True)
 
 
 class Config(metaclass=Singleton):
@@ -36,6 +33,8 @@ class Config(metaclass=Singleton):
         self.local_kill_switch = False
         self.local_kill_switch_canary = "canary"
 
+        self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
+        self.exit_key = os.getenv("EXIT_KEY", "n")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -68,6 +67,8 @@ class Config(metaclass=Singleton):
 
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
+
+        self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
 
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
@@ -133,8 +134,6 @@ class Config(metaclass=Singleton):
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
-        # Initialize the OpenAI API client
-        openai.api_key = self.openai_api_key
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []

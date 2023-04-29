@@ -1,17 +1,16 @@
 """Logging module for Auto-GPT."""
-import json
 import logging
 import os
 import random
 import re
 import time
-import traceback
 from logging import LogRecord
 
 from colorama import Fore, Style
 
 from autogpt.singleton import Singleton
 from autogpt.speech import say_text
+from autogpt.utils import send_chat_message_to_user
 
 
 class Logger(metaclass=Singleton):
@@ -83,6 +82,8 @@ class Logger(metaclass=Singleton):
     ):
         if speak_text and self.speak_mode:
             say_text(f"{title}. {content}")
+
+        send_chat_message_to_user(f"{title}. {content}")
 
         if content:
             if isinstance(content, list):
