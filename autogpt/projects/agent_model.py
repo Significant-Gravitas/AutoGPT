@@ -31,10 +31,6 @@ PROJECT_DIR = "autogpt/projects"
 
 
 import sys
-if not 'autogpt.projects.projects_broker' in sys.modules:
-    from autogpt.projects.projects_broker import ProjectsBroker
-if not 'autogpt.projects.project' in sys.modules: 
-    from autogpt.projects.project import Project
 
 
 class AgentModel(): 
@@ -171,6 +167,8 @@ class AgentModel():
             cls (AgentModel): An instance of the `AgentModel` class.
         """
         from autogpt.projects.projects_broker import ProjectsBroker
+
+
         subfolders = [f.path for f in os.scandir(PROJECT_DIR) if f.is_dir() and f.name != '__pycache__']       
         if not subfolders:
             try:
@@ -188,8 +186,10 @@ class AgentModel():
                                 api_budget = api_budget)
 
             return agent
-        else :   
-            return ProjectsBroker.load()[0] 
+        else :  
+             
+            agent = ProjectsBroker.load()
+            return agent[0]
 
     def to_dict(self) -> dict:  
         agent_dict = {

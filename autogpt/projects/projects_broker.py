@@ -36,12 +36,7 @@ from autogpt.singleton import AbstractSingleton
 from pathlib import Path
 from typing import Optional, Type, List
 from autogpt.prompts.generator import PromptGenerator
-
-import sys
-if not 'autogpt.projects.agent_model' in sys.modules:
-    from autogpt.projects.agent_model import AgentModel
-if not 'autogpt.projects.project' in sys.modules: 
-    from autogpt.projects.project import Project
+from autogpt.projects.project import Project
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 # @TODO 
@@ -144,18 +139,22 @@ class ProjectsBroker(AbstractSingleton):
         Raises:
             FileNotFoundError: If the specified config file does not exist.
         """
-        
-        if not os.path.exists(config_file):
-            cls._projects = []
-            return cls._projects
-
-        with open(config_file, encoding="utf-8") as file:
-            config_params = yaml.load(file, Loader=yaml.SafeLoader)
-
         cls._projects = []
-        for i , project_data in enumerate(config_params.get("projects", [])):
-            project_instance = Project.load(project_data)
-            cls._projects[i] = project_instance
+        projectfolder_list = [f.path for f in os.scandir(PROJECT_DIR) if f.is_dir() and f.name != '__pycache__' and not f.name.endswith('.backup') ]     
+        if not projectfolder_list:
+            raise Exception('ProjectsBroker.load() : Unexpected Behaviour')
+        else :
+            for i, projectfolder in enumerate(projectfolder_list) :
+                configfile = os.path.join(os.path.abspath(projectfolder),'settings.yaml') 
+                if not os.path.exists(configfile):
+                    print('ProjectsBroker.load() : Unexpected setting.yaml missing')
+                    continue
+                
+                with open(configfile, encoding="utf-8") as file:
+                    config_params = yaml.load(file, Loader=yaml.SafeLoader)
+
+                    project_instance = Project.load(config_params)
+                    cls._projects[i] = project_instance
 
         return cls._projects
 

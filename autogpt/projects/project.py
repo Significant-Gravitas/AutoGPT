@@ -33,15 +33,7 @@ import yaml
 from typing import Optional, Type, List
 import datetime
 
-import sys
-if not 'autogpt.projects.agent_model' in sys.modules:
-    print('#################PASS')
-    from autogpt.projects.agent_model import AgentModel
-
-if not 'autogpt.projects.projects_broker' in sys.modules:
-    from autogpt.projects.projects_broker import ProjectsBroker
-
-
+from autogpt.projects.agent_model import AgentModel
 
 AUTOGPT_VERSION = 'X.Y.Z' # TODO, implement in config.py or main or technical env file
 PROJECT_DIR = "autogpt/projects"
@@ -61,7 +53,6 @@ class Project:
         project_env (Optional[str]): The environment of the project.
         project_log_activity (Optional[str]): The log activity of the project.
         project_log_env (Optional[str]): The log environment of the project.
-        team_name (Optional[str]): The name of the team.
 
     Methods:
         __init__(self, project_name: str, project_budget: float, lead_agent: AgentModel,
@@ -81,11 +72,11 @@ class Project:
         delete_delegated_agents(self, position: int) -> bool
             Deletes the delegated agent at the given position and returns True if successful.
     """
-
     def __init__(self, project_name: str, 
                  project_budget: float, 
                  lead_agent: AgentModel,
                  delegated_agents: List[AgentModel] = [],
+                 version = AUTOGPT_VERSION,
                  project_memory: Optional[str] = None, 
                  project_working_directory: Optional[str] = None,
                  project_env: Optional[str] = None, 
@@ -108,6 +99,7 @@ class Project:
             project_log_env (str, optional): The log environment of the project. Defaults to None.
             team_name (str, optional): The name of the team. Defaults to None.
         """
+        self.version = version
         self.project_name = project_name
         self.project_budget = project_budget
         self.project_memory = project_memory
@@ -162,14 +154,13 @@ class Project:
             project_instance (Project): A Project instance with the loaded configuration parameters.
         """
 
-        print(config_params) # TODO -REMOVE-PRINT
         project_memory = config_params.get("project_memory")
         project_working_directory = config_params.get("project_working_directory")
         project_env = config_params.get("project_env")
         project_log_activity = config_params.get("project_log_activity")
         project_log_env = config_params.get("project_log_env")
         agent_team = config_params.get("agent_team", None)
-        team_name = agent_team.get("team_name")
+        # team_name = agent_team.get("team_name")
         version =  config_params.get("version", AUTOGPT_VERSION)
         if version != '' :
             cls._version = version 
@@ -200,7 +191,7 @@ class Project:
 
         return cls(project_name, project_budget, lead_agent, delegated_agents_list,
                    version, project_memory, project_working_directory, project_env,
-                   project_log_activity, project_log_env, team_name)
+                   project_log_activity, project_log_env)
     
 
     def save(self, project_position_number : int, is_creation : bool = False  ) -> dict:
