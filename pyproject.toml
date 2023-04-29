@@ -1,8 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "auto-gpt"
-version = "0.1.0"
-description = "A GPT based ai agent"
+name = "agpt"
+version = "0.2.2"
+authors = [
+  { name="Torantulino", email="support@agpt.co" },
+]
 readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+description = "An open-source attempt to make GPT-4 autonomous"
+
+[project.urls]
+"Homepage" = "https://github.com/Significant-Gravitas/Auto-GPT"
+"Bug Tracker" = "https://github.com/Significant-Gravitas/Auto-GPT"
 
 [tool.black]
 line-length = 88
