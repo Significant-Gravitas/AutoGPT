@@ -12,11 +12,11 @@ from autogpt.logs import logger
 CFG = Config()
 
 
-def prompt_user(other: AIConfig = None) -> AIConfig:
+def prompt_user(configOverrides: AIConfig = None) -> AIConfig:
     """Prompt the user for input
 
     Params:
-        other (AIConfig): The AIConfig object to use as a template
+        configOverrides (AIConfig): The AIConfig object to use as a template
 
     Returns:
         AIConfig: The AIConfig object tailored to the user's input
@@ -54,7 +54,7 @@ def prompt_user(other: AIConfig = None) -> AIConfig:
             Fore.GREEN,
             speak_text=True,
         )
-        return generate_aiconfig_manual(other)
+        return generate_aiconfig_manual(configOverrides)
 
     else:
         try:
@@ -70,7 +70,7 @@ def prompt_user(other: AIConfig = None) -> AIConfig:
             return generate_aiconfig_manual()
 
 
-def generate_aiconfig_manual(other: AIConfig = None) -> AIConfig:
+def generate_aiconfig_manual(configOverrides: AIConfig = None) -> AIConfig:
     """
     Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
 
@@ -79,7 +79,7 @@ def generate_aiconfig_manual(other: AIConfig = None) -> AIConfig:
     goals. If the user does not provide a value for any of the fields, default values will be used.
 
     Params:
-        other (AIConfig): The AIConfig object to use as a template
+        configOverrides (AIConfig): The AIConfig object to use as a template
 
     Returns:
         AIConfig: An AIConfig object containing the user-defined or default AI name, role, and goals.
@@ -94,8 +94,8 @@ def generate_aiconfig_manual(other: AIConfig = None) -> AIConfig:
         speak_text=True,
     )
 
-    if other and other.ai_name:
-        ai_name = other.ai_name
+    if configOverrides and configOverrides.ai_name:
+        ai_name = configOverrides.ai_name
     else:
         ai_name = ""
         # Get AI Name from User
@@ -111,8 +111,8 @@ def generate_aiconfig_manual(other: AIConfig = None) -> AIConfig:
         f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
     )
 
-    if other and other.ai_role:
-        ai_role = other.ai_role
+    if configOverrides and configOverrides.ai_role:
+        ai_role = configOverrides.ai_role
     else:
         # Get AI Role from User
         logger.typewriter_log(
@@ -127,8 +127,8 @@ def generate_aiconfig_manual(other: AIConfig = None) -> AIConfig:
         ai_role = "an AI designed to autonomously develop and run businesses with the"
         " sole goal of increasing your net worth."
 
-    if other and other.ai_goals:
-        ai_goals = other.ai_goals
+    if configOverrides and configOverrides.ai_goals:
+        ai_goals = configOverrides.ai_goals
     else:
         # Enter up to 5 goals for the AI
         logger.typewriter_log(

@@ -117,7 +117,8 @@ def run_auto_gpt(
     command_registry.import_commands("autogpt.commands.write_tests")
     command_registry.import_commands("autogpt.app")
 
-    ai_name = ""
+    if not ai_name:
+        ai_name = ""
     ai_config = construct_main_ai_config()
     ai_config.command_registry = command_registry
     # print(prompt)
