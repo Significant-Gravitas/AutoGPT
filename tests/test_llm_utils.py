@@ -1,8 +1,8 @@
 import pytest
 from openai.error import APIError, RateLimitError
 
-from autogpt.llm_utils import chunked_tokens, get_ada_embedding, retry_openai_api
-from autogpt.modelsinfo import COSTS
+from autogpt.llm import COSTS, get_ada_embedding
+from autogpt.llm.llm_utils import retry_openai_api, chunked_tokens
 
 
 @pytest.fixture(params=[RateLimitError, APIError])
@@ -16,7 +16,7 @@ def error(request):
 @pytest.fixture
 def mock_create_embedding(mocker):
     return mocker.patch(
-        "autogpt.llm_utils.create_embedding", return_value=[0.1, 0.2, 0.3]
+        "autogpt.llm.llm_utils.create_embedding", return_value=[0.1, 0.2, 0.3]
     )
 
 
