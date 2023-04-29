@@ -1,3 +1,4 @@
+from uuid import uuid4
 from autogpt.json_utils.utilities import (
     LLM_DEFAULT_RESPONSE_FORMAT,
     is_string_valid_json,
@@ -23,11 +24,14 @@ def save_memory_trimmed_from_context_window(
     full_message_history, next_message_to_add_index, permanent_memory
 ):
     while next_message_to_add_index >= 0:
-        message_content = full_message_history[next_message_to_add_index]["content"]
+        message = full_message_history[next_message_to_add_index]
+        message_content = message["content"]
+        if 'id' not in message:
+            message["id"] = uuid4().hex
         if is_string_valid_json(message_content, LLM_DEFAULT_RESPONSE_FORMAT):
             next_message = full_message_history[next_message_to_add_index + 1]
             memory_to_add = format_memory(message_content, next_message["content"])
-            logger.debug(f"Storing the following memory: {memory_to_add}")
+            logger.debug(f"Storing the following memory: {message['id']} - {memory_to_add}")
             permanent_memory.add(memory_to_add)
 
         next_message_to_add_index -= 1

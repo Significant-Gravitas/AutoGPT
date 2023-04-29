@@ -1,5 +1,6 @@
 import time
 from random import shuffle
+from uuid import uuid4
 
 from openai.error import RateLimitError
 
@@ -27,7 +28,7 @@ def create_chat_message(role, content) -> Message:
     Returns:
     dict: A dictionary containing the role and content of the message.
     """
-    return {"role": role, "content": content}
+    return {"role": role, "content": content, "id": uuid4().hex}
 
 
 def generate_context(prompt, relevant_memory, full_message_history, model):

@@ -1,4 +1,5 @@
 """Utilities for the json_fixes package."""
+from __future__ import annotations
 import json
 import re
 

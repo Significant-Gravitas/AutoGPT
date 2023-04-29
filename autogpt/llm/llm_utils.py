@@ -147,6 +147,10 @@ def create_chat_completion(
             )
             if message is not None:
                 return message
+    messages = messages.copy()
+    for message in messages:
+        if "id" in message:
+            message.pop("id")
     api_manager = ApiManager()
     response = None
     for attempt in range(num_retries):
