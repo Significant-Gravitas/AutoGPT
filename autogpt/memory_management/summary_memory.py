@@ -9,7 +9,11 @@ def get_newly_trimmed_messages(
     full_message_history: List[Dict[str, str]], current_context: List[Dict[str, str]], last_memory_index: int) -> Tuple[List[Dict[str, str]], int]:
     """
     This function returns a list of dictionaries contained in full_message_history
+<<<<<<< HEAD
     with an index higher than last_memory_index that are absent from current_context, and the new index.
+=======
+    with an index higher than prev_index that are absent from current_context.
+>>>>>>> e7ad51c (Update autogpt/memory_management/summary_memory.py)
 
     Args:
         full_message_history (list): A list of dictionaries representing the full message history.
