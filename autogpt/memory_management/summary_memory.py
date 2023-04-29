@@ -1,5 +1,4 @@
-from typing import List, Optional, Dict
-
+from typing import List, Dict, Tuple
 from autogpt.config import Config
 from autogpt.llm.llm_utils import create_chat_completion
 
@@ -8,7 +7,7 @@ cfg = Config()
 prev_index = 0
 current_memory = ""
 
-def get_newly_trimmed_messages(full_message_history, current_context):
+def get_newly_trimmed_messages(full_message_history: List[Dict[str, str]], current_context: List[Dict[str, str]]) -> Tuple[List[Dict[str, str]], int]:
     """
     This function returns a list of dictionaries contained in full_message_history
     with an index higher than prev_index that are absent from current_context, and the new index.
@@ -37,12 +36,30 @@ def get_newly_trimmed_messages(full_message_history, current_context):
         new_index = full_message_history.index(last_message)
 
     prev_index = new_index
-    
+
     return new_messages_not_in_context
 
 
 def update_running_summary(new_events: List[Dict]) -> str:
+    """
+    This function takes a list of dictionaries representing new events and combines them with the current summary,
+    focusing on key and potentially important information to remember. The updated summary is returned in a message
+    formatted in the 1st person past tense.
+
+    Args:
+        new_events (List[Dict]): A list of dictionaries containing the latest events to be added to the summary.
+
+    Returns:
+        str: A message containing the updated summary of actions, formatted in the 1st person past tense.
+
+    Example:
+        new_events = [{"event": "entered the kitchen."}, {"event": "found a scrawled note with the number 7"}]
+        update_running_summary(new_events)
+        # Returns: "This reminds you of these events from your past: \nI entered the kitchen and found a scrawled note saying 7."
+    """
+
     global current_memory
+    
     prompt = f'''Your task is to create a concise running summary of actions in the provided text, focusing on key and potentially important information to remember.
 
 You will receive the current summary and the latest development. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
