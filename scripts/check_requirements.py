@@ -3,8 +3,6 @@ import sys
 
 import pkg_resources
 
-from autogpt.logs import logger
-
 
 def main():
     requirements_file = sys.argv[1]
@@ -24,11 +22,11 @@ def main():
             missing_packages.append(package_name)
 
     if missing_packages:
-        logger.warn("Missing packages:")
-        logger.info(", ".join(missing_packages))
+        print("Missing packages:")
+        print(", ".join(missing_packages))
         sys.exit(1)
     else:
-        logger.info("All packages are installed.")
+        print("All packages are installed.")
 
 
 if __name__ == "__main__":
