@@ -1,4 +1,5 @@
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
+
 from autogpt.config import Config
 from autogpt.llm.llm_utils import create_chat_completion
 
