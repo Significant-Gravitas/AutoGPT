@@ -85,7 +85,6 @@ def run_auto_gpt(
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
     if workspace_directory is None:
-        logger.typewriter_log("  Workspace Directory: none")
         workspace_directory = Path(__file__).parent.parent / "auto_gpt_workspace"
     else:
         workspace_directory = Path(workspace_directory)
