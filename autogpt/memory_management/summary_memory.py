@@ -7,7 +7,10 @@ cfg = Config()
 prev_index = 0
 current_memory = ""
 
-def get_newly_trimmed_messages(full_message_history: List[Dict[str, str]], current_context: List[Dict[str, str]]) -> Tuple[List[Dict[str, str]], int]:
+
+def get_newly_trimmed_messages(
+    full_message_history: List[Dict[str, str]], current_context: List[Dict[str, str]]
+) -> Tuple[List[Dict[str, str]], int]:
     """
     This function returns a list of dictionaries contained in full_message_history
     with an index higher than prev_index that are absent from current_context, and the new index.
@@ -27,7 +30,9 @@ def get_newly_trimmed_messages(full_message_history: List[Dict[str, str]], curre
     new_messages = [msg for i, msg in enumerate(full_message_history) if i > prev_index]
 
     # Remove messages that are already present in current_context
-    new_messages_not_in_context = [msg for msg in new_messages if msg not in current_context]
+    new_messages_not_in_context = [
+        msg for msg in new_messages if msg not in current_context
+    ]
 
     # Find the index of the last message processed
     new_index = prev_index
@@ -59,7 +64,7 @@ def update_running_summary(new_events: List[Dict]) -> str:
     """
 
     global current_memory
-    
+
     prompt = f'''Your task is to create a concise running summary of actions in the provided text, focusing on key and potentially important information to remember.
 
 You will receive the current summary and the latest development. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
@@ -85,8 +90,8 @@ Latest Development:
     current_memory = create_chat_completion(messages, cfg.fast_llm_model)
 
     message_to_return = {
-            "role": "system",
-            "content": f"This reminds you of these events from your past: \n{current_memory}",
-        }
+        "role": "system",
+        "content": f"This reminds you of these events from your past: \n{current_memory}",
+    }
 
     return message_to_return
