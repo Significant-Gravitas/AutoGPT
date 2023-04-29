@@ -40,6 +40,9 @@ class Config(metaclass=Singleton):
             "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
         )
 
+        self.selenium_chrome_user_data_dir = os.getenv("BROWSER_CHROME_USER_DATA_DIR", "")
+        self.selenium_chrome_ignore_errors = os.getenv("BROWSER_CHROME_IGNORE_ERRORS", "False") == "True"
+
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
@@ -117,8 +120,7 @@ class Config(metaclass=Singleton):
         # no user agent was found.
         self.user_agent = os.getenv(
             "USER_AGENT",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_4) AppleWebKit/537.36"
-            " (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
         )
 
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
