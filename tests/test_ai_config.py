@@ -18,7 +18,6 @@ ai_goals:
 ai_role: A hungry AI
 ai_name: McFamished
 """
-
     config_file = tmp_path / "ai_settings.yaml"
     config_file.write_text(yaml_content)
 
