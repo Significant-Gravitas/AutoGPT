@@ -71,6 +71,9 @@ class AIConfig:
         Parameters:
            config_file (int): The path to the config yaml file.
              DEFAULT: "../ai_settings.yaml"
+            ai_name (str): AI name override, if supplied by the user via command line.
+            ai_role (str): AI role override, if supplied by the user via command line.
+            ai_goals (list): AI goals override, if supplied by the user via command line.
 
         Returns:
             cls (object): An instance of given cls object
