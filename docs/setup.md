@@ -37,7 +37,9 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 2. Pull the latest image from [Docker Hub]
 
         :::shell
-        docker pull significantgravitas/auto-gpt
+        docker pull significantgravitas/auto-gpt:<VERSION_NUMBER>
+        
+        IE: docker pull significantgravitas/auto-gpt:0.2.2
 
 3. Create a folder for Auto-GPT
 4. In the folder, create a file called `docker-compose.yml` with the following contents:
