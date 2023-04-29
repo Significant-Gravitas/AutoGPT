@@ -85,7 +85,8 @@ def run_auto_gpt(
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
     if workspace_directory is None:
-        workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
+        logger.typewriter_log("  Workspace Directory: none")
+        workspace_directory = Path(__file__).parent.parent / "auto_gpt_workspace"
     else:
         workspace_directory = Path(workspace_directory)
     # TODO: pass in the ai_settings file and the env file and have them cloned into
@@ -132,6 +133,7 @@ def run_auto_gpt(
         "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
     logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
+    logger.typewriter_log("  Workspace Directory: ", str(workspace_directory))
     system_prompt = ai_config.construct_full_prompt()
     if cfg.debug_mode:
         logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)

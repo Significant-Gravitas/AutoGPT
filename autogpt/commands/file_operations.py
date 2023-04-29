@@ -141,7 +141,8 @@ def write_to_file(filename: str, text: str) -> str:
     if check_duplicate_operation("write", filename):
         return "Error: File has already been updated."
     try:
-        os.makedirs(filename, exist_ok=True)
+        directory = os.path.dirname(filename)
+        os.makedirs(directory, exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:
             f.write(text)
         log_operation("write", filename)
@@ -165,7 +166,8 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
         str: A message indicating success or failure
     """
     try:
-        os.makedirs(filename, exist_ok=True)
+        directory = os.path.dirname(filename)
+        os.makedirs(directory, exist_ok=True)
         with open(filename, "a") as f:
             f.write(text)
 
