@@ -5,7 +5,7 @@ from weaviate import Client
 from weaviate.util import get_valid_uuid
 
 from autogpt.config import Config
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm import get_ada_embedding
 from autogpt.memory.weaviate import WeaviateMemory
 
 
