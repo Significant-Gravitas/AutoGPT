@@ -1,0 +1,5 @@
+ai_goals:
+- Test goal 1
+ai_name: testGPT
+ai_role: testRole
+api_budget: 1.0

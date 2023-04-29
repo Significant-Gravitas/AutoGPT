@@ -33,6 +33,9 @@ def run_auto_gpt(
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
+    ai_name: str,
+    ai_role: str,
+    ai_goals: str,
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
@@ -54,6 +57,9 @@ def run_auto_gpt(
         browser_name,
         allow_downloads,
         skip_news,
+        ai_name,
+        ai_role,
+        ai_goals,
     )
 
     if not cfg.skip_news:

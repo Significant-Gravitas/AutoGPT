@@ -119,6 +119,7 @@ def main(
             allow_downloads,
             skip_news,
             workspace_directory,
+            install_plugin_deps,
             ai_name,
             ai_role,
             ai_goals,

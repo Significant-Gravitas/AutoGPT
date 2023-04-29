@@ -32,23 +32,29 @@ def prompt_user(configOverrides: AIConfig = None) -> AIConfig:
         speak_text=True,
     )
 
-    # Get user desire
-    logger.typewriter_log(
-        "Create an AI-Assistant:",
-        Fore.GREEN,
-        "input '--manual' to enter manual mode.",
-        speak_text=True,
-    )
+    overrides_provided = False
+    if configOverrides is not None and any(
+        [configOverrides.ai_goals, configOverrides.ai_name, configOverrides.ai_role]
+    ):
+        overrides_provided = True
 
-    user_desire = utils.clean_input(
-        f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: "
-    )
+    if not overrides_provided:
+        # Get user desire if command line overrides have not been passed in
+        logger.typewriter_log(
+            "Create an AI-Assistant:",
+            Fore.GREEN,
+            "input '--manual' to enter manual mode.",
+            speak_text=True,
+        )
 
-    if user_desire == "":
+        user_desire = utils.clean_input(
+            f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: "
+        )
+    else:
         user_desire = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt
 
-    # If user desire contains "--manual"
-    if "--manual" in user_desire:
+    # If user desire contains "--manual" or we have overridden any of the AI configuration
+    if "--manual" in user_desire or overrides_provided:
         logger.typewriter_log(
             "Manual Mode Selected",
             Fore.GREEN,
