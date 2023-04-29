@@ -14,7 +14,7 @@ def get_newly_trimmed_messages(
 ) -> Tuple[List[Dict[str, str]], int]:
     """
     This function returns a list of dictionaries contained in full_message_history
-    with an index higher than prev_index that are absent from current_context, and the new index.
+    with an index higher than prev_index that are absent from current_context.
 
     Args:
         full_message_history (list): A list of dictionaries representing the full message history.
