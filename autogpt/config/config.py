@@ -96,7 +96,7 @@ class Config(metaclass=Singleton):
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
         self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
 
-        self.image_provider = os.getenv("IMAGE_PROVIDER")
+        self.image_provider = os.getenv("IMAGE_PROVIDER", "dalle")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
         self.huggingface_image_model = os.getenv(
