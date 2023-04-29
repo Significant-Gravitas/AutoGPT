@@ -13,7 +13,7 @@ from autogpt.llm.llm_utils import (
     call_ai_function,
     create_chat_completion,
     get_ada_embedding,
-    chunked_tokens
+    chunked_tokens,
 )
 from autogpt.llm.modelsinfo import COSTS
 from autogpt.llm.token_counter import count_message_tokens, count_string_tokens
@@ -33,8 +33,7 @@ __all__ = [
     "call_ai_function",
     "create_chat_completion",
     "get_ada_embedding",
-    "chunked_tokens,"
-    "COSTS",
+    "chunked_tokens," "COSTS",
     "count_message_tokens",
     "count_string_tokens",
 ]
