@@ -20,9 +20,7 @@ CFG = Config()
 
 def text_checksum(text: str) -> str:
     """Get the hex checksum for the given text."""
-    digest = hashlib.md5()
-    digest.update(text.encode("utf-8"))
-    return digest.hexdigest()
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
 def operations_from_log(log_path: str) -> Generator[Tuple]:
