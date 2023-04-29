@@ -80,7 +80,7 @@ class AIConfig:
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = [
-            str(goal).strip("{}").replace("'", "")
+            str(goal).strip("{}").replace("'", "").replace('"', "")
             if isinstance(goal, dict)
             else str(goal)
             for goal in config_params.get("ai_goals", [])
