@@ -12,10 +12,7 @@ from autogpt.logs import logger
 from autogpt.memory_management.store_memory import (
     save_memory_trimmed_from_context_window,
 )
-from autogpt.memory_management.summary_memory import (
-    get_newly_trimmed_messages,
-    update_running_summary,
-)
+from autogpt.memory_management.summary_memory import SummarizedMemory
 
 cfg = Config()
 
@@ -40,10 +37,10 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
         create_chat_message(
             "system", f"The current time and date is {time.strftime('%c')}"
         ),
-        # create_chat_message(
-        #     "system",
-        #     f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
-        # ),
+        create_chat_message(
+            "system",
+            f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
+        ),
     ]
 
     # Add messages from the full message history until we reach the token limit
@@ -88,18 +85,17 @@ def chat_with_ai(
             logger.debug(f"Token limit: {token_limit}")
             send_token_limit = token_limit - 1000
 
-            # if len(full_message_history) == 0:
-            #     relevant_memory = ""
-            # else:
-            #     recent_history = full_message_history[-5:]
-            #     shuffle(recent_history)
-            #     relevant_memories = permanent_memory.get_relevant(
-            #         str(recent_history), 5
-            #     )
-            #     if relevant_memories:
-            #         shuffle(relevant_memories)
-            #     relevant_memory = str(relevant_memories)
-            relevant_memory = ""
+            if len(full_message_history) == 0:
+                relevant_memory = ""
+            else:
+                recent_history = full_message_history[-5:]
+                shuffle(recent_history)
+                relevant_memories = permanent_memory.get_relevant(
+                    str(recent_history), 5
+                )
+                if relevant_memories:
+                    shuffle(relevant_memories)
+                relevant_memory = str(relevant_memories)
             logger.debug(f"Memory Stats: {permanent_memory.get_stats()}")
 
             (
@@ -109,17 +105,17 @@ def chat_with_ai(
                 current_context,
             ) = generate_context(prompt, relevant_memory, full_message_history, model)
 
-            # while current_tokens_used > 2500:
-            #     # remove memories until we are under 2500 tokens
-            #     relevant_memory = relevant_memory[:-1]
-            #     (
-            #         next_message_to_add_index,
-            #         current_tokens_used,
-            #         insertion_index,
-            #         current_context,
-            #     ) = generate_context(
-            #         prompt, relevant_memory, full_message_history, model
-            #     )
+            while current_tokens_used > 2500:
+                # remove memories until we are under 2500 tokens
+                relevant_memory = relevant_memory[:-1]
+                (
+                    next_message_to_add_index,
+                    current_tokens_used,
+                    insertion_index,
+                    current_context,
+                ) = generate_context(
+                    prompt, relevant_memory, full_message_history, model
+                )
 
             current_tokens_used += count_message_tokens(
                 [create_chat_message("user", user_input)], model
@@ -134,11 +130,11 @@ def chat_with_ai(
 
                 tokens_to_add = count_message_tokens([message_to_add], model)
                 if current_tokens_used + tokens_to_add > send_token_limit:
-                    # save_memory_trimmed_from_context_window(
-                    #     full_message_history,
-                    #     next_message_to_add_index,
-                    #     permanent_memory,
-                    # )
+                    save_memory_trimmed_from_context_window(
+                        full_message_history,
+                        next_message_to_add_index,
+                        permanent_memory,
+                    )
                     break
 
                 # Add the most recent message to the start of the current context,
@@ -154,11 +150,11 @@ def chat_with_ai(
                 next_message_to_add_index -= 1
 
             # Insert Memories
-            newly_trimmed_messages = get_newly_trimmed_messages(
+            newly_trimmed_messages = SummarizedMemory.get_newly_trimmed_messages(
                 full_message_history=full_message_history,
                 current_context=current_context,
             )
-            memory = update_running_summary(newly_trimmed_messages)
+            memory = SummarizedMemory.update_running_summary(newly_trimmed_messages, cfg)
             current_context.insert(insertion_index, memory)
 
             api_manager = ApiManager()

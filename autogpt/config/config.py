@@ -128,7 +128,10 @@ class Config(metaclass=Singleton):
         self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
-        self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
+        self.memory_backend = "no_memory"
+        # TODO HACK! This is a temporary hack to use the summation system without vectorized memory as vectorized memory
+        # is currently broken.
+        #os.getenv("MEMORY_BACKEND", "local")
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
