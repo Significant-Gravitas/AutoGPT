@@ -1,8 +1,15 @@
 # sourcery skip: do-not-use-staticmethod
 """
-A module that contains the AIConfig class object that contains the configuration
+Maintain backward Compatibility
 """
-from __future__ import annotations
+
+
+from autogpt.projects.agent_model import AgentModel
+
+    
+
+
+#from __future__ import annotations
 
 import os
 import platform
@@ -18,7 +25,7 @@ from autogpt.prompts.generator import PromptGenerator
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 
 
-class AIConfig:
+class AIConfig(AgentModel):  
     """
     A class object that contains the configuration information for the AI
 
@@ -27,7 +34,7 @@ class AIConfig:
         ai_role (str): The description of the AI's role.
         ai_goals (list): The list of objectives the AI is supposed to complete.
         api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
-    """
+    
 
     def __init__(
         self,
@@ -36,7 +43,7 @@ class AIConfig:
         ai_goals: list | None = None,
         api_budget: float = 0.0,
     ) -> None:
-        """
+        
         Initialize a class instance
 
         Parameters:
@@ -46,7 +53,7 @@ class AIConfig:
             api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
         Returns:
             None
-        """
+        
         if ai_goals is None:
             ai_goals = []
         self.ai_name = ai_name
@@ -58,7 +65,7 @@ class AIConfig:
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
-        """
+        
         Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
           yaml file if yaml file exists,
         else returns class with no parameters.
@@ -69,7 +76,7 @@ class AIConfig:
 
         Returns:
             cls (object): An instance of given cls object
-        """
+        
 
         try:
             with open(config_file, encoding="utf-8") as file:
@@ -85,7 +92,7 @@ class AIConfig:
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
-        """
+        
         Saves the class parameters to the specified file yaml file path as a yaml file.
 
         Parameters:
@@ -94,7 +101,7 @@ class AIConfig:
 
         Returns:
             None
-        """
+        
 
         config = {
             "ai_name": self.ai_name,
@@ -104,6 +111,7 @@ class AIConfig:
         }
         with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
+    """
 
     def construct_full_prompt(
         self, prompt_generator: Optional[PromptGenerator] = None
