@@ -53,6 +53,7 @@ def clean_input(prompt: str = "", talk=False):
                     "nope",
                     "n",
                     "negative",
+                    "null",
                 ]:
                     return cfg.exit_key
                 return plugin_response
