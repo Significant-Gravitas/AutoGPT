@@ -1,0 +1,27 @@
+site_name: Auto-GPT
+site_url: https://significantgravitas.github.io/Auto-GPT/
+repo_url: https://github.com/Significant-Gravitas/Auto-GPT
+nav:
+  - Home: index.md
+  - Setup: setup.md
+  - Usage: usage.md
+  - Plugins: plugins.md
+  - Configuration:
+    - Search: configuration/search.md
+    - Memory: configuration/memory.md
+    - Voice: configuration/voice.md
+    - Image Generation: configuration/imagegen.md
+
+  - Contributing:
+    - Contribution guide: contributing.md
+    - Running tests: testing.md
+    - Code of Conduct: code-of-conduct.md
+
+  - License: https://github.com/Significant-Gravitas/Auto-GPT/blob/master/LICENSE
+
+theme: readthedocs
+
+markdown_extensions:
+  admonition:
+  codehilite:
+  pymdownx.keys:
