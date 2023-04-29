@@ -23,7 +23,6 @@ def get_newly_trimmed_messages(
 
     Returns:
         list: A list of dictionaries that are in full_message_history with an index higher than prev_index and absent from current_context.
-        int: The new index value for use in the next loop.
     """
     global prev_index
 
