@@ -7,7 +7,7 @@ from tests.integration.challenges.utils import get_level_to_run
 from tests.utils import requires_api_key
 
 LEVEL_CURRENTLY_BEATEN = 3
-MAX_LEVEL = 5
+MAX_LEVEL = 100
 
 
 @pytest.mark.vcr

@@ -112,6 +112,7 @@ def create_chat_completion(
     max_tokens: Optional[int] = None,
 ) -> str:
     """Create a chat completion using the OpenAI API
+Read the file instructions_12.txt
 
     Args:
         messages (List[Message]): The messages to send to the chat completion
