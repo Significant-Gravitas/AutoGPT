@@ -77,20 +77,19 @@ class SummarizedMemory(metaclass=Singleton):
         """
 
         prompt = f'''Your task is to create a concise running summary of actions in the provided text, focusing on key and potentially important information to remember.
-
+    
     You will receive the current summary and the latest development. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
-
+    
     Summary So Far:
     """
     {cls.current_memory}
     """
-
+    
     Latest Development:
     """
     {new_events}
     """
     '''
-
         messages = [
             {
                 "role": "user",
@@ -99,7 +98,6 @@ class SummarizedMemory(metaclass=Singleton):
         ]
 
         current_memory = create_chat_completion(messages, cfg.fast_llm_model)
-
         message_to_return = {
             "role": "system",
             "content": f"This reminds you of these events from your past: \n{current_memory}",
