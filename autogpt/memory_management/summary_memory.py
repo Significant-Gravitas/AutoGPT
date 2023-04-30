@@ -82,9 +82,9 @@ def update_running_summary(current_memory: str, new_events: List[Dict]) -> str:
     if (len(new_events) == 0):
         new_events = "Nothing new happened."
 
-    prompt = f'''Your task is to create a concise running summary of actions in the provided text, focusing on key and potentially important information to remember.
+    prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
 
-You will receive the current summary and the latest development. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
+You will receive the current summary and the your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
 
 Summary So Far:
 """
