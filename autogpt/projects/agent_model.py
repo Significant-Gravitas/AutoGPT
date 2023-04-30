@@ -26,7 +26,7 @@ from typing import Optional, Type, List
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 # @TODO 
-SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
+SAVE_FILE = Path.cwd() / "ai_settings.yaml"
 PROJECT_DIR = "autogpt/projects"
 AUTOGPT_VERSION = 'X.Y.Z' # TODO, implement in config.py or main or technical env file
 

@@ -28,102 +28,86 @@ Dependencies:
 - autogpt.singleton.AbstractSingleton
 """
 from __future__ import annotations
+
+# Standard library imports
 import os
-import shutil
 import re
-import yaml
-from autogpt.singleton import AbstractSingleton
+import shutil
 from pathlib import Path
 from typing import Optional, Type, List
-from autogpt.prompts.generator import PromptGenerator
+
+# Third-party imports
+import yaml
+
+# Local application imports
+from autogpt.singleton import AbstractSingleton
 from autogpt.projects.project import Project
+from autogpt.projects.agent_model import AgentModel
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
-# @TODO 
-SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
+# @TODO
+SAVE_FILE = Path.cwd() / "ai_settings.yaml"
 PROJECT_DIR = "autogpt/projects"
 MAX_NB_PROJECT = 1
-AUTOGPT_VERSION = 'X.Y.Z' # TODO, implement in config.py or main or technical env file
+AUTOGPT_VERSION = 'X.Y.Z'  # TODO, implement in config.py or main or technical env file
 
-class ProjectsBroker(AbstractSingleton):   
+
+class ProjectsBroker(AbstractSingleton):
     """
-    A singleton class that manages the configuration settings for AI projects.
+    A singleton class that manages projects and their configurations in AutoGPT.
 
-    This class contains the ProjectsBroker object, which can be used to create, manage, and save configurations for AI projects. It provides methods to create a new project, set the current project, get the current project, get all the projects, and get a specific project instance. The class depends on the Project and AgentConfig class objects from the autogpt.project module and the AbstractSingleton class from the autogpt.singleton module.
+    This class contains methods to create, manage, and save configurations for AI projects. It provides methods to create a new project, set the current project, get the current project, get all the projects, and get a specific project instance.
 
     Attributes:
-        SAVE_FILE (str): The path to the file where the configuration settings will be saved.
-        MAX_NB_PROJECT (int): The maximum number of AI configurations allowed.
-        __current_project_id (int): The number of the current project from 0 to 4.
-        __projects (list): A list of dictionaries containing project information, such as the lead agent, project budget, and prompt generator.
-        __version (str): Version of the app.
-        config_file (str): The path to the config yaml file.
+        _config_file (str): The path to the configuration file.
+        _projects (list): A list of Project instances containing the project parameters.
+        _current_project_id (int): The number of the current project from 0 to MAX_NB_PROJECT.
 
     Methods:
-        __init__(self, project_positon_number: int = -1, config_file: str = None) -> None:
-            Initializes a ProjectsBroker instance with the specified project number and config file.
+        __init__(self, config_file: Optional[str] = None) -> None:
+            Initializes a ProjectConfigBroker instance with the specified config file.
 
-        load(self, config_file: str = '') -> list:
-            Loads the projects from the specified YAML file and returns a list of Project instances containing the project parameters.
+        is_loaded(self) -> bool:
+            Checks if the configuration file has been loaded.
 
-        _save(self, project_position: int = -1) -> None:
-            Saves the current state of the ProjectsBroker to the configuration file.
+        get_projects(self) -> List[Project]:
+            Gets the list of all projects.
 
-        create_project(self, project_id: int, lead_agent: AgentModel, api_budget: float, project_name: str = '') -> AgentModel:
-            Creates a new project with the specified parameters and adds it to the list of projects.
-
-        project_dir_name_formater(project_name: str) -> str:
-            Formats a project name as a directory name.
-
-        project_dir_create(cls, project_position: str,  project_name: str) -> str:
-            Creates a directory for a project.
-
-        set_project_positon_number(self, new_project_id: int) -> bool:
-            Sets the current project number.
-
-        get_current_project_id(self) -> int:
-            Gets the current project number.
+        get_project(self, project_position_number: int) -> Project:
+            Gets the specified project instance.
 
         get_current_project(self) -> Project:
             Gets the current project instance.
 
-        get_project(self, project_positon_number: int) -> AgentModel:
-            Gets the specified project instance.
+        get_current_project_id(self) -> int:
+            Gets the current project number.
 
-        get_projects(self) -> list:
-            Gets the list of all projects.
+        get_project_folder_list() -> List[str]:
+            Gets a list of project folder paths.
+
+        create_project_dir(project_name: str) -> str:
+            Creates a directory for a project.
+
+        project_dir_name_formater(project_name: str) -> str:
+            Formats a project name as a directory name.
+
+        create_project(self, project_position_number: int, lead_agent: AgentModel, project_budget: float, project_name: str = '', version: str = AUTOGPT_VERSION) -> Project:
+            Creates a new project with the specified parameters and adds it to the list of projects.
     """
-
-   # def __init__(self, project_positon_number: int = -1, config_file: str = None) -> None:
-    #     """
-    #     Initializes a ProjectConfigBroker instance with the specified project number and config file.
-
-    #     Args:
-    #         project_positon_number (int, optional): The project number to be set as the current project. Defaults to -1.
-    #         config_file (str, optional): The path to the config yaml file. Defaults to None.
-    #     """
-    #     self.config_file = config_file 
-    #     self._current_project_id = project_positon_number
-    #     self.load(self.config_file)
-    #     if 0 <= project_positon_number <= len(self._projects):
-    #         self.set_project_positon_number(project_positon_number)
-
-        # TODO create the back-up at a project level
-    #     shutil.copy(self.config_file, f"{self.config_file}.backup")
+    PROJECT_DIR = PROJECT_DIR
 
     def __init__(self,  config_file: str = None) -> None:
         """
         Initializes a ProjectConfigBroker instance with the specified project number and config file.
 
         Args:
-            project_positon_number (int, optional): The project number to be set as the current project. Defaults to -1.
             config_file (str, optional): The path to the config yaml file. Defaults to None.
         """
         if not config_file == None or not hasattr(self, '_config_file') or self._config_file is None:
             self._config_file = config_file
 
         if(not hasattr(self, '_projects') or  self._projects == [] ) :
-            self._current_project_id = -1
+            self._current_project_position = -1
             self._projects = []
             self.load()
 
@@ -131,16 +115,14 @@ class ProjectsBroker(AbstractSingleton):
         """
         Loads the projects from the specified YAML file and returns a list of Project instances containing the project parameters.
 
-        Args:
-            config_file (str): The path to the config yaml file.
-
         Returns:
             list: A list of Project instances containing the project parameters for each entry.
 
         Raises:
             FileNotFoundError: If the specified config file does not exist.
+            Exception: If no project folders are found.
         """
-        print('WARNING ONLY ONE LOAD')
+
         self._projects = []
         projectfolder_list = ProjectsBroker.get_project_folder_list()
         if not projectfolder_list:
@@ -165,19 +147,17 @@ class ProjectsBroker(AbstractSingleton):
 
     def _save(self, is_creation = False, project_position_number: int = -1) -> None:
         """
-        Saves the current state of the ProjectsBroker to the configuration file if a project_position_number is passe. Else, it will save all the projects.
-        
+        Saves the current state of the ProjectsBroker to the configuration file if a project_position_number is passed. Else, it will save all the projects.
+
         Args:
-            project_position (int, optional): The position of the project to save. Defaults to -1.
+            is_creation (bool, optional): Whether the project is being created or not. Defaults to False.
+            project_position_number (int, optional): The position of the project to save. Defaults to -1.
 
         Raises:
             IndexError: If the project_position is out of range.
         """
+        
         if 0 <= project_position_number < len(self._projects):
-            """
-            in Project.save()
-            self.project_dir_create(project_position_number, self._projects[project_position_number].project_name)
-            """
             self._projects[project_position_number].save( 
                 project_position_number = project_position_number, 
                 is_creation = is_creation)
@@ -190,6 +170,7 @@ class ProjectsBroker(AbstractSingleton):
  
     
     from autogpt.projects.agent_model import AgentModel
+   
     def create_project(self, 
                     project_position_number : int,
                     lead_agent : AgentModel,
@@ -201,16 +182,18 @@ class ProjectsBroker(AbstractSingleton):
         Creates a new project with the specified parameters and adds it to the list of projects.
 
         Args:
-            project_id (int): The project ID.
-            lead_agent : AgentModel: The lead agent for the project.
-            api_budget (float): The maximum dollar value for API calls (0.0 means infinite).
+            project_position_number (int): The project ID.
+            lead_agent (AgentModel): The lead agent for the project.
+            project_budget (float): The maximum dollar value for API calls (0.0 means infinite).
             project_name (str, optional): The name of the project. Defaults to ''.
+            version (str, optional): The version of AutoGPT when the project was last run. Defaults to AUTOGPT_VERSION.
+
 
         Returns:
             AgentModel: The lead agent instance for the new project.
 
         Raises:
-            ValueError: If the project_id is greater than the maximum number of projects allowed.
+            ValueError: If the project_position is greater than the maximum number of projects allowed.
         """
         self = ProjectsBroker()
         # # REQUIRED FOR BACKWARD COMPATIBILITY , WILL NEED TO BE REMOVED ON LO
@@ -252,44 +235,71 @@ class ProjectsBroker(AbstractSingleton):
         else:
             self._projects[project_position_number] = project
 
-        self.set_project_positon_number(new_project_id=project_position_number)
+        self.set_project_positon_number(new_project_position=project_position_number)
         self._save(project_position_number=project_position_number ,is_creation = is_creation)
 
         
         return project
     
     @staticmethod   
-    def project_dir_name_formater( project_name : str ) -> str :
+    def project_dir_name_formater(project_name : str ) -> str :
+        """
+        Formats a project name as a valid directory name by removing non-alphanumeric characters and converting to lowercase.
+
+        Parameters:
+            project_name (str): The name of the project to be formatted.
+
+        Returns:
+            str: The formatted project name.
+        """
         return re.sub(r'[^a-zA-Z0-9]', '', project_name).lower()
 
     @classmethod   
     def create_project_dir(cls, project_name) -> str : 
+        """
+        Creates a directory for a new project using the specified name.
+
+        Parameters:
+            project_name (str): The name of the new project.
+
+        Returns:
+            str: The path to the new project directory.
+        """
         project_dirname = cls.project_dir_name_formater(project_name)
         os.mkdir(os.path.join(PROJECT_DIR, project_dirname))
 
     @staticmethod  
     def get_project_folder_list() -> list : 
+        """
+        Gets the list of project folders from the 'autogpt/projects' directory.
+
+        Parameters:
+            None
+
+        Returns:
+            list: A list of folder paths for each project.
+        """
         return [f.path for f in os.scandir(PROJECT_DIR) if f.is_dir() and f.name != '__pycache__' and not f.name.endswith('.backup') ]     
         
 
     @classmethod   
-    def set_project_positon_number(cls,  new_project_id: int) -> bool:
+    def set_project_positon_number(cls,  new_project_position: int) -> bool:
         """
         Sets the current project number.
 
         Args:
-            new_project_id (int): The new project number to be set.
+            new_project_position (int): The new project number to be set.
 
         Returns:
             bool: True if the project number is successfully set, False otherwise.
         """
         projects_broker = cls()
-        if new_project_id < 0 or new_project_id >= len(projects_broker._projects):
+        if new_project_position < 0 or new_project_position >= len(projects_broker._projects):
             raise ValueError(f"set_project_positon_number: Value must be between 0 and {len(projects_broker._projects)-1}")
-        projects_broker._current_project_id = new_project_id
+        projects_broker._current_project_position = new_project_position
         return True
 
-    def get_current_project_id(self) -> int:
+    def get_current_project_position(self) -> int:
         """
         Gets the current project number.
 
@@ -299,34 +309,34 @@ class ProjectsBroker(AbstractSingleton):
         Returns:
             int: The current project number.
         """
-        return self._current_project_id
+        return self._current_project_position
 
-    def get_current_project(self) -> Project:
+    def get_current_project(self) -> Project:  
         """
-        Gets the current project instance.
-
-        Parameters:
-            None
+        Gets the currently selected Project instance in the ProjectsBroker instance.
 
         Returns:
-            Project: The current project instance.
+            Project: The currently selected Project instance.
+
+        Raises:
+            ValueError: If there is no currently selected project.
         """
-        if self._current_project_id == -1:
-            raise ValueError(f"get_current_project: Value {self._current_project_id } not expected")
-        return self._projects[self._current_project_id]
+        if self._current_project_position == -1:
+            raise ValueError(f"get_current_project: Value {self._current_project_position } not expected")
+        return self._projects[self._current_project_position]
     
     def get_project(self, project_positon_number : int ) -> AgentModel:
         """
-        Gets the specified project instance.
-
-        Parameters:
-            None
+        Gets the Project instance with the specified position number in the ProjectsBroker instance.
 
         Args:
-            project_positon_number (int): The project number.
+            project_positon_number (int): The position number of the project to retrieve.
 
         Returns:
-            AgentConfig: The specified project instance.
+            Project: The Project instance with the specified position number.
+        
+        Raises:
+            ValueError: If the specified project position number is out of range.
         """
         if project_positon_number < 0 or len(self._projects) < project_positon_number  :
             raise ValueError(f"get_config: Value {project_positon_number } not expected")     
@@ -336,17 +346,27 @@ class ProjectsBroker(AbstractSingleton):
 
     def get_projects(self) -> list[Project]:
         """
-        Gets the list of all configuration AIConfig.
+        Gets the Project instance with the specified position number in the ProjectsBroker instance.
 
-        Parameters:
-            None
+        Args:
+            project_positon_number (int): The position number of the project to retrieve.
 
         Returns:
-            configs (list): A list of all project AIConfig.
+            Project: The Project instance with the specified position number.
+        
+        Raises:
+            ValueError: If the specified project position number is out of range.
         """
         return self._projects
     
     def is_loaded(self) -> bool : 
+        """
+        Checks if the configuration file has been loaded.
+
+        Returns:
+            bool: True if the configuration file has been loaded, False otherwise.
+        """
+
         if hasattr(self , '_projects') and len(self._projects > 0) :
             return False
         else : 

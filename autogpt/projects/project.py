@@ -63,7 +63,7 @@ class Project:
             Initializes a new Project object with the given parameters.
         load(cls, config_params: dict) -> "Project"
             Loads a portion of the configuration parameters and returns a Project instance.
-        save(self, is_creation: bool = False, creation_position: int = -1) -> dict
+        save(self, project_position_number : int, is_creation: bool = False  ) -> "Project"
             Saves the Project object as a dictionary representation.
         get_lead(self) -> AgentModel
             Returns the lead agent of the project.
@@ -71,6 +71,9 @@ class Project:
             Returns the list of delegated agents for the project.
         delete_delegated_agents(self, position: int) -> bool
             Deletes the delegated agent at the given position and returns True if successful.
+        _check_method_load(cls, config_params: dict) -> bool
+            Checks if the given configuration parameters are valid for loading a Project object.
+
     """
     def __init__(self, project_name: str, 
                  project_budget: float, 
@@ -82,7 +85,7 @@ class Project:
                  project_env: Optional[str] = None, 
                  project_log_activity: Optional[str] = None,
                  project_log_env: Optional[str] = None, 
-                 team_name: Optional[str] = None):    
+                 team_name: Optional[str] = None): 
         """
         Initializes a new Project object with the given parameters.
 
@@ -115,7 +118,12 @@ class Project:
 
     #saving in Yaml
     def __str__(self) -> str:
+        """
+        Returns a string representation of the Project object.
 
+        Returns:
+            str_representation (str): A string representation of the Project object.
+        """
         return str(self.to_dict())
     
     def to_dict(self) -> dict:
@@ -125,8 +133,6 @@ class Project:
         Returns:
             dict_representation (dict): A dictionary representation of the Project object.
         """
-        
-
         dict_representation = {
             "project_name": self.project_name,
             "project_budget": self.project_budget,
@@ -278,6 +284,15 @@ class Project:
 
     @classmethod
     def _check_method_load(cls, config_params) -> bool :
+        """
+        Checks if the given configuration parameters are valid for loading a Project object.
+
+        Args:
+            config_params (dict): A dictionary containing the configuration parameters for the project.
+
+        Returns:
+            is_valid (bool): True if the configuration parameters are valid, False otherwise.
+        """
         if  not config_params.get("project_name") :
             raise ValueError("Project.load() No project_name in the project.")
 
@@ -298,7 +313,30 @@ class Project:
 # NOTE : Keep it simple or set a long term structure (Pain in the ass)    
 # NOTE : Not seing it as very useful    
 class AgentTeam:
+    """
+    A class representing a team of agents for an AI project.
+
+    Attributes:
+        team_name (str): The name of the team.
+        lead_agent (AgentModel): The lead agent for the team.
+        delegated_agents (List[AgentModel]): A list of delegated agents for the team.
+
+    Methods:
+        __init__(self, team_name: str, lead_agent: AgentModel, delegated_agents: List[AgentModel])
+            Initializes a new AgentTeam object with the given parameters.
+        to_dict(self) -> dict
+            Converts the AgentTeam object to a dictionary representation.
+
+    """
     def __init__(self, team_name, lead_agent, delegated_agents):
+        """
+        Initializes a new AgentTeam object with the given parameters.
+
+        Args:
+            team_name (str): The name of the team.
+            lead_agent (AgentModel): The lead agent for the team.
+            delegated_agents (List[AgentModel]): A list of delegated agents for the team.
+        """
         
         self.team_name = team_name
         self.lead_agent = lead_agent
@@ -312,6 +350,12 @@ class AgentTeam:
             self._all_agent.append(agent)
 
     def to_dict(self) -> dict : 
+        """
+        Converts the AgentTeam object to a dictionary representation.
+
+        Returns:
+            dict_representation (dict): A dictionary representation of the AgentTeam object.
+        """
         lead_agent_dict = self.lead_agent.to_dict() 
 
         delegated_agents = []
