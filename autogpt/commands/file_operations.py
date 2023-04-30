@@ -9,7 +9,7 @@ import requests
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
 
-from autogpt.commands.command import command
+from autogpt.commands.command import command, ignore_unexpected_kwargs
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.spinner import Spinner
@@ -201,6 +201,7 @@ def delete_file(filename: str) -> str:
 
 
 @command("search_files", "Search Files", '"directory": "<directory>"')
+@ignore_unexpected_kwargs
 def search_files(directory: str) -> list[str]:
     """Search for files in a directory
 

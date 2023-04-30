@@ -30,7 +30,7 @@ class PromptGenerator:
                 "criticism": "constructive self-criticism",
                 "speak": "thoughts summary to say to user",
             },
-            "command": {"name": "command name", "args": {"arg name": "value"}},
+            "command": {"name": "command_name", "args": {"arg_name": "value"}},
         }
 
     def add_constraint(self, constraint: str) -> None:
