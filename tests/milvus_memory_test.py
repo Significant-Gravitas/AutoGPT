@@ -3,6 +3,7 @@
 import os
 import sys
 import unittest
+
 from autogpt.config import Config
 
 try:
