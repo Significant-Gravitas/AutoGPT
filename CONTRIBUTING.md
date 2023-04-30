@@ -127,3 +127,22 @@ When you run Pytest locally:
             - Or: The test might be poorly written. In that case, you can make suggestions to change the test.
 
 In our CI pipeline, Pytest will use the cassettes and not call paid API providers, so we need your help to record the replays that you break.
+
+
+### Community Challenges
+Challenges are goals we need Auto-GPT to achieve. 
+To pick the challenge you like, go to the tests/integration/challenges folder and select the areas you would like to work on. 
+- a challenge is new if level_currently_beaten is None
+- a challenge is in progress if level_currently_beaten is greater or equal to 1
+- a challenge is beaten if level_currently_beaten = max_level
+
+Here is an example of how to run the memory challenge A and attempt to beat level 3.
+
+pytest -s tests/integration/challenges/memory/test_memory_challenge_a.py --level=3
+
+To beat a challenge, you're not allowed to change anything in the tests folder, you have to add code in the autogpt folder
+
+Challenges use cassettes. Cassettes allow us to replay your runs in our CI pipeline.
+Don't hesitate to delete the cassettes associated to the challenge you're working on if you need to. Otherwise it will keep replaying the last run.
+
+Once you've beaten a new level of a challenge, please create a pull request and we will analyze how you changed Auto-GPT to beat the challenge.
