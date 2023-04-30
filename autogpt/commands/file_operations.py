@@ -16,6 +16,7 @@ from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.llm import token_counter
 from autogpt.logs import logger
+from autogpt.processing.text import summarize_text
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 
@@ -169,6 +170,23 @@ def read_file(filename: str) -> str:
     except Exception as err:
         return f"Error: {err}"
 
+@command("summarize_file", "Summarize file", '"filename": "<filename>", "question": "<what you want to know about the file contents>"')
+def summarize_file(filename: str, question: str) -> str:
+    """Summarize a file with a given question.
+
+    Args:
+        filename (str): The name of the file to summarize
+        question (str): The question to ask the model
+
+    Returns:
+        str: The summary of the file
+    """
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            content = f.read()
+        return summarize_text(filename, content, question)
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 def ingest_file(
     filename: str, memory, max_length: int = 4000, overlap: int = 200
