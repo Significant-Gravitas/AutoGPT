@@ -32,6 +32,7 @@ def milvus_memory():
     return memory
 
 
+@pytest.mark.skip("Skipping because it requires a Milvus server running to be tested")
 def test_add(milvus_memory):
     text = "Sample text"
     milvus_memory.clear()
@@ -40,11 +41,13 @@ def test_add(milvus_memory):
     assert result == [text]
 
 
+@pytest.mark.skip("Skipping because it requires a Milvus server running to be tested")
 def test_clear(milvus_memory):
     milvus_memory.clear()
     assert milvus_memory.collection.num_entities == 0
 
 
+@pytest.mark.skip("Skipping because it requires a Milvus server running to be tested")
 def test_get(milvus_memory):
     text = "Sample text"
     milvus_memory.clear()
@@ -53,6 +56,7 @@ def test_get(milvus_memory):
     assert result == [text]
 
 
+@pytest.mark.skip("Skipping because it requires a Milvus server running to be tested")
 def test_get_relevant(milvus_memory):
     text1 = "Sample text 1"
     text2 = "Sample text 2"
@@ -63,6 +67,7 @@ def test_get_relevant(milvus_memory):
     assert result == [text1]
 
 
+@pytest.mark.skip("Skipping because it requires a Milvus server running to be tested")
 def test_get_stats(milvus_memory):
     text = "Sample text"
     milvus_memory.clear()
