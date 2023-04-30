@@ -57,12 +57,18 @@ def update_running_summary(current_memory: str, new_events: List[Dict]) -> str:
     """
     # Replace "assistant" with "you". This produces much better first person past tense results.
     for event in new_events:
+        if event["role"].lower() == "assistant":
+            event["role"] = "you"
             # Remove "thoughts" dictionary from "content"
             content_dict = json.loads(event["content"])
             if "thoughts" in content_dict:
                 del content_dict["thoughts"]
             event["content"] = json.dumps(content_dict)
         elif event["role"].lower() == "system":
+            event["role"] = "your computer"
+        # Delete all user messages
+        elif event["role"] == "user":
+            new_events.remove(event)
 
     # This can happen at any point during execturion, not just the beginning
     if (len(new_events) == 0):
