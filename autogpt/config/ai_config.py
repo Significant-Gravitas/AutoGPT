@@ -7,7 +7,7 @@ Maintain backward Compatibility
 import os
 import platform
 from pathlib import Path
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 import distro
 import yaml
