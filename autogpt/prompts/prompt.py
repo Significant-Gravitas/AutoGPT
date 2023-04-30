@@ -1,5 +1,9 @@
 from colorama import Fore
 
+import platform
+import distro
+from typing import Optional
+
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.llm import ApiManager
@@ -140,3 +144,60 @@ Continue ({CFG.authorise_key}/{CFG.exit_key}): """
         logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
 
     return config
+
+def construct_full_prompt(ai_config, prompt_generator: Optional[PromptGenerator] = None) -> str:
+    """
+    Returns a prompt to the user with the class information in an organized fashion.
+
+    Parameters:
+        ai_config (AIConfig): An instance of the AIConfig class.
+        prompt_generator (PromptGenerator, optional): An instance of the PromptGenerator class.
+
+    Returns:
+        full_prompt (str): A string containing the initial prompt for the user
+          including the ai_name, ai_role, ai_goals, and api_budget.
+    """
+
+    prompt_start = (
+        "Your decisions must always be made independently without"
+        " seeking user assistance. Play to your strengths as an LLM and pursue"
+        " simple strategies with no legal complications."
+        ""
+    )
+
+    from autogpt.config import Config
+    from autogpt.prompts.prompt import build_default_prompt_generator
+
+    cfg = Config()
+    if prompt_generator is None:
+        prompt_generator = build_default_prompt_generator()
+    prompt_generator.goals = ai_config.ai_goals
+    prompt_generator.name = ai_config.ai_name
+    prompt_generator.role = ai_config.ai_role
+    prompt_generator.command_registry = ai_config.command_registry
+    for plugin in cfg.plugins:
+        if not plugin.can_handle_post_prompt():
+            continue
+        prompt_generator = plugin.post_prompt(prompt_generator)
+
+    if cfg.execute_local_commands:
+        # add OS info to prompt
+        os_name = platform.system()
+        os_info = (
+            platform.platform(terse=True)
+            if os_name != "Linux"
+            else distro.name(pretty=True)
+        )
+
+        prompt_start += f"\nThe OS you are running on is: {os_info}"
+
+    # Construct full prompt
+    full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
+    for i, goal in enumerate(ai_config.ai_goals):
+        full_prompt += f"{i+1}. {goal}\n"
+    if ai_config.api_budget > 0.0:
+        full_prompt += f"\nIt takes money to let you run. Your API budget is ${ai_config.api_budget:.3f}"
+    ai_config.prompt_generator = prompt_generator
+    full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
+    return full_prompt
+

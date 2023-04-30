@@ -21,6 +21,41 @@ SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 
 
 class AIConfig(AgentModel):  
+
+    # def __init__(
+    #     self,
+    #     ai_name: str = "",
+    #     ai_role: str = "",
+    #     ai_goals: list | None = None,
+    #     api_budget: float = 0.0,
+    # ) -> None:
+        
+    #     """
+    #     Initialize a class instance
+
+    #     Parameters:
+    #         ai_name (str): The name of the AI.
+    #         ai_role (str): The description of the AI's role.
+    #         ai_goals (list): The list of objectives the AI is supposed to complete.
+    #         api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+    #     Returns:
+    #         None
+    #     """
+        
+    #     if ai_goals is None:
+    #         ai_goals = []
+    #         self.ai_name = ai_name
+    #         self.ai_role = ai_role
+    #         self.ai_goals = ai_goals
+    #         self.api_budget = api_budget
+    #         self.prompt_generator = None
+    #         self.command_registry = None
+
+    #         super().__init__(ai_name = ai_name,
+    #                         ai_role = ai_role,
+    #                         ai_goals = ai_goals,
+    #                         api_budget = api_budget
+    #                         )
     
     def construct_full_prompt(
         self, prompt_generator: Optional[PromptGenerator] = None

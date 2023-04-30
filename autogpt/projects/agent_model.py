@@ -71,9 +71,9 @@ class AgentModel():
     """
         
     def __init__(self, 
-                 ai_name: str, 
-                 ai_role: str, 
-                 ai_goals: List, 
+                 ai_name: str = '', #TODO PROJECT-Deprecated to make mandatory
+                 ai_role: str = '', #TODO PROJECT-Deprecated to make mandatory
+                 ai_goals: List = [], #TODO PROJECT-Deprecated to make mandatory
                  agent_model: str = '', 
                  agent_model_type: str = '',
                  api_budget: float = 0.0, #TODO PROJECT-Deprecated to remove
@@ -115,7 +115,7 @@ class AgentModel():
             agent_instance (AgentModel): An `AgentModel` instance with the loaded data.
         """
         agent_name = agent_data["agent_name"]
-        agent_goals = [goal["goal_name"] for goal in agent_data["agent_goals"]]
+        agent_goals = [goal for goal in agent_data["agent_goals"]]
         agent_role = agent_data["agent_role"]
         agent_model = agent_data["agent_model"]
         agent_model_type = agent_data["agent_model_type"]
@@ -187,9 +187,8 @@ class AgentModel():
 
             return agent
         else :  
-             
-            agent = ProjectsBroker.load()
-            return agent[0]
+            projects = ProjectsBroker().get_projects()
+            return projects[0].agent_team.lead_agent
 
     def to_dict(self) -> dict:  
         agent_dict = {

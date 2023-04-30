@@ -119,6 +119,8 @@ def run_auto_gpt(
 
     ai_name = ""
     ai_config = construct_main_ai_config()
+
+
     ai_config.command_registry = command_registry
     # print(prompt)
     # Initialize variables
@@ -132,7 +134,9 @@ def run_auto_gpt(
         "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
     )
     logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
-    system_prompt = ai_config.construct_full_prompt()
+
+    from autogpt.prompts.prompt import construct_full_prompt
+    system_prompt = construct_full_prompt(ai_config = ai_config)
     if cfg.debug_mode:
         logger.typewriter_log("Prompt:", Fore.GREEN, system_prompt)
 

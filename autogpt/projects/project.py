@@ -145,43 +145,27 @@ class Project:
         Returns:
             project_instance (Project): A Project instance with the loaded configuration parameters.
         """
-
-        project_memory = config_params.get("project_memory")
-        project_working_directory = config_params.get("project_working_directory")
-        project_env = config_params.get("project_env")
-        project_log_activity = config_params.get("project_log_activity")
-        project_log_env = config_params.get("project_log_env")
-        version =  config_params.get("version", AUTOGPT_VERSION)
-        if version != '' :
-            cls._version = version 
-            # Not supported for the moment
-        if (config_params.get("project_name")) :
+        
+        if cls._check_method_load( config_params) : 
             project_name = config_params["project_name"]
-        else :
-            raise ValueError("Project.load() No project_name in the project.")
-
-        if isinstance(config_params.get("project_budget"), float):
             project_budget = config_params["project_budget"]
-        else :
-            raise ValueError("Project.load() No budget in the project.")
+            version =  config_params.get("version", AUTOGPT_VERSION)
+            project_memory = config_params.get("project_memory")
+            project_working_directory = config_params.get("project_working_directory")
+            project_env = config_params.get("project_env")
+            project_log_activity = config_params.get("project_log_activity")
+            project_log_env = config_params.get("project_log_env")
 
-        # Setting agent team
-        agent_team = config_params.get("agent_team", None)
-        team_name = agent_team.get("team_name", None)
-        if not agent_team or not team_name :
-            raise ValueError("Project.load() No lead_agent in the project.")
-
-        if agent_team.get("lead_agent"):
+            agent_team = config_params["agent_team"]
+            team_name = agent_team["team_name"]
             lead_agent_data = agent_team["lead_agent"]
-            lead_agent = AgentModel.load(lead_agent_data)
-        else:
-            raise ValueError("Project.load() No lead_agent in the project.")
+            lead_agent = AgentModel.load_agent(lead_agent_data)
        
-        delegated_agents = []
-        if agent_team.get("delegated_agents"):
-            for delegated_agent_data in agent_team["delegated_agents"]:
-                delegated_agent = AgentModel.load(delegated_agent_data)
-                delegated_agents.append(delegated_agent)
+            delegated_agents = []
+            if agent_team.get("delegated_agents"):
+                for delegated_agent_data in agent_team["delegated_agents"]:
+                    delegated_agent = AgentModel.load_agent(delegated_agent_data)
+                    delegated_agents.append(delegated_agent)
 
         # Returns a Projects
         return cls(version = version, 
@@ -228,7 +212,12 @@ class Project:
 
                 # DO NOT CREATE A REPOSITORY IF THE PROJECT ALREADY EXIST
                 elif i == project_position_number and current_project_foldername != sub_folder_name :
-                    createdir = True          
+                    createdir = True  
+
+                # TODO : REMOVE THE 2 LINES IF YOU WORK ON PROJECT
+                shutil.rmtree(current_project_foldername)
+                createdir = True  
+                        
             
             # lead_agent_dict = self.lead_agent.save()
             # delegated_agents = [agent.save() for agent in self.delegated_agents]
@@ -286,6 +275,23 @@ class Project:
             self.agent_team.delegated_agents(position) # Todo implement delete an agent
             
             #return True
+
+    @classmethod
+    def _check_method_load(cls, config_params) -> bool :
+        if  not config_params.get("project_name") :
+            raise ValueError("Project.load() No project_name in the project.")
+
+        if not isinstance(config_params.get("project_budget"), float):
+            raise ValueError("Project.load() No budget in the project.")
+
+        # Setting agent team
+        agent_team = config_params.get("agent_team", None)
+        team_name = agent_team.get("team_name", None)
+        if not agent_team or not team_name :
+            raise ValueError("Project.load() No lead_agent in the project.")
+        
+        return True
+        
 
 
 

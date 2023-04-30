@@ -42,7 +42,7 @@ from autogpt.projects.project import Project
 # @TODO 
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 PROJECT_DIR = "autogpt/projects"
-MAX_NB_PROJECT = 5
+MAX_NB_PROJECT = 1
 AUTOGPT_VERSION = 'X.Y.Z' # TODO, implement in config.py or main or technical env file
 
 class ProjectsBroker(AbstractSingleton):   
@@ -121,13 +121,13 @@ class ProjectsBroker(AbstractSingleton):
         """
         if not config_file == None or not hasattr(self, '_config_file') or self._config_file is None:
             self._config_file = config_file
-        self.config_file = config_file 
-        self._current_project_id = -1
-        self._projects = []
 
+        if(not hasattr(self, '_projects') or  self._projects == [] ) :
+            self._current_project_id = -1
+            self._projects = []
+            self.load()
 
-    @classmethod # TODO , to maintain backward compatibility but to be removed
-    def load(cls, config_file: str = '') -> list:
+    def load(self) -> list:
         """
         Loads the projects from the specified YAML file and returns a list of Project instances containing the project parameters.
 
@@ -140,8 +140,9 @@ class ProjectsBroker(AbstractSingleton):
         Raises:
             FileNotFoundError: If the specified config file does not exist.
         """
-        cls._projects = []
-        projectfolder_list = [f.path for f in os.scandir(PROJECT_DIR) if f.is_dir() and f.name != '__pycache__' and not f.name.endswith('.backup') ]     
+        print('WARNING ONLY ONE LOAD')
+        self._projects = []
+        projectfolder_list = ProjectsBroker.get_project_folder_list()
         if not projectfolder_list:
             raise Exception('ProjectsBroker.load() : Unexpected Behaviour')
         else :
@@ -150,60 +151,27 @@ class ProjectsBroker(AbstractSingleton):
                 if not os.path.exists(configfile):
                     print('ProjectsBroker.load() : Unexpected setting.yaml missing')
                     continue
-                
-                with open(configfile, encoding="utf-8") as file:
-                    config_params = yaml.load(file, Loader=yaml.SafeLoader)
 
-                    project_instance = Project.load(config_params)
-                    cls._projects[i] = project_instance
+                # NOTE : NOT REALLY REQUIRED BUT PUTTING EVERY SAFEGUARD FOR BACKWARD COMPATIBILITY
+                if i < MAX_NB_PROJECT : 
+                    with open(configfile, encoding="utf-8") as file:
+                        config_params = yaml.load(file, Loader=yaml.SafeLoader)
 
-        return cls._projects
+                        project_instance = Project.load(config_params)
+                        self._projects.append(project_instance)
+                    i += 1
 
-    # def _save(self , config_file: str = '') -> None:
-    #     """
-    #     Saves the current configuration to the specified file yaml file path as a yaml file.
-
-    #     Args:
-    #         config_file (str): The path to the config yaml file.
-    #     """
-  
-    #     if not os.path.exists(config_file):
-    #         with open(config_file, "w", encoding="utf-8") as file:
-    #             yaml.dump({"projects": []}, file, allow_unicode=True)
-                
-    #     try:
-    #         with open(config_file, encoding="utf-8") as file:
-    #             config_params = yaml.load(file, Loader=yaml.SafeLoader)
-    #     except FileNotFoundError:
-    #         config_params = {}
-
-    #     current_project_str = self.get_current_project().to_dict()
-
-    #     if "projects" not in config_params:
-    #         config_params["projects"] = []
-
-    #     if 0 <= self._current_project_id < len(config_params["projects"]):
-    #         config_params["projects"][self._current_project_id] = current_project_str
-    #     else:
-    #         config_params["projects"].append(current_project_str)
-
-    #     # data_to_save = {"version": self._version, "projects": config_params}
-    #     data_to_save = config_params
-    #     with open(config_file, "w", encoding="utf-8") as file:
-    #        # yaml.dump(data_to_save, file, allow_unicode=True) @TODO enable
-    #        return
+        return self._projects
 
     def _save(self, is_creation = False, project_position_number: int = -1) -> None:
         """
         Saves the current state of the ProjectsBroker to the configuration file if a project_position_number is passe. Else, it will save all the projects.
-        # NOTE MAY BE INTERESSANT TO SPIT WITH SAVE ALL & make Project_positionnumber mandatory
+        
         Args:
             project_position (int, optional): The position of the project to save. Defaults to -1.
 
-
         Raises:
             IndexError: If the project_position is out of range.
-
         """
         if 0 <= project_position_number < len(self._projects):
             """
@@ -299,6 +267,10 @@ class ProjectsBroker(AbstractSingleton):
         project_dirname = cls.project_dir_name_formater(project_name)
         os.mkdir(os.path.join(PROJECT_DIR, project_dirname))
 
+    @staticmethod  
+    def get_project_folder_list() -> list : 
+        return [f.path for f in os.scandir(PROJECT_DIR) if f.is_dir() and f.name != '__pycache__' and not f.name.endswith('.backup') ]     
+        
 
     @classmethod   
     def set_project_positon_number(cls,  new_project_id: int) -> bool:
@@ -356,13 +328,13 @@ class ProjectsBroker(AbstractSingleton):
         Returns:
             AgentConfig: The specified project instance.
         """
-        if 0 <= project_positon_number <= len(self._projects):
+        if project_positon_number < 0 or len(self._projects) < project_positon_number  :
             raise ValueError(f"get_config: Value {project_positon_number } not expected")     
         return self._projects[project_positon_number]
 
  
 
-    def get_projects(self) -> list:
+    def get_projects(self) -> list[Project]:
         """
         Gets the list of all configuration AIConfig.
 
@@ -372,7 +344,6 @@ class ProjectsBroker(AbstractSingleton):
         Returns:
             configs (list): A list of all project AIConfig.
         """
-
         return self._projects
     
     def is_loaded(self) -> bool : 
