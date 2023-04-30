@@ -1,3 +1,4 @@
+import json
 from typing import Dict, List, Tuple
 
 from autogpt.config import Config
@@ -5,8 +6,12 @@ from autogpt.llm.llm_utils import create_chat_completion
 
 cfg = Config()
 
+
 def get_newly_trimmed_messages(
-    full_message_history: List[Dict[str, str]], current_context: List[Dict[str, str]], last_memory_index: int) -> Tuple[List[Dict[str, str]], int]:
+    full_message_history: List[Dict[str, str]],
+    current_context: List[Dict[str, str]],
+    last_memory_index: int,
+) -> Tuple[List[Dict[str, str]], int]:
     """
     This function returns a list of dictionaries contained in full_message_history
     with an index higher than prev_index that are absent from current_context.
@@ -21,7 +26,9 @@ def get_newly_trimmed_messages(
         int: The new index value for use in the next loop.
     """
     # Select messages in full_message_history with an index higher than last_memory_index
-    new_messages = [msg for i, msg in enumerate(full_message_history) if i > last_memory_index]
+    new_messages = [
+        msg for i, msg in enumerate(full_message_history) if i > last_memory_index
+    ]
 
     # Remove messages that are already present in current_context
     new_messages_not_in_context = [
@@ -33,7 +40,6 @@ def get_newly_trimmed_messages(
     if new_messages_not_in_context:
         last_message = new_messages_not_in_context[-1]
         new_index = full_message_history.index(last_message)
-
 
     return new_messages_not_in_context, new_index
 
@@ -71,7 +77,7 @@ def update_running_summary(current_memory: str, new_events: List[Dict]) -> str:
             new_events.remove(event)
 
     # This can happen at any point during execturion, not just the beginning
-    if (len(new_events) == 0):
+    if len(new_events) == 0:
         new_events = "Nothing new happened."
 
     prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
