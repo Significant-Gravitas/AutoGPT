@@ -107,7 +107,6 @@ def create_message(chunk, question):
     return {
         "role": "user",
         "content": f'"""{chunk}""" Extract specific data from the above data block relevant'
-        f' to the following query; include explanations in maximum detail with any'
+        f" to the following query; include explanations in maximum detail with any"
         f' statistics: "{question}" -- if no specific data is relevant, explain full text contents in maximum detail with any statistics.',
     }
-
