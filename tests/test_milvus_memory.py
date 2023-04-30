@@ -2,8 +2,12 @@
 """Tests for the MilvusMemory class."""
 import os
 import sys
+
 import pytest
+
 from autogpt.memory.milvus import MilvusMemory
+
+
 def mock_config():
     """Mock the config object for testing purposes."""
     return type(
@@ -21,11 +25,13 @@ def mock_config():
         },
     )
 
+
 @pytest.fixture
 def milvus_memory():
     cfg = mock_config()
     memory = MilvusMemory(cfg)
     return memory
+
 
 def test_add(milvus_memory):
     text = "Sample text"
@@ -34,9 +40,11 @@ def test_add(milvus_memory):
     result = milvus_memory.get(text)
     assert result == [text]
 
+
 def test_clear(milvus_memory):
     milvus_memory.clear()
     assert milvus_memory.collection.num_entities == 0
+
 
 def test_get(milvus_memory):
     text = "Sample text"
@@ -44,6 +52,7 @@ def test_get(milvus_memory):
     milvus_memory.add(text)
     result = milvus_memory.get(text)
     assert result == [text]
+
 
 def test_get_relevant(milvus_memory):
     text1 = "Sample text 1"
@@ -53,6 +62,7 @@ def test_get_relevant(milvus_memory):
     milvus_memory.add(text2)
     result = milvus_memory.get_relevant(text1, 1)
     assert result == [text1]
+
 
 def test_get_stats(milvus_memory):
     text = "Sample text"
