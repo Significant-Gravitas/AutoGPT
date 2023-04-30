@@ -13,9 +13,9 @@ from autogpt.commands.file_operations import (
     check_duplicate_operation,
     delete_file,
     download_file,
+    list_files,
     log_operation,
     read_file,
-    search_files,
     split_file,
     write_to_file,
 )
@@ -113,7 +113,7 @@ def test_delete_missing_file(test_file):
     assert True, "Failed to test delete_file"
 
 
-def test_search_files(config, workspace, test_directory):
+def test_list_files(config, workspace, test_directory):
     # Case 1: Create files A and B, search for A, and ensure we don't return A and B
     file_a = workspace.get_path("file_a.txt")
     file_b = workspace.get_path("file_b.txt")
@@ -131,7 +131,7 @@ def test_search_files(config, workspace, test_directory):
     with open(os.path.join(test_directory, file_a.name), "w") as f:
         f.write("This is file A in the subdirectory.")
 
-    files = search_files(str(workspace.root))
+    files = list_files(str(workspace.root))
     assert file_a.name in files
     assert file_b.name in files
     assert os.path.join(Path(test_directory).name, file_a.name) in files
@@ -144,7 +144,7 @@ def test_search_files(config, workspace, test_directory):
 
     # Case 2: Search for a file that does not exist and make sure we don't throw
     non_existent_file = "non_existent_file.txt"
-    files = search_files("")
+    files = list_files("")
     assert non_existent_file not in files
 
 
