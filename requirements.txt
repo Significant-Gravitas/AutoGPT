@@ -3,6 +3,7 @@ colorama==0.4.6
 distro==1.8.0
 openai==0.27.2
 playsound==1.2.2
+pyobjc
 python-dotenv==1.0.0
 pyyaml==6.0
 readability-lxml==0.8.1
