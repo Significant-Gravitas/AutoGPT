@@ -43,6 +43,7 @@ from autogpt.projects.project import Project
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 PROJECT_DIR = "autogpt/projects"
 MAX_NB_PROJECT = 5
+AUTOGPT_VERSION = 'X.Y.Z' # TODO, implement in config.py or main or technical env file
 
 class ProjectsBroker(AbstractSingleton):   
     """
@@ -220,11 +221,13 @@ class ProjectsBroker(AbstractSingleton):
             raise IndexError("Project index out of range.")
  
     
+    from autogpt.projects.agent_model import AgentModel
     def create_project(self, 
                     project_position_number : int,
                     lead_agent : AgentModel,
-                    api_budget : float,
+                    project_budget : float,
                     project_name : str = '',
+                    version : str = AUTOGPT_VERSION
                     ) -> Project:
         """
         Creates a new project with the specified parameters and adds it to the list of projects.
@@ -257,9 +260,9 @@ class ProjectsBroker(AbstractSingleton):
             raise ValueError(f"set_config: Value {project_position_number} not expected")
         
         project = Project(project_name= project_name ,
-                          project_budget= api_budget,
-                          lead_agent= lead_agent
-                          )
+                          project_budget= project_budget,
+                          lead_agent= lead_agent,
+                          version = version)
         # project_name: str, 
         #          project_budget: float, 
         #          lead_agent: AgentModel,
