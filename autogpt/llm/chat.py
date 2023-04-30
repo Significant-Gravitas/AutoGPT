@@ -157,6 +157,7 @@ def chat_with_ai(
             newly_trimmed_messages = get_newly_trimmed_messages(
                 full_message_history=full_message_history,
                 current_context=current_context,
+                prev_index=agent.last_memory_index
             )
             memory = update_running_summary(newly_trimmed_messages)
             current_context.insert(insertion_index, memory)
