@@ -6,6 +6,7 @@ from pytest_mock import MockerFixture
 from autogpt.config import Config
 from autogpt.llm import ApiManager
 from autogpt.workspace import Workspace
+from tests.vcr.openai_filter import before_record_request, before_record_response
 
 pytest_plugins = ["tests.integration.agent_factory"]
 
@@ -39,3 +40,18 @@ def api_manager() -> ApiManager:
     if ApiManager in ApiManager._instances:
         del ApiManager._instances[ApiManager]
     return ApiManager()
+
+
+@pytest.fixture(scope="session")
+def vcr_config():
+    # this fixture is called by the pytest-recording vcr decorator.
+    return {
+        "record_mode": "new_episodes",
+        "before_record_request": before_record_request,
+        "before_record_response": before_record_response,
+        "filter_headers": [
+            "Authorization",
+            "X-OpenAI-Client-User-Agent",
+            "User-Agent",
+        ],
+    }
