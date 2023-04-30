@@ -185,9 +185,8 @@ def chat_with_ai(
                     [create_chat_message("system", plugin_response)], model
                 )
                 if current_tokens_used + tokens_to_add > send_token_limit:
-                    if cfg.debug_mode:
-                        print("Plugin response too long, skipping:", plugin_response)
-                        print("Plugins remaining at stop:", plugin_count - i)
+                    logger.debug("Plugin response too long, skipping:", plugin_response)
+                    logger.debug("Plugins remaining at stop:", plugin_count - i)
                     break
                 current_context.append(create_chat_message("system", plugin_response))
 
@@ -227,5 +226,5 @@ def chat_with_ai(
             return assistant_reply
         except RateLimitError:
             # TODO: When we switch to langchain, this is built in
-            print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
+            logger.warn("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)
