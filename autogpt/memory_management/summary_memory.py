@@ -62,6 +62,11 @@ def update_running_summary(new_events: List[Dict]) -> str:
 
     global current_memory
 
+    # Replace "assistant" with "you". This produces much better first person past tense results.
+    for event in new_events:
+        if event["role"] == "assistant":
+            event["role"] = "you"
+
     prompt = f'''Your task is to create a concise running summary of actions in the provided text, focusing on key and potentially important information to remember.
 
 You will receive the current summary and the latest development. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
