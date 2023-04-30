@@ -26,7 +26,10 @@
       // Set *default* container specific settings.json values on container create.
       "settings": {
         "python.defaultInterpreterPath": "/usr/local/bin/python"
-      }
+	},
+	"extensions": [
+		"GitHub.copilot"
+	]
     }
   },
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
