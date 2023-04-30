@@ -155,12 +155,18 @@ def chat_with_ai(
 
             # Insert Memories
             if len(full_message_history) > 0:
-                newly_trimmed_messages, agent.last_memory_index = get_newly_trimmed_messages(
+                (
+                    newly_trimmed_messages,
+                    agent.last_memory_index,
+                ) = get_newly_trimmed_messages(
                     full_message_history=full_message_history,
                     current_context=current_context,
-                    last_memory_index=agent.last_memory_index
+                    last_memory_index=agent.last_memory_index,
                 )
-                agent.summary_memory = update_running_summary(current_memory=agent.summary_memory, new_events=newly_trimmed_messages)
+                agent.summary_memory = update_running_summary(
+                    current_memory=agent.summary_memory,
+                    new_events=newly_trimmed_messages,
+                )
                 current_context.insert(insertion_index, agent.summary_memory)
 
             api_manager = ApiManager()
