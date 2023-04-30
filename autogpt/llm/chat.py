@@ -154,7 +154,7 @@ def chat_with_ai(
                 next_message_to_add_index -= 1
 
             # Insert Memories
-            newly_trimmed_messages = get_newly_trimmed_messages(
+            newly_trimmed_messages, agent.last_memory_index = get_newly_trimmed_messages(
                 full_message_history=full_message_history,
                 current_context=current_context,
                 prev_index=agent.last_memory_index
