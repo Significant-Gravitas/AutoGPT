@@ -7,8 +7,8 @@
     "ghcr.io/devcontainers/features/common-utils:2": {
       "installZsh": "true",
       "username": "vscode",
-      "userUid": "6942",
-      "userGid": "6942",
+      "userUid": "1000",
+      "userGid": "1000",
       "upgradePackages": "true"
     },
     "ghcr.io/devcontainers/features/desktop-lite:1": {},
@@ -36,5 +36,8 @@
   // "postCreateCommand": "pip3 install --user -r requirements.txt",
 
   // Set `remoteUser` to `root` to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
-  "remoteUser": "vscode"
+  "remoteUser": "vscode",
+
+  // Add the freshly containerized repo to the list of safe repositories
+  "postCreateCommand": "git config --global --add safe.directory /workspace/Auto-GPT"
 }
