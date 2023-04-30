@@ -10,8 +10,8 @@ from openai.error import APIError, RateLimitError, Timeout
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
+from autogpt.llm.base import Message
 from autogpt.logs import logger
-from autogpt.types.openai import Message
 
 
 def retry_openai_api(
