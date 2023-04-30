@@ -5,25 +5,15 @@ import yaml
 from colorama import Fore
 from git.repo import Repo
 
+from autogpt.logs import logger
+
 # Use readline if available (for clean_input)
 try:
     import readline
-except:
+except ImportError:
     pass
 
 from autogpt.config import Config
-
-
-def send_chat_message_to_user(report: str):
-    cfg = Config()
-    if not cfg.chat_messages_enabled:
-        return
-    for plugin in cfg.plugins:
-        if not hasattr(plugin, "can_handle_report"):
-            continue
-        if not plugin.can_handle_report():
-            continue
-        plugin.report(report)
 
 
 def clean_input(prompt: str = "", talk=False):
@@ -58,12 +48,12 @@ def clean_input(prompt: str = "", talk=False):
                 return plugin_response
 
         # ask for input, default when just pressing Enter is y
-        print("Asking user via keyboard...")
+        logger.info("Asking user via keyboard...")
         answer = input(prompt)
         return answer
     except KeyboardInterrupt:
-        print("You interrupted Auto-GPT")
-        print("Quitting...")
+        logger.info("You interrupted Auto-GPT")
+        logger.info("Quitting...")
         exit(0)
 
 
