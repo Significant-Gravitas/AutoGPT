@@ -81,9 +81,6 @@ def run_auto_gpt(
     if install_plugin_deps:
         install_plugin_dependencies()
 
-    # TODO: have this directory live outside the repository (e.g. in a user's
-    #   home directory) and have it come in as a command line argument or part of
-    #   the env file.
     if workspace_directory is None:
         workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
     else:
