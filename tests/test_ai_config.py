@@ -9,7 +9,7 @@ settings from a YAML file.
 def test_goals_are_always_lists_of_strings(tmp_path):
     """Test if the goals attribute is always a list of strings."""
 
-    yaml_content = """ 
+    yaml_content = """
 ai_goals:
 - Goal 1: Make a sandwich
 - Goal 2, Eat the sandwich
