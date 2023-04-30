@@ -28,6 +28,7 @@ from typing import Optional, Type, List
 # @TODO 
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 PROJECT_DIR = "autogpt/projects"
+AUTOGPT_VERSION = 'X.Y.Z' # TODO, implement in config.py or main or technical env file
 
 
 import sys
@@ -70,15 +71,15 @@ class AgentModel():
     """
         
     def __init__(self, 
-                 agent_name: str, 
-                 agent_goals: List, 
-                 agent_role: str, 
+                 ai_name: str, 
+                 ai_role: str, 
+                 ai_goals: List, 
                  agent_model: str = '', 
                  agent_model_type: str = '',
                  api_budget: float = 0.0, #TODO PROJECT-Deprecated to remove
-                 team_name: Optional[str] = None,
+                 # team_name: Optional[str] = None,
                  prompt_generator =  None,
-                command_registry =  None
+                 command_registry =  None
                 ) -> None:
         """
         Initializes the AgentModel instance with the given attributes.
@@ -93,13 +94,12 @@ class AgentModel():
             prompt_generator (Optional[Any], optional): An instance of the `PromptGenerator` class used to generate prompts for the user. Defaults to None.
             command_registry (Optional[Any], optional): An instance of the `CommandRegistry` class used to manage the available commands for the agent. Defaults to None.
         """
-        self.ai_name = agent_name
-        self.ai_goals = agent_goals
-        self.ai_role = agent_role
-        self.ai_model = agent_model
-        self.ai_model_type = agent_model_type
+        self.ai_name = ai_name
+        self.ai_role = ai_role
+        self.ai_goals = ai_goals
+        self.agent_model = agent_model
+        self.agent_model_type = agent_model_type
         self.api_budget = api_budget #TODO PROJECT-Deprecated to remove
-        self.team_name = team_name
         self.prompt_generator= prompt_generator
         self.command_registry= command_registry
 
@@ -119,15 +119,14 @@ class AgentModel():
         agent_role = agent_data["agent_role"]
         agent_model = agent_data["agent_model"]
         agent_model_type = agent_data["agent_model_type"]
-        team_name = agent_data.get("team_name")
 
         return  cls(
-            agent_name=agent_name,
-            agent_role=agent_role,
-            agent_goals=agent_goals,
+            ai_name=agent_name,
+            ai_role=agent_role,
+            ai_goals=agent_goals,
             agent_model=agent_model,
             agent_model_type=agent_model_type,
-            team_name=team_name)
+            )
     
     def save(self, config_file: str = SAVE_FILE) -> dict:
         """
@@ -143,11 +142,12 @@ class AgentModel():
             project = projects_broker.create_project(
                     project_position_number = 0,
                     lead_agent = self,
-                    api_budget = self.api_budget,
-                    project_name = self.ai_name)
-            return project.lead_agent.to_dict()
+                    project_budget = self.api_budget,
+                    project_name = self.ai_name,
+                    version = AUTOGPT_VERSION)
+            return project.agent_team.lead_agent
         else :
-            return self.to_dict()
+            return self
     
 
     @classmethod
@@ -180,9 +180,9 @@ class AgentModel():
             ai_role = config_params.get("ai_role", "")
             ai_goals = config_params.get("ai_goals", [])
             api_budget = config_params.get("api_budget", 0.0)
-            agent =  AgentModel(agent_name = ai_name, 
-                                agent_role = ai_role, 
-                                agent_goals = ai_goals, 
+            agent =  AgentModel(ai_name = ai_name, 
+                                ai_role = ai_role, 
+                                ai_goals = ai_goals, 
                                 api_budget = api_budget)
 
             return agent
@@ -196,8 +196,8 @@ class AgentModel():
                 "agent_name": self.ai_name,
                 "agent_role": self.ai_role,
                 "agent_goals": self.ai_goals,
-                "agent_model": self.ai_model,
-                "agent_model_type": self.ai_model_type,
+                "agent_model": self.agent_model,
+                "agent_model_type": self.agent_model_type,
                 "prompt_generator": self.prompt_generator,
                 "command_registry": self.command_registry
             }

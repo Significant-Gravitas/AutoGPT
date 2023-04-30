@@ -46,7 +46,7 @@ class Project:
         project_name (str): The name of the project.
         project_budget (float): The budget allocated for using the OpenAI API.
         lead_agent (AgentModel): The lead agent for the project.
-        delegated_agents_list (List[AgentModel]): A list of delegated agents for the project.
+        delegated_agents (List[AgentModel]): A list of delegated agents for the project.
         version (str): The version of the project.
         project_memory (Optional[str]): The memory used by the project.
         project_working_directory (Optional[str]): The working directory of the project.
@@ -56,7 +56,7 @@ class Project:
 
     Methods:
         __init__(self, project_name: str, project_budget: float, lead_agent: AgentModel,
-                 delegated_agents_list: List[AgentModel] = [], version: str = "0.0.0",
+                 delegated_agents: List[AgentModel] = [], version: str = "0.0.0",
                  project_memory: Optional[str] = None, project_working_directory: Optional[str] = None,
                  project_env: Optional[str] = None, project_log_activity: Optional[str] = None,
                  project_log_env: Optional[str] = None, team_name: Optional[str] = None) -> None
@@ -67,7 +67,7 @@ class Project:
             Saves the Project object as a dictionary representation.
         get_lead(self) -> AgentModel
             Returns the lead agent of the project.
-        get_delegated_agents_list(self) -> List[AgentModel]
+        get_delegated_agents(self) -> List[AgentModel]
             Returns the list of delegated agents for the project.
         delete_delegated_agents(self, position: int) -> bool
             Deletes the delegated agent at the given position and returns True if successful.
@@ -90,7 +90,7 @@ class Project:
             project_name (str): The name of the project.
             project_budget (float): The budget allocated for using the OpenAI API.
             lead_agent (AgentModel): The lead agent for the project.
-            delegated_agents_list (List[AgentModel], optional): A list of delegated agents for the project. Defaults to an empty list.
+            delegated_agents (List[AgentModel], optional): A list of delegated agents for the project. Defaults to an empty list.
             version (str, optional): The version of the project. Defaults to "0.0.0".
             project_memory (str, optional): The memory used by the project. Defaults to None.
             project_working_directory (str, optional): The working directory of the project. Defaults to None.
@@ -107,18 +107,16 @@ class Project:
         self.project_env = project_env
         self.project_log_activity = project_log_activity
         self.project_log_env = project_log_env
-        self.team_name = team_name
-        self.lead_agent = lead_agent
-        self.delegated_agents_list = delegated_agents
-    
+
+        team_name  = team_name or project_name
+        self.agent_team = AgentTeam(team_name = team_name,
+                                    lead_agent = lead_agent,
+                                    delegated_agents = delegated_agents)
+
     #saving in Yaml
     def __str__(self) -> str:
 
         return str(self.to_dict())
-    
-    def __toDict__(self) -> dict :
-
-        return self.to_dict()
     
     def to_dict(self) -> dict:
         """
@@ -127,19 +125,13 @@ class Project:
         Returns:
             dict_representation (dict): A dictionary representation of the Project object.
         """
-        lead_agent_dict = self.lead_agent.to_dict() 
-
-        delegated_agents_list = []
-        for agent in self.delegated_agents_list:
-            agent_dict = agent.to_dict() 
-            delegated_agents_list.append(agent_dict)
+        
 
         dict_representation = {
             "project_name": self.project_name,
             "project_budget": self.project_budget,
-            "lead_agent": lead_agent_dict,
-            "delegated_agents": delegated_agents_list
-        }
+            'agent_team' : self.agent_team.to_dict() 
+            }
         return dict_representation
 
     @classmethod
@@ -159,42 +151,53 @@ class Project:
         project_env = config_params.get("project_env")
         project_log_activity = config_params.get("project_log_activity")
         project_log_env = config_params.get("project_log_env")
-        agent_team = config_params.get("agent_team", None)
-        # team_name = agent_team.get("team_name")
         version =  config_params.get("version", AUTOGPT_VERSION)
         if version != '' :
             cls._version = version 
             # Not supported for the moment
-
         if (config_params.get("project_name")) :
             project_name = config_params["project_name"]
         else :
-            raise ValueError("No project_name in the project.")
+            raise ValueError("Project.load() No project_name in the project.")
 
-        if (config_params.get("project_budget")) :
+        if isinstance(config_params.get("project_budget"), float):
             project_budget = config_params["project_budget"]
         else :
-            raise ValueError("No budget in the project.")
+            raise ValueError("Project.load() No budget in the project.")
 
-        if config_params.get("lead_agent"):
+        # Setting agent team
+        agent_team = config_params.get("agent_team", None)
+        team_name = agent_team.get("team_name", None)
+        if not agent_team or not team_name :
+            raise ValueError("Project.load() No lead_agent in the project.")
+
+        if agent_team.get("lead_agent"):
             lead_agent_data = agent_team["lead_agent"]
             lead_agent = AgentModel.load(lead_agent_data)
         else:
-            raise ValueError("No lead_agent in the project.")
+            raise ValueError("Project.load() No lead_agent in the project.")
        
-
-        delegated_agents_list = []
+        delegated_agents = []
         if agent_team.get("delegated_agents"):
             for delegated_agent_data in agent_team["delegated_agents"]:
                 delegated_agent = AgentModel.load(delegated_agent_data)
-                delegated_agents_list.append(delegated_agent)
+                delegated_agents.append(delegated_agent)
 
-        return cls(project_name, project_budget, lead_agent, delegated_agents_list,
-                   version, project_memory, project_working_directory, project_env,
-                   project_log_activity, project_log_env)
+        # Returns a Projects
+        return cls(version = version, 
+                   project_name = project_name, 
+                   project_budget = project_budget,
+                   project_memory = project_memory, 
+                   project_working_directory = project_working_directory, 
+                   project_env = project_env,
+                   project_log_activity = project_log_activity, 
+                   project_log_env = project_log_env, 
+                   team_name = team_name, 
+                   lead_agent = lead_agent, 
+                   delegated_agents = delegated_agents)
     
 
-    def save(self, project_position_number : int, is_creation : bool = False  ) -> dict:
+    def save(self, project_position_number : int, is_creation : bool = False  ) -> "Project" :
         """
         Saves the Project object as a dictionary representation.
 
@@ -209,39 +212,44 @@ class Project:
         project_broker = ProjectsBroker()
         project_list = project_broker.get_projects()
 
-
+        createdir = True 
         if( 0 <= project_position_number) :
             sub_folder_name = project_broker.project_dir_name_formater(project_name = self.project_name)
             for i , project in enumerate(project_list) :
                 current_project_foldername = project_broker.project_dir_name_formater(project.project_name) 
+                # NOT ERASING PROJECT THE PROJECT BUT CREATING .backup
                 if (i == project_position_number and current_project_foldername != sub_folder_name ) :
-                    # NOT_DELETING THE PROJECT BUT CREATING .backup
                     backup = f"{current_project_foldername}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.backup"
                     shutil.copy(current_project_foldername ,backup )
-           
+
+                # IF A PROJECT WITH SAME NAME EXIST ADD EXTENTION          
                 elif i != project_position_number  and current_project_foldername== sub_folder_name :
-                    # NOT_DELETING THE PROJECT BUT ADDING EXTENTION
                     sub_folder_name = sub_folder_name + '_1'
-                    
-            project_broker.create_project_dir(project_name = sub_folder_name)
+
+                # DO NOT CREATE A REPOSITORY IF THE PROJECT ALREADY EXIST
+                elif i == project_position_number and current_project_foldername != sub_folder_name :
+                    createdir = True          
             
+            # lead_agent_dict = self.lead_agent.save()
+            # delegated_agents = [agent.save() for agent in self.delegated_agents]
+            
+            # project_dict = {
+            #     "project_name": self.project_name,
+            #     "project_budget": self.project_budget,
+            #     "lead_agent": lead_agent_dict,
+            #     "delegated_agents": delegated_agents
+            # }
+            new_path = os.path.join(PROJECT_DIR, sub_folder_name , 'settings.yaml')
 
-        # lead_agent_dict = self.lead_agent.save()
-        # delegated_agents_list = [agent.save() for agent in self.delegated_agents_list]
-        
-        # project_dict = {
-        #     "project_name": self.project_name,
-        #     "project_budget": self.project_budget,
-        #     "lead_agent": lead_agent_dict,
-        #     "delegated_agents": delegated_agents_list
-        # }
+            project_dict = self.to_dict()
 
-        new_path = os.path.join(PROJECT_DIR, sub_folder_name , 'settings.yaml')
+            # TODO only create a dir not error got raised
+            if createdir == True : 
+                project_broker.create_project_dir(project_name = sub_folder_name)
+            with open(new_path, "w", encoding="utf-8") as file:
+                yaml.dump(project_dict, file, allow_unicode=True)
 
-        with open(new_path, "w", encoding="utf-8") as file:
-            yaml.dump(self.to_dict(), file, allow_unicode=True)
-        
-        return self.to_dict()
+            return self
     
 
     def get_lead(self) -> AgentModel:
@@ -251,16 +259,16 @@ class Project:
         Returns:
             lead_agent (AgentModel): The lead agent of the project.
         """
-        return  self.lead_agent
+        return  self.agent_team.lead_agent
     
-    def get_delegated_agents_list(self) -> list[AgentModel] : 
+    def get_delegated_agents(self) -> list[AgentModel] : 
         """
         Returns the list of delegated agents for the project.
 
         Returns:
-            delegated_agents_list (List[AgentModel]): The list of delegated agents for the project.
+            delegated_agents (List[AgentModel]): The list of delegated agents for the project.
         """
-        return  self.delegated_agents_list
+        return  self.agent_team.delegated_agents
     
     def delete_delegated_agents(self, position = int) -> bool: 
         """
@@ -272,13 +280,44 @@ class Project:
         Returns:
             success (bool): True if the delegated agent was successfully deleted, False otherwise.
         """
-        if 0 <= position <= len(self.delegated_agents_list) :
+        if 0 <= position <= len(self.agent_team.delegated_agents) :
             return  False
         else : 
-            self.delegated_agents_list(position) # Todo implement delete an agent
+            self.agent_team.delegated_agents(position) # Todo implement delete an agent
             
             #return True
 
 
 
+# NOTE : Keep it simple or set a long term structure (Pain in the ass)    
+# NOTE : Not seing it as very useful    
+class AgentTeam:
+    def __init__(self, team_name, lead_agent, delegated_agents):
         
+        self.team_name = team_name
+        self.lead_agent = lead_agent
+        self.delegated_agents = delegated_agents
+        
+        # CREATE A LIST OF AGENT IF EVER TO BE USED 
+        # NOT PUBLICLY AVAILABLE AS DEEMED DANGEROUS
+        self._all_agent = []
+        self._all_agent.append(lead_agent)
+        for agent in delegated_agents :
+            self._all_agent.append(agent)
+
+    def to_dict(self) -> dict : 
+        lead_agent_dict = self.lead_agent.to_dict() 
+
+        delegated_agents = []
+        for agent in self.delegated_agents:
+            agent_dict = agent.to_dict() 
+            delegated_agents.append(agent_dict)
+
+        return  {
+            'team_name' : self.team_name,
+            'lead_agent' : lead_agent_dict,
+            'delegated_agents' : delegated_agents
+        }
+
+    
+
