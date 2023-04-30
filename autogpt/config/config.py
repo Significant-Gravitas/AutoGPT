@@ -141,6 +141,17 @@ class Config(metaclass=Singleton):
             self.plugins_allowlist = []
         self.plugins_denylist = []
 
+        # event dispatcher configuration
+        self.event_dispatcher_enabled = os.getenv("EVENT_DISPATCHER_ENABLED", "False")
+        self.event_dispatcher_protocol = os.getenv("EVENT_DISPATCHER_PROTOCOL", "http")
+        self.event_dispatcher_host = os.getenv(
+            "EVENT_DISPATCHER_HOST",
+        )
+        self.event_dispatcher_endpoint = os.getenv(
+            "EVENT_DISPATCHER_ENDPOINT", "/events"
+        )
+        self.event_dispatcher_port = os.getenv("EVENT_DISPATCHER_PORT", 45000)
+
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
         Returns the relevant deployment id for the model specified.

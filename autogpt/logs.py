@@ -8,8 +8,12 @@ from logging import LogRecord
 
 from colorama import Fore, Style
 
+import autogpt.event_dispatcher
+from autogpt.config import Config
 from autogpt.singleton import Singleton
 from autogpt.speech import say_text
+
+CFG = Config()
 
 
 class Logger(metaclass=Singleton):
@@ -91,6 +95,16 @@ class Logger(metaclass=Singleton):
         self.typing_logger.log(
             level, content, extra={"title": title, "color": title_color}
         )
+
+        # Additionally dispatch output to defined event endpoint
+        if CFG.event_dispatcher_enabled == "True":
+            autogpt.event_dispatcher.fire(
+                {
+                    level: level,
+                    title: title,
+                    content: content,
+                }
+            )
 
     def debug(
         self,

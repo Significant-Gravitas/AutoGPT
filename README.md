@@ -110,6 +110,7 @@ Please see the [documentation][docs] for full setup instructions and configurati
   * [🧠 Memory](https://significant-gravitas.github.io/Auto-GPT/configuration/memory/)
   * [🗣️ Voice (TTS)](https://significant-gravitas.github.io/Auto-GPT/configuration/voice/)
   * [🖼️ Image Generation](https://significant-gravitas.github.io/Auto-GPT/configuration/imagegen/)
+  * [☄️ Event Dispatcher](/docs/configuration/eventdispatcher.md)
 
 [docs/setup]: https://significant-gravitas.github.io/Auto-GPT/setup/
 [docs/usage]: https://significant-gravitas.github.io/Auto-GPT/usage/
