@@ -7,17 +7,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      python-version: '3.10'
-
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Set up Python ${{ env.python-version }}
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ env.python-version }}
+        python-version-file: .python-version
 
     - name: Install dependencies
       run: |
