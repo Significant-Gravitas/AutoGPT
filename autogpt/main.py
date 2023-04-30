@@ -125,6 +125,14 @@ def run_auto_gpt(
     full_message_history = []
     next_action_count = 0
 
+    # add chat plugins to logger
+    if cfg.chat_messages_enabled:
+        for plugin in cfg.plugins:
+            if hasattr(plugin, "can_handle_report") and plugin.can_handle_report():
+                logger.info(f"Loaded plugin: {plugin.__class__.__name__}")
+                logger.chat_plugins.append(plugin)
+
+
     # Initialize memory and make sure it is empty.
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(cfg, init=True)
