@@ -12,9 +12,9 @@ def test_initial_values(config):
     """
     Test if the initial values of the Config class attributes are set correctly.
     """
-    assert config.debug_mode == False
-    assert config.continuous_mode == False
-    assert config.speak_mode == False
+    assert config.debug_mode is False
+    assert config.continuous_mode is False
+    assert config.speak_mode is False
     assert config.fast_llm_model == "gpt-3.5-turbo"
     assert config.smart_llm_model == "gpt-4"
     assert config.fast_token_limit == 4000
