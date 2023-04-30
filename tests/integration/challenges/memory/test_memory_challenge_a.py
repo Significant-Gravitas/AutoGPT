@@ -6,6 +6,9 @@ from tests.integration.agent_utils import run_interaction_loop
 from tests.integration.challenges.utils import get_level_to_run
 from tests.utils import requires_api_key
 
+LEVEL_CURRENTLY_BEATEN = 3
+MAX_LEVEL = 5
+
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
@@ -21,9 +24,7 @@ def test_memory_challenge_a(
         user_selected_level (int)
     """
 
-    level_currently_beaten = 3
-    max_level = 3
-    num_files = get_level_to_run(user_selected_level, level_currently_beaten, max_level)
+    num_files = get_level_to_run(user_selected_level, LEVEL_CURRENTLY_BEATEN, MAX_LEVEL)
 
     task_id = "2314"
     create_instructions_files(memory_management_agent, num_files, task_id)
