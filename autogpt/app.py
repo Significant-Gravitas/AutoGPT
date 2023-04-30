@@ -6,6 +6,7 @@ from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.config import Config
+from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.generator import PromptGenerator
@@ -172,7 +173,7 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
 
 def shutdown() -> NoReturn:
     """Shut down the program"""
-    print("Shutting down...")
+    logger.info("Shutting down...")
     quit()
 
 
