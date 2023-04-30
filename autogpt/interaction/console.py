@@ -1,7 +1,7 @@
 from __future__ import annotations
-from autogpt.logs import Logger
 
 from autogpt.interaction.base import InteractionProviderSingleton
+from autogpt.logs import Logger
 from autogpt.utils import clean_input
 
 

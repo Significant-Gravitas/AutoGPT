@@ -1,8 +1,8 @@
 """Base class for interaction providers."""
 import abc
 import dataclasses
-from autogpt.logs import Logger
 
+from autogpt.logs import Logger
 from autogpt.singleton import AbstractSingleton
 
 
