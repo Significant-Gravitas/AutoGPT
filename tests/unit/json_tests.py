@@ -14,7 +14,7 @@ class TestParseJson(unittest.TestCase):
         # Test that an invalid JSON string can be fixed with gpt
         json_str = '{"name": "John", "age": 30, "city": "New York",}'
         self.assertEqual(
-            fix_and_parse_json(json_str, try_to_fix_with_gpt=False),
+            fix_and_parse_json(json_str, try_to_fix_with_gpt=True),
             {"name": "John", "age": 30, "city": "New York"},
         )
 

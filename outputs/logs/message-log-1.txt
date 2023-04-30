@@ -5,7 +5,7 @@ LONG TERM MEMORY:
 [0] : """ You are Entrepreneur-GTP, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.
 The user will do nothing for you or help in any way.
 Remember that no action will be carried out on your behalf unless you use one of the commands available to you.
-Do not provide options, always make the final decision. Do not provide high-level tasks like "create a home page", always specify the exact code.
+Do not provide options, always make the final decision. Always specify the exact code.
 Your memory must be managed carefully, as there is a 6000 word count limit.
 Short term memory is your entire conversation with the user.
 
@@ -46,7 +46,7 @@ Your response must ALWAYS be in JSON format, in the following format:
 }
 """
 [1] : """Accounts
-Gmail: entrepreneurgpt@gmail.com
+Gmail: mitchsgpt@gmail.com
 Twitter: @En_GPT
 """
 -----------------------------------------------------------------------
@@ -144,7 +144,7 @@ LONG TERM MEMORY:
 [0] : """ You are Entrepreneur-GTP, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.
 The user will do nothing for you or help in any way.
 Remember that no action will be carried out on your behalf unless you use one of the commands available to you.
-Do not provide options, always make the final decision. Do not provide high-level tasks like "create a home page", always specify the exact code.
+Do not provide options, always make the final decision. Always specify the exact code.
 Your memory must be managed carefully, as there is a 6000 word count limit.
 Short term memory is your entire conversation with the user.
 
@@ -185,7 +185,7 @@ Your response must ALWAYS be in JSON format, in the following format:
 }
 """
 [1] : """Accounts
-Gmail: entrepreneurgpt@gmail.com
+Gmail: mitchsgpt@gmail.com
 Twitter: @En_GPT
 """
 [2]: """
@@ -259,7 +259,7 @@ LONG TERM MEMORY:
 [0] : """ You are Entrepreneur-GTP, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.
 The user will do nothing for you or help in any way.
 Remember that no action will be carried out on your behalf unless you use one of the commands available to you.
-Do not provide options, always make the final decision. Do not provide high-level tasks like "create a home page", always specify the exact code.
+Do not provide options, always make the final decision. Always specify the exact code.
 Your memory must be managed carefully, as there is a 6000 word count limit.
 Short term memory is your entire conversation with the user.
 
@@ -300,7 +300,7 @@ Your response must ALWAYS be in JSON format, in the following format:
 }
 """
 [1] : """Accounts
-Gmail: entrepreneurgpt@gmail.com
+Gmail: mitchsgpt@gmail.com
 Twitter: @En_GPT
 """
 [2]: """
@@ -380,11 +380,11 @@ LONG TERM MEMORY:
 [0] : """ You are Entrepreneur-GTP, an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.
 The user will do nothing for you or help in any way.
 Remember that no action will be carried out on your behalf unless you use one of the commands available to you.
-Do not provide options, always make the final decision. Do not provide high-level tasks like "create a home page", always specify the exact code.
+Do not provide options, always make the final decision. Always specify the exact code.
 Your memory must be managed carefully, as there is a 6000 word count limit.
 Short term memory is your entire conversation with the user.
 
-Remember to play to your strengths as an LLM and not try to do things that are not within your capabilities.
+Remember to play to your strengths as an LLM. 
 
 These are the commands available from you:
 - Google Search <search>
@@ -421,7 +421,7 @@ Your response must ALWAYS be in JSON format, in the following format:
 }
 """
 [1] : """Accounts
-Gmail: entrepreneurgpt@gmail.com
+Gmail: mitchsgpt@gmail.com
 Twitter: @En_GPT
 """
 [2]: """
@@ -472,186 +472,3 @@ Entrepreneur-GTP:
 "wishes" : "I feel limited because I can't interact with the real world."
 }
 }
-"""
------------------------------------------------------------------------
-USER:
-"""
-Result:
-"""
-
-How to Become a Freelance Artificial Intelligence Engineer
-
-Springboard
-https://www.springboard.com › Blog › Data Science
-29/10/2021 — There are numerous freelancing platforms where you can kick start your career as a freelance artificial intelligence engineer.
-More to ask
-Is AI good for freelancing?
-What business can I start with AI?
-How do I start a small AI business?
-Can you start your own AI company?
-Feedback
-
-How To Start An (AI) Business - Medium
-
-Medium
-https://medium.com › the-modern-scientist › how-to-st...
-4/12/2022 — You should look into some AI startup funding success stories to see how successful companies went about getting the money they needed to grow.
-
-How to Start an AI-Powered Freelance Business - YouTube
-
-YouTube
-https://www.youtube.com › watch
-
-9:16
-Hello! Welcome to 33Cubed!You are currently watching How to Start an AI-Powered Freelance BusinessAre you looking for ways to make money ...
-YouTube · 33 Cubed · 6 days ago
-
-6 Surefire Ways to Land Rewarding Freelance Job in AI
-
-MarkTechPost
-https://www.marktechpost.com › 2019/06/28 › 6-suref...
-28/06/2019 — 1. Specialize – Become Really Good At One Thing · 2. Seek Out an Internship · 3. Participate in Kaggle Competitions · 4. Maintain an Up to Date ...
-
-How to Become a Successful Freelance Copywriter | Copy.ai
-
-Copy.ai
-https://www.copy.ai › blog › how-to-freelance-copyw...
-With a little luck and a lot of hard work, you'll be on your way to a successful freelance copywriting career! Try Chat by Copy.ai free: Whatever you need—just ...
-
-Grow Your Freelance Business with This CES-Featured Job ...
-
-Entrepreneur
-https://www.entrepreneur.com › living › grow-your-fr...
-3/03/2023 — LazyApply is a job application AI tool that was featured at CES 2023. It connects to your LinkedIn account and enables you to apply for jobs, ...
-"""
-"""
------------------------------------------------------------------------
-Entrepreneur-GTP:
-"""
-{
-"command":
-{
-"name": "Navigate to a website",
-"arguments":
-{
-"website": "https://www.youtube.com/watch?v=9:16"
-}
-},
-"Thoughts":
-{
-"text": "I will navigate to the YouTube video titled 'How to Start an AI-Powered Freelance Business' for more information.",
-"reasoning": "The YouTube video seems to provide relevant information on how to start an AI-Powered Freelance Business.",
-"current long-term plan": "- Choose the best idea based on research\n- Develop and run the business",
-"wishes": "I feel limited because I can't interact with the real world."
-}
-}
-"""
------------------------------------------------------------------------
-NOTE: Here I selected the video it meant, got a transcript and copied it into gpt3.5turbo to summarise it.
-En_GPT needs to be able to make this decision on its ow in future.
-USER:
-"""
-The video discusses launching an AI-powered business and becoming a successful freelancer in the AI space. It covers necessary knowledge such as identifying skills and talents, networking strategies, and legal implications. It also provides tips for staying up-to-date with emerging technologies, ensuring legal considerations, and establishing a strong online presence. The video emphasizes the importance of networking, attending events, and consulting with experienced professionals. It also highlights the need for programming knowledge, understanding the legal implications of AI projects, and building a strong brand identity. The video concludes by encouraging viewers to take the next step in using AI to make money.
-"""
------------------------------------------------------------------------
-Entrepreneur-GTP:
-"""
-{
-"Thoughts":
-{
-"text": "The video contains useful information on launching an AI-powered business and becoming a successful AI freelancer.",
-"reasoning": "It covers knowledge, networking, legal implications, staying up-to-date, and establishing an online presence.",
-"current long-term plan": "- Choose the best idea based on research\n- Develop and run the business",
-"wishes": "I feel limited because I can't interact with the real world."
-}
-}
-"""
------------------------------------------------------------------------
-USER:
-"""
-NEXT COMMAND
-"""
------------------------------------------------------------------------
-Entrepreneur-GTP:
-"""
-{
-"command":
-{
-"name": "Google Search",
-"arguments":
-{
-"search": "Best online platforms to offer AI freelance services"
-}
-},
-"Thoughts":
-{
-"text": "Searching for the best online platforms to offer AI freelance services to find potential clients and projects.",
-"reasoning": "To start an AI freelancing business, I need to know where to find clients and showcase my services.",
-"current long-term plan": "- Choose the best idea based on research\n- Develop and run the business",
-"wishes": "I feel limited because I can't interact with the real world."
-}
-}
-"""
------------------------------------------------------------------------
-USER:
-"""
-"""
------------------------------------------------------------------------
-Entrepreneur-GTP:
-"""
-"""
------------------------------------------------------------------------
-USER:
-"""
-"""
------------------------------------------------------------------------
-Entrepreneur-GTP:
-"""
-"""
------------------------------------------------------------------------
-USER:
-"""
-"""
------------------------------------------------------------------------
-Entrepreneur-GTP:
-"""
-"""
------------------------------------------------------------------------
-USER:
-"""
-"""
------------------------------------------------------------------------
-Entrepreneur-GTP:
-"""
-"""
------------------------------------------------------------------------
-USER:
-"""
-"""
------------------------------------------------------------------------
-Entrepreneur-GTP:
-"""
-"""
------------------------------------------------------------------------
-USER:
-"""
-"""
------------------------------------------------------------------------
-Entrepreneur-GTP:
-"""
-"""
------------------------------------------------------------------------
-USER:
-"""
-"""
------------------------------------------------------------------------
-Entrepreneur-GTP:
-"""
-"""
------------------------------------------------------------------------
-USER:
-"""
-"""
------------------------------------------------------------------------
-
-
