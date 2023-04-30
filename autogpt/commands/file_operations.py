@@ -10,6 +10,7 @@ import charset_normalizer
 import requests
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
+from autogpt.llm import token_counter
 
 from autogpt.commands.command import command
 from autogpt.config import Config
@@ -157,6 +158,12 @@ def read_file(filename: str) -> str:
         charset_match = charset_normalizer.from_path(filename).best()
         encoding = charset_match.encoding
         logger.debug(f"Read file '{filename}' with encoding '{encoding}'")
+
+        token_usage = token_counter.count_string_tokens(str(charset_match), CFG.fast_llm_model)
+        if token_usage > 8191:
+            # File is too long
+            return f"Error: File is too long ({token_usage} tokens). Please summarize the file."
+        
         return str(charset_match)
     except Exception as err:
         return f"Error: {err}"
