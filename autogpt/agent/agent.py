@@ -56,6 +56,7 @@ class Agent:
         cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
+        self.last_memory_index = 0
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
         self.command_registry = command_registry

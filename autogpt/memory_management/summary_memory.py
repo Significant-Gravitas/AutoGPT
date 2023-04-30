@@ -10,25 +10,22 @@ current_memory = ""
 
 
 def get_newly_trimmed_messages(
-    full_message_history: List[Dict[str, str]], current_context: List[Dict[str, str]]
-) -> Tuple[List[Dict[str, str]], int]:
+    full_message_history: List[Dict[str, str]], current_context: List[Dict[str, str]], last_memory_index: int) -> Tuple[List[Dict[str, str]], int]:
     """
     This function returns a list of dictionaries contained in full_message_history
-    with an index higher than prev_index that are absent from current_context, and the new index.
+    with an index higher than last_memory_index that are absent from current_context, and the new index.
 
     Args:
         full_message_history (list): A list of dictionaries representing the full message history.
         current_context (list): A list of dictionaries representing the current context.
-        prev_index (int): An integer representing the previous index.
+        last_memory_index (int): An integer representing the previous index.
 
     Returns:
-        list: A list of dictionaries that are in full_message_history with an index higher than prev_index and absent from current_context.
+        list: A list of dictionaries that are in full_message_history with an index higher than last_memory_index and absent from current_context.
         int: The new index value for use in the next loop.
     """
-    global prev_index
-
-    # Select messages in full_message_history with an index higher than prev_index
-    new_messages = [msg for i, msg in enumerate(full_message_history) if i > prev_index]
+    # Select messages in full_message_history with an index higher than last_memory_index
+    new_messages = [msg for i, msg in enumerate(full_message_history) if i > last_memory_index]
 
     # Remove messages that are already present in current_context
     new_messages_not_in_context = [
@@ -36,14 +33,13 @@ def get_newly_trimmed_messages(
     ]
 
     # Find the index of the last message processed
-    new_index = prev_index
+    new_index = last_memory_index
     if new_messages_not_in_context:
         last_message = new_messages_not_in_context[-1]
         new_index = full_message_history.index(last_message)
 
-    prev_index = new_index
 
-    return new_messages_not_in_context
+    return new_messages_not_in_context, new_index
 
 
 def update_running_summary(new_events: List[Dict]) -> str:
