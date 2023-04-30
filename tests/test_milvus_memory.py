@@ -8,26 +8,25 @@ import pytest
 from autogpt.memory.milvus import MilvusMemory
 
 
-def mock_config():
-    """Mock the config object for testing purposes."""
-    return type(
-        "MockConfig",
-        (object,),
-        {
-            "debug_mode": False,
-            "continuous_mode": False,
-            "speak_mode": False,
-            "milvus_collection": "autogpt",
-            "milvus_addr": "localhost:19530",
-            "milvus_secure": False,
-            "milvus_username": None,
-            "milvus_password": None,
-        },
-    )
-
-
 @pytest.fixture
 def milvus_memory():
+    def mock_config():
+        """Mock the config object for testing purposes."""
+        return type(
+            "MockConfig",
+            (object,),
+            {
+                "debug_mode": False,
+                "continuous_mode": False,
+                "speak_mode": False,
+                "milvus_collection": "autogpt",
+                "milvus_addr": "localhost:19530",
+                "milvus_secure": False,
+                "milvus_username": None,
+                "milvus_password": None,
+            },
+        )
+
     cfg = mock_config()
     memory = MilvusMemory(cfg)
     return memory
