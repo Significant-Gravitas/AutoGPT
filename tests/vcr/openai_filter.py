@@ -41,7 +41,10 @@ def before_record_request(request):
 
 
 def filter_hostnames(request):
-    allowed_hostnames = ["api.openai.com"]  # List of hostnames you want to allow
+    allowed_hostnames = [
+        "api.openai.com",
+        "localhost:50337",
+    ]  # List of hostnames you want to allow
 
     if any(hostname in request.url for hostname in allowed_hostnames):
         return request

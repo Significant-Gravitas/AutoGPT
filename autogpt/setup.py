@@ -119,7 +119,7 @@ def generate_aiconfig_manual() -> AIConfig:
         "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage"
         " multiple businesses autonomously'",
     )
-    print("Enter nothing to load defaults, enter nothing when finished.", flush=True)
+    logger.info("Enter nothing to load defaults, enter nothing when finished.")
     ai_goals = []
     for i in range(5):
         ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
@@ -139,7 +139,7 @@ def generate_aiconfig_manual() -> AIConfig:
         Fore.GREEN,
         "For example: $1.50",
     )
-    print("Enter nothing to let the AI run without monetary limit", flush=True)
+    logger.info("Enter nothing to let the AI run without monetary limit")
     api_budget_input = utils.clean_input(
         f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
     )
