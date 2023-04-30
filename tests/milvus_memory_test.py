@@ -3,6 +3,7 @@
 import os
 import sys
 import unittest
+from autogpt.config import Config
 
 try:
     from autogpt.memory.milvus import MilvusMemory
@@ -12,7 +13,7 @@ try:
         # Return a mock config object with the required attributes
         return type(
             "MockConfig",
-            (object,),
+            (Config,),
             {
                 "debug_mode": False,
                 "continuous_mode": False,
