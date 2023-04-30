@@ -200,9 +200,9 @@ def delete_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
-@command("search_files", "Search Files", '"directory": "<directory>"')
-def search_files(directory: str) -> list[str]:
-    """Search for files in a directory
+@command("list_files", "List Files in Directory", '"directory": "<directory>"')
+def list_files(directory: str) -> list[str]:
+    """lists files in a directory recursively
 
     Args:
         directory (str): The directory to search in
