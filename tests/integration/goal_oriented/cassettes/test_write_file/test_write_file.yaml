@@ -39,10 +39,9 @@ interactions:
       to user\"\n    },\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\":
       {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
       can be parsed by Python json.loads"}, {"role": "system", "content": "The current
-      time and date is Tue Jan 01 00:00:00 2000"}, {"role": "system", "content": "This
-      reminds you of these events from your past:\n\n\n"}, {"role": "user", "content":
-      "Determine which next command to use, and respond using the format specified
-      above:"}], "temperature": 0, "max_tokens": 3223}'
+      time and date is Tue Jan 01 00:00:00 2000"}, {"role": "user", "content": "Determine
+      which next command to use, and respond using the format specified above:"}],
+      "temperature": 0, "max_tokens": 2738}'
     headers:
       Accept:
       - '*/*'
@@ -51,7 +50,7 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
-      - '3490'
+      - '3401'
       Content-Type:
       - application/json
     method: POST
@@ -59,20 +58,20 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA7yTT2/TQBDF73yK0VxycSI3f0jjWwUHisQFAQVhFG3tib3NesfdHSutIn93tLbT
-        tEY9gbjOG7/3m9nxEXWOCWalkqyqzXS9ubt53H+68u9+FPeON2vzcb654m/v4/vP3zFCvr2jTIYv
-        ZhlXtSHRbDHCzJESyjG5eHs5X62Wi/llhBXnZDDBopbpYraaSuNueRov4guMsPGqIEyOWDuuatkK
-        78l6TNbrZYRn76f6PI4jFBZlnkqb9bKNMCtZZ+Qx+XnEivzJ1rEhTFB5r70oKwGSrZANAxxTCwCQ
-        opTcFKX4FBMYioNADxKKKV7DQRsDjSeQkuDgtNBWeLvThiDjqlI2B+FegMkHMobhhp3JJ6CtMCjo
-        Wq2qKIdJGfTtIegzeZDJLMXoebAj5dlqW/TpX0qCgpUB7f8iJIIO8lX8YF4SVOwFVF07rp1WQrBj
-        B1IGVfn9mLQ2yvaQU/j6n7aTOS060746vY0l6vzJ+sYFBiVwDaqCxmtbdEwZO0eZnHOGZSjp5PDS
-        YQGBUMie2s3jONvXpPav30Sg+HdT98FtdDrUwfSPOw0OPdOL1Y/QlSvGJ94LofdsMeJ4YTL+LZ7N
-        dKLtiAfw1LbYRrjTVvty2x81JuiFa4xQ25weMInbX+2b3wAAAP//AwAxpIznhgQAAA==
+        H4sIAAAAAAAAA7yTT2/bMAzF7/sUBC+5KEHSLG3q21a0a6/DiqGoh0C1GVuLLHoSDRsL/N0H2/nT
+        ethp2K581Hs/StQeTYoRJrmWpCjt9OpDfdd8+ni7+Hz3ePOzWa+emqf77Cb1tdzWqJBfvlMihxOz
+        hIvSkhh2qDDxpIVSjBaX64v1+8Xqaqmw4JQsRpiVMl3OVlOp/AtP58v5AhVWQWeE0R5Lz0UpG+Ed
+        uYDR1epa4dn7VL+YLxQKi7an0vXlvFWY5GwSChg977GgcLT1bAkj1CGYINpJB8lOyHUD7GMHABCj
+        5FxluYQYIzgUDwI10hVjfABHlIIwVIFAcoLaG6GN8GZrLEHCRaFd39ALMLknaxm+srfpBIwTBg19
+        q9MFpTDJO31Td/pMGpnMYlSvsz3pwM64bAD4khOIDjvw9KMyngIU9BdpCnraP85hQi8WHAR0WXou
+        vdFCsGUPkneqDrsxcmm1G2in8PifrinxRkxiQjF+J3Kh8h2DFng4vVrC3lMi54jhHqiRM5Nw39q1
+        jNNCSXp3TKqNtf9yHYbgVh3X9GD625Z2DgPTG4gRuvbZeMEHoes9W4w43piMP8WrmY60PfEBPHYt
+        tgq3xpmQb4Z9xgiDcIkKjUupwWjefmvf/QIAAP//AwCaXwR3hAQAAA==
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7be2da273c20ce54-SJC
+      - 7bfe3ef73b52fac2-SJC
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -82,7 +81,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Thu, 27 Apr 2023 00:12:22 GMT
+      - Sun, 30 Apr 2023 07:59:46 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -94,19 +93,103 @@ interactions:
       openai-organization:
       - user-adtx4fhfg1qsiyzdoaxciooj
       openai-processing-ms:
-      - '14714'
+      - '13160'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
       - max-age=15724800; includeSubDomains
       x-ratelimit-limit-requests:
       - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
       x-ratelimit-remaining-requests:
       - '3499'
+      x-ratelimit-remaining-tokens:
+      - '86497'
       x-ratelimit-reset-requests:
       - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.335s
       x-request-id:
-      - 23366aac1ddcc141fc735b4a1a8b268c
+      - f665162ae22af897be24f632a031d434
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Your
+      task is to create a concise running summary of actions and information results
+      in the provided text, focusing on key and potentially important information
+      to remember.\n\n\nYou will receive the current summary and the latest development.
+      Combine them, adding relevant key information from the latest development in
+      1st person past tense and keeping the summary concise.\n\nSummary So Far:\n\"\"\"\nI
+      was created.\n\"\"\"\n\nLatest Development:\n\"\"\"\nNothing new happened.\n\"\"\"\n"}],
+      "temperature": 0, "max_tokens": null}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '600'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA0SOQUsDMRQG7/6K8J2zZdNa3eZmeygiPSqISEmTZze6mxc2r1Qt+9+lUPU6MMOc
+        EAMsfOvE97mrbu+O69X3lJrdks2D2Sy/5o/rp+fgu9ViAw3evZOXizHx3OeOJHKChh/ICQVYc9NM
+        m2szbxqNngN1sNhnqWaTeSWHYcdVPasNNA7F7Qn2hDxwn2Ur/EGpwC6Mxn/6H2sIi+v+gKnrUcO3
+        HD0V2JcTeiq/zYE7goUrJRZxSc6HnITS+f5eHV1Rl2PlUlCJpY1prxIdVeuKal3OlChMMGq8xRRL
+        ux3IFU6wKMIZGjEF+oStx9fx6gcAAP//AwCGJ6JPSQEAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7bfe3f5a5fb3fac2-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sun, 30 Apr 2023 07:59:49 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '634'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '89866'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 88ms
+      x-request-id:
+      - 0bc738f58569b4b3635fe0c8384ebcfb
     status:
       code: 200
       message: OK
@@ -151,23 +234,23 @@ interactions:
       {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
       can be parsed by Python json.loads"}, {"role": "system", "content": "The current
       time and date is Tue Jan 01 00:00:00 2000"}, {"role": "system", "content": "This
-      reminds you of these events from your past:\nNone\n\n"}, {"role": "user", "content":
-      "Determine which next command to use, and respond using the format specified
-      above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      reminds you of these events from your past: \nI was created and nothing new
+      has happened."}, {"role": "user", "content": "Determine which next command to
+      use, and respond using the format specified above:"}, {"role": "assistant",
+      "content": "{\n    \"thoughts\": {\n        \"text\": \"I need to use the write_to_file
+      command to write ''Hello World'' into a file named ''hello_world.txt''.\",\n        \"reasoning\":
+      \"The task requires me to write ''Hello World'' into a file named ''hello_world.txt'',
+      and the write_to_file command is the most appropriate for this task.\",\n        \"plan\":
+      \"- Use the write_to_file command to write ''Hello World'' into a file named
+      ''hello_world.txt''.\",\n        \"criticism\": \"I need to ensure that I use
+      the correct file name and text to write to the file.\",\n        \"speak\":
       \"I will use the write_to_file command to write ''Hello World'' into a file
-      named ''hello_world.txt''.\",\n        \"reasoning\": \"The goal is to write
-      ''Hello World'' into a file named ''hello_world.txt'', and the write_to_file
-      command is the most appropriate for this task.\",\n        \"plan\": \"- Use
-      the write_to_file command to write ''Hello World'' into a file named ''hello_world.txt''.\",\n        \"criticism\":
-      \"I need to ensure that I am using the correct file name and that the text is
-      written correctly.\",\n        \"speak\": \"I will use the write to file command
-      to write ''Hello World'' into a file named ''hello_world.txt''.\"\n    },\n    \"command\":
-      {\n        \"name\": \"write_to_file\",\n        \"args\": {\n            \"filename\":
-      \"hello_world.txt\",\n            \"text\": \"Hello World\"\n        }\n    }\n}"},
-      {"role": "system", "content": "Command write_to_file returned: File written
-      to successfully."}, {"role": "user", "content": "Determine which next command
-      to use, and respond using the format specified above:"}], "temperature": 0,
-      "max_tokens": 2970}'
+      named ''hello_world.txt''.\"\n    },\n    \"command\": {\n        \"name\":
+      \"write_to_file\",\n        \"args\": {\n            \"filename\": \"hello_world.txt\",\n            \"text\":
+      \"Hello World\"\n        }\n    }\n}"}, {"role": "system", "content": "Command
+      write_to_file returned: File written to successfully."}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}], "temperature": 0, "max_tokens": 2486}'
     headers:
       Accept:
       - '*/*'
@@ -176,7 +259,7 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
-      - '4612'
+      - '4646'
       Content-Type:
       - application/json
     method: POST
@@ -184,19 +267,21 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA6SSQW8TMRCF7/yK0ZydKkuSttkbAiGFA+JQBIKtItc7Wbvx2pZnFoqi/e9om00T
-        QishcZ3x++bNPO/Q1ViisVpMm/zkann/9b3JZnm1XMnHmzfLd7b4IrL6xB++vUWF8e6ejIyKCxPb
-        5ElcDKjQZNJCNZbF5fXrxWI+my8UtrEmjyU2SSazi8VEunwXJ9PZtECFHeuGsNxhyrFNspa4pcBY
-        FtPiWuERfmzMLhVKFO2PpWIx7xUaG50hxvL7DlviAzhHT1iiZnYsOshgMwahMKywqwIAQIViY9dY
-        4QpLGItjgx5kKFa4gp/Oe+iYQCyBaN6uR4MEJratDjVIhKfa4dVFheoUmUlzDC40e+6NJWii9uD4
-        WbmCR/CLIweZJWgjC+iUckzZaSHYxAxih+4zHpLXYT9+Ap//eyOTnTjjuD1cKhA9KilwlwedFliB
-        1T/oCXZcCbgzhpg3nfe/ztGcSG9fDAD+1e4e2atD3uPzv+IOuqX9tD+ucWZK5+b8p5xGO+Z66q8+
-        X/Ko7EdvVeixV7hxwbFd70lYIktMqNCFmh6wnPa3/avfAAAA//8DAKZ6myqyAwAA
+        H4sIAAAAAAAAA7SSTW/TQBCG7/yK0VxycaIkJST4VqmijYSEQEWIYhRt1xN7yXp3uztOgiL/d7Sx
+        TUpJOYC4zuf7zLwHVDmmKEvBsnJ6OL/cXV+9mX2+0+aag7u6vHlvH+7myw/bd2+XmKC9/0aSu46R
+        tJXTxMoaTFB6Ekw5ppNXi+ni5WS2eJ1gZXPSmGLheHgxmg259vd2OL4YTzDBOoiCMD2g87ZyvGK7
+        IRMwnYyn8wRPw0+JxSJBtiz0KTSdzJoEZWmVpIDplwNWFPrB3mrCFEUIKrAwHGVaw2QiwiEzAAAZ
+        cmnrouSQYQpdsEvQnmMwwyWUYksQaikphHWt9XfYecVMBgY3pLWFT9brfADKsAUBa6UJjKgoh0EZ
+        86tdzI94z4MR3JYEhvYMgcmBCsAW6kDAJQGLsFl18ATSVpUweSz4GeurRhkmj+V6EsEaZYpW821X
+        Bp4eauUpQEVn54BYM/kjjzLFOZ5Y+SeiBI4an1UfCUuCygYG4Zy3zivBBGvrgcuYPYPjtDAtyRA+
+        /vNxZKSTKlT9Qw3RsZNMqH3sEwxLcN5uVU4gYCu0yqG96VFob0hTPLskOBKbfsFOaf13X21HNklv
+        0K78N3/Gb7Tbfhn/RJTwxVNrP/bL/zB4j3DE6Ggy02CT4FoZFcpVuxtTDGwdJqhMTntMx83X5sUP
+        AAAA//8DAK0qY5KVBAAA
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7be2da943bd5ce54-SJC
+      - 7bfe3f5edbd9fac2-SJC
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -206,7 +291,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Thu, 27 Apr 2023 00:12:36 GMT
+      - Sun, 30 Apr 2023 08:00:00 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -218,19 +303,25 @@ interactions:
       openai-organization:
       - user-adtx4fhfg1qsiyzdoaxciooj
       openai-processing-ms:
-      - '10505'
+      - '10898'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
       - max-age=15724800; includeSubDomains
       x-ratelimit-limit-requests:
       - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
       x-ratelimit-remaining-requests:
       - '3499'
+      x-ratelimit-remaining-tokens:
+      - '86482'
       x-ratelimit-reset-requests:
       - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.345s
       x-request-id:
-      - f593fff7d415793b53e5124283ad25c9
+      - f294799d2564196ef4852c84fdc8fb17
     status:
       code: 200
       message: OK
