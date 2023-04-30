@@ -125,11 +125,11 @@ def run_auto_gpt(
     full_message_history = []
     next_action_count = 0
 
-    # add chat plugins to logger
+    # add chat plugins capable of report to logger
     if cfg.chat_messages_enabled:
         for plugin in cfg.plugins:
             if hasattr(plugin, "can_handle_report") and plugin.can_handle_report():
-                logger.info(f"Loaded plugin: {plugin.__class__.__name__}")
+                logger.info(f"Loaded plugin into logger: {plugin.__class__.__name__}")
                 logger.chat_plugins.append(plugin)
 
 
