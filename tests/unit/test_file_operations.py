@@ -13,9 +13,9 @@ from autogpt.commands.file_operations import (
     check_duplicate_operation,
     delete_file,
     download_file,
+    list_files,
     log_operation,
     read_file,
-    list_files,
     split_file,
     write_to_file,
 )
