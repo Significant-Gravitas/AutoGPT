@@ -128,10 +128,9 @@ def create_chat_completion(
 
     num_retries = 10
     warned_user = False
-    if cfg.debug_mode:
-        print(
-            f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
-        )
+    logger.debug(
+        f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
+    )
     for plugin in cfg.plugins:
         if plugin.can_handle_chat_completion(
             messages=messages,
@@ -169,10 +168,9 @@ def create_chat_completion(
                 )
             break
         except RateLimitError:
-            if cfg.debug_mode:
-                print(
-                    f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"
-                )
+            logger.debug(
+                f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"
+            )
             if not warned_user:
                 logger.double_check(
                     f"Please double check that you have setup a {Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. "
@@ -184,11 +182,10 @@ def create_chat_completion(
                 raise
             if attempt == num_retries - 1:
                 raise
-        if cfg.debug_mode:
-            print(
-                f"{Fore.RED}Error: ",
-                f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
-            )
+        logger.debug(
+            f"{Fore.RED}Error: ",
+            f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
+        )
         time.sleep(backoff)
     if response is None:
         logger.typewriter_log(
