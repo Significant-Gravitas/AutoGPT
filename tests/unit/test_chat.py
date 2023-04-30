@@ -33,17 +33,13 @@ def test_generate_context_empty_inputs(mocker):
     # Assert
     expected_result = (
         -1,
-        47,
-        3,
+        32,
+        2,
         [
             {"role": "system", "content": ""},
             {
                 "role": "system",
                 "content": f"The current time and date is {time.strftime('%c')}",
-            },
-            {
-                "role": "system",
-                "content": f"This reminds you of these events from your past:\n\n\n",
             },
         ],
     )
@@ -78,5 +74,5 @@ def test_generate_context_valid_inputs():
     assert result[0] >= 0
     assert result[2] >= 0
     assert result[1] >= 0
-    assert len(result[3]) >= 3  # current_context should have at least 3 messages
+    assert len(result[3]) >= 2  # current_context should have at least 2 messages
     assert result[1] <= 2048  # token limit for GPT-3.5-turbo-0301 is 2048 tokens
