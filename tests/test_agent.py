@@ -3,12 +3,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from autogpt.agent import Agent
-from autogpt.chat import chat_with_ai
 from autogpt.config import Config
-from autogpt.speech import say_text
-from autogpt.utils import clean_input
 from autogpt.ai_guidelines import AIGuidelines
-
 
 @pytest.fixture
 def agent():

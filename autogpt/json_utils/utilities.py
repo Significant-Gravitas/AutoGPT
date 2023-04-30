@@ -8,6 +8,7 @@ from autogpt.config import Config
 from autogpt.logs import logger
 
 CFG = Config()
+LLM_DEFAULT_RESPONSE_FORMAT = "llm_response_format_1"
 
 
 def extract_char_position(error_message: str) -> int:
@@ -28,10 +29,10 @@ def extract_char_position(error_message: str) -> int:
         raise ValueError("Character position not found in the error message.")
 
 
-def validate_json(json_object: object, schema_name: object) -> object:
+def validate_json(json_object: object, schema_name: str) -> dict | None:
     """
     :type schema_name: object
-    :param schema_name:
+    :param schema_name: str
     :type json_object: object
     """
     with open(f"autogpt/json_utils/{schema_name}.json", "r") as f:
@@ -48,7 +49,31 @@ def validate_json(json_object: object, schema_name: object) -> object:
 
             for error in errors:
                 logger.error(f"Error: {error.message}")
-    elif CFG.debug_mode:
-        print("The JSON object is valid.")
+    else:
+        logger.debug("The JSON object is valid.")
 
     return json_object
+
+
+def validate_json_string(json_string: str, schema_name: str) -> dict | None:
+    """
+    :type schema_name: object
+    :param schema_name: str
+    :type json_object: object
+    """
+
+    try:
+        json_loaded = json.loads(json_string)
+        return validate_json(json_loaded, schema_name)
+    except:
+        return None
+
+
+def is_string_valid_json(json_string: str, schema_name: str) -> bool:
+    """
+    :type schema_name: object
+    :param schema_name: str
+    :type json_object: object
+    """
+
+    return validate_json_string(json_string, schema_name) is not None
