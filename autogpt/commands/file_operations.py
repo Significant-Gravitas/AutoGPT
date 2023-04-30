@@ -14,6 +14,7 @@ from autogpt.llm import token_counter
 
 from autogpt.commands.command import command
 from autogpt.config import Config
+from autogpt.llm import token_counter
 from autogpt.logs import logger
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
