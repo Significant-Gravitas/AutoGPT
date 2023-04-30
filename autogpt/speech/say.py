@@ -8,6 +8,7 @@ from autogpt.speech.brian import BrianSpeech
 from autogpt.speech.eleven_labs import ElevenLabsSpeech
 from autogpt.speech.gtts import GTTSVoice
 from autogpt.speech.macos_tts import MacOSTTS
+from autogpt.speech.stream_elements import StreamElementsSpeech
 
 _QUEUE_SEMAPHORE = Semaphore(
     1
@@ -40,6 +41,8 @@ def _get_voice_engine(config: Config) -> tuple[VoiceBase, VoiceBase]:
         voice_engine = MacOSTTS()
     elif config.use_brian_tts == "True":
         voice_engine = BrianSpeech()
+    elif config.use_se_tts == "True":
+        voice_engine = StreamElementsSpeech()
     else:
         voice_engine = GTTSVoice()
 

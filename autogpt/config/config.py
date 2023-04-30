@@ -68,6 +68,9 @@ class Config(metaclass=Singleton):
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
 
+        self.use_se_tts = False
+        self.use_se_tts = os.getenv("USE_SE_TTS")
+
         self.github_api_key = os.getenv("GITHUB_API_KEY")
         self.github_username = os.getenv("GITHUB_USERNAME")
 
