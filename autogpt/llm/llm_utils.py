@@ -243,16 +243,18 @@ def get_ada_embedding(text: str) -> List[float]:
 
     # Check the tokens in the text to make sure we don't exceed the max tokens for ada
     num_tokens = token_counter.count_string_tokens(text, model)
-    if num_tokens > 8191: # If the number of kilotokens are greater than the allowed maximum
+    if (
+        num_tokens > 8191
+    ):  # If the number of kilotokens are greater than the allowed maximum
         # We have exceeded the allowed maximum, so we need to split the text into multiple embeddings
         # We'll split the text in half, and try again recursively
         logger.debug(
             f"Exceeded max tokens for ada, splitting text in half. {num_tokens} tokens"
         )
-        
+
         # Create the halves to overlap each 5% of the other
-        first_half = text[:len(text) // 2 - len(text) // 20]
-        second_half = text[len(text) // 2 + len(text) // 20:]
+        first_half = text[: len(text) // 2 - len(text) // 20]
+        second_half = text[len(text) // 2 + len(text) // 20 :]
 
         first_half_embedding = get_ada_embedding(first_half)
         second_half_embedding = get_ada_embedding(second_half)
