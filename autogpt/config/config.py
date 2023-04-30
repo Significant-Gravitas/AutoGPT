@@ -1,14 +1,13 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
+from typing import List
 
 import openai
 import yaml
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
-from dotenv import load_dotenv
 
-from autogpt.config.singleton import Singleton
-
-load_dotenv(verbose=True)
+from autogpt.singleton import Singleton
 
 
 class Config(metaclass=Singleton):
@@ -18,6 +17,9 @@ class Config(metaclass=Singleton):
 
     def __init__(self) -> None:
         """Initialize the Config class"""
+        self.workspace_path = None
+        self.file_logger_path = None
+
         self.debug_mode = False
         self.continuous_mode = False
         self.continuous_limit = 0
@@ -26,6 +28,8 @@ class Config(metaclass=Singleton):
         self.allow_downloads = False
         self.skip_news = False
 
+        self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
+        self.exit_key = os.getenv("EXIT_KEY", "n")
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -59,6 +63,8 @@ class Config(metaclass=Singleton):
         self.use_mac_os_tts = False
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
 
+        self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
+
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
 
@@ -83,9 +89,12 @@ class Config(metaclass=Singleton):
             os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
         )
 
-        # milvus configuration, e.g., localhost:19530.
+        # milvus or zilliz cloud configuration.
         self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
+        self.milvus_username = os.getenv("MILVUS_USERNAME")
+        self.milvus_password = os.getenv("MILVUS_PASSWORD")
         self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
+        self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
@@ -120,8 +129,17 @@ class Config(metaclass=Singleton):
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
         self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
-        # Initialize the OpenAI API client
-        openai.api_key = self.openai_api_key
+
+        self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
+        self.plugins: List[AutoGPTPluginTemplate] = []
+        self.plugins_openai = []
+
+        plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
+        if plugins_allowlist:
+            self.plugins_allowlist = plugins_allowlist.split(",")
+        else:
+            self.plugins_allowlist = []
+        self.plugins_denylist = []
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
@@ -161,11 +179,8 @@ class Config(metaclass=Singleton):
         Returns:
             None
         """
-        try:
-            with open(config_file) as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
-        except FileNotFoundError:
-            config_params = {}
+        with open(config_file) as file:
+            config_params = yaml.load(file, Loader=yaml.FullLoader)
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
         self.openai_api_version = (
@@ -241,6 +256,18 @@ class Config(metaclass=Singleton):
         """Set the debug mode value."""
         self.debug_mode = value
 
+    def set_plugins(self, value: list) -> None:
+        """Set the plugins value."""
+        self.plugins = value
+
+    def set_temperature(self, value: int) -> None:
+        """Set the temperature value."""
+        self.temperature = value
+
+    def set_memory_backend(self, name: str) -> None:
+        """Set the memory backend name."""
+        self.memory_backend = name
+
 
 def check_openai_api_key() -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
@@ -249,6 +276,7 @@ def check_openai_api_key() -> None:
         print(
             Fore.RED
             + "Please set your OpenAI API key in .env or as an environment variable."
+            + Fore.RESET
         )
         print("You can get your key from https://platform.openai.com/account/api-keys")
         exit(1)

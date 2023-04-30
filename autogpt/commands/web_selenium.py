@@ -7,6 +7,7 @@ from sys import platform
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -18,13 +19,21 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 
 import autogpt.processing.text as summary
+from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpt.url_utils.validators import validate_url
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
 
 
+@command(
+    "browse_website",
+    "Browse Website",
+    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+)
+@validate_url
 def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     """Browse a website and return the answer and links to the user
 
@@ -35,7 +44,14 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     Returns:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
     """
-    driver, text = scrape_text_with_selenium(url)
+    try:
+        driver, text = scrape_text_with_selenium(url)
+    except WebDriverException as e:
+        # These errors are often quite long and include lots of context.
+        # Just grab the first line.
+        msg = e.msg.split("\n")[0]
+        return f"Error: {msg}", None
+
     add_header(driver)
     summary_text = summary.summarize_text(url, text, question, driver)
     links = scrape_links_with_selenium(driver, url)
@@ -70,6 +86,9 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     )
 
     if CFG.selenium_web_browser == "firefox":
+        if CFG.selenium_headless:
+            options.headless = True
+            options.add_argument("--disable-gpu")
         driver = webdriver.Firefox(
             executable_path=GeckoDriverManager().install(), options=options
         )
@@ -84,11 +103,16 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
 
         options.add_argument("--no-sandbox")
         if CFG.selenium_headless:
-            options.add_argument("--headless")
+            options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
 
+        chromium_driver_path = Path("/usr/bin/chromedriver")
+
         driver = webdriver.Chrome(
-            executable_path=ChromeDriverManager().install(), options=options
+            executable_path=chromium_driver_path
+            if chromium_driver_path.exists()
+            else ChromeDriverManager().install(),
+            options=options,
         )
     driver.get(url)
 

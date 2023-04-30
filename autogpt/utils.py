@@ -3,15 +3,57 @@ import os
 import requests
 import yaml
 from colorama import Fore
-from git import Repo
+from git.repo import Repo
+
+from autogpt.logs import logger
+
+# Use readline if available (for clean_input)
+try:
+    import readline
+except ImportError:
+    pass
+
+from autogpt.config import Config
 
 
-def clean_input(prompt: str = ""):
+def clean_input(prompt: str = "", talk=False):
     try:
-        return input(prompt)
+        cfg = Config()
+        if cfg.chat_messages_enabled:
+            for plugin in cfg.plugins:
+                if not hasattr(plugin, "can_handle_user_input"):
+                    continue
+                if not plugin.can_handle_user_input(user_input=prompt):
+                    continue
+                plugin_response = plugin.user_input(user_input=prompt)
+                if not plugin_response:
+                    continue
+                if plugin_response.lower() in [
+                    "yes",
+                    "yeah",
+                    "y",
+                    "ok",
+                    "okay",
+                    "sure",
+                    "alright",
+                ]:
+                    return cfg.authorise_key
+                elif plugin_response.lower() in [
+                    "no",
+                    "nope",
+                    "n",
+                    "negative",
+                ]:
+                    return cfg.exit_key
+                return plugin_response
+
+        # ask for input, default when just pressing Enter is y
+        logger.info("Asking user via keyboard...")
+        answer = input(prompt)
+        return answer
     except KeyboardInterrupt:
-        print("You interrupted Auto-GPT")
-        print("Quitting...")
+        logger.info("You interrupted Auto-GPT")
+        logger.info("Quitting...")
         exit(0)
 
 
@@ -43,15 +85,17 @@ def readable_file_size(size, decimal_places=2):
     return f"{size:.{decimal_places}f} {unit}"
 
 
-def get_bulletin_from_web() -> str:
+def get_bulletin_from_web():
     try:
         response = requests.get(
             "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md"
         )
         if response.status_code == 200:
             return response.text
-    except:
-        return ""
+    except requests.exceptions.RequestException:
+        pass
+
+    return ""
 
 
 def get_current_git_branch() -> str:
