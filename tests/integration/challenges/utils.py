@@ -1,3 +1,4 @@
+import random
 from typing import Optional
 
 import pytest
@@ -32,3 +33,12 @@ def get_level_to_run(
     if user_selected_level > max_level:
         raise ValueError(f"This challenge was not designed to go beyond {max_level}")
     return user_selected_level
+
+
+def generate_noise(noise_size) -> str:
+    return "".join(
+        random.choices(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+            k=noise_size,
+        )
+    )
