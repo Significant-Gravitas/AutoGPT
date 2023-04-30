@@ -17,7 +17,7 @@ class Config(metaclass=Singleton):
 
     def __init__(self) -> None:
         """Initialize the Config class"""
-        self.workspace_path = None
+        self.workspace_path = os.getenv("WORKSPACE_PATH", None)
         self.file_logger_path = None
 
         self.debug_mode = False

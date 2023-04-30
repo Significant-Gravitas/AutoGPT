@@ -81,14 +81,16 @@ def run_auto_gpt(
     if install_plugin_deps:
         install_plugin_dependencies()
 
-    if workspace_directory is None:
-        workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
-    else:
+    if workspace_directory:
         workspace_directory = Path(workspace_directory)
+    elif cfg.workspace_path:
+        workspace_directory = Path(cfg.workspace_path)
+    else:
+        workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
+
     # TODO: pass in the ai_settings file and the env file and have them cloned into
     #   the workspace directory so we can bind them to the agent.
     workspace_directory = Workspace.make_workspace(workspace_directory)
-    cfg.workspace_path = str(workspace_directory)
 
     # HACK: doing this here to collect some globals that depend on the workspace.
     file_logger_path = workspace_directory / "file_logger.txt"
