@@ -132,7 +132,6 @@ class Agent:
 
                 logger.info(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands"
-
                     "'n' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
