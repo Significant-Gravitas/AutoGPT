@@ -119,7 +119,52 @@ def mock_say_text(mocker):
     return mocker.patch("autogpt.agent.agent.say_text")
 
 
-def test_execute_command(
+@pytest.fixture
+def typewriter_first_9(mocker):
+    return [
+        mocker.call(
+            "TEST AI THOUGHTS:",
+            "\x1b[33m",
+            "I will start by browsing the website www.steinhaug.no to gather information and save it to a file.",
+        ),
+        mocker.call(
+            "REASONING:",
+            "\x1b[33m",
+            "The website is likely to have information about Steinhaug ut på eventyr, which is the topic of my "
+            "report. Browsing the website is a good starting point for gathering information.",
+        ),
+        mocker.call("PLAN:", "\x1b[33m", ""),
+        mocker.call("- ", "\x1b[32m", "Browse www.steinhaug.no"),
+        mocker.call("- ", "\x1b[32m", "Save information to file"),
+        mocker.call("- ", "\x1b[32m", "Repeat for YouTube channel"),
+        mocker.call("- ", "\x1b[32m", "Write structured report"),
+        mocker.call(
+            "CRITICISM:",
+            "\x1b[33m",
+            "I need to ensure that I am not gathering irrelevant information from the website and that I am saving "
+            "the information in a structured manner.",
+        ),
+        mocker.call(
+            "NEXT ACTION: ",
+            "\x1b[36m",
+            "COMMAND = \x1b[36mbrowse_website\x1b[0m  ARGUMENTS = \x1b[36m{'url': 'www.steinhaug.no', 'question': "
+            "'all information'}\x1b[0m",
+        ),
+    ]
+
+
+@pytest.fixture
+def typewriter_command_returned(mocker):
+    return [
+        mocker.call(
+            "SYSTEM: ",
+            "\x1b[33m",
+            "Command browse_website returned: command return value",
+        ),
+    ]
+
+
+def test_execute_command_continuous_mode(
     agent,
     mocker,
     single_agent_loop_setup,
@@ -131,8 +176,10 @@ def test_execute_command(
     mock_logger_warn,
     mock_logger_error,
     mock_say_text,
+    typewriter_first_9,
+    typewriter_command_returned,
 ):
-    # Test with browse_website expected outcome
+    # Test with browse_website expected outcome in continuous mode with limit = 1
     agent.start_interaction_loop()
 
     expected_execute_command = [
@@ -151,39 +198,13 @@ def test_execute_command(
     actual_logger_info_calls = mock_logger_info.call_args_list
     assert actual_logger_info_calls == expected_logger_info
 
-    expected_typewriter_log = [
-        mocker.call(
-            "TEST AI THOUGHTS:",
-            "\x1b[33m",
-            "I will start by browsing the website www.steinhaug.no to gather information and save it to a file.",
-        ),
-        mocker.call(
-            "REASONING:",
-            "\x1b[33m",
-            "The website is likely to have information about Steinhaug ut på eventyr, which is the topic of my report. Browsing the website is a good starting point for gathering information.",
-        ),
-        mocker.call("PLAN:", "\x1b[33m", ""),
-        mocker.call("- ", "\x1b[32m", "Browse www.steinhaug.no"),
-        mocker.call("- ", "\x1b[32m", "Save information to file"),
-        mocker.call("- ", "\x1b[32m", "Repeat for YouTube channel"),
-        mocker.call("- ", "\x1b[32m", "Write structured report"),
-        mocker.call(
-            "CRITICISM:",
-            "\x1b[33m",
-            "I need to ensure that I am not gathering irrelevant information from the website and that I am saving the information in a structured manner.",
-        ),
-        mocker.call(
-            "NEXT ACTION: ",
-            "\x1b[36m",
-            "COMMAND = \x1b[36mbrowse_website\x1b[0m  ARGUMENTS = \x1b[36m{'url': 'www.steinhaug.no', 'question': 'all information'}\x1b[0m",
-        ),
-        mocker.call(
-            "SYSTEM: ",
-            "\x1b[33m",
-            "Command browse_website returned: command return value",
-        ),
-        mocker.call("Continuous Limit Reached: ", "\x1b[33m", "1"),
-    ]
+    expected_typewriter_log = (
+        typewriter_first_9
+        + typewriter_command_returned
+        + [
+            mocker.call("Continuous Limit Reached: ", "\x1b[33m", "1"),
+        ]
+    )
 
     actual_logger_typewriter_log_calls = mock_logger_typewriter_log.call_args_list
     assert actual_logger_typewriter_log_calls == expected_typewriter_log
@@ -199,58 +220,6 @@ def test_execute_command(
     expected_say_text = [mocker.call("I want to execute browse_website")]
     actual_say_text_calls = mock_say_text.call_args_list
     assert actual_say_text_calls == expected_say_text
-
-    # Test error handling for print_assistant_thoughts, get_command, say_text and _resolve_pathlike_command_args
-
-    # expected_logger_error = [mocker.call("Error: \n", "The Exception")]
-    #
-    # mock_print_assistant_thoughts = mocker.patch(
-    #     "autogpt.agent.agent.print_assistant_thoughts"
-    # )
-    # mock_print_assistant_thoughts.side_effect = Exception("The Exception")
-    # mock_logger_error.reset_mock()
-    #
-    # agent.start_interaction_loop()
-    #
-    # actual_logger_error_calls = mock_logger_error.call_args_list
-    # assert actual_logger_error_calls == expected_logger_error
-    #
-    # mock_print_assistant_thoughts.stop()
-    #
-    # mock_get_command = mocker.patch("autogpt.agent.agent.get_command")
-    # mock_get_command.side_effect = Exception("The Exception")
-    # mock_logger_error.reset_mock()
-    #
-    # agent.start_interaction_loop()
-    #
-    # actual_logger_error_calls = mock_logger_error.call_args_list
-    # assert actual_logger_error_calls == expected_logger_error
-    #
-    # del mock_get_command
-    # # mock_get_command.patch.stop()
-    #
-    # mock_resolve_pathlike_command_args = mocker.patch.object(
-    #     agent, "_resolve_pathlike_command_args"
-    # )
-    # mock_resolve_pathlike_command_args.side_effect = Exception("The Exception")
-    # mock_logger_error.reset_mock()
-    #
-    # agent.start_interaction_loop()
-    #
-    # actual_logger_error_calls = mock_logger_error.call_args_list
-    # assert actual_logger_error_calls == expected_logger_error
-    #
-    # mock_resolve_pathlike_command_args.stop()
-    #
-    # mock_say_text.side_effect = Exception("The Exception")
-    # mock_logger_error.reset_mock()
-    #
-    # agent.start_interaction_loop()
-    #
-    # actual_logger_error_calls = mock_logger_error.call_args_list
-    # assert actual_logger_error_calls == expected_logger_error
-    #
-    # mock_say_text.reset_mock(side_effect=True)
 
 
 @pytest.fixture
@@ -340,3 +309,97 @@ def test_resolve_pathlike_command_args_error(
 
     actual_logger_error_calls = mock_logger_error.call_args_list
     assert actual_logger_error_calls == expected_logger_error
+
+
+@pytest.fixture
+def typewriter_command_auth_by_user(mocker):
+    return [
+        mocker.call(
+            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=", "\x1b[35m", ""
+        )
+    ]
+
+
+@pytest.fixture
+def typewriter_verify_by_agent(mocker):
+    return [
+        mocker.call(
+            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
+            "\x1b[32m",
+            "",
+        )
+    ]
+
+
+@pytest.fixture
+def self_feedback_test():
+    return (
+        "Y This plan effectively addresses the role of an AI agent tasked with gathering information "
+        "about Steinhaug ut på eventyr and writing a structured report. The agent's thought process "
+        "of browsing the website and YouTube channel is a logical starting point for gathering "
+        "information. The reasoning of saving information to a file and repeating the process for the "
+        "YouTube channel ensures that all relevant information is collected and organized. The plan "
+        "also addresses the concern of gathering irrelevant information and saving it in a structured "
+        "manner. Overall, this plan is effective in achieving the role's objectives."
+    )
+
+
+@pytest.fixture
+def typewriter_self_feedback(mocker, self_feedback_test):
+    return [
+        mocker.call(
+            f"SELF FEEDBACK: {self_feedback_test}",
+            "\x1b[33m",
+            "",
+        )
+    ]
+
+
+@pytest.fixture
+def mock_get_self_feedback(mocker, agent, self_feedback_test):
+    mock = mocker.patch.object(agent, "get_self_feedback")
+    mock.return_value = self_feedback_test
+    return mock
+
+
+def test_execute_command_normal_mode(
+    agent,
+    mocker,
+    config,
+    mock_input,
+    mock_chat_with_ai,
+    mock_execute_command,
+    mock_logger_info,
+    mock_logger_typewriter_log,
+    mock_logger_warn,
+    mock_logger_error,
+    mock_say_text,
+    mock_get_self_feedback,
+    typewriter_first_9,
+    typewriter_command_auth_by_user,
+    typewriter_command_returned,
+    typewriter_verify_by_agent,
+    typewriter_self_feedback,
+):
+    mock_input.side_effect = ["", "y", "s", "n"]
+    agent.start_interaction_loop()
+
+    expected_logger_warn = [mocker.call("Invalid input format.")]
+
+    actual_logger_warn_calls = mock_logger_warn.call_args_list
+    assert actual_logger_warn_calls == expected_logger_warn
+
+    expected_typewriter_log = (
+        typewriter_first_9
+        + typewriter_command_auth_by_user
+        + typewriter_command_returned
+        + typewriter_first_9
+        + typewriter_verify_by_agent
+        + typewriter_self_feedback
+        + typewriter_command_auth_by_user
+        + typewriter_command_returned
+        + typewriter_first_9
+    )
+
+    actual_logger_typewriter_log_calls = mock_logger_typewriter_log.call_args_list
+    assert actual_logger_typewriter_log_calls == expected_typewriter_log
