@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 from zipimport import zipimporter
+from colorama import Fore
 
 import openapi_python_client
 import requests
@@ -261,8 +262,18 @@ def denylist_allowlist_check(plugin_name: str, cfg: Config) -> bool:
         return False
     if plugin_name in cfg.plugins_allowlist:
         return True
-    ack = input(
-        f"WARNING: Plugin {plugin_name} found. But not in the"
-        f" allowlist... Load? ({cfg.authorise_key}/{cfg.exit_key}): "
-    )
-    return ack.lower() == cfg.authorise_key
+
+    if cfg.continuous_mode:
+        logger.typewriter_log(
+            "WARNING: ",
+            Fore.RED,
+            f"WARNING: Plugin {plugin_name} found. But not in the"
+            f" allowlist... Skipping due to continuous-mode.",
+        )
+        return False
+    else:
+        ack = input(
+            f"WARNING: Plugin {plugin_name} found. But not in the"
+            f" allowlist... Load? ({cfg.authorise_key}/{cfg.exit_key}): "
+        )
+        return ack.lower() == cfg.authorise_key
