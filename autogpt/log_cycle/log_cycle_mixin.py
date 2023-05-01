@@ -8,16 +8,16 @@ from autogpt.logs import logger
 class LogCycleMixin:
     MESSAGES_PER_CYCLE = 3
     DEFAULT_PREFIX = "Agent"
-    FULL_MESSAGE_HISTORY_FILE_NAME = "full_message_history.json"
-    CURRENT_CONTEXT_FILE_NAME = "current_context.json"
+    FULL_MESSAGE_HISTORY_FILE_NAME = "full_message_history.txt"
+    PROMPT_SUMMARY_FILE_NAME = "prompt_summary.txt"
+    SUMMARY_FILE_NAME = "summary.txt"
+    PROMPT_NEXT_ACTION_FILE_NAME = "prompt_next_action.txt"
+    NEXT_ACTION_FILE_NAME = "next_action.txt"
 
     @staticmethod
     def create_directory_if_not_exists(directory_path: str) -> None:
         if not os.path.exists(directory_path):
             os.makedirs(directory_path, exist_ok=True)
-
-    def get_cycle_number(self) -> int:
-        return len(self.full_message_history) // self.MESSAGES_PER_CYCLE
 
     def create_outer_directory(self) -> str:
         log_directory = (
@@ -39,8 +39,7 @@ class LogCycleMixin:
         return outer_folder_path
 
     def create_inner_directory(self, outer_folder_path: str) -> str:
-        cycle_number = self.get_cycle_number()
-        nested_folder_name = str(cycle_number).zfill(3)
+        nested_folder_name = str(self.cycle_count).zfill(3)
         nested_folder_path = os.path.join(outer_folder_path, nested_folder_name)
         self.create_directory_if_not_exists(nested_folder_path)
 
@@ -57,6 +56,9 @@ class LogCycleMixin:
 
         # Use the imported logger to log the JSON data
         json_data = json.dumps(data, ensure_ascii=False, indent=4)
-        log_file_path = os.path.join(nested_folder_path, file_name)
+        log_file_path = os.path.join(
+            nested_folder_path, f"{self.log_count_within_cycle}_{file_name}"
+        )
 
         logger.log_json(json_data, log_file_path)
+        self.log_count_within_cycle += 1

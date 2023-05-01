@@ -222,12 +222,12 @@ class AutoGptFormatter(logging.Formatter):
         if hasattr(record, "color"):
             record.title_color = (
                 getattr(record, "color")
-                + getattr(record, "title")
+                + getattr(record, "title", "")
                 + " "
                 + Style.RESET_ALL
             )
         else:
-            record.title_color = getattr(record, "title")
+            record.title_color = getattr(record, "title", "")
         if hasattr(record, "msg"):
             record.message_no_color = remove_color_codes(getattr(record, "msg"))
         else:

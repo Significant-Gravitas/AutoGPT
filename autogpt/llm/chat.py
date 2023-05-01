@@ -10,13 +10,6 @@ from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.token_counter import count_message_tokens
 from autogpt.log_cycle.log_cycle_mixin import LogCycleMixin
 from autogpt.logs import logger
-from autogpt.memory_management.store_memory import (
-    save_memory_trimmed_from_context_window,
-)
-from autogpt.memory_management.summary_memory import (
-    get_newly_trimmed_messages,
-    update_running_summary,
-)
 
 cfg = Config()
 
@@ -156,15 +149,11 @@ def chat_with_ai(
 
             # Insert Memories
             if len(full_message_history) > 0:
-                (
-                    newly_trimmed_messages,
-                    agent.last_memory_index,
-                ) = get_newly_trimmed_messages(
-                    full_message_history=full_message_history,
+                newly_trimmed_messages = agent.get_newly_trimmed_messages(
                     current_context=current_context,
                     last_memory_index=agent.last_memory_index,
                 )
-                agent.summary_memory = update_running_summary(
+                agent.update_running_summary(
                     current_memory=agent.summary_memory,
                     new_events=newly_trimmed_messages,
                 )
@@ -232,7 +221,7 @@ def chat_with_ai(
                 logger.debug(f"{message['role'].capitalize()}: {message['content']}")
                 logger.debug("")
             logger.debug("----------- END OF CONTEXT ----------------")
-            agent.log_cycle(current_context, LogCycleMixin.CURRENT_CONTEXT_FILE_NAME)
+            agent.log_cycle(current_context, LogCycleMixin.PROMPT_NEXT_ACTION_FILE_NAME)
 
             # TODO: use a model defined elsewhere, so that model can contain
             # temperature and other settings we care about

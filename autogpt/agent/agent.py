@@ -9,13 +9,14 @@ from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_j
 from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
 from autogpt.log_cycle.log_cycle_mixin import LogCycleMixin
 from autogpt.logs import logger, print_assistant_thoughts
+from autogpt.memory_management.summary_memory import SummaryMemoryMixin
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
 
 
-class Agent(LogCycleMixin):
+class Agent(LogCycleMixin, SummaryMemoryMixin):
     """Agent class for interacting with Auto-GPT.
 
     Attributes:
@@ -71,26 +72,28 @@ class Agent(LogCycleMixin):
         self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.cycle_count = 0
+        self.log_count_within_cycle = 0
 
     def start_interaction_loop(self):
         # Interaction Loop
         cfg = Config()
-        loop_count = 0
+        self.cycle_count = 0
         command_name = None
         arguments = None
         user_input = ""
 
         while True:
             # Discontinue if continuous limit is reached
+            self.cycle_count += 1
+            self.log_count_within_cycle = 0
             self.log_cycle(
                 self.full_message_history, LogCycleMixin.FULL_MESSAGE_HISTORY_FILE_NAME
             )
-
-            loop_count += 1
             if (
                 cfg.continuous_mode
                 and cfg.continuous_limit > 0
-                and loop_count > cfg.continuous_limit
+                and self.cycle_count > cfg.continuous_limit
             ):
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
@@ -129,6 +132,7 @@ class Agent(LogCycleMixin):
 
                 except Exception as e:
                     logger.error("Error: \n", str(e))
+            self.log_cycle(assistant_reply_json, LogCycleMixin.NEXT_ACTION_FILE_NAME)
 
             if not cfg.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
