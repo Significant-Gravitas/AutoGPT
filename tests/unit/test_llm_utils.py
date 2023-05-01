@@ -1,8 +1,7 @@
 import pytest
 from openai.error import APIError, RateLimitError
 
-from autogpt.llm import COSTS, get_ada_embedding
-from autogpt.llm.llm_utils import chunked_tokens, retry_openai_api
+from autogpt.llm import llm_utils
 
 
 @pytest.fixture(params=[RateLimitError, APIError])
@@ -13,19 +12,12 @@ def error(request):
         return request.param("Error")
 
 
-@pytest.fixture
-def mock_create_embedding(mocker):
-    return mocker.patch(
-        "autogpt.llm.llm_utils.create_embedding", return_value=[0.1, 0.2, 0.3]
-    )
-
-
 def error_factory(error_instance, error_count, retry_count, warn_user=True):
     class RaisesError:
         def __init__(self):
             self.count = 0
 
-        @retry_openai_api(
+        @llm_utils.retry_openai_api(
             num_retries=retry_count, backoff_base=0.001, warn_user=warn_user
         )
         def __call__(self):
@@ -38,7 +30,7 @@ def error_factory(error_instance, error_count, retry_count, warn_user=True):
 
 
 def test_retry_open_api_no_error(capsys):
-    @retry_openai_api()
+    @llm_utils.retry_openai_api()
     def f():
         return 1
 
@@ -111,16 +103,6 @@ def test_retry_openapi_other_api_error(capsys):
     assert output.out == ""
 
 
-def test_get_ada_embedding(mock_create_embedding, api_manager):
-    model = "text-embedding-ada-002"
-    embedding = get_ada_embedding("test")
-    mock_create_embedding.assert_called_once_with(
-        "test", model="text-embedding-ada-002"
-    )
-
-    assert embedding == [0.1, 0.2, 0.3]
-
-
 def test_chunked_tokens():
     text = "Auto-GPT is an experimental open-source application showcasing the capabilities of the GPT-4 language model"
     expected_output = [
@@ -147,5 +129,5 @@ def test_chunked_tokens():
             1646,
         )
     ]
-    output = list(chunked_tokens(text, "cl100k_base", 8191))
+    output = list(llm_utils.chunked_tokens(text, "cl100k_base", 8191))
     assert output == expected_output
