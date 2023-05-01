@@ -1,9 +1,10 @@
 """File operations for AutoGPT"""
 from __future__ import annotations
 
+import hashlib
 import os
 import os.path
-from typing import Generator
+from typing import Dict, Generator, Literal, Tuple
 
 import requests
 from colorama import Back, Fore
@@ -11,36 +12,102 @@ from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.commands.command import command
 from autogpt.config import Config
+from autogpt.logs import logger
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 
 CFG = Config()
 
+Operation = Literal["write", "append", "delete"]
 
-def check_duplicate_operation(operation: str, filename: str) -> bool:
-    """Check if the operation has already been performed on the given file
 
-    Args:
-        operation (str): The operation to check for
-        filename (str): The name of the file to check for
+def text_checksum(text: str) -> str:
+    """Get the hex checksum for the given text."""
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
+
+
+def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | None]]:
+    """Parse the file operations log and return a tuple containing the log entries"""
+    try:
+        log = open(log_path, "r", encoding="utf-8")
+    except FileNotFoundError:
+        return
+
+    for line in log:
+        line = line.replace("File Operation Logger", "").strip()
+        if not line:
+            continue
+        operation, tail = line.split(": ", maxsplit=1)
+        operation = operation.strip()
+        if operation in ("write", "append"):
+            try:
+                path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
+            except ValueError:
+                path, checksum = tail.strip(), None
+            yield (operation, path, checksum)
+        elif operation == "delete":
+            yield (operation, tail.strip(), None)
+
+    log.close()
+
+
+def file_operations_state(log_path: str) -> Dict:
+    """Iterates over the operations log and returns the expected state.
+
+    Parses a log file at CFG.file_logger_path to construct a dictionary that maps
+    each file path written or appended to its checksum. Deleted files are removed
+    from the dictionary.
 
     Returns:
-        bool: True if the operation has already been performed on the file
+        A dictionary mapping file paths to their checksums.
+
+    Raises:
+        FileNotFoundError: If CFG.file_logger_path is not found.
+        ValueError: If the log file content is not in the expected format.
     """
-    log_content = read_file(CFG.file_logger_path)
-    log_entry = f"{operation}: {filename}\n"
-    return log_entry in log_content
+    state = {}
+    for operation, path, checksum in operations_from_log(log_path):
+        if operation in ("write", "append"):
+            state[path] = checksum
+        elif operation == "delete":
+            del state[path]
+    return state
 
 
-def log_operation(operation: str, filename: str) -> None:
+def is_duplicate_operation(
+    operation: Operation, filename: str, checksum: str | None = None
+) -> bool:
+    """Check if the operation has already been performed
+
+    Args:
+        operation: The operation to check for
+        filename: The name of the file to check for
+        checksum: The checksum of the contents to be written
+
+    Returns:
+        True if the operation has already been performed on the file
+    """
+    state = file_operations_state(CFG.file_logger_path)
+    if operation == "delete" and filename not in state:
+        return True
+    if operation == "write" and state.get(filename) == checksum:
+        return True
+    return False
+
+
+def log_operation(operation: str, filename: str, checksum: str | None = None) -> None:
     """Log the file operation to the file_logger.txt
 
     Args:
-        operation (str): The operation to log
-        filename (str): The name of the file the operation was performed on
+        operation: The operation to log
+        filename: The name of the file the operation was performed on
+        checksum: The checksum of the contents to be written
     """
-    log_entry = f"{operation}: {filename}\n"
-    append_to_file(CFG.file_logger_path, log_entry, should_log=False)
+    log_entry = f"{operation}: {filename}"
+    if checksum is not None:
+        log_entry += f" #{checksum}"
+    logger.debug(f"Logging file operation: {log_entry}")
+    append_to_file(CFG.file_logger_path, f"{log_entry}\n", should_log=False)
 
 
 def split_file(
@@ -89,8 +156,8 @@ def read_file(filename: str) -> str:
         with open(filename, "r", encoding="utf-8") as f:
             content = f.read()
         return content
-    except Exception as e:
-        return f"Error: {str(e)}"
+    except Exception as err:
+        return f"Error: {err}"
 
 
 def ingest_file(
@@ -106,25 +173,25 @@ def ingest_file(
     :param overlap: The number of overlapping characters between chunks, default is 200
     """
     try:
-        print(f"Working with file {filename}")
+        logger.info(f"Working with file {filename}")
         content = read_file(filename)
         content_length = len(content)
-        print(f"File length: {content_length} characters")
+        logger.info(f"File length: {content_length} characters")
 
         chunks = list(split_file(content, max_length=max_length, overlap=overlap))
 
         num_chunks = len(chunks)
         for i, chunk in enumerate(chunks):
-            print(f"Ingesting chunk {i + 1} / {num_chunks} into memory")
+            logger.info(f"Ingesting chunk {i + 1} / {num_chunks} into memory")
             memory_to_add = (
                 f"Filename: {filename}\n" f"Content part#{i + 1}/{num_chunks}: {chunk}"
             )
 
             memory.add(memory_to_add)
 
-        print(f"Done ingesting {num_chunks} chunks from {filename}.")
-    except Exception as e:
-        print(f"Error while ingesting file '{filename}': {str(e)}")
+        logger.info(f"Done ingesting {num_chunks} chunks from {filename}.")
+    except Exception as err:
+        logger.info(f"Error while ingesting file '{filename}': {err}")
 
 
 @command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
@@ -138,17 +205,18 @@ def write_to_file(filename: str, text: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    if check_duplicate_operation("write", filename):
+    checksum = text_checksum(text)
+    if is_duplicate_operation("write", filename, checksum):
         return "Error: File has already been updated."
     try:
         directory = os.path.dirname(filename)
         os.makedirs(directory, exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:
             f.write(text)
-        log_operation("write", filename)
+        log_operation("write", filename, checksum)
         return "File written to successfully."
-    except Exception as e:
-        return f"Error: {str(e)}"
+    except Exception as err:
+        return f"Error: {err}"
 
 
 @command(
@@ -168,15 +236,17 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
     try:
         directory = os.path.dirname(filename)
         os.makedirs(directory, exist_ok=True)
-        with open(filename, "a") as f:
+        with open(filename, "a", encoding="utf-8") as f:
             f.write(text)
 
         if should_log:
-            log_operation("append", filename)
+            with open(filename, "r", encoding="utf-8") as f:
+                checksum = text_checksum(f.read())
+            log_operation("append", filename, checksum=checksum)
 
         return "Text appended successfully."
-    except Exception as e:
-        return f"Error: {str(e)}"
+    except Exception as err:
+        return f"Error: {err}"
 
 
 @command("delete_file", "Delete file", '"filename": "<filename>"')
@@ -189,19 +259,19 @@ def delete_file(filename: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    if check_duplicate_operation("delete", filename):
+    if is_duplicate_operation("delete", filename):
         return "Error: File has already been deleted."
     try:
         os.remove(filename)
         log_operation("delete", filename)
         return "File deleted successfully."
-    except Exception as e:
-        return f"Error: {str(e)}"
+    except Exception as err:
+        return f"Error: {err}"
 
 
-@command("search_files", "Search Files", '"directory": "<directory>"')
-def search_files(directory: str) -> list[str]:
-    """Search for files in a directory
+@command("list_files", "List Files in Directory", '"directory": "<directory>"')
+def list_files(directory: str) -> list[str]:
+    """lists files in a directory recursively
 
     Args:
         directory (str): The directory to search in
@@ -264,8 +334,8 @@ def download_file(url, filename):
                         progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
                         spinner.update_message(f"{message} {progress}")
 
-            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(total_size)})'
-    except requests.HTTPError as e:
-        return f"Got an HTTP Error whilst trying to download file: {e}"
-    except Exception as e:
-        return "Error: " + str(e)
+            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(downloaded_size)})'
+    except requests.HTTPError as err:
+        return f"Got an HTTP Error whilst trying to download file: {err}"
+    except Exception as err:
+        return f"Error: {err}"
