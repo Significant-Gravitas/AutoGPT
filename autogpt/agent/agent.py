@@ -1,11 +1,10 @@
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
-from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
-from autogpt.json_utils.utilities import validate_json
-from autogpt.llm_utils import create_chat_completion
+from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
+from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
@@ -57,6 +56,10 @@ class Agent:
         cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
+        self.summary_memory = (
+            "I was created."  # Initial memory necessary to avoid hilucination
+        )
+        self.last_memory_index = 0
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
         self.command_registry = command_registry
@@ -85,7 +88,6 @@ class Agent:
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
                 break
-
             # Send message to AI, get response
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
@@ -105,7 +107,7 @@ class Agent:
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
-                validate_json(assistant_reply_json, "llm_response_format_1")
+                validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
@@ -114,6 +116,7 @@ class Agent:
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
+
                     arguments = self._resolve_pathlike_command_args(arguments)
 
                 except Exception as e:
@@ -123,23 +126,27 @@ class Agent:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
+                self.user_input = ""
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
                     f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
                     f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
-                print(
+
+                logger.info(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands"
                     "'n' to exit program, or enter feedback for "
-                    f"{self.ai_name}...",
-                    flush=True,
+                    f"{self.ai_name}..."
                 )
                 while True:
-                    console_input = clean_input(
-                        Fore.MAGENTA + "Input:" + Style.RESET_ALL
-                    )
-                    if console_input.lower().strip() == "y":
+                    if cfg.chat_messages_enabled:
+                        console_input = clean_input("Waiting for your response...")
+                    else:
+                        console_input = clean_input(
+                            Fore.MAGENTA + "Input:" + Style.RESET_ALL
+                        )
+                    if console_input.lower().strip() == cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().strip() == "s":
@@ -157,28 +164,28 @@ class Agent:
                             Fore.YELLOW,
                             "",
                         )
-                        if self_feedback_resp[0].lower().strip() == "y":
+                        if self_feedback_resp[0].lower().strip() == cfg.authorise_key:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         else:
                             user_input = self_feedback_resp
                         break
                     elif console_input.lower().strip() == "":
-                        print("Invalid input format.")
+                        logger.warn("Invalid input format.")
                         continue
-                    elif console_input.lower().startswith("y -"):
+                    elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
                         try:
                             self.next_action_count = abs(
                                 int(console_input.split(" ")[1])
                             )
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
-                            print(
+                            logger.warn(
                                 "Invalid input format. Please enter 'y -n' where n is"
                                 " the number of continuous tasks."
                             )
                             continue
                         break
-                    elif console_input.lower() == "n":
+                    elif console_input.lower() == cfg.exit_key:
                         user_input = "EXIT"
                         break
                     else:
@@ -193,7 +200,7 @@ class Agent:
                         "",
                     )
                 elif user_input == "EXIT":
-                    print("Exiting...", flush=True)
+                    logger.info("Exiting...")
                     break
             else:
                 # Print command
@@ -232,29 +239,19 @@ class Agent:
                     result = plugin.post_command(command_name, result)
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
-            if command_name != "do_nothing":
-                memory_to_add = (
-                    f"Assistant Reply: {assistant_reply} "
-                    f"\nResult: {result} "
-                    f"\nHuman Feedback: {user_input} "
+
+            # Check if there's a result from the command append it to the message
+            # history
+            if result is not None:
+                self.full_message_history.append(create_chat_message("system", result))
+                logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
+            else:
+                self.full_message_history.append(
+                    create_chat_message("system", "Unable to execute command")
                 )
-
-                self.memory.add(memory_to_add)
-
-                # Check if there's a result from the command append it to the message
-                # history
-                if result is not None:
-                    self.full_message_history.append(
-                        create_chat_message("system", result)
-                    )
-                    logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
-                else:
-                    self.full_message_history.append(
-                        create_chat_message("system", "Unable to execute command")
-                    )
-                    logger.typewriter_log(
-                        "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
-                    )
+                logger.typewriter_log(
+                    "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
+                )
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:

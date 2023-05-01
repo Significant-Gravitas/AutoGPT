@@ -15,7 +15,7 @@ google-api-python-client #(https://developers.google.com/custom-search/v1/overvi
 pinecone-client==2.2.1
 clickhouse-connect
 redis
-orjson
+orjson==3.8.10
 Pillow
 selenium==4.1.4
 webdriver-manager
@@ -35,6 +35,7 @@ isort
 gitpython==3.1.31
 auto-gpt-plugin-template
 mkdocs
+pymdown-extensions
 
 
 # OpenAI and Generic plugins import
@@ -51,4 +52,4 @@ pytest-cov
 pytest-integration
 pytest-mock
 vcrpy
-pytest-vcr
+pytest-recording

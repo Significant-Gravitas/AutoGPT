@@ -1,4 +1,5 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
+[![Official Website](https://img.shields.io/badge/Official%20Website-agpt.co-blue?style=flat&logo=world&logoColor=white)](https://agpt.co)
 [![Unit Tests](https://img.shields.io/github/actions/workflow/status/Significant-Gravitas/Auto-GPT/ci.yml?label=unit%20tests)](https://github.com/Significant-Gravitas/Auto-GPT/actions/workflows/ci.yml)
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
 [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)](https://github.com/Significant-Gravitas/Auto-GPT/stargazers)
@@ -89,28 +90,20 @@ Your support is greatly appreciated. Development of this free, open-source proje
 - 🗃️ File storage and summarization with GPT-3.5
 - 🔌 Extensibility with Plugins
 
-## 📋 Requirements
-
-Choose an environment to run Auto-GPT in (pick one):
-
-  - [Docker](https://docs.docker.com/get-docker/) (*recommended*)
-  - Python 3.10 or later (instructions: [for Windows](https://www.tutorialspoint.com/how-to-install-python-in-windows))
-  - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-
 ## Quickstart
 
-1. Set up your OpenAI [API Keys](https://platform.openai.com/account/api-keys)
+1. Get an OpenAI [API Key](https://platform.openai.com/account/api-keys)
 2. Download the [latest release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
-3. Follow the [installation instructions][docs/install]
+3. Follow the [installation instructions][docs/setup]
 4. Configure any additional features you want, or install some [plugins][docs/plugins]
 5. [Run][docs/usage] the app
 
-Please see the [documentation][docs] linked below for full setup instructions and configuration options.
+Please see the [documentation][docs] for full setup instructions and configuration options.
 
 [docs]: https://significant-gravitas.github.io/Auto-GPT/
 
 ## 📖 Documentation
-* [⚙️ Installation][docs/install]
+* [⚙️ Setup][docs/setup]
 * [💻 Usage][docs/usage]
 * [🔌 Plugins][docs/plugins]
 * Configuration
@@ -119,7 +112,7 @@ Please see the [documentation][docs] linked below for full setup instructions an
   * [🗣️ Voice (TTS)](https://significant-gravitas.github.io/Auto-GPT/configuration/voice/)
   * [🖼️ Image Generation](https://significant-gravitas.github.io/Auto-GPT/configuration/imagegen/)
 
-[docs/install]: https://significant-gravitas.github.io/Auto-GPT/installation/
+[docs/setup]: https://significant-gravitas.github.io/Auto-GPT/setup/
 [docs/usage]: https://significant-gravitas.github.io/Auto-GPT/usage/
 [docs/plugins]: https://significant-gravitas.github.io/Auto-GPT/plugins/
 
@@ -133,7 +126,6 @@ This experiment aims to showcase the potential of GPT-4 but comes with some limi
 
 ## 🛡 Disclaimer
 
-Disclaimer
 This project, Auto-GPT, is an experimental application and is provided "as-is" without any warranty, express or implied. By using this software, you agree to assume all risks associated with its use, including but not limited to data loss, system failure, or any other issues that may arise.
 
 The developers and contributors of this project do not accept any responsibility or liability for any losses, damages, or other consequences that may occur as a result of using this software. You are solely responsible for any decisions and actions taken based on the information provided by Auto-GPT.
