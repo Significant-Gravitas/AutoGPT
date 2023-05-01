@@ -51,11 +51,10 @@ def mock_input(mocker):
     return mock
 
 
-def test_execute_command(agent, mocker, config, mock_input):
-    mock_execute_command = mocker.patch("autogpt.agent.agent.execute_command")
-    mock_execute_command.return_value = "command return value"
-    mock_chat_with_ai = mocker.patch("autogpt.agent.agent.chat_with_ai")
-    mock_chat_with_ai.return_value = """{
+@pytest.fixture
+def mock_chat_with_ai(mocker):
+    mock = mocker.patch("autogpt.agent.agent.chat_with_ai")
+    mock.return_value = """{
     "thoughts": {
         "text": "I will start by browsing the website www.steinhaug.no to gather information and save it to a file.",
         "reasoning": "The website is likely to have information about Steinhaug ut på eventyr, which is the topic of my report. Browsing the website is a good starting point for gathering information.",
@@ -71,15 +70,69 @@ def test_execute_command(agent, mocker, config, mock_input):
         }
     }
 }"""
+    return mock
 
-    mock_logger_info = mocker.patch.object(Logger, "info")
-    mock_logger_typewriter_log = mocker.patch.object(Logger, "typewriter_log")
-    mock_logger_warn = mocker.patch.object(Logger, "warn")
 
+@pytest.fixture
+def mock_execute_command(mocker):
+    mock = mocker.patch("autogpt.agent.agent.execute_command")
+    mock.return_value = "command return value"
+    return mock
+
+
+@pytest.fixture
+def single_agent_loop_setup(config):
     original_continuous_limit = config.continuous_limit
+    original_speak_mode = config.speak_mode
     original_continuous_mode = config.continuous_mode
     config.continuous_limit = 1
     config.continuous_mode = True
+    config.speak_mode = True
+    yield config
+    config.continuous_limit = original_continuous_limit
+    config.continuous_mode = original_continuous_mode
+    config.speak_mode = original_speak_mode
+
+
+@pytest.fixture
+def mock_logger_info(mocker):
+    return mocker.patch.object(Logger, "info")
+
+
+@pytest.fixture
+def mock_logger_typewriter_log(mocker):
+    return mocker.patch.object(Logger, "typewriter_log")
+
+
+@pytest.fixture
+def mock_logger_warn(mocker):
+    return mocker.patch.object(Logger, "warn")
+
+
+@pytest.fixture
+def mock_logger_error(mocker):
+    return mocker.patch.object(Logger, "error")
+
+
+@pytest.fixture
+def mock_say_text(mocker):
+    return mocker.patch("autogpt.agent.agent.say_text")
+
+
+def test_execute_command(
+    agent,
+    mocker,
+    single_agent_loop_setup,
+    mock_input,
+    mock_chat_with_ai,
+    mock_execute_command,
+    mock_logger_info,
+    mock_logger_typewriter_log,
+    mock_logger_warn,
+    mock_logger_error,
+    mock_say_text,
+):
+    # Test with browse_website expected outcome
     agent.start_interaction_loop()
 
     expected_execute_command = [
@@ -139,5 +192,151 @@ def test_execute_command(agent, mocker, config, mock_input):
     actual_logger_warn_calls = mock_logger_warn.call_args_list
     assert actual_logger_warn_calls == expected_logger_warn
 
-    config.continuous_limit = original_continuous_limit
-    config.continuous_mode = original_continuous_mode
+    expected_logger_error = []
+    actual_logger_error_calls = mock_logger_error.call_args_list
+    assert actual_logger_error_calls == expected_logger_error
+
+    expected_say_text = [mocker.call("I want to execute browse_website")]
+    actual_say_text_calls = mock_say_text.call_args_list
+    assert actual_say_text_calls == expected_say_text
+
+    # Test error handling for print_assistant_thoughts, get_command, say_text and _resolve_pathlike_command_args
+
+    # expected_logger_error = [mocker.call("Error: \n", "The Exception")]
+    #
+    # mock_print_assistant_thoughts = mocker.patch(
+    #     "autogpt.agent.agent.print_assistant_thoughts"
+    # )
+    # mock_print_assistant_thoughts.side_effect = Exception("The Exception")
+    # mock_logger_error.reset_mock()
+    #
+    # agent.start_interaction_loop()
+    #
+    # actual_logger_error_calls = mock_logger_error.call_args_list
+    # assert actual_logger_error_calls == expected_logger_error
+    #
+    # mock_print_assistant_thoughts.stop()
+    #
+    # mock_get_command = mocker.patch("autogpt.agent.agent.get_command")
+    # mock_get_command.side_effect = Exception("The Exception")
+    # mock_logger_error.reset_mock()
+    #
+    # agent.start_interaction_loop()
+    #
+    # actual_logger_error_calls = mock_logger_error.call_args_list
+    # assert actual_logger_error_calls == expected_logger_error
+    #
+    # del mock_get_command
+    # # mock_get_command.patch.stop()
+    #
+    # mock_resolve_pathlike_command_args = mocker.patch.object(
+    #     agent, "_resolve_pathlike_command_args"
+    # )
+    # mock_resolve_pathlike_command_args.side_effect = Exception("The Exception")
+    # mock_logger_error.reset_mock()
+    #
+    # agent.start_interaction_loop()
+    #
+    # actual_logger_error_calls = mock_logger_error.call_args_list
+    # assert actual_logger_error_calls == expected_logger_error
+    #
+    # mock_resolve_pathlike_command_args.stop()
+    #
+    # mock_say_text.side_effect = Exception("The Exception")
+    # mock_logger_error.reset_mock()
+    #
+    # agent.start_interaction_loop()
+    #
+    # actual_logger_error_calls = mock_logger_error.call_args_list
+    # assert actual_logger_error_calls == expected_logger_error
+    #
+    # mock_say_text.reset_mock(side_effect=True)
+
+
+@pytest.fixture
+def expected_logger_error(mocker):
+    return [mocker.call("Error: \n", "The Exception")]
+
+
+# Test error handling for print_assistant_thoughts
+def test_execute_command_print_assistant_thoughts_error(
+    agent,
+    mocker,
+    single_agent_loop_setup,
+    mock_input,
+    mock_logger_error,
+    mock_chat_with_ai,
+    mock_execute_command,
+    expected_logger_error,
+):
+    mock_print_assistant_thoughts = mocker.patch(
+        "autogpt.agent.agent.print_assistant_thoughts"
+    )
+    mock_print_assistant_thoughts.side_effect = Exception("The Exception")
+
+    agent.start_interaction_loop()
+
+    actual_logger_error_calls = mock_logger_error.call_args_list
+    assert actual_logger_error_calls == expected_logger_error
+
+
+# Test error handling for get_command
+def test_execute_command_get_command_error(
+    agent,
+    mocker,
+    single_agent_loop_setup,
+    mock_input,
+    mock_logger_error,
+    mock_chat_with_ai,
+    mock_execute_command,
+    expected_logger_error,
+):
+    mock_get_command = mocker.patch("autogpt.agent.agent.get_command")
+    mock_get_command.side_effect = Exception("The Exception")
+
+    agent.start_interaction_loop()
+
+    actual_logger_error_calls = mock_logger_error.call_args_list
+    assert actual_logger_error_calls == expected_logger_error
+
+
+# Test error handling for say_text
+def test_say_text_error(
+    agent,
+    single_agent_loop_setup,
+    mock_input,
+    mock_logger_error,
+    mock_chat_with_ai,
+    mock_execute_command,
+    mock_say_text,
+    expected_logger_error,
+):
+    mock_say_text.side_effect = Exception("The Exception")
+
+    agent.start_interaction_loop()
+
+    actual_logger_error_calls = mock_logger_error.call_args_list
+    assert actual_logger_error_calls == expected_logger_error
+
+
+# Test error handling for _resolve_pathlike_command_args
+def test_resolve_pathlike_command_args_error(
+    agent,
+    mocker,
+    single_agent_loop_setup,
+    mock_input,
+    mock_logger_error,
+    mock_chat_with_ai,
+    mock_execute_command,
+    mock_say_text,
+    expected_logger_error,
+):
+    mock_resolve_pathlike_command_args = mocker.patch.object(
+        agent, "_resolve_pathlike_command_args"
+    )
+    mock_resolve_pathlike_command_args.side_effect = Exception("The Exception")
+
+    agent.start_interaction_loop()
+
+    actual_logger_error_calls = mock_logger_error.call_args_list
+    assert actual_logger_error_calls == expected_logger_error
