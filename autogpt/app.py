@@ -180,7 +180,7 @@ def shutdown() -> NoReturn:
 @command(
     "start_agent",
     "Start GPT Agent",
-    '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"',
+    '"name": "<name>", "task": "<a description of the task being assigned for our own records>", "prompt": "<A lengthy detailed prompt such as \'You are an expert in project management. You will manage any project that is presented to you. You are presented with a tic-tac-toe game project. Please begin to manage the development of this game.\'>"',
 )
 def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
     """Start an agent with a given name, task, and prompt
