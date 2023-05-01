@@ -25,8 +25,23 @@ class PromptGenerator:
         self.response_format = {
             "thoughts": {
                 "text": "thought",
-                "reasoning": "reasoning",
-                "plan": "- short bulleted\n- list that conveys\n- long-term plan",
+                "reasoning": "reasoning, such as what you need to validate before doing a command",
+                "plan": {
+                    1: {
+                        "command: ": "command name",
+                        "Logic": "What this command will accomplish and how it relates to the goals and thoughts above."
+                    },
+                    2: {
+                        "command: ": "next command name",
+                        "Logic":
+                            "What this second command will accomplish which in theory will be done after command 1 is done"
+                    },
+                    3: {
+                        "command: ": "next command name",
+                        "Logic":
+                            "What this third command would do, there can be up to 8 planned commands."
+                    }
+                },
                 "criticism": "constructive self-criticism",
                 "speak": "thoughts summary to say to user",
             },
