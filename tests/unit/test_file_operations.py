@@ -389,7 +389,9 @@ def test_ingest_file(config, file_to_ingest, ingest_config, file_content, mocker
 def test_ingest_file_error(config, file_to_ingest, ingest_config, mocker):
     mock_logger = mocker.patch.object(Logger, "info")
 
-    file_ops.ingest_file(str(file_to_ingest), None, ingest_config.max_len, ingest_config.overlap)
+    file_ops.ingest_file(
+        str(file_to_ingest), None, ingest_config.max_len, ingest_config.overlap
+    )
 
     expected_calls = [
         mocker.call(f"Working with file {file_to_ingest}"),
