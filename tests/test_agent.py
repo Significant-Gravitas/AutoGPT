@@ -194,10 +194,6 @@ def test_execute_command_continuous_mode(
     actual_execute_command_calls = mock_execute_command.call_args_list
     assert actual_execute_command_calls == expected_execute_command
 
-    expected_logger_info = []
-    actual_logger_info_calls = mock_logger_info.call_args_list
-    assert actual_logger_info_calls == expected_logger_info
-
     expected_typewriter_log = (
         typewriter_first_9
         + typewriter_command_returned
@@ -208,6 +204,10 @@ def test_execute_command_continuous_mode(
 
     actual_logger_typewriter_log_calls = mock_logger_typewriter_log.call_args_list
     assert actual_logger_typewriter_log_calls == expected_typewriter_log
+
+    expected_logger_info = []
+    actual_logger_info_calls = mock_logger_info.call_args_list
+    assert actual_logger_info_calls == expected_logger_info
 
     expected_logger_warn = []
     actual_logger_warn_calls = mock_logger_warn.call_args_list
@@ -220,6 +220,169 @@ def test_execute_command_continuous_mode(
     expected_say_text = [mocker.call("I want to execute browse_website")]
     actual_say_text_calls = mock_say_text.call_args_list
     assert actual_say_text_calls == expected_say_text
+
+
+@pytest.fixture
+def typewriter_command_auth_by_user(mocker):
+    return [
+        mocker.call(
+            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=", "\x1b[35m", ""
+        )
+    ]
+
+
+@pytest.fixture
+def typewriter_verify_by_agent(mocker):
+    return [
+        mocker.call(
+            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
+            "\x1b[32m",
+            "",
+        )
+    ]
+
+
+@pytest.fixture
+def self_feedback_test():
+    return (
+        "Y This plan effectively addresses the role of an AI agent tasked with gathering information "
+        "about Steinhaug ut på eventyr and writing a structured report. The agent's thought process "
+        "of browsing the website and YouTube channel is a logical starting point for gathering "
+        "information. The reasoning of saving information to a file and repeating the process for the "
+        "YouTube channel ensures that all relevant information is collected and organized. The plan "
+        "also addresses the concern of gathering irrelevant information and saving it in a structured "
+        "manner. Overall, this plan is effective in achieving the role's objectives."
+    )
+
+
+@pytest.fixture
+def typewriter_self_feedback(mocker, self_feedback_test):
+    return [
+        mocker.call(
+            f"SELF FEEDBACK: {self_feedback_test}",
+            "\x1b[33m",
+            "",
+        )
+    ]
+
+
+@pytest.fixture
+def typewriter_human_feedback(mocker, self_feedback_test):
+    return [mocker.call("SYSTEM: ", "\x1b[33m", "Human feedback: some human feedback")]
+
+
+@pytest.fixture
+def mock_get_self_feedback(mocker, agent, self_feedback_test):
+    mock = mocker.patch.object(agent, "get_self_feedback")
+    mock.return_value = self_feedback_test
+    return mock
+
+
+@pytest.fixture
+def info_action_prompt(mocker):
+    return [
+        mocker.call(
+            "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback "
+            "commands'n' to exit program, or enter feedback for Test AI...",
+        )
+    ]
+
+
+@pytest.fixture
+def info_asking_user(mocker):
+    return [
+        mocker.call(
+            "Asking user via keyboard...",
+        )
+    ]
+
+
+@pytest.fixture
+def info_exiting(mocker):
+    return [mocker.call("Exiting...")]
+
+
+def test_execute_command_normal_mode(
+    agent,
+    mocker,
+    config,
+    mock_input,
+    mock_chat_with_ai,
+    mock_execute_command,
+    mock_logger_info,
+    mock_logger_typewriter_log,
+    mock_logger_warn,
+    mock_logger_error,
+    mock_say_text,
+    mock_get_self_feedback,
+    typewriter_first_9,
+    typewriter_command_auth_by_user,
+    typewriter_command_returned,
+    typewriter_verify_by_agent,
+    typewriter_self_feedback,
+    typewriter_human_feedback,
+    info_action_prompt,
+    info_asking_user,
+    info_exiting,
+):
+    mock_input.side_effect = ["", "y", "s", "y - 3", "some human feedback", "y -3", "n"]
+    agent.start_interaction_loop()
+
+    expected_typewriter_log = (
+        typewriter_first_9
+        + typewriter_command_auth_by_user
+        + typewriter_command_returned
+        + typewriter_first_9
+        + typewriter_verify_by_agent
+        + typewriter_self_feedback
+        + typewriter_command_auth_by_user
+        + typewriter_command_returned
+        + typewriter_first_9
+        + typewriter_human_feedback
+        + typewriter_first_9
+        + typewriter_command_auth_by_user
+        + typewriter_command_returned
+        + typewriter_first_9
+        + typewriter_command_returned
+        + typewriter_first_9
+        + typewriter_command_returned
+        + typewriter_first_9
+    )
+
+    actual_logger_typewriter_log_calls = mock_logger_typewriter_log.call_args_list
+    assert actual_logger_typewriter_log_calls == expected_typewriter_log
+
+    expected_logger_info = (
+        info_action_prompt
+        + info_asking_user * 2
+        + info_action_prompt
+        + info_asking_user
+        + info_action_prompt
+        + info_asking_user
+        + info_asking_user
+        + info_action_prompt
+        + info_asking_user
+        + info_action_prompt
+        + info_asking_user
+        + info_exiting
+    )
+
+    actual_logger_info_calls = mock_logger_info.call_args_list
+    assert actual_logger_info_calls == expected_logger_info
+
+    expected_logger_warn = [
+        mocker.call("Invalid input format."),
+        mocker.call(
+            "Invalid input format. Please enter 'y -n' where n is the number of continuous tasks."
+        ),
+    ]
+
+    actual_logger_warn_calls = mock_logger_warn.call_args_list
+    assert actual_logger_warn_calls == expected_logger_warn
+
+    expected_logger_error = []
+    actual_logger_error_calls = mock_logger_error.call_args_list
+    assert actual_logger_error_calls == expected_logger_error
 
 
 @pytest.fixture
@@ -309,97 +472,3 @@ def test_resolve_pathlike_command_args_error(
 
     actual_logger_error_calls = mock_logger_error.call_args_list
     assert actual_logger_error_calls == expected_logger_error
-
-
-@pytest.fixture
-def typewriter_command_auth_by_user(mocker):
-    return [
-        mocker.call(
-            "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=", "\x1b[35m", ""
-        )
-    ]
-
-
-@pytest.fixture
-def typewriter_verify_by_agent(mocker):
-    return [
-        mocker.call(
-            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
-            "\x1b[32m",
-            "",
-        )
-    ]
-
-
-@pytest.fixture
-def self_feedback_test():
-    return (
-        "Y This plan effectively addresses the role of an AI agent tasked with gathering information "
-        "about Steinhaug ut på eventyr and writing a structured report. The agent's thought process "
-        "of browsing the website and YouTube channel is a logical starting point for gathering "
-        "information. The reasoning of saving information to a file and repeating the process for the "
-        "YouTube channel ensures that all relevant information is collected and organized. The plan "
-        "also addresses the concern of gathering irrelevant information and saving it in a structured "
-        "manner. Overall, this plan is effective in achieving the role's objectives."
-    )
-
-
-@pytest.fixture
-def typewriter_self_feedback(mocker, self_feedback_test):
-    return [
-        mocker.call(
-            f"SELF FEEDBACK: {self_feedback_test}",
-            "\x1b[33m",
-            "",
-        )
-    ]
-
-
-@pytest.fixture
-def mock_get_self_feedback(mocker, agent, self_feedback_test):
-    mock = mocker.patch.object(agent, "get_self_feedback")
-    mock.return_value = self_feedback_test
-    return mock
-
-
-def test_execute_command_normal_mode(
-    agent,
-    mocker,
-    config,
-    mock_input,
-    mock_chat_with_ai,
-    mock_execute_command,
-    mock_logger_info,
-    mock_logger_typewriter_log,
-    mock_logger_warn,
-    mock_logger_error,
-    mock_say_text,
-    mock_get_self_feedback,
-    typewriter_first_9,
-    typewriter_command_auth_by_user,
-    typewriter_command_returned,
-    typewriter_verify_by_agent,
-    typewriter_self_feedback,
-):
-    mock_input.side_effect = ["", "y", "s", "n"]
-    agent.start_interaction_loop()
-
-    expected_logger_warn = [mocker.call("Invalid input format.")]
-
-    actual_logger_warn_calls = mock_logger_warn.call_args_list
-    assert actual_logger_warn_calls == expected_logger_warn
-
-    expected_typewriter_log = (
-        typewriter_first_9
-        + typewriter_command_auth_by_user
-        + typewriter_command_returned
-        + typewriter_first_9
-        + typewriter_verify_by_agent
-        + typewriter_self_feedback
-        + typewriter_command_auth_by_user
-        + typewriter_command_returned
-        + typewriter_first_9
-    )
-
-    actual_logger_typewriter_log_calls = mock_logger_typewriter_log.call_args_list
-    assert actual_logger_typewriter_log_calls == expected_typewriter_log
