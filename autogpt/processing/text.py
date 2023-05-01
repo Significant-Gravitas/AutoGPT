@@ -11,6 +11,9 @@ from autogpt.memory import get_memory
 
 CFG = Config()
 
+# Load the spaCy model and add sentencizer only once
+nlp = spacy.load(CFG.browse_spacy_language_model)
+nlp.add_pipe("sentencizer")
 
 def split_text(
     text: str,
@@ -31,8 +34,6 @@ def split_text(
         ValueError: If the text is longer than the maximum length
     """
     flatened_paragraphs = " ".join(text.split("\n"))
-    nlp = spacy.load(CFG.browse_spacy_language_model)
-    nlp.add_pipe("sentencizer")
     doc = nlp(flatened_paragraphs)
     sentences = [sent.text.strip() for sent in doc.sents]
 
