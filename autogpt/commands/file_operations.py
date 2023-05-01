@@ -11,6 +11,7 @@ from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.commands.command import command
 from autogpt.config import Config
+from autogpt.logs import logger
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 
@@ -106,25 +107,25 @@ def ingest_file(
     :param overlap: The number of overlapping characters between chunks, default is 200
     """
     try:
-        print(f"Working with file {filename}")
+        logger.info(f"Working with file {filename}")
         content = read_file(filename)
         content_length = len(content)
-        print(f"File length: {content_length} characters")
+        logger.info(f"File length: {content_length} characters")
 
         chunks = list(split_file(content, max_length=max_length, overlap=overlap))
 
         num_chunks = len(chunks)
         for i, chunk in enumerate(chunks):
-            print(f"Ingesting chunk {i + 1} / {num_chunks} into memory")
+            logger.info(f"Ingesting chunk {i + 1} / {num_chunks} into memory")
             memory_to_add = (
                 f"Filename: {filename}\n" f"Content part#{i + 1}/{num_chunks}: {chunk}"
             )
 
             memory.add(memory_to_add)
 
-        print(f"Done ingesting {num_chunks} chunks from {filename}.")
+        logger.info(f"Done ingesting {num_chunks} chunks from {filename}.")
     except Exception as e:
-        print(f"Error while ingesting file '{filename}': {str(e)}")
+        logger.info(f"Error while ingesting file '{filename}': {str(e)}")
 
 
 @command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
@@ -199,9 +200,9 @@ def delete_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
-@command("search_files", "Search Files", '"directory": "<directory>"')
-def search_files(directory: str) -> list[str]:
-    """Search for files in a directory
+@command("list_files", "List Files in Directory", '"directory": "<directory>"')
+def list_files(directory: str) -> list[str]:
+    """lists files in a directory recursively
 
     Args:
         directory (str): The directory to search in
@@ -264,7 +265,7 @@ def download_file(url, filename):
                         progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
                         spinner.update_message(f"{message} {progress}")
 
-            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(total_size)})'
+            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(downloaded_size)})'
     except requests.HTTPError as e:
         return f"Got an HTTP Error whilst trying to download file: {e}"
     except Exception as e:
