@@ -41,11 +41,12 @@ def memory_none(agent_test_config: Config):
 
 @pytest.fixture
 def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace):
-    command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.commands.web_selenium")
-    command_registry.import_commands("autogpt.app")
-
+    command_list = [
+        "autogpt.commands.file_operations",
+        "autogpt.commands.web_selenium",
+        "autogpt.app",
+    ]
+    command_registry = CommandRegistry(command_list)
     ai_config = AIConfig(
         ai_name="browse_website-GPT",
         ai_role="an AI designed to use the browse_website command to visit http://books.toscrape.com/catalogue/meditations_33/index.html, answer the question 'What is the price of the book?' and write the price to a file named \"browse_website.txt\", and use the task_complete command to complete the task.",
@@ -77,9 +78,8 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
 
 @pytest.fixture
 def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace):
+    command_list = ["autogpt.commands.file_operations", "autogpt.app"]
     command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.app")
 
     ai_config = AIConfig(
         ai_name="write_to_file-GPT",
@@ -117,9 +117,8 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
 def memory_management_agent(
     agent_test_config, memory_local_cache, workspace: Workspace
 ):
-    command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.app")
+    command_list = ["autogpt.commands.file_operations", "autogpt.app"]
+    command_registry = CommandRegistry(command_list)
 
     ai_config = AIConfig(
         ai_name="Follow-Instructions-GPT",
