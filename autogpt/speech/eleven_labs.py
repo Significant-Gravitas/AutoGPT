@@ -1,8 +1,8 @@
 """ElevenLabs speech module"""
 import os
-from playsound import playsound
 
 import requests
+from playsound import playsound
 
 from autogpt.config import Config
 from autogpt.speech.base import VoiceBase
@@ -14,7 +14,7 @@ class ElevenLabsSpeech(VoiceBase):
     """ElevenLabs speech class"""
 
     def _setup(self) -> None:
-        """Setup the voices, API key, etc.
+        """Set up the voices, API key, etc.
 
         Returns:
             None: None
@@ -69,6 +69,8 @@ class ElevenLabsSpeech(VoiceBase):
         Returns:
             bool: True if the request was successful, False otherwise
         """
+        from autogpt.logs import logger
+
         tts_url = (
             f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_index]}"
         )
@@ -81,6 +83,6 @@ class ElevenLabsSpeech(VoiceBase):
             os.remove("speech.mpeg")
             return True
         else:
-            print("Request failed with status code:", response.status_code)
-            print("Response content:", response.content)
+            logger.warn("Request failed with status code:", response.status_code)
+            logger.info("Response content:", response.content)
             return False
