@@ -1,4 +1,5 @@
 """Set up the AI and its goals"""
+import os
 from colorama import Fore, Style
 
 from autogpt import utils
@@ -30,28 +31,31 @@ def prompt_user() -> AIConfig:
     )
 
     # Get AI Name from User
+    default_ai_name = os.getenv("DEFAULT_NAME", "Entrepreneur-GPT")
     logger.typewriter_log(
-        "Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'"
+        "Name your AI: ", Fore.GREEN, f"For example, '{default_ai_name}'"
     )
     ai_name = utils.clean_input("AI Name: ")
     if ai_name == "":
-        ai_name = "Entrepreneur-GPT"
+        ai_name = default_ai_name
 
     logger.typewriter_log(
         f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
     )
 
     # Get AI Role from User
+    default_ai_role = os.getenv("DEFAULT_ROLE", 
+                            "an AI designed to autonomously develop and run businesses with the"
+                            " sole goal of increasing your net worth.")
     logger.typewriter_log(
         "Describe your AI's role: ",
         Fore.GREEN,
-        "For example, 'an AI designed to autonomously develop and run businesses with"
-        " the sole goal of increasing your net worth.'",
+        f"For example, '{default_ai_role}.'",
     )
+    
     ai_role = utils.clean_input(f"{ai_name} is: ")
     if ai_role == "":
-        ai_role = "an AI designed to autonomously develop and run businesses with the"
-        " sole goal of increasing your net worth."
+        ai_role = default_ai_role
 
     # Enter up to 5 goals for the AI
     logger.typewriter_log(
