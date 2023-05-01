@@ -1,7 +1,7 @@
 """File operations for AutoGPT"""
 from __future__ import annotations
-import hashlib
 
+import hashlib
 import os
 import os.path
 from typing import Dict, Generator, Literal, Tuple
@@ -18,7 +18,8 @@ from autogpt.utils import readable_file_size
 
 CFG = Config()
 
-Operation = Literal['write', 'append', 'delete']
+Operation = Literal["write", "append", "delete"]
+
 
 def text_checksum(text: str) -> str:
     """Get the hex checksum for the given text."""
@@ -26,6 +27,7 @@ def text_checksum(text: str) -> str:
 
 
 def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | None]]:
+    """Parse the file operations log and return a tuple containing the log entries"""
     with open(log_path, "r", encoding="utf-8") as log:
         for line in log:
             line = line.replace("File Operation Logger", "").strip()

@@ -2,21 +2,22 @@
 This set of unit tests is designed to test the file operations that autoGPT has access to.
 """
 
-from contextlib import contextmanager
 import hashlib
 import os
+from contextlib import contextmanager
 from pathlib import Path
-from tempfile import gettempdir, NamedTemporaryFile
-import pytest
+from tempfile import NamedTemporaryFile, gettempdir
 from unittest.mock import patch
-from autogpt.commands import file_operations
 
+import pytest
+
+from autogpt.commands import file_operations
 from autogpt.commands.file_operations import (
     append_to_file,
-    file_operations_state,
-    is_duplicate_operation,
     delete_file,
     download_file,
+    file_operations_state,
+    is_duplicate_operation,
     list_files,
     log_operation,
     operations_from_log,
@@ -57,6 +58,7 @@ def test_directory(workspace):
 @pytest.fixture()
 def test_nested_file(workspace):
     return str(workspace.get_path("nested/test_file.txt"))
+
 
 def test_file_operations():
     log_file_content = (
@@ -109,11 +111,19 @@ def test_is_duplicate_operation():
     }
     with patch.object(file_operations, "file_operations_state", lambda _: state):
         # Test cases with write operations
-        assert is_duplicate_operation("write", "/path/to/file1.txt", "checksum1") is True
-        assert is_duplicate_operation("write", "/path/to/file1.txt", "checksum2") is False
-        assert is_duplicate_operation("write", "/path/to/file3.txt", "checksum3") is False
+        assert (
+            is_duplicate_operation("write", "/path/to/file1.txt", "checksum1") is True
+        )
+        assert (
+            is_duplicate_operation("write", "/path/to/file1.txt", "checksum2") is False
+        )
+        assert (
+            is_duplicate_operation("write", "/path/to/file3.txt", "checksum3") is False
+        )
         # Test cases with append operations
-        assert is_duplicate_operation("append", "/path/to/file1.txt", "checksum1") is False
+        assert (
+            is_duplicate_operation("append", "/path/to/file1.txt", "checksum1") is False
+        )
         # Test cases with delete operations
         assert is_duplicate_operation("delete", "/path/to/file1.txt") is False
         assert is_duplicate_operation("delete", "/path/to/file3.txt") is True
@@ -169,6 +179,7 @@ def test_write_file_adds_the_correct_checksum():
             content = f.read()
         assert content == f"write: {test_filename} #7988e6e8f558f2955105163e09cb53fe\n"
 
+
 def test_write_file_fails_if_content_exists():
     new_content = "This is new content.\n"
     with temp_log_file() as _:
@@ -181,6 +192,7 @@ def test_write_file_fails_if_content_exists():
             )
             result = write_to_file(test_file.name, new_content)
     assert result == "Error: File has already been updated."
+
 
 def test_write_file_succeeds_if_checksum_different():
     new_content = "This is different content.\n"
@@ -227,6 +239,7 @@ def test_append_to_file_uses_checksum_from_appended_file():
         f"append: {test_filename} #{checksum1}\n"
         f"append: {test_filename} #{checksum2}\n"
     )
+
 
 def test_delete_file():
     with NamedTemporaryFile(delete=False) as file_to_delete:
