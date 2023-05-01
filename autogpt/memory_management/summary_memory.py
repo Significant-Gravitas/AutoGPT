@@ -1,3 +1,4 @@
+import copy
 import json
 from typing import Dict, List, Tuple
 
@@ -26,8 +27,9 @@ def get_newly_trimmed_messages(
         int: The new index value for use in the next loop.
     """
     # Select messages in full_message_history with an index higher than last_memory_index
+    # do a deep copy to avoid modifying the original list
     new_messages = [
-        msg for i, msg in enumerate(full_message_history) if i > last_memory_index
+        copy.deepcopy(msg) for i, msg in enumerate(full_message_history) if i > last_memory_index
     ]
 
     # Remove messages that are already present in current_context
