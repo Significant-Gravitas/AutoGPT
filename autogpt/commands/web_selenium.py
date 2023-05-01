@@ -181,4 +181,3 @@ def add_header(driver: WebDriver) -> None:
         driver.execute_script(overlay_script)
     except Exception as e:
         print(f"Error executing overlay.js: {e}")
-
