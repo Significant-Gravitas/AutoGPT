@@ -43,6 +43,7 @@ class Config(metaclass=Singleton):
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
+        self.use_webui = os.getenv("USE_WEBUI") == "True"
         self.execute_local_commands = (
             os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
         )
@@ -272,6 +273,8 @@ class Config(metaclass=Singleton):
 def check_openai_api_key() -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     cfg = Config()
+    if cfg.use_webui:
+        return
     if not cfg.openai_api_key:
         print(
             Fore.RED
