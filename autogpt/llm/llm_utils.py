@@ -159,6 +159,13 @@ def create_chat_completion(
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
+            if cfg.use_webui:
+                response = api_manager.create_chat_completion_webui(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
             else:
                 response = api_manager.create_chat_completion(
                     model=model,
