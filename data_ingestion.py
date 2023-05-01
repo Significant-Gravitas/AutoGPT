@@ -1,7 +1,7 @@
 import argparse
 import logging
 
-from autogpt.commands.file_operations import ingest_file, search_files
+from autogpt.commands.file_operations import ingest_file, list_files
 from autogpt.config import Config
 from autogpt.memory import get_memory
 
@@ -10,12 +10,11 @@ cfg = Config()
 
 def configure_logging():
     logging.basicConfig(
-        filemode="a",
         format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
         datefmt="%H:%M:%S",
         level=logging.DEBUG,
         handlers=[
-            logging.FileHandler(filename="log-ingestion.txt"),
+            logging.FileHandler(filename="log-ingestion.txt", mode="a"),
             logging.StreamHandler(),
         ],
     )
@@ -31,7 +30,7 @@ def ingest_directory(directory, memory, args):
     """
     global logger
     try:
-        files = search_files(directory)
+        files = list_files(directory)
         for file in files:
             ingest_file(file, memory, args.max_length, args.overlap)
     except Exception as e:
@@ -68,7 +67,6 @@ def main() -> None:
         help="The max_length of each chunk when ingesting files (default: 4000)",
         default=4000,
     )
-
     args = parser.parse_args()
 
     # Initialize memory
