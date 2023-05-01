@@ -7,6 +7,9 @@ from autogpt.llm.modelsinfo import COSTS
 from autogpt.logs import logger
 from autogpt.singleton import Singleton
 
+import websocket
+import json
+import sys
 
 class ApiManager(metaclass=Singleton):
     def __init__(self):
@@ -64,6 +67,76 @@ class ApiManager(metaclass=Singleton):
         completion_tokens = response.usage.completion_tokens
         self.update_cost(prompt_tokens, completion_tokens, model)
         return response
+
+    def create_chat_completion_webui(
+        self,
+        messages: list,  # type: ignore
+        model: str | None = None,
+        temperature: float = None,
+        max_tokens: int | None = None,
+        deployment_id=None,
+    ) -> str:
+        """
+        Create a chat completion using the oobabooga webui.
+        Args:
+        messages (list): The list of messages to send to the API.
+        model (str): The model to use for the API call.
+        temperature (float): The temperature to use for the API call.
+        max_tokens (int): The maximum number of tokens for the API call.
+        Returns:
+        str: The AI's response.
+        """
+        # some classes to mimic the response from openai.ChatCompletion.create
+        class Choice():
+            def __init__(self, content):
+                self.message = {
+                    "content": content,
+                }
+
+        class Responses():
+            def __init__(self):
+                self.choices = []
+        cfg = Config()
+        if temperature is None:
+            temperature = cfg.temperature
+        
+        r = Responses()
+        # format the prompt for vicuna
+        payload = "%s\n### Human:\n%s\n### Assistant:\n" % (messages[0]["content"], messages[1]["content"])
+        logger.debug(f"Payload: {payload}")
+
+        # use the stream endpoint instead via websocket to print each token as it's generated
+        ws = websocket.create_connection("ws://localhost:5005/api/v1/stream")
+
+        ws.send(json.dumps({
+            "prompt": payload,
+            "temperature": 0.1,
+            "stopping_strings": ["\n###"],
+        }))
+
+        # stream the response, printing each token as it's generated
+        output = ""
+        while True:
+            message = ws.recv()
+            message = json.loads(message)
+            if message["event"] == "text_stream":
+                output += message["text"]
+                sys.stdout.write(message["text"])
+                sys.stdout.flush()
+            elif message["event"] == "stream_end":
+                ws.close()
+                break
+
+        response_text = output
+        logger.debug(f"Response: {response_text}")
+        # remove "\n##" from the end of the response
+        response_text = response_text[: response_text.rfind("\n##")]
+        prompt_tokens = len(payload.split())
+        completion_tokens = len(response_text.split())
+        self.update_cost(prompt_tokens, completion_tokens, model)
+        r.choices.append(Choice(response_text))
+        logger.debug("Choices: %s" % [choice.message["content"] for choice in r.choices])
+        return r
 
     def update_cost(self, prompt_tokens, completion_tokens, model):
         """
