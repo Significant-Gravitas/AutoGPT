@@ -61,8 +61,11 @@ def update_running_summary(current_memory: str, new_events: List[Dict]) -> str:
         update_running_summary(new_events)
         # Returns: "This reminds you of these events from your past: \nI entered the kitchen and found a scrawled note saying 7."
     """
+    # Create a copy of the new_events list to prevent modifying the original list
+    updated_new_events = new_events.copy()
+
     # Replace "assistant" with "you". This produces much better first person past tense results.
-    for event in new_events:
+    for event in updated_new_events:
         if event["role"].lower() == "assistant":
             event["role"] = "you"
             # Remove "thoughts" dictionary from "content"
@@ -74,8 +77,7 @@ def update_running_summary(current_memory: str, new_events: List[Dict]) -> str:
             event["role"] = "your computer"
         # Delete all user messages
         elif event["role"] == "user":
-            new_events.remove(event)
-
+            updated_new_events.remove(event)
     # This can happen at any point during execturion, not just the beginning
     if len(new_events) == 0:
         new_events = "Nothing new happened."
