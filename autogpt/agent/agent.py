@@ -89,7 +89,8 @@ class Agent:
                 )
                 break
             # Send message to AI, get response
-            with Spinner("Thinking... "):
+            if cfg.use_webui:
+                # webui streaming out breaks the spinner
                 assistant_reply = chat_with_ai(
                     self,
                     self.system_prompt,
@@ -97,7 +98,17 @@ class Agent:
                     self.full_message_history,
                     self.memory,
                     cfg.fast_token_limit,
-                )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                )
+            else:
+                with Spinner("Thinking... "):
+                    assistant_reply = chat_with_ai(
+                        self,
+                        self.system_prompt,
+                        self.triggering_prompt,
+                        self.full_message_history,
+                        self.memory,
+                        cfg.fast_token_limit,
+                    )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
             for plugin in cfg.plugins:
