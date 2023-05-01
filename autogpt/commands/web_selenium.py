@@ -71,7 +71,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
 
     if CFG.selenium_web_browser == "firefox":
         driver = webdriver.Firefox(
-            executable_path=GeckoDriverManager().install(), options=options
+            executable_path='/Users/aidan/Downloads/chromedriver', options=options
         )
     elif CFG.selenium_web_browser == "safari":
         # Requires a bit more setup on the users end
@@ -88,7 +88,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
             options.add_argument("--disable-gpu")
 
         driver = webdriver.Chrome(
-            executable_path=ChromeDriverManager().install(), options=options
+            executable_path='/Users/aidan/Downloads/chromedriver', options=options
         )
     driver.get(url)
 
