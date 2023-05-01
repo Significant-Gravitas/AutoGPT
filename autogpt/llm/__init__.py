@@ -33,7 +33,8 @@ __all__ = [
     "call_ai_function",
     "create_chat_completion",
     "get_ada_embedding",
-    "chunked_tokens," "COSTS",
+    "chunked_tokens",
+    "COSTS",
     "count_message_tokens",
     "count_string_tokens",
 ]
