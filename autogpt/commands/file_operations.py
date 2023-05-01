@@ -76,8 +76,8 @@ def split_file(
         start += max_length - overlap
 
 
-@command("parse_text_document", "Read text from file file", '"filename": "<filename>"')
-def read_text_file(filename: str) -> str:
+@command("read_file", "Read text from file", '"filename": "<filename>"')
+def read_file(filename: str) -> str:
     """Read a text from a file and return the contents
 
     Args:
@@ -93,8 +93,8 @@ def read_text_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
-@command("read_file", "Read file", '"filename": "<filename>"')
-def read_file(filename: str) -> str:
+@command("read_raw_file", "Read file", '"filename": "<filename>"')
+def read_raw_file(filename: str) -> str:
     """Read a file and return the contents
 
     Args:
