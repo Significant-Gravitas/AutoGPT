@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -5,6 +7,7 @@ from autogpt.config import Config
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
 from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
+from autogpt.log_cycle.log_cycle_mixin import LogCycleMixin
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
@@ -12,7 +15,7 @@ from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
 
 
-class Agent:
+class Agent(LogCycleMixin):
     """Agent class for interacting with Auto-GPT.
 
     Attributes:
@@ -67,6 +70,7 @@ class Agent:
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
+        self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -78,6 +82,10 @@ class Agent:
 
         while True:
             # Discontinue if continuous limit is reached
+            self.log_cycle(
+                self.full_message_history, LogCycleMixin.FULL_MESSAGE_HISTORY_FILE_NAME
+            )
+
             loop_count += 1
             if (
                 cfg.continuous_mode
