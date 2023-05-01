@@ -11,6 +11,7 @@ from autogpt.llm.base import (
 from autogpt.llm.chat import chat_with_ai, create_chat_message, generate_context
 from autogpt.llm.llm_utils import (
     call_ai_function,
+    chunked_tokens,
     create_chat_completion,
     get_ada_embedding,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "call_ai_function",
     "create_chat_completion",
     "get_ada_embedding",
+    "chunked_tokens",
     "COSTS",
     "count_message_tokens",
     "count_string_tokens",
