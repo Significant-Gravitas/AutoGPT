@@ -169,9 +169,9 @@ def create_chat_completion(
                 )
             break
         except RateLimitError:
-                print(
-                    f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"
-                )
+            print(
+              f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"
+            )
             if not warned_user:
                 logger.double_check(
                     f"Please double check that you have setup a {Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. "
