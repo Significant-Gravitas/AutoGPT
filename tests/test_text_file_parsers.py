@@ -71,10 +71,8 @@ def mock_pdf_file():
     return f.name
 
 
-def mock_doc_file(is_docx=False):
-    with tempfile.NamedTemporaryFile(
-        mode="wb", delete=False, suffix=".docx" if is_docx else ".doc"
-    ) as f:
+def mock_docx_file():
+    with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".docx") as f:
         document = docx.Document()
         document.add_paragraph(plain_text_str)
         document.save(f.name)
@@ -129,8 +127,7 @@ respective_file_creation_functions = {
     ".txt": mock_text_file,
     ".csv": mock_csv_file,
     ".pdf": mock_pdf_file,
-    ".doc": mock_doc_file,
-    ".docx": partial(mock_doc_file, is_docx=True),
+    ".docx": mock_docx_file,
     ".json": mock_json_file,
     ".xml": mock_xml_file,
     ".yaml": mock_yaml_file,
@@ -142,7 +139,7 @@ respective_file_creation_functions = {
 
 class TestConfig(TestCase):
     def test_parsers(self):
-        binary_files_extensions = [".pdf", ".doc", ".docx"]
+        binary_files_extensions = [".pdf", ".docx"]
         for (
             file_extension,
             c_file_creator,
