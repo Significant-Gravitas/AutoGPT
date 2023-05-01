@@ -8,7 +8,7 @@ This document provides guidelines and best practices to help you contribute effe
 
 By participating in this project, you agree to abide by our [Code of Conduct]. Please read it to understand the expectations we have for everyone who contributes to this project.
 
-[Code of Conduct]: https://significant-gravitas.github.io/Auto-GPT/code-of-conduct.md
+[Code of Conduct]: https://docs.agpt.co/code-of-conduct/
 
 ## 📢 A Quick Word
 Right now we will not be accepting any Contributions that add non-essential commands to Auto-GPT.
@@ -101,7 +101,7 @@ https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-labe
 If you add or change code, make sure the updated code is covered by tests.
 To increase coverage if necessary, [write tests using pytest].
 
-For more info on running tests, please refer to ["Running tests"](https://significant-gravitas.github.io/Auto-GPT/testing/).
+For more info on running tests, please refer to ["Running tests"](https://docs.agpt.co/testing/).
 
 [write tests using pytest]: https://realpython.com/pytest-python-testing/
 
@@ -127,3 +127,22 @@ When you run Pytest locally:
             - Or: The test might be poorly written. In that case, you can make suggestions to change the test.
 
 In our CI pipeline, Pytest will use the cassettes and not call paid API providers, so we need your help to record the replays that you break.
+
+
+### Community Challenges
+Challenges are goals we need Auto-GPT to achieve. 
+To pick the challenge you like, go to the tests/integration/challenges folder and select the areas you would like to work on. 
+- a challenge is new if level_currently_beaten is None
+- a challenge is in progress if level_currently_beaten is greater or equal to 1
+- a challenge is beaten if level_currently_beaten = max_level
+
+Here is an example of how to run the memory challenge A and attempt to beat level 3.
+
+pytest -s tests/integration/challenges/memory/test_memory_challenge_a.py --level=3
+
+To beat a challenge, you're not allowed to change anything in the tests folder, you have to add code in the autogpt folder
+
+Challenges use cassettes. Cassettes allow us to replay your runs in our CI pipeline.
+Don't hesitate to delete the cassettes associated to the challenge you're working on if you need to. Otherwise it will keep replaying the last run.
+
+Once you've beaten a new level of a challenge, please create a pull request and we will analyze how you changed Auto-GPT to beat the challenge.
