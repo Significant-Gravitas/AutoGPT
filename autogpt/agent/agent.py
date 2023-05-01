@@ -234,11 +234,13 @@ class Agent:
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
 
-                result_tlength = count_string_tokens(command_result, cfg.fast_llm_model)
-                memory_tlength = count_string_tokens(
-                    self.summary_memory, cfg.fast_llm_model
+                result_tlength = count_string_tokens(
+                    str(command_result), cfg.fast_llm_model
                 )
-                if result_tlength + memory_tlength + 80 > cfg.fast_token_limit:
+                memory_tlength = count_string_tokens(
+                    str(self.summary_memory), cfg.fast_llm_model
+                )
+                if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
                     result = f"Failure: command {command_name} returned too much output. \
                         Do not execute this command again with the same arguments."
 
