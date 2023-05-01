@@ -113,7 +113,9 @@ def run_auto_gpt(
     if not cfg.command_list_file:
         command_list_file = "command_list.json"
     command_list = load_command_list_from_file(command_list_file)
+    logger.typewriter_log("command_list: ", Fore.GREEN, command_list)
     command_registry = CommandRegistry(command_list)
+    logger.typewriter_log("command_list: ", Fore.GREEN, command_registry)
 
     ai_name = ""
     ai_config = construct_main_ai_config()
