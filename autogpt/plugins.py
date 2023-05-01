@@ -40,6 +40,7 @@ def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
         logger.debug(f"Module '__init__.py' not found in the zipfile @ {zip_path}.")
     return result
 
+
 def write_dict_to_json_file(data: dict, file_path: str) -> None:
     """
     Write a dictionary to a JSON file.
