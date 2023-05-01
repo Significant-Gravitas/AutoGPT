@@ -28,21 +28,27 @@ def text_checksum(text: str) -> str:
 
 def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | None]]:
     """Parse the file operations log and return a tuple containing the log entries"""
-    with open(log_path, "r", encoding="utf-8") as log:
-        for line in log:
-            line = line.replace("File Operation Logger", "").strip()
-            if not line:
-                continue
-            operation, tail = line.split(": ", maxsplit=1)
-            operation = operation.strip()
-            if operation in ("write", "append"):
-                try:
-                    path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
-                except ValueError:
-                    path, checksum = tail.strip(), None
-                yield (operation, path, checksum)
-            elif operation == "delete":
-                yield (operation, tail.strip(), None)
+    try:
+        log = open(log_path, "r", encoding="utf-8")
+    except FileNotFoundError:
+        return
+
+    for line in log:
+        line = line.replace("File Operation Logger", "").strip()
+        if not line:
+            continue
+        operation, tail = line.split(": ", maxsplit=1)
+        operation = operation.strip()
+        if operation in ("write", "append"):
+            try:
+                path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
+            except ValueError:
+                path, checksum = tail.strip(), None
+            yield (operation, path, checksum)
+        elif operation == "delete":
+            yield (operation, tail.strip(), None)
+
+    log.close()
 
 
 def file_operations_state(log_path: str) -> Dict:
@@ -66,13 +72,6 @@ def file_operations_state(log_path: str) -> Dict:
         elif operation == "delete":
             del state[path]
     return state
-
-
-def new_entry(operation: Operation, filename: str, checksum: str | None = None) -> str:
-    """Returns the formatted log entry"""
-    if checksum is None:
-        return f"{operation}: {filename}\n"
-    return f"{operation}: {filename} #{checksum}\n"
 
 
 def is_duplicate_operation(
@@ -104,8 +103,11 @@ def log_operation(operation: str, filename: str, checksum: str | None = None) ->
         filename: The name of the file the operation was performed on
         checksum: The checksum of the contents to be written
     """
-    entry = new_entry(operation, filename, checksum)
-    append_to_file(CFG.file_logger_path, entry, should_log=False)
+    log_entry = f"{operation}: {filename}"
+    if checksum is not None:
+        log_entry += f" #{checksum}"
+    logger.debug(f"Logging file operation: {log_entry}")
+    append_to_file(CFG.file_logger_path, f"{log_entry}\n", should_log=False)
 
 
 def split_file(
