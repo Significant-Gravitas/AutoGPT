@@ -10,7 +10,6 @@ from autogpt.logs import logger
 
 CFG = Config()
 LLM_DEFAULT_RESPONSE_FORMAT = "llm_response_format_1"
-LLM_RESPONSE_DIRECTORY = os.path.dirname(__file__)
 
 
 def extract_char_position(error_message: str) -> int:
