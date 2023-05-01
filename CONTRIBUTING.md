@@ -8,7 +8,7 @@ This document provides guidelines and best practices to help you contribute effe
 
 By participating in this project, you agree to abide by our [Code of Conduct]. Please read it to understand the expectations we have for everyone who contributes to this project.
 
-[Code of Conduct]: https://docs.agpt.co/code-of-conduct.md
+[Code of Conduct]: https://docs.agpt.co/code-of-conduct/
 
 ## 📢 A Quick Word
 Right now we will not be accepting any Contributions that add non-essential commands to Auto-GPT.
