@@ -1,14 +1,46 @@
-import os
+import pytest
 
 from autogpt.agent import Agent
-from autogpt.app import CFG
 from autogpt.commands.command import CommandRegistry
-from autogpt.config import AIConfig
-from autogpt.memory import get_memory
+from autogpt.config import AIConfig, Config
+from autogpt.memory import LocalCache, NoMemory, get_memory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
+from autogpt.workspace import Workspace
 
 
-def create_browser_agent(workspace):
+@pytest.fixture
+def agent_test_config(config: Config):
+    was_continuous_mode = config.continuous_mode
+    was_temperature = config.temperature
+    config.set_continuous_mode(True)
+    config.set_temperature(0)
+    yield config
+    config.set_continuous_mode(was_continuous_mode)
+    config.set_temperature(was_temperature)
+
+
+@pytest.fixture
+def memory_local_cache(agent_test_config: Config):
+    was_memory_backend = agent_test_config.memory_backend
+
+    agent_test_config.set_memory_backend("local_cache")
+    yield get_memory(agent_test_config, init=True)
+
+    agent_test_config.set_memory_backend(was_memory_backend)
+
+
+@pytest.fixture
+def memory_none(agent_test_config: Config):
+    was_memory_backend = agent_test_config.memory_backend
+
+    agent_test_config.set_memory_backend("no_memory")
+    yield get_memory(agent_test_config, init=True)
+
+    agent_test_config.set_memory_backend(was_memory_backend)
+
+
+@pytest.fixture
+def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.commands.web_selenium")
@@ -25,16 +57,12 @@ def create_browser_agent(workspace):
         ],
     )
     ai_config.command_registry = command_registry
-    CFG.set_continuous_mode(True)
-    CFG.set_memory_backend("no_memory")
-    CFG.set_temperature(0)
 
-    memory = get_memory(CFG, init=True)
     system_prompt = ai_config.construct_full_prompt()
 
     agent = Agent(
         ai_name="",
-        memory=memory,
+        memory=memory_none,
         full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
@@ -47,7 +75,8 @@ def create_browser_agent(workspace):
     return agent
 
 
-def create_writer_agent(workspace):
+@pytest.fixture
+def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -62,10 +91,7 @@ def create_writer_agent(workspace):
         ],
     )
     ai_config.command_registry = command_registry
-    CFG.set_continuous_mode(True)
-    CFG.set_memory_backend("no_memory")
-    CFG.set_temperature(0)
-    memory = get_memory(CFG, init=True)
+
     triggering_prompt = (
         "Determine which next command to use, and respond using the"
         " format specified above:"
@@ -74,13 +100,48 @@ def create_writer_agent(workspace):
 
     agent = Agent(
         ai_name="",
-        memory=memory,
+        memory=memory_none,
         full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,
         system_prompt=system_prompt,
         triggering_prompt=triggering_prompt,
+        workspace_directory=workspace.root,
+    )
+
+    return agent
+
+
+@pytest.fixture
+def memory_management_agent(
+    agent_test_config, memory_local_cache, workspace: Workspace
+):
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.app")
+
+    ai_config = AIConfig(
+        ai_name="Follow-Instructions-GPT",
+        ai_role="an AI designed to read the instructions_1.txt file using the read_file method and follow the instructions in the file.",
+        ai_goals=[
+            "Use the command read_file to read the instructions_1.txt file",
+            "Follow the instructions in the instructions_1.txt file",
+        ],
+    )
+    ai_config.command_registry = command_registry
+
+    system_prompt = ai_config.construct_full_prompt()
+
+    agent = Agent(
+        ai_name="",
+        memory=memory_local_cache,
+        full_message_history=[],
+        command_registry=command_registry,
+        config=ai_config,
+        next_action_count=0,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
     )
 
