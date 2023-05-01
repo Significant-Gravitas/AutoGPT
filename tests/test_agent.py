@@ -76,6 +76,8 @@ def test_execute_command(agent, mocker, config, mock_input):
     mock_logger_typewriter_log = mocker.patch.object(Logger, "typewriter_log")
     mock_logger_warn = mocker.patch.object(Logger, "warn")
 
+    original_continuous_limit = config.continuous_limit
+    original_continuous_mode = config.continuous_mode
     config.continuous_limit = 1
     config.continuous_mode = True
     agent.start_interaction_loop()
@@ -136,3 +138,6 @@ def test_execute_command(agent, mocker, config, mock_input):
     expected_logger_warn = []
     actual_logger_warn_calls = mock_logger_warn.call_args_list
     assert actual_logger_warn_calls == expected_logger_warn
+
+    config.continuous_limit = original_continuous_limit
+    config.continuous_mode = original_continuous_mode
