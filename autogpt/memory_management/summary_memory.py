@@ -93,7 +93,7 @@ Summary So Far:
 
 Latest Development:
 """
-{new_events}
+{updated_new_events}
 """
 '''
 
