@@ -107,7 +107,6 @@ extension_to_parser = {
     ".txt": TXTParser(),
     ".csv": TXTParser(),
     ".pdf": PDFParser(),
-    ".doc": DOCXParser(),
     ".docx": DOCXParser(),
     ".json": JSONParser(),
     ".xml": XMLParser(),
