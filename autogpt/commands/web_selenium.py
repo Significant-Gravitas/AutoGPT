@@ -175,4 +175,9 @@ def add_header(driver: WebDriver) -> None:
     Returns:
         None
     """
-    driver.execute_script(open(f"{FILE_DIR}/js/overlay.js", "r").read())
+    try:
+        with open(f"{FILE_DIR}/js/overlay.js", "r") as overlay_file:
+            overlay_script = overlay_file.read()
+        driver.execute_script(overlay_script)
+    except Exception as e:
+        print(f"Error executing overlay.js: {e}")
