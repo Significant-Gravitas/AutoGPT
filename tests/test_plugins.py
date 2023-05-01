@@ -1,6 +1,5 @@
 """
-Test cases for the Config class, which handles the configuration settings
-for the AI and ensures it behaves as a singleton.
+Test cases for the plugins file that includes utility functions for loading plugins.
 """
 
 import pytest
@@ -16,7 +15,13 @@ def cfg_continuous_mode_true():
     return config
 
 
-def test_denylist_allowlist_check_continuous_mode_true(cfg_continuous_mode_true):
+def test_denylist_allowlist_check_continuous_mode_no_prompt(cfg_continuous_mode_true):
+    """
+    Test if the denylist_allowlist_check() function skips user prompting when the continuous_mode attribute is True.
+
+    Args:
+        cfg_continuous_mode_true (pytest.fixture): returns a Config object with continuous_mode set to True
+    """
     plugin_name = "test_plugin"
     result = denylist_allowlist_check(plugin_name, cfg_continuous_mode_true)
 
