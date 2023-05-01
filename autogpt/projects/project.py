@@ -1,8 +1,8 @@
 """
-This module provides a class representing an AI project with a name, API budget, lead agent, and delegated agents.
+This module provides a class representing anproject with a name, API budget, lead agent, and delegated agents.
  
 Classes:
-- Project: A class representing an AI project with a name, API budget, lead agent, and delegated agents.
+- Project: A class representing anproject with a name, API budget, lead agent, and delegated agents.
 
 Functions:
 - None
@@ -12,7 +12,7 @@ Global Variables:
 
 Dependencies:
 - typing: A built-in module for type hints and annotations.
-- AgentConfig: A class representing the configuration settings for an AI agent.
+- AgentConfig: A class representing the configuration settings for anagent.
 
 Attributes:
 - project_name (str): The name of the project.
@@ -32,15 +32,19 @@ import shutil
 import yaml
 from typing import Optional, Type, List
 import datetime
+import uuid
 
 from autogpt.projects.agent_model import AgentModel
+from pathlib import Path
 
-AUTOGPT_VERSION = 'X.Y.Z' # TODO, implement in config.py or main or technical env file
+SAVE_FILE = Path.cwd() / "ai_settings.yaml"
 PROJECT_DIR = "autogpt/projects"
+MAX_NB_PROJECT = 1
+AUTOGPT_VERSION = 'X.Y.Z'  # TODO, implement in config.py or main or technical env file
 
 class Project:
     """
-    A class representing an AI project with a name, API budget, lead agent, and delegated agents.
+    A class representing anproject with a name, API budget, lead agent, and delegated agents.
 
     Attributes:
         project_name (str): The name of the project.
@@ -73,8 +77,8 @@ class Project:
             Deletes the delegated agent at the given position and returns True if successful.
         _check_method_load(cls, config_params: dict) -> bool
             Checks if the given configuration parameters are valid for loading a Project object.
-
     """
+
     def __init__(self, project_name: str, 
                  project_budget: float, 
                  lead_agent: AgentModel,
@@ -103,6 +107,7 @@ class Project:
             team_name (str, optional): The name of the team. Defaults to None.
         """
         self.version = version
+        self.uniq_id = str(uuid.uuid4())
         self.project_name = project_name
         self.project_budget = project_budget
         self.project_memory = project_memory
@@ -151,11 +156,13 @@ class Project:
         Returns:
             project_instance (Project): A Project instance with the loaded configuration parameters.
         """
-        
-        if cls._check_method_load( config_params) : 
+             
+        if cls._check_args_method_load( config_params) : 
+            from autogpt.projects.projects_broker import ProjectsBroker 
+            from autogpt.projects.agent_model import AgentModel  
             project_name = config_params["project_name"]
             project_budget = config_params["project_budget"]
-            version =  config_params.get("version", AUTOGPT_VERSION)
+            version =  config_params.get("version", ProjectsBroker.AUTOGPT_VERSION)
             project_memory = config_params.get("project_memory")
             project_working_directory = config_params.get("project_working_directory")
             project_env = config_params.get("project_env")
@@ -220,9 +227,10 @@ class Project:
                 elif i == project_position_number and current_project_foldername != sub_folder_name :
                     createdir = True  
 
-                # TODO : REMOVE THE 2 LINES IF YOU WORK ON PROJECT
-                shutil.rmtree(current_project_foldername)
-                createdir = True  
+                # TODO : REMOVE THE 3 LINES IF YOU WORK ON PROJECT
+                if i != project_position_number :
+                    shutil.rmtree(current_project_foldername, ignore_errors = True)
+                    createdir = True  
                         
             
             # lead_agent_dict = self.lead_agent.save()
@@ -283,7 +291,7 @@ class Project:
             #return True
 
     @classmethod
-    def _check_method_load(cls, config_params) -> bool :
+    def _check_args_method_load(cls, config_params) -> bool :
         """
         Checks if the given configuration parameters are valid for loading a Project object.
 
@@ -306,6 +314,11 @@ class Project:
             raise ValueError("Project.load() No lead_agent in the project.")
         
         return True
+    
+    # A class to generate UUID so plugin ay overid it 
+    # https://github.com/Significant-Gravitas/Auto-GPT/discussions/3392#step-2-discussed-features
+    def generate_uniqid(self) -> uuid : 
+        return str(uuid.uuid4())
         
 
 
@@ -314,7 +327,7 @@ class Project:
 # NOTE : Not seing it as very useful    
 class AgentTeam:
     """
-    A class representing a team of agents for an AI project.
+    A class representing a team of agents for anproject.
 
     Attributes:
         team_name (str): The name of the team.
@@ -368,6 +381,27 @@ class AgentTeam:
             'lead_agent' : lead_agent_dict,
             'delegated_agents' : delegated_agents
         }
+    
+# TODO : test & migrate to this function
+def object_to_dict(obj):
+    obj_dict = {}
+    for key in dir(obj):
+        if not key.startswith('__'):
+            value = getattr(obj, key)
+            if not callable(value):
+                if isinstance(value, object):
+                    obj_dict[key] = object_to_dict(value)
+                elif isinstance(value, list):
+                    obj_dict[key] = []
+                    for item in value:
+                        if isinstance(item, object):
+                            obj_dict[key].append(object_to_dict(item))
+                        else:
+                            obj_dict[key].append(item)
+                else:
+                    obj_dict[key] = value
+    return obj_dict
+
 
     
 

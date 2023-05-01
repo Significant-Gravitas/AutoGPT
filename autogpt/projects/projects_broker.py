@@ -1,8 +1,8 @@
 """
-A module containing the ProjectConfigBroker class, which is used to manage the configuration settings for AI projects.
+A module containing the ProjectConfigBroker class, which is used to manage the configuration settings forprojects.
 
 Description:
-This module contains the ProjectConfigBroker class object which can be used to manage the configuration settings for AI projects. It provides methods to create a new project, set the current project, get the current project, get all the projects and get a specific project instance. It uses the Project and AgentConfig class objects from the autogpt.project module.
+This module contains the ProjectConfigBroker class object which can be used to manage the configuration settings forprojects. It provides methods to create a new project, set the current project, get the current project, get all the projects and get a specific project instance. It uses the Project and AgentConfig class objects from the autogpt.project module.
 
 Functions:
 None
@@ -15,7 +15,7 @@ Global Variables:
 - SAVE_FILE (str):
 The path to the file where the configuration settings will be saved.
 - MAX_AI_CONFIG (int):
-The maximum number of AI configurations allowed.
+The maximum number of configurations allowed.
 
 Dependencies:
 - os
@@ -44,59 +44,45 @@ from autogpt.singleton import AbstractSingleton
 from autogpt.projects.project import Project
 from autogpt.projects.agent_model import AgentModel
 
-# Soon this will go in a folder where it remembers more stuff about the run(s)
-# @TODO
+# @TODO MOVE to .env
 SAVE_FILE = Path.cwd() / "ai_settings.yaml"
 PROJECT_DIR = "autogpt/projects"
 MAX_NB_PROJECT = 1
-AUTOGPT_VERSION = 'X.Y.Z'  # TODO, implement in config.py or main or technical env file
-
 
 class ProjectsBroker(AbstractSingleton):
     """
-    A singleton class that manages projects and their configurations in AutoGPT.
-
-    This class contains methods to create, manage, and save configurations for AI projects. It provides methods to create a new project, set the current project, get the current project, get all the projects, and get a specific project instance.
+    The ProjectsBroker class is a singleton that manages multiple projects within AutoGPT. It is responsible for loading,
+    saving, creating, and retrieving project configurations.
 
     Attributes:
-        _config_file (str): The path to the configuration file.
-        _projects (list): A list of Project instances containing the project parameters.
-        _current_project_id (int): The number of the current project from 0 to MAX_NB_PROJECT.
+        SAVE_FILE (Path): The path to the AutoGPT configuration file.
+        PROJECT_DIR (str): The directory containing project folders.
+        MAX_NB_PROJECT (int): The maximum number of projects allowed.
+        AUTOGPT_VERSION (str): The current version of AutoGPT.
 
     Methods:
-        __init__(self, config_file: Optional[str] = None) -> None:
-            Initializes a ProjectConfigBroker instance with the specified config file.
-
-        is_loaded(self) -> bool:
-            Checks if the configuration file has been loaded.
-
-        get_projects(self) -> List[Project]:
-            Gets the list of all projects.
-
-        get_project(self, project_position_number: int) -> Project:
-            Gets the specified project instance.
-
-        get_current_project(self) -> Project:
-            Gets the current project instance.
-
-        get_current_project_id(self) -> int:
-            Gets the current project number.
-
-        get_project_folder_list() -> List[str]:
-            Gets a list of project folder paths.
-
-        create_project_dir(project_name: str) -> str:
-            Creates a directory for a project.
-
-        project_dir_name_formater(project_name: str) -> str:
-            Formats a project name as a directory name.
-
-        create_project(self, project_position_number: int, lead_agent: AgentModel, project_budget: float, project_name: str = '', version: str = AUTOGPT_VERSION) -> Project:
-            Creates a new project with the specified parameters and adds it to the list of projects.
+        __init__(self, config_file: str = None) -> None: Initializes a ProjectConfigBroker instance.
+        load(self) -> list: Loads project configurations from the config file.
+        _save(self, is_creation: bool = False, project_position_number: int = -1) -> None: Saves project configurations to the config file.
+        create_project(self, project_position_number: int, lead_agent: AgentModel, project_budget: float, project_name: str = '', version: str = AUTOGPT_VERSION) -> Project: Creates a new project.
+        project_dir_name_formater(project_name: str) -> str: Formats a project name for a valid directory name.
+        create_project_dir(cls, project_name) -> str: Creates a new project directory.
+        get_project_folder_list() -> list: Retrieves a list of project folder paths.
+        set_project_positon_number(cls, new_project_position: int) -> bool: Sets the current project number.
+        get_current_project_position(self) -> int: Retrieves the current project number.
+        get_current_project(self) -> Project: Retrieves the currently selected project.
+        get_project(self, project_positon_number: int) -> AgentModel: Retrieves a project by its position number.
+        get_projects(self) -> list[Project]: Retrieves a list of all projects.
+        is_loaded(self) -> bool: Checks if the configuration file has been loaded.
     """
+    SAVE_FILE = SAVE_FILE
     PROJECT_DIR = PROJECT_DIR
-
-    def __init__(self,  config_file: str = None) -> None:
+    MAX_NB_PROJECT = MAX_NB_PROJECT
+    AUTOGPT_VERSION = 'X.Y.Z' 
+    def __init__(self,  
+                 config_file: str = None,
+                 do_not_load : bool = False # TODO Deprecated-Project
+                 ) -> None:
         """
         Initializes a ProjectConfigBroker instance with the specified project number and config file.
 
@@ -109,7 +95,8 @@ class ProjectsBroker(AbstractSingleton):
         if(not hasattr(self, '_projects') or  self._projects == [] ) :
             self._current_project_position = -1
             self._projects = []
-            self.load()
+            if not do_not_load :
+                self.load()
 
     def load(self) -> list:
         """
@@ -186,7 +173,7 @@ class ProjectsBroker(AbstractSingleton):
             lead_agent (AgentModel): The lead agent for the project.
             project_budget (float): The maximum dollar value for API calls (0.0 means infinite).
             project_name (str, optional): The name of the project. Defaults to ''.
-            version (str, optional): The version of AutoGPT when the project was last run. Defaults to AUTOGPT_VERSION.
+            version (str, optional): The version of AutoGPT when the project was last run. Defaults to ProjectsBroker.AUTOGPT_VERSION.
 
 
         Returns:

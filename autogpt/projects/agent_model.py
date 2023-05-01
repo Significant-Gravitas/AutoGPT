@@ -1,8 +1,8 @@
 """
-This module provides a class for configuring an AI agent's settings.
+This module provides a class for configuring an agent's settings.
  
 Description:
-- This module contains the `AgentConfig` class, which represents the configuration settings for an AI agent.
+- This module contains the `AgentConfig` class, which represents the configuration settings for an agent.
 
 
 Functions: None
@@ -10,7 +10,7 @@ Functions: None
 Global Variables: None
 
 Classes:
-- AgentConfig: A class representing the configuration settings for an AI agent.
+- AgentConfig: A class representing the configuration settings for an agent.
 
 Dependencies: 
 - typing: A built-in module for type hints and annotations.
@@ -20,10 +20,11 @@ Dependencies:
 
 
 import os
+import sys
+import uuid
 import yaml
 from pathlib import Path
 from typing import Optional, Type, List
-
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 # @TODO 
 SAVE_FILE = Path.cwd() / "ai_settings.yaml"
@@ -31,12 +32,10 @@ PROJECT_DIR = "autogpt/projects"
 AUTOGPT_VERSION = 'X.Y.Z' # TODO, implement in config.py or main or technical env file
 
 
-import sys
-
 
 class AgentModel(): 
     """
-    A class representing the configuration settings for an AI agent.
+    A class representing the configuration settings for an agent.
 
     Attributes:
         agent_name (str): The name of the agent.
@@ -44,7 +43,6 @@ class AgentModel():
         agent_role (str): The role of the agent.
         agent_model (Optional[str]): The name of the agent's model, if applicable.
         agent_model_type (Optional[str]): The type of the agent's model, if applicable.
-        team_name (Optional[str]): The name of the team that the agent belongs to, if applicable.
         prompt_generator (Optional[Any]): An instance of the `PromptGenerator` class used to generate prompts for the user.
         command_registry (Optional[Any]): An instance of the `CommandRegistry` class used to manage the available commands for the agent.
 
@@ -103,6 +101,8 @@ class AgentModel():
         self.prompt_generator= prompt_generator
         self.command_registry= command_registry
 
+        self.uniq_id = self.generate_uniqid() # Generate a UUID
+
     @classmethod
     def load_agent(cls, agent_data: dict) -> "AgentModel":
         """
@@ -138,7 +138,7 @@ class AgentModel():
         subfolders = [f.path for f in os.scandir(PROJECT_DIR) if f.is_dir() and f.name != '__pycache__']       
         if not subfolders:
             from autogpt.projects.projects_broker import ProjectsBroker
-            projects_broker = ProjectsBroker(config_file = config_file)
+            projects_broker = ProjectsBroker(config_file = config_file , do_not_load=True)
             project = projects_broker.create_project(
                     project_position_number = 0,
                     lead_agent = self,
@@ -201,5 +201,10 @@ class AgentModel():
                 "command_registry": self.command_registry
             }
         return agent_dict
+    
+    # A class to generate UUID so plugin ay overid it 
+    # https://github.com/Significant-Gravitas/Auto-GPT/discussions/3392#step-2-discussed-features
+    def generate_uniqid(self) -> uuid : 
+        return str(uuid.uuid4())
 
 

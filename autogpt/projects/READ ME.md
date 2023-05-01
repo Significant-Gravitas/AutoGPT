@@ -14,11 +14,11 @@ This module provides classes to manage projects and their related settings, incl
 
 The main class in this module is:
 
-- `AgentModel`: Represents the configuration settings for an AI agent.
-- `Project`: Represents an AI project, including its agents, budget, and other related information.
-- `ProjectsBroker`: Manages multiple AI projects, including creating new projects and retrieving existing projects.
+- `AgentModel`: Represents the configuration settings for an agent.
+- `Project`: Represents an project, including its agents, budget, and other related information.
+- `ProjectsBroker`: Manages multiple projects, including creating new projects and retrieving existing projects.
 
-This module provides a convenient way to manage and configure AI agent settings, including loading and saving agent configurations, and handling agent attributes such as goals, roles, and model information.
+This module provides a convenient way to manage and configure agent settings, including loading and saving agent configurations, and handling agent attributes such as goals, roles, and model information.
 
 The `AgentModel` class has several attributes and methods for handling agent configurations. Some of its main attributes include:
 - agent_name

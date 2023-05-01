@@ -1,22 +1,22 @@
 """
-This module defines a test suite for a project management system that uses AI agents. The `Project` class represents a project with a lead AI agent and a list of delegated AI agents. The `AIConfig` class is used to create instances of AI agents with specific configurations.
+This module defines a test suite for a project management system that usesagents. The `Project` class represents a project with a leadagent and a list of delegatedagents. The `AIConfig` class is used to create instances ofagents with specific configurations.
 
 The following `test_agent` instances are used as data for the tests:
 
-- `test_agent`: An instance of `AIConfig` with a list of AI goals, a name, a role, and an API budget.
-- `test_agent2`: An instance of `AIConfig` with a different set of AI goals, a name, a role, and an API budget.
-- `test_agent3`: An instance of `AIConfig` with a different set of AI goals, a name, a role, and an API budget.
-- `test_agent4`: An instance of `AIConfig` with the same AI goals, name, role, and API budget as `test_agent3`.
+- `test_agent`: An instance of `AIConfig` with a list of goals, a name, a role, and an API budget.
+- `test_agent2`: An instance of `AIConfig` with a different set of goals, a name, a role, and an API budget.
+- `test_agent3`: An instance of `AIConfig` with a different set of goals, a name, a role, and an API budget.
+- `test_agent4`: An instance of `AIConfig` with the same goals, name, role, and API budget as `test_agent3`.
 
 The following tests are defined in this module:
 
 - `test_project_to_dict(project)`: Tests whether the `to_dict()` method of the `Project` class returns a dictionary with the expected keys and values.
 - `test_project_load(project)`: Tests whether the `load()` method of the `Project` class can recreate a `Project` instance from a dictionary.
 - `test_project_save(project, tmpdir)`: Tests whether the `save()` method of the `Project` class can save a `Project` instance as a YAML file and whether the saved YAML file can be loaded back to create an equivalent `Project` instance.
-- `test_project_get_lead(project)`: Tests whether the `get_lead()` method of the `Project` class returns the lead AI agent of the `Project` instance.
-- `test_project_get_delegated_agents(project)`: Tests whether the `get_delegated_agents()` method of the `Project` class returns the list of delegated AI agents of the `Project` instance.
-- `test_project_delete_delegated_agents(project)`: Tests whether the `delete_delegated_agent()` method of the `Project` class can delete a delegated AI agent from the list of delegated AI agents of the `Project` instance.
-- `test_project_add_delegated_agent(project)`: Tests whether the `add_delegated_agent()` method of the `Project` class can add a new delegated AI agent to the list of delegated AI agents of the `Project` instance.
+- `test_project_get_lead(project)`: Tests whether the `get_lead()` method of the `Project` class returns the lead agent of the `Project` instance.
+- `test_project_get_delegated_agents(project)`: Tests whether the `get_delegated_agents()` method of the `Project` class returns the list of delegated agents of the `Project` instance.
+- `test_project_delete_delegated_agents(project)`: Tests whether the `delete_delegated_agent()` method of the `Project` class can delete a delegated agent from the list of delegatedagents of the `Project` instance.
+- `test_project_add_delegated_agent(project)`: Tests whether the `add_delegated_agent()` method of the `Project` class can add a new delegated agent to the list of delegatedagents of the `Project` instance.
 """
 import pytest
 from autogpt.projects.agent_model import AgentModel
@@ -48,7 +48,7 @@ test_agent2 =  AIConfig( ai_goals = ai_goals2,
 
 ai_goals3 = ['Goal 1: Pick the ripe mango', 'Goal 2: Cut the mango into pieces', 'Goal 3: Blend the mango into a smoothie', 'Goal 4: Drink the mango smoothie']
 ai_name3 = 'MangoMaster'
-ai_role3 = 'An AI with a taste for mangoes'
+ai_role3 = 'Anwith a taste for mangoes'
 api_budget3 = 3.0
 test_agent3 =  AIConfig( ai_goals = ai_goals3,
                         ai_name= ai_name3,
@@ -64,7 +64,7 @@ test_agent4 =  AIConfig( ai_goals = ai_goals3,
 test_agent5 = AIConfig(
 ai_goals = ['Goal 1: Create a personalized workout plan', 'Goal 2: Track progress towards fitness goals', 'Goal 3: Provide healthy meal suggestions', 'Goal 4: Motivate users to stay on track'],
 ai_name= 'FitAI',
-ai_role= 'An AI dedicated to fitness and health',
+ai_role= 'Andedicated to fitness and health',
 api_budget= 5.0
 )
 

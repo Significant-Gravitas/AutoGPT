@@ -63,7 +63,7 @@ test_agent2 =  AIConfig( ai_goals = ai_goals2,
 
 ai_goals3 = ['Goal 1: Pick the ripe mango', 'Goal 2: Cut the mango into pieces', 'Goal 3: Blend the mango into a smoothie', 'Goal 4: Drink the mango smoothie']
 ai_name3 = 'MangoMaster'
-ai_role3 = 'An AI with a taste for mangoes'
+ai_role3 = 'An with a taste for mangoes'
 api_budget3 = 3.0
 test_agent3 =  AIConfig( ai_goals = ai_goals3,
                         ai_name= ai_name3,
@@ -104,7 +104,7 @@ def test_save(projects_broker : ProjectsBroker):
     # save the project
     projects_broker._save(project_position_number=0)
     # check if the project file exists
-    assert os.path.exists(f"{ProjectsBroker.PROJECT_DIR}/test_project/settings.yaml")
+    assert os.path.exists(f"{ProjectsBroker.ProjectsBroker.PROJECT_DIR}/test_project/settings.yaml")
 
 def test_create_project(projects_broker : ProjectsBroker):
     lead_agent = test_agent

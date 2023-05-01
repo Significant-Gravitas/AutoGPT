@@ -119,19 +119,8 @@ def run_auto_gpt(
 
     ai_name = ""
     ai_config = construct_main_ai_config()
-
-    # from autogpt.projects.projects_broker import ProjectsBroker
-
-    # projectbroker = ProjectsBroker()
-    # projects = projectbroker.get_projects()
-    # print('main_project = '+ str(projects))
-    # project = projectbroker.get_project(project_positon_number= 0)
-    # print('main_project 2 = '+ str(projects))
-    
-    # #Required for backward compatibility as AIConfig is not a singleton anymore
-    # ai_config = project.agent_team.lead_agent
     ai_config.command_registry = command_registry
-    # print(prompt)
+
     # Initialize variables
     full_message_history = []
     next_action_count = 0
