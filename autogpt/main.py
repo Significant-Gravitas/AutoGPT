@@ -1,4 +1,5 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
+import json
 import logging
 import sys
 from pathlib import Path
@@ -16,6 +17,12 @@ from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_
 from autogpt.utils import get_current_git_branch, get_latest_bulletin
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
+
+
+def load_command_list_from_file(file_path: str):
+    with open(file_path, "r") as file:
+        command_list = json.load(file)
+    return command_list
 
 
 def run_auto_gpt(
@@ -103,19 +110,10 @@ def run_auto_gpt(
 
     cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
     # Create a CommandRegistry instance and scan default folder
-    command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.analyze_code")
-    command_registry.import_commands("autogpt.commands.audio_text")
-    command_registry.import_commands("autogpt.commands.execute_code")
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.commands.git_operations")
-    command_registry.import_commands("autogpt.commands.google_search")
-    command_registry.import_commands("autogpt.commands.image_gen")
-    command_registry.import_commands("autogpt.commands.improve_code")
-    command_registry.import_commands("autogpt.commands.twitter")
-    command_registry.import_commands("autogpt.commands.web_selenium")
-    command_registry.import_commands("autogpt.commands.write_tests")
-    command_registry.import_commands("autogpt.app")
+    if not cfg.command_list_file:
+        command_list_file = "command_list.json"
+    command_list = load_command_list_from_file(command_list_file)
+    command_registry = CommandRegistry(command_list)
 
     ai_name = ""
     ai_config = construct_main_ai_config()
