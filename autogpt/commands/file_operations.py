@@ -6,6 +6,7 @@ import os
 import os.path
 from typing import Dict, Generator, Literal, Tuple
 
+import charset_normalizer
 import requests
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
@@ -153,9 +154,10 @@ def read_file(filename: str) -> str:
         str: The contents of the file
     """
     try:
-        with open(filename, "r", encoding="utf-8") as f:
-            content = f.read()
-        return content
+        charset_match = charset_normalizer.from_path(filename).best()
+        encoding = charset_match.encoding
+        logger.debug(f"Read file '{filename}' with encoding '{encoding}'")
+        return str(charset_match)
     except Exception as err:
         return f"Error: {err}"
 
