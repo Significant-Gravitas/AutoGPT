@@ -6,6 +6,7 @@ import os
 import os.path
 from typing import Dict, Generator, Literal, Tuple
 
+import re
 import charset_normalizer
 import requests
 from colorama import Back, Fore
@@ -220,6 +221,52 @@ def write_to_file(filename: str, text: str) -> str:
     except Exception as err:
         return f"Error: {err}"
 
+
+@command(
+    "update_file",
+    "Update file",
+    '"filename": "<filename>",'
+    '"old_text": "<old_text>", "new_text": "<new_text>",'
+     '"match_index": "<match_index>"',
+)
+def update_file(
+    filename: str, old_text: str, new_text: str, match_index=None
+):
+    """Update a file by replacing one specific occurrence of old_text with new_text or replacing all occurrences
+    this method excludes the end-of-line character at the end of old_text and new_text and uses a directory variable to
+    prevent auto-gpt from using the wrong directory
+
+    Args:
+        filename (str): The name of the file
+        old_text (str): String to be replaced   \n will be stripped from string
+        new_text (str): New string   \n will be stripped from string
+        match_index (str): indexed match where the update should take place, takes (none, all and numbers)
+
+    """
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        old_text = old_text.rstrip("\n")
+        new_text = new_text.rstrip("\n")
+
+        matches = re.finditer(re.escape(old_text), content)
+        if not matches:
+            return f"No matches found for {old_text} in {filename}"
+
+        # Replace all occurrences of old_code with new_code
+        new_content = content.replace(old_text, new_text)
+
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(new_content)
+
+        with open(filename, "r", encoding="utf-8") as f:
+            checksum = text_checksum(f.read())
+        log_operation("update", filename, checksum=checksum)
+
+        return f"File {filename} updated successfully."
+    except Exception as e:
+        return "Error: " + str(e)
 
 @command(
     "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
