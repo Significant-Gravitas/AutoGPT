@@ -1,5 +1,6 @@
 """Utilities for the json_fixes package."""
 import json
+import os
 import re
 
 from jsonschema import Draft7Validator
@@ -35,7 +36,8 @@ def validate_json(json_object: object, schema_name: str) -> dict | None:
     :param schema_name: str
     :type json_object: object
     """
-    with open(f"autogpt/json_utils/{schema_name}.json", "r") as f:
+    scheme_file = os.path.join(os.path.dirname(__file__), f"{schema_name}.json")
+    with open(scheme_file, "r") as f:
         schema = json.load(f)
     validator = Draft7Validator(schema)
 
