@@ -38,8 +38,11 @@ requests and parse HTML content, respectively.
 
 
 class TestScrapeLinks:
-    # Tests that the function returns a list of formatted hyperlinks when
-    # provided with a valid url that returns a webpage with hyperlinks.
+    """
+    Tests that the function returns a list of formatted hyperlinks when
+    provided with a valid url that returns a webpage with hyperlinks.
+    """
+
     def test_valid_url_with_hyperlinks(self):
         url = "https://www.google.com"
         result = scrape_links(url)
@@ -47,8 +50,8 @@ class TestScrapeLinks:
         assert isinstance(result, list)
         assert isinstance(result[0], str)
 
-    # Tests that the function returns correctly formatted hyperlinks when given a valid url.
     def test_valid_url(self, mocker):
+        """Test that the function returns correctly formatted hyperlinks when given a valid url."""
         # Mock the requests.get() function to return a response with sample HTML containing hyperlinks
         mock_response = mocker.Mock()
         mock_response.status_code = 200
@@ -63,8 +66,8 @@ class TestScrapeLinks:
         # Assert that the function returns correctly formatted hyperlinks
         assert result == ["Google (https://www.google.com)"]
 
-    # Tests that the function returns "error" when given an invalid url.
     def test_invalid_url(self, mocker):
+        """Test that the function returns "error" when given an invalid url."""
         # Mock the requests.get() function to return an HTTP error response
         mock_response = mocker.Mock()
         mock_response.status_code = 404
@@ -76,8 +79,8 @@ class TestScrapeLinks:
         # Assert that the function returns "error"
         assert "Error:" in result
 
-    # Tests that the function returns an empty list when the html contains no hyperlinks.
     def test_no_hyperlinks(self, mocker):
+        """Test that the function returns an empty list when the html contains no hyperlinks."""
         # Mock the requests.get() function to return a response with sample HTML containing no hyperlinks
         mock_response = mocker.Mock()
         mock_response.status_code = 200
@@ -90,10 +93,8 @@ class TestScrapeLinks:
         # Assert that the function returns an empty list
         assert result == []
 
-    # Tests that scrape_links() correctly extracts and formats hyperlinks from
-    # a sample HTML containing a few hyperlinks.
     def test_scrape_links_with_few_hyperlinks(self, mocker):
-        # Mock the requests.get() function to return a response with a sample HTML containing hyperlinks
+        """Test that scrape_links() correctly extracts and formats hyperlinks from a sample HTML containing a few hyperlinks."""
         mock_response = mocker.Mock()
         mock_response.status_code = 200
         mock_response.text = """

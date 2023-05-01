@@ -1,10 +1,12 @@
 ## Setting Your Cache Type
 
-By default, Auto-GPT is going to use LocalCache instead of redis or Pinecone.
+By default, Auto-GPT set up with Docker Compose will use Redis as its memory backend.
+Otherwise, the default is LocalCache (which stores memory in a JSON file).
 
-To switch to either, change the `MEMORY_BACKEND` env variable to the value that you want:
+To switch to a different backend, change the `MEMORY_BACKEND` in `.env`
+to the value that you want:
 
-* `local` (default) uses a local JSON cache file
+* `local` uses a local JSON cache file
 * `pinecone` uses the Pinecone.io account you configured in your ENV settings
 * `redis` will use the redis cache that you configured
 * `milvus` will use the milvus cache that you configured
@@ -20,32 +22,39 @@ Links to memory backends
 - [Weaviate](https://weaviate.io)
 
 ### Redis Setup
-> _**CAUTION**_ \
-This is not intended to be publicly accessible and lacks security measures. Therefore, avoid exposing Redis to the internet without a password or at all
-1. Install docker (or Docker Desktop on Windows).
-2. Launch Redis container.
 
-``` shell    
-    docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
-```
-> See https://hub.docker.com/r/redis/redis-stack-server for setting a password and additional configuration.
+!!! important
+    If you have set up Auto-GPT using Docker Compose, then Redis is included, no further
+    setup needed.
 
-3. Set the following settings in `.env`.
-    > Replace **PASSWORD** in angled brackets (<>)
-    
-``` shell
-MEMORY_BACKEND=redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=<PASSWORD>
-```
+!!! caution
+    This setup is not intended to be publicly accessible and lacks security measures.
+    Avoid exposing Redis to the internet without a password or at all!
 
-    You can optionally set `WIPE_REDIS_ON_START=False` to persist memory stored in Redis.
+1. Launch Redis container
 
-You can specify the memory index for redis using the following:
-``` shell
-MEMORY_INDEX=<WHATEVER>
-```
+        :::shell
+        docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
+
+3. Set the following settings in `.env`
+
+        :::ini
+        MEMORY_BACKEND=redis
+        REDIS_HOST=localhost
+        REDIS_PORT=6379
+        REDIS_PASSWORD=<PASSWORD>
+
+    Replace `<PASSWORD>` by your password, omitting the angled brackets (<>).
+
+    Optional configuration:
+
+    - `WIPE_REDIS_ON_START=False` to persist memory stored in Redis between runs.
+    - `MEMORY_INDEX=<WHATEVER>` to specify a name for the memory index in Redis.
+        The default is `auto-gpt`.
+
+!!! info
+    See [redis-stack-server](https://hub.docker.com/r/redis/redis-stack-server) for
+    setting a password and additional configuration.
 
 ### 🌲 Pinecone API Key Setup
 
@@ -56,65 +65,57 @@ Pinecone lets you store vast amounts of vector-based memory, allowing the agent 
 3. Find your API key and region under the default project in the left sidebar.
 
 In the `.env` file set:
+
 - `PINECONE_API_KEY`
-- `PINECONE_ENV` (example: _"us-east4-gcp"_)
+- `PINECONE_ENV` (example: `us-east4-gcp`)
 - `MEMORY_BACKEND=pinecone`
-
-Alternatively, you can set them from the command line (advanced):
-
-For Windows Users:
-
-``` shell
-setx PINECONE_API_KEY "<YOUR_PINECONE_API_KEY>"
-setx PINECONE_ENV "<YOUR_PINECONE_REGION>" # e.g: "us-east4-gcp"
-setx MEMORY_BACKEND "pinecone"
-```
-
-For macOS and Linux users:
-
-``` shell
-export PINECONE_API_KEY="<YOUR_PINECONE_API_KEY>"
-export PINECONE_ENV="<YOUR_PINECONE_REGION>" # e.g: "us-east4-gcp"
-export MEMORY_BACKEND="pinecone"
-```
 
 ### Milvus Setup
 
-[Milvus](https://milvus.io/) is an open-source, highly scalable vector database to store huge amounts of vector-based memory and provide fast relevant search. And it can be quickly deployed by docker locally or as a cloud service provided by [Zilliz Cloud](https://zilliz.com/).
+[Milvus](https://milvus.io/) is an open-source, highly scalable vector database to store
+huge amounts of vector-based memory and provide fast relevant search. It can be quickly
+deployed with docker, or as a cloud service provided by [Zilliz Cloud](https://zilliz.com/).
 
-1. Deploy your Milvus service, either locally using docker or with a managed Zilliz Cloud database.
+1. Deploy your Milvus service, either locally using docker or with a managed Zilliz Cloud database:
     - [Install and deploy Milvus locally](https://milvus.io/docs/install_standalone-operator.md)
 
-    - <details><summary>Set up a managed Zilliz Cloud database <i>(click to expand)</i></summary>
-
-      1. Go to [Zilliz Cloud](https://zilliz.com/) and sign up if you don't already have account.
-      2. In the *Databases* tab, create a new database.
-          - Remember your username and password
-          - Wait until the database status is changed to RUNNING.
-      3. In the *Database detail* tab of the database you have created, the public cloud endpoint, such as:
-      `https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443`.
-    </details>
+    - Set up a managed Zilliz Cloud database
+        1. Go to [Zilliz Cloud](https://zilliz.com/) and sign up if you don't already have account.
+        2. In the *Databases* tab, create a new database.
+            - Remember your username and password
+            - Wait until the database status is changed to RUNNING.
+        3. In the *Database detail* tab of the database you have created, the public cloud endpoint, such as:
+        `https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443`.
 
 2. Run `pip3 install pymilvus` to install the required client library.
-    Make sure your PyMilvus version and Milvus version are [compatible](https://github.com/milvus-io/pymilvus#compatibility) to avoid issues.
+    Make sure your PyMilvus version and Milvus version are [compatible](https://github.com/milvus-io/pymilvus#compatibility)
+    to avoid issues.
     See also the [PyMilvus installation instructions](https://github.com/milvus-io/pymilvus#installation).
 
-3. Update `.env`
+3. Update `.env`:
     - `MEMORY_BACKEND=milvus`
     - One of:
-      - `MILVUS_ADDR=host:ip` (for local instance)
-      - `MILVUS_ADDR=https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443` (for Zilliz Cloud)
+        - `MILVUS_ADDR=host:ip` (for local instance)
+        - `MILVUS_ADDR=https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443` (for Zilliz Cloud)
 
-    *The following settings are **optional**:*
-    - Set `MILVUS_USERNAME='username-of-your-milvus-instance'`
-    - Set `MILVUS_PASSWORD='password-of-your-milvus-instance'`
-    - Set `MILVUS_SECURE=True` to use a secure connection. Only use if your Milvus instance has TLS enabled.
-      Setting `MILVUS_ADDR` to a `https://` URL will override this setting.
-    - Set `MILVUS_COLLECTION` if you want to change the collection name to use in Milvus. Defaults to `autogpt`.
+    The following settings are **optional**:
+
+    - `MILVUS_USERNAME='username-of-your-milvus-instance'`
+    - `MILVUS_PASSWORD='password-of-your-milvus-instance'`
+    - `MILVUS_SECURE=True` to use a secure connection.
+        Only use if your Milvus instance has TLS enabled.
+        *Note: setting `MILVUS_ADDR` to a `https://` URL will override this setting.*
+    - `MILVUS_COLLECTION` to change the collection name to use in Milvus.
+        Defaults to `autogpt`.
 
 ### Weaviate Setup
-[Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store data objects and vector embeddings from ML-models and scales seamlessly to billion of data objects. [An instance of Weaviate can be created locally (using Docker), on Kubernetes or using Weaviate Cloud Services](https://weaviate.io/developers/weaviate/quickstart). 
-Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded) is supported which allows the Auto-GPT process itself to start a Weaviate instance. To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip install "weaviate-client>=3.15.4"`. 
+[Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store
+data objects and vector embeddings from ML-models and scales seamlessly to billion of
+data objects. To set up a Weaviate database, check out their [Quickstart Tutorial](https://weaviate.io/developers/weaviate/quickstart).
+
+Although still experimental, [Embedded Weaviate](https://weaviate.io/developers/weaviate/installation/embedded)
+is supported which allows the Auto-GPT process itself to start a Weaviate instance.
+To enable it, set `USE_WEAVIATE_EMBEDDED` to `True` and make sure you `pip install "weaviate-client>=3.15.4"`.
 
 #### Install the Weaviate client
 
@@ -128,7 +129,7 @@ $ pip install weaviate-client
 
 In your `.env` file set the following:
 
-``` shell
+``` ini
 MEMORY_BACKEND=weaviate
 WEAVIATE_HOST="127.0.0.1" # the IP or domain of the running Weaviate instance
 WEAVIATE_PORT="8080" 
@@ -140,7 +141,7 @@ WEAVIATE_EMBEDDED_PATH="/home/me/.local/share/weaviate" # this is optional and i
 USE_WEAVIATE_EMBEDDED=False # set to True to run Embedded Weaviate
 MEMORY_INDEX="Autogpt" # name of the index to create for the application
 ```
- 
+
 ## View Memory Usage
 
 View memory usage by using the `--debug` flag :)
@@ -150,7 +151,7 @@ View memory usage by using the `--debug` flag :)
 Memory pre-seeding allows you to ingest files into memory and pre-seed it before running Auto-GPT.
 
 ``` shell
-# python data_ingestion.py -h 
+$ python data_ingestion.py -h 
 usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVERLAP] [--max_length MAX_LENGTH]
 
 Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
@@ -172,15 +173,32 @@ Note that you can also use the `--file` argument to ingest a single file into me
 
 The DIR path is relative to the auto_gpt_workspace directory, so `python data_ingestion.py --dir . --init` will ingest everything in `auto_gpt_workspace` directory.
 
-You can adjust the `max_length` and `overlap` parameters to fine-tune the way the documents are presented to the AI when it "recall" that memory:
-- Adjusting the overlap value allows the AI to access more contextual information from each chunk when recalling information, but will result in more chunks being created and therefore increase memory backend usage and OpenAI API requests.
-- Reducing the `max_length` value will create more chunks, which can save prompt tokens by allowing for more message history in the context, but will also increase the number of chunks.
-- Increasing the `max_length` value will provide the AI with more contextual information from each chunk, reducing the number of chunks created and saving on OpenAI API requests. However, this may also use more prompt tokens and decrease the overall context available to the AI.
+You can adjust the `max_length` and `overlap` parameters to fine-tune the way the
+    documents are presented to the AI when it "recall" that memory:
 
-Memory pre-seeding is a technique for improving AI accuracy by ingesting relevant data into its memory. Chunks of data are split and added to memory, allowing the AI to access them quickly and generate more accurate responses. It's useful for large datasets or when specific information needs to be accessed quickly. Examples include ingesting API or GitHub documentation before running Auto-GPT.
+- Adjusting the overlap value allows the AI to access more contextual information
+    from each chunk when recalling information, but will result in more chunks being
+    created and therefore increase memory backend usage and OpenAI API requests.
+- Reducing the `max_length` value will create more chunks, which can save prompt
+    tokens by allowing for more message history in the context, but will also
+    increase the number of chunks.
+- Increasing the `max_length` value will provide the AI with more contextual
+    information from each chunk, reducing the number of chunks created and saving on
+    OpenAI API requests. However, this may also use more prompt tokens and decrease
+    the overall context available to the AI.
 
-⚠️ If you use Redis as your memory, make sure to run Auto-GPT with the `WIPE_REDIS_ON_START=False` in your `.env` file.
+Memory pre-seeding is a technique for improving AI accuracy by ingesting relevant data
+into its memory. Chunks of data are split and added to memory, allowing the AI to access
+them quickly and generate more accurate responses. It's useful for large datasets or when
+specific information needs to be accessed quickly. Examples include ingesting API or
+GitHub documentation before running Auto-GPT.
 
-⚠️For other memory backends, we currently forcefully wipe the memory when starting Auto-GPT. To ingest data with those memory backends, you can call the `data_ingestion.py` script anytime during an Auto-GPT run. 
+!!! attention
+    If you use Redis for memory, make sure to run Auto-GPT with `WIPE_REDIS_ON_START=False`
 
-Memories will be available to the AI immediately as they are ingested, even if ingested while Auto-GPT is running.
+    For other memory backends, we currently forcefully wipe the memory when starting
+    Auto-GPT. To ingest data with those memory backends, you can call the
+    `data_ingestion.py` script anytime during an Auto-GPT run.
+
+Memories will be available to the AI immediately as they are ingested, even if ingested
+while Auto-GPT is running.

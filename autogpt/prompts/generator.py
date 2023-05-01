@@ -127,7 +127,7 @@ class PromptGenerator:
                     for item in self.command_registry.commands.values()
                     if item.enabled
                 ]
-            # These are the commands that are added manually, do_nothing and terminate
+            # terminate command is added manually
             command_strings += [self._generate_command_string(item) for item in items]
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(command_strings))
         else:
