@@ -11,6 +11,19 @@ from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
 
+FEEDBACK_PROMPT = """
+    Below is a message from an AI agent with the role of {ai_role}. 
+    Please review the provided Thought, Reasoning, Plan, and Criticism.
+    If these elements accurately contribute to the successful execution
+    of the assumed role, respond with the letter 'Y' followed by a
+    space, and then explain why it is effective. If the provided
+    information is not suitable for achieving the role's objectives,
+    please provide one or more sentences addressing the issue and
+    suggesting a resolution."""
+FEEDBACK_PROMPT = "\n".join(
+    line.strip() for line in FEEDBACK_PROMPT.splitlines() if line
+)
+
 
 class Agent:
     """Agent class for interacting with Auto-GPT.
@@ -271,20 +284,24 @@ class Agent:
         feedback message and uses the create_chat_completion() function to generate a
         response based on the input message.
         Args:
-            thoughts (dict): A dictionary containing thought elements like reasoning,
+            thoughts: A dictionary containing thought elements like reasoning,
             plan, thoughts, and criticism.
         Returns:
-            str: A feedback response generated using the provided thoughts dictionary.
+            A feedback response generated using the provided thoughts dictionary.
         """
         ai_role = self.config.ai_role
-
-        feedback_prompt = f"Below is a message from an AI agent with the role of {ai_role}. Please review the provided Thought, Reasoning, Plan, and Criticism. If these elements accurately contribute to the successful execution of the assumed role, respond with the letter 'Y' followed by a space, and then explain why it is effective. If the provided information is not suitable for achieving the role's objectives, please provide one or more sentences addressing the issue and suggesting a resolution."
-        reasoning = thoughts.get("reasoning", "")
-        plan = thoughts.get("plan", "")
-        thought = thoughts.get("thoughts", "")
-        criticism = thoughts.get("criticism", "")
-        feedback_thoughts = thought + reasoning + plan + criticism
+        prompt = FEEDBACK_PROMPT.format(ai_role=ai_role)
+        reasoning = thoughts.get("reasoning")
+        plan = thoughts.get("plan")
+        thought = thoughts.get("thoughts")
+        criticism = thoughts.get("criticism")
+        feedback = "\n".join(x for x in (thought, reasoning, plan, criticism) if x)
         return create_chat_completion(
-            [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
+            [
+                {
+                    "role": "user",
+                    "content": "\n\n".join((prompt, feedback)),
+                }
+            ],
             llm_model,
         )
