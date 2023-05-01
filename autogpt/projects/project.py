@@ -1,8 +1,8 @@
 """
-This module provides a class representing an AI project with a name, API budget, lead agent, and delegated agents.
+This module provides a class representing anproject with a name, API budget, lead agent, and delegated agents.
  
 Classes:
-- Project: A class representing an AI project with a name, API budget, lead agent, and delegated agents.
+- Project: A class representing anproject with a name, API budget, lead agent, and delegated agents.
 
 Functions:
 - None
@@ -12,7 +12,7 @@ Global Variables:
 
 Dependencies:
 - typing: A built-in module for type hints and annotations.
-- AgentConfig: A class representing the configuration settings for an AI agent.
+- AgentConfig: A class representing the configuration settings for anagent.
 
 Attributes:
 - project_name (str): The name of the project.
@@ -32,15 +32,19 @@ import shutil
 import yaml
 from typing import Optional, Type, List
 import datetime
+import uuid
 
 from autogpt.projects.agent_model import AgentModel
+from pathlib import Path
 
-AUTOGPT_VERSION = 'X.Y.Z' # TODO, implement in config.py or main or technical env file
+SAVE_FILE = Path.cwd() / "ai_settings.yaml"
 PROJECT_DIR = "autogpt/projects"
+MAX_NB_PROJECT = 1
+AUTOGPT_VERSION = 'X.Y.Z'  # TODO, implement in config.py or main or technical env file
 
 class Project:
     """
-    A class representing an AI project with a name, API budget, lead agent, and delegated agents.
+    A class representing anproject with a name, API budget, lead agent, and delegated agents.
 
     Attributes:
         project_name (str): The name of the project.
@@ -63,7 +67,7 @@ class Project:
             Initializes a new Project object with the given parameters.
         load(cls, config_params: dict) -> "Project"
             Loads a portion of the configuration parameters and returns a Project instance.
-        save(self, is_creation: bool = False, creation_position: int = -1) -> dict
+        save(self, project_position_number : int, is_creation: bool = False  ) -> "Project"
             Saves the Project object as a dictionary representation.
         get_lead(self) -> AgentModel
             Returns the lead agent of the project.
@@ -71,7 +75,10 @@ class Project:
             Returns the list of delegated agents for the project.
         delete_delegated_agents(self, position: int) -> bool
             Deletes the delegated agent at the given position and returns True if successful.
+        _check_method_load(cls, config_params: dict) -> bool
+            Checks if the given configuration parameters are valid for loading a Project object.
     """
+
     def __init__(self, project_name: str, 
                  project_budget: float, 
                  lead_agent: AgentModel,
@@ -82,7 +89,7 @@ class Project:
                  project_env: Optional[str] = None, 
                  project_log_activity: Optional[str] = None,
                  project_log_env: Optional[str] = None, 
-                 team_name: Optional[str] = None):    
+                 team_name: Optional[str] = None): 
         """
         Initializes a new Project object with the given parameters.
 
@@ -100,6 +107,7 @@ class Project:
             team_name (str, optional): The name of the team. Defaults to None.
         """
         self.version = version
+        self.uniq_id = str(uuid.uuid4())
         self.project_name = project_name
         self.project_budget = project_budget
         self.project_memory = project_memory
@@ -115,7 +123,12 @@ class Project:
 
     #saving in Yaml
     def __str__(self) -> str:
+        """
+        Returns a string representation of the Project object.
 
+        Returns:
+            str_representation (str): A string representation of the Project object.
+        """
         return str(self.to_dict())
     
     def to_dict(self) -> dict:
@@ -125,8 +138,6 @@ class Project:
         Returns:
             dict_representation (dict): A dictionary representation of the Project object.
         """
-        
-
         dict_representation = {
             "project_name": self.project_name,
             "project_budget": self.project_budget,
@@ -145,43 +156,29 @@ class Project:
         Returns:
             project_instance (Project): A Project instance with the loaded configuration parameters.
         """
-
-        project_memory = config_params.get("project_memory")
-        project_working_directory = config_params.get("project_working_directory")
-        project_env = config_params.get("project_env")
-        project_log_activity = config_params.get("project_log_activity")
-        project_log_env = config_params.get("project_log_env")
-        version =  config_params.get("version", AUTOGPT_VERSION)
-        if version != '' :
-            cls._version = version 
-            # Not supported for the moment
-        if (config_params.get("project_name")) :
+             
+        if cls._check_args_method_load( config_params) : 
+            from autogpt.projects.projects_broker import ProjectsBroker 
+            from autogpt.projects.agent_model import AgentModel  
             project_name = config_params["project_name"]
-        else :
-            raise ValueError("Project.load() No project_name in the project.")
-
-        if isinstance(config_params.get("project_budget"), float):
             project_budget = config_params["project_budget"]
-        else :
-            raise ValueError("Project.load() No budget in the project.")
+            version =  config_params.get("version", ProjectsBroker.AUTOGPT_VERSION)
+            project_memory = config_params.get("project_memory")
+            project_working_directory = config_params.get("project_working_directory")
+            project_env = config_params.get("project_env")
+            project_log_activity = config_params.get("project_log_activity")
+            project_log_env = config_params.get("project_log_env")
 
-        # Setting agent team
-        agent_team = config_params.get("agent_team", None)
-        team_name = agent_team.get("team_name", None)
-        if not agent_team or not team_name :
-            raise ValueError("Project.load() No lead_agent in the project.")
-
-        if agent_team.get("lead_agent"):
+            agent_team = config_params["agent_team"]
+            team_name = agent_team["team_name"]
             lead_agent_data = agent_team["lead_agent"]
-            lead_agent = AgentModel.load(lead_agent_data)
-        else:
-            raise ValueError("Project.load() No lead_agent in the project.")
+            lead_agent = AgentModel.load_agent(lead_agent_data)
        
-        delegated_agents = []
-        if agent_team.get("delegated_agents"):
-            for delegated_agent_data in agent_team["delegated_agents"]:
-                delegated_agent = AgentModel.load(delegated_agent_data)
-                delegated_agents.append(delegated_agent)
+            delegated_agents = []
+            if agent_team.get("delegated_agents"):
+                for delegated_agent_data in agent_team["delegated_agents"]:
+                    delegated_agent = AgentModel.load_agent(delegated_agent_data)
+                    delegated_agents.append(delegated_agent)
 
         # Returns a Projects
         return cls(version = version, 
@@ -228,7 +225,13 @@ class Project:
 
                 # DO NOT CREATE A REPOSITORY IF THE PROJECT ALREADY EXIST
                 elif i == project_position_number and current_project_foldername != sub_folder_name :
-                    createdir = True          
+                    createdir = True  
+
+                # TODO : REMOVE THE 3 LINES IF YOU WORK ON PROJECT
+                if i != project_position_number :
+                    shutil.rmtree(current_project_foldername, ignore_errors = True)
+                    createdir = True  
+                        
             
             # lead_agent_dict = self.lead_agent.save()
             # delegated_agents = [agent.save() for agent in self.delegated_agents]
@@ -287,12 +290,66 @@ class Project:
             
             #return True
 
+    @classmethod
+    def _check_args_method_load(cls, config_params) -> bool :
+        """
+        Checks if the given configuration parameters are valid for loading a Project object.
+
+        Args:
+            config_params (dict): A dictionary containing the configuration parameters for the project.
+
+        Returns:
+            is_valid (bool): True if the configuration parameters are valid, False otherwise.
+        """
+        if  not config_params.get("project_name") :
+            raise ValueError("Project.load() No project_name in the project.")
+
+        if not isinstance(config_params.get("project_budget"), float):
+            raise ValueError("Project.load() No budget in the project.")
+
+        # Setting agent team
+        agent_team = config_params.get("agent_team", None)
+        team_name = agent_team.get("team_name", None)
+        if not agent_team or not team_name :
+            raise ValueError("Project.load() No lead_agent in the project.")
+        
+        return True
+    
+    # A class to generate UUID so plugin ay overid it 
+    # https://github.com/Significant-Gravitas/Auto-GPT/discussions/3392#step-2-discussed-features
+    def generate_uniqid(self) -> uuid : 
+        return str(uuid.uuid4())
+        
+
 
 
 # NOTE : Keep it simple or set a long term structure (Pain in the ass)    
 # NOTE : Not seing it as very useful    
 class AgentTeam:
+    """
+    A class representing a team of agents for anproject.
+
+    Attributes:
+        team_name (str): The name of the team.
+        lead_agent (AgentModel): The lead agent for the team.
+        delegated_agents (List[AgentModel]): A list of delegated agents for the team.
+
+    Methods:
+        __init__(self, team_name: str, lead_agent: AgentModel, delegated_agents: List[AgentModel])
+            Initializes a new AgentTeam object with the given parameters.
+        to_dict(self) -> dict
+            Converts the AgentTeam object to a dictionary representation.
+
+    """
     def __init__(self, team_name, lead_agent, delegated_agents):
+        """
+        Initializes a new AgentTeam object with the given parameters.
+
+        Args:
+            team_name (str): The name of the team.
+            lead_agent (AgentModel): The lead agent for the team.
+            delegated_agents (List[AgentModel]): A list of delegated agents for the team.
+        """
         
         self.team_name = team_name
         self.lead_agent = lead_agent
@@ -306,6 +363,12 @@ class AgentTeam:
             self._all_agent.append(agent)
 
     def to_dict(self) -> dict : 
+        """
+        Converts the AgentTeam object to a dictionary representation.
+
+        Returns:
+            dict_representation (dict): A dictionary representation of the AgentTeam object.
+        """
         lead_agent_dict = self.lead_agent.to_dict() 
 
         delegated_agents = []
@@ -318,6 +381,27 @@ class AgentTeam:
             'lead_agent' : lead_agent_dict,
             'delegated_agents' : delegated_agents
         }
+    
+# TODO : test & migrate to this function
+def object_to_dict(obj):
+    obj_dict = {}
+    for key in dir(obj):
+        if not key.startswith('__'):
+            value = getattr(obj, key)
+            if not callable(value):
+                if isinstance(value, object):
+                    obj_dict[key] = object_to_dict(value)
+                elif isinstance(value, list):
+                    obj_dict[key] = []
+                    for item in value:
+                        if isinstance(item, object):
+                            obj_dict[key].append(object_to_dict(item))
+                        else:
+                            obj_dict[key].append(item)
+                else:
+                    obj_dict[key] = value
+    return obj_dict
+
 
     
 
