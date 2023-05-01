@@ -112,6 +112,7 @@ extension_to_parser = {
     ".json": JSONParser(),
     ".xml": XMLParser(),
     ".yaml": YAMLParser(),
+    ".yml": YAMLParser(),
     ".html": HTMLParser(),
     ".htm": HTMLParser(),
     ".xhtml": HTMLParser(),
