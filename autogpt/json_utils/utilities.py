@@ -37,7 +37,7 @@ def validate_json(json_object: object, schema_name: str) -> dict | None:
     :param schema_name: str
     :type json_object: object
     """
-    scheme_file = os.path.join(LLM_RESPONSE_DIRECTORY, f"{schema_name}.json")
+    scheme_file = os.path.join(os.path.dirname(__file__), f"{schema_name}.json")
     with open(scheme_file, "r") as f:
         schema = json.load(f)
     validator = Draft7Validator(schema)
