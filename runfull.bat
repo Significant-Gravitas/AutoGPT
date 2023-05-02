@@ -1,0 +1,1 @@
+run.bat --gpt4only --allow-downloads
