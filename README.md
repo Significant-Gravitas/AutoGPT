@@ -8,10 +8,7 @@
 
 <hr/>
 
-### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
-
-**Download the latest `stable` release from here: https://github.com/Significant-Gravitas/Auto-GPT/releases/latest.**
-The `master` branch may often be in a **broken** state.
+### 🔴 🔴 🔴 This fork does not track upstream, commits will be cherry-picked if they are an improvement.  🔴 🔴 🔴
 
 <hr/>
 
