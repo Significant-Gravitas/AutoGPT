@@ -18,6 +18,7 @@ class Config(metaclass=Singleton):
     def __init__(self) -> None:
         """Initialize the Config class"""
         self.workspace_path = None
+        self.venv_path = None
         self.file_logger_path = None
 
         self.debug_mode = False
@@ -143,6 +144,10 @@ class Config(metaclass=Singleton):
         else:
             self.plugins_allowlist = []
         self.plugins_denylist = []
+
+        self.python_execution = os.getenv("PYTHON_EXECUTION", "Docker")
+        if self.python_execution == "Docker":
+            self.docker_image = os.getenv("DOCKER_IMAGE", "python:3-alpine")
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """

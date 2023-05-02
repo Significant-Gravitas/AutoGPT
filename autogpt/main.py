@@ -95,6 +95,7 @@ def run_auto_gpt(
     if install_plugin_deps:
         install_plugin_dependencies()
 
+    cfg.venv_path = Path(__file__).parent / "venv"
     # TODO: have this directory live outside the repository (e.g. in a user's
     #   home directory) and have it come in as a command line argument or part of
     #   the env file.
