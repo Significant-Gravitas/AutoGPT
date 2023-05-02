@@ -114,14 +114,14 @@ class AIGuidelines:
                 break
 
         return
-    
+
     def save(self):
         guidelines_data = {"guidelines": self.ai_guidelines}
         with open(self.filename, "w", encoding="utf-8") as file:
             yaml.dump(guidelines_data, file)
 
     def construct_full_prompt(self):
-        full_prompt = """You are a critical component within a system that implements a general AI that attempts to 
+        full_prompt = """You are a critical component within a system that implements a general AI that attempts to
 achieve goals set by the user in an autonamous manner.
 Your role is to make sure that the other components of the system are abiding the background guidelines
 defined by user. These guidelines define both ethical parameters and criteria for effective performance
@@ -231,7 +231,7 @@ is even more important than success at achieving your goals:\n\n
 
                 if assistant_reply.strip().lower() == "continue":
                     return "continue"
-                
+
                 # Update full message history and permanent memory
                 alert_msg = f'Guidelines violation alert requires investgation: {assistant_reply}'
                 full_message_history.append(
@@ -246,4 +246,3 @@ is even more important than success at achieving your goals:\n\n
                 # TODO: When we switch to langchain, this is built in
                 print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
                 time.sleep(10)
-
