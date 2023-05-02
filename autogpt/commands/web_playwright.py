@@ -1,12 +1,10 @@
 """Web scraping commands using Playwright"""
 from __future__ import annotations
 
-from autogpt.logs import logger
-
 try:
     from playwright.sync_api import sync_playwright
 except ImportError:
-    logger.info(
+    print(
         "Playwright not installed. Please install it with 'pip install playwright' to use."
     )
 from bs4 import BeautifulSoup

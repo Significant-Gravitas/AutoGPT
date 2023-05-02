@@ -69,8 +69,6 @@ class ElevenLabsSpeech(VoiceBase):
         Returns:
             bool: True if the request was successful, False otherwise
         """
-        from autogpt.logs import logger
-
         tts_url = (
             f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_index]}"
         )
@@ -83,6 +81,6 @@ class ElevenLabsSpeech(VoiceBase):
             os.remove("speech.mpeg")
             return True
         else:
-            logger.warn("Request failed with status code:", response.status_code)
-            logger.info("Response content:", response.content)
+            print("Request failed with status code:", response.status_code)
+            print("Response content:", response.content)
             return False

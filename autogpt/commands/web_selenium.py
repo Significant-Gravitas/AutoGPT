@@ -7,7 +7,6 @@ from sys import platform
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -44,14 +43,7 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     Returns:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
     """
-    try:
-        driver, text = scrape_text_with_selenium(url)
-    except WebDriverException as e:
-        # These errors are often quite long and include lots of context.
-        # Just grab the first line.
-        msg = e.msg.split("\n")[0]
-        return f"Error: {msg}", None
-
+    driver, text = scrape_text_with_selenium(url)
     add_header(driver)
     summary_text = summary.summarize_text(url, text, question, driver)
     links = scrape_links_with_selenium(driver, url)
@@ -86,9 +78,6 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     )
 
     if CFG.selenium_web_browser == "firefox":
-        if CFG.selenium_headless:
-            options.headless = True
-            options.add_argument("--disable-gpu")
         driver = webdriver.Firefox(
             executable_path=GeckoDriverManager().install(), options=options
         )
@@ -103,7 +92,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
 
         options.add_argument("--no-sandbox")
         if CFG.selenium_headless:
-            options.add_argument("--headless=new")
+            options.add_argument("--headless")
             options.add_argument("--disable-gpu")
 
         chromium_driver_path = Path("/usr/bin/chromedriver")
@@ -175,9 +164,4 @@ def add_header(driver: WebDriver) -> None:
     Returns:
         None
     """
-    try:
-        with open(f"{FILE_DIR}/js/overlay.js", "r") as overlay_file:
-            overlay_script = overlay_file.read()
-        driver.execute_script(overlay_script)
-    except Exception as e:
-        print(f"Error executing overlay.js: {e}")
+    driver.execute_script(open(f"{FILE_DIR}/js/overlay.js", "r").read())

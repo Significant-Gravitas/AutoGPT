@@ -1,4 +1,3 @@
-from autogpt.logs import logger
 from autogpt.memory.local import LocalCache
 from autogpt.memory.no_memory import NoMemory
 
@@ -11,6 +10,7 @@ try:
 
     supported_memory.append("redis")
 except ImportError:
+    # print("Redis not installed. Skipping import.")
     RedisMemory = None
 
 try:
@@ -18,6 +18,7 @@ try:
 
     supported_memory.append("pinecone")
 except ImportError:
+    # print("Pinecone not installed. Skipping import.")
     PineconeMemory = None
 
 try:
@@ -25,6 +26,7 @@ try:
 
     supported_memory.append("weaviate")
 except ImportError:
+    # print("Weaviate not installed. Skipping import.")
     WeaviateMemory = None
 
 try:
@@ -32,6 +34,7 @@ try:
 
     supported_memory.append("milvus")
 except ImportError:
+    # print("pymilvus not installed. Skipping import.")
     MilvusMemory = None
 
 
@@ -39,7 +42,7 @@ def get_memory(cfg, init=False):
     memory = None
     if cfg.memory_backend == "pinecone":
         if not PineconeMemory:
-            logger.warn(
+            print(
                 "Error: Pinecone is not installed. Please install pinecone"
                 " to use Pinecone as a memory backend."
             )
@@ -49,7 +52,7 @@ def get_memory(cfg, init=False):
                 memory.clear()
     elif cfg.memory_backend == "redis":
         if not RedisMemory:
-            logger.warn(
+            print(
                 "Error: Redis is not installed. Please install redis-py to"
                 " use Redis as a memory backend."
             )
@@ -57,7 +60,7 @@ def get_memory(cfg, init=False):
             memory = RedisMemory(cfg)
     elif cfg.memory_backend == "weaviate":
         if not WeaviateMemory:
-            logger.warn(
+            print(
                 "Error: Weaviate is not installed. Please install weaviate-client to"
                 " use Weaviate as a memory backend."
             )
@@ -65,7 +68,7 @@ def get_memory(cfg, init=False):
             memory = WeaviateMemory(cfg)
     elif cfg.memory_backend == "milvus":
         if not MilvusMemory:
-            logger.warn(
+            print(
                 "Error: pymilvus sdk is not installed."
                 "Please install pymilvus to use Milvus or Zilliz Cloud as memory backend."
             )

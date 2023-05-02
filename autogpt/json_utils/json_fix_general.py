@@ -9,7 +9,6 @@ from typing import Optional
 
 from autogpt.config import Config
 from autogpt.json_utils.utilities import extract_char_position
-from autogpt.logs import logger
 
 CFG = Config()
 
@@ -34,7 +33,8 @@ def fix_invalid_escape(json_to_load: str, error_message: str) -> str:
             json.loads(json_to_load)
             return json_to_load
         except json.JSONDecodeError as e:
-            logger.debug("json loads error - fix invalid escape", e)
+            if CFG.debug_mode:
+                print("json loads error - fix invalid escape", e)
             error_message = str(e)
     return json_to_load
 
@@ -98,11 +98,13 @@ def correct_json(json_to_load: str) -> str:
     """
 
     try:
-        logger.debug("json", json_to_load)
+        if CFG.debug_mode:
+            print("json", json_to_load)
         json.loads(json_to_load)
         return json_to_load
     except json.JSONDecodeError as e:
-        logger.debug("json loads error", e)
+        if CFG.debug_mode:
+            print("json loads error", e)
         error_message = str(e)
         if error_message.startswith("Invalid \\escape"):
             json_to_load = fix_invalid_escape(json_to_load, error_message)
@@ -114,7 +116,8 @@ def correct_json(json_to_load: str) -> str:
                 json.loads(json_to_load)
                 return json_to_load
             except json.JSONDecodeError as e:
-                logger.debug("json loads error - add quotes", e)
+                if CFG.debug_mode:
+                    print("json loads error - add quotes", e)
                 error_message = str(e)
         if balanced_str := balance_braces(json_to_load):
             return balanced_str

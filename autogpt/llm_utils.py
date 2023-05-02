@@ -2,19 +2,16 @@ from __future__ import annotations
 
 import functools
 import time
-from itertools import islice
 from typing import List, Optional
 
-import numpy as np
 import openai
-import tiktoken
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, Timeout
 
+from autogpt.api_manager import ApiManager
 from autogpt.config import Config
-from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import Message
 from autogpt.logs import logger
+from autogpt.types.openai import Message
 
 
 def retry_openai_api(
@@ -33,7 +30,7 @@ def retry_openai_api(
     api_key_error_msg = (
         f"Please double check that you have setup a "
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
-        f"read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
+        f"read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
     )
     backoff_msg = (
         f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
@@ -131,9 +128,10 @@ def create_chat_completion(
 
     num_retries = 10
     warned_user = False
-    logger.debug(
-        f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
-    )
+    if cfg.debug_mode:
+        print(
+            f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
+        )
     for plugin in cfg.plugins:
         if plugin.can_handle_chat_completion(
             messages=messages,
@@ -171,13 +169,14 @@ def create_chat_completion(
                 )
             break
         except RateLimitError:
-            logger.debug(
-                f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"
-            )
+            if cfg.debug_mode:
+                print(
+                    f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"
+                )
             if not warned_user:
                 logger.double_check(
                     f"Please double check that you have setup a {Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. "
-                    + f"You can read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
+                    + f"You can read more here: {Fore.CYAN}https://github.com/Significant-Gravitas/Auto-GPT#openai-api-keys-configuration{Fore.RESET}"
                 )
                 warned_user = True
         except (APIError, Timeout) as e:
@@ -185,10 +184,11 @@ def create_chat_completion(
                 raise
             if attempt == num_retries - 1:
                 raise
-        logger.debug(
-            f"{Fore.RED}Error: ",
-            f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
-        )
+        if cfg.debug_mode:
+            print(
+                f"{Fore.RED}Error: ",
+                f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
+            )
         time.sleep(backoff)
     if response is None:
         logger.typewriter_log(
@@ -210,23 +210,6 @@ def create_chat_completion(
     return resp
 
 
-def batched(iterable, n):
-    """Batch data into tuples of length n. The last batch may be shorter."""
-    # batched('ABCDEFG', 3) --> ABC DEF G
-    if n < 1:
-        raise ValueError("n must be at least one")
-    it = iter(iterable)
-    while batch := tuple(islice(it, n)):
-        yield batch
-
-
-def chunked_tokens(text, tokenizer_name, chunk_length):
-    tokenizer = tiktoken.get_encoding(tokenizer_name)
-    tokens = tokenizer.encode(text)
-    chunks_iterator = batched(tokens, chunk_length)
-    yield from chunks_iterator
-
-
 def get_ada_embedding(text: str) -> List[float]:
     """Get an embedding from the ada model.
 
@@ -237,7 +220,7 @@ def get_ada_embedding(text: str) -> List[float]:
         List[float]: The embedding.
     """
     cfg = Config()
-    model = cfg.embedding_model
+    model = "text-embedding-ada-002"
     text = text.replace("\n", " ")
 
     if cfg.use_azure:
@@ -246,7 +229,13 @@ def get_ada_embedding(text: str) -> List[float]:
         kwargs = {"model": model}
 
     embedding = create_embedding(text, **kwargs)
-    return embedding
+    api_manager = ApiManager()
+    api_manager.update_cost(
+        prompt_tokens=embedding.usage.prompt_tokens,
+        completion_tokens=0,
+        model=model,
+    )
+    return embedding["data"][0]["embedding"]
 
 
 @retry_openai_api()
@@ -265,31 +254,8 @@ def create_embedding(
         openai.Embedding: The embedding object.
     """
     cfg = Config()
-    chunk_embeddings = []
-    chunk_lengths = []
-    for chunk in chunked_tokens(
-        text,
-        tokenizer_name=cfg.embedding_tokenizer,
-        chunk_length=cfg.embedding_token_limit,
-    ):
-        embedding = openai.Embedding.create(
-            input=[chunk],
-            api_key=cfg.openai_api_key,
-            **kwargs,
-        )
-        api_manager = ApiManager()
-        api_manager.update_cost(
-            prompt_tokens=embedding.usage.prompt_tokens,
-            completion_tokens=0,
-            model=cfg.embedding_model,
-        )
-        chunk_embeddings.append(embedding["data"][0]["embedding"])
-        chunk_lengths.append(len(chunk))
-
-    # do weighted avg
-    chunk_embeddings = np.average(chunk_embeddings, axis=0, weights=chunk_lengths)
-    chunk_embeddings = chunk_embeddings / np.linalg.norm(
-        chunk_embeddings
-    )  # normalize the length to one
-    chunk_embeddings = chunk_embeddings.tolist()
-    return chunk_embeddings
+    return openai.Embedding.create(
+        input=[text],
+        api_key=cfg.openai_api_key,
+        **kwargs,
+    )

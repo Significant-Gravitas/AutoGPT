@@ -1,114 +1,46 @@
 """File operations for AutoGPT"""
 from __future__ import annotations
 
-import hashlib
 import os
 import os.path
-from typing import Dict, Generator, Literal, Tuple
+from typing import Generator
 
-import charset_normalizer
 import requests
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.commands.command import command
 from autogpt.config import Config
-from autogpt.logs import logger
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 
 CFG = Config()
 
-Operation = Literal["write", "append", "delete"]
 
-
-def text_checksum(text: str) -> str:
-    """Get the hex checksum for the given text."""
-    return hashlib.md5(text.encode("utf-8")).hexdigest()
-
-
-def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | None]]:
-    """Parse the file operations log and return a tuple containing the log entries"""
-    try:
-        log = open(log_path, "r", encoding="utf-8")
-    except FileNotFoundError:
-        return
-
-    for line in log:
-        line = line.replace("File Operation Logger", "").strip()
-        if not line:
-            continue
-        operation, tail = line.split(": ", maxsplit=1)
-        operation = operation.strip()
-        if operation in ("write", "append"):
-            try:
-                path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
-            except ValueError:
-                path, checksum = tail.strip(), None
-            yield (operation, path, checksum)
-        elif operation == "delete":
-            yield (operation, tail.strip(), None)
-
-    log.close()
-
-
-def file_operations_state(log_path: str) -> Dict:
-    """Iterates over the operations log and returns the expected state.
-
-    Parses a log file at CFG.file_logger_path to construct a dictionary that maps
-    each file path written or appended to its checksum. Deleted files are removed
-    from the dictionary.
-
-    Returns:
-        A dictionary mapping file paths to their checksums.
-
-    Raises:
-        FileNotFoundError: If CFG.file_logger_path is not found.
-        ValueError: If the log file content is not in the expected format.
-    """
-    state = {}
-    for operation, path, checksum in operations_from_log(log_path):
-        if operation in ("write", "append"):
-            state[path] = checksum
-        elif operation == "delete":
-            del state[path]
-    return state
-
-
-def is_duplicate_operation(
-    operation: Operation, filename: str, checksum: str | None = None
-) -> bool:
-    """Check if the operation has already been performed
+def check_duplicate_operation(operation: str, filename: str) -> bool:
+    """Check if the operation has already been performed on the given file
 
     Args:
-        operation: The operation to check for
-        filename: The name of the file to check for
-        checksum: The checksum of the contents to be written
+        operation (str): The operation to check for
+        filename (str): The name of the file to check for
 
     Returns:
-        True if the operation has already been performed on the file
+        bool: True if the operation has already been performed on the file
     """
-    state = file_operations_state(CFG.file_logger_path)
-    if operation == "delete" and filename not in state:
-        return True
-    if operation == "write" and state.get(filename) == checksum:
-        return True
-    return False
+    log_content = read_file(CFG.file_logger_path)
+    log_entry = f"{operation}: {filename}\n"
+    return log_entry in log_content
 
 
-def log_operation(operation: str, filename: str, checksum: str | None = None) -> None:
+def log_operation(operation: str, filename: str) -> None:
     """Log the file operation to the file_logger.txt
 
     Args:
-        operation: The operation to log
-        filename: The name of the file the operation was performed on
-        checksum: The checksum of the contents to be written
+        operation (str): The operation to log
+        filename (str): The name of the file the operation was performed on
     """
-    log_entry = f"{operation}: {filename}"
-    if checksum is not None:
-        log_entry += f" #{checksum}"
-    logger.debug(f"Logging file operation: {log_entry}")
-    append_to_file(CFG.file_logger_path, f"{log_entry}\n", should_log=False)
+    log_entry = f"{operation}: {filename}\n"
+    append_to_file(CFG.file_logger_path, log_entry, should_log=False)
 
 
 def split_file(
@@ -154,12 +86,11 @@ def read_file(filename: str) -> str:
         str: The contents of the file
     """
     try:
-        charset_match = charset_normalizer.from_path(filename).best()
-        encoding = charset_match.encoding
-        logger.debug(f"Read file '{filename}' with encoding '{encoding}'")
-        return str(charset_match)
-    except Exception as err:
-        return f"Error: {err}"
+        with open(filename, "r", encoding="utf-8") as f:
+            content = f.read()
+        return content
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 def ingest_file(
@@ -175,25 +106,25 @@ def ingest_file(
     :param overlap: The number of overlapping characters between chunks, default is 200
     """
     try:
-        logger.info(f"Working with file {filename}")
+        print(f"Working with file {filename}")
         content = read_file(filename)
         content_length = len(content)
-        logger.info(f"File length: {content_length} characters")
+        print(f"File length: {content_length} characters")
 
         chunks = list(split_file(content, max_length=max_length, overlap=overlap))
 
         num_chunks = len(chunks)
         for i, chunk in enumerate(chunks):
-            logger.info(f"Ingesting chunk {i + 1} / {num_chunks} into memory")
+            print(f"Ingesting chunk {i + 1} / {num_chunks} into memory")
             memory_to_add = (
                 f"Filename: {filename}\n" f"Content part#{i + 1}/{num_chunks}: {chunk}"
             )
 
             memory.add(memory_to_add)
 
-        logger.info(f"Done ingesting {num_chunks} chunks from {filename}.")
-    except Exception as err:
-        logger.info(f"Error while ingesting file '{filename}': {err}")
+        print(f"Done ingesting {num_chunks} chunks from {filename}.")
+    except Exception as e:
+        print(f"Error while ingesting file '{filename}': {str(e)}")
 
 
 @command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
@@ -207,18 +138,18 @@ def write_to_file(filename: str, text: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    checksum = text_checksum(text)
-    if is_duplicate_operation("write", filename, checksum):
+    if check_duplicate_operation("write", filename):
         return "Error: File has already been updated."
     try:
         directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
         with open(filename, "w", encoding="utf-8") as f:
             f.write(text)
-        log_operation("write", filename, checksum)
+        log_operation("write", filename)
         return "File written to successfully."
-    except Exception as err:
-        return f"Error: {err}"
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 @command(
@@ -236,19 +167,15 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
         str: A message indicating success or failure
     """
     try:
-        directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
-        with open(filename, "a", encoding="utf-8") as f:
+        with open(filename, "a") as f:
             f.write(text)
 
         if should_log:
-            with open(filename, "r", encoding="utf-8") as f:
-                checksum = text_checksum(f.read())
-            log_operation("append", filename, checksum=checksum)
+            log_operation("append", filename)
 
         return "Text appended successfully."
-    except Exception as err:
-        return f"Error: {err}"
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 @command("delete_file", "Delete file", '"filename": "<filename>"')
@@ -261,19 +188,19 @@ def delete_file(filename: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    if is_duplicate_operation("delete", filename):
+    if check_duplicate_operation("delete", filename):
         return "Error: File has already been deleted."
     try:
         os.remove(filename)
         log_operation("delete", filename)
         return "File deleted successfully."
-    except Exception as err:
-        return f"Error: {err}"
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
-@command("list_files", "List Files in Directory", '"directory": "<directory>"')
-def list_files(directory: str) -> list[str]:
-    """lists files in a directory recursively
+@command("search_files", "Search Files", '"directory": "<directory>"')
+def search_files(directory: str) -> list[str]:
+    """Search for files in a directory
 
     Args:
         directory (str): The directory to search in
@@ -309,8 +236,6 @@ def download_file(url, filename):
         filename (str): Filename to save the file as
     """
     try:
-        directory = os.path.dirname(filename)
-        os.makedirs(directory, exist_ok=True)
         message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
         with Spinner(message) as spinner:
             session = requests.Session()
@@ -336,8 +261,8 @@ def download_file(url, filename):
                         progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
                         spinner.update_message(f"{message} {progress}")
 
-            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(downloaded_size)})'
-    except requests.HTTPError as err:
-        return f"Got an HTTP Error whilst trying to download file: {err}"
-    except Exception as err:
-        return f"Error: {err}"
+            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(total_size)})'
+    except requests.HTTPError as e:
+        return f"Got an HTTP Error whilst trying to download file: {e}"
+    except Exception as e:
+        return "Error: " + str(e)

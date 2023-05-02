@@ -1,18 +1,14 @@
 from colorama import Fore
 
+from autogpt.api_manager import ApiManager
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
-from autogpt.llm import ApiManager
 from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
 
 CFG = Config()
-
-DEFAULT_TRIGGERING_PROMPT = (
-    "Determine which next command to use, and respond using the format specified above:"
-)
 
 
 def build_default_prompt_generator() -> PromptGenerator:
@@ -108,9 +104,9 @@ Name:  {config.ai_name}
 Role:  {config.ai_role}
 Goals: {config.ai_goals}
 API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-Continue ({CFG.authorise_key}/{CFG.exit_key}): """
+Continue (y/n): """
         )
-        if should_continue.lower() == CFG.exit_key:
+        if should_continue.lower() == "n":
             config = AIConfig()
 
     if not config.ai_name:
