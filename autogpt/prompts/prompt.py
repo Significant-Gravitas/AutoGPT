@@ -11,6 +11,7 @@ from autogpt.utils import clean_input
 CFG = Config()
 
 DEFAULT_TRIGGERING_PROMPT = (
+    "If there are any guideline violations in message history, investigate further. "
     "Determine which next command to use, and respond using the format specified above:"
 )
 
