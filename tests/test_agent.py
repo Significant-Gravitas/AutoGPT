@@ -1,3 +1,4 @@
+import functools
 from unittest.mock import MagicMock
 
 import pytest
@@ -44,6 +45,38 @@ def test_agent_initialization(agent):
     assert agent.triggering_prompt == "Triggering prompt"
 
 
+def single_agent_loop_setup(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        config = kwargs.get("config")
+        original_continuous_limit = config.continuous_limit
+        original_speak_mode = config.speak_mode
+        original_continuous_mode = config.continuous_mode
+        config.continuous_limit = 1
+        config.continuous_mode = True
+        config.speak_mode = True
+        result = func(*args, **kwargs)
+        config.continuous_limit = original_continuous_limit
+        config.continuous_mode = original_continuous_mode
+        config.speak_mode = original_speak_mode
+        return result
+
+    return wrapper
+
+
+def setup_with_chat(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        config = kwargs.get("config")
+        original_chat_messages_enabled = config.chat_messages_enabled
+        config.chat_messages_enabled = True
+        result = func(*args, **kwargs)
+        config.chat_messages_enabled = original_chat_messages_enabled
+        return result
+
+    return wrapper
+
+
 @pytest.fixture
 def mock_input(mocker):
     mock = mocker.patch("builtins.input")
@@ -78,20 +111,6 @@ def mock_execute_command(mocker):
     mock = mocker.patch("autogpt.agent.agent.execute_command")
     mock.return_value = "command return value"
     return mock
-
-
-@pytest.fixture
-def single_agent_loop_setup(config):
-    original_continuous_limit = config.continuous_limit
-    original_speak_mode = config.speak_mode
-    original_continuous_mode = config.continuous_mode
-    config.continuous_limit = 1
-    config.continuous_mode = True
-    config.speak_mode = True
-    yield config
-    config.continuous_limit = original_continuous_limit
-    config.continuous_mode = original_continuous_mode
-    config.speak_mode = original_speak_mode
 
 
 @pytest.fixture
@@ -170,10 +189,11 @@ def typewriter_command_returned(mocker):
     ]
 
 
+@single_agent_loop_setup
 def test_execute_command_continuous_mode(
+    config,
     agent,
     mocker,
-    single_agent_loop_setup,
     mock_input,
     mock_chat_with_ai,
     mock_execute_command,
@@ -227,6 +247,67 @@ def test_execute_command_continuous_mode(
     expected_say_text = [mocker.call("I want to execute browse_website")]
     actual_say_text_calls = mock_say_text.call_args_list
     assert actual_say_text_calls == expected_say_text
+
+
+@setup_with_chat
+def test_chat_messages_enabled(config, agent, mocker, mock_chat_with_ai):
+    mock_clean_input = mocker.patch("autogpt.agent.agent.clean_input")
+    mock_clean_input.return_value = "n"
+    agent.start_interaction_loop()
+
+    expected_clean_input = [mocker.call("Waiting for your response...")]
+    actual_clean_input_calls = mock_clean_input.call_args_list
+    assert actual_clean_input_calls == expected_clean_input
+
+
+# Test case when we were unable to parse the command from the JSON
+def test_command_error(
+    config,
+    agent,
+    mocker,
+    mock_chat_with_ai,
+    mock_input,
+    mock_logger_typewriter_log,
+    typewriter_first_9,
+    typewriter_command_auth_by_user,
+):
+    mock_get_command = mocker.patch("autogpt.agent.agent.get_command")
+    mock_get_command.return_value = "Error:", "Missing 'command' object in JSON"
+    mock_input.side_effect = ["y", "n"]
+
+    agent.start_interaction_loop()
+
+    typewriter_first_8 = typewriter_first_9[:-1]
+
+    expected_typewriter_log = (
+        typewriter_first_8
+        + [
+            mocker.call(
+                "NEXT ACTION: ",
+                "\x1b[36m",
+                "COMMAND = \x1b[36mError:\x1b[0m  ARGUMENTS = \x1b[36mMissing 'command' object in JSON\x1b[0m",
+            )
+        ]
+        + typewriter_command_auth_by_user
+        + [
+            mocker.call(
+                "SYSTEM: ",
+                "\x1b[33m",
+                "Command Error: threw the following error: Missing 'command' object in JSON",
+            )
+        ]
+        + typewriter_first_8
+        + [
+            mocker.call(
+                "NEXT ACTION: ",
+                "\x1b[36m",
+                "COMMAND = \x1b[36mError:\x1b[0m  ARGUMENTS = \x1b[36mMissing 'command' object in JSON\x1b[0m",
+            )
+        ]
+    )
+
+    actual_logger_typewriter_log_calls = mock_logger_typewriter_log.call_args_list
+    assert actual_logger_typewriter_log_calls == expected_typewriter_log
 
 
 @pytest.fixture
@@ -398,10 +479,11 @@ def expected_logger_error(mocker):
 
 
 # Test error handling for print_assistant_thoughts
+@single_agent_loop_setup
 def test_execute_command_print_assistant_thoughts_error(
+    config,
     agent,
     mocker,
-    single_agent_loop_setup,
     mock_input,
     mock_logger_error,
     mock_chat_with_ai,
@@ -421,10 +503,11 @@ def test_execute_command_print_assistant_thoughts_error(
     assert actual_logger_error_calls == expected_logger_error
 
 
-# Test error handling for get_command
+# Test error handling for say_text
+@single_agent_loop_setup
 def test_say_text_error(
+    config,
     agent,
-    single_agent_loop_setup,
     mock_input,
     mock_logger_error,
     mock_chat_with_ai,
@@ -441,11 +524,12 @@ def test_say_text_error(
     assert actual_logger_error_calls == expected_logger_error
 
 
-# Test error handling for say_text
+# Test error handling for _resolve_pathlike_command_args
+@single_agent_loop_setup
 def test_resolve_pathlike_command_args_error(
+    config,
     agent,
     mocker,
-    single_agent_loop_setup,
     mock_input,
     mock_logger_error,
     mock_chat_with_ai,
@@ -465,11 +549,12 @@ def test_resolve_pathlike_command_args_error(
     assert actual_logger_error_calls == expected_logger_error
 
 
-# Test error handling for _resolve_pathlike_command_args
+# Test error handling for get_command
+@single_agent_loop_setup
 def test_execute_command_get_command_error(
+    config,
     agent,
     mocker,
-    single_agent_loop_setup,
     mock_input,
     mock_logger_error,
     mock_chat_with_ai,
