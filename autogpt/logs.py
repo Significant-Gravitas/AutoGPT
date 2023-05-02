@@ -75,12 +75,16 @@ class Logger(metaclass=Singleton):
         self.logger.setLevel(logging.DEBUG)
 
         self.speak_mode = False
+        self.chat_plugins = []
 
     def typewriter_log(
         self, title="", title_color="", content="", speak_text=False, level=logging.INFO
     ):
         if speak_text and self.speak_mode:
             say_text(f"{title}. {content}")
+
+        for plugin in self.chat_plugins:
+            plugin.report(f"{title}. {content}")
 
         if content:
             if isinstance(content, list):

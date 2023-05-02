@@ -8,7 +8,7 @@ This document provides guidelines and best practices to help you contribute effe
 
 By participating in this project, you agree to abide by our [Code of Conduct]. Please read it to understand the expectations we have for everyone who contributes to this project.
 
-[Code of Conduct]: https://significant-gravitas.github.io/Auto-GPT/code-of-conduct.md
+[Code of Conduct]: https://docs.agpt.co/code-of-conduct/
 
 ## 📢 A Quick Word
 Right now we will not be accepting any Contributions that add non-essential commands to Auto-GPT.
@@ -101,7 +101,7 @@ https://github.com/Significant-Gravitas/Auto-GPT/pulls?q=is%3Apr+is%3Aopen+-labe
 If you add or change code, make sure the updated code is covered by tests.
 To increase coverage if necessary, [write tests using pytest].
 
-For more info on running tests, please refer to ["Running tests"](https://significant-gravitas.github.io/Auto-GPT/testing/).
+For more info on running tests, please refer to ["Running tests"](https://docs.agpt.co/testing/).
 
 [write tests using pytest]: https://realpython.com/pytest-python-testing/
 

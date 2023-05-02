@@ -1,5 +1,5 @@
 site_name: Auto-GPT
-site_url: https://significantgravitas.github.io/Auto-GPT/
+site_url: https://docs.agpt.co/
 repo_url: https://github.com/Significant-Gravitas/Auto-GPT
 nav:
   - Home: index.md
