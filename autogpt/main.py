@@ -16,6 +16,7 @@ from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_
 from autogpt.utils import get_current_git_branch, get_latest_bulletin
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
+from autogpt.ai_guidelines import AIGuidelines
 
 
 def run_auto_gpt(
@@ -102,6 +103,8 @@ def run_auto_gpt(
     cfg.file_logger_path = str(file_logger_path)
 
     cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
+    guidelines_mgr = AIGuidelines(cfg.ai_guidelines_file)
+
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.analyze_code")
@@ -153,5 +156,6 @@ def run_auto_gpt(
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
+        ai_guidelines=guidelines_mgr,
     )
     agent.start_interaction_loop()
