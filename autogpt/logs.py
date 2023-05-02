@@ -5,9 +5,11 @@ import random
 import re
 import time
 from logging import LogRecord
+from typing import Any
 
 from colorama import Fore, Style
 
+from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
 from autogpt.speech import say_text
 
@@ -152,6 +154,26 @@ class Logger(metaclass=Singleton):
 
         self.typewriter_log("DOUBLE CHECK CONFIGURATION", Fore.YELLOW, additionalText)
 
+    def log_json(self, data: Any, file_name: str) -> None:
+        # Define log directory
+        this_files_dir_path = os.path.dirname(__file__)
+        log_dir = os.path.join(this_files_dir_path, "../logs")
+
+        # Create a handler for JSON files
+        json_file_path = os.path.join(log_dir, file_name)
+        json_data_handler = JsonFileHandler(json_file_path)
+        json_data_handler.setFormatter(JsonFormatter())
+
+        # Log the JSON data using the custom file handler
+        self.logger.addHandler(json_data_handler)
+        self.logger.debug(data)
+        self.logger.removeHandler(json_data_handler)
+
+    def get_log_directory(self):
+        this_files_dir_path = os.path.dirname(__file__)
+        log_dir = os.path.join(this_files_dir_path, "../logs")
+        return os.path.abspath(log_dir)
+
 
 """
 Output stream to console using simulated typing
@@ -199,12 +221,12 @@ class AutoGptFormatter(logging.Formatter):
         if hasattr(record, "color"):
             record.title_color = (
                 getattr(record, "color")
-                + getattr(record, "title")
+                + getattr(record, "title", "")
                 + " "
                 + Style.RESET_ALL
             )
         else:
-            record.title_color = getattr(record, "title")
+            record.title_color = getattr(record, "title", "")
         if hasattr(record, "msg"):
             record.message_no_color = remove_color_codes(getattr(record, "msg"))
         else:
