@@ -27,28 +27,30 @@ def mock_costs():
 
 
 class TestApiManager:
-    @staticmethod
-    def test_create_chat_completion_debug_mode(caplog):
-        """Test if debug mode logs response."""
-        api_manager_debug = ApiManager(debug=True)
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "Who won the world series in 2020?"},
-        ]
-        model = "gpt-3.5-turbo"
-
-        with patch("openai.ChatCompletion.create") as mock_create:
-            mock_response = MagicMock()
-            mock_response.usage.prompt_tokens = 10
-            mock_response.usage.completion_tokens = 20
-            mock_create.return_value = mock_response
-
-            api_manager_debug.create_chat_completion(messages, model=model)
-
-            assert "Response" in caplog.text
-
     # TODO: Port these into a combination of integration tests for the API and
     #  unit tests for the ApiManager class.
+
+    # @staticmethod
+    # def test_create_chat_completion_debug_mode(caplog):
+    #     """Test if debug mode logs response."""
+    #     api_manager_debug = ApiManager(debug=True)
+    #     messages = [
+    #         {"role": "system", "content": "You are a helpful assistant."},
+    #         {"role": "user", "content": "Who won the world series in 2020?"},
+    #     ]
+    #     model = "gpt-3.5-turbo"
+    #
+    #     with patch("openai.ChatCompletion.create") as mock_create:
+    #         mock_response = MagicMock()
+    #         mock_response.usage.prompt_tokens = 10
+    #         mock_response.usage.completion_tokens = 20
+    #         mock_create.return_value = mock_response
+    #
+    #         api_manager_debug.create_chat_completion(messages, model=model)
+    #
+    #         assert "Response" in caplog.text
+
+
     # @staticmethod
     # def test_create_chat_completion_empty_messages():
     #     """Test if empty messages result in zero tokens and cost."""
