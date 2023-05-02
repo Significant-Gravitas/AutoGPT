@@ -55,7 +55,8 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
               MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
               REDIS_HOST: ${REDIS_HOST:-redis}
             profiles: ["exclude-from-up"]
-            volumes:
+            ## uncomment following line if you make use of any of the volumes
+            #volumes:
               ## the following line mounts your local auto_gpt_workspace folder to the container, most likely you want to uncomment
               #- ./auto_gpt_workspace:/app/autogpt/auto_gpt_workspace
               ## the following line mounts your local logs folder to the container, uncomment if needed
