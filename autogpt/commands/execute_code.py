@@ -1,13 +1,14 @@
 """Execute code in a Docker container"""
 import os
 import subprocess
+from pathlib import Path
 
 import docker
 from docker.errors import ImageNotFound
 
 from autogpt.commands.command import command
 from autogpt.config import Config
-from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
+from autogpt.logs import logger
 
 CFG = Config()
 
@@ -22,20 +23,17 @@ def execute_python_file(filename: str) -> str:
     Returns:
         str: The output of the file
     """
-    file = filename
-    print(f"Executing file '{file}' in workspace '{WORKSPACE_PATH}'")
+    logger.info(f"Executing file '{filename}'")
 
-    if not file.endswith(".py"):
+    if not filename.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    file_path = path_in_workspace(file)
-
-    if not os.path.isfile(file_path):
-        return f"Error: File '{file}' does not exist."
+    if not os.path.isfile(filename):
+        return f"Error: File '{filename}' does not exist."
 
     if we_are_running_in_a_docker_container():
         result = subprocess.run(
-            f"python {file_path}", capture_output=True, encoding="utf8", shell=True
+            f"python {filename}", capture_output=True, encoding="utf8", shell=True
         )
         if result.returncode == 0:
             return result.stdout
@@ -44,16 +42,17 @@ def execute_python_file(filename: str) -> str:
 
     try:
         client = docker.from_env()
-
         # You can replace this with the desired Python image/version
         # You can find available Python images on Docker Hub:
         # https://hub.docker.com/_/python
         image_name = "python:3-alpine"
         try:
             client.images.get(image_name)
-            print(f"Image '{image_name}' found locally")
+            logger.warn(f"Image '{image_name}' found locally")
         except ImageNotFound:
-            print(f"Image '{image_name}' not found locally, pulling from Docker Hub")
+            logger.info(
+                f"Image '{image_name}' not found locally, pulling from Docker Hub"
+            )
             # Use the low-level API to stream the pull response
             low_level_client = docker.APIClient()
             for line in low_level_client.pull(image_name, stream=True, decode=True):
@@ -61,15 +60,14 @@ def execute_python_file(filename: str) -> str:
                 status = line.get("status")
                 progress = line.get("progress")
                 if status and progress:
-                    print(f"{status}: {progress}")
+                    logger.info(f"{status}: {progress}")
                 elif status:
-                    print(status)
-
+                    logger.info(status)
         container = client.containers.run(
             image_name,
-            f"python {file}",
+            f"python {Path(filename).relative_to(CFG.workspace_path)}",
             volumes={
-                os.path.abspath(WORKSPACE_PATH): {
+                CFG.workspace_path: {
                     "bind": "/workspace",
                     "mode": "ro",
                 }
@@ -90,7 +88,7 @@ def execute_python_file(filename: str) -> str:
         return logs
 
     except docker.errors.DockerException as e:
-        print(
+        logger.warn(
             "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
         )
         return f"Error: {str(e)}"
@@ -118,18 +116,14 @@ def execute_shell(command_line: str) -> str:
         str: The output of the command
     """
 
-    if not CFG.execute_local_commands:
-        return (
-            "You are not allowed to run local shell commands. To execute"
-            " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-            "in your config. Do not attempt to bypass the restriction."
-        )
-    current_dir = os.getcwd()
+    current_dir = Path.cwd()
     # Change dir into workspace if necessary
-    if str(WORKSPACE_PATH) not in current_dir:
-        os.chdir(WORKSPACE_PATH)
+    if not current_dir.is_relative_to(CFG.workspace_path):
+        os.chdir(CFG.workspace_path)
 
-    print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
+    logger.info(
+        f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
+    )
 
     result = subprocess.run(command_line, capture_output=True, shell=True)
     output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
@@ -137,6 +131,7 @@ def execute_shell(command_line: str) -> str:
     # Change back to whatever the prior working dir was
 
     os.chdir(current_dir)
+    return output
 
 
 @command(
@@ -158,12 +153,15 @@ def execute_shell_popen(command_line) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
+
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
-    if str(WORKSPACE_PATH) not in current_dir:
-        os.chdir(WORKSPACE_PATH)
+    if CFG.workspace_path not in current_dir:
+        os.chdir(CFG.workspace_path)
 
-    print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
+    logger.info(
+        f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
+    )
 
     do_not_show_output = subprocess.DEVNULL
     process = subprocess.Popen(
