@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import functools
 import time
+from itertools import islice
 from typing import List, Optional
 
+import numpy as np
 import openai
+import tiktoken
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, Timeout
 
@@ -30,7 +33,7 @@ def retry_openai_api(
     api_key_error_msg = (
         f"Please double check that you have setup a "
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
-        f"read more here: {Fore.CYAN}https://significant-gravitas.github.io/Auto-GPT/setup/#getting-an-api-key{Fore.RESET}"
+        f"read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
     )
     backoff_msg = (
         f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
@@ -174,7 +177,7 @@ def create_chat_completion(
             if not warned_user:
                 logger.double_check(
                     f"Please double check that you have setup a {Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. "
-                    + f"You can read more here: {Fore.CYAN}https://significant-gravitas.github.io/Auto-GPT/setup/#getting-an-api-key{Fore.RESET}"
+                    + f"You can read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
                 )
                 warned_user = True
         except (APIError, Timeout) as e:
@@ -207,6 +210,23 @@ def create_chat_completion(
     return resp
 
 
+def batched(iterable, n):
+    """Batch data into tuples of length n. The last batch may be shorter."""
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if n < 1:
+        raise ValueError("n must be at least one")
+    it = iter(iterable)
+    while batch := tuple(islice(it, n)):
+        yield batch
+
+
+def chunked_tokens(text, tokenizer_name, chunk_length):
+    tokenizer = tiktoken.get_encoding(tokenizer_name)
+    tokens = tokenizer.encode(text)
+    chunks_iterator = batched(tokens, chunk_length)
+    yield from chunks_iterator
+
+
 def get_ada_embedding(text: str) -> List[float]:
     """Get an embedding from the ada model.
 
@@ -217,7 +237,7 @@ def get_ada_embedding(text: str) -> List[float]:
         List[float]: The embedding.
     """
     cfg = Config()
-    model = "text-embedding-ada-002"
+    model = cfg.embedding_model
     text = text.replace("\n", " ")
 
     if cfg.use_azure:
@@ -226,13 +246,7 @@ def get_ada_embedding(text: str) -> List[float]:
         kwargs = {"model": model}
 
     embedding = create_embedding(text, **kwargs)
-    api_manager = ApiManager()
-    api_manager.update_cost(
-        prompt_tokens=embedding.usage.prompt_tokens,
-        completion_tokens=0,
-        model=model,
-    )
-    return embedding["data"][0]["embedding"]
+    return embedding
 
 
 @retry_openai_api()
@@ -251,8 +265,31 @@ def create_embedding(
         openai.Embedding: The embedding object.
     """
     cfg = Config()
-    return openai.Embedding.create(
-        input=[text],
-        api_key=cfg.openai_api_key,
-        **kwargs,
-    )
+    chunk_embeddings = []
+    chunk_lengths = []
+    for chunk in chunked_tokens(
+        text,
+        tokenizer_name=cfg.embedding_tokenizer,
+        chunk_length=cfg.embedding_token_limit,
+    ):
+        embedding = openai.Embedding.create(
+            input=[chunk],
+            api_key=cfg.openai_api_key,
+            **kwargs,
+        )
+        api_manager = ApiManager()
+        api_manager.update_cost(
+            prompt_tokens=embedding.usage.prompt_tokens,
+            completion_tokens=0,
+            model=cfg.embedding_model,
+        )
+        chunk_embeddings.append(embedding["data"][0]["embedding"])
+        chunk_lengths.append(len(chunk))
+
+    # do weighted avg
+    chunk_embeddings = np.average(chunk_embeddings, axis=0, weights=chunk_lengths)
+    chunk_embeddings = chunk_embeddings / np.linalg.norm(
+        chunk_embeddings
+    )  # normalize the length to one
+    chunk_embeddings = chunk_embeddings.tolist()
+    return chunk_embeddings
