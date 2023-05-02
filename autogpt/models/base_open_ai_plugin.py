@@ -208,7 +208,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         return False
 
     def handle_text_embedding(self, text: str, *_, **kwargs) -> list:
-        """This method is called when the chat completion is done.
+        """This method is called when the text embedding is done.
         Args:
             text (str): The text to be convert to embedding.
         Returns:
