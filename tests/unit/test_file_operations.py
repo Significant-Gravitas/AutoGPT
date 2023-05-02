@@ -198,12 +198,25 @@ def test_write_file_succeeds_if_content_different(test_file_with_content_path: P
     assert result == "File written to successfully."
 
 def test_update_file_all_occurences(test_file, test_file_path):
-    old_content = "This is a test file.\n we test file here\n"
-    expected_content = "This is a update file.\n we update file here\n"
+    old_content = "This is a test file.\n we test file here\na test is needed"
+    expected_content = "This is a update file.\n we update file here\na update is needed"
     test_file.write(old_content)
     test_file.close()
     print(old_content)
     file_ops.update_file(test_file_path, "test", "update")
+    with open(test_file_path) as f:
+        new_content = f.read()
+    print(new_content)
+
+    assert new_content == expected_content
+
+def test_update_file_one_occurence(test_file, test_file_path):
+    old_content = "This is a test file.\n we test file here\na test is needed"
+    expected_content = "This is a test file.\n we update file here\na test is needed"
+    test_file.write(old_content)
+    test_file.close()
+    print(old_content)
+    file_ops.update_file(test_file_path, "test", "update", 1)
     with open(test_file_path) as f:
         new_content = f.read()
     print(new_content)

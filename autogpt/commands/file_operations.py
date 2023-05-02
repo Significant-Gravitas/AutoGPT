@@ -227,21 +227,24 @@ def write_to_file(filename: str, text: str) -> str:
     "Update file",
     '"filename": "<filename>",'
     '"old_text": "<old_text>", "new_text": "<new_text>",'
-     '"match_index": "<match_index>"',
+     '"occurence_index": "<occurence_index>"',
 )
-def update_file(
-    filename: str, old_text: str, new_text: str, match_index=None
-):
-    """Update a file by replacing one specific occurrence of old_text with new_text or replacing all occurrences
-    this method excludes the end-of-line character at the end of old_text and new_text and uses a directory variable to
-    prevent auto-gpt from using the wrong directory
+def update_file(filename: str, old_text: str, new_text: str, occurrence_index=None):
+    """Update a file by replacing one or all occurrences of old_text with new_text using Python's built-in string
+    manipulation and regular expression modules for cross-platform file editing similar to sed and awk.
 
     Args:
         filename (str): The name of the file
-        old_text (str): String to be replaced   \n will be stripped from string
-        new_text (str): New string   \n will be stripped from string
-        match_index (str): indexed match where the update should take place, takes (none, all and numbers)
+        old_text (str): String to be replaced. \n will be stripped from string.
+        new_text (str): New string. \n will be stripped from string.
+        occurrence_index (int): Optional index of the occurrence to replace. If None, all occurrences will be replaced.
 
+    Returns:
+        str: A message indicating whether the file was updated successfully or if there were no matches found for old_text
+        in the file.
+
+    Raises:
+        Exception: If there was an error updating the file.
     """
     try:
         with open(filename, "r", encoding="utf-8") as f:
@@ -250,12 +253,22 @@ def update_file(
         old_text = old_text.rstrip("\n")
         new_text = new_text.rstrip("\n")
 
-        matches = re.finditer(re.escape(old_text), content)
-        if not matches:
-            return f"No matches found for {old_text} in {filename}"
+        if occurrence_index is None:
+            new_content = re.sub(re.escape(old_text), new_text, content)
+        else:
+            matches = list(re.finditer(re.escape(old_text), content))
+            if not matches:
+                return f"No matches found for {old_text} in {filename}"
 
-        # Replace all occurrences of old_code with new_code
-        new_content = content.replace(old_text, new_text)
+            if occurrence_index >= len(matches):
+                return f"Occurrence index {occurrence_index} is out of range for {old_text} in {filename}"
+
+            match = matches[occurrence_index]
+            start, end = match.start(), match.end()
+            new_content = content[:start] + new_text + content[end:]
+
+        if content == new_content:
+            return f"No matches found for {old_text} in {filename}"
 
         with open(filename, "w", encoding="utf-8") as f:
             f.write(new_content)
