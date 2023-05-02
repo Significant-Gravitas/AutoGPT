@@ -473,6 +473,63 @@ def test_execute_command_normal_mode(
     assert actual_logger_error_calls == expected_logger_error
 
 
+def test_execute_command_no_next_command_self_feedback(
+    agent,
+    mocker,
+    config,
+    mock_input,
+    mock_chat_with_ai,
+    mock_execute_command,
+    mock_logger_info,
+    mock_logger_typewriter_log,
+    mock_logger_warn,
+    mock_logger_error,
+    mock_say_text,
+    mock_get_self_feedback,
+    typewriter_first_9,
+    typewriter_command_auth_by_user,
+    typewriter_command_returned,
+    typewriter_verify_by_agent,
+    typewriter_self_feedback,
+    typewriter_human_feedback,
+    info_action_prompt,
+    info_asking_user,
+    info_exiting,
+):
+    mock_input.side_effect = ["s", "n"]
+    self_feedback_test = "Will not generate next command"
+    mock_get_self_feedback.return_value = self_feedback_test
+    agent.start_interaction_loop()
+
+    expected_typewriter_log = (
+        typewriter_first_9
+        + typewriter_verify_by_agent
+        + [
+            mocker.call(
+                f"SELF FEEDBACK: {self_feedback_test}",
+                "\x1b[33m",
+                "",
+            )
+        ]
+        + typewriter_command_returned
+        + typewriter_first_9
+    )
+
+    actual_logger_typewriter_log_calls = mock_logger_typewriter_log.call_args_list
+    assert actual_logger_typewriter_log_calls == expected_typewriter_log
+
+    expected_logger_info = (
+        info_action_prompt
+        + info_asking_user
+        + info_action_prompt
+        + info_asking_user
+        + info_exiting
+    )
+
+    actual_logger_info_calls = mock_logger_info.call_args_list
+    assert actual_logger_info_calls == expected_logger_info
+
+
 @pytest.fixture
 def expected_logger_error(mocker):
     return [mocker.call("Error: \n", "The Exception")]
