@@ -33,7 +33,7 @@ def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
     result = []
     with zipfile.ZipFile(zip_path, "r") as zfile:
         for name in zfile.namelist():
-            if name.endswith("__init__.py"):
+            if name.endswith("__init__.py") and not name.startswith("__MACOSX"):
                 logger.debug(f"Found module '{name}' in the zipfile at: {name}")
                 result.append(name)
     if len(result) == 0:
