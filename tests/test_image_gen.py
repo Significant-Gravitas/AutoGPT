@@ -54,7 +54,7 @@ def test_sd_webui(config, workspace, image_size):
     generate_and_validate(
         config,
         workspace,
-        image_provider="sd_webui",
+        image_provider="sdwebui",
         image_size=image_size,
     )
 
