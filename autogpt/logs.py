@@ -76,6 +76,11 @@ class Logger(metaclass=Singleton):
         self.logger.addHandler(error_handler)
         self.logger.setLevel(logging.DEBUG)
 
+        self.json_logger = logging.getLogger("JSON_LOGGER")
+        self.json_logger.addHandler(self.file_handler)
+        self.json_logger.addHandler(error_handler)
+        self.json_logger.setLevel(logging.DEBUG)
+
         self.speak_mode = False
         self.chat_plugins = []
 
@@ -165,9 +170,9 @@ class Logger(metaclass=Singleton):
         json_data_handler.setFormatter(JsonFormatter())
 
         # Log the JSON data using the custom file handler
-        self.logger.addHandler(json_data_handler)
-        self.logger.debug(data)
-        self.logger.removeHandler(json_data_handler)
+        self.json_logger.addHandler(json_data_handler)
+        self.json_logger.debug(data)
+        self.json_logger.removeHandler(json_data_handler)
 
     def get_log_directory(self):
         this_files_dir_path = os.path.dirname(__file__)
@@ -227,6 +232,10 @@ class AutoGptFormatter(logging.Formatter):
             )
         else:
             record.title_color = getattr(record, "title", "")
+
+        # Add this line to set 'title' to an empty string if it doesn't exist
+        record.title = getattr(record, "title", "")
+
         if hasattr(record, "msg"):
             record.message_no_color = remove_color_codes(getattr(record, "msg"))
         else:
