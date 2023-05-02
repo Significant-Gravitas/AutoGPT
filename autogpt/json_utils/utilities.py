@@ -1,6 +1,6 @@
 """Utilities for the json_fixes package."""
 import json
-import os
+import os.path
 import re
 
 from jsonschema import Draft7Validator
