@@ -74,6 +74,17 @@ jobs:
           pytest --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
         env:
           CI: true
+                OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Commit changes
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "github-actions-bot@users.noreply.github.com"
+          git fetch
+          git checkout "${{ github.head_ref }}" || echo "Changes already committed"
+          git add -A
+          git commit -m "Update cassettes" || echo "No changes to commit"
+          git push || echo "Changes already committed"
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
