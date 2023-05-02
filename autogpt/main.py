@@ -3,7 +3,7 @@ import logging
 import sys
 from pathlib import Path
 
-from colorama import Fore
+from colorama import Fore, Style
 
 from autogpt.agent.agent import Agent
 from autogpt.commands.command import CommandRegistry
@@ -12,8 +12,12 @@ from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.plugins import scan_plugins
-from autogpt.prompts.prompt import construct_main_ai_config
-from autogpt.utils import get_current_git_branch, get_latest_bulletin
+from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
+from autogpt.utils import (
+    get_current_git_branch,
+    get_latest_bulletin,
+    markdown_to_ansi_style,
+)
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
@@ -57,9 +61,19 @@ def run_auto_gpt(
     )
 
     if not cfg.skip_news:
-        motd = get_latest_bulletin()
+        motd, is_new_motd = get_latest_bulletin()
         if motd:
-            logger.typewriter_log("NEWS: ", Fore.GREEN, motd)
+            motd = markdown_to_ansi_style(motd)
+            for motd_line in motd.split("\n"):
+                logger.info(motd_line, "NEWS:", Fore.GREEN)
+            if is_new_motd and not cfg.chat_messages_enabled:
+                input(
+                    Fore.MAGENTA
+                    + Style.BRIGHT
+                    + "NEWS: Bulletin was updated! Press Enter to continue..."
+                    + Style.RESET_ALL
+                )
+
         git_branch = get_current_git_branch()
         if git_branch and git_branch != "stable":
             logger.typewriter_log(
@@ -124,11 +138,14 @@ def run_auto_gpt(
     # Initialize variables
     full_message_history = []
     next_action_count = 0
-    # Make a constant:
-    triggering_prompt = (
-        "Determine which next command to use, and respond using the"
-        " format specified above:"
-    )
+
+    # add chat plugins capable of report to logger
+    if cfg.chat_messages_enabled:
+        for plugin in cfg.plugins:
+            if hasattr(plugin, "can_handle_report") and plugin.can_handle_report():
+                logger.info(f"Loaded plugin into logger: {plugin.__class__.__name__}")
+                logger.chat_plugins.append(plugin)
+
     # Initialize memory and make sure it is empty.
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(cfg, init=True)
@@ -148,7 +165,7 @@ def run_auto_gpt(
         command_registry=command_registry,
         config=ai_config,
         system_prompt=system_prompt,
-        triggering_prompt=triggering_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
     )
     agent.start_interaction_loop()
