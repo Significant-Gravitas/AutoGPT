@@ -8,8 +8,6 @@ from colorama import Fore, Style
 from openai.error import RateLimitError
 
 from autogpt.logs import logger
-from autogpt.token_counter import count_message_tokens
-from autogpt.llm_utils import create_chat_completion
 
 def create_chat_message(role, content):
     """
