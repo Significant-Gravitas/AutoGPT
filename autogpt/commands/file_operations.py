@@ -4,9 +4,9 @@ from __future__ import annotations
 import hashlib
 import os
 import os.path
+import re
 from typing import Dict, Generator, Literal, Tuple
 
-import re
 import charset_normalizer
 import requests
 from colorama import Back, Fore
@@ -227,7 +227,7 @@ def write_to_file(filename: str, text: str) -> str:
     "Update file",
     '"filename": "<filename>",'
     '"old_text": "<old_text>", "new_text": "<new_text>",'
-     '"occurence_index": "<occurence_index>"',
+    '"occurrence_index": "<occurrence_index>"',
 )
 def update_file(filename: str, old_text: str, new_text: str, occurrence_index=None):
     """Update a file by replacing one or all occurrences of old_text with new_text using Python's built-in string
@@ -280,6 +280,7 @@ def update_file(filename: str, old_text: str, new_text: str, occurrence_index=No
         return f"File {filename} updated successfully."
     except Exception as e:
         return "Error: " + str(e)
+
 
 @command(
     "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'

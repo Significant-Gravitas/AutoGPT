@@ -197,9 +197,12 @@ def test_write_file_succeeds_if_content_different(test_file_with_content_path: P
     result = file_ops.write_to_file(str(test_file_with_content_path), new_content)
     assert result == "File written to successfully."
 
-def test_update_file_all_occurences(test_file, test_file_path):
+
+def test_update_file_all_occurrences(test_file, test_file_path):
     old_content = "This is a test file.\n we test file here\na test is needed"
-    expected_content = "This is a update file.\n we update file here\na update is needed"
+    expected_content = (
+        "This is a update file.\n we update file here\na update is needed"
+    )
     test_file.write(old_content)
     test_file.close()
     print(old_content)
@@ -210,7 +213,8 @@ def test_update_file_all_occurences(test_file, test_file_path):
 
     assert new_content == expected_content
 
-def test_update_file_one_occurence(test_file, test_file_path):
+
+def test_update_file_one_occurrence(test_file, test_file_path):
     old_content = "This is a test file.\n we test file here\na test is needed"
     expected_content = "This is a test file.\n we update file here\na test is needed"
     test_file.write(old_content)
@@ -222,6 +226,7 @@ def test_update_file_one_occurence(test_file, test_file_path):
     print(new_content)
 
     assert new_content == expected_content
+
 
 def test_append_to_file(test_nested_file: Path):
     append_text = "This is appended text.\n"
