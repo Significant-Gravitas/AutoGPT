@@ -112,7 +112,9 @@ def get_latest_bulletin() -> tuple[str, bool]:
     exists = os.path.exists("data/CURRENT_BULLETIN.md")
     current_bulletin = ""
     if exists:
-        current_bulletin = open("data/CURRENT_BULLETIN.md", "r", encoding="utf-8").read()
+        current_bulletin = open(
+            "data/CURRENT_BULLETIN.md", "r", encoding="utf-8"
+        ).read()
     new_bulletin = get_bulletin_from_web()
     is_new_news = new_bulletin != "" and new_bulletin != current_bulletin
 
