@@ -35,6 +35,9 @@ class Config(metaclass=Singleton):
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+        self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
+        self.embedding_tokenizer = os.getenv("EMBEDDING_TOKENIZER", "cl100k_base")
+        self.embedding_token_limit = int(os.getenv("EMBEDDING_TOKEN_LIMIT", 8191))
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 3000))
         self.browse_spacy_language_model = os.getenv(
             "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
@@ -215,6 +218,18 @@ class Config(metaclass=Singleton):
     def set_smart_token_limit(self, value: int) -> None:
         """Set the smart token limit value."""
         self.smart_token_limit = value
+
+    def set_embedding_model(self, value: str) -> None:
+        """Set the model to use for creating embeddings."""
+        self.embedding_model = value
+
+    def set_embedding_tokenizer(self, value: str) -> None:
+        """Set the tokenizer to use when creating embeddings."""
+        self.embedding_tokenizer = value
+
+    def set_embedding_token_limit(self, value: int) -> None:
+        """Set the token limit for creating embeddings."""
+        self.embedding_token_limit = value
 
     def set_browse_chunk_max_length(self, value: int) -> None:
         """Set the browse_website command chunk max length value."""
