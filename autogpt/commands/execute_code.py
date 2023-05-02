@@ -115,7 +115,8 @@ def execute_shell(command_line: str) -> str:
     Returns:
         str: The output of the command
     """
-
+    
+    # Get disallowed commands from the environment variable, check if any are in the command line input.
     disallowed_commands = os.getenv('DISALLOWED_COMMANDS').split(',')
     if any(command in command_line for command in disallowed_commands):
         return ("Error: Disallowed command detected. Use another command to fulfill task")
