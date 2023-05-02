@@ -267,7 +267,9 @@ def create_embedding(
     cfg = Config()
     chunk_embeddings = []
     chunk_lengths = []
-    embedding_plugin = next((plugin for plugin in cfg.plugins if plugin.can_handle_embedding()), None)
+    embedding_plugin = next(
+        (plugin for plugin in cfg.plugins if plugin.can_handle_embedding()), None
+    )
 
     for chunk in chunked_tokens(
         text,
