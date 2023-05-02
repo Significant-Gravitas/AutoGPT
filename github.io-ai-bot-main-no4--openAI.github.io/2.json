@@ -1,0 +1,22 @@
+import json
+import requests
+
+def collect_data():
+    url = "your_url"
+    response = requests.get(url)
+    data = response.json()
+    return data
+
+def to_12bit_binary(r, g, b):
+    r_binary = format(r, '04b')
+    g_binary = format(g, '04b')
+    b_binary = format(b, '04b')
+    return r_binary + g_binary + b_binary
+
+data = collect_data()
+color = data["color"]
+binary_text = to_12bit_binary(color["r"], color["g"], color["b"])
+
+print(binary_text)
+with open("binary_data.txt", "w") as file:
+    file.write(binary_text)

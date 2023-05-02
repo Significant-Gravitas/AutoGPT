@@ -1,0 +1,1 @@
+import openaiopenai.api_key = "834d0a08-bc31-4f80-81da-17579e406d3e"model_engine = "text-davinci-002"prompt = "안녕하세요"completions = openai.Completion.create( engine=model_engine, prompt=prompt, max_tokens=1024, n=1, stop=None, temperature=0.5,)message = completions.choices[0].textprint(message)

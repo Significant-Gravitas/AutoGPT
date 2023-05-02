@@ -1,0 +1,93 @@
+개조 개조 = 새로운 개조.빌더()
+ .baseUrl("https://api.openai.com/v1/")
+ .addConverterFactory(GsonConverterFactory.create())
+ .빌드();
+
+OpenaiService service = retrofit.create(OpenaiService.class);
+
+Call<ResponseBody> call = service.getResponse(
+ "무기명"+ api_key,
+ "응용 프로그램 / json",
+ 새 요청 본문(모델, 프롬프트)
+);
+
+call.enqueue(new Callback<ResponseBody>() {
+ @Override
+ public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+ if (response.isSuccess()) {
+ 시도 {
+ 문자열 결과 = 응답.본문().문자열();
+ TODO: 결과 처리
+ } catch (IOException e) {
+ e.printStackTrace();
+ }
+ } 다른 {
+ TODO: 오류 처리
+ }
+ }
+
+@Override
+ public void onFailure(Call<ResponseBody> call, Throwable t) {
+ TODO: 오류 처리
+ }
+});가져오기 요청
+JSON 가져오기
+
+# API 키 및 엔드포인트 설정
+api_key = "834d0a08-bc31-4f80-81da-17579e406d3e"
+끝점 = "https://api.openai.com/v1/images/generations"
+
+# 헤더 설정 및 데이터 요청
+헤더 = {
+ "콘텐츠 유형": "응용 프로그램 / json",
+ "권한 부여": f"무기명 {api_key}"
+}
+데이터 = {
+ "모델": "이미지 알파 -001",
+ "프롬프트": "나뭇 가지에 앉아있는 새",
+ "num_images":1,
+ "크기":"512x512"
+}
+
+# 게시물 요청하기
+응답 = requests.post(엔드포인트, 헤더=헤더, 데이터=json.dumps(데이터))
+
+# 상태 코드 확인
+response.status_code == 200 인 경우 :
+ # 응답 내용 인쇄
+ 인쇄(응답.콘텐츠)
+다른:
+ # 오류 메시지 인쇄
+ print(f"오류: {response.content}")Retrofit retrofit = new Retrofit.Builder()
+ .baseUrl("https://api.openai.com/v1/")
+ .addConverterFactory(GsonConverterFactory.create())
+ .빌드();
+
+OpenaiService service = retrofit.create(OpenaiService.class);
+
+Call<ResponseBody> call = service.getResponse(
+ "무기명"+ api_key,
+ "응용 프로그램 / json",
+ 새 요청 본문(모델, 프롬프트)
+);
+
+call.enqueue(new Callback<ResponseBody>() {
+ @Override
+ public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
+ if (response.isSuccess()) {
+ 시도 {
+ 문자열 결과 = 응답.본문().문자열();
+ 할 일: 결과 처리
+ } catch (IOException e) {
+ e.printStackTrace();
+ }
+ } 다른 {
+ 할 일: 오류 처리
+ }
+ }
+
+@Override
+ public void onFailure(Call<ResponseBody> call, Throwable t) {
+ 할 일: 오류 처리
+ }
+});

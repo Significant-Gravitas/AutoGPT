@@ -1,0 +1,1 @@
+def collect_data(filename):    with open(filename, "rb") as file:        binary_data = file.read()    return binary_dataimport timewhile True:    filename = input("Enter a file name: ")    # Collect data    data = collect_data(filename)    # Update model with new data    model.update(data)    time.sleep(60)

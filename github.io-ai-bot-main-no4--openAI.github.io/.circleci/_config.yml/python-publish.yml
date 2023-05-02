@@ -1,0 +1,24 @@
+# .py Generator
+
+이 프로젝트는 .py 파일을 자동으로 생성해주는 프로그램입니다.
+
+import os
+import random
+
+def generate_py_file():
+    # 파일 이름을 랜덤하게 생성합니다.
+    file_name = f"{random.randint(1, 100)}.py"
+    # 파일 내용을 랜덤하게 생성합니다.
+    file_content = f"print('Hello, this is {file_name}')\n"
+    # 파일을 생성하고 내용을 씁니다.
+    with open(file_name, "w") as f:
+        f.write(file_content)
+    # 파일 이름을 반환합니다.
+    return file_name
+
+if __name__ == "__main__":
+    # .py 파일을 생성합니다.
+    py_file = generate_py_file()
+    # 생성된 파일의 이름과 내용을 출력합니다.
+    print(f"Generated {py_file}")
+    os.system(f"python {py_file}")

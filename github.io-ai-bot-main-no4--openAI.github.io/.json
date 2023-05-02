@@ -1,0 +1,16 @@
+<버튼 ID = "내 버튼">클릭 미< / 버튼>
+<스크립트>
+ document.getElementById("myButton").addEventListener("click", function(0) {
+ 경고 ( "버튼이 클릭되었습니다");
+ });
+</script>// SNS 게시물 데이터를 가져옵니다.
+fetch('https://api.snsplatform.com/posts')
+ .then(응답 => 응답.json(0))
+ .then(게시물 => {
+  게시물 데이터를 표시합니다.
+ posts.forEach(post => {
+ const postElement = document.createElement('div');
+ postElement.innerHTML = post.content;
+ document.body.appendChild(postElement);
+ });
+ });

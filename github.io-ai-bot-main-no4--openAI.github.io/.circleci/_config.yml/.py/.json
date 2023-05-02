@@ -1,0 +1,61 @@
+import random
+
+# Generate a 20-digit random pattern
+pattern = ''.join(str(random.randint(0, 9)) for i in range(20))
+
+# Encrypt the pattern using a secure algorithm
+# TODO: Implement the algorithm and code to encrypt the pattern
+
+# Lock the encrypted pattern on the central server using the verification connection settings
+# TODO: Implement code to lock the encrypted pattern on the central server . #import random
+import hashlib
+
+def generate_random_pattern(length):
+    # Use Python's built-in random module to generate a sequence of random integers
+    # Convert the integers to a string representation and concatenate them together to create the pattern
+    pattern = ''.join(str(random.randint(0, 9)) for _ in range(length))
+    return pattern
+
+def encrypt_pattern(pattern):
+    # Use hashlib's SHA-256 algorithm to securely hash the pattern
+    # Convert the hashed pattern to a hexadecimal string representation
+    hashed_pattern = hashlib.sha256(pattern.encode()).hexdigest()
+    return hashed_pattern
+
+def lock_pattern_on_server(pattern):
+    # TODO: Implement the code to lock the encrypted pattern on the central server
+    pass
+
+# Generate a random pattern and encrypt it
+pattern = generate_random_pattern(20)
+encrypted_pattern = encrypt_pattern(pattern)
+
+# Lock the encrypted pattern on the central server
+lock_pattern_on_server(encrypted_pattern)
+import random
+import hashlib
+
+def generate_random_pattern(length):
+    # Use Python's built-in random module to generate a sequence of random integers
+    # Convert the integers to a string representation and concatenate them together to create the pattern
+    pattern = ''.join(str(random.randint(0, 9)) for _ in range(length))
+    return pattern
+
+def encrypt_pattern(pattern):
+    # Use hashlib's SHA-256 algorithm to securely hash the pattern
+    # Convert the hashed pattern to a hexadecimal string representation
+    hashed_pattern = hashlib.sha256(pattern.encode()).hexdigest()
+    return hashed_pattern
+
+def lock_pattern_on_server(encrypted_pattern):
+    # TODO: Implement the code to lock the encrypted pattern on the central server
+    # This might involve connecting to the server and storing the encrypted pattern in a secure database or file
+    print("Encrypted pattern locked on the central server: " + encrypted_pattern)
+
+# Generate a random pattern and encrypt it
+pattern = generate_random_pattern(20)
+encrypted_pattern = encrypt_pattern(pattern)
+
+# Lock the encrypted pattern on the central server
+lock_pattern_on_server(encrypted_pattern)
+    return render_template('result.html')

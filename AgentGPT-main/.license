@@ -1,0 +1,8 @@
+from agentgpt_ai4dbot import AgentGPT
+
+agent = AgentGPT()
+local_path = "/path/to/local/repo"
+remote_repo = "https://github.com/username/repo.git"
+branch = "main"
+commit_message = "Added new feature"
+agent.push_to_github(local_path, remote_repo, branch, commit_message)

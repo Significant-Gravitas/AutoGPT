@@ -1,0 +1,7 @@
+**/.git
+**/node_modules
+**/idea
+**/.next
+**/aws
+**/.husky
+**/venv

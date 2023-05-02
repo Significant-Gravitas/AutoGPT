@@ -1,0 +1,31 @@
+module.exports = {
+  i18n: {
+    defaultLocale: "en",
+    locales: [
+      "en",
+      "hu",
+      "fr",
+      "de",
+      "it",
+      "ja",
+      "zh",
+      "ko",
+      "pl",
+      "pt",
+      "ro",
+      "ru",
+      "uk",
+      "es",
+      "nl",
+      "sk",
+      "hr",
+    ],
+  },
+  localePath: typeof window === "undefined" ? "./public/locales" : "/locales",
+  debug: false,
+  reloadOnPrerender: process.env.NODE_ENV === "development",
+  defaultNS: "translation",
+  react: {
+    useSuspense: false,
+  },
+};

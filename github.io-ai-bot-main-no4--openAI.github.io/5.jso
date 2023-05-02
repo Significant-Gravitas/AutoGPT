@@ -1,0 +1,1 @@
+import requestsimport json# 요청을 보내서 수집한 데이터를 파일로 저장response = requests.get(https://rsrrrrrr.github.io/ai-bot/main/no4/)data = response.json(*.*)with open("binary_data.txt", "w") as file: file.write(data)# 파일을 읽어서 모델에 적용with open("binary_data.txt", "r") as file: data = json.load(file) model.update(data)

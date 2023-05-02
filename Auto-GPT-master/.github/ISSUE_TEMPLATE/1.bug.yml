@@ -1,0 +1,131 @@
+name: Bug report 🐛
+description: Create a bug report for Auto-GPT.
+labels: ['status: needs triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### ⚠️ Before you continue
+        * Check out our [backlog], [roadmap] and join our [discord] to discuss what's going on
+        * If you need help, you can ask in the [discussions] section or in [#tech-support]
+        * **Throughly search the [existing issues] before creating a new one**
+
+        [backlog]: https://github.com/orgs/Significant-Gravitas/projects/1
+        [roadmap]: https://github.com/orgs/Significant-Gravitas/projects/2  
+        [discord]: https://discord.gg/autogpt
+        [discussions]: https://github.com/Significant-Gravitas/Auto-GPT/discussions
+        [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
+        [existing issues]: https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue
+  - type: checkboxes
+    attributes:
+      label: ⚠️ Search for existing issues first ⚠️
+      description: >
+        Please [search the history](https://github.com/Torantulino/Auto-GPT/issues)
+        to see if an issue already exists for the same problem.
+      options:
+        - label: I have searched the existing issues, and there is no existing issue for my problem
+          required: true
+  - type: markdown
+    attributes:
+      value: |
+        Please provide a searchable summary of the issue in the title above ⬆️.
+
+        ⚠️ SUPER-busy repo, please help the volunteer maintainers.
+        The less time we spend here, the more time we spend building AutoGPT.
+        
+        Please help us help you:
+        - Does it work on `stable` branch (https://github.com/Torantulino/Auto-GPT/tree/stable)?
+        - Does it work on current `master` (https://github.com/Torantulino/Auto-GPT/tree/master)?
+        - Search for existing issues, "add comment" is tidier than "new issue"
+        - Ask on our Discord (https://discord.gg/autogpt)
+        - Provide relevant info:
+          - Provide commit-hash (`git rev-parse HEAD` gets it)
+          - If it's a pip/packages issue, provide pip version, python version
+          - If it's a crash, provide traceback.
+  - type: dropdown
+    attributes:
+      label: Which Operating System are you using?
+      description: >
+        Please select the operating system you were using to run Auto-GPT when this problem occurred.
+      options:
+        - Windows
+        - Linux
+        - MacOS
+        - Docker
+        - Devcontainer / Codespace
+        - Windows Subsystem for Linux (WSL)
+        - Other (Please specify in your problem)
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: Which version of Auto-GPT are you using?
+      description: |
+        Please select which version of Auto-GPT you were using when this issue occurred.
+        If you downloaded the code from the [releases page](https://github.com/Significant-Gravitas/Auto-GPT/releases/) make sure you were using the latest code. 
+        **If you weren't please try with the [latest code](https://github.com/Significant-Gravitas/Auto-GPT/releases/)**.
+        If installed with git you can run `git branch` to see which version of Auto-GPT you are running.
+      options:
+        - Latest Release
+        - Stable (branch)
+        - Master (branch)
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: GPT-3 or GPT-4?
+      description: >
+        If you are using Auto-GPT with `--gpt3only`, your problems may be caused by
+        the [limitations](https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue+label%3A%22AI+model+limitation%22) of GPT-3.5.
+      options:
+        - GPT-3.5
+        - GPT-4
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce 🕹
+      description: |
+        **⚠️ Issues that we can't reproduce will be closed.**
+  - type: textarea
+    attributes:
+      label: Current behavior 😯
+      description: Describe what happens instead of the expected behavior.
+  - type: textarea
+    attributes:
+      label: Expected behavior 🤔
+      description: Describe what should happen.
+  - type: textarea
+    attributes:
+      label: Your prompt 📝
+      description: >
+        If applicable please provide the prompt you are using. Your prompt is stored in your `ai_settings.yaml` file.
+      value: |
+        ```yaml
+        # Paste your prompt here
+        ```
+  - type: textarea
+    attributes:
+      label: Your Logs 📒
+      description: |
+        Please include the log showing your error and the command that caused it, if applicable.
+        You can copy it from your terminal or from `logs/activity.log`.
+        This will help us understand your issue better!
+        
+        <details>
+        <summary><i>Example</i></summary>
+        ```log
+        INFO NEXT ACTION:  COMMAND = execute_shell  ARGUMENTS = {'command_line': 'some_command'}
+        INFO -=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=
+        Traceback (most recent call last):
+        File "/home/anaconda3/lib/python3.9/site-packages/openai/api_requestor.py", line 619, in _interpret_response
+        self._interpret_response_line(
+        File "/home/anaconda3/lib/python3.9/site-packages/openai/api_requestor.py", line 682, in _interpret_response_line
+        raise self.handle_error_response(
+        openai.error.InvalidRequestError: This model's maximum context length is 8191 tokens, however you requested 10982 tokens (10982 in your prompt; 0 for the completion). Please reduce your prompt; or completion length.
+        ```
+        </details>
+      value: |
+        ```log
+        <insert your logs here>
+        ```

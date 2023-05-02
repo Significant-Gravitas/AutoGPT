@@ -1,0 +1,26 @@
+def collect_data():
+open("data.txt", "r")을 파일로 사용 :
+text = file.read()
+binary_data = 바이트(텍스트, 'UTF-8')
+반환 binary_data
+
+정의 to_12bit_binary(r, g, b):
+r_binary = 형식 (r, '04b')
+g_binary = 형식 (g, '04b')
+b_binary = 형식 (b, '04b')
+r_binary + g_binary + b_binary 반환
+
+색상 = (12, 34, 56)
+binary_text = to_12bit_binary(*색상)
+인쇄 (binary_text) # "00001100 00100010 00111000"
+
+열기 ( "binary_data.txt", "w")를 파일로 사용 :
+파일.쓰기(binary_text)
+
+새 데이터로 모델 업데이트
+데이터 = collect_data()
+model.update(data)
+
+
+
+

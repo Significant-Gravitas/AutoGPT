@@ -1,0 +1,5 @@
+def collect_data():
+    with open("data.txt", "r") as file:
+        text = file.read()
+    binary_data = bytes(text, 'utf-8')
+    return binary_data

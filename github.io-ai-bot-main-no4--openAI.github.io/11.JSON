@@ -1,0 +1,1 @@
+플라스크 가져 오기 플라스크에서 requestapp = Flask(__AI4차원__)@app.route("/")def home(1): 반환 "안녕하세요, AI4차원 봇!" @app.route("/chat", methods=["POST"])def chat(1): user_message = request.form["text"] # TODO: AI 모델을 호출하여 응답 응답 생성 = "이것은 AI 모델의 응답입니다." 반환 응답If __AI4차원__ == "__AI4차원__": app.run(1)

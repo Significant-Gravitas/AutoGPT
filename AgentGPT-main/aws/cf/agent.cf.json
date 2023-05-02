@@ -1,0 +1,316 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Create a stack that runs Chroma hosted on a single instance",
+    "Parameters": {
+        "KeyName": {
+            "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instance",
+            "Type": "String",
+            "ConstraintDescription": "If present, must be the name of an existing EC2 KeyPair.",
+            "Default": ""
+        },
+        "InstanceType": {
+            "Description": "EC2 instance type",
+            "Type": "String",
+            "Default": "t3.small"
+        },
+        "ChromaVersion": {
+            "Description": "Chroma version to install",
+            "Type": "String",
+            "Default": "0.3.21"
+        }
+    },
+    "Conditions": {
+        "HasKeyName": {
+            "Fn::Not": [
+                {
+                    "Fn::Equals": [
+                        {
+                            "Ref": "KeyName"
+                        },
+                        ""
+                    ]
+                }
+            ]
+        }
+    },
+    "Resources": {
+        "ChromaInstance": {
+            "Type": "AWS::EC2::Instance",
+            "Properties": {
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "Region2AMI",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        "AMI"
+                    ]
+                },
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "Content-Type: multipart/mixed; boundary=\"//\"\n",
+                                "MIME-Version: 1.0\n",
+                                "\n",
+                                "--//\n",
+                                "Content-Type: text/cloud-config; charset=\"us-ascii\"\n",
+                                "MIME-Version: 1.0\n",
+                                "Content-Transfer-Encoding: 7bit\n",
+                                "Content-Disposition: attachment; filename=\"cloud-config.txt\"\n",
+                                "\n",
+                                "\n",
+                                "#cloud-config\n",
+                                "cloud_final_modules:\n",
+                                "- [scripts-user, always]\n",
+                                "\n",
+                                "\n",
+                                "--//\n",
+                                "Content-Type: text/x-shellscript; charset=\"us-ascii\"\n",
+                                "MIME-Version: 1.0\n",
+                                "Content-Transfer-Encoding: 7bit\n",
+                                "Content-Disposition: attachment; filename=\"userdata.txt\"\n",
+                                "\n",
+                                "\n",
+                                "#!/bin/bash\n",
+                                "amazon-linux-extras install docker\n",
+                                "usermod -a -G docker ec2-user\n",
+                                "curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose\n",
+                                "chmod +x /usr/local/bin/docker-compose\n",
+                                "ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose\n",
+                                "systemctl enable docker\n",
+                                "systemctl start docker\n",
+                                "\n",
+                                "cat << EOF > /home/ec2-user/docker-compose.yml\n",
+                                "version: '3.9'\n",
+                                "\n",
+                                "networks:\n",
+                                "  net:\n",
+                                "    driver: bridge\n",
+                                "\n",
+                                "services:\n",
+                                "  server:\n",
+                                {
+                                    "Fn::Sub": "    image: ghcr.io/chroma-core/chroma:${ChromaVersion}\n"
+                                },
+                                "    volumes:\n",
+                                "      - index_data:/index_data\n",
+                                "    environment:\n",
+                                "      - CHROMA_DB_IMPL=clickhouse\n",
+                                "      - CLICKHOUSE_HOST=clickhouse\n",
+                                "      - CLICKHOUSE_PORT=8123\n",
+                                "    ports:\n",
+                                "      - 8000:8000\n",
+                                "    depends_on:\n",
+                                "      - clickhouse\n",
+                                "    networks:\n",
+                                "      - net\n",
+                                "\n",
+                                "  clickhouse:\n",
+                                "    image: clickhouse/clickhouse-server:22.9-alpine\n",
+                                "    environment:\n",
+                                "      - ALLOW_EMPTY_PASSWORD=yes\n",
+                                "      - CLICKHOUSE_TCP_PORT=9000\n",
+                                "      - CLICKHOUSE_HTTP_PORT=8123\n",
+                                "    ports:\n",
+                                "      - '8123:8123'\n",
+                                "      - '9000:9000'\n",
+                                "    volumes:\n",
+                                "      - clickhouse_data:/bitnami/clickhouse\n",
+                                "      - backups:/backups\n",
+                                "      - ./config/backup_disk.xml:/etc/clickhouse-server/config.d/backup_disk.xml\n",
+                                "      - ./config/chroma_users.xml:/etc/clickhouse-server/users.d/chroma.xml\n",
+                                "    networks:\n",
+                                "      - net\n",
+                                "\n",
+                                "volumes:\n",
+                                "  clickhouse_data:\n",
+                                "    driver: local\n",
+                                "  index_data:\n",
+                                "    driver: local\n",
+                                "  backups:\n",
+                                "    driver: local\n",
+                                "\n",
+                                "EOF\n",
+                                "\n",
+                                "mkdir /home/ec2-user/config\n",
+                                "\n",
+                                "cat << EOF > /home/ec2-user/config/backup_disk.xml\n",
+                                "<clickhouse>\n",
+                                "    <storage_configuration>\n",
+                                "        <disks>\n",
+                                "            <backups>\n",
+                                "                <type>local</type>\n",
+                                "                <path>/etc/clickhouse-server/</path>\n",
+                                "            </backups>\n",
+                                "        </disks>\n",
+                                "    </storage_configuration>\n",
+                                "    <backups>\n",
+                                "        <allowed_disk>backups</allowed_disk>\n",
+                                "        <allowed_path>/etc/clickhouse-server/</allowed_path>\n",
+                                "    </backups>\n",
+                                "</clickhouse>\n",
+                                "EOF\n",
+                                "\n",
+                                "cat << EOF > /home/ec2-user/config/chroma_users.xml\n",
+                                "<clickhouse>\n",
+                                "    <profiles>\n",
+                                "      <default>\n",
+                                "            <allow_experimental_lightweight_delete>1</allow_experimental_lightweight_delete>\n",
+                                "            <mutations_sync>1</mutations_sync>\n",
+                                "        </default>\n",
+                                "    </profiles>\n",
+                                "</clickhouse>\n",
+                                "\n",
+                                "EOF\n",
+                                "\n",
+                                "docker-compose -f /home/ec2-user/docker-compose.yml up -d\n",
+                                "\n",
+                                "--//--\n"
+                            ]
+                        ]
+                    }
+                },
+                "SecurityGroupIds": [
+                    {
+                        "Ref": "ChromaInstanceSecurityGroup"
+                    }
+                ],
+                "KeyName": {
+                    "Fn::If": [
+                        "HasKeyName",
+                        {
+                            "Ref": "KeyName"
+                        },
+                        {
+                            "Ref": "AWS::NoValue"
+                        }
+                    ]
+                },
+                "BlockDeviceMappings": [
+                    {
+                        "DeviceName": {
+                            "Fn::FindInMap": [
+                                "Region2AMI",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "RootDeviceName"
+                            ]
+                        },
+                        "Ebs": {
+                            "VolumeSize": 24
+                        }
+                    }
+                ]
+            }
+        },
+        "ChromaInstanceSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Chroma Instance Security Group",
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "22",
+                        "ToPort": "22",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "8000",
+                        "ToPort": "8000",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ]
+            }
+        }
+    },
+    "Outputs": {
+        "ServerIp": {
+            "Description": "IP address of the Chroma server",
+            "Value": {
+                "Fn::GetAtt": [
+                    "ChromaInstance",
+                    "PublicIp"
+                ]
+            }
+        }
+    },
+    "Mappings": {
+        "Region2AMI": {
+            "ap-south-1": {
+                "AMI": "ami-0a26068186838e542",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "eu-north-1": {
+                "AMI": "ami-04429d960e0f4871e",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "eu-west-3": {
+                "AMI": "ami-00575c0cbc20caf50",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "eu-west-2": {
+                "AMI": "ami-0acf1d0fb2c50538d",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "eu-west-1": {
+                "AMI": "ami-09e2d756e7d78558d",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "ap-northeast-3": {
+                "AMI": "ami-0bfdfe2977c12e24b",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "ap-northeast-2": {
+                "AMI": "ami-02de72c5dc79358c9",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "ap-northeast-1": {
+                "AMI": "ami-0329eac6c5240c99d",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "ca-central-1": {
+                "AMI": "ami-0f6b3aca8444b4f04",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "sa-east-1": {
+                "AMI": "ami-078f9645b086944ab",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "ap-southeast-1": {
+                "AMI": "ami-00653100209f2247d",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "ap-southeast-2": {
+                "AMI": "ami-0d6fb2916ee0ab9fe",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "eu-central-1": {
+                "AMI": "ami-06616b7884ac98cdd",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "us-east-1": {
+                "AMI": "ami-09d3b3274b6c5d4aa",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "us-east-2": {
+                "AMI": "ami-0beaa649c482330f7",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "us-west-1": {
+                "AMI": "ami-0e4d9ed95865f3b40",
+                "RootDeviceName": "/dev/xvda"
+            },
+            "us-west-2": {
+                "AMI": "ami-098e42ae54c764c35",
+                "RootDeviceName": "/dev/xvda"
+            }
+        }
+    }
+}
