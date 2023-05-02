@@ -57,6 +57,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
             profiles: ["exclude-from-up"]
             volumes:
               - ./auto_gpt_workspace:/app/auto_gpt_workspace
+              - ./data:/app/data
               ## allow auto-gpt to write logs to disk
               - ./logs:/app/logs
               ## uncomment following lines if you have / want to make use of these files
