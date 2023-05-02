@@ -56,67 +56,13 @@ def test_readable_file_size():
 
 @patch("requests.get")
 def test_get_bulletin_from_web_success(mock_get):
+    expected_content = "Test bulletin from web"
+
     mock_get.return_value.status_code = 200
-    mock_get.return_value.text = "Test bulletin"
+    mock_get.return_value.text = expected_content
     bulletin = get_bulletin_from_web()
 
-    assert bulletin == "Test bulletin"
-
-
-@patch("requests.get")
-def test_get_bulletin_from_web_failure(mock_get):
-    mock_get.return_value.status_code = 404
-    bulletin = get_bulletin_from_web()
-    print(bulletin)
-    assert bulletin == ""
-
-
-@skip_in_ci
-def test_get_current_git_branch():
-    branch_name = get_current_git_branch()
-
-    # Assuming that the branch name will be non-empty if the function is working correctly.
-    assert branch_name != ""
-
-
-def test_get_latest_bulletin_no_file():
-    if os.path.exists("CURRENT_BULLETIN.md"):
-        os.remove("CURRENT_BULLETIN.md")
-
-    with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
-        bulletin = get_latest_bulletin()
-        assert bulletin == ""
-
-
-def test_get_latest_bulletin_with_file():
-    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
-        f.write("Test bulletin")
-
-    with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
-        bulletin = get_latest_bulletin()
-        assert bulletin == "Test bulletin"
-
-    os.remove("CURRENT_BULLETIN.md")
-
-
-def test_get_latest_bulletin_with_new_bulletin():
-    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
-        f.write("Old bulletin")
-
-    with patch("autogpt.utils.get_bulletin_from_web", return_value="New bulletin"):
-        bulletin = get_latest_bulletin()
-        assert "New bulletin" in bulletin
-
-    os.remove("CURRENT_BULLETIN.md")
-
-
-@patch("requests.get")
-def test_get_bulletin_from_web_success(mock_get):
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.text = "Test bulletin"
-    bulletin = get_bulletin_from_web()
-
-    assert bulletin == "Test bulletin"
+    assert expected_content in bulletin
     mock_get.assert_called_with(
         "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md"
     )
@@ -138,6 +84,62 @@ def test_get_bulletin_from_web_exception(mock_get):
     assert bulletin == ""
 
 
+def test_get_latest_bulletin_no_file():
+    if os.path.exists("CURRENT_BULLETIN.md"):
+        os.remove("CURRENT_BULLETIN.md")
+
+    bulletin, is_new = get_latest_bulletin()
+    assert is_new
+
+
+def test_get_latest_bulletin_with_file():
+    expected_content = "Test bulletin"
+    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
+        f.write(expected_content)
+
+    with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
+        bulletin, is_new = get_latest_bulletin()
+        assert expected_content in bulletin
+        assert is_new == False
+
+    os.remove("CURRENT_BULLETIN.md")
+
+
+def test_get_latest_bulletin_with_new_bulletin():
+    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
+        f.write("Old bulletin")
+
+    expected_content = "New bulletin from web"
+    with patch("autogpt.utils.get_bulletin_from_web", return_value=expected_content):
+        bulletin, is_new = get_latest_bulletin()
+        assert "::NEW BULLETIN::" in bulletin
+        assert expected_content in bulletin
+        assert is_new
+
+    os.remove("CURRENT_BULLETIN.md")
+
+
+def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
+    expected_content = "Current bulletin"
+    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
+        f.write(expected_content)
+
+    with patch("autogpt.utils.get_bulletin_from_web", return_value=expected_content):
+        bulletin, is_new = get_latest_bulletin()
+        assert expected_content in bulletin
+        assert is_new == False
+
+    os.remove("CURRENT_BULLETIN.md")
+
+
+@skip_in_ci
+def test_get_current_git_branch():
+    branch_name = get_current_git_branch()
+
+    # Assuming that the branch name will be non-empty if the function is working correctly.
+    assert branch_name != ""
+
+
 @patch("autogpt.utils.Repo")
 def test_get_current_git_branch_success(mock_repo):
     mock_repo.return_value.active_branch.name = "test-branch"
@@ -152,48 +154,6 @@ def test_get_current_git_branch_failure(mock_repo):
     branch_name = get_current_git_branch()
 
     assert branch_name == ""
-
-
-def test_get_latest_bulletin_no_file():
-    if os.path.exists("CURRENT_BULLETIN.md"):
-        os.remove("CURRENT_BULLETIN.md")
-
-    with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
-        bulletin = get_latest_bulletin()
-        assert bulletin == ""
-
-
-def test_get_latest_bulletin_with_file():
-    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
-        f.write("Test bulletin")
-
-    with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
-        bulletin = get_latest_bulletin()
-        assert bulletin == "Test bulletin"
-
-    os.remove("CURRENT_BULLETIN.md")
-
-
-def test_get_latest_bulletin_with_new_bulletin():
-    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
-        f.write("Old bulletin")
-
-    with patch("autogpt.utils.get_bulletin_from_web", return_value="New bulletin"):
-        bulletin = get_latest_bulletin()
-        assert f" {Fore.RED}::UPDATED:: {Fore.CYAN}New bulletin{Fore.RESET}" in bulletin
-
-    os.remove("CURRENT_BULLETIN.md")
-
-
-def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
-    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
-        f.write("Test bulletin")
-
-    with patch("autogpt.utils.get_bulletin_from_web", return_value="Test bulletin"):
-        bulletin = get_latest_bulletin()
-        assert bulletin == "Test bulletin"
-
-    os.remove("CURRENT_BULLETIN.md")
 
 
 if __name__ == "__main__":
