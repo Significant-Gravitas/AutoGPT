@@ -54,9 +54,15 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
             environment:
               MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
               REDIS_HOST: ${REDIS_HOST:-redis}
-            volumes:
-              - ./:/app
             profiles: ["exclude-from-up"]
+            volumes:
+              - ./auto_gpt_workspace:/app/auto_gpt_workspace
+              - ./data:/app/data
+              ## allow auto-gpt to write logs to disk
+              - ./logs:/app/logs
+              ## uncomment following lines if you have / want to make use of these files
+              #- ./azure.yaml:/app/azure.yaml
+              #- ./ai_settings.yaml:/app/ai_settings.yaml
           redis:
             image: "redis/redis-stack-server:latest"
 
