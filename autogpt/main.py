@@ -3,7 +3,7 @@ import logging
 import sys
 from pathlib import Path
 
-from colorama import Fore
+from colorama import Fore, Style
 
 from autogpt.agent.agent import Agent
 from autogpt.commands.command import CommandRegistry
@@ -13,7 +13,11 @@ from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
-from autogpt.utils import get_current_git_branch, get_latest_bulletin
+from autogpt.utils import (
+    get_current_git_branch,
+    get_latest_bulletin,
+    markdown_to_ansi_style,
+)
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
@@ -57,9 +61,19 @@ def run_auto_gpt(
     )
 
     if not cfg.skip_news:
-        motd = get_latest_bulletin()
+        motd, is_new_motd = get_latest_bulletin()
         if motd:
-            logger.typewriter_log("NEWS: ", Fore.GREEN, motd)
+            motd = markdown_to_ansi_style(motd)
+            for motd_line in motd.split("\n"):
+                logger.info(motd_line, "NEWS:", Fore.GREEN)
+            if is_new_motd and not cfg.chat_messages_enabled:
+                input(
+                    Fore.MAGENTA
+                    + Style.BRIGHT
+                    + "NEWS: Bulletin was updated! Press Enter to continue..."
+                    + Style.RESET_ALL
+                )
+
         git_branch = get_current_git_branch()
         if git_branch and git_branch != "stable":
             logger.typewriter_log(
