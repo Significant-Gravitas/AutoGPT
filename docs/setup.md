@@ -54,8 +54,6 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
             environment:
               MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
               REDIS_HOST: ${REDIS_HOST:-redis}
-            volumes:
-              - ./:/app
             profiles: ["exclude-from-up"]
           redis:
             image: "redis/redis-stack-server:latest"
