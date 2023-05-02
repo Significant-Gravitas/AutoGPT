@@ -67,6 +67,13 @@ def test_add(LocalCache, config, mock_embed_with_ada):
     assert cache.data.embeddings.shape == (1, EMBED_DIM)
 
 
+def test_add_non_utf8_str(LocalCache, config, mock_embed_with_ada):
+    cache = LocalCache(config)
+    cache.add("\ud800 test")
+    assert cache.data.texts == ["� test"]
+    assert cache.data.embeddings.shape == (1, EMBED_DIM)
+
+
 def test_clear(LocalCache, config, mock_embed_with_ada):
     cache = LocalCache(config)
     assert cache.data.texts == []
