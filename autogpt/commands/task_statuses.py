@@ -1,6 +1,8 @@
 """Task Statuses module."""
 from __future__ import annotations
+
 from typing import NoReturn
+
 from autogpt.commands.command import command
 from autogpt.logs import logger
 
@@ -22,4 +24,3 @@ def task_complete(reason: str) -> NoReturn:
     """
     logger.info(title="Shutting down...\n", message=reason)
     quit()
-
