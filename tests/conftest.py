@@ -1,16 +1,17 @@
 from pathlib import Path
 
 import pytest
-from dotenv import load_dotenv
+from pytest_mock import MockerFixture
 
 from autogpt.config import Config
+from autogpt.llm import ApiManager
 from autogpt.workspace import Workspace
 
-load_dotenv()
+pytest_plugins = ["tests.integration.agent_factory"]
 
 
 @pytest.fixture()
-def workspace_root(tmp_path) -> Path:
+def workspace_root(tmp_path: Path) -> Path:
     return tmp_path / "home/users/monty/auto_gpt_workspace"
 
 
@@ -21,11 +22,20 @@ def workspace(workspace_root: Path) -> Workspace:
 
 
 @pytest.fixture()
-def config(workspace: Workspace) -> Config:
+def config(mocker: MockerFixture, workspace: Workspace) -> Config:
     config = Config()
 
     # Do a little setup and teardown since the config object is a singleton
-    old_ws_path = config.workspace_path
-    config.workspace_path = workspace.root
+    mocker.patch.multiple(
+        config,
+        workspace_path=workspace.root,
+        file_logger_path=workspace.get_path("file_logger.txt"),
+    )
     yield config
-    config.workspace_path = old_ws_path
+
+
+@pytest.fixture()
+def api_manager() -> ApiManager:
+    if ApiManager in ApiManager._instances:
+        del ApiManager._instances[ApiManager]
+    return ApiManager()
