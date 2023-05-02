@@ -2,12 +2,14 @@
 This module implements user defined guidelines that monitor recent messages
 for 
 '''
-import yaml
 import time
-from colorama import Fore, Style
+import yaml
+from colorama import Fore
 from openai.error import RateLimitError
 
 from autogpt.logs import logger
+from autogpt.llm.llm_utils import create_chat_completion
+from autogpt.llm.token_counter import count_message_tokens
 
 def create_chat_message(role, content):
     """
@@ -25,7 +27,7 @@ def create_chat_message(role, content):
 class AIGuidelines:
     # SAVE_FILE = "ai_guidelines.yaml"
 
-    def __init__(self, filename, ai_guidelines=[], bsilent=False) -> None:
+    def __init__(self, filename, ai_guidelines=None, bsilent=False) -> None:
         # self.print_to_console = print_to_console
         self.filename = filename
         self.ai_guidelines = ai_guidelines
@@ -40,11 +42,10 @@ class AIGuidelines:
 
     def load(self):
         try:
-            with open(self.filename) as file:
+            with open(self.filename, encoding="utf-8") as file:
                 guidelines_data = yaml.load(file, Loader=yaml.FullLoader)
         except FileNotFoundError:
             guidelines_data = {}
-            bempty = True
 
         self.ai_guidelines = guidelines_data.get('guidelines', [])
         return
@@ -116,7 +117,7 @@ class AIGuidelines:
     
     def save(self):
         guidelines_data = {"guidelines": self.ai_guidelines}
-        with open(self.filename, "w") as file:
+        with open(self.filename, "w", encoding="utf-8") as file:
             yaml.dump(guidelines_data, file)
 
     def construct_full_prompt(self):
@@ -207,7 +208,7 @@ is even more important than success at achieving your goals:\n\n
                 #  https://www.github.com/Torantulino/Auto-GPT"
 
                 # Debug print the current context
-                logger.debug(f"Guidelines Monitoring...")
+                logger.debug("Guidelines Monitoring...")
                 logger.debug(f"Guidelines Token limit: {token_limit}")
                 logger.debug(f"Guidelines Send Token Count: {current_tokens_used}")
                 logger.debug(f"Guidelines Tokens remaining for response: {tokens_remaining}")
