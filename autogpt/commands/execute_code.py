@@ -116,6 +116,10 @@ def execute_shell(command_line: str) -> str:
         str: The output of the command
     """
 
+    disallowed_commands = os.getenv('DISALLOWED_COMMANDS').split(',')
+    if any(command in command_line for command in disallowed_commands):
+        return ("Error: Disallowed command detected. Use another command to fulfill task")
+
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
     if not current_dir.is_relative_to(CFG.workspace_path):
