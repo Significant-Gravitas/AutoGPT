@@ -62,8 +62,8 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
               ## the following line mounts your local logs folder to the container, uncomment if needed
               #- ./logs:/app/logs
               ## uncomment following lines if you have / want to make use of these files
-              #- ./azure.yaml:/app/autogpt/azure.yaml
-              #- ./ai_settings.yaml:/app/autogpt/ai_settings.yaml
+              #- ./azure.yaml:/app/azure.yaml
+              #- ./ai_settings.yaml:/app/ai_settings.yaml
           redis:
             image: "redis/redis-stack-server:latest"
 
