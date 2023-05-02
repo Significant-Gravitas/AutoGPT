@@ -5,6 +5,7 @@ from autogpt.config import Config
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
 from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
+from autogpt.llm.token_counter import count_string_tokens
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
@@ -232,6 +233,16 @@ class Agent:
                     self.config.prompt_generator,
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
+
+                result_tlength = count_string_tokens(
+                    str(command_result), cfg.fast_llm_model
+                )
+                memory_tlength = count_string_tokens(
+                    str(self.summary_memory), cfg.fast_llm_model
+                )
+                if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
+                    result = f"Failure: command {command_name} returned too much output. \
+                        Do not execute this command again with the same arguments."
 
                 for plugin in cfg.plugins:
                     if not plugin.can_handle_post_command():
