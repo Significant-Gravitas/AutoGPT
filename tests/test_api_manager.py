@@ -50,7 +50,6 @@ class TestApiManager:
     #
     #         assert "Response" in caplog.text
 
-
     # @staticmethod
     # def test_create_chat_completion_empty_messages():
     #     """Test if empty messages result in zero tokens and cost."""
