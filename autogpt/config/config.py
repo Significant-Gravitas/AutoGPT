@@ -139,7 +139,6 @@ class Config(metaclass=Singleton):
             self.plugins_allowlist = plugins_allowlist.split(",")
         else:
             self.plugins_allowlist = []
-
         plugins_denylist = os.getenv("DENYLISTED_PLUGINS", [])
         if plugins_denylist:
             self.plugins_denylist = plugins_denylist.split(",")
