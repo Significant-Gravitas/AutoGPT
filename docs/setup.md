@@ -57,8 +57,8 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
             profiles: ["exclude-from-up"]
             volumes:
               - ./auto_gpt_workspace:/app/auto_gpt_workspace
-              ## the following line mounts your local logs folder to the container, uncomment if needed
-              #- ./logs:/app/logs
+              ## allow auto-gpt to write logs to disk
+              - ./logs:/app/logs
               ## uncomment following lines if you have / want to make use of these files
               #- ./azure.yaml:/app/azure.yaml
               #- ./ai_settings.yaml:/app/ai_settings.yaml
