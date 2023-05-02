@@ -59,34 +59,66 @@ class AIConfig:
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
-          yaml file if yaml file exists,
-        else returns class with no parameters.
+        Returns a class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
+        a yaml file if the yaml file exists. If ENV_AI_NAME or ENV_AI_ROLE are set in the environment, 
+        they will be used instead of ai_name and ai_role from the yaml file.
+
+        If ENV_GOALS_ONLY is set to True in the environment, only the goals specified in the 
+        environment variables (PRE_GOAL_1-10 and POST_GOAL_1-10) will be used, ignoring the goals in the yaml file. 
+        If ENV_GOALS_ONLY is not set or False, the goals from the yaml file will be used in addition 
+        to the environment variable goals.
+
+        If any of the environment variables are empty or not set, 
+        it will be ignored.
 
         Parameters:
-           config_file (int): The path to the config yaml file.
-             DEFAULT: "../ai_settings.yaml"
+            config_file (str): The path to the config yaml file.
+              DEFAULT: "../ai_settings.yaml"
 
         Returns:
-            cls (object): An instance of given cls object
+            AIConfig (object): An instance of AIConfig object
         """
-
         try:
             with open(config_file, encoding="utf-8") as file:
                 config_params = yaml.load(file, Loader=yaml.FullLoader)
         except FileNotFoundError:
             config_params = {}
 
-        ai_name = config_params.get("ai_name", "")
-        ai_role = config_params.get("ai_role", "")
-        ai_goals = [
-            str(goal).strip("{}").replace("'", "").replace('"', "")
-            if isinstance(goal, dict)
-            else str(goal)
-            for goal in config_params.get("ai_goals", [])
-        ]
+        ai_name = os.getenv("ENV_AI_NAME")
+        ai_role = os.getenv("ENV_AI_ROLE")
+        ai_name = ai_name if ai_name and ai_name.strip() else config_params.get("ai_name", "")
+        ai_role = ai_role if ai_role and ai_role.strip() else config_params.get("ai_role", "")
         api_budget = config_params.get("api_budget", 0.0)
-        # type: Type[AIConfig]
+
+        env_goals_only = os.getenv("ENV_GOALS_ONLY") == "True" if os.getenv("ENV_GOALS_ONLY") else False
+
+        # Prepend goals from environment variables
+        pre_goals = [
+            os.getenv(f"PRE_GOAL_{i}")
+            for i in range(1, 11)  # Assuming you have up to 10 pre-goals
+            if os.getenv(f"PRE_GOAL_{i}") is not None and os.getenv(f"PRE_GOAL_{i}").strip()
+        ]
+
+        # Add goals from config_params or .env
+        if not env_goals_only:
+            ai_goals = [
+                str(goal).strip("{}").replace("'", "").replace('"', "")
+                if isinstance(goal, dict)
+                else str(goal)
+                for goal in config_params.get("ai_goals", [])
+            ]
+        else:
+            ai_goals = []
+
+        # Append goals from environment variables
+        post_goals = [
+            os.getenv(f"POST_GOAL_{i}")
+            for i in range(1, 11)  # Assuming you have up to 10 post-goals
+            if os.getenv(f"POST_GOAL_{i}") is not None and os.getenv(f"POST_GOAL_{i}").strip()
+        ]
+
+        ai_goals = pre_goals + ai_goals + post_goals
+
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
