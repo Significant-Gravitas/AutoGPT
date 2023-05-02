@@ -76,9 +76,7 @@ class Agent:
         while True:
             loop_count, cfg, command_name, arguments, user_input = self.interact(loop_count, cfg, command_name, arguments, user_input)
 
-    def interact(self, loop_count, cfg, command_name, arguments, user_input):
-        # Discontinue if continuous limit is reached
-        loop_count += 1
+    def check_continuous(self, cfg, loop_count):
         if (
             cfg.continuous_mode
             and cfg.continuous_limit > 0
@@ -91,6 +89,11 @@ class Agent:
                 f"Continuous Limit Reached: \n {cfg.continuous_limit}"
             )
             exit(0)
+
+    def interact(self, loop_count, cfg, command_name, arguments, user_input):
+        # Discontinue if continuous limit is reached
+        loop_count += 1
+        self.check_continuous(cfg, loop_count)
         send_chat_message_to_user("Thinking... \n")
         # Send message to AI, get response
         with Spinner("Thinking... "):
