@@ -122,7 +122,7 @@ class Agent:
                 except Exception as e:
                     logger.error("Error: \n", str(e))
 
-            if self.should_prompt_user(cfg.continuous_mode, self.next_action_count):
+            if self.should_prompt_user(cfg.continuous_mode):
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -134,7 +134,7 @@ class Agent:
                     f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
 
-                user_feedback_message = self.generate_user_feedback_message(self.ai_name)
+                user_feedback_message = self.generate_user_feedback_message()
                 logger.info(user_feedback_message)
 
                 while True:
@@ -322,19 +322,16 @@ class Agent:
             llm_model,
         )
 
-    @staticmethod
-    def should_prompt_user(continuous_mode, next_action_count):
-        return not continuous_mode and next_action_count == 0
+    def should_prompt_user(self, continuous_mode):
+        return not continuous_mode and self.next_action_count == 0
 
-    @staticmethod
-    def generate_user_feedback_message(ai_name):
+    def generate_user_feedback_message(self):
         return "Enter 'y' to authorise command, 'y -N' to run N continuous commands, " \
                "'s' to run self-feedback commands, " \
                "'n' to exit program, or enter feedback for " \
-               f"{ai_name}... "
+               f"{self.ai_name}... "
 
-    @staticmethod
-    def calculate_next_command_from_user_input(console_input):
+    def calculate_next_command_from_user_input(self, console_input):
         command_name = None
         next_action_count = 0
 
