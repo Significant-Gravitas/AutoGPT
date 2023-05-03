@@ -89,12 +89,8 @@ class Agent:
                 f"Continuous Limit Reached: \n {cfg.continuous_limit}"
             )
             exit(0)
-
-    def interact(self, loop_count, cfg, command_name, arguments, user_input):
-        # Discontinue if continuous limit is reached
-        loop_count += 1
-        self.check_continuous(cfg, loop_count)
-        send_chat_message_to_user("Thinking... \n")
+    
+    def get_assistant_reply(self, cfg):
         # Send message to AI, get response
         with Spinner("Thinking... "):
             assistant_reply = chat_with_ai(
@@ -105,14 +101,20 @@ class Agent:
                 self.memory,
                 cfg.fast_token_limit,
             )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+        return assistant_reply
 
-        assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
+    def handle_post_planning(self, cfg, assistant_reply_json):
         for plugin in cfg.plugins:
             if not plugin.can_handle_post_planning():
                 continue
             assistant_reply_json = plugin.post_planning(self, assistant_reply_json)
+        return assistant_reply_json
 
+    def resolve_assistant_command(self, cfg, assistant_reply_json):
         # Print Assistant thoughts
+        command_name = "None"
+        arguments = []
+
         if assistant_reply_json != {}:
             validate_json(assistant_reply_json, "llm_response_format_1")
             # Get command name and arguments
@@ -129,6 +131,21 @@ class Agent:
 
             except Exception as e:
                 logger.error("Error: \n", str(e))
+        return command_name, arguments
+
+    def process_assistant_reply(self, cfg):
+        assistant_reply = self.get_assistant_reply(cfg)
+        assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
+        assistant_reply_json = self.handle_post_planning(cfg, assistant_reply_json)
+        command_name, arguments = self.resolve_assistant_command(cfg, assistant_reply_json)
+        return command_name, arguments, assistant_reply, assistant_reply_json
+
+    def interact(self, loop_count, cfg, command_name, arguments, user_input):
+        # Discontinue if continuous limit is reached
+        loop_count += 1
+        self.check_continuous(cfg, loop_count)
+        send_chat_message_to_user("Thinking... \n")
+        command_name, arguments, assistant_reply, assistant_reply_json = self.process_assistant_reply(cfg)
 
         if not cfg.continuous_mode and self.next_action_count == 0:
             # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
