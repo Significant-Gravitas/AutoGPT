@@ -3,12 +3,19 @@ from random import shuffle
 
 from openai.error import RateLimitError
 
-from autogpt import token_counter
-from autogpt.api_manager import ApiManager
 from autogpt.config import Config
-from autogpt.llm_utils import create_chat_completion
+from autogpt.llm.api_manager import ApiManager
+from autogpt.llm.base import Message
+from autogpt.llm.llm_utils import create_chat_completion
+from autogpt.llm.token_counter import count_message_tokens
 from autogpt.logs import logger
-from autogpt.types.openai import Message
+from autogpt.memory_management.store_memory import (
+    save_memory_trimmed_from_context_window,
+)
+from autogpt.memory_management.summary_memory import (
+    get_newly_trimmed_messages,
+    update_running_summary,
+)
 
 cfg = Config()
 
@@ -33,17 +40,17 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
         create_chat_message(
             "system", f"The current time and date is {time.strftime('%c')}"
         ),
-        create_chat_message(
-            "system",
-            f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
-        ),
+        # create_chat_message(
+        #     "system",
+        #     f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
+        # ),
     ]
 
     # Add messages from the full message history until we reach the token limit
     next_message_to_add_index = len(full_message_history) - 1
     insertion_index = len(current_context)
     # Count the currently used tokens
-    current_tokens_used = token_counter.count_message_tokens(current_context, model)
+    current_tokens_used = count_message_tokens(current_context, model)
     return (
         next_message_to_add_index,
         current_tokens_used,
@@ -78,21 +85,21 @@ def chat_with_ai(
             """
             model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
             # Reserve 1000 tokens for the response
-
             logger.debug(f"Token limit: {token_limit}")
             send_token_limit = token_limit - 1000
-            if len(full_message_history) == 0:
-                relevant_memory = ""
-            else:
-                recent_history = full_message_history[-5:]
-                shuffle(recent_history)
-                relevant_memories = permanent_memory.get_relevant(
-                    str(recent_history), 5
-                )
-                if relevant_memories:
-                    shuffle(relevant_memories)
-                relevant_memory = str(relevant_memories)
 
+            # if len(full_message_history) == 0:
+            #     relevant_memory = ""
+            # else:
+            #     recent_history = full_message_history[-5:]
+            #     shuffle(recent_history)
+            #     relevant_memories = permanent_memory.get_relevant(
+            #         str(recent_history), 5
+            #     )
+            #     if relevant_memories:
+            #         shuffle(relevant_memories)
+            #     relevant_memory = str(relevant_memories)
+            relevant_memory = ""
             logger.debug(f"Memory Stats: {permanent_memory.get_stats()}")
 
             (
@@ -102,30 +109,36 @@ def chat_with_ai(
                 current_context,
             ) = generate_context(prompt, relevant_memory, full_message_history, model)
 
-            while current_tokens_used > 2500:
-                # remove memories until we are under 2500 tokens
-                relevant_memory = relevant_memory[:-1]
-                (
-                    next_message_to_add_index,
-                    current_tokens_used,
-                    insertion_index,
-                    current_context,
-                ) = generate_context(
-                    prompt, relevant_memory, full_message_history, model
-                )
+            # while current_tokens_used > 2500:
+            #     # remove memories until we are under 2500 tokens
+            #     relevant_memory = relevant_memory[:-1]
+            #     (
+            #         next_message_to_add_index,
+            #         current_tokens_used,
+            #         insertion_index,
+            #         current_context,
+            #     ) = generate_context(
+            #         prompt, relevant_memory, full_message_history, model
+            #     )
 
-            current_tokens_used += token_counter.count_message_tokens(
+            current_tokens_used += count_message_tokens(
                 [create_chat_message("user", user_input)], model
             )  # Account for user input (appended later)
 
+            current_tokens_used += 500  # Account for memory (appended later) TODO: The final memory may be less than 500 tokens
+
+            # Add Messages until the token limit is reached or there are no more messages to add.
             while next_message_to_add_index >= 0:
                 # print (f"CURRENT TOKENS USED: {current_tokens_used}")
                 message_to_add = full_message_history[next_message_to_add_index]
 
-                tokens_to_add = token_counter.count_message_tokens(
-                    [message_to_add], model
-                )
+                tokens_to_add = count_message_tokens([message_to_add], model)
                 if current_tokens_used + tokens_to_add > send_token_limit:
+                    # save_memory_trimmed_from_context_window(
+                    #     full_message_history,
+                    #     next_message_to_add_index,
+                    #     permanent_memory,
+                    # )
                     break
 
                 # Add the most recent message to the start of the current context,
@@ -139,6 +152,22 @@ def chat_with_ai(
 
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
+
+            # Insert Memories
+            if len(full_message_history) > 0:
+                (
+                    newly_trimmed_messages,
+                    agent.last_memory_index,
+                ) = get_newly_trimmed_messages(
+                    full_message_history=full_message_history,
+                    current_context=current_context,
+                    last_memory_index=agent.last_memory_index,
+                )
+                agent.summary_memory = update_running_summary(
+                    current_memory=agent.summary_memory,
+                    new_events=newly_trimmed_messages,
+                )
+                current_context.insert(insertion_index, agent.summary_memory)
 
             api_manager = ApiManager()
             # inform the AI about its remaining budget (if it has one)
@@ -175,13 +204,12 @@ def chat_with_ai(
                 )
                 if not plugin_response or plugin_response == "":
                     continue
-                tokens_to_add = token_counter.count_message_tokens(
+                tokens_to_add = count_message_tokens(
                     [create_chat_message("system", plugin_response)], model
                 )
                 if current_tokens_used + tokens_to_add > send_token_limit:
-                    if cfg.debug_mode:
-                        print("Plugin response too long, skipping:", plugin_response)
-                        print("Plugins remaining at stop:", plugin_count - i)
+                    logger.debug("Plugin response too long, skipping:", plugin_response)
+                    logger.debug("Plugins remaining at stop:", plugin_count - i)
                     break
                 current_context.append(create_chat_message("system", plugin_response))
 
@@ -221,5 +249,5 @@ def chat_with_ai(
             return assistant_reply
         except RateLimitError:
             # TODO: When we switch to langchain, this is built in
-            print("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
+            logger.warn("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)
