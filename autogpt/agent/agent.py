@@ -1,4 +1,5 @@
 from typing import Any, Dict, NoReturn, Tuple, Union
+
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -115,20 +116,20 @@ class Agent:
         command_name = "None"
         arguments = []
 
-        if assistant_reply_json != {}:
-            validate_json(assistant_reply_json, "llm_response_format_1")
-            try:
-                print_assistant_thoughts(
-                    self.ai_name, assistant_reply_json, cfg.speak_mode
-                )
-                command_name, arguments = get_command(assistant_reply_json)
-                if cfg.speak_mode:
-                    say_text(f"I want to execute {command_name}")
+        if assistant_reply_json == {}:
+            return command_name, arguments
 
-                send_chat_message_to_user("Thinking... \n")
-                arguments = self._resolve_pathlike_command_args(arguments)
-            except Exception as e:
-                logger.error("Error: \n", str(e))
+        validate_json(assistant_reply_json, "llm_response_format_1")
+        try:
+            print_assistant_thoughts(self.ai_name, assistant_reply_json, cfg.speak_mode)
+            command_name, arguments = get_command(assistant_reply_json)
+            if cfg.speak_mode:
+                say_text(f"I want to execute {command_name}")
+
+            send_chat_message_to_user("Thinking... \n")
+            arguments = self._resolve_pathlike_command_args(arguments)
+        except Exception as e:
+            logger.error("Error: \n", str(e))
         return command_name, arguments
 
     def process_assistant_reply(self, cfg):
