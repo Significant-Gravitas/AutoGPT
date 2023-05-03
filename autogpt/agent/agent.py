@@ -94,6 +94,7 @@ class Agent:
             exit(0)
 
     def get_assistant_reply(self, cfg, spinner=False) -> str:
+        token_limit = cfg.fast_token_limit
         if spinner:
             with Spinner("Thinking... "):
                 return chat_with_ai(
@@ -102,7 +103,7 @@ class Agent:
                     self.triggering_prompt,
                     self.full_message_history,
                     self.memory,
-                    cfg.fast_token_limit,
+                    token_limit,
                 )
         return chat_with_ai(
             self,
@@ -110,7 +111,7 @@ class Agent:
             self.triggering_prompt,
             self.full_message_history,
             self.memory,
-            cfg.fast_token_limit,
+            token_limit,
         )
 
     def handle_post_planning(self, cfg, assistant_reply_json) -> Dict[str, Any]:
@@ -168,7 +169,7 @@ class Agent:
             "",
         )
         if self_feedback_resp[0].lower().strip() == "y":
-            user_input = "GENERATE NEXT COMMAND JSON"
+            user_input = "GENERATE THOUGHTS AND COMMAND JSON"
         else:
             user_input = self_feedback_resp
         return user_input, None, False
@@ -176,7 +177,7 @@ class Agent:
     def process_continue_for(self, user_input, console_input):
         try:
             self.next_action_count = abs(int(console_input.split(" ")[1]))
-            user_input = "GENERATE NEXT COMMAND JSON"
+            user_input = "GENERATE THOUGHTS AND COMMAND JSON"
         except ValueError:
             print(
                 "Invalid input format. Please enter 'y -n' where n is"
@@ -189,7 +190,7 @@ class Agent:
         self, console_input, cfg, user_input, assistant_reply_json
     ) -> Tuple[str, Union[None, str], bool]:
         if console_input == "y":
-            return "GENERATE NEXT COMMAND JSON", None, False
+            return "GENERATE THOUGHTS AND COMMAND JSON", None, False
         elif console_input == "s":
             return self.process_self_feedback(assistant_reply_json, cfg)
         elif console_input == "":
@@ -220,7 +221,7 @@ class Agent:
         )
 
     def log_auth_or_exit(self, user_input):
-        if user_input == "GENERATE NEXT COMMAND JSON":
+        if user_input == "GENERATE THOUGHTS AND COMMAND JSON":
             logger.typewriter_log(
                 "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
                 Fore.MAGENTA,
@@ -242,11 +243,9 @@ class Agent:
             )
             if invalid_input:
                 continue
-            if feedback_type:
-                command_name = "human_feedback"
             break
         self.log_auth_or_exit(user_input)
-        return user_input
+        return user_input, feedback_type
 
     def log_command(self, command_name, arguments):
         send_chat_message_to_user(
@@ -296,13 +295,14 @@ class Agent:
         self, cfg, command_name, arguments, user_input, assistant_reply_json
     ):
         if not cfg.continuous_mode and self.next_action_count == 0:
-            user_input = self.get_user_input(
+            user_input, feedback = self.get_user_input(
                 command_name, arguments, cfg, assistant_reply_json
             )
             self.user_input = user_input
         else:
             self.log_command(command_name, arguments)
-        return user_input
+            feedback = None
+        return user_input, feedback
 
     def interact(self, loop_count, cfg, command_name, arguments, user_input):
         loop_count += 1
@@ -314,9 +314,11 @@ class Agent:
             assistant_reply,
             assistant_reply_json,
         ) = self.process_assistant_reply(cfg)
-        user_input = self.input_or_continuous(
+        user_input, feedback = self.input_or_continuous(
             cfg, command_name, arguments, user_input, assistant_reply_json
         )
+        if feedback:
+            command_name = "human_feedback"
         result, command_name, arguments = self.execute_command(
             cfg, command_name, arguments, user_input
         )

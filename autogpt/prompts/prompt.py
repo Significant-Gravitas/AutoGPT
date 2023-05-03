@@ -38,13 +38,16 @@ def build_default_prompt_generator() -> PromptGenerator:
         "Internet access for gathering information."
     )
     prompt_generator.add_resource(
-        "Agents for delegation of simple tasks."
+        "Agents for delegation of simple tasks and collaboration."
     )
     prompt_generator.add_resource("File I/O for reading and writing files.")
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation(
         "Reflect on past decisions and strategies to refine your approach."
+    )
+    prompt_generator.add_performance_evaluation(
+        "Avoid repeating similar actions."
     )
     prompt_generator.add_performance_evaluation(
         "If you cannot think of a valid command to perform start or message an agent to determine the next command."

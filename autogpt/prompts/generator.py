@@ -87,7 +87,7 @@ class PromptGenerator:
         args_string = ", ".join(
             f'"{key}": "{value}"' for key, value in command["args"].items()
         )
-        return f'{command["label"]}: "{command["name"]}", args: {args_string}'
+        return f'"{command["name"]}", args: {args_string}'
 
     def add_resource(self, resource: str) -> None:
         """
@@ -129,9 +129,9 @@ class PromptGenerator:
                 ]
             # terminate command is added manually
             command_strings += [self._generate_command_string(item) for item in items]
-            return "\n".join(f"{i+1}. {item}" for i, item in enumerate(command_strings))
+            return "\n".join(f"{item}" for i, item in enumerate(command_strings))
         else:
-            return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
+            return "\n".join(f"{item}" for i, item in enumerate(items))
 
     def generate_prompt_string(self) -> str:
         """

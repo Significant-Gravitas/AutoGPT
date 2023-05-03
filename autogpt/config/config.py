@@ -27,10 +27,15 @@ class Config(metaclass=Singleton):
         self.skip_reprompt = False
         self.allow_downloads = False
         self.skip_news = False
-
+        self.fastchat_model = os.getenv("FASTCHAT_MODEL", "fastchat-t5-3b-v1.0")
+        self.fastchat_token_limit = 2048
+        # with docker this needs to be: fastchat-api-server
+        self.fastchat_host = os.getenv("FASTCHAT_HOST", "localhost")
+        self.use_fastchat = os.getenv("USE_FASTCHAT", "False") == "True"
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
+        
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 3000))
