@@ -13,6 +13,8 @@
 You can start the local llm api server with ```docker-compose -f .\docker-compose-fastchat.yml up --build --wait```
 
 Add ```USE_FASTCHAT=True``` to your .env file
+
+I have not tested this with Auto-GPT running inside a docker container at all.
 <hr/>
 
 
