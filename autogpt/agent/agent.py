@@ -286,16 +286,18 @@ class Agent:
         else:
             result, command_name, arguments = self.process_command(cfg, command_name, arguments)
 
-        memory_to_add = (
+        self.update_memory(assistant_reply, result, user_input)
+        self.update_history(result)
+        return loop_count, cfg, command_name, arguments, user_input
+
+    def update_memory(self, assistant_reply, result, user_input):
+        self.memory.add((
             f"Assistant Reply: {assistant_reply} "
             f"\nResult: {result} "
             f"\nHuman Feedback: {user_input} "
-        )
+        ))
 
-        self.memory.add(memory_to_add)
-
-        # Check if there's a result from the command append it to the message
-        # history
+    def update_history(self, result):
         if result is not None:
             self.full_message_history.append(create_chat_message("system", result))
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
@@ -306,7 +308,6 @@ class Agent:
             logger.typewriter_log(
                 "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
             )
-        return loop_count, cfg, command_name, arguments, user_input
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
