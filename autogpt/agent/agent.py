@@ -264,6 +264,17 @@ class Agent:
             self.next_action_count -= 1
         return result, command_name, arguments
 
+    def execute_command(self, cfg, command_name, arguments, user_input):
+        if command_name is not None and command_name.lower().startswith("error"):
+            result = (
+                f"Command {command_name} threw the following error: {arguments}"
+            )
+        elif command_name == "human_feedback":
+            result = f"Human feedback: {user_input}"
+        else:
+            result, command_name, arguments = self.process_command(cfg, command_name, arguments)
+        return result, command_name, arguments
+
     def interact(self, loop_count, cfg, command_name, arguments, user_input):
         # Discontinue if continuous limit is reached
         loop_count += 1
@@ -276,16 +287,7 @@ class Agent:
             self.user_input = user_input
         else:
             self.log_command(command_name, arguments)
-        # Execute command
-        if command_name is not None and command_name.lower().startswith("error"):
-            result = (
-                f"Command {command_name} threw the following error: {arguments}"
-            )
-        elif command_name == "human_feedback":
-            result = f"Human feedback: {user_input}"
-        else:
-            result, command_name, arguments = self.process_command(cfg, command_name, arguments)
-
+        result, command_name, arguments = self.execute_command(cfg, command_name, arguments, user_input)
         self.update_memory(assistant_reply, result, user_input)
         self.update_history(result)
         return loop_count, cfg, command_name, arguments, user_input
