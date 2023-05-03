@@ -80,15 +80,17 @@ class AutoGPTAgent:
         envs = [
             f"{line.strip()}" for line in open(
                 env_file
-            ) if line.strip() != "" and line.strip()[0] != "#" and line.strip()[0] != "\n"]
+            ) if line.strip() != "" and line.strip()[0] != "#" and line.strip()[0] != "\n" and "=" in line and not line.startswith('SMART_LLM_MODEL')]
+
+        envs.append("SMART_LLM_MODEL=gpt-3.5-turbo")
 
         self.container = client.containers.run(
             image="autogpt",
-            command="--continuous -C '/home/appuser/auto_gpt_workspace/ai_settings.yaml'",
+            command="--continuous -C '/app/auto_gpt_workspace/ai_settings.yaml' --skip-news",
             environment=envs,
             volumes={
-                self.auto_workspace: {"bind": "/home/appuser/auto_gpt_workspace", "mode": "rw"},
-                f"{self.auto_gpt_path}/autogpt": {"bind": "/home/appuser/autogpt", "mode": "rw"},
+                self.auto_workspace: {"bind": "/app/auto_gpt_workspace", "mode": "rw"},
+                f"{self.auto_gpt_path}/autogpt": {"bind": "/app/autogpt", "mode": "rw"},
             },
             stdin_open=True,
             tty=True,
@@ -103,11 +105,12 @@ class AutoGPTAgent:
         """
         while True:
             if self.output_file.exists():
+                print("Output file exists")
                 return self.output_file.read_text()
 
     def __init__(self, prompt, auto_gpt_path: str):
         self.auto_gpt_path = Path(auto_gpt_path)
-        self.auto_workspace = self.auto_gpt_path / "auto_gpt_workspace"
+        self.auto_workspace = self.auto_gpt_path / "autogpt" / "auto_gpt_workspace"
         # if the workspace doesn't exist, create it
         if not self.auto_workspace.exists():
             self.auto_workspace.mkdir()
