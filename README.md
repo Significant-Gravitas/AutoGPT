@@ -14,7 +14,7 @@ You can start the local llm api server with ```docker-compose -f .\docker-compos
 
 Add ```USE_FASTCHAT=True``` to your .env file
 
-I have not tested this with Auto-GPT running inside a docker container at all.
+I have not tested this with Auto-GPT running inside a docker container at all, it will likely only work for NVIDIA cards.
 <hr/>
 
 
