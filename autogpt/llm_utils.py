@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import time
 from typing import List, Optional
-
+import requests
 import openai
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, Timeout
@@ -110,6 +110,7 @@ def create_chat_completion(
     model: Optional[str] = None,
     temperature: float = None,
     max_tokens: Optional[int] = None,
+    use_fastchat: bool = False,
 ) -> str:
     """Create a chat completion using the OpenAI API
 
@@ -160,6 +161,13 @@ def create_chat_completion(
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
+            elif use_fastchat:
+                response = fastchat_chat_completion(
+                    model=cfg.fastchat_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens or cfg.fastchat_token_limit,
+                )
             else:
                 response = api_manager.create_chat_completion(
                     model=model,
@@ -202,6 +210,8 @@ def create_chat_completion(
             raise RuntimeError(f"Failed to get response after {num_retries} retries")
         else:
             quit(1)
+    if isinstance(response, dict):
+        return response["choices"][0]["message"]["content"]
     resp = response.choices[0].message["content"]
     for plugin in cfg.plugins:
         if not plugin.can_handle_on_response():
@@ -259,3 +269,23 @@ def create_embedding(
         api_key=cfg.openai_api_key,
         **kwargs,
     )
+
+def fastchat_chat_completion(
+    model,
+    messages,
+    temperature=0.8,
+    max_tokens=4096,
+):
+    cfg = Config()
+    resp = requests.post(
+        f"http://{cfg.fastchat_host}:8000/v1/chat/completions",
+        json={
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        },
+    )
+    json_resp = resp.json()
+    logger.debug(f"{json_resp}")
+    return json_resp
