@@ -1,4 +1,3 @@
-import token
 from typing import Any, Dict, NoReturn, Tuple, Union
 
 from colorama import Fore, Style
