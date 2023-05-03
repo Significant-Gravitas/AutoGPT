@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agpt_plugins"
+version = "0.0.2"
+authors = [
+  { name="Torantulino", email="support@agpt.co" }, { name="Riensen", email="3340218+riensen@users.noreply.github.com" }
+]
+description = "The plugins for Auto-GPT."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = ["abstract-singleton"]
+
+[project.urls]
+"Homepage" = "https://github.com/Significant-Gravitas/Auto-GPT-Plugins"
+"Bug Tracker" = "https://github.com/Significant-Gravitas/Auto-GPT-Plugins"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = ""
+
+[tool.isort]
+profile = "black"
+
+[tool.pylint.messages_control]
+disable = "C0330, C0326"
+
+[tool.pylint.format]
+max-line-length = "88"

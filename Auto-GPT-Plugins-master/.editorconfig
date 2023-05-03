@@ -1,0 +1,30 @@
+# Top-most EditorConfig file
+root = true
+
+# Set default charset
+[*]
+charset = utf-8
+
+# Use black formatter for python files
+[*.py]
+profile = black
+
+# Set defaults for windows and batch filess
+[*.bat]
+end_of_line = crlf
+indent_style = space
+indent_size = 2
+
+# Set defaults for shell scripts
+[*.sh]
+end_of_line = lf
+trim_trailing_whitespace = true
+insert_final_newline = false
+
+# Set defaults for Makefiles
+[Makefile]
+end_of_line = lf
+indent_style = tab
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true

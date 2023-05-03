@@ -1,0 +1,11 @@
+black
+isort
+flake8
+pylint
+abstract-singleton
+wheel
+setuptools
+build
+twine
+distro
+auto_gpt_plugin_template
