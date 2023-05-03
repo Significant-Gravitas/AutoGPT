@@ -138,8 +138,6 @@ def write_to_file(filename: str, text: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    if check_duplicate_operation("write", filename):
-        return "Error: File has already been updated."
     try:
         directory = os.path.dirname(filename)
         if not os.path.exists(directory):
@@ -188,8 +186,6 @@ def delete_file(filename: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    if check_duplicate_operation("delete", filename):
-        return "Error: File has already been deleted."
     try:
         os.remove(filename)
         log_operation("delete", filename)
