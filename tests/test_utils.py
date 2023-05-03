@@ -85,8 +85,8 @@ def test_get_bulletin_from_web_exception(mock_get):
 
 
 def test_get_latest_bulletin_no_file():
-    if os.path.exists("CURRENT_BULLETIN.md"):
-        os.remove("CURRENT_BULLETIN.md")
+    if os.path.exists("data/CURRENT_BULLETIN.md"):
+        os.remove("data/CURRENT_BULLETIN.md")
 
     bulletin, is_new = get_latest_bulletin()
     assert is_new
@@ -94,7 +94,7 @@ def test_get_latest_bulletin_no_file():
 
 def test_get_latest_bulletin_with_file():
     expected_content = "Test bulletin"
-    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
+    with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
         f.write(expected_content)
 
     with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
@@ -102,11 +102,11 @@ def test_get_latest_bulletin_with_file():
         assert expected_content in bulletin
         assert is_new == False
 
-    os.remove("CURRENT_BULLETIN.md")
+    os.remove("data/CURRENT_BULLETIN.md")
 
 
 def test_get_latest_bulletin_with_new_bulletin():
-    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
+    with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
         f.write("Old bulletin")
 
     expected_content = "New bulletin from web"
@@ -116,12 +116,12 @@ def test_get_latest_bulletin_with_new_bulletin():
         assert expected_content in bulletin
         assert is_new
 
-    os.remove("CURRENT_BULLETIN.md")
+    os.remove("data/CURRENT_BULLETIN.md")
 
 
 def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
     expected_content = "Current bulletin"
-    with open("CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
+    with open("data/CURRENT_BULLETIN.md", "w", encoding="utf-8") as f:
         f.write(expected_content)
 
     with patch("autogpt.utils.get_bulletin_from_web", return_value=expected_content):
@@ -129,7 +129,7 @@ def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
         assert expected_content in bulletin
         assert is_new == False
 
-    os.remove("CURRENT_BULLETIN.md")
+    os.remove("data/CURRENT_BULLETIN.md")
 
 
 @skip_in_ci
