@@ -74,7 +74,9 @@ class Agent:
         user_input = ""
 
         while True:
-            loop_count, cfg, command_name, arguments, user_input = self.interact(loop_count, cfg, command_name, arguments, user_input)
+            loop_count, cfg, command_name, arguments, user_input = self.interact(
+                loop_count, cfg, command_name, arguments, user_input
+            )
 
     def check_continuous(self, cfg, loop_count):
         if (
@@ -89,7 +91,7 @@ class Agent:
                 f"Continuous Limit Reached: \n {cfg.continuous_limit}"
             )
             exit(0)
-    
+
     def get_assistant_reply(self, cfg):
         # Send message to AI, get response
         with Spinner("Thinking... "):
@@ -137,17 +139,19 @@ class Agent:
         assistant_reply = self.get_assistant_reply(cfg)
         assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
         assistant_reply_json = self.handle_post_planning(cfg, assistant_reply_json)
-        command_name, arguments = self.resolve_assistant_command(cfg, assistant_reply_json)
+        command_name, arguments = self.resolve_assistant_command(
+            cfg, assistant_reply_json
+        )
         return command_name, arguments, assistant_reply, assistant_reply_json
 
     def get_console_input(self, cfg):
         if cfg.chat_messages_enabled:
             return clean_input("Waiting for your response...")
-        return clean_input(
-            Fore.MAGENTA + "Input:" + Style.RESET_ALL
-        )
+        return clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
 
-    def process_console_input(self, console_input, cfg, user_input, assistant_reply_json):
+    def process_console_input(
+        self, console_input, cfg, user_input, assistant_reply_json
+    ):
         if console_input == "y":
             user_input = "GENERATE NEXT COMMAND JSON"
             return user_input, None, False
@@ -158,9 +162,7 @@ class Agent:
                 "",
             )
             thoughts = assistant_reply_json.get("thoughts", {})
-            self_feedback_resp = self.get_self_feedback(
-                thoughts, cfg.fast_llm_model
-            )
+            self_feedback_resp = self.get_self_feedback(thoughts, cfg.fast_llm_model)
             logger.typewriter_log(
                 f"SELF FEEDBACK: {self_feedback_resp}",
                 Fore.YELLOW,
@@ -176,9 +178,7 @@ class Agent:
             return user_input, None, True
         elif console_input.startswith("y -"):
             try:
-                self.next_action_count = abs(
-                    int(console_input.split(" ")[1])
-                )
+                self.next_action_count = abs(int(console_input.split(" ")[1]))
                 user_input = "GENERATE NEXT COMMAND JSON"
             except ValueError:
                 print(
@@ -230,7 +230,8 @@ class Agent:
             console_input = self.get_console_input(cfg).lower().strip()
 
             user_input, feedback_type, invalid_input = self.process_console_input(
-                console_input, cfg, user_input, assistant_reply_json)
+                console_input, cfg, user_input, assistant_reply_json
+            )
             if invalid_input:
                 continue
             if feedback_type:
@@ -250,13 +251,12 @@ class Agent:
             f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
             f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
         )
+
     def process_command(self, cfg, command_name, arguments):
         for plugin in cfg.plugins:
             if not plugin.can_handle_pre_command():
                 continue
-            command_name, arguments = plugin.pre_command(
-                command_name, arguments
-            )
+            command_name, arguments = plugin.pre_command(command_name, arguments)
         command_result = execute_command(
             self.command_registry,
             command_name,
@@ -275,18 +275,22 @@ class Agent:
 
     def execute_command(self, cfg, command_name, arguments, user_input):
         if command_name is not None and command_name.lower().startswith("error"):
-            result = (
-                f"Command {command_name} threw the following error: {arguments}"
-            )
+            result = f"Command {command_name} threw the following error: {arguments}"
         elif command_name == "human_feedback":
             result = f"Human feedback: {user_input}"
         else:
-            result, command_name, arguments = self.process_command(cfg, command_name, arguments)
+            result, command_name, arguments = self.process_command(
+                cfg, command_name, arguments
+            )
         return result, command_name, arguments
-    
-    def input_or_continuous(self, cfg, command_name, arguments, user_input, assistant_reply_json):
+
+    def input_or_continuous(
+        self, cfg, command_name, arguments, user_input, assistant_reply_json
+    ):
         if not cfg.continuous_mode and self.next_action_count == 0:
-            user_input = self.get_user_input(command_name, arguments, cfg, assistant_reply_json)
+            user_input = self.get_user_input(
+                command_name, arguments, cfg, assistant_reply_json
+            )
             self.user_input = user_input
         else:
             self.log_command(command_name, arguments)
@@ -296,19 +300,30 @@ class Agent:
         loop_count += 1
         self.check_continuous(cfg, loop_count)
         send_chat_message_to_user("Thinking... \n")
-        command_name, arguments, assistant_reply, assistant_reply_json = self.process_assistant_reply(cfg)
-        user_input = self.input_or_continuous(cfg, command_name, arguments, user_input, assistant_reply_json)
-        result, command_name, arguments = self.execute_command(cfg, command_name, arguments, user_input)
+        (
+            command_name,
+            arguments,
+            assistant_reply,
+            assistant_reply_json,
+        ) = self.process_assistant_reply(cfg)
+        user_input = self.input_or_continuous(
+            cfg, command_name, arguments, user_input, assistant_reply_json
+        )
+        result, command_name, arguments = self.execute_command(
+            cfg, command_name, arguments, user_input
+        )
         self.update_memory(assistant_reply, result, user_input)
         self.update_history(result)
         return loop_count, cfg, command_name, arguments, user_input
 
     def update_memory(self, assistant_reply, result, user_input):
-        self.memory.add((
-            f"Assistant Reply: {assistant_reply} "
-            f"\nResult: {result} "
-            f"\nHuman Feedback: {user_input} "
-        ))
+        self.memory.add(
+            (
+                f"Assistant Reply: {assistant_reply} "
+                f"\nResult: {result} "
+                f"\nHuman Feedback: {user_input} "
+            )
+        )
 
     def update_history(self, result):
         if result is not None:
@@ -318,9 +333,7 @@ class Agent:
         self.full_message_history.append(
             create_chat_message("system", "Unable to execute command")
         )
-        logger.typewriter_log(
-            "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
-        )
+        logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
@@ -347,13 +360,15 @@ class Agent:
         """
         ai_role = self.config.ai_role
 
-        feedback_prompt = f"Below is a message from an AI agent with the role of {ai_role}."\
-            "Please review the provided Thought, Reasoning, Plan, and Criticism."\
-            "If these elements accurately contribute to the successful execution"\
-            " of the assumed role, respond with the letter 'Y' followed by a space,"\
-            " and then explain why it is effective. If the provided information is not"\
-            " suitable for achieving the role's objectives, please provide one or more "\
+        feedback_prompt = (
+            f"Below is a message from an AI agent with the role of {ai_role}."
+            "Please review the provided Thought, Reasoning, Plan, and Criticism."
+            "If these elements accurately contribute to the successful execution"
+            " of the assumed role, respond with the letter 'Y' followed by a space,"
+            " and then explain why it is effective. If the provided information is not"
+            " suitable for achieving the role's objectives, please provide one or more "
             "sentences addressing the issue and suggesting a resolution."
+        )
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
         thought = thoughts.get("thoughts", "")
