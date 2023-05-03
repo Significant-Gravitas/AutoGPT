@@ -114,6 +114,8 @@ class Config(metaclass=Singleton):
         # Selenium browser settings
         self.selenium_web_browser = os.getenv("USE_WEB_BROWSER", "chrome")
         self.selenium_headless = os.getenv("HEADLESS_BROWSER", "True") == "True"
+        self.chromium_binary_location = os.getenv("CHROMIUM_BINARY_LOCATION", None)
+        self.chromium_driver_path = os.getenv("CHROMIUM_DRIVER_PATH", "/usr/bin/chromedriver")
 
         # User agent header to use when making HTTP requests
         # Some websites might just completely deny request with an error code if
