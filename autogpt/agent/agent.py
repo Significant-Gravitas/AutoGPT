@@ -274,19 +274,21 @@ class Agent:
         else:
             result, command_name, arguments = self.process_command(cfg, command_name, arguments)
         return result, command_name, arguments
-
-    def interact(self, loop_count, cfg, command_name, arguments, user_input):
-        # Discontinue if continuous limit is reached
-        loop_count += 1
-        self.check_continuous(cfg, loop_count)
-        send_chat_message_to_user("Thinking... \n")
-        command_name, arguments, assistant_reply, assistant_reply_json = self.process_assistant_reply(cfg)
-
+    
+    def input_or_continuous(self, cfg, command_name, arguments, user_input, assistant_reply_json):
         if not cfg.continuous_mode and self.next_action_count == 0:
             user_input = self.get_user_input(command_name, arguments, cfg, assistant_reply_json)
             self.user_input = user_input
         else:
             self.log_command(command_name, arguments)
+        return user_input
+
+    def interact(self, loop_count, cfg, command_name, arguments, user_input):
+        loop_count += 1
+        self.check_continuous(cfg, loop_count)
+        send_chat_message_to_user("Thinking... \n")
+        command_name, arguments, assistant_reply, assistant_reply_json = self.process_assistant_reply(cfg)
+        user_input = self.input_or_continuous(cfg, command_name, arguments, user_input, assistant_reply_json)
         result, command_name, arguments = self.execute_command(cfg, command_name, arguments, user_input)
         self.update_memory(assistant_reply, result, user_input)
         self.update_history(result)
