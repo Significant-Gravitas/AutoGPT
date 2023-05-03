@@ -83,7 +83,7 @@ def test_sd_webui_negative_prompt(config, workspace, image_size):
 
 def lst(txt):
     """Extract the file path from the output of `generate_image()`"""
-    return Path(txt.split(":")[1].strip())
+    return Path(txt.split(":", maxsplit=1)[1].strip())
 
 
 def generate_and_validate(
