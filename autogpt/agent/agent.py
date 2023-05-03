@@ -1,3 +1,4 @@
+from typing import Any, Dict, NoReturn, Tuple, Union
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -65,8 +66,7 @@ class Agent:
         self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
 
-    def start_interaction_loop(self):
-        # Interaction Loop
+    def start_interaction_loop(self) -> NoReturn:
         cfg = Config()
         loop_count = 0
         command_name = None
@@ -78,7 +78,7 @@ class Agent:
                 loop_count, cfg, command_name, arguments, user_input
             )
 
-    def check_continuous(self, cfg, loop_count):
+    def check_continuous(self, cfg, loop_count) -> None:
         if (
             cfg.continuous_mode
             and cfg.continuous_limit > 0
@@ -92,8 +92,7 @@ class Agent:
             )
             exit(0)
 
-    def get_assistant_reply(self, cfg):
-        # Send message to AI, get response
+    def get_assistant_reply(self, cfg) -> str:
         with Spinner("Thinking... "):
             assistant_reply = chat_with_ai(
                 self,
@@ -105,7 +104,7 @@ class Agent:
             )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
         return assistant_reply
 
-    def handle_post_planning(self, cfg, assistant_reply_json):
+    def handle_post_planning(self, cfg, assistant_reply_json) -> Dict[str, Any]:
         for plugin in cfg.plugins:
             if not plugin.can_handle_post_planning():
                 continue
@@ -113,13 +112,11 @@ class Agent:
         return assistant_reply_json
 
     def resolve_assistant_command(self, cfg, assistant_reply_json):
-        # Print Assistant thoughts
         command_name = "None"
         arguments = []
 
         if assistant_reply_json != {}:
             validate_json(assistant_reply_json, "llm_response_format_1")
-            # Get command name and arguments
             try:
                 print_assistant_thoughts(
                     self.ai_name, assistant_reply_json, cfg.speak_mode
@@ -130,7 +127,6 @@ class Agent:
 
                 send_chat_message_to_user("Thinking... \n")
                 arguments = self._resolve_pathlike_command_args(arguments)
-
             except Exception as e:
                 logger.error("Error: \n", str(e))
         return command_name, arguments
@@ -144,54 +140,57 @@ class Agent:
         )
         return command_name, arguments, assistant_reply, assistant_reply_json
 
-    def get_console_input(self, cfg):
+    def get_console_input(self, cfg) -> str:
         if cfg.chat_messages_enabled:
             return clean_input("Waiting for your response...")
         return clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
 
+    def process_self_feedback(self, assistant_reply_json, cfg):
+        logger.typewriter_log(
+            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
+            Fore.GREEN,
+            "",
+        )
+        thoughts = assistant_reply_json.get("thoughts", {})
+        self_feedback_resp = self.get_self_feedback(thoughts, cfg.fast_llm_model)
+        logger.typewriter_log(
+            f"SELF FEEDBACK: {self_feedback_resp}",
+            Fore.YELLOW,
+            "",
+        )
+        if self_feedback_resp[0].lower().strip() == "y":
+            user_input = "GENERATE NEXT COMMAND JSON"
+        else:
+            user_input = self_feedback_resp
+        return user_input, None, False
+
+    def process_continue_for(self, user_input, console_input):
+        try:
+            self.next_action_count = abs(int(console_input.split(" ")[1]))
+            user_input = "GENERATE NEXT COMMAND JSON"
+        except ValueError:
+            print(
+                "Invalid input format. Please enter 'y -n' where n is"
+                " the number of continuous tasks."
+            )
+            return user_input, None, True
+        return user_input, None, False
+
     def process_console_input(
         self, console_input, cfg, user_input, assistant_reply_json
-    ):
+    ) -> Tuple[str, Union[None, str], bool]:
         if console_input == "y":
-            user_input = "GENERATE NEXT COMMAND JSON"
-            return user_input, None, False
+            return "GENERATE NEXT COMMAND JSON", None, False
         elif console_input == "s":
-            logger.typewriter_log(
-                "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
-                Fore.GREEN,
-                "",
-            )
-            thoughts = assistant_reply_json.get("thoughts", {})
-            self_feedback_resp = self.get_self_feedback(thoughts, cfg.fast_llm_model)
-            logger.typewriter_log(
-                f"SELF FEEDBACK: {self_feedback_resp}",
-                Fore.YELLOW,
-                "",
-            )
-            if self_feedback_resp[0].lower().strip() == "y":
-                user_input = "GENERATE NEXT COMMAND JSON"
-            else:
-                user_input = self_feedback_resp
-            return user_input, None, False
+            return self.process_self_feedback(assistant_reply_json, cfg)
         elif console_input == "":
             print("Invalid input format.")
             return user_input, None, True
         elif console_input.startswith("y -"):
-            try:
-                self.next_action_count = abs(int(console_input.split(" ")[1]))
-                user_input = "GENERATE NEXT COMMAND JSON"
-            except ValueError:
-                print(
-                    "Invalid input format. Please enter 'y -n' where n is"
-                    " the number of continuous tasks."
-                )
-                return user_input, None, True
-            return user_input, None, False
+            return self.process_continue_for(user_input, console_input)
         elif console_input == "n":
-            user_input = "EXIT"
-            return user_input, None, False
-        user_input = console_input
-        return user_input, "human_feedback", False
+            return "EXIT", None, False
+        return console_input, "human_feedback", False
 
     def log_next_action(self, command_name, arguments):
         send_chat_message_to_user(
