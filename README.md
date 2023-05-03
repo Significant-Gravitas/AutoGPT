@@ -18,7 +18,7 @@ Clone the repo with:
 
 Create a venv with
 
-    python3.9 -m venv venv
+    python3.10 -m venv venv
 
 
 On MaxOS/Linux Activate it with 

@@ -56,8 +56,7 @@ def parse_args() -> argparse.Namespace:
         "--visible", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--seed", type=int, default=20220722)
     parser.add_argument("--user", type=str, default="")
-    parser.add_argument("--record_path", type=str, default=str(Path(
-        __file__).parent.parent / "data" / f"eval-{datetime.now().strftime('%Y%m%d-%H%M%S')}.jsonl"))
+    parser.add_argument("--record_path", type=str, default=None)
     parser.add_argument(
         "--log_to_file", type=str, default=None,  # default=str(
         #   Path(__file__).parent.parent / "data" / "log" / "log.txt"
@@ -133,6 +132,9 @@ if __name__ == "__main__":
     # Obviously, a top level import would be better. This allows us to set the API key with the env file, as it gets
     # set in the evaluator. We can't set it before the import because the import will fail without an API key.
     from auto_gpt_benchmarking.Evaluator import Evaluator, OAIRunArgs
+    if args.record_path is None:
+        args.record_path = str(Path(
+            __file__).parent.parent / "data" / f"eval-{args.eval}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.jsonl")
     run_args = OAIRunArgs(
         completion_fn=args.completion_fn,
         eval=args.eval,
