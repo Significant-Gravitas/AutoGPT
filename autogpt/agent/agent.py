@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -6,6 +8,11 @@ from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
 from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
 from autogpt.llm.token_counter import count_string_tokens
+from autogpt.log_cycle.log_cycle import (
+    FULL_MESSAGE_HISTORY_FILE_NAME,
+    NEXT_ACTION_FILE_NAME,
+    LogCycleHandler,
+)
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
@@ -68,22 +75,33 @@ class Agent:
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
+        self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.cycle_count = 0
+        self.log_cycle_handler = LogCycleHandler()
 
     def start_interaction_loop(self):
         # Interaction Loop
         cfg = Config()
-        loop_count = 0
+        self.cycle_count = 0
         command_name = None
         arguments = None
         user_input = ""
 
         while True:
             # Discontinue if continuous limit is reached
-            loop_count += 1
+            self.cycle_count += 1
+            self.log_cycle_handler.log_count_within_cycle = 0
+            self.log_cycle_handler.log_cycle(
+                self.config.ai_name,
+                self.created_at,
+                self.cycle_count,
+                self.full_message_history,
+                FULL_MESSAGE_HISTORY_FILE_NAME,
+            )
             if (
                 cfg.continuous_mode
                 and cfg.continuous_limit > 0
-                and loop_count > cfg.continuous_limit
+                and self.cycle_count > cfg.continuous_limit
             ):
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
@@ -122,6 +140,13 @@ class Agent:
 
                 except Exception as e:
                     logger.error("Error: \n", str(e))
+            self.log_cycle_handler.log_cycle(
+                self.config.ai_name,
+                self.created_at,
+                self.cycle_count,
+                assistant_reply_json,
+                NEXT_ACTION_FILE_NAME,
+            )
 
             if not cfg.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
