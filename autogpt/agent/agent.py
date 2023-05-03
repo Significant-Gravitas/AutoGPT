@@ -93,17 +93,25 @@ class Agent:
             )
             exit(0)
 
-    def get_assistant_reply(self, cfg) -> str:
-        with Spinner("Thinking... "):
-            assistant_reply = chat_with_ai(
-                self,
-                self.system_prompt,
-                self.triggering_prompt,
-                self.full_message_history,
-                self.memory,
-                cfg.fast_token_limit,
-            )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
-        return assistant_reply
+    def get_assistant_reply(self, cfg, spinner=False) -> str:
+        if spinner:
+            with Spinner("Thinking... "):
+                return chat_with_ai(
+                    self,
+                    self.system_prompt,
+                    self.triggering_prompt,
+                    self.full_message_history,
+                    self.memory,
+                    cfg.fast_token_limit,
+                )
+        return chat_with_ai(
+            self,
+            self.system_prompt,
+            self.triggering_prompt,
+            self.full_message_history,
+            self.memory,
+            cfg.fast_token_limit,
+        )
 
     def handle_post_planning(self, cfg, assistant_reply_json) -> Dict[str, Any]:
         for plugin in cfg.plugins:

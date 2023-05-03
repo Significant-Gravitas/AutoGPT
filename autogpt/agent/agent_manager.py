@@ -85,6 +85,7 @@ class AgentManager(metaclass=Singleton):
             The key of the new agent
         """
         messages: List[Message] = [
+            {"role": "system", "content": "You are an autonomous AI agent. You can ask me to do things. I will try my best to do them."},
             {"role": "user", "content": prompt},
         ]
         messages = self.handle_preinstruction(messages)
