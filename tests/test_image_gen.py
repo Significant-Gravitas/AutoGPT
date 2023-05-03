@@ -48,7 +48,7 @@ def test_huggingface(config, workspace, image_size, image_model):
     )
 
 
-@pytest.mark.xfail(reason="SD WebUI call does not work.")
+@pytest.mark.skip(reason="External SD WebUI may not be available.")
 def test_sd_webui(config, workspace, image_size):
     """Test SD WebUI image generation."""
     generate_and_validate(
@@ -59,7 +59,7 @@ def test_sd_webui(config, workspace, image_size):
     )
 
 
-@pytest.mark.xfail(reason="SD WebUI call does not work.")
+@pytest.mark.skip(reason="External SD WebUI may not be available.")
 def test_sd_webui_negative_prompt(config, workspace, image_size):
     gen_image = functools.partial(
         generate_image_with_sd_webui,
