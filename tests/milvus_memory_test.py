@@ -4,33 +4,22 @@ import os
 import sys
 import unittest
 
-from autogpt.config import Config
-
 try:
+    from autogpt.config import Config
     from autogpt.memory.milvus import MilvusMemory
-
-    def mock_config() -> dict:
-        """Mock the config object for testing purposes."""
-        # Return a mock config object with the required attributes
-        return type(
-            "MockConfig",
-            (Config,),
-            {
-                "debug_mode": False,
-                "continuous_mode": False,
-                "speak_mode": False,
-                "milvus_collection": "autogpt",
-                "milvus_addr": "localhost:19530",
-            },
-        )
 
     class TestMilvusMemory(unittest.TestCase):
         """Tests for the MilvusMemory class."""
 
         def setUp(self) -> None:
             """Set up the test environment"""
-            self.cfg = mock_config()
-            self.memory = MilvusMemory(self.cfg)
+            cfg = Config()
+            cfg.debug_mode = False
+            cfg.continuous_mode = False
+            cfg.speak_mode = False
+            cfg.milvus_collection = "autogpt"
+            cfg.milvus_addr = "localhost:19530"
+            self.memory = MilvusMemory(cfg)
 
         def test_add(self) -> None:
             """Test adding a text to the cache"""
