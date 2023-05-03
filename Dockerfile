@@ -36,5 +36,7 @@ RUN sed -i '/Items below this point will not be included in the Docker Image/,$d
 	pip install --no-cache-dir -r requirements.txt
 WORKDIR /app
 ONBUILD COPY autogpt/ ./autogpt
+ONBUILD COPY scripts/ ./scripts
+
 
 FROM autogpt-${BUILD_TYPE} AS auto-gpt
