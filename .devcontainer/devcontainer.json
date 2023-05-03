@@ -1,46 +1,59 @@
 {
-  "dockerComposeFile": "./docker-compose.yml",
-  "service": "auto-gpt",
-  "workspaceFolder": "/workspace/Auto-GPT",
-  "shutdownAction": "stopCompose",
-  "features": {
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": "true",
-      "username": "vscode",
-      "userUid": "1000",
-      "userGid": "1000",
-      "upgradePackages": "true"
-    },
-    "ghcr.io/devcontainers/features/desktop-lite:1": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/python:1": "none",
-    "ghcr.io/devcontainers/features/node:1": "none",
-    "ghcr.io/devcontainers/features/git:1": {
-      "version": "latest",
-      "ppa": "false"
-    }
-  },
-  // Configure tool-specific properties.
-  "customizations": {
-    // Configure properties specific to VS Code.
-    "vscode": {
-      // Set *default* container specific settings.json values on container create.
-      "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python",
-        "python.testing.pytestEnabled": true,
-        "python.testing.unittestEnabled": false
+    "dockerComposeFile": "./docker-compose.yml",
+    "service": "auto-gpt",
+    "workspaceFolder": "/workspace/Auto-GPT",
+    "shutdownAction": "stopCompose",
+    "features": {
+      "ghcr.io/devcontainers/features/common-utils:2": {
+        "installZsh": "false",
+        "username": "vscode",
+        "userUid": "9999",
+        "userGid": "9999",
+        "upgradePackages": "true"
+      },
+      "ghcr.io/devcontainers/features/desktop-lite:1": {},
+      "ghcr.io/devcontainers/features/github-cli:1": {},
+      "ghcr.io/devcontainers/features/python:1": "none",
+      "ghcr.io/devcontainers/features/node:1": "none",
+      "ghcr.io/devcontainers/features/git:1": {
+        "version": "latest",
+        "ppa": "false"
       }
-    }
-  },
-  // Use 'forwardPorts' to make a list of ports inside the container available locally.
-  // "forwardPorts": [],
+    },
 
-  // Use 'postCreateCommand' to run commands after the container is created.
-  // "postCreateCommand": "pip3 install --user -r requirements.txt",
+    // Configure tool-specific properties.
+    "customizations": {
+      // Configure properties specific to VS Code.
+      "vscode": {
+        // Set *default* container specific settings.json values on container create.
+        "settings": {
+          "python.defaultInterpreterPath": "/usr/local/bin/python",
+          "python.testing.pytestEnabled": true,
+          "python.testing.unittestEnabled": false
+        },
+        "extensions": [
+          "eamodio.gitlens",
+          "GitHub.copilot",
+          "GitHub.vscode-pull-request-github",
+          "ms-python.flake8",
+          "ms-python.black-formatter",
+          "ms-python.isort",
+          "ms-python.vscode-pylance",
+          "ms-vscode.vscode-typescript-tslint-plugin",
+          "visualstudioexptteam.vscodeintellicode",
 
-  // Set `remoteUser` to `root` to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
-  "remoteUser": "vscode",
+        ]
+      }
+    },
+    // Use 'forwardPorts' to make a list of ports inside the container available locally.
+    // "forwardPorts": [],
 
-  // Add the freshly containerized repo to the list of safe repositories
-  "postCreateCommand": "git config --global --add safe.directory /workspace/Auto-GPT"
-}
+    // Use 'postCreateCommand' to run commands after the container is created.
+    // "postCreateCommand": "pip3 install --user -r requirements.txt",
+
+    // Set `remoteUser` to `root` to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
+    "remoteUser": "vscode",
+
+    // Add the freshly containerized repo to the list of safe repositories
+    "postCreateCommand": "git config --global --add safe.directory /workspace/Auto-GPT"
+  }
