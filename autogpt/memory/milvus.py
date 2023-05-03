@@ -24,12 +24,18 @@ class MilvusMemory(MemoryProviderSingleton):
             connect_kwargs["user"] = self.username
             connect_kwargs["password"] = self.password
 
-        connections.connect(
-            **connect_kwargs,
-            uri=self.uri or "",
-            address=self.address or "",
-            secure=self.secure,
-        )
+        if cfg.milvus_lite == "True":
+            from milvus import default_server
+            print("Starting Milvus Lite")
+            default_server.start()
+            connections.connect(host='127.0.0.1', port=default_server.listen_port)
+        else:
+            connections.connect(
+                **connect_kwargs,
+                uri=self.uri or "",
+                address=self.address or "",
+                secure=self.secure,
+            )
 
         self.init_collection()
 

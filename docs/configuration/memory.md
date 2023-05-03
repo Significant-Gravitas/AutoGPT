@@ -87,6 +87,9 @@ deployed with docker, or as a cloud service provided by [Zilliz Cloud](https://z
         3. In the *Database detail* tab of the database you have created, the public cloud endpoint, such as:
         `https://xxx-xxxx.xxxx.xxxx.zillizcloud.com:443`.
 
+    - Use [Milvus Lite](https://milvus.io/docs/milvus_lite.md)
+        1. `pip install milvus`
+
 2. Run `pip3 install pymilvus` to install the required client library.
     Make sure your PyMilvus version and Milvus version are [compatible](https://github.com/milvus-io/pymilvus#compatibility)
     to avoid issues.
@@ -107,6 +110,7 @@ deployed with docker, or as a cloud service provided by [Zilliz Cloud](https://z
         *Note: setting `MILVUS_ADDR` to a `https://` URL will override this setting.*
     - `MILVUS_COLLECTION` to change the collection name to use in Milvus.
         Defaults to `autogpt`.
+    - `MILVUS_LITE=True` if using Milvus Lite
 
 ### Weaviate Setup
 [Weaviate](https://weaviate.io/) is an open-source vector database. It allows to store
