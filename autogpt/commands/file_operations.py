@@ -136,7 +136,7 @@ def split_file(
             chunk = content[start:content_length]
 
             # Account for the case where the last chunk is shorter than the overlap, so it has already been consumed
-            if len(chunk) <= overlap:
+            if len(chunk) <= overlap and start > 0:
                 break
 
         yield chunk
