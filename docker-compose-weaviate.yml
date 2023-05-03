@@ -1,0 +1,100 @@
+# To boot the app run the following:
+# docker-compose run auto-gpt
+version: "3.9"
+
+services:
+  auto-gpt:
+    depends_on:
+      - weaviate
+    build: ./
+    env_file:
+      - .env
+    environment:
+      MEMORY_BACKEND: ${DEPENDS_ON:?DEPENDS_ON is not set}
+    volumes:
+      - ./:/app
+    profiles: ["excluded-from-up"]
+
+  weaviate:
+    command:
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8080'
+    - --scheme
+    - http
+    image: semitechnologies/weaviate:1.18.4
+    ports:
+    - 8080:8080
+    restart: on-failure:0
+    environment:
+      TRANSFORMERS_INFERENCE_API: 'http://t2v-transformers:8080'
+      QNA_INFERENCE_API: 'http://qna-transformers:8080'
+      IMAGE_INFERENCE_API: 'http://i2v-neural:8080'
+      NER_INFERENCE_API: 'http://ner-transformers:8080'
+      SUM_INFERENCE_API: 'http://sum-transformers:8080'
+      SPELLCHECK_INFERENCE_API: 'http://text-spellcheck:8080'
+      OPENAI_APIKEY: ${OPENAI_API_KEY}
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'text2vec-transformers'
+      ENABLE_MODULES: 'text2vec-transformers,qna-transformers,ner-transformers,sum-transformers,text-spellcheck,img2vec-neural,ref2vec-centroid,generative-openai'
+      CLUSTER_HOSTNAME: 'node1'
+  t2v-transformers:
+    image: semitechnologies/transformers-inference:sentence-transformers-multi-qa-MiniLM-L6-cos-v1
+    environment:
+      ENABLE_CUDA: '1'
+      NVIDIA_VISIBLE_DEVICES: 'all'
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - capabilities: 
+            - 'gpu'    
+  qna-transformers:
+    image: semitechnologies/qna-transformers:distilbert-base-uncased-distilled-squad
+    environment:
+      ENABLE_CUDA: '1'
+      NVIDIA_VISIBLE_DEVICES: 'all'
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - capabilities: 
+            - 'gpu'    
+  ner-transformers:
+    image: semitechnologies/ner-transformers:dbmdz-bert-large-cased-finetuned-conll03-english
+    environment:
+      ENABLE_CUDA: '1'
+      NVIDIA_VISIBLE_DEVICES: 'all'
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - capabilities: 
+            - 'gpu'    
+  sum-transformers:
+    image: semitechnologies/sum-transformers:facebook-bart-large-cnn-1.0.0
+    environment:
+      ENABLE_CUDA: '1'
+      NVIDIA_VISIBLE_DEVICES: 'all'
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - capabilities: 
+            - 'gpu'    
+  text-spellcheck:
+    image: semitechnologies/text-spellcheck-model:pyspellchecker-en    
+  i2v-neural:
+    image: semitechnologies/img2vec-pytorch:resnet50
+    environment:
+      ENABLE_CUDA: '1'
+      NVIDIA_VISIBLE_DEVICES: 'all'
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - capabilities: 
+            - 'gpu'    

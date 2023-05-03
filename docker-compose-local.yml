@@ -4,8 +4,6 @@ version: "3.9"
 
 services:
   auto-gpt:
-    depends_on:
-      - redis
     build: ./
     env_file:
       - .env
@@ -15,6 +13,3 @@ services:
     volumes:
       - ./:/app
     profiles: ["exclude-from-up"]
-
-  redis:
-    image: "redis/redis-stack-server:latest"

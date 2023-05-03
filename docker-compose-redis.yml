@@ -10,11 +10,11 @@ services:
     env_file:
       - .env
     environment:
-      MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
+      MEMORY_BACKEND: ${DEPENDS_ON:-redis}
       REDIS_HOST: ${REDIS_HOST:-redis}
     volumes:
       - ./:/app
-    profiles: ["exclude-from-up"]
+    profiles: ["excluded-from-up"]
 
   redis:
     image: "redis/redis-stack-server:latest"
