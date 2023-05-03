@@ -8,8 +8,11 @@
 
 <hr/>
 
-### 🔴 🔴 🔴 This fork does not track upstream, commits will be cherry-picked if they are an improvement.  🔴 🔴 🔴
+### 🔴 This fork does not track upstream, commits will be cherry-picked if they are an improvement.  🔴
 
+You can start the local llm api server with ```docker-compose -f .\docker-compose-fastchat.yml up --build --wait```
+
+Add ```USE_FASTCHAT=True``` to your .env file
 <hr/>
 
 
