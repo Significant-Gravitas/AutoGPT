@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -25,7 +26,14 @@ import pytest
 from autogpt.config import Config
 
 @pytest.fixture()
-def config(mocker, request, workspace):
+def config(request, mocker: MockerFixture, workspace: Workspace) -> Config:
+    if hasattr(request, "param"):
+        if "env_vars" in request.param:
+            for key, value in request.param["env_vars"].items():
+                mocker.patch.dict(os.environ, {key: value})
+        if "mock_load_dotenv" in request.param:
+            mocker.patch("dotenv.load_dotenv", side_effect=request.param["mock_load_dotenv"])
+
     config = Config()
 
     # Do a little setup and teardown since the config object is a singleton
@@ -34,12 +42,6 @@ def config(mocker, request, workspace):
         workspace_path=workspace.root,
         file_logger_path=workspace.get_path("file_logger.txt"),
     )
-
-    # Apply custom mocks if provided in the request
-    if hasattr(request, "param"):
-        for target, value in request.param.items():
-            mocker.patch(target, value)
-
     yield config
 
 

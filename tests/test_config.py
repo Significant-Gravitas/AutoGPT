@@ -4,10 +4,11 @@ for the AI and ensures it behaves as a singleton.
 """
 
 import pytest
+import os
 from unittest.mock import MagicMock
 
 from autogpt.config import Config
-
+from unittest.mock import mock_open, patch
 
 
 # def test_initial_values(config):
@@ -108,8 +109,13 @@ def test_set_debug_mode(config):
 
 
 # Generalized mock function
-def mock_load_yaml_config(config, mock_data, *args, **kwargs):
+def mock_load_yaml_config(config, mock_data, config_file, *args, **kwargs):
     config.yaml_config = mock_data
+
+
+def mock_load_dotenv(*args, **kwargs):
+    os.environ["MY_NEW_AUTOGPT_CONFIG"] = "dot_env_value"
+
 
 # The new tests with custom mocks
 @pytest.mark.parametrize(
@@ -118,24 +124,54 @@ def mock_load_yaml_config(config, mock_data, *args, **kwargs):
         (
             {
                 "autogpt.config.Config.load_yaml_config": (
-                    lambda config, *args, **kwargs: mock_load_yaml_config(config, {"my_new_autogpt_command": "some_value"}, *args, **kwargs)
+                    lambda config, config_file=None, *args, **kwargs: mock_load_yaml_config(config, {"my_new_autogpt_config": "some_value"}, config_file, *args, **kwargs)
                 ),
             },
-            {"my_new_autogpt_command": "some_value"},
+            {"my_new_autogpt_config": "some_value"},
         ),
         (
             {
                 "autogpt.config.Config.load_yaml_config": (
-                    lambda config, *args, **kwargs: mock_load_yaml_config(config, {"another_new_autogpt_command": "another_value"}, *args, **kwargs)
+                    lambda config, config_file=None, *args, **kwargs: mock_load_yaml_config(config, {"another_new_autogpt_config": "another_value"}, config_file, *args, **kwargs)
                 ),
             },
-            {"another_new_autogpt_command": "another_value"},
+            {"another_new_autogpt_config": "another_value"},
         ),
     ],
     indirect=["config"],
 )
 def test_yaml_config_mock_only(config, expected_value):
-    config.load_yaml_config()
+    # Mock the load_yaml_config function to directly set the yaml_config attribute
+    config.load_yaml_config = lambda *args, **kwargs: mock_load_yaml_config(config, expected_value, *args, **kwargs)
+    
+    config.load_yaml_config(config_file="mock_command_config.yaml")
 
     for key, value in expected_value.items():
         assert config.yaml_config[key] == value
+
+
+@pytest.mark.parametrize(
+    "config, expected_value",
+    [
+        (
+            {
+                "autogpt.config.Config.load_yaml_config": (
+                    lambda config, config_file=None, *args, **kwargs: mock_load_yaml_config(config, {"my_new_autogpt_config": "yaml_value"}, config_file, *args, **kwargs)
+                ),
+                "mock_load_dotenv": mock_load_dotenv,
+                "env_vars": {"MY_NEW_AUTOGPT_CONFIG": "env_var_value"},
+            },
+            "env_var_value",
+        ),
+    ],
+    indirect=["config"],
+)
+def test_precedence_order(config, expected_value):
+    # Mock the load_yaml_config function to directly set the yaml_config attribute
+    config.load_yaml_config = lambda *args, **kwargs: mock_load_yaml_config(config, {"my_new_autogpt_config": "yaml_value"}, *args, **kwargs)
+    
+    config.load_yaml_config(config_file="mock_command_config.yaml")
+    assert config.get_env_or_yaml_config("MY_NEW_AUTOGPT_CONFIG") == expected_value
+
+
+#TODO add test for command line options 
