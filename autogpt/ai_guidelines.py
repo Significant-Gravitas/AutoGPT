@@ -123,7 +123,7 @@ class AIGuidelines:
     def construct_full_prompt(self):
         full_prompt = """You are a critical component within a system that implements a general AI that attempts to
 achieve goals set by the user in an autonamous manner.
-Your role is to make sure that the other components of the system are abiding the background guidelines
+Your role is to make sure that the other components of the system are abiding by the background guidelines
 defined by user. These guidelines define both ethical parameters and criteria for effective performance
 in achieving the task set.
 You will examine the history of messages provided here in the light of the following numbered list of guidelines.

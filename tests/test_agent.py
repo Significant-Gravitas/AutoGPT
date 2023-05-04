@@ -19,7 +19,6 @@ def agent():
     workspace_directory = "workspace_directory"
     guidelines_mgr = AIGuidelines("ai_guidelines.yaml", bsilent=True)
 
-
     agent = Agent(
         ai_name,
         memory,
