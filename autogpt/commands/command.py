@@ -49,8 +49,10 @@ class CommandRegistry:
     directory.
     """
 
-    def __init__(self):
+    def __init__(self, module_names: list = []):
         self.commands = {}
+        if module_names:
+            self.import_command_list(module_names)
 
     def _import_module(self, module_name: str) -> Any:
         return importlib.import_module(module_name)
@@ -122,6 +124,18 @@ class CommandRegistry:
             ):
                 cmd_instance = attr()
                 self.register(cmd_instance)
+
+    def import_command_list(self, module_names: list) -> None:
+        """
+        Imports the specified Python modules containing command plugins.
+
+        This method calls import_commands for each command in the list.
+
+        Args:
+            module_name (list): The name of the module to import for command plugins.
+        """
+        for module_name in module_names:
+            self.import_commands(module_name)
 
 
 def command(

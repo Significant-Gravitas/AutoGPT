@@ -1,4 +1,5 @@
 """The application entry point.  Can be invoked by a CLI or any other front end application."""
+import json
 import logging
 import sys
 from pathlib import Path
@@ -20,6 +21,12 @@ from autogpt.utils import (
 )
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
+
+
+def load_command_list_from_file(file_path: str):
+    with open(file_path, "r") as file:
+        command_list = json.load(file)
+    return command_list
 
 
 def run_auto_gpt(
@@ -117,34 +124,17 @@ def run_auto_gpt(
 
     cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
     # Create a CommandRegistry instance and scan default folder
-    command_registry = CommandRegistry()
 
-    command_categories = [
-        "autogpt.commands.analyze_code",
-        "autogpt.commands.audio_text",
-        "autogpt.commands.execute_code",
-        "autogpt.commands.file_operations",
-        "autogpt.commands.git_operations",
-        "autogpt.commands.google_search",
-        "autogpt.commands.image_gen",
-        "autogpt.commands.improve_code",
-        "autogpt.commands.twitter",
-        "autogpt.commands.web_selenium",
-        "autogpt.commands.write_tests",
-        "autogpt.app",
-        "autogpt.commands.task_statuses",
-    ]
     logger.debug(
         f"The following command categories are disabled: {cfg.disabled_command_categories}"
     )
     command_categories = [
-        x for x in command_categories if x not in cfg.disabled_command_categories
+        x for x in cfg.command_categories if x not in cfg.disabled_command_categories
     ]
 
     logger.debug(f"The following command categories are enabled: {command_categories}")
 
-    for command_category in command_categories:
-        command_registry.import_commands(command_category)
+    command_registry = CommandRegistry(command_categories)
 
     ai_name = ""
     ai_config = construct_main_ai_config()

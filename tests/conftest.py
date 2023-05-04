@@ -21,8 +21,11 @@ def workspace(workspace_root: Path) -> Workspace:
     return Workspace(workspace_root, restrict_to_workspace=True)
 
 
+import pytest
+from autogpt.config import Config
+
 @pytest.fixture()
-def config(mocker: MockerFixture, workspace: Workspace) -> Config:
+def config(mocker, request, workspace):
     config = Config()
 
     # Do a little setup and teardown since the config object is a singleton
@@ -31,7 +34,14 @@ def config(mocker: MockerFixture, workspace: Workspace) -> Config:
         workspace_path=workspace.root,
         file_logger_path=workspace.get_path("file_logger.txt"),
     )
+
+    # Apply custom mocks if provided in the request
+    if hasattr(request, "param"):
+        for target, value in request.param.items():
+            mocker.patch(target, value)
+
     yield config
+
 
 
 @pytest.fixture()

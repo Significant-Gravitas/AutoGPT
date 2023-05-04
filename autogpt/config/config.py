@@ -1,14 +1,23 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
+from dotenv import load_dotenv
 from typing import List
 
 import openai
 import yaml
+from typing import Union
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
 
 from autogpt.singleton import Singleton
 
+
+
+
+def assurelist(value: str) -> List[str]:
+    # when the value is required as a list but only one value is provided spliting the value with comma won't work
+    if value is not None and isinstance(value, str):
+        return [value]
 
 class Config(metaclass=Singleton):
     """
@@ -28,15 +37,28 @@ class Config(metaclass=Singleton):
         self.allow_downloads = False
         self.skip_news = False
 
+        # configuration file
+        self.config_file = os.path.join(os.getcwd(),os.getenv("CONFIG_FILE", "commands_config.yaml"))
+
+        # Load yaml configration
+        if os.path.exists(self.config_file):
+            self.yaml_config = self.load_yaml_config(self.config_file)
+        else:
+            print(
+            Fore.RED
+            + f"Missing config file. { self.config_file}"
+            + Fore.RESET
+            )
+            exit(1)
+
+        # Load environment variables from .env file
+        load_dotenv()
+
+        self.command_categories = assurelist(self.get_env_or_yaml_config("COMMAND_CATEGORIES"))
+        self.disabled_command_categories = assurelist(self.get_env_or_yaml_config("DISABLED_COMMAND_CATEGORIES"))
+
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
-
-        disabled_command_categories = os.getenv("DISABLED_COMMAND_CATEGORIES")
-        if disabled_command_categories:
-            self.disabled_command_categories = disabled_command_categories.split(",")
-        else:
-            self.disabled_command_categories = []
-
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -155,6 +177,28 @@ class Config(metaclass=Singleton):
             self.plugins_denylist = plugins_denylist.split(",")
         else:
             self.plugins_denylist = []
+
+    def load_yaml_config(self, config_file: str = "command_config.yaml") -> Union[dict, list, str]:
+        # TODO add all the application related config to the yaml file and change the name to config.yaml
+        with open(config_file) as file:
+            config_params = yaml.safe_load(file)
+        return config_params
+
+
+    def get_env_or_yaml_config(self, key: str) -> Union[str, List[str]]:
+        # Get the values from  environment variables, .env file, and the YAML configuration file
+        # Yaml file has the lowest priority
+        # Yaml list will be converted to comma separated string
+        # keys will be converted to lowercase for yaml and upper for environment variables
+        # TODO: add the values from command line options at the begining to overwrite the rest
+        key = key.lower()
+        u_key = key.upper()
+        if u_key in os.environ and "," in os.getenv(u_key):
+            return os.getenv(u_key).split(",")
+        return os.getenv(u_key) or self.yaml_config[key]
+
+
+
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
