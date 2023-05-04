@@ -87,7 +87,7 @@ def update_running_summary(
         elif event["role"] == "user":
             new_events.remove(event)
 
-    # This can happen at any point during execturion, not just the beginning
+    # This can happen at any point during execution, not just the beginning
     if len(new_events) == 0:
         new_events = "Nothing new happened."
 
