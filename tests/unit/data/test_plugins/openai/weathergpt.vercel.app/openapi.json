@@ -1,0 +1,184 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "Weather API",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/api/weather": {
+            "get": {
+                "summary": "Get current weather information",
+                "operationId": "checkWeatherUsingGET",
+                "parameters": [
+                    {
+                        "name": "location",
+                        "in": "query",
+                        "required": true,
+                        "description": "Location for which to retrieve weather information.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Current weather information",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "location": {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {
+                                                    "type": "string"
+                                                },
+                                                "region": {
+                                                    "type": "string"
+                                                },
+                                                "country": {
+                                                    "type": "string"
+                                                },
+                                                "lat": {
+                                                    "type": "number"
+                                                },
+                                                "lon": {
+                                                    "type": "number"
+                                                },
+                                                "tz_id": {
+                                                    "type": "string"
+                                                },
+                                                "localtime_epoch": {
+                                                    "type": "integer"
+                                                },
+                                                "localtime": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        },
+                                        "current": {
+                                            "type": "object",
+                                            "properties": {
+                                                "last_updated": {
+                                                    "type": "string",
+                                                    "description": "Local time when the real time data was updated"
+                                                },
+                                                "last_updated_epoch": {
+                                                    "type": "integer",
+                                                    "description": "Local time when the real time data was updated in unix time"
+                                                },
+                                                "temp_c": {
+                                                    "type": "number",
+                                                    "description": "Temperature in celsius"
+                                                },
+                                                "temp_f": {
+                                                    "type": "number",
+                                                    "description": "Temperature in fahrenheit"
+                                                },
+                                                "is_day": {
+                                                    "type": "integer",
+                                                    "description": "1 = Yes 0 = No, Whether to show day condition icon or night icon"
+                                                },
+                                                "condition": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "text": {
+                                                            "type": "string",
+                                                            "description": "Weather condition text"
+                                                        },
+                                                        "icon": {
+                                                            "type": "string",
+                                                            "description": "Weather icon url"
+                                                        },
+                                                        "code": {
+                                                            "type": "integer",
+                                                            "description": "Weather condition unique code"
+                                                        }
+                                                    }
+                                                },
+                                                "wind_mph": {
+                                                    "type": "number",
+                                                    "description": "Wind speed in miles per hour"
+                                                },
+                                                "wind_kph": {
+                                                    "type": "number",
+                                                    "description": "Wind speed in kilometer per hour"
+                                                },
+                                                "wind_degree": {
+                                                    "type": "integer",
+                                                    "description": "Wind direction in degrees"
+                                                },
+                                                "wind_dir": {
+                                                    "type": "string",
+                                                    "description": "Wind direction as 16 point compass, e.g., NSW"
+                                                },
+                                                "pressure_mb": {
+                                                    "type": "number",
+                                                    "description": "Pressure in millibars"
+                                                },
+                                                "pressure_in": {
+                                                    "type": "number",
+                                                    "description": "Pressure in inches"
+                                                },
+                                                "precip_mm": {
+                                                    "type": "number",
+                                                    "description": "Precipitation amount in millimeters"
+                                                },
+                                                "precip_in": {
+                                                    "type": "number",
+                                                    "description": "Precipitation amount in inches"
+                                                },
+                                                "humidity": {
+                                                    "type": "integer",
+                                                    "description": "Humidity as percentage"
+                                                },
+                                                "cloud": {
+                                                    "type": "integer",
+                                                    "description": "Cloud cover as percentage"
+                                                },
+                                                "feelslike_c": {
+                                                    "type": "number",
+                                                    "description": "Feels like temperature in celsius"
+                                                },
+                                                "feelslike_f": {
+                                                    "type": "number",
+                                                    "description": "Feels like temperature in fahrenheit"
+                                                },
+                                                "vis_km": {
+                                                    "type": "number",
+                                                    "description": "Visibility in kilometers"
+                                                },
+                                                "vis_miles": {
+                                                    "type": "number",
+                                                    "description": "Visibility in miles"
+                                                },
+                                                "uv": {
+                                                    "type": "number",
+                                                    "description": "UV Index"
+                                                },
+                                                "gust_mph": {
+                                                    "type": "number",
+                                                    "description": "Wind gust in miles per hour"
+                                                },
+                                                "gust_kph": {
+                                                    "type": "number",
+                                                    "description": "Wind gust in kilometer per hour"
+                                                }
+                                            }
+                                        },
+                                        "infoLink": {
+                                            "type": "string",
+                                            "format": "uri",
+                                            "description": "A link to a page with more information about the location's weather in the format https://weathergpt.vercel.app/{location}."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
