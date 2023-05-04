@@ -170,9 +170,9 @@ class Agent:
                         console_input = clean_input("Waiting for your response...")
                     else:
                         console_input = clean_input(
-                            Fore.MAGENTA + "Input:" + Style.RESET_ALL
+                            Fore.MAGENTA + "Input [y]:" + Style.RESET_ALL
                         )
-                    if console_input.lower().strip() == cfg.authorise_key:
+                    if console_input.lower().strip() in (cfg.authorise_key, ""):
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().strip() == "s":
@@ -195,9 +195,6 @@ class Agent:
                         else:
                             user_input = self_feedback_resp
                         break
-                    elif console_input.lower().strip() == "":
-                        logger.warn("Invalid input format.")
-                        continue
                     elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
                         try:
                             self.next_action_count = abs(
