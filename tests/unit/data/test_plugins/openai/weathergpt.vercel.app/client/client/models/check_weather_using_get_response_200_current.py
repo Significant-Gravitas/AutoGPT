@@ -18,12 +18,9 @@ import attr
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-  from ..models.check_weather_using_get_response_200_current_condition import (
-      CheckWeatherUsingGETResponse200CurrentCondition,
-  )
-
-
-
+    from ..models.check_weather_using_get_response_200_current_condition import (
+        CheckWeatherUsingGETResponse200CurrentCondition,
+    )
 
 
 T = TypeVar("T", bound="CheckWeatherUsingGETResponse200Current")
@@ -31,39 +28,39 @@ T = TypeVar("T", bound="CheckWeatherUsingGETResponse200Current")
 
 @attr.s(auto_attribs=True)
 class CheckWeatherUsingGETResponse200Current:
-    """ 
-        Attributes:
-            last_updated (Union[Unset, str]): Local time when the real time data was updated
-            last_updated_epoch (Union[Unset, int]): Local time when the real time data was updated in unix time
-            temp_c (Union[Unset, float]): Temperature in celsius
-            temp_f (Union[Unset, float]): Temperature in fahrenheit
-            is_day (Union[Unset, int]): 1 = Yes 0 = No, Whether to show day condition icon or night icon
-            condition (Union[Unset, CheckWeatherUsingGETResponse200CurrentCondition]):
-            wind_mph (Union[Unset, float]): Wind speed in miles per hour
-            wind_kph (Union[Unset, float]): Wind speed in kilometer per hour
-            wind_degree (Union[Unset, int]): Wind direction in degrees
-            wind_dir (Union[Unset, str]): Wind direction as 16 point compass, e.g., NSW
-            pressure_mb (Union[Unset, float]): Pressure in millibars
-            pressure_in (Union[Unset, float]): Pressure in inches
-            precip_mm (Union[Unset, float]): Precipitation amount in millimeters
-            precip_in (Union[Unset, float]): Precipitation amount in inches
-            humidity (Union[Unset, int]): Humidity as percentage
-            cloud (Union[Unset, int]): Cloud cover as percentage
-            feelslike_c (Union[Unset, float]): Feels like temperature in celsius
-            feelslike_f (Union[Unset, float]): Feels like temperature in fahrenheit
-            vis_km (Union[Unset, float]): Visibility in kilometers
-            vis_miles (Union[Unset, float]): Visibility in miles
-            uv (Union[Unset, float]): UV Index
-            gust_mph (Union[Unset, float]): Wind gust in miles per hour
-            gust_kph (Union[Unset, float]): Wind gust in kilometer per hour
-     """
+    """
+    Attributes:
+        last_updated (Union[Unset, str]): Local time when the real time data was updated
+        last_updated_epoch (Union[Unset, int]): Local time when the real time data was updated in unix time
+        temp_c (Union[Unset, float]): Temperature in celsius
+        temp_f (Union[Unset, float]): Temperature in fahrenheit
+        is_day (Union[Unset, int]): 1 = Yes 0 = No, Whether to show day condition icon or night icon
+        condition (Union[Unset, CheckWeatherUsingGETResponse200CurrentCondition]):
+        wind_mph (Union[Unset, float]): Wind speed in miles per hour
+        wind_kph (Union[Unset, float]): Wind speed in kilometer per hour
+        wind_degree (Union[Unset, int]): Wind direction in degrees
+        wind_dir (Union[Unset, str]): Wind direction as 16 point compass, e.g., NSW
+        pressure_mb (Union[Unset, float]): Pressure in millibars
+        pressure_in (Union[Unset, float]): Pressure in inches
+        precip_mm (Union[Unset, float]): Precipitation amount in millimeters
+        precip_in (Union[Unset, float]): Precipitation amount in inches
+        humidity (Union[Unset, int]): Humidity as percentage
+        cloud (Union[Unset, int]): Cloud cover as percentage
+        feelslike_c (Union[Unset, float]): Feels like temperature in celsius
+        feelslike_f (Union[Unset, float]): Feels like temperature in fahrenheit
+        vis_km (Union[Unset, float]): Visibility in kilometers
+        vis_miles (Union[Unset, float]): Visibility in miles
+        uv (Union[Unset, float]): UV Index
+        gust_mph (Union[Unset, float]): Wind gust in miles per hour
+        gust_kph (Union[Unset, float]): Wind gust in kilometer per hour
+    """
 
     last_updated: Union[Unset, str] = UNSET
     last_updated_epoch: Union[Unset, int] = UNSET
     temp_c: Union[Unset, float] = UNSET
     temp_f: Union[Unset, float] = UNSET
     is_day: Union[Unset, int] = UNSET
-    condition: Union[Unset, 'CheckWeatherUsingGETResponse200CurrentCondition'] = UNSET
+    condition: Union[Unset, "CheckWeatherUsingGETResponse200CurrentCondition"] = UNSET
     wind_mph: Union[Unset, float] = UNSET
     wind_kph: Union[Unset, float] = UNSET
     wind_degree: Union[Unset, int] = UNSET
@@ -83,11 +80,11 @@ class CheckWeatherUsingGETResponse200Current:
     gust_kph: Union[Unset, float] = UNSET
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
 
-
     def to_dict(self) -> Dict[str, Any]:
         from ..models.check_weather_using_get_response_200_current_condition import (
             CheckWeatherUsingGETResponse200CurrentCondition,
         )
+
         last_updated = self.last_updated
         last_updated_epoch = self.last_updated_epoch
         temp_c = self.temp_c
@@ -117,8 +114,7 @@ class CheckWeatherUsingGETResponse200Current:
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update({
-        })
+        field_dict.update({})
         if last_updated is not UNSET:
             field_dict["last_updated"] = last_updated
         if last_updated_epoch is not UNSET:
@@ -168,13 +164,12 @@ class CheckWeatherUsingGETResponse200Current:
 
         return field_dict
 
-
-
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
         from ..models.check_weather_using_get_response_200_current_condition import (
             CheckWeatherUsingGETResponse200CurrentCondition,
         )
+
         d = src_dict.copy()
         last_updated = d.pop("last_updated", UNSET)
 
@@ -188,13 +183,12 @@ class CheckWeatherUsingGETResponse200Current:
 
         _condition = d.pop("condition", UNSET)
         condition: Union[Unset, CheckWeatherUsingGETResponse200CurrentCondition]
-        if isinstance(_condition,  Unset):
+        if isinstance(_condition, Unset):
             condition = UNSET
         else:
-            condition = CheckWeatherUsingGETResponse200CurrentCondition.from_dict(_condition)
-
-
-
+            condition = CheckWeatherUsingGETResponse200CurrentCondition.from_dict(
+                _condition
+            )
 
         wind_mph = d.pop("wind_mph", UNSET)
 

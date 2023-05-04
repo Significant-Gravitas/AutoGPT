@@ -7,7 +7,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple, Any
+from typing import Any, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import openapi_python_client
@@ -17,7 +17,7 @@ from openapi_python_client import GeneratorError
 from openapi_python_client.cli import Config as OpenAPIConfig
 from pydantic import BaseModel
 
-from autogpt.commands.command import CommandRegistry, Command
+from autogpt.commands.command import Command, CommandRegistry
 from autogpt.config import Config
 
 OPENAPI_COMMANDS_REGISTRY = str(Path(os.getcwd()) / "openapi_commands.yaml")
@@ -31,8 +31,9 @@ class AutoGPTOpenAPIConfig(BaseModel):
     auth: dict
 
 
-def load_openapi_config(cfg: Config, openapi_registry_path: str = OPENAPI_COMMANDS_REGISTRY) -> dict[
-    AutoGPTOpenAPIConfig]:
+def load_openapi_config(
+    cfg: Config, openapi_registry_path: str = OPENAPI_COMMANDS_REGISTRY
+) -> dict[AutoGPTOpenAPIConfig]:
     """
     Load the openapi commands registry and create the command registry.
     Args:
@@ -88,7 +89,9 @@ def create_directory_if_not_exists(directory_path: str) -> bool:
         return True
 
 
-def get_openapi_spec(openapi_spec_url: str, openapi_plugin_client_dir: str) -> Optional[dict]:
+def get_openapi_spec(
+    openapi_spec_url: str, openapi_plugin_client_dir: str
+) -> Optional[dict]:
     """
     Fetch the OpenAPI(Swagger spec for a given url if it does not exist in file yet.
     Args:
@@ -102,7 +105,9 @@ def get_openapi_spec(openapi_spec_url: str, openapi_plugin_client_dir: str) -> O
             url=openapi_spec_url, path=None, timeout=5
         )
         if isinstance(openapi_spec, GeneratorError):
-            print(f"Error fetching OpenAPI spec for {openapi_spec_url}: {openapi_spec.header}")
+            print(
+                f"Error fetching OpenAPI spec for {openapi_spec_url}: {openapi_spec.header}"
+            )
             return
         write_dict_to_json_file(
             openapi_spec, f"{openapi_plugin_client_dir}/openapi.json"
@@ -113,8 +118,9 @@ def get_openapi_spec(openapi_spec_url: str, openapi_plugin_client_dir: str) -> O
     return openapi_spec
 
 
-def generate_openai_manifest_from_openapi_spec(api_name: str, api_config: AutoGPTOpenAPIConfig,
-                                               openapi_spec: dict) -> dict:
+def generate_openai_manifest_from_openapi_spec(
+    api_name: str, api_config: AutoGPTOpenAPIConfig, openapi_spec: dict
+) -> dict:
     """
     Generate an OpenAI manifest from an OpenAPI spec.
     Args:
@@ -124,30 +130,33 @@ def generate_openai_manifest_from_openapi_spec(api_name: str, api_config: AutoGP
     """
     return {
         "schema_version": "v1",
-        "name_for_model":
-            openapi_spec['info']['title'].replace(" ", "") if openapi_spec['info'].get('title') else api_name,
-        "name_for_human":
-            openapi_spec['info']['title'].replace(" ", "") if openapi_spec['info'].get('title') else api_name,
-        "description_for_human":
-            openapi_spec['info']['description'] if openapi_spec['info'].get('description') else api_config.url,
-        "description_for_model":
-            openapi_spec['info']['description'] if openapi_spec['info'].get('description') else api_config.url,
+        "name_for_model": openapi_spec["info"]["title"].replace(" ", "")
+        if openapi_spec["info"].get("title")
+        else api_name,
+        "name_for_human": openapi_spec["info"]["title"].replace(" ", "")
+        if openapi_spec["info"].get("title")
+        else api_name,
+        "description_for_human": openapi_spec["info"]["description"]
+        if openapi_spec["info"].get("description")
+        else api_config.url,
+        "description_for_model": openapi_spec["info"]["description"]
+        if openapi_spec["info"].get("description")
+        else api_config.url,
         "api": {
             "type": "openapi",
             "url": api_config.url + api_config.openapi_spec,
-            "has_user_authentication": False
+            "has_user_authentication": False,
         },
-        "auth": {
-            "type": "none"
-        },
+        "auth": {"type": "none"},
         "logo_url": "",
         "contact_email": "",
-        "legal_info_url": ""
+        "legal_info_url": "",
     }
 
 
-def get_openai_manifest(openapi_manifest_url: str,
-                        openapi_plugin_client_dir: str) -> Optional[dict]:
+def get_openai_manifest(
+    openapi_manifest_url: str, openapi_plugin_client_dir: str
+) -> Optional[dict]:
     """
     Fetch the OpenAI manifest for a given url if it does not exist in file yet.
     For OpenAI Plugins Compatibility, we need to fetch/generate a manifest from the spec.
@@ -169,7 +178,9 @@ def get_openai_manifest(openapi_manifest_url: str,
                     manifest, f"{openapi_plugin_client_dir}/ai-plugin.json"
                 )
             else:
-                print(f"Failed to fetch manifest for {openapi_manifest_url}: {response.status_code}")
+                print(
+                    f"Failed to fetch manifest for {openapi_manifest_url}: {response.status_code}"
+                )
         except requests.exceptions.RequestException as e:
             print(f"Error while requesting manifest from {openapi_manifest_url}: {e}")
     else:
@@ -178,7 +189,9 @@ def get_openai_manifest(openapi_manifest_url: str,
     return manifest
 
 
-def get_openapi_specs_and_manifests(openapi_config: dict[AutoGPTOpenAPIConfig], plugins_dir: str) -> dict:
+def get_openapi_specs_and_manifests(
+    openapi_config: dict[AutoGPTOpenAPIConfig], plugins_dir: str
+) -> dict:
     """
     Fetch the manifest for a list of OpenAPI plugins.
     Args:
@@ -192,17 +205,37 @@ def get_openapi_specs_and_manifests(openapi_config: dict[AutoGPTOpenAPIConfig], 
         openapi_plugin_client_dir = f"{plugins_dir}/openapi/{api_name}"
         create_directory_if_not_exists(openapi_plugin_client_dir)
 
-        openapi_spec_url = api_config.url + api_config.openapi_spec if api_config.openapi_spec else None
-        openai_manifest_url = api_config.url + api_config.openai_manifest if api_config.openai_manifest else None
+        openapi_spec_url = (
+            api_config.url + api_config.openapi_spec
+            if api_config.openapi_spec
+            else None
+        )
+        openai_manifest_url = (
+            api_config.url + api_config.openai_manifest
+            if api_config.openai_manifest
+            else None
+        )
 
-        openapi_spec = get_openapi_spec(openapi_spec_url, openapi_plugin_client_dir) if openapi_spec_url else None
-        manifest = get_openai_manifest(openai_manifest_url, openapi_plugin_client_dir) if openai_manifest_url else None
+        openapi_spec = (
+            get_openapi_spec(openapi_spec_url, openapi_plugin_client_dir)
+            if openapi_spec_url
+            else None
+        )
+        manifest = (
+            get_openai_manifest(openai_manifest_url, openapi_plugin_client_dir)
+            if openai_manifest_url
+            else None
+        )
 
         if not openapi_spec and manifest:
-            openapi_spec = get_openapi_spec(manifest["api"]["url"], openapi_plugin_client_dir)
+            openapi_spec = get_openapi_spec(
+                manifest["api"]["url"], openapi_plugin_client_dir
+            )
 
         if openapi_spec and not manifest:
-            manifest = generate_openai_manifest_from_openapi_spec(api_name, api_config, openapi_spec)
+            manifest = generate_openai_manifest_from_openapi_spec(
+                api_name, api_config, openapi_spec
+            )
 
         specs_manifests[api_name] = {"manifest": manifest, "openapi_spec": openapi_spec}
 
@@ -217,12 +250,12 @@ def camel_to_snake(name: str) -> str:
     Returns:
         object: str
     """
-    name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', name).lower()
+    name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", name).lower()
 
 
 def initialize_openapi_plugins(
-        specs_manifests: dict, openapi_config: dict[AutoGPTOpenAPIConfig], plugins_dir: str
+    specs_manifests: dict, openapi_config: dict[AutoGPTOpenAPIConfig], plugins_dir: str
 ) -> dict:
     """
     Initialize OpenAI plugins.
@@ -237,7 +270,7 @@ def initialize_openapi_plugins(
     if create_directory_if_not_exists(openapi_plugins_dir):
         for api_name, manifest_spec in specs_manifests.items():
             openai_plugin_client_dir = f"{openapi_plugins_dir}/{api_name}"
-            client_name = 'client'
+            client_name = "client"
             _meta_option = (openapi_python_client.MetaType.SETUP,)
             _config = OpenAPIConfig(
                 **{
@@ -265,24 +298,26 @@ def initialize_openapi_plugins(
             # Importing generated client as a package
             sys.path.append(client_name)
             client_dynamic_package = importlib.import_module(client_name)
-            client = client_dynamic_package.Client(base_url=openapi_config[api_name].url, follow_redirects=True)
+            client = client_dynamic_package.Client(
+                base_url=openapi_config[api_name].url, follow_redirects=True
+            )
             # for each API endpoint and method we have module generated by openapi-python-client
             # modules has names based on operationId from OpenAPI spec
             # here we are importing those modules and creating a wrapper function for each
             # method that injects client and returns JSON output which is observable by AutoGPT
             for request_method in manifest_spec["openapi_spec"]["paths"].values():
                 for method, method_info in request_method.items():
-                    module_name = camel_to_snake(method_info['operationId'])
+                    module_name = camel_to_snake(method_info["operationId"])
                     submodule_path = f"client.api.default.{module_name}"
                     submodule = importlib.import_module(submodule_path)
 
                     method_signature = str(inspect.signature(submodule.sync))
-                    fixed_method_signature = \
-                        method_signature.replace(f"*, client: {client_name}.{client_name}.Client, ", '')
+                    fixed_method_signature = method_signature.replace(
+                        f"*, client: {client_name}.{client_name}.Client, ", ""
+                    )
 
                     def openapi_method_wrapper(
-                            *args: Any,
-                            **kwargs: Any
+                        *args: Any, **kwargs: Any
                     ) -> Optional[str]:
                         """Wrapper for openapi call function that takes in a sync function,
                         client, and arbitrary arguments, and returns JSON output.
@@ -297,13 +332,17 @@ def initialize_openapi_plugins(
                             Optional[str]: The JSON-formatted response.
                         """
                         response = submodule.sync(client=client, *args, **kwargs)
-                        return json.dumps(response.to_dict()) if response is not None else None
+                        return (
+                            json.dumps(response.to_dict())
+                            if response is not None
+                            else None
+                        )
 
                     manifest_spec["modules"] = {
                         module_name: {
-                            'description': method_info['summary'],
-                            'method': openapi_method_wrapper,
-                            'signature': fixed_method_signature
+                            "description": method_info["summary"],
+                            "method": openapi_method_wrapper,
+                            "signature": fixed_method_signature,
                         }
                     }
 
@@ -312,7 +351,9 @@ def initialize_openapi_plugins(
     return specs_manifests
 
 
-def instantiate_openapi_clients(openapi_config: dict[AutoGPTOpenAPIConfig], cfg: Config) -> Optional[dict]:
+def instantiate_openapi_clients(
+    openapi_config: dict[AutoGPTOpenAPIConfig], cfg: Config
+) -> Optional[dict]:
     """Scan the plugins directory for plugins and loads them.
 
     Args:
@@ -324,11 +365,15 @@ def instantiate_openapi_clients(openapi_config: dict[AutoGPTOpenAPIConfig], cfg:
     """
     manifests_specs = get_openapi_specs_and_manifests(openapi_config, cfg.plugins_dir)
     if manifests_specs.keys():
-        return initialize_openapi_plugins(manifests_specs, openapi_config, cfg.plugins_dir)
+        return initialize_openapi_plugins(
+            manifests_specs, openapi_config, cfg.plugins_dir
+        )
     return
 
 
-def import_openapi_apis_as_commands(command_registry: CommandRegistry, cfg: Config) -> CommandRegistry:
+def import_openapi_apis_as_commands(
+    command_registry: CommandRegistry, cfg: Config
+) -> CommandRegistry:
     """
     Import OpenAPI APIs as commands.
     Args:
@@ -343,12 +388,12 @@ def import_openapi_apis_as_commands(command_registry: CommandRegistry, cfg: Conf
         return command_registry
     openapi_commands_specs = instantiate_openapi_clients(openapi_config, cfg)
     for openapi_commands_spec in openapi_commands_specs.values():
-        for method_name, method in openapi_commands_spec['modules'].items():
+        for method_name, method in openapi_commands_spec["modules"].items():
             command = Command(
                 name=method_name,
                 description=f"{method['description']}. From OpenAPI: {openapi_commands_spec['manifest']['description_for_model']}",
-                method=method['method'],
-                signature=method['signature']
+                method=method["method"],
+                signature=method["signature"],
             )
 
             command_registry.register(command)

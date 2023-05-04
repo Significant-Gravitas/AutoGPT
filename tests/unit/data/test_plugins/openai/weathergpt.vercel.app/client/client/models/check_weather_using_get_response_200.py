@@ -18,15 +18,12 @@ import attr
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-  from ..models.check_weather_using_get_response_200_current import (
-      CheckWeatherUsingGETResponse200Current,
-  )
-  from ..models.check_weather_using_get_response_200_location import (
-      CheckWeatherUsingGETResponse200Location,
-  )
-
-
-
+    from ..models.check_weather_using_get_response_200_current import (
+        CheckWeatherUsingGETResponse200Current,
+    )
+    from ..models.check_weather_using_get_response_200_location import (
+        CheckWeatherUsingGETResponse200Location,
+    )
 
 
 T = TypeVar("T", bound="CheckWeatherUsingGETResponse200")
@@ -34,19 +31,18 @@ T = TypeVar("T", bound="CheckWeatherUsingGETResponse200")
 
 @attr.s(auto_attribs=True)
 class CheckWeatherUsingGETResponse200:
-    """ 
-        Attributes:
-            location (Union[Unset, CheckWeatherUsingGETResponse200Location]):
-            current (Union[Unset, CheckWeatherUsingGETResponse200Current]):
-            info_link (Union[Unset, str]): A link to a page with more information about the location's weather in the format
-                https://weathergpt.vercel.app/{location}.
-     """
+    """
+    Attributes:
+        location (Union[Unset, CheckWeatherUsingGETResponse200Location]):
+        current (Union[Unset, CheckWeatherUsingGETResponse200Current]):
+        info_link (Union[Unset, str]): A link to a page with more information about the location's weather in the format
+            https://weathergpt.vercel.app/{location}.
+    """
 
-    location: Union[Unset, 'CheckWeatherUsingGETResponse200Location'] = UNSET
-    current: Union[Unset, 'CheckWeatherUsingGETResponse200Current'] = UNSET
+    location: Union[Unset, "CheckWeatherUsingGETResponse200Location"] = UNSET
+    current: Union[Unset, "CheckWeatherUsingGETResponse200Current"] = UNSET
     info_link: Union[Unset, str] = UNSET
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
-
 
     def to_dict(self) -> Dict[str, Any]:
         from ..models.check_weather_using_get_response_200_current import (
@@ -55,6 +51,7 @@ class CheckWeatherUsingGETResponse200:
         from ..models.check_weather_using_get_response_200_location import (
             CheckWeatherUsingGETResponse200Location,
         )
+
         location: Union[Unset, Dict[str, Any]] = UNSET
         if not isinstance(self.location, Unset):
             location = self.location.to_dict()
@@ -67,8 +64,7 @@ class CheckWeatherUsingGETResponse200:
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update({
-        })
+        field_dict.update({})
         if location is not UNSET:
             field_dict["location"] = location
         if current is not UNSET:
@@ -78,8 +74,6 @@ class CheckWeatherUsingGETResponse200:
 
         return field_dict
 
-
-
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
         from ..models.check_weather_using_get_response_200_current import (
@@ -88,26 +82,21 @@ class CheckWeatherUsingGETResponse200:
         from ..models.check_weather_using_get_response_200_location import (
             CheckWeatherUsingGETResponse200Location,
         )
+
         d = src_dict.copy()
         _location = d.pop("location", UNSET)
         location: Union[Unset, CheckWeatherUsingGETResponse200Location]
-        if isinstance(_location,  Unset):
+        if isinstance(_location, Unset):
             location = UNSET
         else:
             location = CheckWeatherUsingGETResponse200Location.from_dict(_location)
 
-
-
-
         _current = d.pop("current", UNSET)
         current: Union[Unset, CheckWeatherUsingGETResponse200Current]
-        if isinstance(_current,  Unset):
+        if isinstance(_current, Unset):
             current = UNSET
         else:
             current = CheckWeatherUsingGETResponse200Current.from_dict(_current)
-
-
-
 
         info_link = d.pop("infoLink", UNSET)
 

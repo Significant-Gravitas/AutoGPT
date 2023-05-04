@@ -15,32 +15,19 @@ def _get_kwargs(
     *,
     client: Client,
     location: str,
-
 ) -> Dict[str, Any]:
-    url = "{}/api/weather".format(
-        client.base_url)
+    url = "{}/api/weather".format(client.base_url)
 
     headers: Dict[str, str] = client.get_headers()
     cookies: Dict[str, Any] = client.get_cookies()
 
-    
-
-    
-
     params: Dict[str, Any] = {}
     params["location"] = location
 
-
-
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
-
-    
-
-    
-
     return {
-	    "method": "get",
+        "method": "get",
         "url": url,
         "headers": headers,
         "cookies": cookies,
@@ -50,11 +37,11 @@ def _get_kwargs(
     }
 
 
-def _parse_response(*, client: Client, response: httpx.Response) -> Optional[CheckWeatherUsingGETResponse200]:
+def _parse_response(
+    *, client: Client, response: httpx.Response
+) -> Optional[CheckWeatherUsingGETResponse200]:
     if response.status_code == HTTPStatus.OK:
         response_200 = CheckWeatherUsingGETResponse200.from_dict(response.json())
-
-
 
         return response_200
     if client.raise_on_unexpected_status:
@@ -63,7 +50,9 @@ def _parse_response(*, client: Client, response: httpx.Response) -> Optional[Che
         return None
 
 
-def _build_response(*, client: Client, response: httpx.Response) -> Response[CheckWeatherUsingGETResponse200]:
+def _build_response(
+    *, client: Client, response: httpx.Response
+) -> Response[CheckWeatherUsingGETResponse200]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -76,9 +65,8 @@ def sync_detailed(
     *,
     client: Client,
     location: str,
-
 ) -> Response[CheckWeatherUsingGETResponse200]:
-    """ Get current weather information
+    """Get current weather information
 
     Args:
         location (str):
@@ -89,13 +77,11 @@ def sync_detailed(
 
     Returns:
         Response[CheckWeatherUsingGETResponse200]
-     """
-
+    """
 
     kwargs = _get_kwargs(
         client=client,
-location=location,
-
+        location=location,
     )
 
     response = httpx.request(
@@ -105,13 +91,13 @@ location=location,
 
     return _build_response(client=client, response=response)
 
+
 def sync(
     *,
     client: Client,
     location: str,
-
 ) -> Optional[CheckWeatherUsingGETResponse200]:
-    """ Get current weather information
+    """Get current weather information
 
     Args:
         location (str):
@@ -122,22 +108,20 @@ def sync(
 
     Returns:
         CheckWeatherUsingGETResponse200
-     """
-
+    """
 
     return sync_detailed(
         client=client,
-location=location,
-
+        location=location,
     ).parsed
+
 
 async def asyncio_detailed(
     *,
     client: Client,
     location: str,
-
 ) -> Response[CheckWeatherUsingGETResponse200]:
-    """ Get current weather information
+    """Get current weather information
 
     Args:
         location (str):
@@ -148,29 +132,25 @@ async def asyncio_detailed(
 
     Returns:
         Response[CheckWeatherUsingGETResponse200]
-     """
-
+    """
 
     kwargs = _get_kwargs(
         client=client,
-location=location,
-
+        location=location,
     )
 
     async with httpx.AsyncClient(verify=client.verify_ssl) as _client:
-        response = await _client.request(
-            **kwargs
-        )
+        response = await _client.request(**kwargs)
 
     return _build_response(client=client, response=response)
+
 
 async def asyncio(
     *,
     client: Client,
     location: str,
-
 ) -> Optional[CheckWeatherUsingGETResponse200]:
-    """ Get current weather information
+    """Get current weather information
 
     Args:
         location (str):
@@ -181,11 +161,11 @@ async def asyncio(
 
     Returns:
         CheckWeatherUsingGETResponse200
-     """
+    """
 
-
-    return (await asyncio_detailed(
-        client=client,
-location=location,
-
-    )).parsed
+    return (
+        await asyncio_detailed(
+            client=client,
+            location=location,
+        )
+    ).parsed

@@ -77,6 +77,7 @@ def test_denylist_allowlist_check_user_input_invalid(
         "UnknownPlugin", mock_config_denylist_allowlist_check
     )
 
+
 @pytest.fixture
 def mock_config_generic_plugin():
     """Mock config object for testing the scan_plugins function"""

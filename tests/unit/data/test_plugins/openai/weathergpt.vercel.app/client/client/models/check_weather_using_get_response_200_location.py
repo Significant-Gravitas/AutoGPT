@@ -21,17 +21,17 @@ T = TypeVar("T", bound="CheckWeatherUsingGETResponse200Location")
 
 @attr.s(auto_attribs=True)
 class CheckWeatherUsingGETResponse200Location:
-    """ 
-        Attributes:
-            name (Union[Unset, str]):
-            region (Union[Unset, str]):
-            country (Union[Unset, str]):
-            lat (Union[Unset, float]):
-            lon (Union[Unset, float]):
-            tz_id (Union[Unset, str]):
-            localtime_epoch (Union[Unset, int]):
-            localtime (Union[Unset, str]):
-     """
+    """
+    Attributes:
+        name (Union[Unset, str]):
+        region (Union[Unset, str]):
+        country (Union[Unset, str]):
+        lat (Union[Unset, float]):
+        lon (Union[Unset, float]):
+        tz_id (Union[Unset, str]):
+        localtime_epoch (Union[Unset, int]):
+        localtime (Union[Unset, str]):
+    """
 
     name: Union[Unset, str] = UNSET
     region: Union[Unset, str] = UNSET
@@ -42,7 +42,6 @@ class CheckWeatherUsingGETResponse200Location:
     localtime_epoch: Union[Unset, int] = UNSET
     localtime: Union[Unset, str] = UNSET
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
-
 
     def to_dict(self) -> Dict[str, Any]:
         name = self.name
@@ -56,8 +55,7 @@ class CheckWeatherUsingGETResponse200Location:
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update({
-        })
+        field_dict.update({})
         if name is not UNSET:
             field_dict["name"] = name
         if region is not UNSET:
@@ -76,8 +74,6 @@ class CheckWeatherUsingGETResponse200Location:
             field_dict["localtime"] = localtime
 
         return field_dict
-
-
 
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:

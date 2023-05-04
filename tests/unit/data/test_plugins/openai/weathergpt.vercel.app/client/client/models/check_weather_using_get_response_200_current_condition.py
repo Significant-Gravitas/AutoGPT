@@ -21,18 +21,17 @@ T = TypeVar("T", bound="CheckWeatherUsingGETResponse200CurrentCondition")
 
 @attr.s(auto_attribs=True)
 class CheckWeatherUsingGETResponse200CurrentCondition:
-    """ 
-        Attributes:
-            text (Union[Unset, str]): Weather condition text
-            icon (Union[Unset, str]): Weather icon url
-            code (Union[Unset, int]): Weather condition unique code
-     """
+    """
+    Attributes:
+        text (Union[Unset, str]): Weather condition text
+        icon (Union[Unset, str]): Weather icon url
+        code (Union[Unset, int]): Weather condition unique code
+    """
 
     text: Union[Unset, str] = UNSET
     icon: Union[Unset, str] = UNSET
     code: Union[Unset, int] = UNSET
     additional_properties: Dict[str, Any] = attr.ib(init=False, factory=dict)
-
 
     def to_dict(self) -> Dict[str, Any]:
         text = self.text
@@ -41,8 +40,7 @@ class CheckWeatherUsingGETResponse200CurrentCondition:
 
         field_dict: Dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update({
-        })
+        field_dict.update({})
         if text is not UNSET:
             field_dict["text"] = text
         if icon is not UNSET:
@@ -51,8 +49,6 @@ class CheckWeatherUsingGETResponse200CurrentCondition:
             field_dict["code"] = code
 
         return field_dict
-
-
 
     @classmethod
     def from_dict(cls: Type[T], src_dict: Dict[str, Any]) -> T:
