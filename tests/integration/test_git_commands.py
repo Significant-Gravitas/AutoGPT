@@ -16,11 +16,11 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, config):
     repo = "github.com/Significant-Gravitas/Auto-GPT.git"
     scheme = "https://"
     url = scheme + repo
-    clone_path = str(workspace.get_path("auto-gpt-repo"))
+    local_path = str(workspace.get_path("auto-gpt-repo"))
 
-    expected_output = f"Cloned {url} to {clone_path}"
+    expected_output = f"Cloned {url} to {local_path}"
 
-    clone_result = clone_repository(url=url, clone_path=clone_path)
+    clone_result = clone_repository(url=url, local_path=local_path)
 
     assert clone_result == expected_output
     mock_clone_from.assert_called_once_with(
