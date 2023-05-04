@@ -1,0 +1,198 @@
+interactions:
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are Debug-Code-GPT, an autonomous agent that specializes in debugging python
+      code\nYour decisions must always be made independently without seeking user
+      assistance. Play to your strengths as an LLM and pursue simple strategies with
+      no legal complications.\n\nGOALS:\n\n1. 1-Run the code in the file named ''code.py''
+      using the execute_code command.\n2. 2-Read code.py to understand why the code
+      is not working as expected.\n3. 3-Modify code.py to fix the error.\n4. Repeat
+      step 1, 2 and 3 until the code is working as expected. When you''re done use
+      the task_complet command.\n5. Do not use any other commands than execute_python_file
+      and write_file\n\n\nConstraints:\n1. ~4000 word limit for short term memory.
+      Your short term memory is short, so immediately save important information to
+      files.\n2. If you are unsure how you previously did something or want to recall
+      past events, thinking about similar events will help you remember.\n3. No user
+      assistance\n4. Exclusively use the commands listed in double quotes e.g. \"command
+      name\"\n\nCommands:\n1. append_to_file: Append to file, args: \"filename\":
+      \"<filename>\", \"text\": \"<text>\"\n2. delete_file: Delete file, args: \"filename\":
+      \"<filename>\"\n3. list_files: List Files in Directory, args: \"directory\":
+      \"<directory>\"\n4. read_file: Read file, args: \"filename\": \"<filename>\"\n5.
+      write_to_file: Write to file, args: \"filename\": \"<filename>\", \"text\":
+      \"<text>\"\n6. execute_python_file: Execute Python File, args: \"filename\":
+      \"<filename>\"\n7. improve_code: Get Improved Code, args: \"suggestions\": \"<list_of_suggestions>\",
+      \"code\": \"<full_code_string>\"\n8. delete_agent: Delete GPT Agent, args: \"key\":
+      \"<key>\"\n9. get_hyperlinks: Get text summary, args: \"url\": \"<url>\"\n10.
+      get_text_summary: Get text summary, args: \"url\": \"<url>\", \"question\":
+      \"<question>\"\n11. list_agents: List GPT Agents, args: () -> str\n12. message_agent:
+      Message GPT Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n13.
+      start_agent: Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n14. Task Complete (Shutdown): \"task_complete\", args:
+      \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
+      information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
+      Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
+      Continuously review and analyze your actions to ensure you are performing to
+      the best of your abilities.\n2. Constructively self-criticize your big-picture
+      behavior constantly.\n3. Reflect on past decisions and strategies to refine
+      your approach.\n4. Every command has a cost, so be smart and efficient. Aim
+      to complete tasks in the least number of steps.\n5. Write all code to a file.\n\nYou
+      should only respond in JSON format as described below \nResponse Format: \n{\n    \"thoughts\":
+      {\n        \"text\": \"thought\",\n        \"reasoning\": \"reasoning\",\n        \"plan\":
+      \"- short bulleted\\n- list that conveys\\n- long-term plan\",\n        \"criticism\":
+      \"constructive self-criticism\",\n        \"speak\": \"thoughts summary to say
+      to user\"\n    },\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\":
+      {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
+      can be parsed by Python json.loads"}, {"role": "system", "content": "The current
+      time and date is Tue Jan  1 00:00:00 2000"}, {"role": "user", "content": "Determine
+      which next command to use, and respond using the format specified above:"}],
+      "temperature": 0, "max_tokens": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Content-Length:
+      - '3694'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA7SSwW7bMAyG73sKgpdcnCCJ1y3xdeuK3VfsMA+BIjG2VltUJTpNEPjdB8d2GqQ9
+        DdhN+En+/EjxhNZghrpUomtfTT9/UeZ5tXwoH/c/m4evj4fV/bcfippYpM81JsjbP6RlqJhprn1F
+        YtlhgjqQEjKYLT6t0mV6t/i4TLBmQxVmWHiZprO7qTRhy9N5Ol9ggk1UBWF2Qh+49rIRfiIXMVul
+        6wRfvS/64m6doLCo6iKt16s2QV2y1RQx+3XCmuJoG7gizFDFaKMoJx0kOyHXDXDKHQBAjlJyU5QS
+        c8xgEIcAHaQTc/wOseSmMhBFBYHtEehAuhHrCpCSQLMhsO783tmKwKmaDEw6feaPE2jimNoX0sYf
+        pWS3OWdrrmvlzCzH5Lp/IBXZWVf0EPdvW77YqoLC7glqAuXAGlLAO3gplVyBRYiN9xzJgDAYBuVM
+        n2MjaHUFFwKHWwxfKdcTTKFnoP84tA5WrLaxHjdv2E0ESrXvJjzCJQ47DlAfQTchkBPoMG/Noif1
+        NBqdl/WPHzjLsfdtk/FsBv43V9NV9i3fmfqGT4Xi9uz6QJf7ajRQjAxnjgEndy22Ce6ss7Hc9BeD
+        GUZhjwlaZ+iA2bz93X74CwAA//8DAEvY8//qAwAA
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7c23c799fce124fc-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 04 May 2023 21:19:11 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '9158'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '86506'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.329s
+      x-request-id:
+      - 44489accbcf3486fd32dc5e3d57362f0
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Below
+      is a message from an AI agent with the role of an autonomous agent that specializes
+      in debugging python code. Please review the provided Thought, Reasoning, Plan,
+      and Criticism. If these elements accurately contribute to the successful execution
+      of the assumed role, respond with the letter ''Y'' followed by a space, and
+      then explain why it is effective. If the provided information is not suitable
+      for achieving the role''s objectives, please provide one or more sentences addressing
+      the issue and suggesting a resolution.Executing the code will give me an idea
+      of what the code is supposed to do and what is causing the error.- Execute the
+      code in the file named ''code.py'' using the execute_python_file command.I don''t
+      have any criticism for my current plan."}], "temperature": 0, "max_tokens":
+      0}'
+    headers:
+      Accept:
+      - '*/*'
+      Content-Length:
+      - '875'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA0RQwWpbMRC89yvEnmVjx3bi6BZK0kBKKW4vTShBlva9p1RvV0irYtf434sedXOc
+        YWZ2Zk8QPBhwgxU3pji7+WjxKh5211/Sp2/4cHf/eXfzfLcb149Px6+ggfdv6OSfY+54TBElMIEG
+        l9EKejDL6+3qarVZbtYaRvYYwUCfZLaab2ZS855ni9ViCRpqsT2COUHKPCZ5Ff6FVMAsN1sN79n/
+        +fVCg7DY+K683Z41uIGDwwLm5QQjlktq5ohgwJYSiliS1pFJkFr/H+r7EIoKRVlS2HXoJPxGlaIl
+        1XFurK3CxCPXomyPJKokdMHG8CdQrwIpj/va9w2kowxMyrHHubo/oKvSaBlw4qYzyuXa7KoIpmYP
+        HklCd7woC9fsUHE3Icx5quFVJY+5LfAXZWgrPHrVVXLtRTYGOV6cUws4a+gChTK8ZrSFCQwU4QQa
+        Ank8gFmcf54//AUAAP//AwDYoVqEAAIAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7c23c7e2dc1b24fc-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 04 May 2023 21:19:16 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-adtx4fhfg1qsiyzdoaxciooj
+      openai-processing-ms:
+      - '2382'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '89791'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 138ms
+      x-request-id:
+      - 74381d3f20cfa83486bb0688b872f39c
+    status:
+      code: 200
+      message: OK
+version: 1

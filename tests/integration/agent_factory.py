@@ -183,3 +183,43 @@ def get_company_revenue_agent(
     )
 
     return agent
+
+@pytest.fixture
+def create_code_agent(
+    agent_test_config, memory_local_cache, workspace: Workspace
+):
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.commands.execute_code")
+    command_registry.import_commands("autogpt.commands.improve_code")
+    command_registry.import_commands("autogpt.app")
+
+    ai_config = AIConfig(
+        ai_name="Debug-Code-GPT",
+        ai_role="an autonomous agent that specializes in debugging python code",
+        ai_goals=[
+            "1-Run the code in the file named 'code.py' using the execute_code command.",
+            "2-Read code.py to understand why the code is not working as expected.",
+            "3-Modify code.py to fix the error.",
+            "Repeat step 1, 2 and 3 until the code is working as expected. When you're done use the task_complet command.",
+            "Do not use any other commands than execute_python_file and write_file",
+        ],
+    )
+    ai_config.command_registry = command_registry
+
+    system_prompt = ai_config.construct_full_prompt()
+    Config().set_continuous_mode(False)
+    agent = Agent(
+        ai_name="Get-CompanyRevenue",
+        memory=memory_local_cache,
+        full_message_history=[],
+        command_registry=command_registry,
+        config=ai_config,
+        next_action_count=0,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=workspace.root,
+    )
+
+    return agent
+
