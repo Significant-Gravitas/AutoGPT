@@ -1,20 +1,23 @@
 """ Image Generation Module for AutoGPT."""
 import io
-import uuid
-from base64 import b64decode
-
 import openai
 import requests
-from PIL import Image
+import uuid
 
+from base64 import b64decode
+from PIL import Image
 from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.logs import logger
 
 CFG = Config()
 
-
-@command("make_image_with_ai", "Make Image with AI", '"prompt": "<prompt:str>"', CFG.image_provider)
+@command(
+    "make_image_with_ai", 
+    "Make Image with AI", 
+    '"prompt": "<prompt:str>"', 
+    CFG.image_provider
+)
 def generate_image(prompt: str, size: int = 256) -> str:
     """Generate an image from a prompt.
 
@@ -39,7 +42,10 @@ def generate_image(prompt: str, size: int = 256) -> str:
     return "No Image Provider Set"
 
 
-def generate_image_with_hf(prompt: str, filename: str) -> str:
+def generate_image_with_hf(
+    prompt: str, 
+    filename: str
+) -> str:
     """Generate an image with HuggingFace's API.
 
     Args:
@@ -77,7 +83,11 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
     return f"Saved to disk:{filename}"
 
 
-def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
+def generate_image_with_dalle(
+    prompt: str, 
+    filename: str, 
+    size: int
+) -> str:
     """Generate an image with DALL-E.
 
     Args:

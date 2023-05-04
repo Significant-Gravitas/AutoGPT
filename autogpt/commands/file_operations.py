@@ -1,16 +1,15 @@
 """File operations for AutoGPT"""
 from __future__ import annotations
 
+import charset_normalizer
 import hashlib
 import os
 import os.path
-from typing import Dict, Generator, Literal, Tuple
-
-import charset_normalizer
 import requests
+
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
-
+from typing import Dict, Generator, Literal, Tuple
 from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -22,12 +21,16 @@ CFG = Config()
 Operation = Literal["write", "append", "delete"]
 
 
-def text_checksum(text: str) -> str:
+def text_checksum(
+    text: str
+) -> str:
     """Get the hex checksum for the given text."""
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
-def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | None]]:
+def operations_from_log(
+    log_path: str
+) -> Generator[Tuple[Operation, str, str | None]]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
         log = open(log_path, "r", encoding="utf-8")
@@ -52,7 +55,9 @@ def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | 
     log.close()
 
 
-def file_operations_state(log_path: str) -> Dict:
+def file_operations_state(
+    log_path: str
+) -> Dict:
     """Iterates over the operations log and returns the expected state.
 
     Parses a log file at CFG.file_logger_path to construct a dictionary that maps
@@ -76,7 +81,9 @@ def file_operations_state(log_path: str) -> Dict:
 
 
 def is_duplicate_operation(
-    operation: Operation, filename: str, checksum: str | None = None
+    operation: Operation, 
+    filename: str, 
+    checksum: str | None = None
 ) -> bool:
     """Check if the operation has already been performed
 
@@ -96,7 +103,11 @@ def is_duplicate_operation(
     return False
 
 
-def log_operation(operation: str, filename: str, checksum: str | None = None) -> None:
+def log_operation(
+    operation: str, 
+    filename: str, 
+    checksum: str | None = None
+) -> None:
     """Log the file operation to the file_logger.txt
 
     Args:
@@ -112,7 +123,9 @@ def log_operation(operation: str, filename: str, checksum: str | None = None) ->
 
 
 def split_file(
-    content: str, max_length: int = 4000, overlap: int = 0
+    content: str, 
+    max_length: int = 4000, 
+    overlap: int = 0
 ) -> Generator[str, None, None]:
     """
     Split text into chunks of a specified maximum length with a specified overlap
@@ -143,8 +156,14 @@ def split_file(
         start += max_length - overlap
 
 
-@command("read_file", "Read file", '"filename": "<file:str>"')
-def read_file(filename: str) -> str:
+@command(
+    "read_file", 
+    "Read file", 
+    '"filename": "<file:str>"'
+)
+def read_file(
+    filename: str
+) -> str:
     """Read a file and return the contents
 
     Args:
@@ -163,7 +182,10 @@ def read_file(filename: str) -> str:
 
 
 def ingest_file(
-    filename: str, memory, max_length: int = 4000, overlap: int = 200
+    filename: str,
+    memory, 
+    max_length: int = 4000, 
+    overlap: int = 200
 ) -> None:
     """
     Ingest a file by reading its content, splitting it into chunks with a specified
@@ -196,8 +218,15 @@ def ingest_file(
         logger.info(f"Error while ingesting file '{filename}': {err}")
 
 
-@command("write_to_file", "Write to file", '"filename": "<file:str>", "text": "<txt:str>"')
-def write_to_file(filename: str, text: str) -> str:
+@command(
+    "write_to_file", 
+    "Write to file", 
+    '"filename": "<file:str>", "text": "<txt:str>"'
+)
+def write_to_file(
+    filename: str, 
+    text: str
+) -> str:
     """Write text to a file
 
     Args:
@@ -222,9 +251,15 @@ def write_to_file(filename: str, text: str) -> str:
 
 
 @command(
-    "append_to_file", "Append to file", '"filename": "<file:str>", "text": "<txt:str>"'
+    "append_to_file",
+    "Append to file",
+    '"filename": "<file:str>", "text": "<txt:str>"'
 )
-def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
+def append_to_file(
+    filename: str, 
+    text: str, 
+    should_log: bool = True
+) -> str:
     """Append text to a file
 
     Args:
@@ -251,8 +286,14 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
         return f"Error: {err}"
 
 
-@command("delete_file", "Delete file", '"filename": "<file:str>"')
-def delete_file(filename: str) -> str:
+@command(
+    "delete_file", 
+    "Delete file", 
+    '"filename": "<file:str>"'
+)
+def delete_file(
+    filename: str
+) -> str:
     """Delete a file
 
     Args:
@@ -271,8 +312,14 @@ def delete_file(filename: str) -> str:
         return f"Error: {err}"
 
 
-@command("list_files", "List Files in Directory", '"directory": "<path:str>"')
-def list_files(directory: str) -> list[str]:
+@command(
+    "list_files", 
+    "List Files in Directory", 
+    '"directory": "<path:str>"'
+)
+def list_files(
+    directory: str
+) -> list[str]:
     """lists files in a directory recursively
 
     Args:
@@ -302,7 +349,10 @@ def list_files(directory: str) -> list[str]:
     CFG.allow_downloads,
     "Error: You do not have user authorization to download files locally.",
 )
-def download_file(url, local_filename):
+def download_file(
+    url, 
+    local_filename
+):
     """Downloads a file
     Args:
         url (str): URL of the file to download

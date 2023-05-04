@@ -4,14 +4,17 @@ from __future__ import annotations
 import json
 
 from duckduckgo_search import ddg
-
 from autogpt.commands.command import command
 from autogpt.config import Config
 
 CFG = Config()
 
-
-@command("google", "Google Search", '"search_for": "<search:str>"', not CFG.google_api_key)
+@command(
+    "google", 
+    "Google Search", 
+    '"search_for": "<search:str>"', 
+    not CFG.google_api_key
+)
 def google_search(search_for: str, num_results: int = 8) -> str:
     """Return the results of a Google search
 
@@ -92,8 +95,8 @@ def google_official_search(search_for: str, num_results: int = 8) -> str | list[
             return "Error: The provided Google API key is invalid or missing."
         else:
             return f"Error: {e}"
-    # google_result can be a list or a string depending on the search results
 
+    # google_result can be a list or a string depending on the search results
     # Return the list of search result URLs
     return safe_google_results(search_results_links)
 
