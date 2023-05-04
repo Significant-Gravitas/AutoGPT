@@ -25,7 +25,7 @@ class TestSelenium(unittest.TestCase):
         shutil.rmtree(self.workspace_path)
 
     def test_selenium_chromium_binary_location(self):
-        self.config.chromium_binary_location = "chrome.exe"
+        self.config.chromium_binary_location = "custom_chrome.exe"
 
         with self.assertRaises(WebDriverException) as excep:
             result = scrape_text_with_selenium("http://localhost")
