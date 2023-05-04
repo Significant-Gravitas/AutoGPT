@@ -118,18 +118,33 @@ def run_auto_gpt(
     cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.analyze_code")
-    command_registry.import_commands("autogpt.commands.audio_text")
-    command_registry.import_commands("autogpt.commands.execute_code")
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.commands.git_operations")
-    command_registry.import_commands("autogpt.commands.google_search")
-    command_registry.import_commands("autogpt.commands.image_gen")
-    command_registry.import_commands("autogpt.commands.improve_code")
-    command_registry.import_commands("autogpt.commands.twitter")
-    command_registry.import_commands("autogpt.commands.web_selenium")
-    command_registry.import_commands("autogpt.commands.write_tests")
-    command_registry.import_commands("autogpt.app")
+
+    command_categories = [
+        "autogpt.commands.analyze_code",
+        "autogpt.commands.audio_text",
+        "autogpt.commands.execute_code",
+        "autogpt.commands.file_operations",
+        "autogpt.commands.git_operations",
+        "autogpt.commands.google_search",
+        "autogpt.commands.image_gen",
+        "autogpt.commands.improve_code",
+        "autogpt.commands.twitter",
+        "autogpt.commands.web_selenium",
+        "autogpt.commands.write_tests",
+        "autogpt.app",
+        "autogpt.commands.task_statuses",
+    ]
+    logger.debug(
+        f"The following command categories are disabled: {cfg.disabled_command_categories}"
+    )
+    command_categories = [
+        x for x in command_categories if x not in cfg.disabled_command_categories
+    ]
+
+    logger.debug(f"The following command categories are enabled: {command_categories}")
+
+    for command_category in command_categories:
+        command_registry.import_commands(command_category)
 
     ai_name = ""
     ai_config = construct_main_ai_config()
