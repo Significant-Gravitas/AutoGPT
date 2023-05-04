@@ -86,13 +86,23 @@ class Planner(abc.ABC):
         self,
         context: Context,
         thoughts: Thoughts,
-        llm_model: str,  # Should this be a model object?
+        llm_model: LLMModel,  # Should this be a model object?
     ) -> str:
         """
-        Generates a feedback response based on the provided thoughts dictionary.
-        This method takes in a dictionary of thoughts containing keys such as 'reasoning',
-        'plan', 'thoughts', and 'criticism'. It combines these elements into a single
-        feedback message and uses the create_chat_completion() function to generate a
-        response based on the input message.
+        Generates a self-feedback prompt for the language model, based on the provided context and thoughts.
+
+        This method takes in a Context object containing information about the agent's progress, result,
+        memories, and feedback. It also takes in a Thoughts object containing keys such as 'reasoning',
+        'plan', 'thoughts', and 'criticism'. The method combines these elements to create a prompt that
+        facilitates self-assessment and improvement for the agent.
+
+        Args:
+            context (Context): An object containing information about the agent's progress, result,
+                               memories, and feedback.
+            thoughts (Thoughts): An object containing the agent's reasoning, plan, thoughts, and criticism.
+            llm_model (str): The identifier for the language model to be used. 
+
+        Returns:
+            str: A self-feedback prompt for the language model based on the given context and thoughts.
         """
         pass
