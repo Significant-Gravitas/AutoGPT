@@ -51,7 +51,7 @@ interactions:
       Accept:
       - '*/*'
       Accept-Encoding:
-      - gzip, deflate
+      - gzip, deflate, br
       Connection:
       - keep-alive
       Content-Length:
@@ -63,32 +63,32 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA6RTS2/TQBC+8ytGc+nFeTpA6wsqlYBK9AaqVIyi9Xpib2PvuLtjUhTlv6O145aE
-        FvG4zuN77c4WTY4J6lKJrptq9PpCqfz97OLm5fnbO784V+6muJq/k6t6Ed9ihJzdkpb9xlhz3VQk
-        hi1GqB0poRyT2avTeB4vzhZxhDXnVGGCRSOjePxyJK3LeDSNpzOMsPWqIEy22DiuG1kKr8l6TE4X
-        ZxE+Yj/U54t5hMKiqofSbHo220WoSzaaPCZftliTH3AdV4QJKu+NF2UlqGQrZIODbWoBAFKUktui
-        FJ9iAvvivkH3EoopXoIlykEYWk8gJUHmeONpuaHMGyHQXNfKdhPfjDcCpUiTTCYZ89qPhb12qqEQ
-        2EQrURUXLU1qyo2oYNEv43hibE7341LqCgLUygS8kqBxRhPwqudlXo9TjH7W6Uh5tsYWg1it7B8L
-        DTNDMzQ8KadLWLF7mhyy72Csb0iLsUVX/vDp6iNozulYWFMp22sawee/15OmdgSXPdchURh/Pp9u
-        79oF+Me+MChYmYrAqppyODkUMpZ7OekWB6Gi/Hq5/4UHOh9qw9SRa+2MGG18ffx3MgKtHK3aCjYl
-        2WdjDLNkfesILh9tanYuBNHZOU7aN6TWA9/GVNU/v/9vv11PuYuG09mj/XI5IeJezSH9kWrliuOr
-        6xutq/r1/zqjA7Ye+K4lHyZ79OtSCRj/tN03g93O8t55ane4i3BlrPHlsj88TNALNxhhR43JdPd1
-        9+IHAAAA//8DADKfA1JaBQAA
+        MaAVACDbUuu/n5dGb+wUZxu7V1rnJoOxYuOCGKOUNnA6sAkNyN6l2bn6jr1L463i87E0jBPMIliW
+        6VyT0cSVp/3Z4IAPHdFXqNE1VtwQ++z6md2WPz6VXVlEaXaLlRC/K+bVh/d/+x4VctmSk15sPrUg
+        4jmgwuXKv4wq1LOrm2JeXBXTS4UDV9SjxjpKVuSXmazHkrNpMZ2hwnWyNaE+Yhx5iLIU7igk1DeL
+        W4WOh0gfq9uaLxYKbwAAK47PprfFWeGS+pGE+t8RZ2kshfqII/eEGm1KPokNggoh7N7VeDQBAMCg
+        NLyuG0kGNbxI5cK0E4MaDL6BQFSBMKwTnQwyWo68TbScDWKB42FYnv8/DBufvEAjEvVkUjJ3KRdO
+        brSRrhngZ86K7ble02SgyosVzyEti2J+Rva8ivrKh4rd1Th6RwCqcIu5yw0qWTPbdpV8qAXejLPh
+        l6ShVIJYo9CAh2HFIwjwAso9+JAiOfGhJvHo6+8f3oPjioQzYm+DETecwQ+ZAsaEDN7wK/hWBWEb
+        QX23f41eqM19YbCw8j2hNA9VttFz2UlXVFRTbOqWcZh3MVaOtizSO+lGL975NDgEjR65JABp5GCr
+        rpUMOQCj4gjeaJuHhuadaJV1TKHxUTADNCJQgIdWnoqWFnKDujNnG/AGKRYnExjsQAURWWS+STvW
+        iQhXCuuxD6X2MivvLJg4OkLCgbr9q7EC2w8uVhl4BKkNi544m3DGs0JIR3qZi09QYxKOqJC9F/X0
+        /P98YQAD
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c23c2be6da577f8-VIE
+      - 7c23e3fe6851c247-VIE
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
       - keep-alive
       Content-Encoding:
-      - gzip
+      - br
       Content-Type:
       - application/json
       Date:
-      - Thu, 04 May 2023 21:15:59 GMT
+      - Thu, 04 May 2023 21:38:39 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -100,7 +100,7 @@ interactions:
       openai-organization:
       - user-cbwy2y25pylufhkfs0la9nqe
       openai-processing-ms:
-      - '15115'
+      - '14025'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -118,7 +118,7 @@ interactions:
       x-ratelimit-reset-tokens:
       - 2.338s
       x-request-id:
-      - 5281adb98dba204610e5eac86f070f73
+      - 080741eb904825793bdb7678ed61043f
     status:
       code: 200
       message: OK
@@ -157,7 +157,7 @@ interactions:
       Accept:
       - '*/*'
       Accept-Encoding:
-      - gzip, deflate
+      - gzip, deflate, br
       Connection:
       - keep-alive
       Content-Length:
@@ -169,26 +169,26 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA0SOwU7CQBRF935Fc9fTpqUUYbYsNBoWEl0YMWQ6fdCRdt6k80gMpF/jn/hlhkRx
-        e5J77jnDNdCwrRHbhy69XRpzKuv700NRrO3j3XIV7PrJv7zuVo6gwPUHWfldZJb70JE49lCwAxmh
-        BrqYzctJOV3MKoWeG+qgsQ+SllmVynGoOc3LvIDCMZo9QZ8RBu6DbIUP5CP0dF4p/LuvvJgpCIvp
-        rqTKi1HBtuwsRei3M3qKf9aBO4KGidFFMV4ujeyF/KX/uaUkDM5SwrtEWkpq5kOywYoaJ+ZyGzdI
-        XEy+vyZVNl9kGBV2zrvYbgcykT00onCAgvMNfULn4/t48wMAAP//AwDCHTU9UQEAAA==
+        g7MAAMT/d+71M6rn6pQoboBQov+yJh/IqSk3nRw43jIInsUJBhpD1jzAtiAvVgpHkbdH0xpNDo6s
+        TlQ2iF4P95P57E5cJUH4PJ3Mb+vqzLVef113f/fIAgOlbZGpKjGkBdTQBAx25cOKHNwOItdxA9fx
+        GQbKix4clVC6a/i6mo4p6ZZr2WCYyqQqwNcQIw1CfSvqiokE9yKfIaNB9EcuOTbDAwAQNb4VbBkM
+        9UmCv6+h0bgCX2OkvgBHImUjVTJRYADYrTke6kITY5MVGq2gJOq0D7B0XySqoYn8gNZI7f/P8Y0o
+        ZnPyqlgoA1sGolv43p51AQ6pSIDhZH8Nbm0/tzsD
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c23c343bd2a77f8-VIE
+      - 7c23e4793dc4c247-VIE
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
       - keep-alive
       Content-Encoding:
-      - gzip
+      - br
       Content-Type:
       - application/json
       Date:
-      - Thu, 04 May 2023 21:16:06 GMT
+      - Thu, 04 May 2023 21:38:46 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -200,7 +200,7 @@ interactions:
       openai-organization:
       - user-cbwy2y25pylufhkfs0la9nqe
       openai-processing-ms:
-      - '1670'
+      - '1470'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -218,25 +218,25 @@ interactions:
       x-ratelimit-reset-tokens:
       - 385ms
       x-request-id:
-      - 7c383298b4fdcc78efcbf14459399837
+      - 40ad6ce56c1ab5e424fdd023c2e52738
     status:
       code: 200
       message: OK
 - request:
     body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "\"\"\"The
-      price of the book \"Meditations\" is \u00a325.89.\"\"\" Using the above text,
-      answer the following question: \"What is the price of the book?\" -- if the
-      question cannot be answered using the text, summarize the text."}], "temperature":
-      0, "max_tokens": 0}'
+      price of the book \"Meditations\" is \u00a325.89, according to the text.\"\"\"
+      Using the above text, answer the following question: \"What is the price of
+      the book?\" -- if the question cannot be answered using the text, summarize
+      the text."}], "temperature": 0, "max_tokens": 0}'
     headers:
       Accept:
       - '*/*'
       Accept-Encoding:
-      - gzip, deflate
+      - gzip, deflate, br
       Connection:
       - keep-alive
       Content-Length:
-      - '338'
+      - '361'
       Content-Type:
       - application/json
     method: POST
@@ -244,26 +244,26 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA0SOO07DQBRFe1Zh3XpsxTH+TUsBFOmAhqBoPH6Jh9jzRp4XKVLk1bATVoYiQWiP
-        dM89F7geGnYwYqcwpvWD6fLKmlcOj/X5YJ4av5H6+a0ozk0JBe4+ycrvIrM8hZHEsYeCnckI9dB5
-        1RTr4r6taoWJexqhcQiSFlmZymnuOF0VqxwKp2gOBH1BmHkKshM+ko/QZavwr77hvFIQFjPeSF0u
-        CnZgZylCv18wUfxzzjwSNEyMLorxci1kL+Sv9S8DJWF2lhLeJzJQ0jEfky021Dsx19e4ReJi8v21
-        LrOmzbAo7J13cdjNZCJ7aEThAAXnezpDr5aP5e4HAAD//wMAZxGHJ08BAAA=
+        g7IAAMT/nCu/RnWeTgk27tgilvBnmr9ATp1yp5MDx1ukbcExTjDQGKJAAmwL8mKlcBR5e2s6oC0g
+        kTcp56MazPgi3Wznre/ox9v74uIuV97Z/i2okseH2xsIUNaVOU+JJS2gliYI2JUPKwtIN0p8z498
+        LxYYqSgHSNSKTd8KTV7NGZmO77gQWOm0LiEPUDONin+Y+nLSkFEgkNOohvVoJc8VyP+PqibhScBO
+        nzTkxwEKjSvIA2YaSkikWrea04khgK9bSzw2paHmNi8NVkFJ1BufIOm+SLmlSX/CaLXx/+eFVrIU
+        V/JcbtnCSYDnFn5+Z11AQjMpCAT2t5DO6eu0MAAD
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c23c34f5a6977f8-VIE
+      - 7c23e483c926c247-VIE
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
       - keep-alive
       Content-Encoding:
-      - gzip
+      - br
       Content-Type:
       - application/json
       Date:
-      - Thu, 04 May 2023 21:16:08 GMT
+      - Thu, 04 May 2023 21:38:48 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -275,7 +275,7 @@ interactions:
       openai-organization:
       - user-cbwy2y25pylufhkfs0la9nqe
       openai-processing-ms:
-      - '1477'
+      - '1720'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -287,13 +287,13 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
-      - '89929'
+      - '89923'
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 47ms
+      - 50ms
       x-request-id:
-      - 44b7a32214e0ea9d4850a5034300667c
+      - ce9abe4d7cc42438258c5779d002957c
     status:
       code: 200
       message: OK
@@ -310,7 +310,7 @@ interactions:
       Accept:
       - '*/*'
       Accept-Encoding:
-      - gzip, deflate
+      - gzip, deflate, br
       Connection:
       - keep-alive
       Content-Length:
@@ -322,26 +322,26 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA0SOQUsDMRQG7/6K8J2zZber1c1REfEgBaEeFJE0+9pEs3lh80qVsv9dCtVeB2aY
-        A0IPA+etuCHH6vrOrtu4/In16n5lh9vn16dS+4el893LBhq8/iQnJ2PmeMiRJHCChhvJCvUwzeKm
-        nbeX3aLTGLinCINtlqqdXVWyG9dc1W3dQGNX7JZgDsgjD1k+hL8oFZhurnFOn7GGsNj4D5q6mTSc
-        5+CowLwdMFD5a44cCQa2lFDEJjkechJKx/tHtbdFnY6VTb1KLD6krUq0V94W5W3OlKifYdLYhBSK
-        /xjJFk4wKMIZGiH19A1TT+/TxS8AAAD//wMA7QM9J0kBAAA=
+        ISAFACB+Tdf311TMq0lOfNsvpkDEYcKemE4OHLMIg+BRWxjGFFkUSIC5jZ1jFEFbzaEd8ggEkyk2
+        tauC6ZFabc1sdj2povTxs716OTvhbfZ58/RW9CBhdREb7uKQWgC5bSAhV74sjkD9yWw4GE6Gg7lE
+        baO4AiF1HAzDccCLVtugN+z1IbHwKo1BO7jW1o7/2JZx40HzgYSxtavGh1KRiP9PoOn3+gcJOX3w
+        oK8dGBpfoB1aW8UgKO9zz6phSNjXOcKFWCkvto7pENvGcpY3qWjilciUF+eXEAcJy7b09x7rAQTP
+        1kEik78G9Q4/h44BAw==
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c23c35edb3177f8-VIE
+      - 7c23e4940964c247-VIE
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
       - keep-alive
       Content-Encoding:
-      - gzip
+      - br
       Content-Type:
       - application/json
       Date:
-      - Thu, 04 May 2023 21:16:10 GMT
+      - Thu, 04 May 2023 21:38:50 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -353,7 +353,7 @@ interactions:
       openai-organization:
       - user-cbwy2y25pylufhkfs0la9nqe
       openai-processing-ms:
-      - '1240'
+      - '1203'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -371,7 +371,7 @@ interactions:
       x-ratelimit-reset-tokens:
       - 88ms
       x-request-id:
-      - 15607ce08c434a46ab9a526240df39ea
+      - cb761c041331267fda25582b611aaead
     status:
       code: 200
       message: OK
@@ -430,17 +430,17 @@ interactions:
       command to visit the website and search for the price of the book by inspecting
       the HTML code.\",\n        \"plan\": \"- Use the browse_website command to visit
       the website\\n- Inspect the HTML code to find the price of the book\\n- Write
-      the price to a file named ''browse_website.txt''\\n- Use the task_complete command
+      the price to a file named browse_website.txt\\n- Use the task_complete command
       to complete the task\",\n        \"criticism\": \"I need to be careful when
-      inspecting the HTML code to ensure I find the correct price.\",\n        \"speak\":
+      inspecting the HTML code to ensure that I find the correct price of the book.\",\n        \"speak\":
       \"I will use the browse_website command to visit the website and find the price
       of the book.\"\n    },\n    \"command\": {\n        \"name\": \"browse_website\",\n        \"args\":
       {\n            \"url\": \"http://books.toscrape.com/catalogue/meditations_33/index.html\",\n            \"question\":
       \"What is the price of the book?\"\n        }\n    }\n}"}, {"role": "system",
       "content": "Command browse_website returned: Answer gathered from website: The
-      price of the book \"Meditations\" is \u00a325.89. \n \n Links: [''Books to Scrape
-      (http://books.toscrape.com/index.html)'', ''Home (http://books.toscrape.com/index.html)'',
-      ''Books (http://books.toscrape.com/catalogue/category/books_1/index.html)'',
+      price of the book \"Meditations\" is \u00a325.89, according to the text. \n
+      \n Links: [''Books to Scrape (http://books.toscrape.com/index.html)'', ''Home
+      (http://books.toscrape.com/index.html)'', ''Books (http://books.toscrape.com/catalogue/category/books_1/index.html)'',
       ''Philosophy (http://books.toscrape.com/catalogue/category/books/philosophy_7/index.html)'',
       '' (http://books.toscrape.com/catalogue/the-nicomachean-ethics_75/index.html)'']"},
       {"role": "user", "content": "Determine which next command to use, and respond
@@ -449,11 +449,11 @@ interactions:
       Accept:
       - '*/*'
       Accept-Encoding:
-      - gzip, deflate
+      - gzip, deflate, br
       Connection:
       - keep-alive
       Content-Length:
-      - '5659'
+      - '5697'
       Content-Type:
       - application/json
     method: POST
@@ -461,30 +461,30 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA7xTyW7bMBC99yuIufhCGV5jW7eiRYEALdAlORRVIVDUWGItcVRyBLsw9DX9k35Z
-        ocV1ouSangTOo94yeDyDSSEEnSvWZVUEmzcqWafbr7V6vb/7WL/7nL19/7O6Xd1vPn3xIIGSH6h5
-        +GOqqawKZEMWJGiHijGFcH6zXS6Wq91mLqGkFAsIIas4WE7XAdcuoWC2nM1BQu1VhhCeoXJUVhwz
-        HdB6COeLzUrClfwK7G4kMLEqrqPVZtZI0DkZjR7Cb2co0V+IHRUIISjvjWdlubVJltG2Ec6RFUKI
-        CDinOsvZRxCKYTgAeOJ2GMGtsIipYBJHZxgF5ygqZzQK2neHhOjQwkrsTYHCqhJTMUkcHT3GR0y8
-        YZzyiSfTCORDDYfKkzU2uwhpZUXte4lOLGaKO1JNZansi7ioCmV7A4G4f2nxkbZ2ho02vhyvGq2v
-        XSukuBPoaI0XQ9OEsd1Yk3OoWaSm/ZD7NQ7nK1SHC/nRFMV/2W/voJGXlg3sT0rWkvTmHrkZZVAu
-        G/ezB9q7V4qnVh7xjGt992zAyQdMDav26flJu/A/vxfr6Xb3L1QXbMgX2QYaCXtjjc/jvs0Qgmeq
-        QIKxKZ4gnDXfm1d/AQAA//8DAPiadw1sBAAA
+        g1ICAMSvqfm9m2rn1UgXMqVdxSpEHDiEdfgEq4G1s7rqV92f/8uZHJCtZUdr2ViV/YnNQWVhWuK9
+        hMK8wA7xBFOdCz4m3oJrN4YfVHnTL0IDDbez4mLfVasj+zXJk/nR4fn9YrLO48ihnMSz7/TjLqDA
+        2zfv5CmjnlowFDhBYbnyD/MN9GS5nk1ny9lsohC58R002l6qWb2o5D1vuRrPxhMovBfbeuhf9Jlj
+        L8/Ce58K9GS6nig4jgBi5dV0PFPYAgCk/ch8PR8U1tQfKtAPv5im0RX0LzJ3Hhq2lFDEJoGCht2z
+        Gr8mEREZyI7f250UA00V/NG5/xIDTQbHlLxvSJg+cxD/c5A3+xycJ7GD35n3JEyWXkPnlYDBhraZ
+        P4t/njJyp5YvqQ0UCvLFrW5ILVTL2UTv5WLhomfhZ7Op4xgVAHrFI+47mzz944qu4A+MSTiZ2LJ/
+        TiO8iPeFliTSj7ocJLhQYv+g76xFOqaLSypv4IS2JTt/EkMjCAIIGSCIJPS8bzgO+sDFNLBPTk4m
+        2ehxPqRYnbS5zWsuiGevofNmKFmCx5yLOzIcxl+6eGmMgQ71a1YCp2KMAYVC//9NF/V64x5bOErA
+        YNKAQUEPUXseDV9Aowj3UNjwgjr0eHgcDgwD
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c23c3691edc77f8-VIE
+      - 7c23e49e5b27c247-VIE
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
       - keep-alive
       Content-Encoding:
-      - gzip
+      - br
       Content-Type:
       - application/json
       Date:
-      - Thu, 04 May 2023 21:16:22 GMT
+      - Thu, 04 May 2023 21:39:03 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -496,7 +496,7 @@ interactions:
       openai-organization:
       - user-cbwy2y25pylufhkfs0la9nqe
       openai-processing-ms:
-      - '11697'
+      - '11616'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -508,13 +508,13 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
-      - '86481'
+      - '86478'
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 2.346s
+      - 2.348s
       x-request-id:
-      - 0d0659966548f1c8e4d860cd486f9665
+      - 61bf638c298b876c0a4c00357ca20605
     status:
       code: 200
       message: OK
@@ -532,7 +532,7 @@ interactions:
       Accept:
       - '*/*'
       Accept-Encoding:
-      - gzip, deflate
+      - gzip, deflate, br
       Connection:
       - keep-alive
       Content-Length:
@@ -544,27 +544,26 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA0SPQWvCQBCF7/0Vw5w3Eo02dm/Fk1Laa6EU2WymZjW7E3ZGbZH89yLYen289/G9
-        C4YWLfrOqY9DX9Qr12xCfYx5tXpr3uuDrDf71/Yl1uIDGuRmT15vi4nnOPSkgRMa9JmcUot2+ris
-        ZtX8abkwGLmlHi3uBi2qyaLQY264KKtyigaP4naE9oJD5jjoVvlASdBOZ6XBO/s/v8bK6vp7c16O
-        Bn3HwZOg/bhgJPmjZu4JLTqRIOqSXh05KaWr/7OAA/kRpWhgDZm863vQzims4ewEbnfApRa0o0zQ
-        uRNBQ5QgMSQ6Q0sn6nmIlFRAGTINnHWCo8GvkIJ020xOOKFFUR7QYEgtfaMtx8/x4RcAAP//AwCd
-        jrxWewEAAA==
+        IZQFACBW6rL/ptJsfSa6NkBoQsmU8NMDx6zmCbQFYQvTLKXIss9/sOsNn4co5d1mln5RZ2CkVbyk
+        veq0YCv+2j0+cS7s9Si73jcPH7ed/e48vrnYK7ZBkEmTp0sV6tACU8sBBLryw/IMbPmhYzu+43qE
+        XmZ5B0apFs3RPW1Zp0RqpmNaIKxzXObgX6hJ9mp5W2SbDzPYsk1CKnvVP+SaR3gAQIiK4/0TCPXN
+        DH76BUbjF/gXk+xyMOJ5ruclHhYQBOwKwzUB8NK/kjgQU57GXSeUgsdBLlU9lGLIP0UVz2ITSBD4
+        c/8txnW1HHT8E/Tc0tvtrBdgzItUIBj212Dz/+V/YwAD
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c23c3c36a7277f8-VIE
+      - 7c23e4f79d35c247-VIE
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
       - keep-alive
       Content-Encoding:
-      - gzip
+      - br
       Content-Type:
       - application/json
       Date:
-      - Thu, 04 May 2023 21:16:27 GMT
+      - Thu, 04 May 2023 21:39:06 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -576,7 +575,7 @@ interactions:
       openai-organization:
       - user-cbwy2y25pylufhkfs0la9nqe
       openai-processing-ms:
-      - '1458'
+      - '1185'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -594,7 +593,7 @@ interactions:
       x-ratelimit-reset-tokens:
       - 107ms
       x-request-id:
-      - d63e409c7aef39979ccc88314c52164e
+      - efb95c95c041ce854b6ce58bec551bae
     status:
       code: 200
       message: OK
@@ -645,52 +644,52 @@ interactions:
       \nEnsure the response can be parsed by Python json.loads"}, {"role": "system",
       "content": "The current time and date is Tue Jan  1 00:00:00 2000"}, {"role":
       "system", "content": "This reminds you of these events from your past: \nAs
-      a system, I recall that I was created and there have been no new developments
-      to report."}, {"role": "user", "content": "Determine which next command to use,
-      and respond using the format specified above:"}, {"role": "assistant", "content":
-      "{\n    \"thoughts\": {\n        \"text\": \"I need to use the browse_website
-      command to visit http://books.toscrape.com/catalogue/meditations_33/index.html
+      a system, I recall that nothing new has happened since my creation."}, {"role":
+      "user", "content": "Determine which next command to use, and respond using the
+      format specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\":
+      {\n        \"text\": \"I need to use the browse_website command to visit http://books.toscrape.com/catalogue/meditations_33/index.html
       and find the price of the book.\",\n        \"reasoning\": \"I can use the browse_website
       command to visit the website and search for the price of the book by inspecting
       the HTML code.\",\n        \"plan\": \"- Use the browse_website command to visit
       the website\\n- Inspect the HTML code to find the price of the book\\n- Write
-      the price to a file named ''browse_website.txt''\\n- Use the task_complete command
+      the price to a file named browse_website.txt\\n- Use the task_complete command
       to complete the task\",\n        \"criticism\": \"I need to be careful when
-      inspecting the HTML code to ensure I find the correct price.\",\n        \"speak\":
+      inspecting the HTML code to ensure that I find the correct price of the book.\",\n        \"speak\":
       \"I will use the browse_website command to visit the website and find the price
       of the book.\"\n    },\n    \"command\": {\n        \"name\": \"browse_website\",\n        \"args\":
       {\n            \"url\": \"http://books.toscrape.com/catalogue/meditations_33/index.html\",\n            \"question\":
       \"What is the price of the book?\"\n        }\n    }\n}"}, {"role": "system",
       "content": "Command browse_website returned: Answer gathered from website: The
-      price of the book \"Meditations\" is \u00a325.89. \n \n Links: [''Books to Scrape
-      (http://books.toscrape.com/index.html)'', ''Home (http://books.toscrape.com/index.html)'',
-      ''Books (http://books.toscrape.com/catalogue/category/books_1/index.html)'',
+      price of the book \"Meditations\" is \u00a325.89, according to the text. \n
+      \n Links: [''Books to Scrape (http://books.toscrape.com/index.html)'', ''Home
+      (http://books.toscrape.com/index.html)'', ''Books (http://books.toscrape.com/catalogue/category/books_1/index.html)'',
       ''Philosophy (http://books.toscrape.com/catalogue/category/books/philosophy_7/index.html)'',
       '' (http://books.toscrape.com/catalogue/the-nicomachean-ethics_75/index.html)'']"},
       {"role": "user", "content": "Determine which next command to use, and respond
       using the format specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\":
       {\n        \"text\": \"I need to write the price of the book to a file named
-      ''browse_website.txt''.\",\n        \"reasoning\": \"I can use the write_to_file
-      command to write the price of the book to a file named ''browse_website.txt''.\",\n        \"plan\":
+      browse_website.txt.\",\n        \"reasoning\": \"I can use the write_to_file
+      command to write the price of the book to a file named browse_website.txt.\",\n        \"plan\":
       \"- Use the write_to_file command to write the price of the book to a file named
-      ''browse_website.txt''\",\n        \"criticism\": \"I need to ensure that the
-      file is created in the correct directory.\",\n        \"speak\": \"I will use
-      the write_to_file command to write the price of the book to a file named ''browse_website.txt''.\"\n    },\n    \"command\":
-      {\n        \"name\": \"write_to_file\",\n        \"args\": {\n            \"filename\":
-      \"browse_website.txt\",\n            \"text\": \"The price of the book ''Meditations''
-      is \u00a325.89.\"\n        }\n    }\n}"}, {"role": "system", "content": "Command
-      write_to_file returned: File written to successfully."}, {"role": "user", "content":
-      "Determine which next command to use, and respond using the format specified
-      above:"}], "temperature": 0, "max_tokens": 0}'
+      browse_website.txt\\n- Use the task_complete command to complete the task\",\n        \"criticism\":
+      \"I need to ensure that I write the correct price of the book to the file.\",\n        \"speak\":
+      \"I will use the write_to_file command to write the price of the book to a file
+      named browse_website.txt.\"\n    },\n    \"command\": {\n        \"name\": \"write_to_file\",\n        \"args\":
+      {\n            \"filename\": \"browse_website.txt\",\n            \"text\":
+      \"The price of the book \\\"Meditations\\\" is \u00a325.89.\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command write_to_file returned: File written
+      to successfully."}, {"role": "user", "content": "Determine which next command
+      to use, and respond using the format specified above:"}], "temperature": 0,
+      "max_tokens": 0}'
     headers:
       Accept:
       - '*/*'
       Accept-Encoding:
-      - gzip, deflate
+      - gzip, deflate, br
       Connection:
       - keep-alive
       Content-Length:
-      - '6801'
+      - '6876'
       Content-Type:
       - application/json
     method: POST
@@ -698,29 +697,29 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA6SRTY/TQAyG7/yKkc+Tqmm22+7cEAJpJYQQKhwgqJpOvJmh8xHFDl1U5b+jbNJt
-        KRc+rq/t531tH8FVoMBYzSY0Plu90ru3/L66+/Tyw8EeXr9ZmVBvPufzHW5uQELafUPD08TMpNB4
-        ZJciSDAtasYKVH67LhbFzd16JSGkCj0oqBvOitky467dpWxezHOQ0JGuEdQRmjaFhrec9hgJVL5c
-        FBLO8HNhsZbAibU/S7fLvJdgbHIGCdSXIwSkE7hNHkGBJnLEOvIQM0XGOKxwLKMQQpTANnW1ZSpB
-        iUmcCvjIg1jCvbD6O4opE1aCLQrWtJeCkrgXEQctiY7wubQ9dQ9jQcenBrIdiyod4qwEeenVoqYU
-        Xaz/zNDo+B9mjddx9MnEx3+mmNaxM47CiHqXIl51UIN6f1ro4Lz/u8wjqpenR01tv/0p6oCjyy/Y
-        qzC6ra9ffHn6EbDRtL+4OnXGINFD5/2P50BPoaZsZeyhl/DgoiO7HUmggDg1IMHFCh9Bzfuv/Yuf
-        AAAA//8DAN3BRNlrAwAA
+        IdQOACB+qcvv01Q7r5aPQG2YPoQUWTZLHu8e0P/dNAnI/r+jOusFsmxsW5PitnjPA+olFOanWapz
+        CY+H8dOwtR36sQkP7ZDH0LCZEVs3VTQ9NuuL5fK+reLk+OK9LZd8w9lTkfdn1wkUwm/hrPRinakF
+        oTx4KKQrf5mLofuT2XAwnAxHU4U6xK6CRtpINOyMI1m0vyHqDXt9KCzYpA56h6YNdSPfEkrnGbo/
+        Hg4UbKgdpB7uRn2FLQBI3Y5MpsODQk79EEP/32Gaxl/QO7ShctAwzDmL8QKFGnZXNXYfnojoA5KF
+        RZoJf0DTQRqPW8sHNH3gkha8T0gPXbw6yJtiuFTEgS7JOxeTBFqwu9h3D5NsqOvk/V8CcbYQisPK
+        dz6g/KX+vXWF3KdOt7LGn2pTGU9unYheYecZits2l9zmXMtEhUh/OvpJPMNUFb0OAF9hKsZ4mLOF
+        SO5T2DQ/P/VGaxbUpzcqIB1IyB8IS37YBW9qlzWdR3/UtOmIQaQYSRRl/2K4JH/KC2sdc7Koqg0o
+        AIaGYocPf8BBoT6g+D0mOKDBEhoobACBG7p3+DwcGQM=
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c23c3cf4f7177f8-VIE
+      - 7c23e5028b45c247-VIE
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
       - keep-alive
       Content-Encoding:
-      - gzip
+      - br
       Content-Type:
       - application/json
       Date:
-      - Thu, 04 May 2023 21:16:35 GMT
+      - Thu, 04 May 2023 21:39:15 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -732,7 +731,7 @@ interactions:
       openai-organization:
       - user-cbwy2y25pylufhkfs0la9nqe
       openai-processing-ms:
-      - '8149'
+      - '7841'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -744,13 +743,13 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
-      - '86479'
+      - '86476'
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 2.346s
+      - 2.349s
       x-request-id:
-      - 1acabeb62d65dfd78db3136f21b39aa9
+      - 3ca2f13358a07cd0227597f39d63613c
     status:
       code: 200
       message: OK
