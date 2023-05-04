@@ -11,6 +11,7 @@ to the value that you want:
 * `redis` will use the redis cache that you configured
 * `milvus` will use the milvus cache that you configured
 * `weaviate` will use the weaviate cache that you configured
+* `qdrant` will use the qdrant cache that you configured
 
 ## Memory Backend Setup
 
@@ -20,6 +21,7 @@ Links to memory backends
 - [Milvus](https://milvus.io/) &ndash; [self-hosted](https://milvus.io/docs), or managed with [Zilliz Cloud](https://zilliz.com/)
 - [Redis](https://redis.io)
 - [Weaviate](https://weaviate.io)
+- [qdrant](https://cloud.qdrant.io/)
 
 ### Redis Setup
 
@@ -55,6 +57,20 @@ Links to memory backends
 !!! info
     See [redis-stack-server](https://hub.docker.com/r/redis/redis-stack-server) for
     setting a password and additional configuration.
+
+
+### QDRANT SETUP 
+
+1. Go to [qdrant](https://cloud.qdrant.io/) and make an account if you don't already have one.
+2. Choose the `Starter` plan to avoid being charged.
+3. Go to "create a cluster" and there write the name of your collection, choose a provider, and a region. This will create a cluster.
+4. Find your API key and host in the cluster you created.
+
+In the `.env` file set:
+
+- `QDRANT_API_KEY`
+- `QDRANT_HOST` (example: `468c23dc-b48c-4285-bed0-75f94e7d890c.us-east-1-0.aws.cloud.qdrant.io`)
+- `QDRANT_COLLECTION_NAME`
 
 ### 🌲 Pinecone API Key Setup
 
