@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-import os
+import os.path
 import re
 
 from jsonschema import Draft7Validator
