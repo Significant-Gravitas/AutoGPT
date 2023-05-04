@@ -29,20 +29,27 @@ def build_default_prompt_generator() -> PromptGenerator:
 
     # Add constraints to the PromptGenerator object
     prompt_generator.add_constraint(
-        "Only use information you know to be true. "
-        "Never make up information. "
+        "Use only information you know to be true. "
+        "Always verify facts"
     )
     prompt_generator.add_constraint(
         "~175 sentence limit for short term memory. "
-        "Always save important information and memories to files. "
+        "Save important information to files. "
     )
     prompt_generator.add_constraint(
-        "Unsure how you did something or want to recall past events? "
-        "Think about similar events to remember. "
+        "Prone to forgetfulness; think about similar events to remember. "
     )
-    prompt_generator.add_constraint("User is unaware of you and can't help. ")
     prompt_generator.add_constraint(
-        'Exclusively use the commands listed in the "Commands" section. '
+        "User is unaware of you, can't help you. "
+    )
+    prompt_generator.add_constraint(
+        "Only use commands listed in the 'Commands' section. "
+    )
+    prompt_generator.add_constraint(
+        "One command, one cycle. "
+    )
+    prompt_generator.add_constraint(
+        "No native access to system devices"
     )
 
     # Define the command list
@@ -58,7 +65,9 @@ def build_default_prompt_generator() -> PromptGenerator:
     prompt_generator.add_resource(
         "Internet access for fact-finding. "
     )
-    prompt_generator.add_resource("Files for saving long-term memories. ")
+    prompt_generator.add_resource(
+        "Files for saving long-term memories. "
+    )
     prompt_generator.add_resource(
         "GPT-3.5 powered Agents to answer questions. "
     )
