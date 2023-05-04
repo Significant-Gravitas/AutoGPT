@@ -60,6 +60,11 @@ import click
     is_flag=True,
     help="Installs external dependencies for 3rd party plugins.",
 )
+@click.option(
+    "--agdai",
+    is_flag=True,
+    help="Runs the agdai program flow insted of vanilla.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -77,6 +82,7 @@ def main(
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
+    agdai: bool
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -84,7 +90,10 @@ def main(
     Start an Auto-GPT assistant.
     """
     # Put imports inside function to avoid importing everything when starting the CLI
-    from autogpt.main import run_auto_gpt
+    if agdai:
+        from autogpt.main_agdai import run_auto_gpt
+    else:
+        from autogpt.main import run_auto_gpt
 
     if ctx.invoked_subcommand is None:
         run_auto_gpt(
