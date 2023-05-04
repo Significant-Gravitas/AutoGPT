@@ -6,9 +6,9 @@ from autogpt.llm import call_ai_function
 
 
 @command(
-    "analyze_code",
-    "Analyze Code",
-    '"code": "<full_code_string>"',
+    "critique_code",
+    "Critique Code",
+    '"code": "<code:str>"',
 )
 def analyze_code(code: str) -> list[str]:
     """

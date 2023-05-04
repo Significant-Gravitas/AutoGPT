@@ -11,8 +11,8 @@ from autogpt.config import Config
 CFG = Config()
 
 
-@command("google", "Google Search", '"query": "<query>"', not CFG.google_api_key)
-def google_search(query: str, num_results: int = 8) -> str:
+@command("google", "Google Search", '"search_for": "<search:str>"', not CFG.google_api_key)
+def google_search(search_for: str, num_results: int = 8) -> str:
     """Return the results of a Google search
 
     Args:
@@ -23,10 +23,10 @@ def google_search(query: str, num_results: int = 8) -> str:
         str: The results of the search.
     """
     search_results = []
-    if not query:
+    if not search_for:
         return json.dumps(search_results)
 
-    results = ddg(query, max_results=num_results)
+    results = ddg(search_for, max_results=num_results)
     if not results:
         return json.dumps(search_results)
 
@@ -40,15 +40,15 @@ def google_search(query: str, num_results: int = 8) -> str:
 @command(
     "google",
     "Google Search",
-    '"query": "<query>"',
+    '"search_for": "<search:str>"',
     bool(CFG.google_api_key),
     "Configure google_api_key.",
 )
-def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
+def google_official_search(search_for: str, num_results: int = 8) -> str | list[str]:
     """Return the results of a Google search using the official Google API
 
     Args:
-        query (str): The search query.
+        search_for (str): The search query.
         num_results (int): The number of results to return.
 
     Returns:
@@ -69,7 +69,7 @@ def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
         # Send the search query and retrieve the results
         result = (
             service.cse()
-            .list(q=query, cx=custom_search_engine_id, num=num_results)
+            .list(q=search_for, cx=custom_search_engine_id, num=num_results)
             .execute()
         )
 

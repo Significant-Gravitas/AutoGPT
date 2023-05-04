@@ -31,7 +31,7 @@ CFG = Config()
 @command(
     "browse_website",
     "Browse Website",
-    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+    '"url": "<url:str>", "question": "<question:str>"',
 )
 @validate_url
 def browse_website(url: str, question: str) -> tuple[str, WebDriver]:

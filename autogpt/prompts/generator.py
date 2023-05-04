@@ -132,7 +132,34 @@ class PromptGenerator:
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(command_strings))
         else:
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
+        
+    def _generate_bulleted_list(self, items: List[Any], item_type="list") -> str:
+        """
+        Generate a bulleted list from given items based on the item_type.
+        
+        Args:
+            items (list): A list of items to be bulleted.
+            item_type (str, optional): The type of items in the list.
+                Defaults to 'list'.
+                
+        Returns:
+            str: The formatted bulleted list.
+        """
 
+        if item_type == "command":
+            command_strings = []
+            if self.command_registry:
+                command_strings += [
+                    str(item)
+                    for item in self.command_registry.commands.values()
+                    if item.enabled
+                ]
+            # terminate command is added manually
+            command_strings += [self._generate_command_string(item) for item in items]
+            return "\n".join(f"{item}" for item in command_strings)
+        else:
+            return "\n".join(f"- {item}" for item in items)
+        
     def generate_prompt_string(self) -> str:
         """
         Generate a prompt string based on the constraints, commands, resources,
@@ -141,14 +168,14 @@ class PromptGenerator:
         Returns:
             str: The generated prompt string.
         """
-        formatted_response_format = json.dumps(self.response_format, indent=4)
+        formatted_response_format = json.dumps(self.response_format)
         return (
-            f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
-            "Commands:\n"
+            f"Constraints: {self._generate_numbered_list(self.constraints)}\n\n"
+            "Commands: "
             f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
             f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             "Performance Evaluation:\n"
-            f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
+            f"{self._generate_bulleted_list(self.performance_evaluation)}\n\n"
             "You should only respond in JSON format as described below \nResponse"
             f" Format: \n{formatted_response_format} \nEnsure the response can be"
             " parsed by Python json.loads"

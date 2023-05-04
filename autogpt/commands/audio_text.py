@@ -10,9 +10,9 @@ CFG = Config()
 
 
 @command(
-    "read_audio_from_file",
-    "Convert Audio to text",
-    '"filename": "<filename>"',
+    "audio_to_text",
+    "Audio to text",
+    '"filename": "<file:str>"',
     CFG.huggingface_audio_to_text_model,
     "Configure huggingface_audio_to_text_model.",
 )

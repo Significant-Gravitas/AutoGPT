@@ -13,7 +13,7 @@ from autogpt.logs import logger
 CFG = Config()
 
 
-@command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
+@command("run_python", "Run Python", '"filename": "<file:str>"')
 def execute_python_file(filename: str) -> str:
     """Execute a Python file in a Docker container and return the output
 
@@ -99,8 +99,8 @@ def execute_python_file(filename: str) -> str:
 
 @command(
     "execute_shell",
-    "Execute Shell Command, non-interactive commands only",
-    '"command_line": "<command_line>"',
+    "Execute Non-Interactive Shell Command",
+    '"command_line": "<command:str>"',
     CFG.execute_local_commands,
     "You are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
@@ -136,8 +136,8 @@ def execute_shell(command_line: str) -> str:
 
 @command(
     "execute_shell_popen",
-    "Execute Shell Command, non-interactive commands only",
-    '"command_line": "<command_line>"',
+    "Execute Non-Interactive Shell Command as Process",
+    '"command_line": "<command:str>"',
     CFG.execute_local_commands,
     "You are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "

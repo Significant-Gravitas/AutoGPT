@@ -9,7 +9,7 @@ from autogpt.llm import call_ai_function
 @command(
     "improve_code",
     "Get Improved Code",
-    '"suggestions": "<list_of_suggestions>", "code": "<full_code_string>"',
+    '"suggestions": "<suggestions:str>", "code": "<code:str>"',
 )
 def improve_code(suggestions: list[str], code: str) -> str:
     """

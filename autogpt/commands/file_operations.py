@@ -143,7 +143,7 @@ def split_file(
         start += max_length - overlap
 
 
-@command("read_file", "Read file", '"filename": "<filename>"')
+@command("read_file", "Read file", '"filename": "<file:str>"')
 def read_file(filename: str) -> str:
     """Read a file and return the contents
 
@@ -196,7 +196,7 @@ def ingest_file(
         logger.info(f"Error while ingesting file '{filename}': {err}")
 
 
-@command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
+@command("write_to_file", "Write to file", '"filename": "<file:str>", "text": "<txt:str>"')
 def write_to_file(filename: str, text: str) -> str:
     """Write text to a file
 
@@ -222,7 +222,7 @@ def write_to_file(filename: str, text: str) -> str:
 
 
 @command(
-    "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
+    "append_to_file", "Append to file", '"filename": "<file:str>", "text": "<txt:str>"'
 )
 def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
     """Append text to a file
@@ -251,7 +251,7 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
         return f"Error: {err}"
 
 
-@command("delete_file", "Delete file", '"filename": "<filename>"')
+@command("delete_file", "Delete file", '"filename": "<file:str>"')
 def delete_file(filename: str) -> str:
     """Delete a file
 
@@ -271,7 +271,7 @@ def delete_file(filename: str) -> str:
         return f"Error: {err}"
 
 
-@command("list_files", "List Files in Directory", '"directory": "<directory>"')
+@command("list_files", "List Files in Directory", '"directory": "<path:str>"')
 def list_files(directory: str) -> list[str]:
     """lists files in a directory recursively
 
@@ -298,18 +298,18 @@ def list_files(directory: str) -> list[str]:
 @command(
     "download_file",
     "Download File",
-    '"url": "<url>", "filename": "<filename>"',
+    '"url": "<url:str>", "local_filename": "<name:str>"',
     CFG.allow_downloads,
     "Error: You do not have user authorization to download files locally.",
 )
-def download_file(url, filename):
+def download_file(url, local_filename):
     """Downloads a file
     Args:
         url (str): URL of the file to download
-        filename (str): Filename to save the file as
+        local_filename (str): Filename to save the file as
     """
     try:
-        directory = os.path.dirname(filename)
+        directory = os.path.dirname(local_filename)
         os.makedirs(directory, exist_ok=True)
         message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
         with Spinner(message) as spinner:
@@ -327,7 +327,7 @@ def download_file(url, filename):
                 total_size = int(r.headers.get("Content-Length", 0))
                 downloaded_size = 0
 
-                with open(filename, "wb") as f:
+                with open(local_filename, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
                         downloaded_size += len(chunk)
@@ -336,7 +336,7 @@ def download_file(url, filename):
                         progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
                         spinner.update_message(f"{message} {progress}")
 
-            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(downloaded_size)})'
+            return f'Successfully downloaded and locally stored file: "{local_filename}"! (Size: {readable_file_size(downloaded_size)})'
     except requests.HTTPError as err:
         return f"Got an HTTP Error whilst trying to download file: {err}"
     except Exception as err:
