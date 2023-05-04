@@ -65,7 +65,7 @@ class Agent:
         self.ai_name = ai_name
         self.memory = memory
         self.summary_memory = (
-            "I was created."  # Initial memory necessary to avoid hilucination
+            "I was created."  # Initial memory necessary to avoid hallucination
         )
         self.last_memory_index = 0
         self.full_message_history = full_message_history
@@ -122,7 +122,7 @@ class Agent:
             for plugin in cfg.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
-                assistant_reply_json = plugin.post_planning(self, assistant_reply_json)
+                assistant_reply_json = plugin.post_planning(assistant_reply_json)
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
