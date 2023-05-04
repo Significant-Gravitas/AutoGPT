@@ -3,14 +3,14 @@ Test cases for the Config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
 
-import pytest
 import os
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, mock_open, patch
+
+import pytest
 
 from autogpt.config import Config
-from unittest.mock import mock_open, patch
 
-
+# I think we can remove this test - it is not testing anything
 # def test_initial_values(config):
 #     """
 #     Test if the initial values of the Config class attributes are set correctly.
@@ -35,7 +35,6 @@ def test_set_continuous_mode(config):
     assert config.continuous_mode == True
 
 
-
 def test_set_speak_mode(config):
     """
     Test if the set_speak_mode() method updates the speak_mode attribute.
@@ -45,7 +44,6 @@ def test_set_speak_mode(config):
 
     config.set_speak_mode(True)
     assert config.speak_mode == True
-
 
 
 def test_set_fast_llm_model(config):
@@ -59,7 +57,6 @@ def test_set_fast_llm_model(config):
     assert config.fast_llm_model == "gpt-3.5-turbo-test"
 
 
-
 def test_set_smart_llm_model(config):
     """
     Test if the set_smart_llm_model() method updates the smart_llm_model attribute.
@@ -69,7 +66,6 @@ def test_set_smart_llm_model(config):
 
     config.set_smart_llm_model("gpt-4-test")
     assert config.smart_llm_model == "gpt-4-test"
-
 
 
 def test_set_fast_token_limit(config):
@@ -83,7 +79,6 @@ def test_set_fast_token_limit(config):
     assert config.fast_token_limit == 5000
 
 
-
 def test_set_smart_token_limit(config):
     """
     Test if the set_smart_token_limit() method updates the smart_token_limit attribute.
@@ -93,7 +88,6 @@ def test_set_smart_token_limit(config):
 
     config.set_smart_token_limit(9000)
     assert config.smart_token_limit == 9000
-
 
 
 def test_set_debug_mode(config):
@@ -107,10 +101,9 @@ def test_set_debug_mode(config):
     assert config.debug_mode == True
 
 
-
 # Generalized mock function
 def mock_load_yaml_config(config, mock_data, config_file, *args, **kwargs):
-    config.yaml_config = mock_data
+    config.yaml_config = mock_data or {}
 
 
 def mock_load_dotenv(*args, **kwargs):
@@ -124,7 +117,13 @@ def mock_load_dotenv(*args, **kwargs):
         (
             {
                 "autogpt.config.Config.load_yaml_config": (
-                    lambda config, config_file=None, *args, **kwargs: mock_load_yaml_config(config, {"my_new_autogpt_config": "some_value"}, config_file, *args, **kwargs)
+                    lambda config, config_file=None, *args, **kwargs: mock_load_yaml_config(
+                        config,
+                        {"my_new_autogpt_config": "some_value"},
+                        config_file,
+                        *args,
+                        **kwargs,
+                    )
                 ),
             },
             {"my_new_autogpt_config": "some_value"},
@@ -132,7 +131,13 @@ def mock_load_dotenv(*args, **kwargs):
         (
             {
                 "autogpt.config.Config.load_yaml_config": (
-                    lambda config, config_file=None, *args, **kwargs: mock_load_yaml_config(config, {"another_new_autogpt_config": "another_value"}, config_file, *args, **kwargs)
+                    lambda config, config_file=None, *args, **kwargs: mock_load_yaml_config(
+                        config,
+                        {"another_new_autogpt_config": "another_value"},
+                        config_file,
+                        *args,
+                        **kwargs,
+                    )
                 ),
             },
             {"another_new_autogpt_config": "another_value"},
@@ -142,8 +147,10 @@ def mock_load_dotenv(*args, **kwargs):
 )
 def test_yaml_config_mock_only(config, expected_value):
     # Mock the load_yaml_config function to directly set the yaml_config attribute
-    config.load_yaml_config = lambda *args, **kwargs: mock_load_yaml_config(config, expected_value, *args, **kwargs)
-    
+    config.load_yaml_config = lambda *args, **kwargs: mock_load_yaml_config(
+        config, expected_value, *args, **kwargs
+    )
+
     config.load_yaml_config(config_file="mock_command_config.yaml")
 
     for key, value in expected_value.items():
@@ -156,7 +163,13 @@ def test_yaml_config_mock_only(config, expected_value):
         (
             {
                 "autogpt.config.Config.load_yaml_config": (
-                    lambda config, config_file=None, *args, **kwargs: mock_load_yaml_config(config, {"my_new_autogpt_config": "yaml_value"}, config_file, *args, **kwargs)
+                    lambda config, config_file=None, *args, **kwargs: mock_load_yaml_config(
+                        config,
+                        {"my_new_autogpt_config": "yaml_value"},
+                        config_file,
+                        *args,
+                        **kwargs,
+                    )
                 ),
                 "mock_load_dotenv": mock_load_dotenv,
                 "env_vars": {"MY_NEW_AUTOGPT_CONFIG": "env_var_value"},
@@ -168,10 +181,12 @@ def test_yaml_config_mock_only(config, expected_value):
 )
 def test_precedence_order(config, expected_value):
     # Mock the load_yaml_config function to directly set the yaml_config attribute
-    config.load_yaml_config = lambda *args, **kwargs: mock_load_yaml_config(config, {"my_new_autogpt_config": "yaml_value"}, *args, **kwargs)
-    
+    config.load_yaml_config = lambda *args, **kwargs: mock_load_yaml_config(
+        config, {"my_new_autogpt_config": "yaml_value"}, *args, **kwargs
+    )
+
     config.load_yaml_config(config_file="mock_command_config.yaml")
     assert config.get_env_or_yaml_config("MY_NEW_AUTOGPT_CONFIG") == expected_value
 
 
-#TODO add test for command line options 
+# TODO add test for command line options

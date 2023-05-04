@@ -1,23 +1,24 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from dotenv import load_dotenv
-from typing import List
+from typing import List, Union
 
 import openai
 import yaml
-from typing import Union
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
 from colorama import Fore
+from dotenv import load_dotenv
 
 from autogpt.singleton import Singleton
 
 
-
-
 def assurelist(value: str) -> List[str]:
     # when the value is required as a list but only one value is provided spliting the value with comma won't work
-    if value is not None and isinstance(value, str):
+    if value is None:
+        return []
+    elif isinstance(value, str):
         return [value]
+    return value
+
 
 class Config(metaclass=Singleton):
     """
@@ -37,25 +38,28 @@ class Config(metaclass=Singleton):
         self.allow_downloads = False
         self.skip_news = False
 
+
         # configuration file
-        self.config_file = os.path.join(os.getcwd(),os.getenv("CONFIG_FILE", "commands_config.yaml"))
+        self.config_file = os.path.join(
+            os.getcwd(), os.getenv("CONFIG_FILE", "commands_config.yaml")
+        )
 
         # Load yaml configration
         if os.path.exists(self.config_file):
             self.yaml_config = self.load_yaml_config(self.config_file)
         else:
-            print(
-            Fore.RED
-            + f"Missing config file. { self.config_file}"
-            + Fore.RESET
-            )
+            print(Fore.RED + f"Missing config file. { self.config_file}" + Fore.RESET)
             exit(1)
 
         # Load environment variables from .env file
         load_dotenv()
 
-        self.command_categories = assurelist(self.get_env_or_yaml_config("COMMAND_CATEGORIES"))
-        self.disabled_command_categories = assurelist(self.get_env_or_yaml_config("DISABLED_COMMAND_CATEGORIES"))
+        self.command_categories = assurelist(
+            self.get_env_or_yaml_config("COMMAND_CATEGORIES")
+        )
+        self.disabled_command_categories = assurelist(
+            self.get_env_or_yaml_config("DISABLED_COMMAND_CATEGORIES")
+        )
 
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
@@ -178,12 +182,14 @@ class Config(metaclass=Singleton):
         else:
             self.plugins_denylist = []
 
-    def load_yaml_config(self, config_file: str = "command_config.yaml") -> Union[dict, list, str]:
+    def load_yaml_config(
+        self, config_file: str = "command_config.yaml"
+    ) -> Union[dict, list, str]:
         # TODO add all the application related config to the yaml file and change the name to config.yaml
-        with open(config_file) as file:
-            config_params = yaml.safe_load(file)
-        return config_params
-
+        if config_file:
+            with open(config_file) as file:
+                config_params = yaml.safe_load(file)
+        return config_params or {}
 
     def get_env_or_yaml_config(self, key: str) -> Union[str, List[str]]:
         # Get the values from  environment variables, .env file, and the YAML configuration file
@@ -195,9 +201,8 @@ class Config(metaclass=Singleton):
         u_key = key.upper()
         if u_key in os.environ and "," in os.getenv(u_key):
             return os.getenv(u_key).split(",")
-        return os.getenv(u_key) or self.yaml_config[key]
 
-
+        return os.getenv(u_key) or self.yaml_config.get(key, None)
 
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:

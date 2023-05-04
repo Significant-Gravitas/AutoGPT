@@ -23,7 +23,9 @@ def workspace(workspace_root: Path) -> Workspace:
 
 
 import pytest
+
 from autogpt.config import Config
+
 
 @pytest.fixture()
 def config(request, mocker: MockerFixture, workspace: Workspace) -> Config:
@@ -32,7 +34,9 @@ def config(request, mocker: MockerFixture, workspace: Workspace) -> Config:
             for key, value in request.param["env_vars"].items():
                 mocker.patch.dict(os.environ, {key: value})
         if "mock_load_dotenv" in request.param:
-            mocker.patch("dotenv.load_dotenv", side_effect=request.param["mock_load_dotenv"])
+            mocker.patch(
+                "dotenv.load_dotenv", side_effect=request.param["mock_load_dotenv"]
+            )
 
     config = Config()
 
