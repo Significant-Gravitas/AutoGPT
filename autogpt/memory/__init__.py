@@ -21,6 +21,13 @@ except ImportError:
     PineconeMemory = None
 
 try:
+    from autogpt.memory.qdrant import QdrantMemory
+
+    supported_memory.append("qdrant")
+except ImportError:
+    QdrantMemory = None
+
+try:
     from autogpt.memory.weaviate import WeaviateMemory
 
     supported_memory.append("weaviate")
@@ -55,6 +62,12 @@ def get_memory(cfg, init=False):
             )
         else:
             memory = RedisMemory(cfg)
+    elif cfg.memory_backend == "qdrant":
+        if not QdrantMemory:
+            print("Error: Qdrant is not installed. Please install qdrant-client to"
+                  " use Qdrant as a memory backend.")
+        else:
+            memory = QdrantMemory(cfg)
     elif cfg.memory_backend == "weaviate":
         if not WeaviateMemory:
             logger.warn(
@@ -93,4 +106,5 @@ __all__ = [
     "NoMemory",
     "MilvusMemory",
     "WeaviateMemory",
+    "Qdrant",
 ]
