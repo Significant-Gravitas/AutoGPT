@@ -138,7 +138,9 @@ To pick the challenge you like, go to the tests/integration/challenges folder an
 
 Here is an example of how to run the memory challenge A and attempt to beat level 3.
 
+```bash
 pytest -s tests/integration/challenges/memory/test_memory_challenge_a.py --level=3
+```
 
 To beat a challenge, you're not allowed to change anything in the tests folder, you have to add code in the autogpt folder
 
