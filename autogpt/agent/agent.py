@@ -162,8 +162,8 @@ class Agent:
                 )
 
                 logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands or "
-                    "'n' to exit program, or enter feedback for "
+                    f"Enter '{cfg.authorise_key}' to authorise command, '{cfg.authorise_key} -N' to run N continuous commands, '{cfg.self_feedback_key}' to run self-feedback commands or "
+                    f"'{cfg.exit_key}' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
                 while True:
@@ -176,7 +176,7 @@ class Agent:
                     if console_input.lower().strip() == cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
-                    elif console_input.lower().strip() == "s":
+                    elif console_input.lower().strip() == cfg.self_feedback_key:
                         logger.typewriter_log(
                             "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
                             Fore.GREEN,
@@ -205,7 +205,7 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             logger.warn(
-                                "Invalid input format. Please enter 'y -n' where n is"
+                                f"Invalid input format. Please enter '{cfg.authorise_key} -n' where n is"
                                 " the number of continuous tasks."
                             )
                             continue

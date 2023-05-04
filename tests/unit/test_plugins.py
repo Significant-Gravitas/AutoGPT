@@ -27,6 +27,7 @@ def mock_config_denylist_allowlist_check():
         plugins_allowlist = ["GoodPlugin"]
         authorise_key = "y"
         exit_key = "n"
+        self_feedback_key = "s"
 
     return MockConfig()
 
