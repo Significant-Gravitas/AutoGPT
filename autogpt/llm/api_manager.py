@@ -3,8 +3,8 @@ from __future__ import annotations
 import openai
 
 from autogpt.config import Config
+from autogpt.llm.modelsinfo import COSTS
 from autogpt.logs import logger
-from autogpt.modelsinfo import COSTS
 from autogpt.singleton import Singleton
 
 
@@ -87,7 +87,7 @@ class ApiManager(metaclass=Singleton):
         Sets the total user-defined budget for API calls.
 
         Args:
-        prompt_tokens (int): The number of tokens used in the prompt.
+        total_budget (float): The total budget for API calls.
         """
         self.total_budget = total_budget
 
