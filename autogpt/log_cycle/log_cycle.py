@@ -12,6 +12,7 @@ PROMPT_SUMMARY_FILE_NAME = "prompt_summary.json"
 SUMMARY_FILE_NAME = "summary.txt"
 SELF_FEEDBACK_FILE_NAME = "self_feedback.txt"
 
+
 class LogCycleHandler:
     """
     A class for logging cycle data.

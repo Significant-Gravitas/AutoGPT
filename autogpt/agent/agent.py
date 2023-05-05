@@ -197,10 +197,7 @@ class Agent:
                             self.config.ai_name,
                             self.created_at,
                             self.cycle_count,
-                            {
-                                "thoughts": thoughts,
-                                "self_feedback": self_feedback_resp
-                            },
+                            {"thoughts": thoughts, "self_feedback": self_feedback_resp},
                             SELF_FEEDBACK_FILE_NAME,
                         )
                         break
