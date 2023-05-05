@@ -3,6 +3,8 @@ import re
 
 from colorama import Fore, Style
 
+import openai
+
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
@@ -56,6 +58,8 @@ def prompt_user() -> AIConfig:
     else:
         try:
             return generate_aiconfig_automatic(user_desire)
+        except openai.error.AuthenticationError:
+            raise
         except Exception as e:
             logger.typewriter_log(
                 "Unable to automatically generate AI Config based on user desire.",
