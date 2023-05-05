@@ -193,13 +193,6 @@ class Agent:
                         )
                         user_input = self_feedback_resp
                         command_name = "self_feedback"
-                        self.log_cycle_handler.log_cycle(
-                            self.config.ai_name,
-                            self.created_at,
-                            self.cycle_count,
-                            {"thoughts": thoughts, "self_feedback": self_feedback_resp},
-                            SELF_FEEDBACK_FILE_NAME,
-                        )
                         break
                     elif console_input.lower().strip() == "":
                         logger.warn("Invalid input format.")
@@ -224,7 +217,13 @@ class Agent:
                         user_input = console_input
                         command_name = "human_feedback"
                         break
-
+                self.log_cycle_handler.log_cycle(
+                    self.config.ai_name,
+                    self.created_at,
+                    self.cycle_count,
+                    {"thoughts": thoughts, "self_feedback": self_feedback_resp},
+                    SELF_FEEDBACK_FILE_NAME,
+                )
                 if user_input == "GENERATE NEXT COMMAND JSON":
                     logger.typewriter_log(
                         "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
