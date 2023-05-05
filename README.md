@@ -1,3 +1,6 @@
+# Closing in favor of Challenges!
+Please check out challenges run in our CI pipeline: https://github.com/Significant-Gravitas/Auto-GPT/tree/master/tests/integration/challenges
+
 # Auto-GPT-Benchmarks
 A set of standardised benchmarks to assess the performance of Auto-GPT.
 This currently uses the OpenAI Evals framework to run the benchmarks.
