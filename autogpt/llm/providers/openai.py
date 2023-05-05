@@ -31,7 +31,7 @@ OPEN_AI_EMBEDDING_MODELS = {
     ),
 }
 
-OPEN_AI_MODELS = {
+OPEN_AI_MODELS: dict[str, ChatModelInfo | EmbeddingModelInfo] = {
     **OPEN_AI_CHAT_MODELS,
     **OPEN_AI_EMBEDDING_MODELS,
 }

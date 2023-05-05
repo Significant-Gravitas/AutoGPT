@@ -5,7 +5,8 @@ from weaviate.util import generate_uuid5
 
 from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
-from autogpt.memory.base import MemoryProviderSingleton
+
+from .base import MemoryProviderSingleton
 
 
 def default_schema(weaviate_index):

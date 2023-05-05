@@ -3,26 +3,28 @@ import abc
 
 from autogpt.singleton import AbstractSingleton
 
+from ..memory_item import MemoryItem
+
 
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
-    def add(self, data):
+    def add(self, document: str):
         """Adds to memory"""
         pass
 
     @abc.abstractmethod
-    def get(self, data):
-        """Gets from memory"""
+    def get(self, query: str) -> MemoryItem | None:
+        """Gets an item from memory based on the query"""
         pass
 
     @abc.abstractmethod
-    def clear(self):
+    def get_relevant(self, query: str, num_relevant=5) -> list[MemoryItem]:
+        """Gets relevant memory items for the query"""
+        pass
+
+    @abc.abstractmethod
+    def clear(self) -> None:
         """Clears memory"""
-        pass
-
-    @abc.abstractmethod
-    def get_relevant(self, data, num_relevant=5):
-        """Gets relevant memory for"""
         pass
 
     @abc.abstractmethod

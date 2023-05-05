@@ -17,8 +17,8 @@ class Config(metaclass=Singleton):
 
     def __init__(self) -> None:
         """Initialize the Config class"""
-        self.workspace_path = None
-        self.file_logger_path = None
+        self.workspace_path: str = None
+        self.file_logger_path: str = None
 
         self.debug_mode = False
         self.continuous_mode = False
@@ -43,9 +43,6 @@ class Config(metaclass=Singleton):
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
-        self.embedding_tokenizer = os.getenv("EMBEDDING_TOKENIZER", "cl100k_base")
-        self.embedding_token_limit = int(os.getenv("EMBEDDING_TOKEN_LIMIT", 8191))
-        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 3000))
         self.browse_spacy_language_model = os.getenv(
             "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
         )
@@ -138,7 +135,7 @@ class Config(metaclass=Singleton):
         self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
-        self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
+        self.memory_backend = os.getenv("MEMORY_BACKEND", "json_file")
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
@@ -234,18 +231,6 @@ class Config(metaclass=Singleton):
     def set_embedding_model(self, value: str) -> None:
         """Set the model to use for creating embeddings."""
         self.embedding_model = value
-
-    def set_embedding_tokenizer(self, value: str) -> None:
-        """Set the tokenizer to use when creating embeddings."""
-        self.embedding_tokenizer = value
-
-    def set_embedding_token_limit(self, value: int) -> None:
-        """Set the token limit for creating embeddings."""
-        self.embedding_token_limit = value
-
-    def set_browse_chunk_max_length(self, value: int) -> None:
-        """Set the browse_website command chunk max length value."""
-        self.browse_chunk_max_length = value
 
     def set_openai_api_key(self, value: str) -> None:
         """Set the OpenAI API key value."""

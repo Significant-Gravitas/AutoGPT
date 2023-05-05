@@ -3,7 +3,7 @@ import pytest
 from autogpt.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import AIConfig, Config
-from autogpt.memory import LocalCache, NoMemory, get_memory
+from autogpt.memory import JSONFileMemory, NoMemory, get_memory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 

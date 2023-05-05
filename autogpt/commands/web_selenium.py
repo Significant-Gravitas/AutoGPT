@@ -53,7 +53,7 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
         return f"Error: {msg}", None
 
     add_header(driver)
-    summary_text = summary.summarize_text(url, text, question, driver)
+    summary_text = summary.summarize_memorize_webpage(url, text, question, driver)
     links = scrape_links_with_selenium(driver, url)
 
     # Limit links to 5

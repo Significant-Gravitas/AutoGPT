@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from autogpt.memory.base import MemoryProviderSingleton
+from .base import MemoryProviderSingleton
 
 
 class NoMemory(MemoryProviderSingleton):

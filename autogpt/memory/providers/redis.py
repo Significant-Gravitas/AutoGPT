@@ -6,26 +6,40 @@ from typing import Any
 import numpy as np
 import redis
 from colorama import Fore, Style
-from redis.commands.search.field import TextField, VectorField
+from redis.commands.json.commands import JSONCommands
+from redis.commands.search.field import Field, TextField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
+from autogpt.config import Config
 from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
-from autogpt.memory.base import MemoryProviderSingleton
 
-SCHEMA = [
-    TextField("data"),
-    VectorField(
-        "embedding",
-        "HNSW",
-        {"TYPE": "FLOAT32", "DIM": 1536, "DISTANCE_METRIC": "COSINE"},
-    ),
-]
+from ..memory_item import MemoryItem
+from ..utils import Embedding, get_embedding
+from .base import MemoryProviderSingleton
 
 
 class RedisMemory(MemoryProviderSingleton):
-    def __init__(self, cfg):
+    cfg: Config
+
+    redis: redis.Redis
+    dimension: int
+    index_name: str
+
+    n_memories: int
+    """Number of items currently in memory"""
+
+    SCHEMA = [
+        TextField("raw_content"),
+        VectorField(
+            "embedding",
+            "HNSW",
+            {"TYPE": "FLOAT32", "DIM": 1536, "DISTANCE_METRIC": "IP"},
+        ),
+    ]
+
+    def __init__(self, cfg: Config):
         """
         Initializes the Redis memory provider.
 
@@ -34,17 +48,19 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: None
         """
+        self.cfg = cfg
+
         redis_host = cfg.redis_host
         redis_port = cfg.redis_port
         redis_password = cfg.redis_password
-        self.dimension = 1536
         self.redis = redis.Redis(
             host=redis_host,
             port=redis_port,
             password=redis_password,
             db=0,  # Cannot be changed
         )
-        self.cfg = cfg
+        self.dimension = 1536
+        self.index_name = cfg.memory_index
 
         # Check redis connection
         try:
@@ -64,20 +80,25 @@ class RedisMemory(MemoryProviderSingleton):
             exit(1)
 
         if cfg.wipe_redis_on_start:
-            self.redis.flushall()
+            self.clear()
         try:
-            self.redis.ft(f"{cfg.memory_index}").create_index(
-                fields=SCHEMA,
+            self.redis.ft(f"{self.index_name}").create_index(
+                fields=self.SCHEMA,
                 definition=IndexDefinition(
-                    prefix=[f"{cfg.memory_index}:"], index_type=IndexType.HASH
+                    prefix=[f"{self.index_name}:"], index_type=IndexType.HASH
                 ),
             )
         except Exception as e:
             logger.warn("Error creating Redis search index: ", e)
-        existing_vec_num = self.redis.get(f"{cfg.memory_index}-vec_num")
-        self.vec_num = int(existing_vec_num.decode("utf-8")) if existing_vec_num else 0
 
-    def add(self, data: str) -> str:
+        n_existing_memories: bytes | None = self.redis.get(
+            f"{self.index_name}-n_memories"
+        )
+        self.n_memories = (
+            int(n_existing_memories.decode("utf-8")) if n_existing_memories else 0
+        )
+
+    def add(self, document: str) -> MemoryItem | None:
         """
         Adds a data point to the memory.
 
@@ -86,20 +107,23 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: Message indicating that the data has been added.
         """
-        if "Command Error:" in data:
-            return ""
-        vector = get_ada_embedding(data)
-        vector = np.array(vector).astype(np.float32).tobytes()
-        data_dict = {b"data": data, "embedding": vector}
+        if "Command Error:" in document:
+            return None
+
+        memory = MemoryItem.from_text(document)
+
+        data_dict = {"raw_content": document, "embedding": memory.e_summary.tobytes()}
+
         pipe = self.redis.pipeline()
-        pipe.hset(f"{self.cfg.memory_index}:{self.vec_num}", mapping=data_dict)
-        _text = (
-            f"Inserting data into memory at index: {self.vec_num}:\n" f"data: {data}"
+        pipe.hset(f"{self.index_name}:{self.n_memories}", mapping=data_dict)
+        logger.debug(
+            f"Inserting data into memory at index: {self.n_memories}:\n"
+            f"data: {document}"
         )
-        self.vec_num += 1
-        pipe.set(f"{self.cfg.memory_index}-vec_num", self.vec_num)
+        self.n_memories += 1
+        pipe.set(f"{self.index_name}-n_memories", self.n_memories)
         pipe.execute()
-        return _text
+        return memory
 
     def get(self, data: str) -> list[Any] | None:
         """
@@ -112,16 +136,7 @@ class RedisMemory(MemoryProviderSingleton):
         """
         return self.get_relevant(data, 1)
 
-    def clear(self) -> str:
-        """
-        Clears the redis server.
-
-        Returns: A message indicating that the memory has been cleared.
-        """
-        self.redis.flushall()
-        return "Obliviated"
-
-    def get_relevant(self, data: str, num_relevant: int = 5) -> list[Any] | None:
+    def get_relevant(self, query: str, num_relevant: int = 5) -> list[Any] | None:
         """
         Returns all the data in the memory that is relevant to the given data.
         Args:
@@ -130,18 +145,18 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: A list of the most relevant data.
         """
-        query_embedding = get_ada_embedding(data)
+        query_embedding = get_embedding(query)
         base_query = f"*=>[KNN {num_relevant} @embedding $vector AS vector_score]"
         query = (
             Query(base_query)
-            .return_fields("data", "vector_score")
+            .return_fields("raw_content", "vector_score")
             .sort_by("vector_score")
             .dialect(2)
         )
-        query_vector = np.array(query_embedding).astype(np.float32).tobytes()
+        query_vector = query_embedding.tobytes()
 
         try:
-            results = self.redis.ft(f"{self.cfg.memory_index}").search(
+            results = self.redis.ft(f"{self.index_name}").search(
                 query, query_params={"vector": query_vector}
             )
         except Exception as e:
@@ -153,4 +168,8 @@ class RedisMemory(MemoryProviderSingleton):
         """
         Returns: The stats of the memory index.
         """
-        return self.redis.ft(f"{self.cfg.memory_index}").info()
+        return self.redis.ft(f"{self.index_name}").info()
+
+    def clear(self) -> None:
+        """Clears the Redis database."""
+        self.redis.flushall()

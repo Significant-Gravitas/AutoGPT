@@ -5,7 +5,7 @@ import sys
 import unittest
 
 try:
-    from autogpt.memory.milvus import MilvusMemory
+    from autogpt.memory.providers import MilvusMemory
 
     def mock_config() -> dict:
         """Mock the config object for testing purposes."""

@@ -5,7 +5,7 @@ import string
 import unittest
 
 from autogpt.config import Config
-from autogpt.memory.milvus import MilvusMemory
+from autogpt.memory.providers import MilvusMemory
 
 try:
 

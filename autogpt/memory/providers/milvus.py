@@ -5,7 +5,8 @@ from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connec
 
 from autogpt.config import Config
 from autogpt.llm import get_ada_embedding
-from autogpt.memory.base import MemoryProviderSingleton
+
+from .base import MemoryProviderSingleton
 
 
 class MilvusMemory(MemoryProviderSingleton):

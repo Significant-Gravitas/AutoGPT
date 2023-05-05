@@ -4,17 +4,44 @@ import functools
 import time
 from itertools import islice
 from typing import List, Optional
+from unittest.mock import patch
 
 import numpy as np
 import openai
 import tiktoken
 from colorama import Fore, Style
-from openai.error import APIError, RateLimitError, Timeout
+from openai.api_resources.abstract.engine_api_resource import EngineAPIResource
+from openai.error import APIError, RateLimitError
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
+from autogpt.llm.providers.openai import OPEN_AI_EMBEDDING_MODELS
 from autogpt.logs import logger
+
+
+def metered(func):
+    """Adds ApiManager metering to functions which make OpenAI API calls"""
+    api_manager = ApiManager()
+
+    def metered_create(*args, **kwargs):
+        response = EngineAPIResource.create(*args, **kwargs)
+        try:
+            api_manager.update_cost(
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+                response.model,
+            )
+        except Exception as err:
+            logger.warn("Failed to update API costs:" + err)
+        return response
+
+    @functools.wraps(func)
+    def metered_func(*args, **kwargs):
+        with patch.object(EngineAPIResource, "create", metered_create):
+            func(*args, **kwargs)
+
+    return metered_func
 
 
 def retry_openai_api(
@@ -106,8 +133,37 @@ def call_ai_function(
     return create_chat_completion(model=model, messages=messages, temperature=0)
 
 
+@retry_openai_api()
+def create_text_completion(
+    prompt: str,
+    model: Optional[str],
+    temperature: Optional[float],
+    max_output_tokens: Optional[int],
+):
+    cfg = Config()
+    if model is None:
+        model = cfg.fast_llm_model
+    if temperature is None:
+        temperature = cfg.temperature
+
+    if cfg.use_azure:
+        kwargs = {"deployment_id": cfg.get_azure_deployment_id_for_model(model)}
+    else:
+        kwargs = {"model": model}
+
+    response = openai.Completion.create(
+        **kwargs,
+        prompt=prompt,
+        temperature=temperature,
+        max_tokens=max_output_tokens,
+        api_key=cfg.openai_api_key,
+    )
+    return response.choices[0].text
+
+
 # Overly simple abstraction until we create something better
 # simple retry mechanism when getting a rate error or a bad gateway
+@retry_openai_api()
 def create_chat_completion(
     messages: List[Message],  # type: ignore
     model: Optional[str] = None,
@@ -129,8 +185,6 @@ def create_chat_completion(
     if temperature is None:
         temperature = cfg.temperature
 
-    num_retries = 10
-    warned_user = False
     logger.debug(
         f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
     )
@@ -151,57 +205,19 @@ def create_chat_completion(
                 return message
     api_manager = ApiManager()
     response = None
-    for attempt in range(num_retries):
-        backoff = 2 ** (attempt + 2)
-        try:
-            if cfg.use_azure:
-                response = api_manager.create_chat_completion(
-                    deployment_id=cfg.get_azure_deployment_id_for_model(model),
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            else:
-                response = api_manager.create_chat_completion(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            break
-        except RateLimitError:
-            logger.debug(
-                f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"
-            )
-            if not warned_user:
-                logger.double_check(
-                    f"Please double check that you have setup a {Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. "
-                    + f"You can read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
-                )
-                warned_user = True
-        except (APIError, Timeout) as e:
-            if e.http_status != 502:
-                raise
-            if attempt == num_retries - 1:
-                raise
-        logger.debug(
-            f"{Fore.RED}Error: ",
-            f"API Bad gateway. Waiting {backoff} seconds...{Fore.RESET}",
-        )
-        time.sleep(backoff)
-    if response is None:
-        logger.typewriter_log(
-            "FAILED TO GET RESPONSE FROM OPENAI",
-            Fore.RED,
-            "Auto-GPT has failed to get a response from OpenAI's services. "
-            + f"Try running Auto-GPT again, and if the problem the persists try running it with `{Fore.CYAN}--debug{Fore.RESET}`.",
-        )
-        logger.double_check()
-        if cfg.debug_mode:
-            raise RuntimeError(f"Failed to get response after {num_retries} retries")
-        else:
-            quit(1)
+
+    if cfg.use_azure:
+        kwargs = {"deployment_id": cfg.get_azure_deployment_id_for_model(model)}
+    else:
+        kwargs = {"model": model}
+
+    response = api_manager.create_chat_completion(
+        **kwargs,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
     resp = response.choices[0].message["content"]
     for plugin in cfg.plugins:
         if not plugin.can_handle_on_response():
@@ -210,7 +226,7 @@ def create_chat_completion(
     return resp
 
 
-def batched(iterable, n):
+def batch(iterable, n):
     """Batch data into tuples of length n. The last batch may be shorter."""
     # batched('ABCDEFG', 3) --> ABC DEF G
     if n < 1:
@@ -220,10 +236,10 @@ def batched(iterable, n):
         yield batch
 
 
-def chunked_tokens(text, tokenizer_name, chunk_length):
-    tokenizer = tiktoken.get_encoding(tokenizer_name)
+def chunked_tokens(text: str, for_model: str, chunk_length: int):
+    tokenizer = tiktoken.encoding_for_model(for_model)
     tokens = tokenizer.encode(text)
-    chunks_iterator = batched(tokens, chunk_length)
+    chunks_iterator = batch(tokens, chunk_length)
     yield from chunks_iterator
 
 
@@ -265,12 +281,14 @@ def create_embedding(
         openai.Embedding: The embedding object.
     """
     cfg = Config()
+    token_limit = OPEN_AI_EMBEDDING_MODELS[cfg.embedding_model].max_tokens
+
     chunk_embeddings = []
     chunk_lengths = []
     for chunk in chunked_tokens(
         text,
-        tokenizer_name=cfg.embedding_tokenizer,
-        chunk_length=cfg.embedding_token_limit,
+        for_model=cfg.embedding_model,
+        chunk_length=token_limit,
     ):
         embedding = openai.Embedding.create(
             input=[chunk],
