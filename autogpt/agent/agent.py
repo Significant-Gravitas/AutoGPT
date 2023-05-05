@@ -11,6 +11,7 @@ from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
+    SELF_FEEDBACK_FILE_NAME,
     LogCycleHandler,
 )
 from autogpt.logs import logger, print_assistant_thoughts
@@ -192,6 +193,16 @@ class Agent:
                         )
                         user_input = self_feedback_resp
                         command_name = "self_feedback"
+                        self.log_cycle_handler.log_cycle(
+                            self.config.ai_name,
+                            self.created_at,
+                            self.cycle_count,
+                            {
+                                "thoughts": thoughts,
+                                "self_feedback": self_feedback_resp
+                            },
+                            SELF_FEEDBACK_FILE_NAME,
+                        )
                         break
                     elif console_input.lower().strip() == "":
                         logger.warn("Invalid input format.")
