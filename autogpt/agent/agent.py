@@ -216,14 +216,15 @@ class Agent:
                     else:
                         user_input = console_input
                         command_name = "human_feedback"
+                        self.log_cycle_handler.log_cycle(
+                            self.config.ai_name,
+                            self.created_at,
+                            self.cycle_count,
+                            user_input,
+                            USER_INPUT_FILE_NAME,
+                        )
                         break
-                self.log_cycle_handler.log_cycle(
-                    self.config.ai_name,
-                    self.created_at,
-                    self.cycle_count,
-                    user_input,
-                    USER_INPUT_FILE_NAME,
-                )                
+              
                 if user_input == "GENERATE NEXT COMMAND JSON":
                     logger.typewriter_log(
                         "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
