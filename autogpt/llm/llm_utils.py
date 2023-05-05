@@ -8,10 +8,12 @@ from unittest.mock import patch
 
 import numpy as np
 import openai
+import openai.api_resources.abstract.engine_api_resource as engine_api_resource
+import openai.util
 import tiktoken
 from colorama import Fore, Style
-from openai.api_resources.abstract.engine_api_resource import EngineAPIResource
 from openai.error import APIError, RateLimitError
+from openai.openai_object import OpenAIObject
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
@@ -24,21 +26,32 @@ def metered(func):
     """Adds ApiManager metering to functions which make OpenAI API calls"""
     api_manager = ApiManager()
 
-    def metered_create(*args, **kwargs):
-        response = EngineAPIResource.create(*args, **kwargs)
+    openai_obj_processor = openai.util.convert_to_openai_object
+
+    def update_usage_with_response(response: OpenAIObject):
         try:
+            usage = response.usage
+            logger.debug(f"Reported usage from call to model {response.model}: {usage}")
             api_manager.update_cost(
                 response.usage.prompt_tokens,
-                response.usage.completion_tokens,
+                response.usage.completion_tokens if "completion_tokens" in usage else 0,
                 response.model,
             )
         except Exception as err:
-            logger.warn("Failed to update API costs:" + err)
-        return response
+            logger.warn(f"Failed to update API costs: {err.__class__.__name__}: {err}")
 
-    @functools.wraps(func)
+    def metering_wrapper(*args, **kwargs):
+        openai_obj = openai_obj_processor(*args, **kwargs)
+        if isinstance(openai_obj, OpenAIObject) and "usage" in openai_obj:
+            update_usage_with_response(openai_obj)
+        return openai_obj
+
     def metered_func(*args, **kwargs):
-        with patch.object(EngineAPIResource, "create", metered_create):
+        with patch.object(
+            engine_api_resource.util,
+            "convert_to_openai_object",
+            side_effect=metering_wrapper,
+        ):
             func(*args, **kwargs)
 
     return metered_func
@@ -133,13 +146,14 @@ def call_ai_function(
     return create_chat_completion(model=model, messages=messages, temperature=0)
 
 
+@metered
 @retry_openai_api()
 def create_text_completion(
     prompt: str,
     model: Optional[str],
     temperature: Optional[float],
     max_output_tokens: Optional[int],
-):
+) -> str:
     cfg = Config()
     if model is None:
         model = cfg.fast_llm_model
@@ -163,6 +177,7 @@ def create_text_completion(
 
 # Overly simple abstraction until we create something better
 # simple retry mechanism when getting a rate error or a bad gateway
+@metered
 @retry_openai_api()
 def create_chat_completion(
     messages: List[Message],  # type: ignore

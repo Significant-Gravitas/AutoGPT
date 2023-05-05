@@ -65,7 +65,7 @@ class ApiManager(metaclass=Singleton):
         self.update_cost(prompt_tokens, completion_tokens, model)
         return response
 
-    def update_cost(self, prompt_tokens, completion_tokens, model):
+    def update_cost(self, prompt_tokens, completion_tokens, model: str):
         """
         Update the total cost, prompt tokens, and completion tokens.
 
@@ -74,6 +74,8 @@ class ApiManager(metaclass=Singleton):
         completion_tokens (int): The number of tokens used in the completion.
         model (str): The model used for the API call.
         """
+        model = model[:-3] if model.endswith("-v2") else model
+
         self.total_prompt_tokens += prompt_tokens
         self.total_completion_tokens += completion_tokens
         self.total_cost += (
