@@ -21,7 +21,7 @@ Links to memory backends
 - [Milvus](https://milvus.io/) &ndash; [self-hosted](https://milvus.io/docs), or managed with [Zilliz Cloud](https://zilliz.com/)
 - [Redis](https://redis.io)
 - [Weaviate](https://weaviate.io)
-- [qdrant](https://cloud.qdrant.io/)
+- [Qdrant](https://qdrant.tech/) [Self-hosted](https://qdrant.tech/), or [Qdrant Cloud](https://cloud.qdrant.io/)
 
 ### Redis Setup
 
@@ -69,7 +69,7 @@ Links to memory backends
 In the `.env` file set:
 
 - `QDRANT_API_KEY`
-- `QDRANT_HOST` (example: `468c23dc-b48c-4285-bed0-75f94e7d890c.us-east-1-0.aws.cloud.qdrant.io`)
+- `QDRANT_HOST` (example: `XXXXX-XXXX-XXXX-XXXX-XXXXXXXXX.us-east-1-0.aws.cloud.qdrant.io`)
 - `QDRANT_COLLECTION_NAME`
 
 ### 🌲 Pinecone API Key Setup
