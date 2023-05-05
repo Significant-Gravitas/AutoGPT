@@ -25,8 +25,7 @@ class Logger(metaclass=Singleton):
         # create log directory if it doesn't exist
         this_files_dir_path = os.path.dirname(__file__)
         log_dir = os.path.join(this_files_dir_path, "../logs")
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        os.makedirs(log_dir, exist_ok=True)
 
         log_file = "activity.log"
         error_file = "error.log"
