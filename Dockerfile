@@ -29,6 +29,9 @@ FROM autogpt-base as autogpt-dev
 RUN pip install --no-cache-dir -r requirements.txt
 WORKDIR /app
 ONBUILD COPY . ./
+ONBUILD ENV CI=true
+ONBUILD RUN pytest
+ONBUILD ENV CI=false
 
 # release build -> include bare minimum
 FROM autogpt-base as autogpt-release
