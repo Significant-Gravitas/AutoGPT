@@ -224,7 +224,7 @@ class Agent:
                             USER_INPUT_FILE_NAME,
                         )
                         break
-              
+
                 if user_input == "GENERATE NEXT COMMAND JSON":
                     logger.typewriter_log(
                         "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
