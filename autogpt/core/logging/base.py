@@ -1,4 +1,6 @@
 import abc
+from enum import Enum
+import dataclasses
 class LogFormat(Enum):
   NONE       = 0
   MARKDOWN   = 1
