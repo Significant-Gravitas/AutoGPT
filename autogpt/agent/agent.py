@@ -1,15 +1,22 @@
+from datetime import datetime
+
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
-from autogpt.chat import chat_with_ai, create_chat_message
 from autogpt.config import Config
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
-from autogpt.json_utils.utilities import validate_json
-from autogpt.llm_utils import create_chat_completion
+from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
+from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
+from autogpt.llm.token_counter import count_string_tokens
+from autogpt.log_cycle.log_cycle import (
+    FULL_MESSAGE_HISTORY_FILE_NAME,
+    NEXT_ACTION_FILE_NAME,
+    LogCycleHandler,
+)
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
-from autogpt.utils import clean_input, send_chat_message_to_user
+from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
 
 
@@ -57,6 +64,10 @@ class Agent:
         cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
+        self.summary_memory = (
+            "I was created."  # Initial memory necessary to avoid hallucination
+        )
+        self.last_memory_index = 0
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
         self.command_registry = command_registry
@@ -64,31 +75,38 @@ class Agent:
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
+        self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.cycle_count = 0
+        self.log_cycle_handler = LogCycleHandler()
 
     def start_interaction_loop(self):
         # Interaction Loop
         cfg = Config()
-        loop_count = 0
+        self.cycle_count = 0
         command_name = None
         arguments = None
         user_input = ""
 
         while True:
             # Discontinue if continuous limit is reached
-            loop_count += 1
+            self.cycle_count += 1
+            self.log_cycle_handler.log_count_within_cycle = 0
+            self.log_cycle_handler.log_cycle(
+                self.config.ai_name,
+                self.created_at,
+                self.cycle_count,
+                self.full_message_history,
+                FULL_MESSAGE_HISTORY_FILE_NAME,
+            )
             if (
                 cfg.continuous_mode
                 and cfg.continuous_limit > 0
-                and loop_count > cfg.continuous_limit
+                and self.cycle_count > cfg.continuous_limit
             ):
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
-                send_chat_message_to_user(
-                    f"Continuous Limit Reached: \n {cfg.continuous_limit}"
-                )
                 break
-            send_chat_message_to_user("Thinking... \n")
             # Send message to AI, get response
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
@@ -104,11 +122,11 @@ class Agent:
             for plugin in cfg.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
-                assistant_reply_json = plugin.post_planning(self, assistant_reply_json)
+                assistant_reply_json = plugin.post_planning(assistant_reply_json)
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
-                validate_json(assistant_reply_json, "llm_response_format_1")
+                validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
@@ -118,35 +136,36 @@ class Agent:
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
 
-                    send_chat_message_to_user("Thinking... \n")
                     arguments = self._resolve_pathlike_command_args(arguments)
 
                 except Exception as e:
                     logger.error("Error: \n", str(e))
+            self.log_cycle_handler.log_cycle(
+                self.config.ai_name,
+                self.created_at,
+                self.cycle_count,
+                assistant_reply_json,
+                NEXT_ACTION_FILE_NAME,
+            )
 
             if not cfg.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 self.user_input = ""
-                send_chat_message_to_user(
-                    "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
-                    f"ARGUMENTS = {arguments}"
-                )
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
                     f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
                     f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
-                print(
+
+                logger.info(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands"
                     "'n' to exit program, or enter feedback for "
-                    f"{self.ai_name}...",
-                    flush=True,
+                    f"{self.ai_name}..."
                 )
                 while True:
-                    console_input = ""
                     if cfg.chat_messages_enabled:
                         console_input = clean_input("Waiting for your response...")
                     else:
@@ -177,7 +196,7 @@ class Agent:
                             user_input = self_feedback_resp
                         break
                     elif console_input.lower().strip() == "":
-                        print("Invalid input format.")
+                        logger.warn("Invalid input format.")
                         continue
                     elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
                         try:
@@ -186,8 +205,8 @@ class Agent:
                             )
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
-                            print(
-                                f"Invalid input format. Please enter '{cfg.authorise_key} -N' where N is"
+                            logger.warn(
+                                "Invalid input format. Please enter 'y -n' where n is"
                                 " the number of continuous tasks."
                             )
                             continue
@@ -207,16 +226,10 @@ class Agent:
                         "",
                     )
                 elif user_input == "EXIT":
-                    send_chat_message_to_user("Exiting...")
-                    print("Exiting...", flush=True)
+                    logger.info("Exiting...")
                     break
             else:
                 # Print command
-                send_chat_message_to_user(
-                    "NEXT ACTION: \n " + f"COMMAND = {command_name} \n "
-                    f"ARGUMENTS = {arguments}"
-                )
-
                 logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
@@ -246,19 +259,22 @@ class Agent:
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
 
+                result_tlength = count_string_tokens(
+                    str(command_result), cfg.fast_llm_model
+                )
+                memory_tlength = count_string_tokens(
+                    str(self.summary_memory), cfg.fast_llm_model
+                )
+                if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
+                    result = f"Failure: command {command_name} returned too much output. \
+                        Do not execute this command again with the same arguments."
+
                 for plugin in cfg.plugins:
                     if not plugin.can_handle_post_command():
                         continue
                     result = plugin.post_command(command_name, result)
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
-            memory_to_add = (
-                f"Assistant Reply: {assistant_reply} "
-                f"\nResult: {result} "
-                f"\nHuman Feedback: {user_input} "
-            )
-
-            self.memory.add(memory_to_add)
 
             # Check if there's a result from the command append it to the message
             # history

@@ -1,7 +1,7 @@
 import pinecone
 from colorama import Fore, Style
 
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton
 
@@ -38,6 +38,9 @@ class PineconeMemory(MemoryProviderSingleton):
             exit(1)
 
         if table_name not in pinecone.list_indexes():
+            logger.typewriter_log(
+                "Connecting Pinecone. This may take some time...", Fore.MAGENTA, ""
+            )
             pinecone.create_index(
                 table_name, dimension=dimension, metric=metric, pod_type=pod_type
             )

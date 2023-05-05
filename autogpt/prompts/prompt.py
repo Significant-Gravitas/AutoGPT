@@ -1,8 +1,8 @@
 from colorama import Fore
 
-from autogpt.api_manager import ApiManager
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
+from autogpt.llm import ApiManager
 from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import prompt_user
@@ -40,15 +40,6 @@ def build_default_prompt_generator() -> PromptGenerator:
     prompt_generator.add_constraint(
         'Exclusively use the commands listed in double quotes e.g. "command name"'
     )
-
-    # Define the command list
-    commands = [
-        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
-    ]
-
-    # Add commands to the PromptGenerator object
-    for command_label, command_name, args in commands:
-        prompt_generator.add_command(command_label, command_name, args)
 
     # Add resources to the PromptGenerator object
     prompt_generator.add_resource(
