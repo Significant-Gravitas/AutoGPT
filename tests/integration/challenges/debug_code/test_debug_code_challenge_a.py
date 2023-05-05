@@ -1,5 +1,6 @@
 import contextlib
 from functools import wraps
+import subprocess
 from typing import Generator
 
 import pytest
@@ -40,7 +41,7 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 
 
 # @pytest.skip("Nobody beat this challenge yet")
-# @pytest.mark.vcr
+@pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)
 def test_debug_code_challenge_a(
@@ -54,7 +55,8 @@ def test_debug_code_challenge_a(
     """
 
     # monkeypatch.setattr(docker, 'from_env', lambda: docker_client)
-    client = docker.from_env()
+    client = subprocess.run(["docker.from_env()"], shell=True, capture_output=True)
+    #client = docker.from_env()
 
     file_path = str(create_code_agent.workspace.get_path("code.py"))
     write_to_file(file_path, CODE)
