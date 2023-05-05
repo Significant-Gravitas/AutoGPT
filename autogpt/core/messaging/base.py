@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from enum import Enum
+from enum import Enum, StrEnum
 import dataclasses
 from typing import Any, List, Callable, Union
 
@@ -8,7 +8,7 @@ class MessageCategory(Enum):
     USER_PROMPT = 1
 
 
-class Role(enum.StrEnum):
+class Role(StrEnum):
     USER = "user"
     SYSTEM = "system"
     ASSISTANT = "assistant"
