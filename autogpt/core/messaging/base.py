@@ -7,9 +7,16 @@ class MessageCategory(Enum):
     USER_INPUT = 0
     USER_PROMPT = 1
 
+
+class Role(enum.StrEnum):
+    USER = "user"
+    SYSTEM = "system"
+    ASSISTANT = "assistant"
+
+
 @dataclasses.dataclass
 class Message(ABC):  # ABC should be within parentheses
-    sender: Any  # Use Any to allow any type of sender
+    sender: Role  # Use Any to allow any type of sender
     message: str
     kind_of_message: MessageCategory
 
