@@ -1,12 +1,12 @@
 import abc
 import importlib
 import inspect
-from typing import Any, Callable, Optional, Tuple, Dict, Boolean
+from typing import Any, Callable, Optional, Tuple, Dict
 from dataclasses import dataclass
 
 @dataclass
 class CommandResult:
-    ok: Boolean
+    ok: bool
     message: str
 
 class Command(abc.ABC):
@@ -24,7 +24,7 @@ class Command(abc.ABC):
 		method: Callable[..., Any],
 		signature: str = "",
 		enabled: bool = True,
-		disabled_reason: Optional[str] = None,
+		disabled_reason: Optional[str] = None
 	):
         self.name = name
         self.description = description
@@ -35,7 +35,7 @@ class Command(abc.ABC):
 
     def __call__(self, *args, **kwargs) -> CommandResult:
         if not self.enabled:
-            return f"Command '{self.name}' is disabled: {self.disabled_reason}"
+            return CommandResult(False, f"Command '{self.name}' is disabled: {self.disabled_reason}")
         
         args, kwargs = self.__pre_call__(*args, **kwargs)
         
@@ -91,7 +91,7 @@ class CommandRegistry(abc.ABC):
             return command_result
             
         except Exception as e:
-           return f"Error: {str(e)}"
+            return CommandResult(False, f"Error: {str(e)}")
         
         
     def import_commands(self, module_name: str) -> None:
