@@ -1,0 +1,27 @@
+{
+    "version": "",
+    "name": "CMakeLists.txt Generator",
+    "description": "This wizard will help you generate a CMakeLists.txt file for your project.",
+    "questions": [
+        {
+            "type": "text",
+            "name": "version",
+            "message": "Enter the version number for your project:"
+        },
+        {
+            "type": "text",
+            "name": "project",
+            "message": "Enter the name of your project:"
+        },
+        {
+            "type": "text",
+            "name": "binary",
+            "message": "Enter the name of your binary executable:"
+        },
+        {
+            "type": "text",
+            "name": "sources",
+            "message": "Enter the name of your source files, separated by spaces:"
+        }
+    ]
+}

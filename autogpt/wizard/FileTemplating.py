@@ -1,6 +1,8 @@
+
+import os
+
 from jinja2 import Environment, FileSystemLoader
 # from Cheetah.Template import Template as CheetahTemplate
-import os
 
 class TemplateAdapter:
     def __init__(self, template_path_or_string, template_type='jinja2'):
@@ -29,12 +31,5 @@ class TemplateAdapter:
         else:
             raise ValueError('Invalid template type: {}'.format(self.template_type))
 
-# Using a file-based Jinja2 template
-template_path = 'cmakelists.txt.template'
-context = {'version':'1.0.0','project': 'Demo','binary':'myDemo','sources':'main.cxx'}
-
-adapter = TemplateAdapter(template_path, template_type='jinja2')
-output = adapter.render(context)
-print(output)  
 
 
