@@ -1,5 +1,7 @@
 from colorama import Fore
 
+import platform
+import distro
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.llm import ApiManager
@@ -7,6 +9,7 @@ from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import prompt_user
 from autogpt.utils import clean_input
+from typing import Any, Optional
 
 CFG = Config()
 

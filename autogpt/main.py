@@ -12,7 +12,7 @@ from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.plugins import scan_plugins
-from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
+from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config , construct_full_prompt
 from autogpt.utils import (
     get_current_git_branch,
     get_latest_bulletin,
