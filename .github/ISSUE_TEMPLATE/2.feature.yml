@@ -27,3 +27,12 @@ body:
     attributes:
       label: Motivation 🔦
       description: What are you trying to accomplish? How has the lack of this feature affected you? Providing context helps us come up with a solution that is more useful in the real world.
+  - type: textarea
+    attributes:
+      label: Additional context 📖
+      description: Add any other context or screenshots about the feature request here.
+  - type: textarea
+    attributes:
+      label: Environment 🌍
+      description: Please provide the following information
+      
