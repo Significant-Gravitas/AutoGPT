@@ -12,6 +12,7 @@ from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     SELF_FEEDBACK_FILE_NAME,
+    PROMPT_FEEDBACK_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
@@ -198,7 +199,14 @@ class Agent:
                             self.config.ai_name,
                             self.created_at,
                             self.cycle_count,
-                            {"thoughts": thoughts, "self_feedback": self_feedback_resp},
+                            thoughts,
+                            PROMPT_FEEDBACK_FILE_NAME,
+                        )
+                        self.log_cycle_handler.log_cycle(
+                            self.config.ai_name,
+                            self.created_at,
+                            self.cycle_count,
+                            self_feedback_resp,
                             SELF_FEEDBACK_FILE_NAME,
                         )
                         break
