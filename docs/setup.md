@@ -56,7 +56,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
               REDIS_HOST: ${REDIS_HOST:-redis}
             profiles: ["exclude-from-up"]
             volumes:
-              - ./auto_gpt_workspace:/app/auto_gpt_workspace
+              - ./auto_gpt_workspace:/app/autogpt/auto_gpt_workspace
               - ./data:/app/data
               ## allow auto-gpt to write logs to disk
               - ./logs:/app/logs
