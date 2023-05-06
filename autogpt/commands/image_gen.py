@@ -14,7 +14,7 @@ from autogpt.logs import logger
 CFG = Config()
 
 
-@command("generate_image", "Generate Image", '"prompt": "<prompt>"', CFG.image_provider)
+@command("generate_image", "Generate an image", '"prompt": "<prompt>"', CFG.image_provider)
 def generate_image(prompt: str, size: int = 256) -> str:
     """Generate an image from a prompt.
 

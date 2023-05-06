@@ -2,7 +2,7 @@ from datetime import datetime
 
 from colorama import Fore, Style
 
-from autogpt.app import execute_command, get_command
+from autogpt.app import execute_command, get_command, get_command_speech
 from autogpt.config import Config
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
@@ -135,7 +135,8 @@ class Agent:
                     )
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
-                        say_text(f"I want to execute {command_name}")
+                        speech = get_command_speech(command_name)
+                        say_text(speech)
 
                     arguments = self._resolve_pathlike_command_args(arguments)
 

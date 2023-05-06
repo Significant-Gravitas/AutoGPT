@@ -143,7 +143,7 @@ def split_file(
         start += max_length - overlap
 
 
-@command("read_file", "Read file", '"filename": "<filename>"')
+@command("read_file", "Read a file", '"filename": "<filename>"')
 def read_file(filename: str) -> str:
     """Read a file and return the contents
 
@@ -196,7 +196,7 @@ def ingest_file(
         logger.info(f"Error while ingesting file '{filename}': {err}")
 
 
-@command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
+@command("write_to_file", "Write to a file", '"filename": "<filename>", "text": "<text>"')
 def write_to_file(filename: str, text: str) -> str:
     """Write text to a file
 
@@ -222,7 +222,7 @@ def write_to_file(filename: str, text: str) -> str:
 
 
 @command(
-    "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
+    "append_to_file", "Append to a file", '"filename": "<filename>", "text": "<text>"'
 )
 def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
     """Append text to a file
@@ -251,7 +251,7 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
         return f"Error: {err}"
 
 
-@command("delete_file", "Delete file", '"filename": "<filename>"')
+@command("delete_file", "Delete a file", '"filename": "<filename>"')
 def delete_file(filename: str) -> str:
     """Delete a file
 
@@ -271,7 +271,7 @@ def delete_file(filename: str) -> str:
         return f"Error: {err}"
 
 
-@command("list_files", "List Files in Directory", '"directory": "<directory>"')
+@command("list_files", "List Files in a directory", '"directory": "<directory>"')
 def list_files(directory: str) -> list[str]:
     """lists files in a directory recursively
 
@@ -297,7 +297,7 @@ def list_files(directory: str) -> list[str]:
 
 @command(
     "download_file",
-    "Download File",
+    "Download a file",
     '"url": "<url>", "filename": "<filename>"',
     CFG.allow_downloads,
     "Error: You do not have user authorization to download files locally.",

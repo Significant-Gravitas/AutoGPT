@@ -9,7 +9,7 @@ from autogpt.llm import call_ai_function
 
 @command(
     "write_tests",
-    "Write Tests",
+    "Write test cases",
     '"code": "<full_code_string>", "focus": "<list_of_focus_areas>"',
 )
 def write_tests(code: str, focus: list[str]) -> str:

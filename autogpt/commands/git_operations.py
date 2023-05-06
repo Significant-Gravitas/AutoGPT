@@ -10,7 +10,7 @@ CFG = Config()
 
 @command(
     "clone_repository",
-    "Clone Repository",
+    "Clone a Git repository",
     '"url": "<repository_url>", "clone_path": "<clone_path>"',
     CFG.github_username and CFG.github_api_key,
     "Configure github_username and github_api_key.",

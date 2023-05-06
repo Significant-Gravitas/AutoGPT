@@ -74,6 +74,29 @@ def get_command(response_json: Dict):
         return "Error:", str(e)
 
 
+
+
+def get_command_speech(
+    command_name: str
+):
+    try:
+        cmd = CommandRegistry().commands.get(command_name)
+        if cmd:
+            return "I'll need permission to " + cmd.description
+        elif command_name == "evaluate_code":
+            return "I'll need permission to evaluate code"
+        elif command_name == "memory_add":
+            return "I'll need permission to add more memory"
+        elif command_name == "task_complete":
+            return "I'll need permission to shut down"
+        elif command_name == 'do_nothing':
+            return "I'll need some time to think about this"
+        else:
+            return "I'll need to investigate and determine what went wrong"
+    # All errors, return "Error: + error message"
+    except Exception as e:
+        return "Error: " + str(e)
+
 def map_command_synonyms(command_name: str):
     """Takes the original command name given by the AI, and checks if the
     string matches a list of common/known hallucinations

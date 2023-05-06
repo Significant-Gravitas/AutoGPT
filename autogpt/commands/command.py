@@ -51,6 +51,19 @@ class CommandRegistry:
 
     def __init__(self):
         self.commands = {}
+        # Create a CommandRegistry instance and scan default folder
+        self.import_commands("autogpt.commands.analyze_code")
+        self.import_commands("autogpt.commands.audio_text")
+        self.import_commands("autogpt.commands.execute_code")
+        self.import_commands("autogpt.commands.file_operations")
+        self.import_commands("autogpt.commands.git_operations")
+        self.import_commands("autogpt.commands.google_search")
+        self.import_commands("autogpt.commands.image_gen")
+        self.import_commands("autogpt.commands.improve_code")
+        self.import_commands("autogpt.commands.twitter")
+        self.import_commands("autogpt.commands.web_selenium")
+        self.import_commands("autogpt.commands.write_tests")
+        self.import_commands("autogpt.app")
 
     def _import_module(self, module_name: str) -> Any:
         return importlib.import_module(module_name)
