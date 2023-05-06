@@ -35,6 +35,7 @@ import datetime
 import uuid
 
 from autogpt.core.agent.agent_model import AgentModel
+from autogpt.core.agent_team import AgentTeam
 from pathlib import Path
 
 SAVE_FILE = Path.cwd() / "ai_settings.yaml"
@@ -79,7 +80,12 @@ class Project:
             Checks if the given configuration parameters are valid for loading a Project object.
     """
 
-    def __init__(self, project_name: str, 
+    NOT_SERIALIZE = ['agent_team',
+                     'anoter_attribute'
+                     ]
+
+    def __init__(self, 
+                 project_name: str, 
                  project_budget: float, 
                  lead_agent: AgentModel,
                  delegated_agents: List[AgentModel] = [],
@@ -107,7 +113,6 @@ class Project:
             team_name (str, optional): The name of the team. Defaults to None.
         """
         self.version = version
-        self.uniq_id = str(uuid.uuid4())
         self.project_name = project_name
         self.project_budget = project_budget
         self.project_memory = project_memory
@@ -117,33 +122,11 @@ class Project:
         self.project_log_env = project_log_env
 
         team_name  = team_name or project_name
+        self.uniq_id = self._generate_uniqid()
         self.agent_team = AgentTeam(team_name = team_name,
                                     lead_agent = lead_agent,
                                     delegated_agents = delegated_agents)
 
-    #saving in Yaml
-    def __str__(self) -> str:
-        """
-        Returns a string representation of the Project object.
-
-        Returns:
-            str_representation (str): A string representation of the Project object.
-        """
-        return str(self.to_dict())
-    
-    def to_dict(self) -> dict:
-        """
-        Converts the Project object to a dictionary representation.
-
-        Returns:
-            dict_representation (dict): A dictionary representation of the Project object.
-        """
-        dict_representation = {
-            "project_name": self.project_name,
-            "project_budget": self.project_budget,
-            'agent_team' : self.agent_team.to_dict() 
-            }
-        return dict_representation
 
     @classmethod
     def load(cls, config_params: dict) -> "Project":
@@ -231,28 +214,37 @@ class Project:
                 if i != project_position_number :
                     shutil.rmtree(current_project_foldername, ignore_errors = True)
                     createdir = True  
-                        
-            
-            # lead_agent_dict = self.lead_agent.save()
-            # delegated_agents = [agent.save() for agent in self.delegated_agents]
-            
-            # project_dict = {
-            #     "project_name": self.project_name,
-            #     "project_budget": self.project_budget,
-            #     "lead_agent": lead_agent_dict,
-            #     "delegated_agents": delegated_agents
-            # }
-            new_path = os.path.join(ProjectsBroker.PROJECT_DIR, sub_folder_name , 'settings.yaml')
 
-            project_dict = self.to_dict()
+            new_path = os.path.join(ProjectsBroker.PROJECT_DIR, sub_folder_name , 'settings.yaml')
 
             # TODO only create a dir not error got raised
             if createdir == True : 
                 project_broker.create_project_dir(project_name = sub_folder_name)
-            with open(new_path, "w", encoding="utf-8") as file:
-                yaml.dump(project_dict, file, allow_unicode=True)
+            
+            # TODO  Prior rearch
+            # with open(new_path, "w", encoding="utf-8") as file:
+                # yaml.dump(self.to_dict(), file, allow_unicode=True)
+        
+            save_dict = {}
+            for key, value in self.__dict__.items():
+                
 
-            return self
+                if hasattr(self, f"_save_attribute_{key}"):
+                    new_value = getattr(self, f"_save_attribute_{key}")(value)
+                elif hasattr(self, f"_save_n_load_attribute_{key}"):
+                    new_value =  getattr(self, f"_sav_n_load_attribute_{key}")(value)
+                else:
+                    new_value = value
+
+                if key in self.NOT_SERIALIZE :  
+                    continue
+                else : 
+                    save_dict[key] = new_value
+
+            with open(new_path, "w", encoding="utf-8") as file:
+                     yaml.dump(save_dict, file, allow_unicode=True)
+
+        return self
     
 
     def get_lead(self) -> AgentModel:
@@ -317,91 +309,36 @@ class Project:
     
     # A class to generate UUID so plugin ay overid it 
     # https://github.com/Significant-Gravitas/Auto-GPT/discussions/3392#step-2-discussed-features
-    def generate_uniqid(self) -> uuid : 
+    def _generate_uniqid(self) -> uuid : 
         return str(uuid.uuid4())
         
 
 
+    # #saving in Yaml
+    # def __str__(self) -> str:
+    #     """
+    #     Returns a string representation of the Project object.
 
-# NOTE : Keep it simple or set a long term structure (Pain in the ass)    
-# NOTE : Not seing it as very useful    
-class AgentTeam:
-    """
-    A class representing a team of agents for anproject.
-
-    Attributes:
-        team_name (str): The name of the team.
-        lead_agent (AgentModel): The lead agent for the team.
-        delegated_agents (List[AgentModel]): A list of delegated agents for the team.
-
-    Methods:
-        __init__(self, team_name: str, lead_agent: AgentModel, delegated_agents: List[AgentModel])
-            Initializes a new AgentTeam object with the given parameters.
-        to_dict(self) -> dict
-            Converts the AgentTeam object to a dictionary representation.
-
-    """
-    def __init__(self, team_name, lead_agent, delegated_agents):
-        """
-        Initializes a new AgentTeam object with the given parameters.
-
-        Args:
-            team_name (str): The name of the team.
-            lead_agent (AgentModel): The lead agent for the team.
-            delegated_agents (List[AgentModel]): A list of delegated agents for the team.
-        """
-        
-        self.team_name = team_name
-        self.lead_agent = lead_agent
-        self.delegated_agents = delegated_agents
-        
-        # CREATE A LIST OF AGENT IF EVER TO BE USED 
-        # NOT PUBLICLY AVAILABLE AS DEEMED DANGEROUS
-        self._all_agent = []
-        self._all_agent.append(lead_agent)
-        for agent in delegated_agents :
-            self._all_agent.append(agent)
-
-    def to_dict(self) -> dict : 
-        """
-        Converts the AgentTeam object to a dictionary representation.
-
-        Returns:
-            dict_representation (dict): A dictionary representation of the AgentTeam object.
-        """
-        lead_agent_dict = self.lead_agent.to_dict() 
-
-        delegated_agents = []
-        for agent in self.delegated_agents:
-            agent_dict = agent.to_dict() 
-            delegated_agents.append(agent_dict)
-
-        return  {
-            'team_name' : self.team_name,
-            'lead_agent' : lead_agent_dict,
-            'delegated_agents' : delegated_agents
-        }
+    #     Returns:
+    #         str_representation (str): A string representation of the Project object.
+    #     """
+    #     return str(self.to_dict())
     
-# TODO : test & migrate to this function
-def object_to_dict(obj):
-    obj_dict = {}
-    for key in dir(obj):
-        if not key.startswith('__'):
-            value = getattr(obj, key)
-            if not callable(value):
-                if isinstance(value, object):
-                    obj_dict[key] = object_to_dict(value)
-                elif isinstance(value, list):
-                    obj_dict[key] = []
-                    for item in value:
-                        if isinstance(item, object):
-                            obj_dict[key].append(object_to_dict(item))
-                        else:
-                            obj_dict[key].append(item)
-                else:
-                    obj_dict[key] = value
-    return obj_dict
+    # def to_dict(self) -> dict:
+    #     """
+    #     Converts the Project object to a dictionary representation.
 
-
+    #     Returns:
+    #         dict_representation (dict): A dictionary representation of the Project object.
+    #     """
+    #     dict_representation = {
+    #         "project_name": self.project_name,
+    #         "project_budget": self.project_budget,
+    #         'agent_team' : self.agent_team.to_dict() 
+    #         }
+    #     return dict_representation
     
 
+    def _save_attribute_agent_team(self , value) :
+        
+        self.agent_team.save()

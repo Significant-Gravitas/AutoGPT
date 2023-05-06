@@ -44,6 +44,18 @@ from autogpt.singleton import AbstractSingleton
 from autogpt.core.project import Project
 from autogpt.core.agent.agent_model import AgentModel
 
+import abc
+from autogpt.core.budget import BudgetManager
+from autogpt.core.command import CommandRegistry
+from autogpt.core.configuration import Configuration
+from autogpt.core.llm import LanguageModel
+from autogpt.core.logging import Logger
+from autogpt.core.memory import MemoryBackend
+from autogpt.core.messaging import MessageBroker
+from autogpt.core.planning import Planner
+from autogpt.core.plugin import PluginManager
+from autogpt.core.workspace import Workspace
+
 # @TODO MOVE to .env
 SAVE_FILE = Path.cwd() / "ai_settings.yaml"
 PROJECT_DIR = "autogpt/projects"
@@ -79,24 +91,59 @@ class ProjectsBroker(AbstractSingleton):
     PROJECT_DIR = PROJECT_DIR
     MAX_NB_PROJECT = MAX_NB_PROJECT
     AUTOGPT_VERSION = 'X.Y.Z' 
-    def __init__(self,  
-                 config_file: str = None,
-                 do_not_load : bool = False # TODO Deprecated-Project
-                 ) -> None:
-        """
-        Initializes a ProjectConfigBroker instance with the specified project number and config file.
+    # def __init__(self,  
+    #              config_file: str = None,
+    #              do_not_load : bool = False # TODO Deprecated-Project
+    #              ) -> None:
+    #     """
+    #     Initializes a ProjectConfigBroker instance with the specified project number and config file.
 
-        Args:
-            config_file (str, optional): The path to the config yaml file. Defaults to None.
-        """
-        if not config_file == None or not hasattr(self, '_config_file') or self._config_file is None:
-            self._config_file = config_file
+    #     Args:
+    #         config_file (str, optional): The path to the config yaml file. Defaults to None.
+    #     """
+    #     # TODO Project-deprecated
+    #     if not config_file == None or not hasattr(self, '_config_file') or self._config_file is None:
+    #         self._config_file = config_file
 
+    #     if(not hasattr(self, '_projects') or  self._projects == [] ) :
+    #         self._current_project_position = -1
+    #         self._projects = []
+    #         if not do_not_load :
+    #             self.load()
+
+    # Only keep global configurations to __init__(Logger ? Plugin ? ...)
+    def __init__(self,
+            configuration: Configuration,
+            logger: Logger,
+            budget_manager: BudgetManager,
+            command_registry: CommandRegistry,
+            language_model: LanguageModel,
+            memory_backend: MemoryBackend,
+            message_broker: MessageBroker,
+            planner: Planner,
+            plugin_manager: PluginManager,
+            workspace: Workspace,
+    ):
         if(not hasattr(self, '_projects') or  self._projects == [] ) :
             self._current_project_position = -1
             self._projects = []
-            if not do_not_load :
-                self.load()
+      
+        self.configuration = configuration
+        self.logger = logger
+
+        self.budget_manager = budget_manager
+        self.command_registry = command_registry
+        self.language_model = language_model
+        self.memory_backend = memory_backend
+        self.message_broker = message_broker
+        self.planner = planner
+        self.plugin_manager = plugin_manager
+        self.workspace = workspace
+
+    def run(self) -> ProjectsBroker :
+      # Given current new_main.py limitation this is dirty , either init or run 
+        agent = AgentModel()
+        agent.run()
 
     def load(self) -> list:
         """
@@ -109,7 +156,6 @@ class ProjectsBroker(AbstractSingleton):
             FileNotFoundError: If the specified config file does not exist.
             Exception: If no project folders are found.
         """
-
         self._projects = []
         projectfolder_list = ProjectsBroker.get_project_folder_list()
         if not projectfolder_list:
@@ -190,12 +236,12 @@ class ProjectsBroker(AbstractSingleton):
 
         project_name = lead_agent.ai_name # TODO : Allow to give a project MIUST BE ALPHANUMERICAL + SPACE
 
-        number_of_config = len(self._projects)
-        if project_position_number is None and number_of_config < MAX_NB_PROJECT:
-            project_position_number = number_of_config
+        number_of_project = len(self._projects)
+        if project_position_number is None and number_of_project < MAX_NB_PROJECT:
+            project_position_number = number_of_project
 
         if project_position_number > MAX_NB_PROJECT:
-            raise ValueError(f"set_config: Value {project_position_number} not expected")
+            raise ValueError(f"create_project: Value {project_position_number} not expected")
         
         project = Project(project_name= project_name ,
                           project_budget= project_budget,
@@ -215,9 +261,9 @@ class ProjectsBroker(AbstractSingleton):
 
         # TODO REMOVE is_creation ?
         is_creation = False
-        if project_position_number >= number_of_config:
+        if project_position_number >= number_of_project:
             self._projects.append(project)
-            project_position_number = number_of_config
+            project_position_number = number_of_project
             is_creation = True
         else:
             self._projects[project_position_number] = project
@@ -326,7 +372,7 @@ class ProjectsBroker(AbstractSingleton):
             ValueError: If the specified project position number is out of range.
         """
         if project_positon_number < 0 or len(self._projects) < project_positon_number  :
-            raise ValueError(f"get_config: Value {project_positon_number } not expected")     
+            raise ValueError(f"get_project: Value {project_positon_number } not expected")     
         return self._projects[project_positon_number]
 
  

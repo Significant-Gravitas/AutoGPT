@@ -149,7 +149,7 @@ class AgentModel():
         self.plugin_manager= PluginManager(),
         self.workspace=  Workspace()
 
-        self.uniq_id = self.generate_uniqid() # Generate a UUID)
+        self.uniq_id = self._generate_uniqid() # Generate a UUID)
 
 
 
@@ -223,17 +223,17 @@ class AgentModel():
         for key, value in agent_data.items():
             # Check if _init_attribute_{key} method exists
             if hasattr(load_dict, f"_load_attribute_{key}"):
-                # Call the method and pass the corresponding value
-                setattr(load_dict, key, getattr(load_dict, f"_load_attribute_{key}")(value))
 
-            # elif hasattr(agent, f"_savenload_attribute_{key}"):
-            #     getattr(agent,  f"_savenload_attribute_{key}")(value)
-                
+                # NOTE - if NOT CLASS METHOD this option
+                # setattr(load_dict, key, getattr(load_dict, f"_load_attribute_{key}")(value))
+
+                # NOTE - if NOT CLASS METHOD this option
+                load_dict[key] = getattr(load_dict, f"_load_attribute_{key}")(value)
+            
+            elif hasattr(cls, f"_save_n_load_attribute_{key}"):
+                load_dict[key] =  getattr(cls, f"_sav_n_load_attribute_{key}")(value)
             else:
-                # Set the attribute on the instance
-                setattr(load_dict, key, value)
-        
-        # return cls(agent_dictionary = load_dict)
+                load_dict[key] = value
 
         return  cls(
             ai_name=agent_name,
@@ -263,61 +263,33 @@ class AgentModel():
                     version = AUTOGPT_VERSION)
             return project.agent_team.lead_agent
         else :
-            return self
+            # TODO - PRE REARCH 
+            # return self.to_dict()
+            # NOTE - SERIALIZATION OF Agent
+            return self.new_save()
     
+    # NOTE : NOT USED
     def new_save(self) :
         save_dict = {}
         for key, value in self.__dict__.items():
-            # NOTE : UNCOMMENT THIS CODE TO AV
             if key in self.NOT_SERIALIZE :  
                  continue
+            
             if hasattr(self, f"_save_attribute_{key}"):
-                getattr(self, f"_save_attribute_{key}")()
-            # elif hasattr(self, f"_savenload_attribute_{key}"):
-            #     getattr(self, f"_savenload_attribute_{key}")()
+                save_dict[key] = getattr(self, f"_save_attribute_{key}")(value)
+            
+            elif hasattr(self, f"_save_n_load_attribute_{key}"):
+                save_dict[key] =  getattr(self, f"_sav_n_load_attribute_{key}")(value)
             else:
                 save_dict[key] = value
+
         print(save_dict)
         return save_dict
-
-
-    def to_dict(self) -> dict:  
-        agent_dict = {
-                "agent_name": self.ai_name,
-                "agent_role": self.ai_role,
-                "agent_goals": self.ai_goals,
-                "agent_model": self.agent_model,
-                "agent_model_type": self.agent_model_type,
-                "prompt_generator": self.prompt_generator,
-                "command_registry": self.command_registry
-            }
-        
-        save_dict = {}
-        for key, value in self.__dict__.items():
-            # if key.startswith("_"):  # Skip private attributes
-            #     continue
-            if hasattr(self, f"_save_attribute_{key}"):
-                getattr(self, f"_save_attribute_{key}")()
-            # elif hasattr(self, f"_savenload_attribute_{key}"):
-            #     getattr(self, f"_savenload_attribute_{key}")()
-            else:
-                save_dict[key] = value
-        print(save_dict)
-        return agent_dict
     
-    # A class to generate UUID so plugin ay overid it 
+    # A method to generate UUID so plugin ay overid it 
     # https://github.com/Significant-Gravitas/Auto-GPT/discussions/3392#step-2-discussed-features
-    def generate_uniqid(self) -> uuid : 
+    def _generate_uniqid(self) -> uuid : 
         return str(uuid.uuid4())
-    
-    # All credit to pr-0f3t, I implemented it here, also I am not sure it shoudl be the only place
-    def _load_attribute_ai_goals(self, value) :
-        goals = []
-        for goal in value : 
-            if isinstance(goal, dict) :
-                goals.append(str(goal).strip("{}").replace("'", "").replace('"', ""))
-            else :
-                goals.append(str(goal))
 
     # All credit to pr-0f3t, I implemented it here, also I am not sure it shoudl be the only place
     def _save_attribute_ai_goals(self, value) :
@@ -327,8 +299,16 @@ class AgentModel():
                 goals.append(str(goal).strip("{}").replace("'", "").replace('"', ""))
             else :
                 goals.append(str(goal))
-        
         return goals
 
+    
+    def _load_attribute_ai_goals(self, value) :
+        # this is an EXAMPLE
+        pass
+
+    
+    def _save_n_load_attribute_ai_goals(self, value) :
+        # this is an EXAMPLE
+        pass
 
  
