@@ -1,13 +1,19 @@
 import abc
 import importlib
 import inspect
-from typing import Any, Callable, Optional, Tuple, Dict
+from typing import Any, Callable, Optional, Tuple, Dict, TypeVar, List
 from dataclasses import dataclass
 
 @dataclass
 class CommandResult:
     ok: bool
     message: str
+
+T = TypeVar("T")
+@dataclass
+class CommandPayload:
+    command_name: str
+    payload: T
 
 class Command(abc.ABC):
     """A class representing a command. Commands are actions which an agent can take.
@@ -24,7 +30,7 @@ class Command(abc.ABC):
 		method: Callable[..., Any],
 		signature: str = "",
 		enabled: bool = True,
-		disabled_reason: Optional[str] = None
+		disabled_reason: Optional[str] = None,
 	):
         self.name = name
         self.description = description
@@ -58,67 +64,106 @@ class Command(abc.ABC):
         return f"{self.name}: {self.description}, args: {self.signature}"
 
 
-class CommandRegistry(abc.ABC):
-    """
-    The CommandRegistry class is a manager for a collection of Command objects.
-    It allows the registration, and retrieval of Command objects,
-    as well as the scanning and loading of command plugins from a specified
-    directory.
-    """
-    AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
-    
+class CommandBus:
+    '''A class which manages a collection of Command objects. 
+    It allows the registration of commands  and is responsible for executing them.
+    '''
     def __init__(self):
-        self.commands = {}
-        
+        self.commands = dict()
+    
     def register_command(self, cmd: Command) -> None:
         self.commands[cmd.name] = cmd
+
+    def generate_command_list(self, enabled_skills: List[str]) -> List[str]:
+        return [
+            f"{command_name} args: {command['format']} - {command['instruction']}"
+            for command_name, command in self.commands.items()
+            if command_name in enabled_skills
+        ]
     
-    def list_commands(self) -> None:
-        pass
-
-    def get_command(self, command_name: str) -> Command:
-        if command_name not in self.commands:
-            raise KeyError(f"Command '{command_name}' not found in registry.")
-        return self.commands[command_name]
-
     def execute_command(self, command_name: str, **kwargs) -> CommandResult:
         try:
             if command_name not in self.commands:
                 raise KeyError(f"Command '{command_name}' not found in registry.")
-            command = self.commands[command_name]
             
-            command_result = command(**kwargs)
+            command = self.commands[command_name]
+
+            if not command.enabled:
+                return CommandResult(False, f"Command '{command.name}' is disabled: {command.disabled_reason}")
+            
+            args, kwargs = command.__pre_call__(*args, **kwargs)
+            
+            command_result = command.method(*args, **kwargs)
+            if isinstance(command_result, str):
+                command_result = CommandResult(True, command_result)
+            
+            command_result = command.__post_hook__(command_result)
             return command_result
             
         except Exception as e:
             return CommandResult(False, f"Error: {str(e)}")
         
-        
-    def import_commands(self, module_name: str) -> None:
-        """
-        Imports the specified Python module containing command plugins.
+class CommandHandler(abc.ABC):
+    '''A class which contains commands and is responsible for Registering them to the command bus.
+    '''
+    @abc.abstractmethod
+    def __init__(self, *args, **kwargs) -> None:
+        pass
 
-        This method imports the associated module and registers any functions or
-        classes that are decorated with the `AUTO_GPT_COMMAND_IDENTIFIER` attribute
-        as `Command` objects. The registered `Command` objects are then added to the
-        `commands` dictionary of the `CommandRegistry` object.
+    @abc.abstractmethod
+    def register_to(self, command_bus) -> None:
+        pass
 
-        Args:
-            module_name (str): The name of the module to import for command plugins.
-        """
 
-        module = importlib.import_module(module_name)
+class SomeCommandHandler(CommandHandler):
+    def __init__(self, some_external_dependency) -> None:
+        self.some_external_dependency = some_external_dependency
+    
+    def command_with_external_dependency(self, payload) -> Command:
+       res = self.some_external_dependency(payload)
+       return CommandResult(True, res)
+    
+    def another_with_external_dependency(self, payload) -> Command:
+       res = self.some_external_dependency(payload)
+       return CommandResult(True, res)
+       
+    def register_to(self, command_bus: CommandBus) -> None:
+        # Register Command 1
+        command = Command(
+            name="command_with_external_dependency",
+            description="A command using an external dependency",
+            method=self.command_with_external_dependency,
+            signature="(payload)",
+        )
 
-        for attr_name in dir(module):
-            attr = getattr(module, attr_name)
-            # Register decorated functions
-            if hasattr(attr, self.AUTO_GPT_COMMAND_IDENTIFIER) and getattr(
-                attr, self.AUTO_GPT_COMMAND_IDENTIFIER
-            ):
-                self.register(attr.command)
-            # Register command classes
-            elif (
-                inspect.isclass(attr) and issubclass(attr, Command) and attr != Command
-            ):
-                cmd_instance = attr()
-                self.register(cmd_instance)
+        command_bus.register_command("command_with_external_dependency", command)
+
+        # Register Command 2
+        command = Command(
+            name="another_with_external_dependency",
+            description="A command using an external dependency",
+            method=self.another_with_external_dependency,
+            signature="(payload)",
+        )
+        command_bus.register_command("another_with_external_dependency", command)
+
+
+
+
+'''
+Example usage
+'''
+
+command_bus = CommandBus()
+# This can be a function or a class
+some_external_dependency = lambda payload: f"Processed: {payload}"
+
+command_handler = SomeCommandHandler(some_external_dependency, command_bus)
+command_handler.register_to(command_bus)
+
+command_handler = SomeOtherCommandHandler(different_external_depencies, command_bus)
+command_handler.register_to(command_bus)
+
+
+# Pass command_bus to agent and execute command with.
+command_bus.execute_command("command_with_external_dependency")
