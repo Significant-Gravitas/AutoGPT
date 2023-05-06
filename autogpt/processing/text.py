@@ -166,5 +166,5 @@ def create_message(chunk: str, question: str) -> Dict[str, str]:
         "role": "user",
         "content": f'"""{chunk}""" Using the above text, answer the following'
         f' question: "{question}" -- if the question cannot be answered using the text,'
-        " summarize the text.",
+        " summarize the text. Please output in the language used in the above text.",
     }

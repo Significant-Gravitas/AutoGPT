@@ -24,6 +24,10 @@ from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
 
+from autogpt.llm.llm_utils import create_chat_completion
+from autogpt.llm.token_counter import count_message_tokens
+from autogpt.processing.text import split_text
+
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
 
@@ -34,7 +38,7 @@ CFG = Config()
     '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
 )
 @validate_url
-def browse_website(url: str, question: str) -> str:
+def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -43,24 +47,63 @@ def browse_website(url: str, question: str) -> str:
 
     Returns:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
-    """
+    """    
+    
     try:
         driver, text = scrape_text_with_selenium(url)
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
         msg = e.msg.split("\n")[0]
-        return f"Error: {msg}"
-
+        return f"Error: {msg}", None
+    
     add_header(driver)
-    summary_text = summary.summarize_text(url, text, question, driver)
-    links = scrape_links_with_selenium(driver, url)
+    
+    # 웹페이지를 브라우징 하는 목적이 링크나 URL을 찾는 목적이라면 links를 처리한다.
+    messages = [{"role": "system", "content": "Please return 1 if you need to find a link or URL, otherwise return 0."}]
+    messages.append({"role": "user", "content": question})
+    resp = create_chat_completion(
+        model=CFG.smart_llm_model,
+        messages=messages,
+    )
+    if "1" in resp:
+        links = scrape_links_with_selenium(driver, url)
+        link_texts, hyperlinks = zip(*links)        
+        link_texts = "\n".join([str(i)+ ':' + sent.strip()[:20] for i, sent in enumerate(link_texts) if len(sent.strip())>0 ])
+        link_texts = link_texts[:3500]
+        ntokens = count_message_tokens([{"role":"user", "content":link_texts}], CFG.fast_llm_model)
+        
+        # 몇 번째 위치가 찾고자 하는 link인지 요청한다.
+        #messages = [{"role": "system", "content": "다음은 웹페이지에서 text를 추출한 뒤 line_number를 붙인 것입니다.\n" + link_texts}]
+        messages = []
+        msg = "The following is the result of extracting only the text from the hyperlink and attaching a line_number to it. \n" + link_texts
+        messages.append({"role": "user", "content": msg + "\n\nPlease return all appropriate line_numbers for the following request:" +question})
+        
+        resp = create_chat_completion(
+            model=CFG.smart_llm_model,
+            messages=messages,
+        )
+        # Extract all digits from resp
+        try:
+            line_numbers = eval(resp)
+            line_numbers = [line_numbers] if isinstance(line_numbers, int) else line_numbers
+        except:            
+            line_numbers = [int(w) for w in resp.split() if w.isdigit()]
+        if len(line_numbers) > 0: 
+            links = [links[i] for i in line_numbers]
+            links = format_hyperlinks(links)
+            return f"Links: {links}", driver
+        else:
+            return f"Links: Couldn't find any links.", driver
+    else:
+        summary_text = summary.summarize_text(url, text, question, driver)
+    
 
-    # Limit links to 5
-    if len(links) > 5:
-        links = links[:5]
-    close_browser(driver)
-    return f"Answer gathered from website: {summary_text} \n \n Links: {links}"
+        # Limit links to 5
+        #if len(links) > 5:
+        #    links = links[:5]
+        #close_browser(driver)
+        return f"Answer gathered from website: {summary_text}", driver
 
 
 def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
@@ -134,6 +177,79 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     return driver, text
 
 
+def scrape_text_links_with_selenium(url: str) -> tuple[WebDriver, str]:
+    """Scrape text from a website using selenium
+
+    Args:
+        url (str): The url of the website to scrape
+
+    Returns:
+        Tuple[WebDriver, str]: The webdriver and the text scraped from the website
+    """
+    logging.getLogger("selenium").setLevel(logging.CRITICAL)
+
+    options_available = {
+        "chrome": ChromeOptions,
+        "safari": SafariOptions,
+        "firefox": FirefoxOptions,
+    }
+
+    options = options_available[CFG.selenium_web_browser]()
+    options.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
+    )
+
+    if CFG.selenium_web_browser == "firefox":
+        if CFG.selenium_headless:
+            options.headless = True
+            options.add_argument("--disable-gpu")
+        driver = webdriver.Firefox(
+            executable_path=GeckoDriverManager().install(), options=options
+        )
+    elif CFG.selenium_web_browser == "safari":
+        # Requires a bit more setup on the users end
+        # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
+        driver = webdriver.Safari(options=options)
+    else:
+        if platform == "linux" or platform == "linux2":
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--remote-debugging-port=9222")
+
+        options.add_argument("--no-sandbox")
+        if CFG.selenium_headless:
+            options.add_argument("--headless=new")
+            options.add_argument("--disable-gpu")
+
+        chromium_driver_path = Path("/usr/bin/chromedriver")
+
+        driver = webdriver.Chrome(
+            executable_path=chromium_driver_path
+            if chromium_driver_path.exists()
+            else ChromeDriverManager().install(),
+            options=options,
+        )
+    driver.get(url)
+
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.TAG_NAME, "body"))
+    )
+
+    # Get the HTML content directly from the browser's DOM
+    page_source = driver.execute_script("return document.body.outerHTML;")
+    soup = BeautifulSoup(page_source, "html.parser")
+
+    for script in soup(["script", "style"]):
+        script.extract()
+
+    text = soup.get_text()
+    lines = (line.strip() for line in text.splitlines())
+    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+    text = "\n".join(chunk for chunk in chunks if chunk)
+    
+    hyperlinks = extract_hyperlinks(soup, url)
+    return driver, text, format_hyperlinks(hyperlinks)
+
+
 def scrape_links_with_selenium(driver: WebDriver, url: str) -> list[str]:
     """Scrape links from a website using selenium
 
@@ -151,7 +267,7 @@ def scrape_links_with_selenium(driver: WebDriver, url: str) -> list[str]:
 
     hyperlinks = extract_hyperlinks(soup, url)
 
-    return format_hyperlinks(hyperlinks)
+    return hyperlinks
 
 
 def close_browser(driver: WebDriver) -> None:
