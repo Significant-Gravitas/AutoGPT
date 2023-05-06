@@ -195,20 +195,6 @@ class Agent:
                         )
                         user_input = self_feedback_resp
                         command_name = "self_feedback"
-                        self.log_cycle_handler.log_cycle(
-                            self.config.ai_name,
-                            self.created_at,
-                            self.cycle_count,
-                            thoughts,
-                            PROMPT_FEEDBACK_FILE_NAME,
-                        )
-                        self.log_cycle_handler.log_cycle(
-                            self.config.ai_name,
-                            self.created_at,
-                            self.cycle_count,
-                            self_feedback_resp,
-                            SELF_FEEDBACK_FILE_NAME,
-                        )
                         break
                     elif console_input.lower().strip() == "":
                         logger.warn("Invalid input format.")
@@ -343,7 +329,25 @@ class Agent:
         plan = thoughts.get("plan", "")
         thought = thoughts.get("thoughts", "")
         feedback_thoughts = thought + reasoning + plan
-        return create_chat_completion(
+
+        messages = {"role": "user", "content": feedback_prompt + feedback_thoughts}
+
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            messages,
+            PROMPT_FEEDBACK_FILE_NAME,
+        )
+        feedback = create_chat_completion(
             [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
             llm_model,
         )
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            feedback,
+            SELF_FEEDBACK_FILE_NAME,
+        )
+        return feedback
