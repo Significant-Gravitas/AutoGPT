@@ -38,7 +38,7 @@ def google_search(query: str, num_results: int = 8) -> str:
 
 
 @command(
-    "google",
+    "google_api",
     "Google Search",
     '"query": "<query>"',
     bool(CFG.google_api_key),
@@ -109,9 +109,7 @@ def safe_google_results(results: str | list) -> str:
         str: The results of the search.
     """
     if isinstance(results, list):
-        safe_message = json.dumps(
-            [result.encode("utf-8", "ignore") for result in results]
-        )
+        safe_message = json.dumps(results)
     else:
         safe_message = results.encode("utf-8", "ignore").decode("utf-8")
     return safe_message
