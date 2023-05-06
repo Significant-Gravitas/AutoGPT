@@ -332,18 +332,20 @@ class Agent:
 
         messages = {"role": "user", "content": feedback_prompt + feedback_thoughts}
 
-        Agent.log_cycle_handler.log_cycle(
+        self.log_cycle_handler.log_cycle(
             self.config.ai_name,
             self.created_at,
             self.cycle_count,
             messages,
             PROMPT_FEEDBACK_FILE_NAME,
         )
+
         feedback = create_chat_completion(
             [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
             llm_model,
         )
-        Agent.log_cycle_handler.log_cycle(
+
+        self.log_cycle_handler.log_cycle(
             self.config.ai_name,
             self.created_at,
             self.cycle_count,
