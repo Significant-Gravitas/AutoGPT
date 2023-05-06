@@ -303,8 +303,9 @@ class Agent:
         else:
             for pathlike in ["filename", "directory", "clone_path"]:
                 if pathlike in command_args:
-                    command_args[pathlike] = str(
-                        self.workspace.get_path(command_args[pathlike])
+                    command_args[pathlike] = os.path.relpath(
+                        self.workspace.get_path(command_args[pathlike]),
+                        start=self.workspace.root,
                     )
         return command_args
 
