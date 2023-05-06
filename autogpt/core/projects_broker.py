@@ -41,8 +41,8 @@ import yaml
 
 # Local application imports
 from autogpt.singleton import AbstractSingleton
-from autogpt.projects.project import Project
-from autogpt.projects.agent_model import AgentModel
+from autogpt.core.project import Project
+from autogpt.core.agent.agent_model import AgentModel
 
 # @TODO MOVE to .env
 SAVE_FILE = Path.cwd() / "ai_settings.yaml"
@@ -156,7 +156,7 @@ class ProjectsBroker(AbstractSingleton):
             raise IndexError("Project index out of range.")
  
     
-    from autogpt.projects.agent_model import AgentModel
+    from autogpt.core.agent.agent_model import AgentModel
    
     def create_project(self, 
                     project_position_number : int,

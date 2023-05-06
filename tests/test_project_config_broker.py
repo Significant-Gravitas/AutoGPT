@@ -1,9 +1,9 @@
 import os
 import pytest
 from pathlib import Path
-from autogpt.projects.project import Project
-from autogpt.projects.agent_model import AgentModel
-from autogpt.projects.projects_broker import ProjectsBroker
+from autogpt.core.project import Project
+from autogpt.core.agent.agent_model import AgentModel
+from autogpt.core.projects_broker import ProjectsBroker
 
 CONFIG_FILE = str(Path(os.getcwd()) / "test_ai_settings.yaml")
 

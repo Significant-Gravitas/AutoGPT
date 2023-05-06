@@ -19,8 +19,8 @@ The following tests are defined in this module:
 - `test_project_add_delegated_agent(project)`: Tests whether the `add_delegated_agent()` method of the `Project` class can add a new delegated agent to the list of delegatedagents of the `Project` instance.
 """
 import pytest
-from autogpt.projects.agent_model import AgentModel
-from autogpt.projects.project import Project
+from autogpt.core.agent.agent_model import AgentModel
+from autogpt.core.project import Project
 from autogpt.config.ai_config import AIConfig
 import yaml
 

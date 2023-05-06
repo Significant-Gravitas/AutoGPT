@@ -35,9 +35,9 @@ Tests:
 
 import pytest
 import os
-from autogpt.projects.projects_broker import ProjectsBroker
-from autogpt.projects.agent_model import AgentModel
-from autogpt.projects.project import Project
+from autogpt.core.projects_broker import ProjectsBroker
+from autogpt.core.agent.agent_model import AgentModel
+from autogpt.core.project import Project
 from autogpt.config.ai_config import AIConfig
 
 ai_goals =  ['Goal 1: Make a sandwich','Goal 2, Eat the sandwich','Goal 3 - Go to sleep', 'Goal 4: Wake up']

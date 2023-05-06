@@ -34,7 +34,7 @@ from typing import Optional, Type, List
 import datetime
 import uuid
 
-from autogpt.projects.agent_model import AgentModel
+from autogpt.core.agent.agent_model import AgentModel
 from pathlib import Path
 
 SAVE_FILE = Path.cwd() / "ai_settings.yaml"
@@ -158,8 +158,8 @@ class Project:
         """
              
         if cls._check_args_method_load( config_params) : 
-            from autogpt.projects.projects_broker import ProjectsBroker 
-            from autogpt.projects.agent_model import AgentModel  
+            from autogpt.core.projects_broker import ProjectsBroker 
+            from autogpt.core.agent.agent_model import AgentModel  
             project_name = config_params["project_name"]
             project_budget = config_params["project_budget"]
             version =  config_params.get("version", ProjectsBroker.AUTOGPT_VERSION)
@@ -205,7 +205,7 @@ class Project:
         Returns:
             project_dict (dict): A dictionary representation of the Project object.
         """
-        from autogpt.projects.projects_broker import ProjectsBroker
+        from autogpt.core.projects_broker import ProjectsBroker
         project_broker = ProjectsBroker()
         project_list = project_broker.get_projects()
 
@@ -242,7 +242,7 @@ class Project:
             #     "lead_agent": lead_agent_dict,
             #     "delegated_agents": delegated_agents
             # }
-            new_path = os.path.join(PROJECT_DIR, sub_folder_name , 'settings.yaml')
+            new_path = os.path.join(ProjectsBroker.PROJECT_DIR, sub_folder_name , 'settings.yaml')
 
             project_dict = self.to_dict()
 
