@@ -115,3 +115,30 @@ class TestFixJsonUsingMultipleTechniques:
             "person": {"name": "John", "age": 30},
             "hobbies": ["reading", "swimming"],
         }
+
+    # Tests that the function successfully fixes and parses a JSON string that contains a Python expression.
+    def test_fix_json_with_python_expressions(self):
+        json_string = (
+            '{\n"thoughts": {\n"text": "text",\n"reasoning": "reasoning",\n"plan": "plan",\n"criticism": '
+            '"criticism",\n"speak": "speak"\n},\n"command": {\n"name": "name",\n"args": {\n"arg1_name": "text" '
+            '+ some_python_variable + "text" + some_other_var + " " + check\n}\n}\n}'
+        )
+
+        expected_output = {
+            "thoughts": {
+                "text": "text",
+                "reasoning": "reasoning",
+                "plan": "plan",
+                "criticism": "criticism",
+                "speak": "speak",
+            },
+            "command": {
+                "name": "name",
+                "args": {
+                    "arg1_name": "text<some_python_variable>text<some_other_var> <check>"
+                },
+            },
+        }
+
+        result = fix_json_using_multiple_techniques(json_string)
+        assert result == expected_output

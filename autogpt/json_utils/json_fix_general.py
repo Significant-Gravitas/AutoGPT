@@ -90,6 +90,48 @@ def add_quotes_to_property_names(json_string: str) -> str:
         raise e
 
 
+def concatenate_plus_and_fix_quotes(json_string: str) -> str:
+    """
+    Concatenate adjacent elements separated by '+' and fix double quotes. Attempts to fix JSON strings that contain
+    simple string concatenations. The variable names are enclosed in angle brackets.
+
+    Args:
+        json_string (str): The JSON string.
+
+    Returns:
+        str: The JSON string with Python string expressions replaced by strings.
+    """
+    pattern = r"\".*?\"|\S+"
+    words = re.findall(pattern, json_string)
+
+    result = []
+    i = 0
+
+    while i < len(words):
+        elem = words[i]
+
+        if i < len(words) - 1 and words[i + 1] == "+":
+            if elem[0] == '"' and elem[-1] == '"':
+                elem = elem[:-1]
+            else:
+                elem = '"<' + elem + ">"
+
+            while i < len(words) - 1 and words[i + 1] == "+":
+                i += 2
+                second = words[i]
+                if second[0] != '"' and second[-1] != '"':
+                    second = "<" + second + ">"
+                second = second.strip('"')
+                elem += second
+
+            elem = elem + '"'
+
+        result.append(elem)
+        i += 1
+
+    return "".join(result)
+
+
 def correct_json(json_to_load: str) -> str:
     """
     Correct common JSON errors.
@@ -115,6 +157,14 @@ def correct_json(json_to_load: str) -> str:
                 return json_to_load
             except json.JSONDecodeError as e:
                 logger.debug("json loads error - add quotes", e)
+                error_message = str(e)
+        if error_message.startswith("Expecting ',' delimiter"):
+            json_to_load = concatenate_plus_and_fix_quotes(json_to_load)
+            try:
+                json.loads(json_to_load)
+                return json_to_load
+            except json.JSONDecodeError as e:
+                logger.debug("json loads error - concatenate", e)
                 error_message = str(e)
         if balanced_str := balance_braces(json_to_load):
             return balanced_str
