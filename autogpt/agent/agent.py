@@ -332,7 +332,7 @@ class Agent:
 
         messages = {"role": "user", "content": feedback_prompt + feedback_thoughts}
 
-        self.log_cycle_handler.log_cycle(
+        Agent.log_cycle_handler.log_cycle(
             self.config.ai_name,
             self.created_at,
             self.cycle_count,
@@ -343,7 +343,7 @@ class Agent:
             [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
             llm_model,
         )
-        self.log_cycle_handler.log_cycle(
+        Agent.log_cycle_handler.log_cycle(
             self.config.ai_name,
             self.created_at,
             self.cycle_count,
