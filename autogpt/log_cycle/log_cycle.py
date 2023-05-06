@@ -10,8 +10,8 @@ CURRENT_CONTEXT_FILE_NAME = "current_context.json"
 NEXT_ACTION_FILE_NAME = "next_action.json"
 PROMPT_SUMMARY_FILE_NAME = "prompt_summary.json"
 SUMMARY_FILE_NAME = "summary.txt"
-SELF_FEEDBACK_FILE_NAME = "self_feedback.txt"
-PROMPT_FEEDBACK_FILE_NAME = "prompt_self_feedback.json"
+SELF_FEEDBACK_FILE_NAME = "supervisor_feedback.txt"
+PROMPT_FEEDBACK_FILE_NAME = "prompt_supervisor.json"
 USER_INPUT_FILE_NAME = "user_input.txt"
 
 
