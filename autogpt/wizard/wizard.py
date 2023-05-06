@@ -33,6 +33,9 @@ class PyInquirerAdapter(PromptAdapter):
     def prompt(self, questions: Dict[str, Any]) -> Dict[str, Any]:
         return pyinquirer_prompt(questions)
 
+##
+# TODO new adapter for Agents (inter-agent messaging)
+
 ResponseAdapter = QuestionaryAdapter() # or PyInquirerAdapter()
 
 
@@ -63,9 +66,6 @@ def main(args):
 
     # and run the prompt loop
     answers = ResponseAdapter.prompt(questions)
-
-    # finally show all collected info in JSON form
-    # print(answers)
 
     #context = {'version':'1.0.0','project': 'Demo','binary':'myDemo','sources':'main.cxx'}
     # Using a file-based Jinja2 template

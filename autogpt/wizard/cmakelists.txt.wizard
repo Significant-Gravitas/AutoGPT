@@ -6,7 +6,7 @@
         {
             "type": "text",
             "name": "version",
-            "message": "Enter the version number for your project:"
+            "message": "Enter the minimum cmake version required:"
         },
         {
             "type": "text",

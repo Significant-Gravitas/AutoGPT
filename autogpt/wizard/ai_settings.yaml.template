@@ -1,0 +1,22 @@
+{
+    "version": "1.0",
+    "name": "AI YAML File Generator for Auto-GPT",
+    "description": "This wizard will help you generate a YAML file for an AI agent.",
+    "questions": [
+        {
+            "type": "text",
+            "name": "ai_name",
+            "message": "Enter the name of the AI agent:"
+        },
+        {
+            "type": "text",
+            "name": "ai_role",
+            "message": "Enter the role of the AI agent:"
+        },
+        {
+            "type": "input",
+            "name": "ai_goals",
+            "message": "Enter the goals of the AI agent:",
+        }
+    ]
+}
