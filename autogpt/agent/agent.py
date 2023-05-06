@@ -11,8 +11,8 @@ from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
-    SELF_FEEDBACK_FILE_NAME,
     PROMPT_FEEDBACK_FILE_NAME,
+    SELF_FEEDBACK_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
