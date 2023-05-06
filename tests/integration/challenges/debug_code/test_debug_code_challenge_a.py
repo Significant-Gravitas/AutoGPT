@@ -40,7 +40,7 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 
 
 # @pytest.skip("Nobody beat this challenge yet")
-# @pytest.mark.vcr
+@pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)
 def test_debug_code_challenge_a(

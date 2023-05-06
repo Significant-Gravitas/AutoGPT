@@ -51,5 +51,5 @@ pytest-benchmark
 pytest-cov
 pytest-integration
 pytest-mock
-vcrpy
+vcrpy @ git+https://github.com/gravelBridge/vcrpy.git
 pytest-recording
