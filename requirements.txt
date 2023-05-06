@@ -14,13 +14,14 @@ duckduckgo-search
 google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
 pinecone-client==2.2.1
 redis
-orjson
+orjson==3.8.10
 Pillow
 selenium==4.1.4
 webdriver-manager
 jsonschema
 tweepy
 click
+charset-normalizer>=3.1.0
 spacy>=3.0.0,<4.0.0
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0-py3-none-any.whl
 
