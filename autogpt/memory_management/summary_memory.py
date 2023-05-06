@@ -75,13 +75,10 @@ def update_running_summary(
         if event["role"].lower() == "assistant":
             event["role"] = "you"
 
-            try:
-                # Remove "thoughts" dictionary from "content"
-                event["content"] = event["content"].replace('\\', '\\\\')
-                content_dict = json.loads(event["content"])
-            except:
-                print(f"Could not parse content: {event['content']}")
-
+            # Remove "thoughts" dictionary from "content"
+            event["content"] = event["content"].replace('\\', '\\\\')
+            content_dict = json.loads(event["content"])
+            
             if "thoughts" in content_dict:
                 del content_dict["thoughts"]
             event["content"] = json.dumps(content_dict)
