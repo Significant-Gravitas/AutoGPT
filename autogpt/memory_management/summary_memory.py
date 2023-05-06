@@ -72,13 +72,13 @@ def update_running_summary(
 
     # Replace "assistant" with "you". This produces much better first person past tense results.
     for event in new_events:
-        if event["role"].lower() == "assistant":
+        if event["role"].lower() == "assistant" and event["content"]:
             event["role"] = "you"
 
             # Remove "thoughts" dictionary from "content"
             event["content"] = event["content"].replace('\\', '\\\\')
             content_dict = json.loads(event["content"])
-            
+
             if "thoughts" in content_dict:
                 del content_dict["thoughts"]
             event["content"] = json.dumps(content_dict)
