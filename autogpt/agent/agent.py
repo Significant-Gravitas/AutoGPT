@@ -12,6 +12,7 @@ from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
     SELF_FEEDBACK_FILE_NAME,
+    USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
 from autogpt.logs import logger, print_assistant_thoughts
@@ -223,6 +224,13 @@ class Agent:
                     else:
                         user_input = console_input
                         command_name = "human_feedback"
+                        self.log_cycle_handler.log_cycle(
+                            self.config.ai_name,
+                            self.created_at,
+                            self.cycle_count,
+                            user_input,
+                            USER_INPUT_FILE_NAME,
+                        )
                         break
 
                 if user_input == "GENERATE NEXT COMMAND JSON":

@@ -11,6 +11,7 @@ NEXT_ACTION_FILE_NAME = "next_action.json"
 PROMPT_SUMMARY_FILE_NAME = "prompt_summary.json"
 SUMMARY_FILE_NAME = "summary.txt"
 SELF_FEEDBACK_FILE_NAME = "self_feedback.json"
+USER_INPUT_FILE_NAME = "user_input.txt"
 
 
 class LogCycleHandler:
