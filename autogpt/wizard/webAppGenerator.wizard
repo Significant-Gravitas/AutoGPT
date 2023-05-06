@@ -1,0 +1,44 @@
+{
+    "version": "1.0",
+    "name": "Web Application Wizard Demo",
+    "description": "This wizard will help you generate stubs for a new web application.",
+    "questions": [
+        {
+            "type": "text",
+            "name": "name",
+            "message": "What is the name of your application?"
+        },
+        {
+            "type": "text",
+            "name": "title",
+            "message": "What is the title of your application?"
+        },
+        {
+            "type": "select",
+            "name": "frontend",
+            "message": "Which frontend stack would you like to use?",
+            "choices": [
+                "React",
+                "Angular",
+                "Vue.js",
+                "Other"
+            ]
+        },
+        {
+            "type": "select",
+            "name": "backend",
+            "message": "Which backend stack would you like to use?",
+            "choices": [
+                "Django",
+                "Flask",
+                "Express.js",
+                "Other"
+            ]
+        },
+        {
+            "type": "confirm",
+            "name": "confirm",
+            "message": "Are you sure you want to generate stubs for this application?"
+        }
+    ]
+}
