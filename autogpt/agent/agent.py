@@ -185,22 +185,8 @@ class Agent:
                             "",
                         )
                         thoughts = assistant_reply_json.get("thoughts", {})
-                        self_feedback_resp, messages = self.get_self_feedback(
+                        self_feedback_resp = self.get_self_feedback(
                             thoughts, cfg.fast_llm_model
-                        )
-                        self.log_cycle_handler.log_cycle(
-                            self.config.ai_name,
-                            self.created_at,
-                            self.cycle_count,
-                            self_feedback_resp,
-                            SELF_FEEDBACK_FILE_NAME,
-                        )
-                        self.log_cycle_handler.log_cycle(
-                            self.config.ai_name,
-                            self.created_at,
-                            self.cycle_count,
-                            messages,
-                            PROMPT_FEEDBACK_FILE_NAME,
                         )
                         logger.typewriter_log(
                             f"SELF FEEDBACK: {self_feedback_resp}",
@@ -346,9 +332,24 @@ class Agent:
 
         messages = {"role": "user", "content": feedback_prompt + feedback_thoughts}
 
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            messages,
+            PROMPT_FEEDBACK_FILE_NAME,
+        )
+
         feedback = create_chat_completion(
             [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
             llm_model,
         )
 
-        return feedback, messages
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            feedback,
+            SELF_FEEDBACK_FILE_NAME,
+        )
+        return feedback
