@@ -1,7 +1,7 @@
 {
-    "version": "",
+    "version": "1.0.0",
     "name": "CMakeLists.txt Generator",
-    "description": "This wizard will help you generate a CMakeLists.txt file for your project.",
+    "description": "This wizard will help you generate a CMakeLists.txt stub for your project.",
     "questions": [
         {
             "type": "text",

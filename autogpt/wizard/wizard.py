@@ -65,7 +65,7 @@ def main(args):
     answers = ResponseAdapter.prompt(questions)
 
     # finally show all collected info in JSON form
-    print(answers)
+    # print(answers)
 
     #context = {'version':'1.0.0','project': 'Demo','binary':'myDemo','sources':'main.cxx'}
     # Using a file-based Jinja2 template
@@ -80,7 +80,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='WizardMode proof-of-concept for Auto-GPT')
-    parser.add_argument('filename', type=str, nargs='?', help='Path to .wizard file', default='webAppGenerator.wizard')
+    parser.add_argument('filename', type=str, nargs='?', help='Path to .wizard file', default='cmakelists.txt.wizard')
     args = parser.parse_args()
 
     main(args)
