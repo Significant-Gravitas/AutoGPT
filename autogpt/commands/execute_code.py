@@ -31,7 +31,7 @@ def execute_python_file(filename: str) -> str:
     if not os.path.isfile(filename):
         return f"Error: File '{filename}' does not exist."
 
-    if we_are_running_in_a_docker_container():
+    if not we_are_running_in_a_docker_container():
         result = subprocess.run(
             f"python {filename}", capture_output=True, encoding="utf8", shell=True
         )
