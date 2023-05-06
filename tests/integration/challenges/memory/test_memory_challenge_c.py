@@ -50,7 +50,6 @@ def test_memory_challenge_c(
         for phrase in level_silly_phrases:
             assert phrase in content, f"Expected the file to contain {phrase}"
 
-
 def create_instructions_files(
     memory_management_agent: Agent,
     level: int,

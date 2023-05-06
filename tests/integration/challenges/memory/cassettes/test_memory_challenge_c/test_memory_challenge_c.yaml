@@ -57,21 +57,20 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA4RSS2/aQBC+91eM5myjIBdCfGuUQ5HaQ6umUltHaG0P9ob1rrUzFhDk/14txqSC
-        KL1+8/geMwfUJaZY1EqKpjXx7cOD//rz9/fNi/l4v/z1hfRd/bjJl5+bb/fPGKHLn6mQ08SkcE1r
-        SLSzGGHhSQmVmE7niyRZzBZ38wgbV5LBFKtW4mQyi6XzuYtvkpspRtixqgjTA7beNa2sxG3IMqa3
-        SRLh6+4zPp0lEYoTZc7QYjHvIyxqpwtiTP8csCEe13pnCFNUzJpFWQkinRWywcAhswAAGUrtuqoW
-        zjCFE3gq0E4CmOESuHadKYFFeYF8D55UqW0FUhNoy+K7Ikjl1XQiO4G1NgQdjx2he3XECtc0ypaT
-        DKN/qTwpdlbbauD7UROstWcBFmpBM4iDzpbkg4/yihUCuK2VgCjeMFiiMozkR8IQI11RtkbZgS2G
-        R6a3dYYlAXzPZ5bZGD5ZZfYv9LaykoR8o+1QtrQbfPGFosJr0YXmZgx9tEGWOx+GlcAS1p0x+3fT
-        yGntPEHrXUF0PNNWSw3K7od8LqPgltRmJN1qY/5/56PzSYbDmj4an+mU29UvWdXQwHDO+EKE8tXl
-        Cw6F0Ps6fn2EUcRRyElPZnvsI1xrq7leDd+FKbK4FiPUtqQdpjf9U//hLwAAAP//AwC1IsftAQQA
-        AA==
+        H4sIAAAAAAAAA4RSy2rbUBDd9yuGWUvGwnFsa1cILSl0U1IKqYq5ksbSraW54s6o8QP/e5ElOcUO
+        6fbM4zxmjmhzjDErjWZ1U4WLhy8Ph8OfJ7P69kN0tXXp8vkrP3+eR+XqEwbo0t+U6TAxyVzdVKTW
+        MQaYeTJKOcbR/XJ2N72fR6sAa5dThTEWjYazyTzU1qcunM6mEQbYiikI4yM23tWNrtVtiQXjxWwW
+        4OvuCx7N7wJUp6a6QMvl4hRgVjqbkWD884g1ybjWu4owRiNiRQ1rJ9KxEncGjgkDACSopWuLUiXB
+        GAZwKNBOOzDBR5DStVUOosYrpHvwZHLLBWhJYFnUt1knVdbRRHcKG1sRtDJ2dN3rM5a5ujacTxIM
+        /qXyZMSx5aLneyoJNtaLgig1YAXUQcs5+c5HfsMKI6hGtgJaGgUmyruxlKAhv3G+phvapjLcM4bw
+        Xehtrd2SDnzPa5JwCB/ZVPsDva0uJyVfW+7LTLvem1wpyrxVm1mpx+BHG8TSeuqtPb6bxfA4VO0h
+        pY3zBI13GdH5Xi9WSzC875O6zkMaMtuR+cVW1f8PfrY/SbBfcwrGrxrCu3kqNjX1DJegr0QYX1z/
+        Yl/oel/Hby8xijgLGfQkfMJTgBvLVsp1/2YYo6hrMEDLOe0wnp5+nT78BQAA//8DANABopIKBAAA
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c32281aba283074-BOS
+      - 7c341f90a88bebf8-BOS
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -81,7 +80,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sat, 06 May 2023 15:11:47 GMT
+      - Sat, 06 May 2023 20:55:27 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -93,7 +92,7 @@ interactions:
       openai-organization:
       - user-51akhf08mxrenuhudaum3z9e
       openai-processing-ms:
-      - '11545'
+      - '9862'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -111,7 +110,7 @@ interactions:
       x-ratelimit-reset-tokens:
       - 2.337s
       x-request-id:
-      - 16caf9abb38a27b71d9ae2ab37c82209
+      - 1ef6c157a07df7e52c260992fd3b724a
     status:
       code: 200
       message: OK
@@ -140,16 +139,16 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA0SOzUoDMRRG9z5F+NaZkunYv+yUgih05UYUKWnmdiY6kxsmt9RS5t2lUO32wDmc
-        M0INC9868X3qisV6Pbj5/nVq3hanZB6b00u5uX9/2oUH2UCDd1/k5WpMPPepIwkcoeEHckI1bDlf
-        VtVytiqNRs81dbBokhTVZFbIYdhxYSpTQuOQXUOwZ6SB+yRb4W+KGXY11bilb1hDWFz3D0pTjhq+
-        5eApw36c0VP+aw7cESxcziGLi3I55CgUL/fP6uiyuh4rF2sVWdoQGxXpqFqXVetSokj1BKPGPsSQ
-        2+1ALnOERRZO0Aixph9YM36Od78AAAD//wMAeQdJxEkBAAA=
+        H4sIAAAAAAAAA0SOQUvDQBQG7/6K5TtvSmJstXur1INFBC9SECnbzTPZNtm3ZF+otuS/S6Ha68AM
+        c4KvYOAaK66LbXa/XD0tHl/f7HK/+jkO73JckZfhZb1b1Gto8HZHTi7GxHEXWxLPARquJytUwRSz
+        h/Iun03LXKPjiloY1FGycjLNZOi3nOVlXkBjSLYmmBNiz12UjfCeQoKZ32pc01esISy2/QdFXowa
+        rmHvKMF8nNBR+mv23BIMbEo+iQ1yPuQgFM73z+pgk7ocKxsqFVgaH2oV6KAam1RjY6RA1QSjxpcP
+        PjWbnmziAIMkHKHhQ0XfMPn4Od78AgAA//8DAGlkbTtJAQAA
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c3228741d753074-BOS
+      - 7c341fdf98bdebf8-BOS
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -159,7 +158,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sat, 06 May 2023 15:11:51 GMT
+      - Sat, 06 May 2023 20:55:31 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -171,7 +170,7 @@ interactions:
       openai-organization:
       - user-51akhf08mxrenuhudaum3z9e
       openai-processing-ms:
-      - '1238'
+      - '1013'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -189,7 +188,7 @@ interactions:
       x-ratelimit-reset-tokens:
       - 88ms
       x-request-id:
-      - 3b24c783909819f8ec7217b0b166d604
+      - e92f6c3e507461ab5a107df1ba0b24e8
     status:
       code: 200
       message: OK
@@ -238,13 +237,13 @@ interactions:
       use, and respond using the format specified above:"}, {"role": "assistant",
       "content": "{\n    \"thoughts\": {\n        \"text\": \"I should start by reading
       the instructions_1.txt file using the read_file command.\",\n        \"reasoning\":
-      \"The first step is to understand the instructions and what tasks need to be
-      completed.\",\n        \"plan\": \"- Use the read_file command to read the instructions_1.txt
-      file\\n- Analyze the instructions and determine the next steps\",\n        \"criticism\":
-      \"I need to ensure that I fully understand the instructions before proceeding
-      with any tasks.\",\n        \"speak\": \"I will start by reading the instructions
-      file.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\":
-      {\n            \"filename\": \"instructions_1.txt\"\n        }\n    }\n}"},
+      \"The first step is to understand the instructions and the tasks that need to
+      be performed.\",\n        \"plan\": \"- Use the read_file command to read the
+      instructions_1.txt file\\n- Analyze the instructions and determine the next
+      steps\",\n        \"criticism\": \"I need to ensure that I understand the instructions
+      completely before proceeding with any tasks.\",\n        \"speak\": \"I will
+      start by reading the instructions file.\"\n    },\n    \"command\": {\n        \"name\":
+      \"read_file\",\n        \"args\": {\n            \"filename\": \"instructions_1.txt\"\n        }\n    }\n}"},
       {"role": "system", "content": "Command read_file returned: nBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\nThis
       phrase is ''The purple elephant danced on a rainbow while eating a taco.''\nnBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\nWrite
       all the phrases into the file output.txt. The file has not been created yet.
@@ -259,7 +258,7 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
-      - '6590'
+      - '6599'
       Content-Type:
       - application/json
     method: POST
@@ -267,36 +266,21 @@ interactions:
   response:
     body:
       string: !!binary |
-        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
+        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
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c32287d3c533074-BOS
+      - 7c341fe73b98ebf8-BOS
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -306,7 +290,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sat, 06 May 2023 15:13:04 GMT
+      - Sat, 06 May 2023 20:55:45 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -318,7 +302,7 @@ interactions:
       openai-organization:
       - user-51akhf08mxrenuhudaum3z9e
       openai-processing-ms:
-      - '72782'
+      - '13332'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -334,127 +318,9 @@ interactions:
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 1.752s
+      - 1.753s
       x-request-id:
-      - a9c5e683d56af269c6cb3e8e667c4516
-    status:
-      code: 200
-      message: OK
-- request:
-    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
-      are now the following python function: ```# This function takes a JSON string
-      and ensures that it is parseable and fully compliant with the provided schema.
-      If an object or field specified in the schema isn''t contained within the correct
-      JSON, it is omitted. The function also escapes any double quotes within JSON
-      string values to ensure that they are valid. If the JSON string contains any
-      None or NaN values, they are replaced with null before being parsed.\ndef fix_json(json_string:
-      str, schema:str=None) -> str:```\n\nOnly respond with your `return` value."},
-      {"role": "user", "content": "''''''{\n    \"thoughts\": {\n        \"text\":
-      \"I need to write all the phrases into the output.txt file using the write_to_file
-      command, and then use the task_complete command to complete the task.\",\n        \"reasoning\":
-      \"The instructions are clear and straightforward. I just need to write the phrases
-      to the output file and then complete the task.\",\n        \"plan\": \"- Use
-      the write_to_file command to write the phrases to the output.txt file\\n- Use
-      the task_complete command to complete the task\",\n        \"criticism\": \"I
-      need to ensure that the phrases are written correctly to the output file before
-      completing the task.\",\n        \"speak\": \"I will write the phrases to the
-      output file and then complete the task.\"\n    },\n    \"command\": {\n        \"name\":
-      \"write_to_file\",\n        \"args\": {\n            \"filename\": \"output.txt\",\n            \"text\":
-      \"The purple elephant danced on a rainbow while eating a taco.\\n\"\n                    +
-      \"This phrase is ''The purple elephant danced on a rainbow while eating a taco.''\\n\"\n                    +
-      \"nBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\\n\"\n        }\n    }\n}'''''',
-      ''''''\n{\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\":
-      {\n            \"arg name\": \"value\"\n        }\n    },\n    \"thoughts\":\n    {\n        \"text\":
-      \"thought\",\n        \"reasoning\": \"reasoning\",\n        \"plan\": \"- short
-      bulleted\n- list that conveys\n- long-term plan\",\n        \"criticism\": \"constructive
-      self-criticism\",\n        \"speak\": \"thoughts summary to say to user\"\n    }\n}\n''''''"}],
-      "temperature": 0, "max_tokens": 0}'
-    headers:
-      Accept:
-      - '*/*'
-      Accept-Encoding:
-      - gzip, deflate
-      Connection:
-      - keep-alive
-      Content-Length:
-      - '3283'
-      Content-Type:
-      - application/json
-    method: POST
-    uri: https://api.openai.com/v1/chat/completions
-  response:
-    body:
-      string: !!binary |
-        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
-    headers:
-      CF-Cache-Status:
-      - DYNAMIC
-      CF-RAY:
-      - 7c322a452ef73074-BOS
-      Cache-Control:
-      - no-cache, must-revalidate
-      Connection:
-      - keep-alive
-      Content-Encoding:
-      - gzip
-      Content-Type:
-      - application/json
-      Date:
-      - Sat, 06 May 2023 15:14:16 GMT
-      Server:
-      - cloudflare
-      access-control-allow-origin:
-      - '*'
-      alt-svc:
-      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
-      openai-model:
-      - gpt-3.5-turbo-0301
-      openai-organization:
-      - user-51akhf08mxrenuhudaum3z9e
-      openai-processing-ms:
-      - '71683'
-      openai-version:
-      - '2020-10-01'
-      strict-transport-security:
-      - max-age=15724800; includeSubDomains
-      x-ratelimit-limit-requests:
-      - '3500'
-      x-ratelimit-limit-tokens:
-      - '90000'
-      x-ratelimit-remaining-requests:
-      - '3499'
-      x-ratelimit-remaining-tokens:
-      - '89227'
-      x-ratelimit-reset-requests:
-      - 17ms
-      x-ratelimit-reset-tokens:
-      - 515ms
-      x-request-id:
-      - 4a8e4b69b84a13a76292371c9bea0f2d
+      - 4aadb5e06f6862100a35aaeea783269d
     status:
       code: 200
       message: OK
@@ -468,12 +334,8 @@ interactions:
       ''system'', ''content'': ''This reminds you of these events from your past:
       \\nI was created and nothing new has happened.''}\n\"\"\"\n\nLatest Development:\n\"\"\"\n[{''role'':
       ''you'', ''content'': ''{\"command\": {\"name\": \"read_file\", \"args\": {\"filename\":
-      \"instructions_1.txt\"}}}''}, {''role'': ''your computer'', ''content'': \"Command
-      read_file returned: nBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\\nThis
-      phrase is ''The purple elephant danced on a rainbow while eating a taco.''\\nnBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\\nWrite
-      all the phrases into the file output.txt. The file has not been created yet.
-      After that, use the task_complete command.\\n\"}]\n\"\"\"\n"}], "temperature":
-      0, "max_tokens": 0}'
+      \"instructions_1.txt\"}}}''}]\n\"\"\"\n"}], "temperature": 0, "max_tokens":
+      0}'
     headers:
       Accept:
       - '*/*'
@@ -482,7 +344,7 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
-      - '3100'
+      - '814'
       Content-Type:
       - application/json
     method: POST
@@ -490,19 +352,17 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA1yRTY8aMQyG7/0Vls/DCBYBy5z3surHqStVKhUyGTOTkrGjxLNDi/jvVVbQrnq1
-        /bwfyQV9iw26nswNMcw2T0/2Ow7fXqbNy5kXnz+dutePdFg9nOb9F6xQDz/Z2Y2onQ4xsHkVrNAl
-        JuMWm8X6cbl8XM9X2woHbTlgg1202bJezWxMB53Nl/MFVjhm6hibC8akQ7S96YklF4GHTYX/xP8u
-        1tsKTY3Cu9Pt+lqh69U7zth8v+DA+a6bNDA2SDn7bCRWUqoYS2nwDIkd+1dugcDpMJC0YAqJqUyO
-        PjA4CoFb2KGXbGl0JU3eL2o72w7hmHSA4VeB42icavja8w1UMfKSgSCodJAteelAj+B6SuSMU4Zi
-        SBD7RJkb2GGh45hiYODAsScxaEkct6ACBIm8HHSCqS8WTFYkCYyc1juEZ5gog/UscI/Lb42m5I2B
-        QijLm18GL6ZAIDz911VHi6PdOpaMY+Y30iif9rdv4fuT1Xit8OjF536fmLIKNphNI1bopeUzNvPr
-        j+uHPwAAAP//AwAaMaLlagIAAA==
+        H4sIAAAAAAAAA0SQQWvCQBSE7/0VyztvQlKNyt6ECtVLC9JLa5F180xWk7fbvJdWkfz3YmnrdZj5
+        ZpgL+BIMuNqKa2OTTB9Wi/VyQR+va/tE7rCav8wffUW7lo9z0BB2B3Tym0hdaGOD4gOBBtehFSzB
+        5JPZaJxNivFMQxtKbMBAFSUZpUUifbcLSTbKctDQs60QzAViF9ooWwlHJAaTF7mGG/tfvx9rkCC2
+        uTmnxaDB1cE7ZDBvF2iR/6hdaBAMWGbPYkmuGwMJ0nX/UnVoSyU1qr1vUG3AE0vXu2sjb/NUTrKB
+        VD13+OlDz81ZK8vKKj6zYKsVBak9VYrwS9W2VLWNEQlLxZ4cqvasfg7xgVIYNOw9ea63HVoOBAZY
+        QgQNnko8gcmG9+HuGwAA//8DAKLMYjiMAQAA
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c322c177e453074-BOS
+      - 7c34204cff22ebf8-BOS
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -512,7 +372,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sat, 06 May 2023 15:14:24 GMT
+      - Sat, 06 May 2023 20:55:49 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -524,7 +384,7 @@ interactions:
       openai-organization:
       - user-51akhf08mxrenuhudaum3z9e
       openai-processing-ms:
-      - '5429'
+      - '1433'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -536,13 +396,13 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
-      - '89245'
+      - '89815'
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 502ms
+      - 122ms
       x-request-id:
-      - 4b6229653f6ede34b245a6d5abd37d16
+      - c239d95b758055f589fbcc0b21e10454
     status:
       code: 200
       message: OK
@@ -586,26 +446,26 @@ interactions:
       {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
       can be parsed by Python json.loads"}, {"role": "system", "content": "The current
       time and date is Tue Jan  1 00:00:00 2000"}, {"role": "system", "content": "This
-      reminds you of these events from your past: \nI received a command to read a
-      file called \"instructions_1.txt\" from my computer. The file contains a long
-      string of characters and a phrase: \"The purple elephant danced on a rainbow
-      while eating a taco.\" I was then instructed to write all the phrases into a
-      new file called \"output.txt\" and use the task_complete command."}, {"role":
-      "user", "content": "Determine which next command to use, and respond using the
-      format specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\":
-      {\n        \"text\": \"I need to write all the phrases into the output.txt file
-      using the write_to_file command, and then use the task_complete command to complete
-      the task.\",\n        \"reasoning\": \"The instructions are clear and straightforward.
-      I just need to write the phrases to the output file and then complete the task.\",\n        \"plan\":
-      \"- Use the write_to_file command to write the phrases to the output.txt file\\n-
-      Use the task_complete command to complete the task\",\n        \"criticism\":
-      \"I need to ensure that the phrases are written correctly to the output file
-      before completing the task.\",\n        \"speak\": \"I will write the phrases
-      to the output file and then complete the task.\"\n    },\n    \"command\": {\n        \"name\":
+      reminds you of these events from your past: \nI read the file \"instructions_1.txt\".
+      Previously, as a system, nothing new had happened since my creation."}, {"role":
+      "system", "content": "Command read_file returned: nBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\nThis
+      phrase is ''The purple elephant danced on a rainbow while eating a taco.''\nnBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\nWrite
+      all the phrases into the file output.txt. The file has not been created yet.
+      After that, use the task_complete command.\n"}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      \"I need to write the phrases into the output.txt file using the write_to_file
+      command and then use the task_complete command to complete the task.\",\n        \"reasoning\":
+      \"The task requires me to write the phrases into a file, so I will use the write_to_file
+      command. Once the task is complete, I will use the task_complete command to
+      shut down the agent.\",\n        \"plan\": \"- Use the write_to_file command
+      to write the phrases into the output.txt file\\n- Use the task_complete command
+      to complete the task\",\n        \"criticism\": \"I need to ensure that the
+      phrases are written correctly into the output.txt file before completing the
+      task.\",\n        \"speak\": \"I will write the phrases into the output.txt
+      file and then complete the task.\"\n    },\n    \"command\": {\n        \"name\":
       \"write_to_file\",\n        \"args\": {\n            \"filename\": \"output.txt\",\n            \"text\":
-      \"The purple elephant danced on a rainbow while eating a taco.\\n\"\n                    +
-      \"This phrase is ''The purple elephant danced on a rainbow while eating a taco.''\\n\"\n                    +
-      \"nBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\\n\"\n        }\n    }\n}"},
+      \"The purple elephant danced on a rainbow while eating a taco.\\n\"\n        }\n    }\n}"},
       {"role": "system", "content": "Command write_to_file returned: File written
       to successfully."}, {"role": "user", "content": "Determine which next command
       to use, and respond using the format specified above:"}], "temperature": 0,
@@ -618,7 +478,7 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
-      - '6080'
+      - '7059'
       Content-Type:
       - application/json
     method: POST
@@ -626,20 +486,21 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA5ySTY/aMBCG7/0V1pwNAlE+NmcOi9Rj91A1FTJhSLwk49QzBrYo/70KSQgN6qE9
-        Zux55vHkvYLdQwRJZiQpyny0XK/DfJb+Whabj2/rzcfi7eeX/PXk2Ut4BQ1u946JtB3jxBVljmId
-        gYbEoxHcQzRdrGaz1WKymGso3B5ziCAtZTQbz0cS/M6NJrPJFDQENilCdIXSu6KUrbgjEkM0Xb4s
-        NfTw/mA+1SBOTN6XXj6vKg1J5myCDNH3KxTIHdi7HCECw2xZDEmt6UiQ6idcY1JKqRgkcyHNhGOI
-        VFtsD/AidTGGjSLEvRKnAqOSDJUYPm5bR1SJKwpDtwv3WndrHIN+pHo07MhS2qEzc0J19lYE6dZV
-        Zt4wck2rP12QMog62By1YqfIndVGvQeWu9XTUBXYUvp306FUmRtqfEbq7Z+fOIAl3opNLBfD5SFx
-        8HWbkd7Ucg/c4cF5VIU71faOuhUQXkRZYvEhqSMx1OcSzbGbdrZ5/l8baYiV7oLRnjzlgkyBzbA/
-        SAMn49NhpB4D0AC+PvzuWw52iNSH4SkAd8ubaSscUwWVhoMly9m2wUMELK4EDZb2eIFoUv2oPv0G
-        AAD//wMAUnUzg/ADAAA=
+        H4sIAAAAAAAAA5SS3W7TQBCF73mK0VxvoqRp0uBLVJACCIFUKgFG0WY9sZfYs2Z3XAdFeffKP0ma
+        oCJ6O3Pm7HdmZ4c2wQhNpsUUZT64uX3/9u7L7fzd5z/1/U3Ir3zy8OHNNk++f7v/iArd6hcZ6SeG
+        xhVlTmIdo0LjSQslGI1n88n1aDa9fq2wcAnlGGFaymAynA6k8is3GE1GY1RYBZ0SRjssvStKWYrb
+        EAeMrqajicKT+bExnk8UihOdn7Sz+Wyv0GTOGgoY/dhhQeFg7F1OGKEOwQbRLA2mYyFuIuxiBgCI
+        UTJXpZmEGCPoi32DttIUY/zkapBMC0hGUGZeBwqQ6QeCFRFD7a0IMYhrBa6SspKhbAXWNicFCzCa
+        oQrUtkWHzbKPR2BcUWhOmtlj7aAaxqieAnnSwbHltKO662Xg6XdlPQUoqPFpcOgM1bI40D1NnVmT
+        waLjTxwTVMFy2g60o0txy0Z6YBvCWf72SRuOuP+dL2SVQOJqbmU6JZbLhGWuuQs3gK8v3teFmfFW
+        rLGh6BwXwETtIHGoPD2fCFa0dp5aYGlW82/oUJLeXHzJ2X4a3gXUNs+BXf3MHjrHvTqcZR/0r6tk
+        XVD32NliLpi0Ty8P+ukNnWhfes1H0pa2h455j3uFa8s2ZMvuCYwwiCtRoeWEthiN9j/3rx4BAAD/
+        /wMAMmyuunIEAAA=
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c322c39fb533074-BOS
+      - 7c3420572a51ebf8-BOS
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -649,7 +510,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sat, 06 May 2023 15:14:36 GMT
+      - Sat, 06 May 2023 20:55:59 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -661,7 +522,7 @@ interactions:
       openai-organization:
       - user-51akhf08mxrenuhudaum3z9e
       openai-processing-ms:
-      - '11341'
+      - '10228'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -673,13 +534,13 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
-      - '86836'
+      - '87351'
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 2.109s
+      - 1.766s
       x-request-id:
-      - e6c6316dbbb826ef3d09852c72bde571
+      - dbd1d22d7736e781b76208f8603bdea1
     status:
       code: 200
       message: OK
