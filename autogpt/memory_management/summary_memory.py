@@ -29,8 +29,9 @@ def get_newly_trimmed_messages(
         int: The new index value for use in the next loop.
     """
     # Select messages in full_message_history with an index higher than last_memory_index
+    # do a deep copy to avoid modifying the original list
     new_messages = [
-        msg for i, msg in enumerate(full_message_history) if i > last_memory_index
+        copy.deepcopy(msg) for i, msg in enumerate(full_message_history) if i > last_memory_index
     ]
 
     # Remove messages that are already present in current_context
@@ -74,8 +75,13 @@ def update_running_summary(
         if event["role"].lower() == "assistant":
             event["role"] = "you"
 
-            # Remove "thoughts" dictionary from "content"
-            content_dict = json.loads(event["content"])
+            try:
+                # Remove "thoughts" dictionary from "content"
+                event["content"] = event["content"].replace('\\', '\\\\')
+                content_dict = json.loads(event["content"])
+            except:
+                print(f"Could not parse content: {event['content']}")
+
             if "thoughts" in content_dict:
                 del content_dict["thoughts"]
             event["content"] = json.dumps(content_dict)
