@@ -1,4 +1,4 @@
-from autogpt.llm.base import ChatModelInfo, EmbeddingModelInfo
+from autogpt.llm.base import ChatModelInfo, EmbeddingModelInfo, TextModelInfo
 
 OPEN_AI_CHAT_MODELS = {
     "gpt-3.5-turbo": ChatModelInfo(
@@ -21,6 +21,15 @@ OPEN_AI_CHAT_MODELS = {
     ),
 }
 
+OPEN_AI_TEXT_MODELS = {
+    "text-davinci-003": TextModelInfo(
+        name="text-davinci-003",
+        prompt_token_cost=0.02,
+        completion_token_cost=0.02,
+        max_tokens=4097,
+    ),
+}
+
 OPEN_AI_EMBEDDING_MODELS = {
     "text-embedding-ada-002": EmbeddingModelInfo(
         name="text-embedding-ada-002",
@@ -31,7 +40,8 @@ OPEN_AI_EMBEDDING_MODELS = {
     ),
 }
 
-OPEN_AI_MODELS: dict[str, ChatModelInfo | EmbeddingModelInfo] = {
+OPEN_AI_MODELS: dict[str, ChatModelInfo | EmbeddingModelInfo | TextModelInfo] = {
     **OPEN_AI_CHAT_MODELS,
+    **OPEN_AI_TEXT_MODELS,
     **OPEN_AI_EMBEDDING_MODELS,
 }

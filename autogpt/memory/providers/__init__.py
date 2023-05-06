@@ -1,15 +1,26 @@
 from .json_file import JSONFileMemory
-from .milvus import MilvusMemory
 from .no_memory import NoMemory
 from .pinecone import PineconeMemory
 from .redis import RedisMemory
-from .weaviate import WeaviateMemory
 
 __all__ = [
     "JSONFileMemory",
-    "MilvusMemory",
     "NoMemory",
     "PineconeMemory",
     "RedisMemory",
-    "WeaviateMemory",
 ]
+
+# add backends requiring libraries that are not installed by default
+try:
+    from .milvus import MilvusMemory
+
+    __all__.append("MilvusMemory")
+except ImportError:
+    pass
+
+try:
+    from .weaviate import WeaviateMemory
+
+    __all__.append("WeaviateMemory")
+except ImportError:
+    pass

@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from sys import platform
+from typing import Optional
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -18,10 +19,12 @@ from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 
-import autogpt.processing.text as summary
 from autogpt.commands.command import command
 from autogpt.config import Config
+from autogpt.logs import logger
+from autogpt.memory import MemoryItem, NoMemory, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
+from autogpt.processing.text import summarize_text
 from autogpt.url_utils.validators import validate_url
 
 FILE_DIR = Path(__file__).parent.parent
@@ -34,7 +37,7 @@ CFG = Config()
     '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
 )
 @validate_url
-def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
+def browse_website(url: str, question: str) -> tuple[str, WebDriver | None]:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -53,14 +56,14 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
         return f"Error: {msg}", None
 
     add_header(driver)
-    summary_text = summary.summarize_memorize_webpage(url, text, question, driver)
+    summary = summarize_memorize_webpage(url, text, question, driver)
     links = scrape_links_with_selenium(driver, url)
 
     # Limit links to 5
     if len(links) > 5:
         links = links[:5]
     close_browser(driver)
-    return f"Answer gathered from website: {summary_text} \n \n Links: {links}", driver
+    return f"Answer gathered from website: {summary}\n\nLinks: {links}", driver
 
 
 def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
@@ -181,3 +184,34 @@ def add_header(driver: WebDriver) -> None:
         driver.execute_script(overlay_script)
     except Exception as e:
         print(f"Error executing overlay.js: {e}")
+
+
+def summarize_memorize_webpage(
+    url: str, text: str, question: str, driver: Optional[WebDriver] = None
+) -> str:
+    """Summarize text using the OpenAI API
+
+    Args:
+        url (str): The url of the text
+        text (str): The text to summarize
+        question (str): The question to ask the model
+        driver (WebDriver): The webdriver to use to scroll the page
+
+    Returns:
+        str: The summary of the text
+    """
+    if not text:
+        return "Error: No text to summarize"
+
+    text_length = len(text)
+    logger.info(f"Text length: {text_length} characters")
+
+    memory = get_memory(CFG)
+
+    if isinstance(memory, NoMemory):
+        summary, chunks = summarize_text(text, question)
+        return summary
+
+    new_memory = MemoryItem.from_webpage(text, url)
+    memory.add(new_memory)
+    return new_memory.summary

@@ -129,5 +129,5 @@ def test_chunked_tokens():
             1646,
         )
     ]
-    output = list(llm_utils.chunked_tokens(text, "cl100k_base", 8191))
+    output = list(llm_utils.chunked_tokens(text, "gpt-3.5-turbo", 4096))
     assert output == expected_output

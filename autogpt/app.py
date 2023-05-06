@@ -151,7 +151,7 @@ def get_text_summary(url: str, question: str) -> str:
         str: The summary of the text
     """
     text = scrape_text(url)
-    summary = summarize_text(text, question)
+    summary, _ = summarize_text(text, question)
 
     return f""" "Result" : {summary}"""
 

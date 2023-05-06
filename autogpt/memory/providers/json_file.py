@@ -7,6 +7,7 @@ import numpy as np
 import orjson
 
 from autogpt.config import Config
+from autogpt.logs import logger
 
 from ..memory_item import MemoryItem
 from ..utils import Embedding, get_embedding
@@ -33,28 +34,15 @@ class JSONFileMemory(MemoryProviderSingleton):
         workspace_path = Path(cfg.workspace_path)
         self.file_path = workspace_path / f"{cfg.memory_index}.json"
         self.file_path.touch()
+        logger.debug(f"Initialized {__name__} with index path {self.file_path}")
 
         self.memories = []
         self.save_index()
 
-    def add(self, document: str):
-        """
-        Add text to our list of texts, add embedding as row to our
-            embeddings-matrix
-
-        Args:
-            text: str
-
-        Returns: None
-        """
-        if "Command Error:" in document:
-            return None
-
-        new_memory = MemoryItem.from_text(document)
-
-        self.memories.append(new_memory)
+    def add(self, item: MemoryItem):
+        self.memories.append(item)
         self.save_index()
-        return new_memory
+        return len(self.memories)
 
     def get(self, query: str) -> MemoryItem | None:
         """
@@ -65,7 +53,8 @@ class JSONFileMemory(MemoryProviderSingleton):
 
         Returns: The most relevant Memory
         """
-        return self.get_relevant(query, 1)[0]
+        result = self.get_relevant(query, 1)
+        return result[0] if result else None
 
     def get_relevant(self, query: str, k: int) -> list[MemoryItem]:
         """
@@ -78,10 +67,16 @@ class JSONFileMemory(MemoryProviderSingleton):
 
         Returns: list[Memory] containing the top [k] relevant memories
         """
+        if len(self.memories) < 1:
+            return []
+
         e_query: Embedding = get_embedding(query)
 
-        scores: list[float] = np.dot([m.e_summary for m in self.memories], e_query)
+        logger.debug(f"Searching for {k} relevant items; {len(self.memories)} in index")
+
+        scores: list[float] = [np.dot(m.e_summary, e_query) for m in self.memories]
         # scores: list[float] = np.dot([m.e for m in self.memories], e_query)
+        logger.debug(f"Memory match scores: {scores}")
 
         top_k_indices = np.argsort(scores)[-k:][::-1]  # take last 5 items and reverse
 
@@ -101,5 +96,6 @@ class JSONFileMemory(MemoryProviderSingleton):
         self.save_index()
 
     def save_index(self):
+        logger.debug(f"Saving memory index to file {self.file_path}")
         with self.file_path.open("wb") as f:
-            f.write(orjson.dumps(self.memories, option=self.SAVE_OPTIONS))
+            return f.write(orjson.dumps(self.memories, option=self.SAVE_OPTIONS))

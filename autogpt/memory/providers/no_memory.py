@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .. import MemoryItem
 from .base import MemoryProviderSingleton
 
 
@@ -22,7 +23,7 @@ class NoMemory(MemoryProviderSingleton):
         """
         pass
 
-    def add(self, data: str) -> str:
+    def add(self, item: MemoryItem):
         """
         Adds a data point to the memory. No action is taken in NoMemory.
 
@@ -31,7 +32,7 @@ class NoMemory(MemoryProviderSingleton):
 
         Returns: An empty string.
         """
-        return ""
+        return
 
     def get(self, data: str) -> list[Any] | None:
         """

@@ -8,8 +8,8 @@ from ..memory_item import MemoryItem
 
 class MemoryProviderSingleton(AbstractSingleton):
     @abc.abstractmethod
-    def add(self, document: str):
-        """Adds to memory"""
+    def add(self, item: MemoryItem):
+        """Adds a MemoryItem to the memory index"""
         pass
 
     @abc.abstractmethod

@@ -1,19 +1,32 @@
+from typing import overload
+
 import numpy as np
+import numpy.typing as npt
 import openai
 
 from autogpt.config import Config
 from autogpt.llm.llm_utils import metered, retry_openai_api
 
-Embedding = np.ndarray[np.float32]
+Embedding = list[np.float32]
 """Embedding vector"""
 TText = list[int]
 """Token array representing text"""
 
 
+@overload
+def get_embedding(input: str | TText) -> Embedding:
+    ...
+
+
+@overload
+def get_embedding(input: list[str] | list[TText]) -> list[Embedding]:
+    ...
+
+
 @metered
 @retry_openai_api()
 def get_embedding(
-    input: str | TText | list[str | TText],
+    input: str | TText | list[str] | list[TText],
 ) -> Embedding | list[Embedding]:
     """Get an embedding from the ada model.
 

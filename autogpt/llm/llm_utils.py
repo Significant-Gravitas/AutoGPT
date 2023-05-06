@@ -52,7 +52,7 @@ def metered(func):
             "convert_to_openai_object",
             side_effect=metering_wrapper,
         ):
-            func(*args, **kwargs)
+            return func(*args, **kwargs)
 
     return metered_func
 

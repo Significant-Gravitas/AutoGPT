@@ -32,6 +32,13 @@ class ChatModelInfo(ModelInfo):
 
 
 @dataclass
+class TextModelInfo(ModelInfo):
+    """Struct for text completion model information."""
+
+    pass
+
+
+@dataclass
 class EmbeddingModelInfo(ModelInfo):
     """Struct for embedding model information."""
 
