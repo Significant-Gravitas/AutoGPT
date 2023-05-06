@@ -14,7 +14,10 @@ services:
       REDIS_HOST: ${REDIS_HOST:-redis}
     volumes:
       - ./:/app
-    profiles: ["exclude-from-up"]
 
   redis:
     image: "redis/redis-stack-server:latest"
+    environment:
+      - REDIS_ARGS=--appendonly yes
+    volumes:
+      - ./redis-volume:/data
