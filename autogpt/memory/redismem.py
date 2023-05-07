@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import time
+
 import numpy as np
 import redis
 from colorama import Fore, Style
@@ -56,7 +58,7 @@ class RedisMemory(MemoryProviderSingleton):
                 Style.BRIGHT + str(e) + Style.RESET_ALL,
             )
             logger.double_check(
-                "Please ensure you have setup and configured Redis properly for use. "
+                "Please ensure you have set up and configured Redis properly for use. "
                 + f"You can check out {Fore.CYAN + Style.BRIGHT}"
                 f"https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL}"
                 " to ensure you've set up everything correctly."
@@ -153,4 +155,15 @@ class RedisMemory(MemoryProviderSingleton):
         """
         Returns: The stats of the memory index.
         """
-        return self.redis.ft(f"{self.cfg.memory_index}").info()
+        for i in range (self.cfg.redis_max_retries):
+            try:
+                return self.redis.ft(f"{self.cfg.memory_index}").info()
+            except Exception as e:
+                if i < self.cfg.redis_max_retries:
+                    # people have been reporting redis related connection problems, this will retry a few times
+                    time.sleep(self.cfg.redis_retry_delay_secs)
+                else:
+                    logger.warn("Error getting redis stats: (retrying)", e)
+                    return None
+
+

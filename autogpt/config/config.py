@@ -135,6 +135,8 @@ class Config(metaclass=Singleton):
         self.redis_port = os.getenv("REDIS_PORT", "6379")
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
         self.wipe_redis_on_start = os.getenv("WIPE_REDIS_ON_START", "True") == "True"
+        self.redis_max_retries = os.getenv("REDIS_MAX_RETRIES", 3)
+        self.redis_retry_delay_secs = os.getenv("REDIS_RETRY_DELAY_SECS", 1)
         self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
         # Note that indexes must be created on db 0 in redis, this is not configurable.
 
