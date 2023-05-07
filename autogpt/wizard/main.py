@@ -1,6 +1,6 @@
 import click
 
-from wizard import ResponseAdapter
+from Wizard import ResponseAdapter
 from FileTemplating import TemplateAdapter
 
 import argparse
