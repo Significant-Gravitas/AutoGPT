@@ -8,7 +8,7 @@ class BudgetManager(abc.ABC):
     """
 
     @abc.abstractmethod
-    def __init__(self, budget: float = 0.00):
+    def __init__(self, budget: float = 0.00, *args, **kwargs):
         pass
 
     @abc.abstractmethod
@@ -43,7 +43,7 @@ class BudgetManagerConcrete(BudgetManager):
     initial_budget: float = 0.00
     remaining_budget: float = 0.00
 
-    def __init__(self, budget: float = 0.00):
+    def __init__(self, budget: float = 0.00, *args, **kwargs):
         self.initial_budget = budget
         self.set_budget(budget)
 
