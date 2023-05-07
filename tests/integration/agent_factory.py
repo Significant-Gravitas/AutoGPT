@@ -183,3 +183,38 @@ def get_company_revenue_agent(
     )
 
     return agent
+
+
+@pytest.fixture
+def temporal_reasoning_agent(
+    agent_test_config, memory_local_cache, workspace: Workspace
+):
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.app")
+
+    ai_config = AIConfig(
+        ai_name="Get-Temporal-Sequence",
+        ai_role="an temporal reasoning agent that can reason about events and their ordering in time.",
+        ai_goals=[
+            "Use the command read_file to read the events.txt file",
+            "Write the name and arrival time of the individual who reached first to output.txt file.",
+        ],
+    )
+    ai_config.command_registry = command_registry
+
+    system_prompt = ai_config.construct_full_prompt()
+    Config().set_continuous_mode(False)
+    agent = Agent(
+        ai_name="Get-Temporal-Sequence",
+        memory=memory_local_cache,
+        full_message_history=[],
+        command_registry=command_registry,
+        config=ai_config,
+        next_action_count=0,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=workspace.root,
+    )
+
+    return agent
