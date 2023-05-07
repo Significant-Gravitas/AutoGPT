@@ -15,8 +15,8 @@ if typing.TYPE_CHECKING:
 class ModelInfo:
     """Struct for model information.
 
-    Would be lovely to eventually get this directly from APIs, but needs to be scraped from
-    websites for now.
+    Would be lovely to eventually get this directly from APIs, but needs to be
+    scraped from websites for now.
 
     """
 
@@ -97,10 +97,10 @@ class LanguageModel(abc.ABC):
         """Chat with a language model to determine the agent's objective.
 
         Args:
-            objective_prompt (ModelPrompt): The prompt to use to determine the agent's objective.
+            objective_prompt: The prompt to use to determine the agent's objective.
 
         Returns:
-            ChatModelResponse: The response from the language model.
+            The response from the language model.
 
         """
         ...
@@ -110,10 +110,10 @@ class LanguageModel(abc.ABC):
         """Chat with a language model to plan the agent's next action.
 
         Args:
-            planning_prompt (ModelPrompt): The prompt to use to plan the agent's next action.
+            planning_prompt: The prompt to use to plan the agent's next action.
 
         Returns:
-            ChatModelResponse: The response from the language model.
+            The response from the language model.
 
         """
         ...
@@ -123,10 +123,11 @@ class LanguageModel(abc.ABC):
         """Chat with a language model to get feedback on the agent's performance.
 
         Args:
-            self_feedback_prompt (ModelPrompt): The prompt to use to get feedback on the agent's performance.
+            self_feedback_prompt: The prompt to use to get feedback on the agent's
+                                    performance.
 
         Returns:
-            ChatModelResponse: The response from the language model.
+            The response from the language model.
 
         """
         ...
@@ -136,10 +137,10 @@ class LanguageModel(abc.ABC):
         """Get an embedding for a piece of data.
 
         Args:
-            data (str): The data to get an embedding for.
+            data: The data to get an embedding for.
 
         Returns:
-            EmbeddingModelResponse: The response from the language model.
+            The response from the language model.
 
         """
         ...
