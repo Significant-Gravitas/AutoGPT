@@ -2,21 +2,13 @@ import abc
 import enum
 import typing
 from dataclasses import dataclass
+from typing import Any, List
 
 if typing.TYPE_CHECKING:
-    from autogpt.config.ai_config import (  # Should this be replaced with Configuration?
-        AIConfig,
-    )
     from autogpt.core.configuration.base import Configuration
     from autogpt.core.logging.base import Logger
     from autogpt.core.plugin.base import PluginManager
     from autogpt.core.workspace.base import Workspace
-
-
-class LLMModel(enum.StrEnum):
-    # This will be defined probably in the LLM interface module
-    GPT3 = "gpt3"
-    GPT4 = "gpt4"
 
 
 class Role(enum.StrEnum):
@@ -31,25 +23,28 @@ class Message:
     message: str
 
 
-@dataclass
-class Context:  # This will be defined probably in the Memory interface module
-    progress: str
-    result: str
-    memories: list(str)
-    feedback: str
+ModelPrompt = List[Message]
 
 
 @dataclass
-class Thoughts:
-    system: str
+class PlanningPromptContext:
+    progress: Any  # To be defined (maybe here, as this might be a good place for summarization)
+    last_command_result: Any  # To be defined in the command interface
+    memories: Any  # List[Memory] # To be defined in the memory interface
+    user_feedback: Any  # Probably just a raw string
+
+
+@dataclass
+class SelfFeedbackPromptContext:
+    # Using existing args here
     reasoning: str
-    plan: list(str)
+    plan: List[str]
     thoughts: str
     criticism: str
 
 
 class Planner(abc.ABC):
-    """Build prompts based on inputs, can potentially store and retrieve planning state from the workspace"""
+    """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
     @abc.abstractmethod
     def __init__(
@@ -59,50 +54,58 @@ class Planner(abc.ABC):
         plugin_manager: PluginManager,
         workspace: Workspace,
     ) -> None:
-        self.configuration = configuration
-        self.logger = logger
-        self.plugin_manager = plugin_manager
-        self.workspace = workspace
-        pass
+        ...
 
     @abc.abstractmethod
     def construct_objective_prompt_from_user_input(
         self,
         user_objective: str,
-    ) -> list[Message]:  #
-        """
-        This method is called upon the creation of an agent to refine its goals based on user input.
+    ) -> ModelPrompt:
+        """Construct a prompt to have the Agent define its goals.
 
         Args:
-            user_objective (str): The user-defined objective for the agent.
+            user_objective: The user-defined objective for the agent.
 
         Returns:
-            List[Dict]: A list of message dictionaries that define the refined goals for the agent.
+            A prompt to have the Agent define its goals based on the user's input.
+
         """
-        pass
+        ...
+
+    @abc.abstractmethod
+    def construct_planning_prompt_from_context(
+        self,
+        context: PlanningPromptContext,
+    ) -> ModelPrompt:
+        """Construct a prompt to have the Agent plan its next action.
+
+        Args:
+            context: A context object containing information about the agent's
+                       progress, result, memories, and feedback.
+
+
+        Returns:
+            A prompt to have the Agent plan its next action based on the provided
+            context.
+
+        """
+        ...
 
     @abc.abstractmethod
     def get_self_feedback_prompt(
         self,
-        context: Context,
-        thoughts: Thoughts,
-        llm_model: LLMModel,  # Should this be a model object?
-    ) -> str:
+        context: SelfFeedbackPromptContext,
+    ) -> ModelPrompt:
         """
-        Generates a self-feedback prompt for the language model, based on the provided context and thoughts.
-
-        This method takes in a Context object containing information about the agent's progress, result,
-        memories, and feedback. It also takes in a Thoughts object containing keys such as 'reasoning',
-        'plan', 'thoughts', and 'criticism'. The method combines these elements to create a prompt that
-        facilitates self-assessment and improvement for the agent.
+        Generates a prompt to have the Agent reflect on its proposed next action.
 
         Args:
-            context (Context): An object containing information about the agent's progress, result,
-                               memories, and feedback.
-            thoughts (Thoughts): An object containing the agent's reasoning, plan, thoughts, and criticism.
-            llm_model (str): The identifier for the language model to be used.
+            context: A context object containing information about the agent's
+                       reasoning, plan, thoughts, and criticism.
 
         Returns:
-            str: A self-feedback prompt for the language model based on the given context and thoughts.
+            A self-feedback prompt for the language model based on the given context
+            and thoughts.
+
         """
-        pass
+        ...
