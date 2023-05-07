@@ -100,7 +100,7 @@ class Planner(abc.ABC):
             context (Context): An object containing information about the agent's progress, result,
                                memories, and feedback.
             thoughts (Thoughts): An object containing the agent's reasoning, plan, thoughts, and criticism.
-            llm_model (str): The identifier for the language model to be used. 
+            llm_model (str): The identifier for the language model to be used.
 
         Returns:
             str: A self-feedback prompt for the language model based on the given context and thoughts.
