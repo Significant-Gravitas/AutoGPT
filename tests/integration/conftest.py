@@ -1,8 +1,6 @@
-import os
-
 import pytest
 
-from tests.vcr.vcr_filter import before_record_request, before_record_response
+from tests.vcr.openai_filter import before_record_request, before_record_response
 
 
 @pytest.fixture(scope="session")
@@ -17,5 +15,4 @@ def vcr_config():
             "X-OpenAI-Client-User-Agent",
             "User-Agent",
         ],
-        "match_on": ["method", "uri", "body"],
     }

@@ -87,9 +87,6 @@ def run_auto_gpt(
         *args,
         **kwargs,
     )
-    plugin_manager.update_concrete_classes(command_registry, budget_manager, language_model, memory_backend, message_broker, planner)
-    plugin_manager.post_concrete_creation()
-    (command_registry, budget_manager, language_model, memory_backend, message_broker, planner) = plugin_manager.wrap_concretes_with_hooks()
 
     # Finally, we can instantiate the agent with all subsystems
     agent = Agent(

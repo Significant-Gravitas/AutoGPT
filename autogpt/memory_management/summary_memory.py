@@ -2,10 +2,8 @@ import copy
 import json
 from typing import Dict, List, Tuple
 
-from autogpt.agent import Agent
 from autogpt.config import Config
 from autogpt.llm.llm_utils import create_chat_completion
-from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
 
 cfg = Config()
 
@@ -48,7 +46,7 @@ def get_newly_trimmed_messages(
 
 
 def update_running_summary(
-    agent: Agent, current_memory: str, new_events: List[Dict[str, str]]
+    current_memory: str, new_events: List[Dict[str, str]]
 ) -> str:
     """
     This function takes a list of dictionaries representing new events and combines them with the current summary,
@@ -87,7 +85,7 @@ def update_running_summary(
         elif event["role"] == "user":
             new_events.remove(event)
 
-    # This can happen at any point during execution, not just the beginning
+    # This can happen at any point during execturion, not just the beginning
     if len(new_events) == 0:
         new_events = "Nothing new happened."
 
@@ -112,23 +110,8 @@ Latest Development:
             "content": prompt,
         }
     ]
-    agent.log_cycle_handler.log_cycle(
-        agent.config.ai_name,
-        agent.created_at,
-        agent.cycle_count,
-        messages,
-        PROMPT_SUMMARY_FILE_NAME,
-    )
 
     current_memory = create_chat_completion(messages, cfg.fast_llm_model)
-
-    agent.log_cycle_handler.log_cycle(
-        agent.config.ai_name,
-        agent.created_at,
-        agent.cycle_count,
-        current_memory,
-        SUMMARY_FILE_NAME,
-    )
 
     message_to_return = {
         "role": "system",
