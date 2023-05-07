@@ -1,11 +1,9 @@
 import abc
 
-from autogpt.core import Logger
-
 
 class Configuration(abc.ABC):
     @abc.abstractmethod
-    def __init__(self, logger: Logger, *arg, **kwargs):
+    def __init__(self, *arg, **kwargs):
         pass
 
     @property

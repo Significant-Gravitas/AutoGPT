@@ -1,4 +1,6 @@
 import abc
+import logging
+from typing import List, Tuple
 
 from autogpt.core.budget import BudgetManager
 from autogpt.core.command import CommandRegistry
@@ -41,3 +43,49 @@ class Agent(abc.ABC):
     @abc.abstractmethod
     def run(self):
         pass
+
+
+class AgentFactory:
+
+    configuration_defaults = {
+        # Which subsystems to use. These must be subclasses of the base classes,
+        # but could come from plugins.
+        'system': {
+            'agent': 'autogpt.core.agent.Agent',
+            'budget_manager': 'autogpt.core.budget.BudgetManager',
+            'command_registry': 'autogpt.core.command.CommandRegistry',
+            'language_model': 'autogpt.core.llm.LanguageModel',
+            'memory_backend': 'autogpt.core.memory.MemoryBackend',
+            'planner': 'autogpt.core.planning.Planner',
+        }
+    }
+
+    def __init__(self, logger: logging.Logger):
+        self._logger = logger
+
+    def compile_configuration(self, user_configuration: dict) -> Tuple[Configuration, List[str]]:
+        """Compile the user's configuration with the defaults."""
+        agent_system_configuration = self.configuration_defaults['system']
+        agent_system_configuration.update(user_configuration.get('system', {}))
+        system_classes = self._get_system_classes(agent_system_configuration)
+        system_defaults =
+
+        agent_configuration = Configuration()
+
+
+    def _get_system_classes(self, agent_system_configuration: dict):
+        # Parse the configuration to get the system classes
+        # Import those classes by some mechanism, return a list of classes
+        return [
+            BudgetManager,
+            CommandRegistry,
+            LanguageModel,
+            MemoryBackend,
+            Planner,
+            Workspace,
+        ]
+
+    @abc.abstractmethod
+    def create_agent(self, *args, **kwargs) -> Agent:
+        pass
+

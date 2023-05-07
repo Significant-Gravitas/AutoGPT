@@ -51,14 +51,13 @@ class Planner(abc.ABC):
         self,
         configuration: Configuration,
         logger: Logger,
-        plugin_manager: PluginManager,
         workspace: Workspace,
     ) -> None:
         ...
 
+    @staticmethod
     @abc.abstractmethod
     def construct_objective_prompt_from_user_input(
-        self,
         user_objective: str,
     ) -> ModelPrompt:
         """Construct a prompt to have the Agent define its goals.
