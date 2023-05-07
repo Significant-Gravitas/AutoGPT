@@ -14,11 +14,11 @@ import json
 # - probably need to support some state machine stuff for each step ?
 
 @click.command()
-@click.argument('filename',default='cmakelists.txt.wizard')
+@click.argument('filename',default='cmakelists.txt')
 # @click.option('--filename', prompt='wizard file', help='The wizard to execute')
 def main(filename):
     # Your main code goes here
-    with open(filename) as f:
+    with open(filename+'.wizard') as f:
         data = json.load(f)
 
     ##
@@ -38,7 +38,7 @@ def main(filename):
 
     #context = {'version':'1.0.0','project': 'Demo','binary':'myDemo','sources':'main.cxx'}
     # Using a file-based Jinja2 template
-    template_path = 'cmakelists.txt.template'
+    template_path = filename+'.template'
  
     SubstitutionAdapter = TemplateAdapter(template_path, template_type='jinja2')
  
