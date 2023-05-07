@@ -1,14 +1,13 @@
 """Abstract interface for a message broker system."""
 import abc
-from dataclasses import dataclass
 from datetime import datetime
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Callable, Dict
 
 
 class Role(StrEnum):
     """Enumeration of all entities capable of sending messages"""
-
     USER = "user"
     CLIENT_APPLICATION = "client_application"
     AGENT_FACTORY = "agent_factory"
@@ -18,7 +17,6 @@ class Role(StrEnum):
 @dataclass
 class Sender:
     """Struct for metadata about a sender."""
-
     # We'll need some kind of uuids at some point.  Names are fine for now.
     name: str
     role: Role
@@ -27,7 +25,6 @@ class Sender:
 @dataclass
 class MessageMetadata:
     """Struct for metadata about a message."""
-
     sender: Sender
     timestamp: datetime
     # TODO: what else goes here?
@@ -36,7 +33,6 @@ class MessageMetadata:
 @dataclass
 class Message:
     """Struct for a message and its metadata."""
-
     content: dict  # Some json struct we can define with a strict schema
     metadata: MessageMetadata
 
@@ -152,3 +148,4 @@ class MessageBroker(abc.ABC):
     @abc.abstractmethod
     def __repr__(self):
         ...
+
