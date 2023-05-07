@@ -97,6 +97,29 @@ def execute_python_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
+def validate_command(command: str) -> bool:
+    """Validate a command to ensure it is allowed
+
+    Args:
+        command (str): The command to validate
+
+    Returns:
+        bool: True if the command is allowed, False otherwise
+    """
+    tokens = command.split()
+
+    if not tokens:
+        return False
+
+    if CFG.blacklisted_commands and tokens[0] not in CFG.blacklisted_commands:
+        return False
+
+    for keyword in CFG.whitelisted_commands:
+        if keyword in tokens:
+            return False
+
+    return True
+
 @command(
     "execute_shell",
     "Execute Shell Command, non-interactive commands only",
@@ -115,6 +138,9 @@ def execute_shell(command_line: str) -> str:
     Returns:
         str: The output of the command
     """
+    if not validate_command(command_line):
+            logger.info(f"Command '{command_line}' not allowed")
+            return "Error: This Shell Command is not allowed."
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
@@ -153,6 +179,9 @@ def execute_shell_popen(command_line) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
+    if not validate_command(command_line):
+            logger.info(f"Command '{command_line}' not allowed")
+            return "Error: This Shell Command is not allowed."
 
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
