@@ -11,8 +11,8 @@ from autogpt.llm import create_chat_completion
 from autogpt.logs import logger
 from autogpt.prompts.default_prompts import (
     DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
-    DEFAULT_USER_DESIRE_PROMPT,
     DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC,
+    DEFAULT_USER_DESIRE_PROMPT,
 )
 
 CFG = Config()
