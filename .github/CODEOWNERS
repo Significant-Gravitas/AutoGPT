@@ -1,5 +1,9 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 .github/workflows/ @Significant-Gravitas/Auto-GPT-Source
 =======
 .github/workflows/ Significant-Gravitas
 >>>>>>> a9a42b6 (add code owners)
+=======
+.github/workflows/ @Significant-Gravitas
+>>>>>>> 0854a26 (added @ to codeowners)
