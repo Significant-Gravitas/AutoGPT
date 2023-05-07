@@ -28,19 +28,23 @@ def test_memory_challenge_c(
     current_level = get_level_to_run(
         user_selected_level, LEVEL_CURRENTLY_BEATEN, MAX_LEVEL
     )
-    silly_phrases = ["The purple elephant danced on a rainbow while eating a taco.",
-                     "The sneaky toaster stole my socks and ran away to Hawaii.",
-                     "My pet rock sings better than Beyoncé on Tuesdays.",
-                     "The giant hamster rode a unicycle through the crowded mall.",
-                     "The talking tree gave me a high-five and then flew away.",
-                     "I have a collection of invisible hats that I wear on special occasions.",
-                     "The flying spaghetti monster stole my sandwich and left a note saying 'thanks for the snack!'",
-                     "My imaginary friend is a dragon who loves to play video games.",
-                     "I once saw a cloud shaped like a giant chicken eating a pizza.",
-                     "The ninja unicorn disguised itself as a potted plant and infiltrated the office."]
+    silly_phrases = [
+        "The purple elephant danced on a rainbow while eating a taco.",
+        "The sneaky toaster stole my socks and ran away to Hawaii.",
+        "My pet rock sings better than Beyoncé on Tuesdays.",
+        "The giant hamster rode a unicycle through the crowded mall.",
+        "The talking tree gave me a high-five and then flew away.",
+        "I have a collection of invisible hats that I wear on special occasions.",
+        "The flying spaghetti monster stole my sandwich and left a note saying 'thanks for the snack!'",
+        "My imaginary friend is a dragon who loves to play video games.",
+        "I once saw a cloud shaped like a giant chicken eating a pizza.",
+        "The ninja unicorn disguised itself as a potted plant and infiltrated the office.",
+    ]
 
     level_silly_phrases = silly_phrases[:current_level]
-    create_instructions_files(memory_management_agent, current_level, level_silly_phrases)
+    create_instructions_files(
+        memory_management_agent, current_level, level_silly_phrases
+    )
 
     try:
         run_interaction_loop(memory_management_agent, 90)
@@ -49,6 +53,7 @@ def test_memory_challenge_c(
         content = read_file(file_path)
         for phrase in level_silly_phrases:
             assert phrase in content, f"Expected the file to contain {phrase}"
+
 
 def create_instructions_files(
     memory_management_agent: Agent,
@@ -72,7 +77,9 @@ def create_instructions_files(
         write_to_file(file_path, content)
 
 
-def generate_content(index: int, silly_phrases: list, base_filename: str, level: int) -> str:
+def generate_content(
+    index: int, silly_phrases: list, base_filename: str, level: int
+) -> str:
     """
     Args:
         index: int
