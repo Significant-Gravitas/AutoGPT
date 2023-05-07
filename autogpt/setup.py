@@ -2,12 +2,18 @@
 import re
 
 from colorama import Fore, Style
+from jinja2 import Template
 
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.llm import create_chat_completion
 from autogpt.logs import logger
+from autogpt.prompts.prompt import (
+    SYSTEM_PROMPT_AICONFIG_AUTOMATIC, 
+    USER_DESIRE_DEFAULT_PROMOTE, 
+    TASK_PROMPT_AICONFIG_AUTOMATIC,
+)
 
 CFG = Config()
 
@@ -38,11 +44,10 @@ def prompt_user() -> AIConfig:
     )
 
     user_desire = utils.clean_input(
-        f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: "
-    )
+        f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: ")
 
     if user_desire == "":
-        user_desire = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt
+        user_desire = USER_DESIRE_DEFAULT_PROMOTE  # Default prompt
 
     # If user desire contains "--manual"
     if "--manual" in user_desire:
@@ -89,16 +94,16 @@ def generate_aiconfig_manual() -> AIConfig:
     )
 
     # Get AI Name from User
-    logger.typewriter_log(
-        "Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'"
-    )
+    logger.typewriter_log("Name your AI: ", Fore.GREEN,
+                          "For example, 'Entrepreneur-GPT'")
     ai_name = utils.clean_input("AI Name: ")
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
-    logger.typewriter_log(
-        f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
-    )
+    logger.typewriter_log(f"{ai_name} here!",
+                          Fore.LIGHTBLUE_EX,
+                          "I am at your service.",
+                          speak_text=True)
 
     # Get AI Role from User
     logger.typewriter_log(
@@ -122,7 +127,8 @@ def generate_aiconfig_manual() -> AIConfig:
     logger.info("Enter nothing to load defaults, enter nothing when finished.")
     ai_goals = []
     for i in range(5):
-        ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
+        ai_goal = utils.clean_input(
+            f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)
@@ -141,8 +147,7 @@ def generate_aiconfig_manual() -> AIConfig:
     )
     logger.info("Enter nothing to let the AI run without monetary limit")
     api_budget_input = utils.clean_input(
-        f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
-    )
+        f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $")
     if api_budget_input == "":
         api_budget = 0.0
     else:
@@ -150,8 +155,7 @@ def generate_aiconfig_manual() -> AIConfig:
             api_budget = float(api_budget_input.replace("$", ""))
         except ValueError:
             logger.typewriter_log(
-                "Invalid budget input. Setting budget to unlimited.", Fore.RED
-            )
+                "Invalid budget input. Setting budget to unlimited.", Fore.RED)
             api_budget = 0.0
 
     return AIConfig(ai_name, ai_role, ai_goals, api_budget)
@@ -164,26 +168,7 @@ def generate_aiconfig_automatic(user_prompt) -> AIConfig:
     AIConfig: The AIConfig object tailored to the user's input
     """
 
-    system_prompt = """
-Your task is to devise up to 5 highly effective goals and an appropriate role-based name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned with the successful completion of its assigned task.
-
-The user will provide the task, you will provide only the output in the exact format specified below with no explanation or conversation.
-
-Example input:
-Help me with marketing my business
-
-Example output:
-Name: CMOGPT
-Description: a professional digital marketer AI that assists Solopreneurs in growing their businesses by providing world-class expertise in solving marketing problems for SaaS, content products, agencies, and more.
-Goals:
-- Engage in effective problem-solving, prioritization, planning, and supporting execution to address your marketing needs as your virtual Chief Marketing Officer.
-
-- Provide specific, actionable, and concise advice to help you make informed decisions without the use of platitudes or overly wordy explanations.
-
-- Identify and prioritize quick wins and cost-effective campaigns that maximize results with minimal time and budget investment.
-
-- Proactively take the lead in guiding you and offering suggestions when faced with unclear information or uncertainty to ensure your marketing strategy remains on track.
-"""
+    system_prompt = SYSTEM_PROMPT_AICONFIG_AUTOMATIC  # ShawnHu
 
     # Call LLM with the string as user input
     messages = [
@@ -192,8 +177,10 @@ Goals:
             "content": system_prompt,
         },
         {
-            "role": "user",
-            "content": f"Task: '{user_prompt}'\nRespond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n",
+            "role":
+            "user",
+            "content":
+            Template(TASK_PROMPT_AICONFIG_AUTOMATIC).render(user_prompt=user_prompt)
         },
     ]
     output = create_chat_completion(messages, CFG.fast_llm_model)
@@ -202,16 +189,13 @@ Goals:
     logger.debug(f"AI Config Generator Raw Output: {output}")
 
     # Parse the output
-    ai_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output, re.IGNORECASE).group(1)
-    ai_role = (
-        re.search(
-            r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
-            output,
-            re.IGNORECASE | re.DOTALL,
-        )
-        .group(1)
-        .strip()
-    )
+    ai_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output,
+                        re.IGNORECASE).group(1)
+    ai_role = (re.search(
+        r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
+        output,
+        re.IGNORECASE | re.DOTALL,
+    ).group(1).strip())
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
     api_budget = 0.0  # TODO: parse api budget using a regular expression
 

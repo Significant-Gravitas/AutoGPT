@@ -14,6 +14,48 @@ DEFAULT_TRIGGERING_PROMPT = (
     "Determine which next command to use, and respond using the format specified above:"
 )
 
+SYSTEM_PROMPT_AICONFIG_AUTOMATIC = ("""
+    Your task is to devise up to 5 highly effective goals and an appropriate role-based name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned with the successful completion of its assigned task.
+
+    The user will provide the task, you will provide only the output in the exact format specified below with no explanation or conversation.
+
+    Example input:
+    Help me with marketing my business
+
+    Example output:
+    Name: CMOGPT
+    Description: a professional digital marketer AI that assists Solopreneurs in growing their businesses by providing world-class expertise in solving marketing problems for SaaS, content products, agencies, and more.
+    Goals:
+    - Engage in effective problem-solving, prioritization, planning, and supporting execution to address your marketing needs as your virtual Chief Marketing Officer.
+
+    - Provide specific, actionable, and concise advice to help you make informed decisions without the use of platitudes or overly wordy explanations.
+
+    - Identify and prioritize quick wins and cost-effective campaigns that maximize results with minimal time and budget investment.
+
+    - Proactively take the lead in guiding you and offering suggestions when faced with unclear information or uncertainty to ensure your marketing strategy remains on track.
+    """)
+
+TASK_PROMPT_AICONFIG_AUTOMATIC = (
+    "Task: '{{user_prompt}}'\n"
+    "Respond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n"
+)
+
+USER_DESIRE_DEFAULT_PROMOTE = (
+    "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"
+  )  # Default prompt
+
+FEEDBACK_PROMPT = (
+    "Below is a message from me, an AI Agent, assuming the role of {{ai_role}}. "
+    "whilst keeping knowledge of my slight limitations as an AI Agent Please evaluate my thought process, reasoning, and plan, and provide a concise paragraph outlining potential improvements. Consider adding or removing ideas that do not align with my role and explaining why, prioritizing thoughts based on their significance, or simply refining my overall thought process."
+)
+
+PROMPT_START = (
+            "Your decisions must always be made independently without"
+            " seeking user assistance. Play to your strengths as an LLM and pursue"
+            " simple strategies with no legal complications."
+            ""
+        )
+
 
 def build_default_prompt_generator() -> PromptGenerator:
     """
@@ -30,12 +72,10 @@ def build_default_prompt_generator() -> PromptGenerator:
     # Add constraints to the PromptGenerator object
     prompt_generator.add_constraint(
         "~4000 word limit for short term memory. Your short term memory is short, so"
-        " immediately save important information to files."
-    )
+        " immediately save important information to files.")
     prompt_generator.add_constraint(
         "If you are unsure how you previously did something or want to recall past"
-        " events, thinking about similar events will help you remember."
-    )
+        " events, thinking about similar events will help you remember.")
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint(
         'Exclusively use the commands listed in double quotes e.g. "command name"'
@@ -43,29 +83,23 @@ def build_default_prompt_generator() -> PromptGenerator:
 
     # Add resources to the PromptGenerator object
     prompt_generator.add_resource(
-        "Internet access for searches and information gathering."
-    )
+        "Internet access for searches and information gathering.")
     prompt_generator.add_resource("Long Term memory management.")
     prompt_generator.add_resource(
-        "GPT-3.5 powered Agents for delegation of simple tasks."
-    )
+        "GPT-3.5 powered Agents for delegation of simple tasks.")
     prompt_generator.add_resource("File output.")
 
     # Add performance evaluations to the PromptGenerator object
     prompt_generator.add_performance_evaluation(
         "Continuously review and analyze your actions to ensure you are performing to"
-        " the best of your abilities."
-    )
+        " the best of your abilities.")
     prompt_generator.add_performance_evaluation(
-        "Constructively self-criticize your big-picture behavior constantly."
-    )
+        "Constructively self-criticize your big-picture behavior constantly.")
     prompt_generator.add_performance_evaluation(
-        "Reflect on past decisions and strategies to refine your approach."
-    )
+        "Reflect on past decisions and strategies to refine your approach.")
     prompt_generator.add_performance_evaluation(
         "Every command has a cost, so be smart and efficient. Aim to complete tasks in"
-        " the least number of steps."
-    )
+        " the least number of steps.")
     prompt_generator.add_performance_evaluation("Write all code to a file.")
     return prompt_generator
 
@@ -93,14 +127,12 @@ def construct_main_ai_config() -> AIConfig:
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True,
         )
-        should_continue = clean_input(
-            f"""Continue with the last settings?
+        should_continue = clean_input(f"""Continue with the last settings?
 Name:  {config.ai_name}
 Role:  {config.ai_role}
 Goals: {config.ai_goals}
 API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-Continue ({CFG.authorise_key}/{CFG.exit_key}): """
-        )
+Continue ({CFG.authorise_key}/{CFG.exit_key}): """)
         if should_continue.lower() == CFG.exit_key:
             config = AIConfig()
 
@@ -122,9 +154,15 @@ Continue ({CFG.authorise_key}/{CFG.exit_key}): """
 
     # Print the ai config details
     # Name
-    logger.typewriter_log("Name:", Fore.GREEN, config.ai_name, speak_text=False)
+    logger.typewriter_log("Name:",
+                          Fore.GREEN,
+                          config.ai_name,
+                          speak_text=False)
     # Role
-    logger.typewriter_log("Role:", Fore.GREEN, config.ai_role, speak_text=False)
+    logger.typewriter_log("Role:",
+                          Fore.GREEN,
+                          config.ai_role,
+                          speak_text=False)
     # Goals
     logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
     for goal in config.ai_goals:

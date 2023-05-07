@@ -123,13 +123,8 @@ class AIConfig:
             full_prompt (str): A string containing the initial prompt for the user
               including the ai_name, ai_role, ai_goals, and api_budget.
         """
-
-        prompt_start = (
-            "Your decisions must always be made independently without"
-            " seeking user assistance. Play to your strengths as an LLM and pursue"
-            " simple strategies with no legal complications."
-            ""
-        )
+        from autogpt.prompts.prompt import PROMPT_START
+        prompt_start = PROMPT_START
 
         from autogpt.config import Config
         from autogpt.prompts.prompt import build_default_prompt_generator
