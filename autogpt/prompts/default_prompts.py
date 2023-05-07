@@ -1,4 +1,6 @@
-SYSTEM_PROMPT_AICONFIG_AUTOMATIC = ("""
+#########################Setup.py#################################
+
+DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC = """
     Your task is to devise up to 5 highly effective goals and an appropriate role-based name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned with the successful completion of its assigned task.
 
     The user will provide the task, you will provide only the output in the exact format specified below with no explanation or conversation.
@@ -17,13 +19,11 @@ SYSTEM_PROMPT_AICONFIG_AUTOMATIC = ("""
     - Identify and prioritize quick wins and cost-effective campaigns that maximize results with minimal time and budget investment.
 
     - Proactively take the lead in guiding you and offering suggestions when faced with unclear information or uncertainty to ensure your marketing strategy remains on track.
-    """)
+    """
 
-TASK_PROMPT_AICONFIG_AUTOMATIC = (
+DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC = (
     "Task: '{{user_prompt}}'\n"
     "Respond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n"
 )
 
-USER_DESIRE_DEFAULT_PROMOTE = (
-    "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"
-)  # Default prompt
+DEFAULT_USER_DESIRE_PROMOTE = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt
