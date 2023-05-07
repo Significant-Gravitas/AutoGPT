@@ -184,10 +184,9 @@ def get_company_revenue_agent(
 
     return agent
 
+
 @pytest.fixture
-def create_code_agent(
-    agent_test_config, memory_local_cache, workspace: Workspace
-):
+def create_code_agent(agent_test_config, memory_local_cache, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.commands.execute_code")
@@ -222,4 +221,3 @@ def create_code_agent(
     )
 
     return agent
-

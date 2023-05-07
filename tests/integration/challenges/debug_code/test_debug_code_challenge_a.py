@@ -1,18 +1,14 @@
 import contextlib
-from functools import wraps
 from typing import Generator
 
 import pytest
 
-from autogpt.agent import agent
 from autogpt.commands.execute_code import execute_python_file
-from autogpt.commands.file_operations import read_file, write_to_file
-from tests.integration.agent_utils import run_interaction_loop
+from autogpt.commands.file_operations import write_to_file
 from tests.integration.challenges.utils import run_multiple_times
 from tests.utils import requires_api_key
-import docker
 
-CODE = """def two_sum(nums, target):
+CODE = """def two_sum(nums, target): typo
     seen = {}
     for i, num in enumerate(nums):
         complement = target - num
@@ -43,9 +39,7 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)
-def test_debug_code_challenge_a(
-    create_code_agent, monkeypatch
-) -> None:
+def test_debug_code_challenge_a(create_code_agent, monkeypatch) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs and checking the output file content.
 
@@ -54,11 +48,9 @@ def test_debug_code_challenge_a(
     """
 
     # monkeypatch.setattr(docker, 'from_env', lambda: docker_client)
-    client = docker.from_env()
 
     file_path = str(create_code_agent.workspace.get_path("code.py"))
     write_to_file(file_path, CODE)
-
 
     input_sequence = ["s", "s", "s", "s", "s", "EXIT"]
     gen = input_generator(input_sequence)
@@ -66,5 +58,6 @@ def test_debug_code_challenge_a(
 
     with contextlib.suppress(SystemExit):
         create_code_agent.start_interaction_loop()
-    assert "[0, 1]" in execute_python_file(file_path), "Expected the output to be [0, 1]"
-
+    assert "[0, 1]" in execute_python_file(
+        file_path
+    ), "Expected the output to be [0, 1]"
