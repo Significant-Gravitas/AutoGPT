@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import abc
 import logging
-from typing import List, Tuple
+from importlib import import_module
+from typing import List, Tuple, Type
 
 from autogpt.core.budget import BudgetManager
 from autogpt.core.command import CommandRegistry
@@ -40,6 +43,13 @@ class Agent(abc.ABC):
         self.plugin_manager = plugin_manager
         self.workspace = workspace
 
+
+    @classmethod
+    @abc.abstractmethod
+    def from_workspace(cls, workpace_path: Workspace, message_broker: MessageBroker) -> Agent:
+        pass
+
+
     @abc.abstractmethod
     def run(self):
         pass
@@ -51,7 +61,6 @@ class AgentFactory:
         # Which subsystems to use. These must be subclasses of the base classes,
         # but could come from plugins.
         'system': {
-            'agent': 'autogpt.core.agent.Agent',
             'budget_manager': 'autogpt.core.budget.BudgetManager',
             'command_registry': 'autogpt.core.command.CommandRegistry',
             'language_model': 'autogpt.core.llm.LanguageModel',
@@ -65,27 +74,34 @@ class AgentFactory:
 
     def compile_configuration(self, user_configuration: dict) -> Tuple[Configuration, List[str]]:
         """Compile the user's configuration with the defaults."""
-        agent_system_configuration = self.configuration_defaults['system']
-        agent_system_configuration.update(user_configuration.get('system', {}))
-        system_classes = self._get_system_classes(agent_system_configuration)
-        system_defaults =
 
-        agent_configuration = Configuration()
+        configuration_dict = self.configuration_defaults
+        # Copy so we're not mutating the data structure we're looping over.
+        system_defaults = self.configuration_defaults['system'].copy()
+        # Build up default configuration
+        for system_name in system_defaults:
+            system_class = self.get_system_class(system_name, user_configuration)
+            configuration_dict.update(system_class.configuration_defaults)
 
+        # Apply user overrides
+        configuration_dict.update(user_configuration)
 
-    def _get_system_classes(self, agent_system_configuration: dict):
-        # Parse the configuration to get the system classes
-        # Import those classes by some mechanism, return a list of classes
-        return [
-            BudgetManager,
-            CommandRegistry,
-            LanguageModel,
-            MemoryBackend,
-            Planner,
-            Workspace,
-        ]
+        # TODO: Validate the user configuration and compile errors.
+        agent_configuration = Configuration(configuration_dict)
+        configuration_errors = []
+        return agent_configuration, configuration_errors
 
-    @abc.abstractmethod
-    def create_agent(self, *args, **kwargs) -> Agent:
-        pass
+    def get_system_class(self, system_name, configuration: dict | Configuration):
+        """Get the system class for the given configuration."""
+        if isinstance(configuration, Configuration):
+            configuration = configuration.to_dict()
+
+        default_system_import_path = self.configuration_defaults['system'][system_name]
+        system_import_path = configuration['system'].get(system_name, default_system_import_path)
+
+        module_path, _, class_name = system_import_path.rpartition(".")
+        module = import_module(module_path)
+        system_class = getattr(module, class_name)
+
+        return system_class
 

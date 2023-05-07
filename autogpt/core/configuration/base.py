@@ -44,3 +44,11 @@ class Configuration(abc.ABC):
     @abc.abstractmethod
     def set_defaults(self, system_classes: list):
         pass
+
+    @abc.abstractmethod
+    def to_dict(self):
+        pass
+
+    @abc.abstractmethod
+    def __repr__(self):
+        pass

@@ -24,9 +24,16 @@ def start_message_broker(application_logger) -> SimpleMessageBroker:
 
     # This would happen on the "server" side, but hook here because we're
     # doing everything in-process.
+    # FIXME: I'm misuing message channels here. Message broker needs to be set up
+    #   so that register_listener can subscribe to a channel and filter messages
+    #   based on their metadata.
     message_broker.register_listener(
         "user_objective",
         bootstrap_agent,
+    )
+    message_broker.register_listener(
+        "launch_agent",
+        launch_agent,
     )
 
     message_broker.register_listener(
@@ -35,6 +42,7 @@ def start_message_broker(application_logger) -> SimpleMessageBroker:
     )
     message_broker.register_listener(
         "agent_setup_complete",
+        lambda x: None,
     )
 
     return message_broker
@@ -56,7 +64,7 @@ def run_auto_gpt(
     message_broker = start_message_broker(application_logger)
 
     # This application either starts an existing agent or builds a new one.
-    if command_line_arguments['agent'] is None:
+    if command_line_arguments['agent_name'] is None:
         # Find out the user's objective for the new agent.
         user_objective = input(...)
         # Construct a message to send to the agent.  Real format TBD.
@@ -71,99 +79,9 @@ def run_auto_gpt(
         }
         message_broker.send_message("user_objective", user_objective_message)
 
+    launch_agent_message = {
+        "message_broker": message_broker,
+        "agent": command_line_arguments['agent_name'],
+    }
+    message_broker.send_message("launch_agent", launch_agent_message)
 
-
-
-
-
-
-def run_auto_gpt(
-    *args,
-    **kwargs,
-):
-    # Configure logging before we do anything else.
-    # Right here, I think we only configure it to log to stdout.
-    logger = Logger(*args, **kwargs)
-
-    # Configuration should, I propose, do all the input validation.
-    # Pass in the logger so we can log warnings and errors.
-    # Probably don't need the config to hold a long term reference to the logger
-    configuration = Configuration(logger, *args, **kwargs)
-
-    # Setup the workspace next so we can use it in all the other components.
-    # First do the on disk operations to make a workspace if we need to and fill
-    # it with default files like a serialized version of the configuration,
-    # the ai settings, etc.
-    workspace_path = Workspace.setup_workspace(configuration, logger, *args, **kwargs)
-    # Then make the abstraction (could return the abstraction directly from the above
-    workspace = Workspace(workspace_path, configuration, logger, *args, **kwargs)
-
-    # Setup the plugin manager next so we can use plugins in all the other components.
-    plugin_manager = PluginManager(configuration, logger, workspace, *args, **kwargs)
-
-    # Remaining systems should be (I think at this point) independent of each other,
-    # so we can instantiate them in any order.
-    budget_manager = BudgetManager(
-        configuration,
-        logger,
-        workspace,
-        plugin_manager,
-        *args,
-        **kwargs,
-    )
-    command_registry = CommandRegistry(
-        configuration,
-        logger,
-        workspace,
-        plugin_manager,
-        *args,
-        **kwargs,
-    )
-    language_model = LanguageModel(
-        configuration,
-        logger,
-        workspace,
-        plugin_manager,
-        *args,
-        **kwargs,
-    )
-    memory_backend = MemoryBackend(
-        configuration,
-        logger,
-        workspace,
-        plugin_manager,
-        *args,
-        **kwargs,
-    )
-    message_broker = MessageBroker(
-        configuration,
-        logger,
-        workspace,
-        plugin_manager,
-        *args,
-        **kwargs,
-    )
-    planner = Planner(
-        configuration,
-        logger,
-        workspace,
-        plugin_manager,
-        *args,
-        **kwargs,
-    )
-
-    # Finally, we can instantiate the agent with all subsystems
-    agent = Agent(
-        configuration=configuration,
-        logger=logger,
-        budget_manager=budget_manager,
-        command_registry=command_registry,
-        language_model=language_model,
-        memory_backend=memory_backend,
-        message_broker=message_broker,
-        planner=planner,
-        plugin_manager=plugin_manager,
-        workspace=workspace,
-    )
-
-    agent.run()
