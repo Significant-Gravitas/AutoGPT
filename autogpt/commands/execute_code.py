@@ -13,13 +13,13 @@ from autogpt.logs import logger
 CFG = Config()
 
 
-@command("execute_python_file", "Execute Python File", '"filename": "<filename>"', '"args": "<args>"')
-def execute_python_file(filename: str, args: str) -> str:
+@command("execute_python_file", "Execute Python File", '"filename": "<filename>"', '"(optional) args": "<args>"')
+def execute_python_file(filename: str, args: str="") -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
         filename (str): The name of the file to execute
-        args (str): The arguments of the python script
+        (optional) args (str): The arguments of the python script
 
     Returns:
         str: The output of the file
