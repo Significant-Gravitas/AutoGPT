@@ -1,5 +1,6 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 .github/workflows/ @Significant-Gravitas/Auto-GPT-Source
 =======
 .github/workflows/ Significant-Gravitas
@@ -7,3 +8,6 @@
 =======
 .github/workflows/ @Significant-Gravitas
 >>>>>>> 0854a26 (added @ to codeowners)
+=======
+.github/workflows/ @Significant-Gravitas/Auto-GPT-Source
+>>>>>>> f4d9bcb (switched to team ownership)
