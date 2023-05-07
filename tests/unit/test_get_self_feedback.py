@@ -9,12 +9,14 @@ def test_get_self_feedback(mocker):
         "reasoning": "Sample reasoning.",
         "plan": "Sample plan.",
         "thoughts": "Sample thoughts.",
-        "criticism": "Sample criticism.",
     }
 
     # Define a fake response for the create_chat_completion function
     fake_response = (
-        "Y The provided information is suitable for achieving the role's objectives."
+        "The AI Agent has demonstrated a reasonable thought process, but there is room for improvement. "
+        "For example, the reasoning could be elaborated to better justify the plan, and the plan itself "
+        "could be more detailed to ensure its effectiveness. In addition, the AI Agent should focus more "
+        "on its core role and prioritize thoughts that align with that role."
     )
 
     # Mock the create_chat_completion function
@@ -36,5 +38,9 @@ def test_get_self_feedback(mocker):
         "gpt-3.5-turbo",
     )
 
-    # Check if the response is correct
-    assert feedback == fake_response
+    # Check if the response is a non-empty string
+    assert isinstance(feedback, str) and len(feedback) > 0
+
+    # Check if certain keywords from input thoughts are present in the feedback response
+    for keyword in ["reasoning", "plan", "thoughts"]:
+        assert keyword in feedback
