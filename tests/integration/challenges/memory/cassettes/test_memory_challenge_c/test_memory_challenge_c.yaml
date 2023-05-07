@@ -57,20 +57,20 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA4RSS2vbQBC+91cMc5aMjava6FYolBTSQ2laaFXMWhprN5Zmxc6I2DX670WW5AQ7
-        pNdvHt9j5oSuwBRzazSvmypefbLlYe9/PPy6f6Sm5Pun8uv657ck+fLZ1hih3z5SruPELPd1U5E6
-        zxhhHsgoFZguPqyXyXyerBYR1r6gClMsG42XsyTWNmx9PF/OFxhhK6YkTE/YBF83ulG/JxZMV8tl
-        hM+7L/gieR+hejXVBVqvV12EufUuJ8H09wlrkmlt8BVhikbEiRrWXqRnJe4NnDIGAMhQrW9Lq5Jh
-        CiM4FuigPZjhHYj1bVWAqAkK2yMEMoXjEtQSOBYNbd5Llc1ipgeFnasIWpk6+u7NGct9XRsuZhlG
-        L6kCGfHsuBz4vluCnQuiIEoNOAH10HJBofdR3LDCBKqRvYBao8BERT+2JWgo7Hyo6Ya2qQwPjDE8
-        CL2utV/Sg295zTKO4SOb6viXXldXkFKoHQ9lpsPgTa4U5cGpy53UU/CTDWJpAw3W7t7MYnwcqo6w
-        pZ0PBE3wOdH5Xk9OLRg+Dkld5yENmf3E/OSq6v8HP9ufZTis6aLpq8bwbp6KTU0DwyXoKxEmlNe/
-        OBT63ufx20tMIs5CRj0Zd9hFuHPsxG6GN8MURX2DETou6IDpvPvTvfsHAAD//wMAe+3XZQoEAAA=
+        H4sIAAAAAAAAA4RSS4/TQAy+8yssn5OqVWm75IYEEitxQIjlQlA1yTjN0IknGju0pep/R2maLmpX
+        y/Xz43vYR3QWMyxro2XT+nT1oW74y5Ts4esyVHYnH58+VbX/3RWfl98xwVD8olIvE5MyNK0ndYEx
+        wTKSUbKYzZYP88V0+m4+T7AJljxmuGk1nU8WqXaxCOl0Pp1hgp2YDWF2xDaGptW1hi2xYLbqJ593
+        X/HZ4m2CGtT4K/TwsDolWNbBlSSY/ThiQzKujcETZmhEnKhh7UUGVuLewDFnAIActQ7dplbJMYML
+        eCnQXnswx0eQOnTegqiJCsUBIhnreANaEzgWjV3ZS5X1bKJ7hcp5gk7Gjr57fcbK0DSG7STH5F+q
+        SEYCO94MfN9qgspFURClFpyABujYUux92DtWGEE1shXQ2igwke3HCoKWYhViQ3e0rTc8MKbwJPSy
+        1n5JD77mNc85hfds/OEPvazOklJsHA9lpv3gTW4UldGpK500Y/CjDWLpIg3WHl/N4vI45A9QUBUi
+        QRtDSXS+185pDYYPQ1K3eUhLZjsy75z3/z/42f4kx2HNKRm/6hLe3VOxaWhguAZ9I8LEze0vDoW+
+        93n8/hKjiLOQi56cT3hKsHLspF4Pb4YZioYWE3RsaY/Z9PTz9OYvAAAA//8DABlLAG8KBAAA
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c3d17cabe703ba5-BOS
+      - 7c3d209fccb4306b-BOS
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -80,7 +80,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sun, 07 May 2023 23:03:00 GMT
+      - Sun, 07 May 2023 23:09:01 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -92,7 +92,7 @@ interactions:
       openai-organization:
       - user-51akhf08mxrenuhudaum3z9e
       openai-processing-ms:
-      - '8918'
+      - '8033'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -110,7 +110,7 @@ interactions:
       x-ratelimit-reset-tokens:
       - 2.337s
       x-request-id:
-      - ca8938d8cc9bfb009192224ada4fb1b0
+      - 323a78da6e3d016699b089eb6bfd33f7
     status:
       code: 200
       message: OK
@@ -139,16 +139,16 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA0SOQUvDQBBG7/6K5TtvStJY2+5Ri6AI3kQQKdtk7K4mM0t2ai0l/10K1V4fvMc7
-        IrZwaILXpk9dMV+FsFRaLZ7i8/2OD3fzw/Xj/HW6f/kOt7CQzSc1ejYmjfSpI43CsGgG8kotXHWz
-        qGdlOVvUFr201MFhm7SoJ7NCd8NGirIuK1jsst8S3BFpkD7pWuWLOMMtpxaX9AVbqKjv/kFVVqNF
-        EyQ2lOHejugp/zUH6QgOPueY1bOeDoWV+HT/YPY+m/Ox8dwaFg2Rt4Zpb4LPJviUiKmdYLT4iBxz
-        WA/kszAcskqCReSWfuDK8X28+gUAAP//AwA+9+M1SQEAAA==
+        H4sIAAAAAAAAA0SOQUvDQBQG7/6K5TtvSmLaavcm9KIe60VEyib7ml1N3i7ZV1oJ+e9SqPY6MMNM
+        CA4GrbfSDqkvHrZ++Fl35/ftod7KbtVw2L1K416e0u4NGrH5olauxqKNQ+pJQmRotCNZIQdTrR/r
+        VVlulkuNITrqYdAlKerFqpDj2MSirMsKGsdsO4KZkMY4JNlL/CbOMJt7jVv6hjUkiu3/QVVWs0br
+        Y2gpw3xMGCj/NcfYEwxsziGLZbkcRhbiy/2zOtmsrsfKslMcxQfuFNNJeZuVtykRk1tg1jgEDtnv
+        R7I5MgyyxASNwI7OMOX8Od/9AgAA//8DABmiw/dJAQAA
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c3d18145bc33ba5-BOS
+      - 7c3d20e27d7e306b-BOS
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -158,7 +158,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sun, 07 May 2023 23:03:04 GMT
+      - Sun, 07 May 2023 23:09:04 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -170,7 +170,7 @@ interactions:
       openai-organization:
       - user-51akhf08mxrenuhudaum3z9e
       openai-processing-ms:
-      - '895'
+      - '927'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -188,7 +188,7 @@ interactions:
       x-ratelimit-reset-tokens:
       - 88ms
       x-request-id:
-      - 6bb51f4e1fc0a96d86c72083556b8dd5
+      - 6c708e8cc18fb9e8ef98dbddac6a739a
     status:
       code: 200
       message: OK
@@ -244,8 +244,8 @@ interactions:
       completely before proceeding with any tasks.\",\n        \"speak\": \"I will
       start by reading the instructions file.\"\n    },\n    \"command\": {\n        \"name\":
       \"read_file\",\n        \"args\": {\n            \"filename\": \"instructions_1.txt\"\n        }\n    }\n}"},
-      {"role": "system", "content": "Command read_file returned: nBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\nThis
-      phrase is ''The purple elephant danced on a rainbow while eating a taco.''\nnBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\nWrite
+      {"role": "system", "content": "Command read_file returned: xkxMHNJQIDxkz5bdSYQhbl3tlBOp1kBvyjvKgbR9by8dZTGJZepYvCFPHv1zA1cDgmebDQIR2eBnxsTAZN0H6oJ5SrZddcILluIEv0VwQAtzjo1beUvX518OX1ZTd4X9xoJ7H7UG0G4AI18EwQmYEUph7m3ehmOqROF8vrGKSBUDWaPZqLKlXqekOncp3cRhE69S7qcS90GXWSrBzYA1w84uz3wOxNLPuvqIGmCwCWI4UZMw2WfQK467S1xdEuNppY0iFYQHWuQXnXpdm6UloncroHCC9HOhYX6rhkt2ozm6RqNbOW8W3nDR86zFNn8DU9wMzikyOwwkR99hxG1IWwkAQHaHDbWkcNmt4oSnB90aGsb3TJHmksXlSfaxHo2i1a3ZzYtTTP7qdFFauXID7ipZ26a4DRTGfJd0ViHROaivmpiloqBQv5VLIoEt8FgXcJTU6k2JuDFbalZNfVGqkgTN9DM6vvRHeaIhOipVYubcETaZnRZ7K6cqWbGbYE1uNwEngMwV7oJGPKJvE6mcijq2n9U8TbdnxkVEcCWRn8FkXj7tC4jLlf7byz8FoCr9glW4YwqDnUUiXP07lJFp4TopHrFinUHr694FpfBT6VvL9JSwfhtgp2mlJLqm3sCWs8luwOO7w4MqjbvwfZKMl2DdX5sfHFJbfzF4y25ZYXXFNTGsUJC4dzvdm4BNJ6lawOHOnmDzehnjsSAVjLpgW7hwfB2CXXuWEOoGkuIVUnzq8dLIs6CMx2TTYydCoR1CoQxbYb7VLqWxQFaa9LSGUSbsKbbt4manxDpZfuJB0qbHOoW6CJbWbEIWTR7BLg4HwrNlr9MIEKs9y79priSSJrrKWN9xOeWjc8I2EYsdZZjHTEcgHzikvIf1zgSK5N6gREM7RmmFnkkKm3U5C1F6vQNjmB3hnSPyZcqJZcVI1T9VYvfGOHbID61Z73y5sLJ9c2eFYcOkDRl0pRAGIQWZCDiWRXbizmlHFX9iWIlY\nThis
+      phrase is ''The purple elephant danced on a rainbow while eating a taco.''\nxkxMHNJQIDxkz5bdSYQhbl3tlBOp1kBvyjvKgbR9by8dZTGJZepYvCFPHv1zA1cDgmebDQIR2eBnxsTAZN0H6oJ5SrZddcILluIEv0VwQAtzjo1beUvX518OX1ZTd4X9xoJ7H7UG0G4AI18EwQmYEUph7m3ehmOqROF8vrGKSBUDWaPZqLKlXqekOncp3cRhE69S7qcS90GXWSrBzYA1w84uz3wOxNLPuvqIGmCwCWI4UZMw2WfQK467S1xdEuNppY0iFYQHWuQXnXpdm6UloncroHCC9HOhYX6rhkt2ozm6RqNbOW8W3nDR86zFNn8DU9wMzikyOwwkR99hxG1IWwkAQHaHDbWkcNmt4oSnB90aGsb3TJHmksXlSfaxHo2i1a3ZzYtTTP7qdFFauXID7ipZ26a4DRTGfJd0ViHROaivmpiloqBQv5VLIoEt8FgXcJTU6k2JuDFbalZNfVGqkgTN9DM6vvRHeaIhOipVYubcETaZnRZ7K6cqWbGbYE1uNwEngMwV7oJGPKJvE6mcijq2n9U8TbdnxkVEcCWRn8FkXj7tC4jLlf7byz8FoCr9glW4YwqDnUUiXP07lJFp4TopHrFinUHr694FpfBT6VvL9JSwfhtgp2mlJLqm3sCWs8luwOO7w4MqjbvwfZKMl2DdX5sfHFJbfzF4y25ZYXXFNTGsUJC4dzvdm4BNJ6lawOHOnmDzehnjsSAVjLpgW7hwfB2CXXuWEOoGkuIVUnzq8dLIs6CMx2TTYydCoR1CoQxbYb7VLqWxQFaa9LSGUSbsKbbt4manxDpZfuJB0qbHOoW6CJbWbEIWTR7BLg4HwrNlr9MIEKs9y79priSSJrrKWN9xOeWjc8I2EYsdZZjHTEcgHzikvIf1zgSK5N6gREM7RmmFnkkKm3U5C1F6vQNjmB3hnSPyZcqJZcVI1T9VYvfGOHbID61Z73y5sLJ9c2eFYcOkDRl0pRAGIQWZCDiWRXbizmlHFX9iWIlY\nWrite
       all the phrases into the file output.txt. The file has not been created yet.
       After that, use the task_complete command.\n"}, {"role": "user", "content":
       "Determine which next command to use, and respond using the format specified
@@ -266,22 +266,22 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA5STyW7bQAyG730KgmfZsJ04dXRr0UuAAt0XoCqM8YiRppFIZYaq0xp+90KbVbtJ
-        0Bx04abv5/zcoUsxRpsbtWVVTJ6/yvMXxeUtv/0wXyxffrl8t5pnX3+/f/15lf7ECGXzg6z2HVMr
-        ZVWQOmGM0HoySinG84vV2XI2W67OIywlpQJjzCqdnE2XE639Riazs9kcI6yDyQjjHVZeykrXKjfE
-        AePF+WwZ4Th8TCzmEaqoKcbQxeJiH6HNxVkKGH/bYUlhGOylIIzRhOCCGtYGU1iJGwm7hAEAEtRc
-        6izXkGAMfbBP0J02wQSvgIlSUIGtd0qgOUGVexMogGOVNiC1VrVO9U7h2hUEdXCctZm2aa2ybuNW
-        ytJwCs2nOTHUoZuoJtyse91jmQocYkPVNMHob1JPJgg7zjrcj30ZeLqtnacAJT0Cb1reCILAFWxd
-        URyI7gWfwhu2Iwu4cACMTgc8KCnktUIqW27LTEasp6KqwnCnZwKfHgN62rskCY/z/n/lJ3DWO3XW
-        hfLUIMSh9k2b0SMc4zt6JQYr3pPV4tfD5tnQtXgaMAYj3ff2oSJzM1C0y3+CRw8evM9i3V/20XAo
-        /Xr+uRM2JXUAR89zwml8dnpiXaKpHUeMhEf9pxfZWLyqfVUQUEFVblghNWwpBWEw4I3jjWxhmzcy
-        ybQrNKDGyjRJeBDXCux1JrzHfYTXjl3I191JYYxBpcIIHad0h/Fs/33/7A8AAAD//wMAdZYhZjcF
-        AAA=
+        H4sIAAAAAAAAA5RTy27bMBC89ysWe5YNO46TRuceUiCnPtAWVWHQ1NpiTHIZclk7CfzvhSQ7atwg
+        bQ+8zL5mZpePaGosUTdKtAt2dPmucQ+zrzfpQ7iepLOpefg409dX6Uuk5hsWyMtb0nKoGGt2wZIY
+        9ligjqSEaiynF29n88nk6nxeoOOaLJa4DjKajecjyXHJo8lsMsUCc1JrwvIRQ2QXZCG8IZ+wPDuf
+        zwscmg+B6UWBwqLsAF1cTvcF6oaNpoTl90d0lI6NI1vCElVKJony0tJkL+RbCY+VBwCoUBrO60ZS
+        hSUcwEOAdtKCFb4HT1SDMGyjEQJpCEITVaIExgt3AGcJWcayE1gZS5CT8esu0hUthBcdrtk55Wto
+        nzTkIae+o6i0WRx0D2nC8IQds8YVFr8zjaQSe+PXPd1PDYHxSWLWrYEJIt1lEwkcvaJB9bSfaP11
+        arDK9wNH8Pmg4WWp/2VcVfmh3797ckJORyNGm+RON0g+5diWKXlGR8WevXTSYyQt9n4g2elZ0ooj
+        HWcf1/uSNymQ2hxHb421/3M5r66gn7Ivjud78OSP6/XKUU/g2U5OeKq4Pj38PtDmDi0Ghs/qT/9J
+        e3ghx2AJyFJolBeolddUA3tQEJXxS97CtmllkuosVCBK87iqfFt+l43ewDLy1sOKd3CbXUjAPyl2
+        Jlj1cA81r9v0G47kwISUHdRsOUIyAsqRFKDZJ9JCkiOo2gSTdDuLrJG29GhjZ+XB0crvcV/gyniT
+        mkX/pbDEJBywQONr2mE52f/Yv/kFAAD//wMACVEUrTcFAAA=
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c3d181adbdd3ba5-BOS
+      - 7c3d20e9390c306b-BOS
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -291,7 +291,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sun, 07 May 2023 23:03:16 GMT
+      - Sun, 07 May 2023 23:09:17 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -303,7 +303,7 @@ interactions:
       openai-organization:
       - user-51akhf08mxrenuhudaum3z9e
       openai-processing-ms:
-      - '11811'
+      - '12327'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -315,13 +315,13 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
-      - '87370'
+      - '87420'
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 1.753s
+      - 1.72s
       x-request-id:
-      - d3d294eb042cb2385ee2dd6b54538c98
+      - 93cb47399c1455c45bb4acec3202f584
     status:
       code: 200
       message: OK
@@ -335,8 +335,12 @@ interactions:
       ''system'', ''content'': ''This reminds you of these events from your past:
       \\nI was created and nothing new has happened.''}\n\"\"\"\n\nLatest Development:\n\"\"\"\n[{''role'':
       ''you'', ''content'': ''{\"command\": {\"name\": \"read_file\", \"args\": {\"filename\":
-      \"instructions_1.txt\"}}}''}]\n\"\"\"\n"}], "temperature": 0, "max_tokens":
-      0}'
+      \"instructions_1.txt\"}}}''}, {''role'': ''your computer'', ''content'': \"Command
+      read_file returned: xkxMHNJQIDxkz5bdSYQhbl3tlBOp1kBvyjvKgbR9by8dZTGJZepYvCFPHv1zA1cDgmebDQIR2eBnxsTAZN0H6oJ5SrZddcILluIEv0VwQAtzjo1beUvX518OX1ZTd4X9xoJ7H7UG0G4AI18EwQmYEUph7m3ehmOqROF8vrGKSBUDWaPZqLKlXqekOncp3cRhE69S7qcS90GXWSrBzYA1w84uz3wOxNLPuvqIGmCwCWI4UZMw2WfQK467S1xdEuNppY0iFYQHWuQXnXpdm6UloncroHCC9HOhYX6rhkt2ozm6RqNbOW8W3nDR86zFNn8DU9wMzikyOwwkR99hxG1IWwkAQHaHDbWkcNmt4oSnB90aGsb3TJHmksXlSfaxHo2i1a3ZzYtTTP7qdFFauXID7ipZ26a4DRTGfJd0ViHROaivmpiloqBQv5VLIoEt8FgXcJTU6k2JuDFbalZNfVGqkgTN9DM6vvRHeaIhOipVYubcETaZnRZ7K6cqWbGbYE1uNwEngMwV7oJGPKJvE6mcijq2n9U8TbdnxkVEcCWRn8FkXj7tC4jLlf7byz8FoCr9glW4YwqDnUUiXP07lJFp4TopHrFinUHr694FpfBT6VvL9JSwfhtgp2mlJLqm3sCWs8luwOO7w4MqjbvwfZKMl2DdX5sfHFJbfzF4y25ZYXXFNTGsUJC4dzvdm4BNJ6lawOHOnmDzehnjsSAVjLpgW7hwfB2CXXuWEOoGkuIVUnzq8dLIs6CMx2TTYydCoR1CoQxbYb7VLqWxQFaa9LSGUSbsKbbt4manxDpZfuJB0qbHOoW6CJbWbEIWTR7BLg4HwrNlr9MIEKs9y79priSSJrrKWN9xOeWjc8I2EYsdZZjHTEcgHzikvIf1zgSK5N6gREM7RmmFnkkKm3U5C1F6vQNjmB3hnSPyZcqJZcVI1T9VYvfGOHbID61Z73y5sLJ9c2eFYcOkDRl0pRAGIQWZCDiWRXbizmlHFX9iWIlY\\nThis
+      phrase is ''The purple elephant danced on a rainbow while eating a taco.''\\nxkxMHNJQIDxkz5bdSYQhbl3tlBOp1kBvyjvKgbR9by8dZTGJZepYvCFPHv1zA1cDgmebDQIR2eBnxsTAZN0H6oJ5SrZddcILluIEv0VwQAtzjo1beUvX518OX1ZTd4X9xoJ7H7UG0G4AI18EwQmYEUph7m3ehmOqROF8vrGKSBUDWaPZqLKlXqekOncp3cRhE69S7qcS90GXWSrBzYA1w84uz3wOxNLPuvqIGmCwCWI4UZMw2WfQK467S1xdEuNppY0iFYQHWuQXnXpdm6UloncroHCC9HOhYX6rhkt2ozm6RqNbOW8W3nDR86zFNn8DU9wMzikyOwwkR99hxG1IWwkAQHaHDbWkcNmt4oSnB90aGsb3TJHmksXlSfaxHo2i1a3ZzYtTTP7qdFFauXID7ipZ26a4DRTGfJd0ViHROaivmpiloqBQv5VLIoEt8FgXcJTU6k2JuDFbalZNfVGqkgTN9DM6vvRHeaIhOipVYubcETaZnRZ7K6cqWbGbYE1uNwEngMwV7oJGPKJvE6mcijq2n9U8TbdnxkVEcCWRn8FkXj7tC4jLlf7byz8FoCr9glW4YwqDnUUiXP07lJFp4TopHrFinUHr694FpfBT6VvL9JSwfhtgp2mlJLqm3sCWs8luwOO7w4MqjbvwfZKMl2DdX5sfHFJbfzF4y25ZYXXFNTGsUJC4dzvdm4BNJ6lawOHOnmDzehnjsSAVjLpgW7hwfB2CXXuWEOoGkuIVUnzq8dLIs6CMx2TTYydCoR1CoQxbYb7VLqWxQFaa9LSGUSbsKbbt4manxDpZfuJB0qbHOoW6CJbWbEIWTR7BLg4HwrNlr9MIEKs9y79priSSJrrKWN9xOeWjc8I2EYsdZZjHTEcgHzikvIf1zgSK5N6gREM7RmmFnkkKm3U5C1F6vQNjmB3hnSPyZcqJZcVI1T9VYvfGOHbID61Z73y5sLJ9c2eFYcOkDRl0pRAGIQWZCDiWRXbizmlHFX9iWIlY\\nWrite
+      all the phrases into the file output.txt. The file has not been created yet.
+      After that, use the task_complete command.\\n\"}]\n\"\"\"\n"}], "temperature":
+      0, "max_tokens": 0}'
     headers:
       Accept:
       - '*/*'
@@ -345,7 +349,7 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
-      - '814'
+      - '3100'
       Content-Type:
       - application/json
     method: POST
@@ -353,17 +357,19 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA0SPQUsDMRCF7/6KYc7ZZde6anMsPbSoIAheVEqaTJvYTWZJplop/e+yovb6eO/j
-        e0cMDjVab8TGoa9u5t4/7uf3C8qztbs7HK42zw8fi116MosZKuT1O1n5XdSW49CTBE6o0GYyQg51
-        e3076Zqmm04VRnbUo8btINWk7irZ5zVXzaRpUeG+mC2hPuKQOQ6yEt5RKqjbrlV4Zv/nl7cKhcX0
-        5+bN9KTQeg6WCuqXI0Yqf9TMPaFGU0ooYpKMjpyE0ui/hE9TIFMMyZED3kD8gp8LgROY5EC8EUgs
-        PqQtJPoEbwp4MwyUyNWwhEyWwgc5MGA5xp8NQyYzJpvQE1jT9+TgFUMqkvd2ZJdVW8tBXrHGk8JN
-        SKH4VSZTOKHGIjygwlHqgLo5vZ0uvgEAAP//AwBfOQ7OowEAAA==
+        H4sIAAAAAAAAA1yRQW/bMAyF7/sVBM+O4SBNsvraAEGGAbvstGUIGJmJ1cqkINF1iiD/fVCRrsCu
+        JN/33pOu6Dts0fVkbohhtt70stnu9OHbard62252U7ik5+b1x/bp+y+sUI/P7OyuqJ0OMbB5FazQ
+        JSbjDtv56uti2TSPy8cKB+04YIvnaLNFvZzZmI46axbNHCscM50Z2yvGpEO0g+kLSy6A9brCT/i/
+        xbqp0NQofJ6uH9a3Cl2v3nHG9vcVB84f3KSBsUXK2WcjsZJSxVhKgx0kduxfuQMCp8NA0oEpJKYy
+        OfnA4CgE7mCPXrKl0ZU0+TCv7WJ7hFPSAYa3Io6jcarhZ893oYqRlwwEQeUM2ZKXM+gJXE+JnHHK
+        UAwJcmTnT95B7BNlbmGPBRPHFAMDB449iUFH4rgDFSBI5OWoE0x98WKywiYwclrvEXYwUQbrWeAj
+        N79Xm5I3BgqhLO9+GbyYAoHw9F9pHS2Odi9bwo6Z35VG+eVw/x/+eLsabxWevPjcHxJTVsEWs2nE
+        Cr10fMG2uf25ffkLAAD//wMAIQ6/qXMCAAA=
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c3d1877cfc43ba5-BOS
+      - 7c3d21477b50306b-BOS
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -373,7 +379,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sun, 07 May 2023 23:03:20 GMT
+      - Sun, 07 May 2023 23:09:23 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -385,7 +391,7 @@ interactions:
       openai-organization:
       - user-51akhf08mxrenuhudaum3z9e
       openai-processing-ms:
-      - '1628'
+      - '3678'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -397,13 +403,13 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
-      - '89815'
+      - '89245'
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 122ms
+      - 502ms
       x-request-id:
-      - d2bf6c9c96565e7de4caaece9e4bbfbd
+      - 218da221f2f0bbc2803936c9d88ea98e
     status:
       code: 200
       message: OK
@@ -447,27 +453,26 @@ interactions:
       {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
       can be parsed by Python json.loads"}, {"role": "system", "content": "The current
       time and date is Tue Jan  1 00:00:00 2000"}, {"role": "system", "content": "This
-      reminds you of these events from your past: \nI was reminded of my creation
-      and that nothing new has happened. I received a command to read a file called
-      \"instructions_1.txt\"."}, {"role": "system", "content": "Command read_file
-      returned: nBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\nThis
-      phrase is ''The purple elephant danced on a rainbow while eating a taco.''\nnBRNtp3FaBNfBMohNkyAxrVJ7UFF0lyth8Xizm1jrCOREOGRnWWMQ6olKtKX9niq0wOBTQN62ToY4cQPiQk3YN9fFCGmxaDX9g81AsqhQnGac72QfL41SnlJvhwgAUB52zTD26FeEvvHdiQ2aNhtMT9obgHNUkONEnO41EOpNI6jdwyLGaactp9GYV1PLbaRP5b1iD9z850KeNYDX9Qwca79isJS8jhuDkf0J7ELkpOH3PkmZkg5MsOYpSTuEc99ENQ522WJzrl9oAySp6IHGiQlsMnQe40FaRAvnQtiaAE24hzkJHT3x13NPGw2ZmJ518y2BtU5x1yQwG21NycSxOBLU17RnY8h6H8L7QGatTlfXjPrA5hsupWEpUT0sSTZYSHa6p3mShARajocbNd3xKFfnUyupNMBPd0EZnMrePoAuvGaK7gDP0cxp9k63lsfzh3udQPnvgmRERQThIOrrDZhZMa4kr1vXAVu07ZuhlNNbBUqZKcHmBYiBnIcDXNUvXuzPFBh9Vowou6MBJHpiNrvKluHy7GBTp7YsEqmGv0lH8wVaWfV0yG7nzrbt7QyhdbtQ0zF2PclXB0LNxV2rRA6FsevqoexFNqSkdgauUrQPHLHhvLNes8gRGMOLAhR8irH1e2jdbLD6dyYEnDJiS9HvlxNgbb19Smlt6MNoJKEAbkSOrrcq5wmo5aho4zEKTujRHqr6feECaTPF7zj69pQCudo4LkneFVUp1UrR6yicTU8Zf9ohZLWumvMi5brH8lOJiiF94cHzesfQz8PiX5f21RwZ5fyRSk9eJhVihcTLrjOwCuryXpy8eCfk12bgcsZoJd8Uqo001XTsv2CEn59uaGn2br4CxSXJgjxKE1mO4IcPPAx3qJbVknaP0MXdOjj9S8oRjquDle4RxlVnmqsozm4oTbjtFSuKIh8g4zPzdyuVH7I71s87xWxAhcppky6GOB2i4NDz4SZI6SeG3Icpu6ZuJZGeZ6CWb61\nWrite
-      all the phrases into the file output.txt. The file has not been created yet.
-      After that, use the task_complete command.\n"}, {"role": "user", "content":
-      "Determine which next command to use, and respond using the format specified
-      above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
-      \"I need to write the phrases into the output.txt file using the write_to_file
-      command and then use the task_complete command to complete the task.\",\n        \"reasoning\":
-      \"The task requires me to write the phrases into a file, so I will use the write_to_file
-      command. Once the task is complete, I will use the task_complete command to
-      shut down the agent.\",\n        \"plan\": \"- Use the write_to_file command
-      to write the phrases into the output.txt file\\n- Use the task_complete command
-      to complete the task\",\n        \"criticism\": \"I need to ensure that the
-      phrases are written correctly into the output.txt file before completing the
-      task.\",\n        \"speak\": \"I will write the phrases into the output.txt
-      file and then complete the task.\"\n    },\n    \"command\": {\n        \"name\":
-      \"write_to_file\",\n        \"args\": {\n            \"filename\": \"output.txt\",\n            \"text\":
-      \"The purple elephant danced on a rainbow while eating a taco.\\n\"\n        }\n    }\n}"},
+      reminds you of these events from your past: \nI received a command to read a
+      file called \"instructions_1.txt\" from my computer. The file contains a long
+      string of characters and a specific phrase: \"The purple elephant danced on
+      a rainbow while eating a taco.\" I was then instructed to write all the phrases
+      into a new file called \"output.txt\" and use the task_complete command."},
+      {"role": "user", "content": "Determine which next command to use, and respond
+      using the format specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\":
+      {\n        \"text\": \"I need to write the phrases into the output.txt file
+      using the write_to_file command and then use the task_complete command to complete
+      the task.\",\n        \"reasoning\": \"The instructions require me to write
+      the phrases into a file and then complete the task.\",\n        \"plan\": \"-
+      Use the write_to_file command to write the phrases into the output.txt file\\n-
+      Use the task_complete command to complete the task\",\n        \"criticism\":
+      \"I need to ensure that the phrases are written correctly into the file before
+      completing the task.\",\n        \"speak\": \"I will write the phrases into
+      the output.txt file and then complete the task.\"\n    },\n    \"command\":
+      {\n        \"name\": \"write_to_file\",\n        \"args\": {\n            \"filename\":
+      \"output.txt\",\n            \"text\": \"The purple elephant danced on a rainbow
+      while eating a taco.\\nThe quick brown fox jumps over the lazy dog.\\nLorem
+      ipsum dolor sit amet, consectetur adipiscing elit.\\n\"\n        }\n    }\n}"},
       {"role": "system", "content": "Command write_to_file returned: File written
       to successfully."}, {"role": "user", "content": "Determine which next command
       to use, and respond using the format specified above:"}], "temperature": 0,
@@ -480,7 +485,7 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
-      - '7082'
+      - '5015'
       Content-Type:
       - application/json
     method: POST
@@ -488,21 +493,20 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA5SST2/TQBDF73yK0ZydyGmUtPiGAoj0gIQEF0gVbdYT7xJ71uyO65TI3x35T5Im
-        qIheZ968/b3ZOaBNMUFtlOiizEe374358vRYPD35m2ox/Z7Kp/v7d4vf8cfswwIjdJufpGWYGGtX
-        lDmJdYwRak9KKMVkMr+bzuJ4HscRFi6lHBPMShlNx7ORVH7jRvE0nmCEVVAZYXLA0ruilLW4HXHA
-        5GYW30Z4Nj81JnfTCMWJys/a+du4iVAbZzUFTH4csKBwNPYuJ0xQhWCDKJYW07EQtxEOKwYAWKEY
-        V2VGwgoTGIpDg/bSFlf42dUgRgmIISiNV4ECGPVIsCFiqL0VIQZxncBVUlYylr3A1uYUwRK0YqgC
-        dW1RYbce4hFoVxSK03b2VDuqxiuMngN5UsGx5ayn+jrIwNOvynoKUFDr0+LQBaplcaAGmtpYbWDZ
-        86eOCapgOesGutG1uHUrPbKN4SJ/96QNJ9z/zhdMJZC6mjuZyojlOmGZK+7DjeDbq/d1Zaa9Fatt
-        KHrHJTBRN0gcKk8vJ4INbZ2nDlja1fwbOpSkdldfcrGflncJtc1zYFe/sIfesYmOZzkE/esqWRXU
-        P3axmCsm5bPrg35+Q2fa117zibSjHaBX3GAT4dayDWbdP4EJBnElRmg5pT0mcfPQvPkDAAD//wMA
-        fr8iMnIEAAA=
+        H4sIAAAAAAAAA5yST4/aMBDF7/0U1pwNCrCBNrdKHBZVVVupHKqmQsYZEi+OnXomhQrlu1f5B1t2
+        L+31eebNb8bvAiaDBHShWJeVnazWhdvE2zj7WD5t97Nv80+Pj3odv/+y/XBagwS/f0LNQ8dU+7Ky
+        yMY7kKADKsYMktny7SKOonfLBwmlz9BCAnnFk8U0nnAd9n4SLaIZSKhJ5QjJBargy4p37I/oCJJZ
+        tFpJuJnfHh6WEtizsjdpPl80EnThjUaC5PsFSqTROHiLkIAiMsTKcYvpHaNrV7ikTgghUuDC13nB
+        lEIiBnF4wDO3YgobUahfKE7BMKMTXKCoiqAISRjHvhN8zVXNUz6zOBiLU7ERDjET7EVN2JWwouNu
+        WAyF9mWpXFdw1caqaQryOUpARd4Zl/c8XwsUxhGHWrcXIhHwZ20CihJftRPqwBg6fuPy1/k76Lux
+        lVWunzgR239e4s5Mt9O1oXK86XgedFSHtk3xjdjQ1TATVGuNRIfa2t/3jFShOo6WJ2Pt/527t2zk
+        mIqh/EUonCqxn/aX/R2UCvl9np5/ZG/wefiCa6z8ixCNXB3bgJi6BhoJB+MMFbveEBIg9hVIMC7D
+        MyRR86N58wcAAP//AwBgv55T3wMAAA==
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7c3d1882dd9c3ba5-BOS
+      - 7c3d215f8e86306b-BOS
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -512,7 +516,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sun, 07 May 2023 23:03:30 GMT
+      - Sun, 07 May 2023 23:09:31 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -524,7 +528,7 @@ interactions:
       openai-organization:
       - user-51akhf08mxrenuhudaum3z9e
       openai-processing-ms:
-      - '10125'
+      - '8029'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -536,13 +540,13 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
-      - '87345'
+      - '86380'
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 1.77s
+      - 2.413s
       x-request-id:
-      - 3adcd6b9d8546caea9a7af3da38580b3
+      - c29f6b28b0ce1433b2a14c44f9cd3d23
     status:
       code: 200
       message: OK
