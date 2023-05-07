@@ -2,21 +2,13 @@ import abc
 import enum
 import typing
 from dataclasses import dataclass
+from typing import Any, List
 
 if typing.TYPE_CHECKING:
-    from autogpt.config.ai_config import (  # Should this be replaced with Configuration?
-        AIConfig,
-    )
     from autogpt.core.configuration.base import Configuration
     from autogpt.core.logging.base import Logger
     from autogpt.core.plugin.base import PluginManager
     from autogpt.core.workspace.base import Workspace
-
-
-class LLMModel(enum.StrEnum):
-    # This will be defined probably in the LLM interface module
-    GPT3 = "gpt3"
-    GPT4 = "gpt4"
 
 
 class Role(enum.StrEnum):
@@ -31,19 +23,22 @@ class Message:
     message: str
 
 
-@dataclass
-class Context:  # This will be defined probably in the Memory interface module
-    progress: str
-    result: str
-    memories: list(str)
-    feedback: str
+ModelPrompt = List[Message]
 
 
 @dataclass
-class Thoughts:
-    system: str
+class PlanningPromptContext:
+    progress: Any  # To be defined (maybe here, as this might be a good place for summarization)
+    last_command_result: Any  # To be defined in the command interface
+    memories: Any  # List[Memory] # To be defined in the memory interface
+    user_feedback: Any  # Probably just a raw string
+
+
+@dataclass
+class SelfCriticismPromptContext:
+    # Using existing args here
     reasoning: str
-    plan: list(str)
+    plan: List[str]
     thoughts: str
     criticism: str
 
@@ -82,12 +77,17 @@ class Planner(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def construct_planning_prompt_from_context(
+        self,
+        context: PlanningPromptContext,
+    ) -> ModelPrompt:
+        ...
+
+    @abc.abstractmethod
     def get_self_feedback_prompt(
         self,
-        context: Context,
-        thoughts: Thoughts,
-        llm_model: LLMModel,  # Should this be a model object?
-    ) -> str:
+        context: SelfCriticismPromptContext,
+    ) -> ModelPrompt:
         """
         Generates a self-feedback prompt for the language model, based on the provided context and thoughts.
 
@@ -99,10 +99,8 @@ class Planner(abc.ABC):
         Args:
             context (Context): An object containing information about the agent's progress, result,
                                memories, and feedback.
-            thoughts (Thoughts): An object containing the agent's reasoning, plan, thoughts, and criticism.
-            llm_model (str): The identifier for the language model to be used. 
 
         Returns:
-            str: A self-feedback prompt for the language model based on the given context and thoughts.
+            ModelPrompt: A self-feedback prompt for the language model based on the given context and thoughts.
         """
         pass
