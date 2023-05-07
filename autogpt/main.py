@@ -149,6 +149,8 @@ def run_auto_gpt(
     ai_name = ""
     ai_config = construct_main_ai_config()
     ai_config.command_registry = command_registry
+    if ai_config.ai_name:
+        ai_name = ai_config.ai_name
     # print(prompt)
     # Initialize variables
     full_message_history = []
