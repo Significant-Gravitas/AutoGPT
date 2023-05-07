@@ -120,6 +120,7 @@ def validate_command(command: str) -> bool:
 
     return True
 
+
 @command(
     "execute_shell",
     "Execute Shell Command, non-interactive commands only",
@@ -139,8 +140,8 @@ def execute_shell(command_line: str) -> str:
         str: The output of the command
     """
     if not validate_command(command_line):
-            logger.info(f"Command '{command_line}' not allowed")
-            return "Error: This Shell Command is not allowed."
+        logger.info(f"Command '{command_line}' not allowed")
+        return "Error: This Shell Command is not allowed."
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
@@ -180,8 +181,8 @@ def execute_shell_popen(command_line) -> str:
         str: Description of the fact that the process started and its id
     """
     if not validate_command(command_line):
-            logger.info(f"Command '{command_line}' not allowed")
-            return "Error: This Shell Command is not allowed."
+        logger.info(f"Command '{command_line}' not allowed")
+        return "Error: This Shell Command is not allowed."
 
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
