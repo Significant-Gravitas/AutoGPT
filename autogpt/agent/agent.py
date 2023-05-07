@@ -165,9 +165,9 @@ class Agent:
                             Fore.GREEN,
                             "",
                         )
-                        thoughts = assistant_reply_json.get("thoughts", {})
-                        self_feedback_resp = self.get_self_feedback(
-                            thoughts, cfg.fast_llm_model
+                        
+                        self_feedback_resp = self.get_self_feedback(self.full_message_history,
+                            assistant_reply_json, cfg.fast_llm_model
                         )
                         logger.typewriter_log(
                             f"SELF FEEDBACK: {self_feedback_resp}",
@@ -178,6 +178,7 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         else:
                             user_input = self_feedback_resp
+                            command_name = "human_feedback"
                         break
                     elif console_input.lower().strip() == "":
                         print("Invalid input format.")
@@ -280,7 +281,7 @@ class Agent:
                     )
         return command_args
 
-    def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
+    def get_self_feedback(self, full_message_history, latest_response_json, llm_model: str) -> str:
         """Generates a feedback response based on the provided thoughts dictionary.
         This method takes in a dictionary of thoughts containing keys such as 'reasoning',
         'plan', 'thoughts', and 'criticism'. It combines these elements into a single
@@ -293,14 +294,59 @@ class Agent:
             str: A feedback response generated using the provided thoughts dictionary.
         """
         ai_role = self.config.ai_role
+        thoughts = latest_response_json.get("thoughts", {})
+        command = latest_response_json.get("command", {})
 
-        feedback_prompt = f"Below is a message from an AI agent with the role of {ai_role}. Please review the provided Thought, Reasoning, Plan, and Criticism. If these elements accurately contribute to the successful execution of the assumed role, respond with the letter 'Y' followed by a space, and then explain why it is effective. If the provided information is not suitable for achieving the role's objectives, please provide one or more sentences addressing the issue and suggesting a resolution."
+
+        from autogpt.llm.token_counter import count_message_tokens
+        import json
+
+        # Get ~2000 tokens from the full message history
+        # !!WARNING: THIS IMPLEMENTATION IS BAD - CAUSES BUG SIMILAR TO THIS: https://github.com/Significant-Gravitas/Auto-GPT/pull/3619
+        trimmed_message_history = []
+        for i in range(len(full_message_history) - 1, -1, -1): 
+            message = full_message_history[i]
+            # Skip all messages from the user
+            if message["role"] == "user":
+                continue
+            # If the message is from the assistant, remove the "thoughts" dictionary from the content
+            elif message["role"] == "assistant":
+                try:
+                    content_dict = json.loads(message["content"])
+                    content_dict = content_dict.copy()
+                    if "thoughts" in content_dict:
+                        del content_dict["thoughts"]
+                    message["content"] = json.dumps(content_dict)
+                except:
+                    pass
+            trimmed_message_history.append(message)
+
+
+
+
+        feedback_prompt = f"""Below is a message from an AI agent with the role: '{ai_role}'.
+        Please review the provided Recent History, Agent's Plan, The Agent's proposed action and their Reasoning.
+
+        If the agent's command makes sense and the agent is on the right track, respond with the letter 'Y' followed by a space.
+        If the provided information is not suitable for achieving the role's objectives or a red flag is raised, please clearly and concisely tell the agent about the issue and suggesting an alternative action.
+        """
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
-        thought = thoughts.get("thoughts", "")
-        criticism = thoughts.get("criticism", "")
-        feedback_thoughts = thought + reasoning + plan + criticism
+        # thought = thoughts.get("thoughts", "")
+        # criticism = thoughts.get("criticism", "")
+        # feedback_thoughts = thought + reasoning + plan + criticism
         return create_chat_completion(
-            [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
+            [
+                {"role": "system", "content": f""""You are AgentReviewerGPT.\n\nRespond with Y if the agent passes your review.\n\nBe wary of the following red flags in the agent's behaviour:
+        - The agent is repeating itself.
+        - The agent is stuck in a loop.
+        - The agent is using '<text>' instead of the actual text.
+        - The agent is using the wrong command for the situation.
+        - The agent is executing a python file that does not exist (it should check if the file exists and read it's contents before executing it).
+        
+        Notes:
+        + Hardcoded paths are okay""" },
+                {"role": "user", "content": f"{feedback_prompt}\n\nRecent History:\n{trimmed_message_history}\n\n\n\n\Agent's Plan:\n{plan}\n\nAgent's Proposed Action:\n{command}\n\nAgent's Reasoning:\n{reasoning}" }
+                ],
             llm_model,
         )
