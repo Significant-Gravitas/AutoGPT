@@ -22,6 +22,11 @@ from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
 
 
+class EndOfConversation(Exception):
+    """Exception raised when the conversation ends"""
+    ...
+
+
 class Agent:
     """Agent class for interacting with Auto-GPT.
 
@@ -85,9 +90,6 @@ class Agent:
         # Interaction Loop
         cfg = Config()
         self.cycle_count = 0
-        command_name = None
-        arguments = None
-        user_input = ""
 
         while True:
             # Discontinue if continuous limit is reached
@@ -146,11 +148,28 @@ class Agent:
                 NEXT_ACTION_FILE_NAME,
             )
 
-            loop = asyncio.get_running_loop()
-            for command_name, arguments in commands:
-                loop.run_in_executor(None, self.run_command, cfg, assistant_reply_json, command_name, arguments)
+            async def run_commands(_commands):
+                loop = asyncio.get_event_loop()
+                await asyncio.gather(
+                    *[
+                        loop.run_in_executor(
+                            None,
+                            self.run_command,
+                            cfg,
+                            assistant_reply_json,
+                            command_name,
+                            arguments,
+                        )
+                        for command_name, arguments in _commands
+                    ]
+                )
+            try:
+                asyncio.run(run_commands(commands))
+            except EndOfConversation:
+                break
 
     def run_command(self, cfg, assistant_reply_json, command_name, arguments):
+        user_input = ""
         if not cfg.continuous_mode and self.next_action_count == 0:
             # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
             # Get key press: Prompt the user to press enter to continue or escape
@@ -235,7 +254,7 @@ class Agent:
                 )
             elif user_input == "EXIT":
                 logger.info("Exiting...")
-                break
+                raise EndOfConversation
         else:
             # Print command
             logger.typewriter_log(
