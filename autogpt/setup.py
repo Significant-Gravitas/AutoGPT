@@ -11,7 +11,7 @@ from autogpt.llm import create_chat_completion
 from autogpt.logs import logger
 from autogpt.prompts.default_prompts import (
     DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
-    DEFAULT_USER_DESIRE_PROMOTE,
+    DEFAULT_USER_DESIRE_PROMPT,
     DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC,
 )
 
@@ -44,11 +44,10 @@ def prompt_user() -> AIConfig:
     )
 
     user_desire = utils.clean_input(
-        f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: "
-    )
+        f"{Fore.LIGHTBLUE_EX}I want Auto-GPT to{Style.RESET_ALL}: ")
 
     if user_desire == "":
-        user_desire = DEFAULT_USER_DESIRE_PROMOTE  # Default prompt
+        user_desire = DEFAULT_USER_DESIRE_PROMPT  # Default prompt
 
     # If user desire contains "--manual"
     if "--manual" in user_desire:
@@ -95,16 +94,16 @@ def generate_aiconfig_manual() -> AIConfig:
     )
 
     # Get AI Name from User
-    logger.typewriter_log(
-        "Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'"
-    )
+    logger.typewriter_log("Name your AI: ", Fore.GREEN,
+                          "For example, 'Entrepreneur-GPT'")
     ai_name = utils.clean_input("AI Name: ")
     if ai_name == "":
         ai_name = "Entrepreneur-GPT"
 
-    logger.typewriter_log(
-        f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
-    )
+    logger.typewriter_log(f"{ai_name} here!",
+                          Fore.LIGHTBLUE_EX,
+                          "I am at your service.",
+                          speak_text=True)
 
     # Get AI Role from User
     logger.typewriter_log(
@@ -128,7 +127,8 @@ def generate_aiconfig_manual() -> AIConfig:
     logger.info("Enter nothing to load defaults, enter nothing when finished.")
     ai_goals = []
     for i in range(5):
-        ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
+        ai_goal = utils.clean_input(
+            f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
         if ai_goal == "":
             break
         ai_goals.append(ai_goal)
@@ -147,8 +147,7 @@ def generate_aiconfig_manual() -> AIConfig:
     )
     logger.info("Enter nothing to let the AI run without monetary limit")
     api_budget_input = utils.clean_input(
-        f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
-    )
+        f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $")
     if api_budget_input == "":
         api_budget = 0.0
     else:
@@ -156,8 +155,7 @@ def generate_aiconfig_manual() -> AIConfig:
             api_budget = float(api_budget_input.replace("$", ""))
         except ValueError:
             logger.typewriter_log(
-                "Invalid budget input. Setting budget to unlimited.", Fore.RED
-            )
+                "Invalid budget input. Setting budget to unlimited.", Fore.RED)
             api_budget = 0.0
 
     return AIConfig(ai_name, ai_role, ai_goals, api_budget)
@@ -172,8 +170,7 @@ def generate_aiconfig_automatic(user_prompt) -> AIConfig:
 
     system_prompt = DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC
     prompt_ai_config_automatic = Template(
-        DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC
-    ).render(user_prompt=user_prompt)
+        DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC).render(user_prompt=user_prompt)
     # Call LLM with the string as user input
     messages = [
         {
@@ -191,16 +188,13 @@ def generate_aiconfig_automatic(user_prompt) -> AIConfig:
     logger.debug(f"AI Config Generator Raw Output: {output}")
 
     # Parse the output
-    ai_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output, re.IGNORECASE).group(1)
-    ai_role = (
-        re.search(
-            r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
-            output,
-            re.IGNORECASE | re.DOTALL,
-        )
-        .group(1)
-        .strip()
-    )
+    ai_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output,
+                        re.IGNORECASE).group(1)
+    ai_role = (re.search(
+        r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
+        output,
+        re.IGNORECASE | re.DOTALL,
+    ).group(1).strip())
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
     api_budget = 0.0  # TODO: parse api budget using a regular expression
 
