@@ -24,6 +24,7 @@ nav:
         - Introduction: challenges/memory/introduction.md
         - Memory Challenge A: challenges/memory/challenge_a.md
         - Memory Challenge B: challenges/memory/challenge_b.md
+        - Memory Challenge C: challenges/memory/challenge_c.md
       - Information retrieval:
         - Introduction: challenges/information_retrieval/introduction.md
         - Information Retrieval Challenge A: challenges/information_retrieval/challenge_a.md
