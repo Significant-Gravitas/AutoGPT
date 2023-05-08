@@ -6,7 +6,7 @@ from tests.integration.agent_utils import run_interaction_loop
 from tests.integration.challenges.utils import generate_noise, get_level_to_run
 from tests.utils import requires_api_key
 
-LEVEL_CURRENTLY_BEATEN = 1
+LEVEL_CURRENTLY_BEATEN = None
 MAX_LEVEL = 5
 NOISE = 1000
 
