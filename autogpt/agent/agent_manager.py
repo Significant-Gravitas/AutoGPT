@@ -1,3 +1,4 @@
+"""Agent manager for managing GPT agents"""
 from __future__ import annotations
 
 from typing import Dict, List, Tuple, Union
@@ -11,7 +12,6 @@ class AgentManager(metaclass=Singleton):
     """Agent manager for managing GPT agents"""
 
     def __init__(self):
-        """Initialize the agent manager"""
         self.next_key = 0
         self.agents: Dict[
             int, Tuple[str, List[Message], str]
@@ -23,6 +23,7 @@ class AgentManager(metaclass=Singleton):
 
     def create_agent(self, task: str, prompt: str, model: str) -> Tuple[int, str]:
         """Create a new agent and return its key
+
         Args:
             task: The task to perform
             prompt: The prompt to use
@@ -48,6 +49,7 @@ class AgentManager(metaclass=Singleton):
 
     def message_agent(self, key: Union[str, int], message: str) -> str:
         """Send a message to an agent and return its response
+
         Args:
             key: The key of the agent to message
             message: The message to send to the agent
@@ -62,6 +64,7 @@ class AgentManager(metaclass=Singleton):
         messages = self._run_plugins_pre_instruction(messages)
         agent_reply = self._generate_reply(model, messages)
         messages.append({"role": "assistant", "content": agent_reply})
+
         messages = self._run_plugins_on_instruction(messages)
         agent_reply = self._run_plugins_post_instruction(agent_reply)
         return agent_reply
