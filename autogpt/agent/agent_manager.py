@@ -18,16 +18,18 @@ class AgentManager(metaclass=Singleton):
         ] = {}  # key, (task, full_message_history, model)
         self.cfg = Config()
 
+    # Create new GPT agent
+    # TODO: Centralise use of create_chat_completion() to globally enforce token limit
+
     def create_agent(self, task: str, prompt: str, model: str) -> Tuple[int, str]:
-        """
-        Create a new agent with the given task, prompt and model.
+        """Create a new agent and return its key
         Args:
-            task: The task of the agent
-            prompt: The prompt message to the agent
-            model: The model to use for the agent
+            task: The task to perform
+            prompt: The prompt to use
+            model: The model to use
 
         Returns:
-            The key of the agent and the first reply from the agent to the prompt message provided by the user to the agent when it was created.
+            The key of the new agent
         """
         messages: List[Message] = [{"role": "user", "content": prompt}]
         messages = self._run_plugins_pre_instruction(messages)
@@ -35,22 +37,27 @@ class AgentManager(metaclass=Singleton):
         messages.append({"role": "assistant", "content": agent_reply})
         messages = self._run_plugins_on_instruction(messages)
         key = self.next_key
+        # This is done instead of len(agents) to make keys unique even if agents
+        # are deleted
         self.next_key += 1
+
         self.agents[key] = (task, messages, model)
+
         agent_reply = self._run_plugins_post_instruction(agent_reply)
         return key, agent_reply
 
     def message_agent(self, key: Union[str, int], message: str) -> str:
-        """
-        Send a message to an agent with the given key.
+        """Send a message to an agent and return its response
         Args:
-            key: The key of the agent
+            key: The key of the agent to message
             message: The message to send to the agent
 
         Returns:
-            The reply from the agent to the message provided by the user.
+            The agent's response
         """
         task, messages, model = self.agents[int(key)]
+
+        # Add user message to message history before sending to agent
         messages.append({"role": "user", "content": message})
         messages = self._run_plugins_pre_instruction(messages)
         agent_reply = self._generate_reply(model, messages)
@@ -68,8 +75,7 @@ class AgentManager(metaclass=Singleton):
         return [(key, task) for key, (task, _, _) in self.agents.items()]
 
     def delete_agent(self, key: Union[str, int]) -> bool:
-        """
-        Delete an agent with the given key.
+        """Delete an agent from the agent manager
         Args:
             key: The key of the agent to delete.
 
