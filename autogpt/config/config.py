@@ -37,17 +37,17 @@ class Config(metaclass=Singleton):
         else:
             self.disabled_command_categories = []
 
-        blacklisted_commands = os.getenv("BLACKLISTED_COMMANDS")
-        if blacklisted_commands:
-            self.blacklisted_commands = blacklisted_commands.split(",")
+        deny_commands = os.getenv("DENY_COMMANDS")
+        if deny_commands:
+            self.deny_commands = deny_commands.split(",")
         else:
-            self.blacklisted_commands = []
+            self.deny_commands = []
 
-        whitelisted_commands = os.getenv("WHITELISTED_COMMANDS")
-        if whitelisted_commands:
-            self.whitelisted_commands = whitelisted_commands.split(",")
+        allow_commands = os.getenv("ALLOW_COMMANDS")
+        if allow_commands:
+            self.allow_commands = allow_commands.split(",")
         else:
-            self.whitelisted_commands = []
+            self.allow_commands = []
 
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")

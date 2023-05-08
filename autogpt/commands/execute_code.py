@@ -111,10 +111,10 @@ def validate_command(command: str) -> bool:
     if not tokens:
         return False
 
-    if CFG.blacklisted_commands and tokens[0] not in CFG.blacklisted_commands:
+    if CFG.deny_commands and tokens[0] not in CFG.deny_commands:
         return False
 
-    for keyword in CFG.whitelisted_commands:
+    for keyword in CFG.allow_commands:
         if keyword in tokens:
             return False
 
