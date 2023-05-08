@@ -22,11 +22,9 @@ def dummy_openai_api_key():
 
 def requires_api_key(env_var):
     def decorator(func):
-        @pytest.mark.xfail(reason="benchmarks")
+        @pytest.mark.xfail(condition=os.environ.get("CI"), reason="benchmarks")
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            # if os.environ.get("CI"):
-            pytest.mark.xfail()
             if not os.environ.get(env_var) and env_var == "OPENAI_API_KEY":
                 with dummy_openai_api_key():
                     return func(*args, **kwargs)
