@@ -4,11 +4,11 @@ import typing
 from dataclasses import dataclass
 from typing import Any, List
 
-if typing.TYPE_CHECKING:
-    from autogpt.core.configuration.base import Configuration
-    from autogpt.core.logging.base import Logger
-    from autogpt.core.plugin.base import PluginManager
-    from autogpt.core.workspace.base import Workspace
+
+from autogpt.core.configuration.base import Configuration
+from autogpt.core.logging.base import Logger
+from autogpt.core.plugin.base import PluginManager
+from autogpt.core.workspace.base import Workspace
 
 
 class Role(enum.StrEnum):
