@@ -11,8 +11,8 @@ from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
-    PROMPT_FEEDBACK_FILE_NAME,
-    SELF_FEEDBACK_FILE_NAME,
+    PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
+    SUPERVISOR_FEEDBACK_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
@@ -337,19 +337,16 @@ class Agent:
             self.created_at,
             self.cycle_count,
             messages,
-            PROMPT_FEEDBACK_FILE_NAME,
+            PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
         )
 
-        feedback = create_chat_completion(
-            [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
-            llm_model,
-        )
+        feedback = create_chat_completion(messages)
 
         self.log_cycle_handler.log_cycle(
             self.config.ai_name,
             self.created_at,
             self.cycle_count,
             feedback,
-            SELF_FEEDBACK_FILE_NAME,
+            SUPERVISOR_FEEDBACK_FILE_NAME,
         )
         return feedback
