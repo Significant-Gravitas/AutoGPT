@@ -38,7 +38,7 @@ def build_default_prompt_generator() -> PromptGenerator:
     )
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint(
-        'Exclusively use the commands listed in double quotes e.g. "command name"'
+        "Exclusively use the commands listed below e.g. command_name"
     )
 
     # Add resources to the PromptGenerator object
