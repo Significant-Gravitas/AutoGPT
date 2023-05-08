@@ -53,3 +53,8 @@ pytest-integration
 pytest-mock
 vcrpy
 pytest-recording
+anyio
+pytest-tornasync
+pytest-trio
+pytest-twisted
+twisted
