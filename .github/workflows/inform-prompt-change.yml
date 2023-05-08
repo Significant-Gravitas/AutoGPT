@@ -2,7 +2,7 @@ name: Download Artifact and Post Comment
 
 on:
   workflow_run:
-    workflows: ["first_workflow"]
+    workflows: ["Python CI"]
     types:
       - completed
   pull_request_target:
