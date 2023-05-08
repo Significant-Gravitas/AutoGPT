@@ -77,3 +77,21 @@ jobs:
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
+
+      - name: Check for benchmarks and comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v5
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('xfail_reasons.log') && fs.readFileSync('xfail_reasons.log', 'utf8').includes('benchmarks')) {
+              const comment = "It looks like your Pull Request changed the prompts. A member of the team will analyze and run our benchmarks to see if you beat a new challenge. Hang tight!";
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
