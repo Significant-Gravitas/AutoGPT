@@ -1,10 +1,15 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from autogpt.llm import COSTS, ApiManager
 
 api_manager = ApiManager()
+
+
+class AsyncMock(MagicMock):
+    async def __call__(self, *args, **kwargs):
+        return super(AsyncMock, self).__call__(*args, **kwargs)
 
 
 @pytest.fixture(autouse=True)
@@ -26,9 +31,10 @@ def mock_costs():
         yield
 
 
-class TestApiManager:
+@pytest.mark.asyncio
+class TestApiManager(object):
     @staticmethod
-    def test_create_chat_completion_debug_mode(caplog):
+    async def test_create_chat_completion_debug_mode(caplog):
         """Test if debug mode logs response."""
         api_manager_debug = ApiManager(debug=True)
         messages = [
@@ -37,36 +43,40 @@ class TestApiManager:
         ]
         model = "gpt-3.5-turbo"
 
-        with patch("openai.ChatCompletion.create") as mock_create:
+        with patch(
+            "openai.ChatCompletion.create", new_callable=AsyncMock
+        ) as mock_create:
             mock_response = MagicMock()
             mock_response.usage.prompt_tokens = 10
             mock_response.usage.completion_tokens = 20
             mock_create.return_value = mock_response
 
-            api_manager_debug.create_chat_completion(messages, model=model)
+            await api_manager_debug.create_chat_completion(messages, model=model)
 
             assert "Response" in caplog.text
 
     @staticmethod
-    def test_create_chat_completion_empty_messages():
+    async def test_create_chat_completion_empty_messages():
         """Test if empty messages result in zero tokens and cost."""
         messages = []
         model = "gpt-3.5-turbo"
 
-        with patch("openai.ChatCompletion.create") as mock_create:
+        with patch(
+            "openai.ChatCompletion.create", new_callable=AsyncMock
+        ) as mock_create:
             mock_response = MagicMock()
             mock_response.usage.prompt_tokens = 0
             mock_response.usage.completion_tokens = 0
             mock_create.return_value = mock_response
 
-            api_manager.create_chat_completion(messages, model=model)
+            await api_manager.create_chat_completion(messages, model=model)
 
             assert api_manager.get_total_prompt_tokens() == 0
             assert api_manager.get_total_completion_tokens() == 0
             assert api_manager.get_total_cost() == 0
 
     @staticmethod
-    def test_create_chat_completion_valid_inputs():
+    async def test_create_chat_completion_valid_inputs():
         """Test if valid inputs result in correct tokens and cost."""
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -74,13 +84,15 @@ class TestApiManager:
         ]
         model = "gpt-3.5-turbo"
 
-        with patch("openai.ChatCompletion.create") as mock_create:
+        with patch(
+            "openai.ChatCompletion.create", new_callable=AsyncMock
+        ) as mock_create:
             mock_response = MagicMock()
             mock_response.usage.prompt_tokens = 10
             mock_response.usage.completion_tokens = 20
             mock_create.return_value = mock_response
 
-            api_manager.create_chat_completion(messages, model=model)
+            await api_manager.create_chat_completion(messages, model=model)
 
             assert api_manager.get_total_prompt_tokens() == 10
             assert api_manager.get_total_completion_tokens() == 20
