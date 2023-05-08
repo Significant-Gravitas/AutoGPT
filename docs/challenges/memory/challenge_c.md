@@ -1,6 +1,6 @@
 # Memory Challenge C
 
-**Status**: Current level to beat: level 2
+**Status**: Current level to beat: level 1
 
 **Command to try**: 
 ```
