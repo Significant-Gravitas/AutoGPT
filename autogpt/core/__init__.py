@@ -39,8 +39,10 @@ def status(detailed: bool):
     import autogpt.core.planning
     import autogpt.core.plugin
     import autogpt.core.workspace
+    import autogpt.core.runner
 
     modules = [
+        ("Runner", autogpt.core.runner.status.name, autogpt.core.runner.handover_notes),
         ("Agent", autogpt.core.agent.status.name, autogpt.core.agent.handover_notes),
         ("Budget", autogpt.core.budget.status.name, autogpt.core.budget.handover_notes),
         ("Command", autogpt.core.command.status.name, autogpt.core.command.handover_notes),
