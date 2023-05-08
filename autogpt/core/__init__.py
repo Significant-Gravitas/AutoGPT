@@ -12,11 +12,14 @@ import click
 # from autogpt.core.plugin import Plugin, PluginManager
 # from autogpt.core.workspace import Workspace
 
+import autogpt.core.runner as runner
 
 @click.group()
 def v2():
     """Temporary command group for v2 commands."""
     pass
+
+v2.add_command(runner.runner)
 
 @v2.command()
 @click.option("-a", "--is-async", is_flag=True, help="Run the agent asynchronously.")
