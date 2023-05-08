@@ -3,7 +3,7 @@ import pytest
 from autogpt.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import AIConfig, Config
-from autogpt.memory import JSONFileMemory, NoMemory, get_memory
+from autogpt.memory.context import NoMemory, get_memory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 
@@ -23,7 +23,7 @@ def agent_test_config(config: Config):
 def memory_local_cache(agent_test_config: Config):
     was_memory_backend = agent_test_config.memory_backend
 
-    agent_test_config.set_memory_backend("local_cache")
+    agent_test_config.set_memory_backend("json_file")
     yield get_memory(agent_test_config, init=True)
 
     agent_test_config.set_memory_backend(was_memory_backend)
@@ -64,7 +64,6 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
     agent = Agent(
         ai_name="",
         memory=memory_none,
-        full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,
@@ -103,7 +102,6 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
     agent = Agent(
         ai_name="",
         memory=memory_none,
-        full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,
@@ -139,7 +137,6 @@ def memory_management_agent(
     agent = Agent(
         ai_name="",
         memory=memory_local_cache,
-        full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,

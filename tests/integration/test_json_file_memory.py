@@ -5,11 +5,10 @@ import orjson
 import pytest
 from pytest_mock import MockerFixture
 
-import autogpt.memory.providers.json_file as json_file_memory
+import autogpt.memory.context.providers.json_file as json_file_memory
 from autogpt.config import Config
-from autogpt.memory.memory_item import MemoryItem
-from autogpt.memory.providers import JSONFileMemory
-from autogpt.memory.utils import Embedding
+from autogpt.memory.context import JSONFileMemory, MemoryItem
+from autogpt.memory.context.utils import Embedding
 from autogpt.workspace import Workspace
 from tests.utils import requires_api_key
 

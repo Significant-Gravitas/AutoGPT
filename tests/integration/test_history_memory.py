@@ -3,10 +3,8 @@ import json
 import pytest
 
 from autogpt.config import Config
-from autogpt.memory import get_memory
-from autogpt.memory_management.store_memory import (
-    save_memory_trimmed_from_context_window,
-)
+from autogpt.memory.context import get_memory
+from autogpt.memory.history import MessageHistory
 from tests.utils import requires_api_key
 
 
@@ -56,7 +54,7 @@ def test_save_memory_trimmed_from_context_window(
 ):
     next_message_to_add_index = len(message_history_fixture) - 1
     memory = get_memory(config, init=True)
-    save_memory_trimmed_from_context_window(
+    MessageHistory().save_memory_trimmed_from_context_window(
         message_history_fixture, next_message_to_add_index, memory
     )
 

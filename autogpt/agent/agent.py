@@ -17,7 +17,8 @@ from autogpt.log_cycle.log_cycle import (
     LogCycleHandler,
 )
 from autogpt.logs import logger, print_assistant_thoughts
-from autogpt.memory.provider import MemoryProvider
+from autogpt.memory.context import ContextMemory
+from autogpt.memory.history import MessageHistory
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
@@ -30,7 +31,6 @@ class Agent:
     Attributes:
         ai_name: The name of the agent.
         memory: The memory object to use.
-        full_message_history: The full message history.
         next_action_count: The number of actions to execute.
         system_prompt: The system prompt is the initial prompt that defines everything
           the AI needs to know to achieve its task successfully.
@@ -56,8 +56,7 @@ class Agent:
     def __init__(
         self,
         ai_name: str,
-        memory: MemoryProvider,
-        full_message_history: list[ChatMessage],
+        memory: ContextMemory,
         next_action_count: int,
         command_registry: CommandRegistry,
         config: AIConfig,
@@ -68,13 +67,7 @@ class Agent:
         cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
-        self.summary_memory: ChatMessage = {
-            # Initial memory necessary to avoid hallucination
-            "role": "assistant",
-            "content": "I was created.",
-        }
-        self.last_memory_index = 0
-        self.full_message_history = full_message_history
+        self.history = MessageHistory(self)
         self.next_action_count = next_action_count
         self.command_registry = command_registry
         self.config = config
@@ -101,7 +94,7 @@ class Agent:
                 self.config.ai_name,
                 self.created_at,
                 self.cycle_count,
-                self.full_message_history,
+                self.history.messages,
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
             if (
@@ -119,8 +112,6 @@ class Agent:
                     self,
                     self.system_prompt,
                     self.triggering_prompt,
-                    self.full_message_history,
-                    self.memory,
                     cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
@@ -269,7 +260,7 @@ class Agent:
                     str(command_result), cfg.fast_llm_model
                 )
                 memory_tlength = count_string_tokens(
-                    str(self.summary_memory), cfg.fast_llm_model
+                    str(self.history.summary_message()), cfg.fast_llm_model
                 )
                 if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
                     result = f"Failure: command {command_name} returned too much output. \
@@ -285,10 +276,10 @@ class Agent:
             # Check if there's a result from the command append it to the message
             # history
             if result is not None:
-                self.full_message_history.append(create_chat_message("system", result))
+                self.history.add(create_chat_message("system", result))
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
             else:
-                self.full_message_history.append(
+                self.history.add(
                     create_chat_message("system", "Unable to execute command")
                 )
                 logger.typewriter_log(

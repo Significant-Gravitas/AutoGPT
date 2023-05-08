@@ -18,7 +18,7 @@ def task():
 
 
 @pytest.fixture
-def prompt():
+def system_prompt():
     return "Translate the following English text to French: 'Hello, how are you?'"
 
 

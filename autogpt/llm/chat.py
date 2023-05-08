@@ -1,8 +1,6 @@
 import time
 from random import shuffle
 
-from openai.error import RateLimitError
-
 from autogpt.agent.agent import Agent
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
@@ -11,7 +9,7 @@ from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.token_counter import count_message_tokens
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
-from autogpt.memory import MemoryItem, MemoryProvider
+from autogpt.memory.context import ContextMemory, MemoryItem
 
 cfg = Config()
 
@@ -31,13 +29,13 @@ def create_chat_message(role: str, content: str) -> Message:
 
 
 def generate_context(
-    prompt: str,
-    relevant_memory: MemoryItem,
+    system_prompt: str,
+    relevant_memory: list[MemoryItem],
     full_message_history: list[Message],
     model: str,
 ):
     current_context = [
-        create_chat_message("system", prompt),
+        create_chat_message("system", system_prompt),
         create_chat_message(
             "system", f"The current time and date is {time.strftime('%c')}"
         ),
@@ -63,211 +61,181 @@ def generate_context(
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
     agent: Agent,
-    prompt: str,
+    system_prompt: str,
     user_input: str,
-    full_message_history: list[Message],
-    permanent_memory: MemoryProvider,
     token_limit: int,
 ):
-    """Interact with the OpenAI API, sending the prompt, user input, message history,
-    and permanent memory."""
-    while True:
-        try:
-            """
-            Interact with the OpenAI API, sending the prompt, user input,
-                message history, and permanent memory.
+    """
+    Interact with the OpenAI API, sending the prompt, user input,
+        message history, and permanent memory.
 
-            Args:
-                prompt (str): The prompt explaining the rules to the AI.
-                user_input (str): The input from the user.
-                full_message_history (list): The list of all messages sent between the
-                    user and the AI.
-                permanent_memory (Obj): The memory object containing the permanent
-                  memory.
-                token_limit (int): The maximum number of tokens allowed in the API call.
+    Args:
+        system_prompt (str): The prompt explaining the rules to the AI.
+        user_input (str): The input from the user.
+        token_limit (int): The maximum number of tokens allowed in the API call.
 
-            Returns:
-            str: The AI's response.
-            """
-            model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
-            # Reserve 1000 tokens for the response
-            logger.debug(f"Token limit: {token_limit}")
-            send_token_limit = token_limit - 1000
+    Returns:
+    str: The AI's response.
+    """
+    model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
+    # Reserve 1000 tokens for the response
+    logger.debug(f"Token limit: {token_limit}")
+    send_token_limit = token_limit - 1000
 
-            # if len(full_message_history) == 0:
-            #     relevant_memory = ""
-            # else:
-            #     recent_history = full_message_history[-5:]
-            #     shuffle(recent_history)
-            #     relevant_memories = permanent_memory.get_relevant(
-            #         str(recent_history), 5
-            #     )
-            #     if relevant_memories:
-            #         shuffle(relevant_memories)
-            #     relevant_memory = str(relevant_memories)
-            relevant_memory = ""
-            logger.debug(f"Memory Stats: {permanent_memory.get_stats()}")
+    # if len(agent.history.messages) == 0:
+    #     relevant_memory = ""
+    # else:
+    #     recent_history = agent.history.messages[-5:]
+    #     shuffle(recent_history)
+    #     relevant_memories = agent.memory.get_relevant(
+    #         str(recent_history), 5
+    #     )
+    #     if relevant_memories:
+    #         shuffle(relevant_memories)
+    #     relevant_memory = str(relevant_memories)
+    # logger.debug(f"Memory Stats: {agent.memory.get_stats()}")
+    relevant_memory = []
 
-            (
-                next_message_to_add_index,
-                current_tokens_used,
-                insertion_index,
-                current_context,
-            ) = generate_context(prompt, relevant_memory, full_message_history, model)
+    (
+        next_message_to_add_index,
+        current_tokens_used,
+        insertion_index,
+        message_chain,
+    ) = generate_context(
+        system_prompt, relevant_memory, agent.history.messages, model
+    )
 
-            # while current_tokens_used > 2500:
-            #     # remove memories until we are under 2500 tokens
-            #     relevant_memory = relevant_memory[:-1]
-            #     (
-            #         next_message_to_add_index,
-            #         current_tokens_used,
-            #         insertion_index,
-            #         current_context,
-            #     ) = generate_context(
-            #         prompt, relevant_memory, full_message_history, model
-            #     )
+    # while current_tokens_used > 2500:
+    #     # remove memories until we are under 2500 tokens
+    #     relevant_memory = relevant_memory[:-1]
+    #     (
+    #         next_message_to_add_index,
+    #         current_tokens_used,
+    #         insertion_index,
+    #         current_context,
+    #     ) = generate_context(
+    #         prompt, relevant_memory, agent.history.messages, model
+    #     )
 
-            current_tokens_used += count_message_tokens(
-                [create_chat_message("user", user_input)], model
-            )  # Account for user input (appended later)
+    # Account for user input (appended later)
+    user_input_msg = create_chat_message("user", user_input)
+    current_tokens_used += count_message_tokens([user_input_msg], model)
 
-            current_tokens_used += 500  # Account for memory (appended later) TODO: The final memory may be less than 500 tokens
+    current_tokens_used += 500  # Account for memory (appended later) TODO: The final memory may be less than 500 tokens
 
-            # Add Messages until the token limit is reached or there are no more messages to add.
-            while next_message_to_add_index >= 0:
-                # print (f"CURRENT TOKENS USED: {current_tokens_used}")
-                message_to_add = full_message_history[next_message_to_add_index]
+    # Add Messages until the token limit is reached or there are no more messages to add.
+    while next_message_to_add_index >= 0:
+        message_to_add = agent.history.messages[next_message_to_add_index]
 
-                tokens_to_add = count_message_tokens([message_to_add], model)
-                if current_tokens_used + tokens_to_add > send_token_limit:
-                    # save_memory_trimmed_from_context_window(
-                    #     full_message_history,
-                    #     next_message_to_add_index,
-                    #     permanent_memory,
-                    # )
-                    break
+        tokens_to_add = count_message_tokens([message_to_add], model)
+        if current_tokens_used + tokens_to_add > send_token_limit:
+            # agent.history.save_memory_trimmed_from_context_window(
+            #     next_message_to_add_index,
+            #     agent.memory,
+            # )
+            break
 
-                # Add the most recent message to the start of the current context,
-                #  after the two system prompts.
-                current_context.insert(
-                    insertion_index, full_message_history[next_message_to_add_index]
-                )
+        # Add the most recent message to the start of the chain,
+        #  after the system prompts.
+        message_chain.insert(
+            insertion_index, agent.history.messages[next_message_to_add_index]
+        )
+        current_tokens_used += tokens_to_add
+        next_message_to_add_index -= 1
 
-                # Count the currently used tokens
-                current_tokens_used += tokens_to_add
+    # Update & add summary of trimmed messages
+    if len(agent.history.messages) > 0:
+        newly_trimmed_messages = agent.history.get_trimmed_messages(
+            current_message_chain=message_chain,
+        )
 
-                # Move to the next most recent message in the full message history
-                next_message_to_add_index -= 1
+        summary_message = agent.history.update_running_summary(
+            new_events=newly_trimmed_messages,
+        )
+        message_chain.insert(insertion_index, summary_message)
 
-            from autogpt.memory_management.summary_memory import (
-                get_newly_trimmed_messages,
-                update_running_summary,
+    api_manager = ApiManager()
+    # inform the AI about its remaining budget (if it has one)
+    if api_manager.get_total_budget() > 0.0:
+        remaining_budget = (
+            api_manager.get_total_budget() - api_manager.get_total_cost()
+        )
+        if remaining_budget < 0:
+            remaining_budget = 0
+        budget_message = (
+            f"Your remaining API budget is ${remaining_budget:.3f}"
+            + (
+                " BUDGET EXCEEDED! SHUT DOWN!\n\n"
+                if remaining_budget == 0
+                else " Budget very nearly exceeded! Shut down gracefully!\n\n"
+                if remaining_budget < 0.005
+                else " Budget nearly exceeded. Finish up.\n\n"
+                if remaining_budget < 0.01
+                else "\n\n"
             )
+        )
+        logger.debug(budget_message)
+        message_chain.append(create_chat_message("system", budget_message))
 
-            # Insert Memories
-            if len(full_message_history) > 0:
-                (
-                    newly_trimmed_messages,
-                    agent.last_memory_index,
-                ) = get_newly_trimmed_messages(
-                    full_message_history=full_message_history,
-                    current_context=current_context,
-                    last_memory_index=agent.last_memory_index,
-                )
+    # Append user input, the length of this is accounted for above
+    message_chain.append(user_input_msg)
 
-                agent.summary_memory = update_running_summary(
-                    agent,
-                    current_summary=agent.summary_memory["content"],
-                    new_events=newly_trimmed_messages,
-                )
-                current_context.insert(insertion_index, agent.summary_memory)
-
-            api_manager = ApiManager()
-            # inform the AI about its remaining budget (if it has one)
-            if api_manager.get_total_budget() > 0.0:
-                remaining_budget = (
-                    api_manager.get_total_budget() - api_manager.get_total_cost()
-                )
-                if remaining_budget < 0:
-                    remaining_budget = 0
-                system_message = (
-                    f"Your remaining API budget is ${remaining_budget:.3f}"
-                    + (
-                        " BUDGET EXCEEDED! SHUT DOWN!\n\n"
-                        if remaining_budget == 0
-                        else " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                        if remaining_budget < 0.005
-                        else " Budget nearly exceeded. Finish up.\n\n"
-                        if remaining_budget < 0.01
-                        else "\n\n"
-                    )
-                )
-                logger.debug(system_message)
-                current_context.append(create_chat_message("system", system_message))
-
-            # Append user input, the length of this is accounted for above
-            current_context.extend([create_chat_message("user", user_input)])
-
-            plugin_count = len(cfg.plugins)
-            for i, plugin in enumerate(cfg.plugins):
-                if not plugin.can_handle_on_planning():
-                    continue
-                plugin_response = plugin.on_planning(
-                    agent.config.prompt_generator, current_context
-                )
-                if not plugin_response or plugin_response == "":
-                    continue
-                tokens_to_add = count_message_tokens(
-                    [create_chat_message("system", plugin_response)], model
-                )
-                if current_tokens_used + tokens_to_add > send_token_limit:
-                    logger.debug("Plugin response too long, skipping:", plugin_response)
-                    logger.debug("Plugins remaining at stop:", plugin_count - i)
-                    break
-                current_context.append(create_chat_message("system", plugin_response))
-
-            # Calculate remaining tokens
-            tokens_remaining = token_limit - current_tokens_used
-            # assert tokens_remaining >= 0, "Tokens remaining is negative.
-            # This should never happen, please submit a bug report at
-            #  https://www.github.com/Torantulino/Auto-GPT"
-
-            # Debug print the current context
-            logger.debug(f"Token limit: {token_limit}")
-            logger.debug(f"Send Token Count: {current_tokens_used}")
-            logger.debug(f"Tokens remaining for response: {tokens_remaining}")
-            logger.debug("------------ CONTEXT SENT TO AI ---------------")
-            for message in current_context:
-                # Skip printing the prompt
-                if message["role"] == "system" and message["content"] == prompt:
-                    continue
-                logger.debug(f"{message['role'].capitalize()}: {message['content']}")
-                logger.debug("")
-            logger.debug("----------- END OF CONTEXT ----------------")
-            agent.log_cycle_handler.log_cycle(
-                agent.config.ai_name,
-                agent.created_at,
-                agent.cycle_count,
-                current_context,
-                CURRENT_CONTEXT_FILE_NAME,
+    plugin_count = len(cfg.plugins)
+    for i, plugin in enumerate(cfg.plugins):
+        if not plugin.can_handle_on_planning():
+            continue
+        plugin_response = plugin.on_planning(
+            agent.config.prompt_generator, message_chain
+        )
+        if not plugin_response or plugin_response == "":
+            continue
+        tokens_to_add = count_message_tokens(
+            [create_chat_message("system", plugin_response)], model
+        )
+        if current_tokens_used + tokens_to_add > send_token_limit:
+            logger.debug(
+                f"Plugin response too long, skipping: {plugin_response}"
             )
+            logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
+            break
+        message_chain.append(create_chat_message("system", plugin_response))
 
-            # TODO: use a model defined elsewhere, so that model can contain
-            # temperature and other settings we care about
-            assistant_reply = create_chat_completion(
-                model=model,
-                messages=current_context,
-                max_tokens=tokens_remaining,
-            )
+    # Calculate remaining tokens
+    tokens_remaining = token_limit - current_tokens_used
+    # assert tokens_remaining >= 0, "Tokens remaining is negative.
+    # This should never happen, please submit a bug report at
+    #  https://www.github.com/Torantulino/Auto-GPT"
 
-            # Update full message history
-            full_message_history.append(create_chat_message("user", user_input))
-            full_message_history.append(
-                create_chat_message("assistant", assistant_reply)
-            )
+    # Debug print the current context
+    logger.debug(f"Token limit: {token_limit}")
+    logger.debug(f"Send Token Count: {current_tokens_used}")
+    logger.debug(f"Tokens remaining for response: {tokens_remaining}")
+    logger.debug("------------ CONTEXT SENT TO AI ---------------")
+    for message in message_chain:
+        # Skip printing the prompt
+        if message["role"] == "system" and message["content"] == system_prompt:
+            continue
+        logger.debug(f"{message['role'].capitalize()}: {message['content']}")
+        logger.debug("")
+    logger.debug("----------- END OF CONTEXT ----------------")
+    agent.log_cycle_handler.log_cycle(
+        agent.config.ai_name,
+        agent.created_at,
+        agent.cycle_count,
+        message_chain,
+        CURRENT_CONTEXT_FILE_NAME,
+    )
 
-            return assistant_reply
-        except RateLimitError:
-            # TODO: When we switch to langchain, this is built in
-            logger.warn("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
-            time.sleep(10)
+    # TODO: use a model defined elsewhere, so that model can contain
+    # temperature and other settings we care about
+    assistant_reply = create_chat_completion(
+        model=model,
+        messages=message_chain,
+        max_tokens=tokens_remaining,
+    )
+
+    # Update full message history
+    agent.history.add(user_input_msg)
+    agent.history.add(create_chat_message("assistant", assistant_reply))
+
+    return assistant_reply

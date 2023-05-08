@@ -6,10 +6,10 @@ from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connec
 from autogpt.config import Config
 from autogpt.llm import get_ada_embedding
 
-from ..provider import MemoryProvider
+from . import ContextMemoryProvider
 
 
-class MilvusMemory(MemoryProvider):
+class MilvusMemory(ContextMemoryProvider):
     """Milvus memory storage provider."""
 
     def __init__(self, cfg: Config) -> None:

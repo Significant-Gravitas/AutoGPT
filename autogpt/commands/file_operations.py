@@ -14,7 +14,7 @@ from requests.adapters import HTTPAdapter, Retry
 from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.memory import MemoryProvider
+from autogpt.memory.context import ContextMemory
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 
@@ -28,7 +28,7 @@ def text_checksum(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
-def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | None]]:
+def operations_from_log(log_path: str) -> Generator[tuple[Operation, str, str | None]]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
         log = open(log_path, "r", encoding="utf-8")
@@ -164,7 +164,10 @@ def read_file(filename: str) -> str:
 
 
 def ingest_file(
-    filename: str, memory: MemoryProvider, max_length: int = 4000, overlap: int = 200
+    filename: str,
+    memory: ContextMemory,
+    max_length: int = 4000,
+    overlap: int = 200,
 ) -> None:
     """
     Ingest a file by reading its content, splitting it into chunks with a specified

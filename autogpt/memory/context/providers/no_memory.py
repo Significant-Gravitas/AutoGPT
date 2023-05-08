@@ -4,10 +4,10 @@ from __future__ import annotations
 from typing import Any
 
 from .. import MemoryItem
-from ..provider import MemoryProvider
+from . import ContextMemoryProvider
 
 
-class NoMemory(MemoryProvider):
+class NoMemory(ContextMemoryProvider):
     """
     A class that does not store any data. This is the default memory provider.
     """

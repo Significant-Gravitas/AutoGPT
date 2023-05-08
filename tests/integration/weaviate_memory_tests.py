@@ -6,7 +6,7 @@ from weaviate.util import get_valid_uuid
 
 from autogpt.config import Config
 from autogpt.llm import get_ada_embedding
-from autogpt.memory.providers import WeaviateMemory
+from autogpt.memory.context import WeaviateMemory
 
 
 class TestWeaviateMemory(unittest.TestCase):

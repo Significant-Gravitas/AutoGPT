@@ -6,7 +6,7 @@ Otherwise, the default is LocalCache (which stores memory in a JSON file).
 To switch to a different backend, change the `MEMORY_BACKEND` in `.env`
 to the value that you want:
 
-* `local` uses a local JSON cache file
+* `json_file` uses a local JSON cache file
 * `pinecone` uses the Pinecone.io account you configured in your ENV settings
 * `redis` will use the redis cache that you configured
 * `milvus` will use the milvus cache that you configured

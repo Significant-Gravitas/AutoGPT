@@ -22,7 +22,7 @@ from webdriver_manager.firefox import GeckoDriverManager
 from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.memory import MemoryItem, NoMemory, get_memory
+from autogpt.memory.context import MemoryItem, NoMemory, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import summarize_text
 from autogpt.url_utils.validators import validate_url

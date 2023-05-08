@@ -6,7 +6,7 @@ from weaviate.util import generate_uuid5
 from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
 
-from ..provider import MemoryProvider
+from . import ContextMemoryProvider
 
 
 def default_schema(weaviate_index):
@@ -22,7 +22,7 @@ def default_schema(weaviate_index):
     }
 
 
-class WeaviateMemory(MemoryProvider):
+class WeaviateMemory(ContextMemoryProvider):
     def __init__(self, cfg):
         auth_credentials = self._build_auth_credentials(cfg)
 
