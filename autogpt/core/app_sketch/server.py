@@ -95,11 +95,11 @@ def bootstrap_agent(
         message_type="log",
     )
 
-    budget_manager = agent_factory.get_system_class("budget_manager", configuration)
-    # TODO: is this a class method? Or do we have the budget manager be partially
-    #  initialized without access to any resources since this precedes Agent creation?
-
-    # ...Update API budget, etc. ...
+    budget_manager_class = agent_factory.get_system_class(
+        "budget_manager", configuration
+    )
+    budget_manager = budget_manager_class(configuration)
+    budget_manager.update_resource_usage_and_cost("llm_budget", model_response)
 
     # TODO: Set up workspace
     # TODO: Provision memory backend
