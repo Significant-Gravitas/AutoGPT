@@ -18,7 +18,7 @@ class AgentManager(metaclass=Singleton):
         ] = {}  # key, (task, full_message_history, model)
         self.cfg = Config()
 
-    def create_agent(self, task: str, prompt: str, model: str) -> tuple[int, str]:
+    def create_agent(self, task: str, prompt: str, model: str) -> Tuple[int, str]:
         """
         Create a new agent with the given task, prompt and model.
         Args:
