@@ -36,10 +36,10 @@ def test_get_self_feedback(mocker):
 
     # Mock the log_cycle_handler attribute of the Agent instance
     agent_mock.log_cycle_handler = LogCycleHandler()
-    
+
     # Mock the create_nested_directory method of the LogCycleHandler instance
     agent_mock.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
     # Mock the cycle_count attribute of the Agent instance
     agent_mock.cycle_count = 0
 
