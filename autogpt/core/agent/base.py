@@ -43,12 +43,12 @@ class Agent(abc.ABC):
         self.plugin_manager = plugin_manager
         self.workspace = workspace
 
-
     @classmethod
     @abc.abstractmethod
-    def from_workspace(cls, workpace_path: Workspace, message_broker: MessageBroker) -> Agent:
+    def from_workspace(
+        cls, workpace_path: Workspace, message_broker: MessageBroker
+    ) -> Agent:
         pass
-
 
     @abc.abstractmethod
     def run(self):
@@ -56,28 +56,29 @@ class Agent(abc.ABC):
 
 
 class AgentFactory:
-
     configuration_defaults = {
         # Which subsystems to use. These must be subclasses of the base classes,
         # but could come from plugins.
-        'system': {
-            'budget_manager': 'autogpt.core.budget.BudgetManager',
-            'command_registry': 'autogpt.core.command.CommandRegistry',
-            'language_model': 'autogpt.core.llm.LanguageModel',
-            'memory_backend': 'autogpt.core.memory.MemoryBackend',
-            'planner': 'autogpt.core.planning.Planner',
+        "system": {
+            "budget_manager": "autogpt.core.budget.BudgetManager",
+            "command_registry": "autogpt.core.command.CommandRegistry",
+            "language_model": "autogpt.core.llm.LanguageModel",
+            "memory_backend": "autogpt.core.memory.MemoryBackend",
+            "planner": "autogpt.core.planning.Planner",
         }
     }
 
     def __init__(self, logger: logging.Logger):
         self._logger = logger
 
-    def compile_configuration(self, user_configuration: dict) -> Tuple[Configuration, List[str]]:
+    def compile_configuration(
+        self, user_configuration: dict
+    ) -> Tuple[Configuration, List[str]]:
         """Compile the user's configuration with the defaults."""
 
         configuration_dict = self.configuration_defaults
         # Copy so we're not mutating the data structure we're looping over.
-        system_defaults = self.configuration_defaults['system'].copy()
+        system_defaults = self.configuration_defaults["system"].copy()
         # Build up default configuration
         for system_name in system_defaults:
             system_class = self.get_system_class(system_name, user_configuration)
@@ -96,12 +97,13 @@ class AgentFactory:
         if isinstance(configuration, Configuration):
             configuration = configuration.to_dict()
 
-        default_system_import_path = self.configuration_defaults['system'][system_name]
-        system_import_path = configuration['system'].get(system_name, default_system_import_path)
+        default_system_import_path = self.configuration_defaults["system"][system_name]
+        system_import_path = configuration["system"].get(
+            system_name, default_system_import_path
+        )
 
         module_path, _, class_name = system_import_path.rpartition(".")
         module = import_module(module_path)
         system_class = getattr(module, class_name)
 
         return system_class
-

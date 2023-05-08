@@ -1,6 +1,6 @@
 import logging
 
-from autogpt.core.agent.base import AgentFactory, Agent
+from autogpt.core.agent.base import Agent, AgentFactory
 from autogpt.core.messaging.base import Message
 
 
@@ -34,8 +34,7 @@ def bootstrap_agent(
     user_objective = message_content["user_objective"]
 
     message_broker.send_message(
-        "agent_setup",
-        {"message": "Startup request received, Setting up agent..."},
+        "agent_setup", {"message": "Startup request received, Setting up agent..."}
     )
 
     # Either need to do validation as we're building the configuration, or shortly
@@ -46,18 +45,22 @@ def bootstrap_agent(
     if configuration_errors:
         message_broker.send_message(
             "agent_setup",
-            {"message": "Configuration errors encountered, aborting agent setup.",
-             "errors": configuration_errors},
+            {
+                "message": "Configuration errors encountered, aborting agent setup.",
+                "errors": configuration_errors,
+            },
         )
         return
 
     message_broker.send_message(
         "agent_setup",
-        {"message": "Agent configuration compiled. Constructing initial agent plan from user objective.",
-         "configuration": configuration},
+        {
+            "message": "Agent configuration compiled. Constructing initial agent plan from user objective.",
+            "configuration": configuration,
+        },
     )
 
-    agent_planner = agent_factory.get_system_class('planner', configuration)
+    agent_planner = agent_factory.get_system_class("planner", configuration)
     # TODO: is this a class method?  Or do we have the planner be partially initialized
     #  without access to any resources since this precedes Agent creation?
     objective_prompt = agent_planner.construct_objective_prompt_from_user_input(
@@ -66,12 +69,15 @@ def bootstrap_agent(
 
     message_broker.send_message(
         "agent_setup",
-        {"message": "Translated user input into objective prompt.",
-         "user_objective": user_objective,
-         "objective_prompt": objective_prompt},
+        {
+            "message": "Translated user input into objective prompt.",
+            "user_objective": user_objective,
+            "objective_prompt": objective_prompt,
+        },
     )
+    # ...Update API budget, etc. ...)
 
-    language_model = agent_factory.get_system_class('language_model', configuration)
+    language_model = agent_factory.get_system_class("language_model", configuration)
     # TODO: is this a class method?  Or do we have the language model be
     #  partially initialized without access to any resources since this precedes
     #  Agent creation?
@@ -81,9 +87,11 @@ def bootstrap_agent(
 
     message_broker.send_message(
         "agent_setup",
-        {"message": "Translated objective prompt into objective.",
-         "objective_prompt": objective_prompt,
-         "objective": agent_objective},
+        {
+            "message": "Translated objective prompt into objective.",
+            "objective_prompt": objective_prompt,
+            "objective": agent_objective,
+        },
     )
     # ...Update API budget, etc. ...
 
@@ -92,7 +100,7 @@ def bootstrap_agent(
 
     message_broker.send_message(
         "agent_setup_complete",
-        {"message": "Agent setup complete."}
+        {"message": "Agent setup complete."},
     )
 
 

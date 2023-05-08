@@ -50,7 +50,7 @@ def start_message_broker(application_logger) -> SimpleMessageBroker:
 
 def run_auto_gpt(
     file_based_configuration: dict,  # Need to figure out what's in here
-    command_line_arguments: dict,    # Need to figure out what's in here
+    command_line_arguments: dict,  # Need to figure out what's in here
 ):
     # Configure logging before we do anything else.
     # Application logs need a place to live.
@@ -64,7 +64,7 @@ def run_auto_gpt(
     message_broker = start_message_broker(application_logger)
 
     # This application either starts an existing agent or builds a new one.
-    if command_line_arguments['agent_name'] is None:
+    if command_line_arguments["agent_name"] is None:
         # Find out the user's objective for the new agent.
         user_objective = input(...)
         # Construct a message to send to the agent.  Real format TBD.
@@ -74,14 +74,15 @@ def run_auto_gpt(
             # These will need structures with some strongly-enforced fields to be
             # interpreted by the bootstrapping system.
             # Command line arguments override file-based configuration.
-            "user_configuration": file_based_configuration.update(command_line_arguments),
+            "user_configuration": file_based_configuration.update(
+                command_line_arguments
+            ),
             "user_objective": user_objective,
         }
         message_broker.send_message("user_objective", user_objective_message)
 
     launch_agent_message = {
         "message_broker": message_broker,
-        "agent": command_line_arguments['agent_name'],
+        "agent": command_line_arguments["agent_name"],
     }
     message_broker.send_message("launch_agent", launch_agent_message)
-
