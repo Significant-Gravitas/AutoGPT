@@ -10,6 +10,7 @@ CURRENT_CONTEXT_FILE_NAME = "current_context.json"
 NEXT_ACTION_FILE_NAME = "next_action.json"
 PROMPT_SUMMARY_FILE_NAME = "prompt_summary.json"
 SUMMARY_FILE_NAME = "summary.txt"
+USER_INPUT_FILE_NAME = "user_input.txt"
 
 
 class LogCycleHandler:
