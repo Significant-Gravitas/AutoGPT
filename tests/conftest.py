@@ -49,6 +49,6 @@ def pytest_report_teststatus(report):
         and hasattr(report, "wasxfail")
     ):
         reason = report.wasxfail
-        if "benchmarks" in reason and os.environ.get("CI"):
+        if "benchmarks" in reason and os.environ.get("CI") == "true":
             with open("xfail_reasons.log", "w") as f:
                 f.write(f"Test: {report.nodeid}\nReason: {reason}\n\n")
