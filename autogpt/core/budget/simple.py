@@ -1,25 +1,19 @@
 import math
-from typing import Dict, Any
+from typing import Any, Dict
 
-from autogpt.core.budget.base import (
-    ResourceBudget,
-    BudgetManager,
-)
+from autogpt.core.budget.base import BudgetManager, ResourceBudget
 from autogpt.core.configuration.base import Configuration
-from autogpt.core.llm.base import (
-    LLMResponse,
-)
+from autogpt.core.llm.base import LLMResponse
 
 
 class LLMBudget(ResourceBudget):
-
     configuration_defaults = {
         "llm_budget": {
             "total_budget": math.inf,
             "total_cost": 0,
             "usage": {
-                'prompt_tokens': 0,
-                'completion_tokens': 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
             },
             "graceful_shutdown_threshold": 0.005,
             "warning_threshold": 0.01,
@@ -49,7 +43,9 @@ class LLMBudget(ResourceBudget):
     def update_usage_and_cost(self, llm_response: LLMResponse) -> None:
         model_info = llm_response.model_info
         self._configuration["usage"]["prompt_tokens"] += llm_response.prompt_tokens_used
-        self._configuration["usage"]["completion_tokens"] += llm_response.completion_tokens_used
+        self._configuration["usage"][
+            "completion_tokens"
+        ] += llm_response.completion_tokens_used
         self._configuration["total_cost"] += (
             llm_response.prompt_tokens_used * model_info.prompt_token_cost
             + llm_response.completion_tokens_used * model_info.completion_token_cost
@@ -77,7 +73,6 @@ class LLMBudget(ResourceBudget):
 
 
 class SimpleBudgetManager(BudgetManager):
-
     configuration_defaults = {
         "budget_manager": {
             # TODO: this should be more dynamically configurable in a later
@@ -89,7 +84,7 @@ class SimpleBudgetManager(BudgetManager):
     def __init__(self, configuration: Configuration):
         self._configuration = configuration.budget_manager
         self._resources: dict[str, ResourceBudget] = {
-            'llm_budget': LLMBudget(self._configuration["llm_budget"])
+            "llm_budget": LLMBudget(self._configuration["llm_budget"])
         }
 
     def list_resources(self) -> list[str]:

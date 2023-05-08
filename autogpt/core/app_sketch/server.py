@@ -1,10 +1,7 @@
 import logging
 
 from autogpt.core.agent.base import Agent, AgentFactory
-from autogpt.core.messaging.base import (
-    Role,
-    Message,
-)
+from autogpt.core.messaging.base import Message, Role
 
 
 def configure_agent_factory_logging(
@@ -38,8 +35,8 @@ def bootstrap_agent(
 
     agent_factory_emitter = message_broker.get_emitter(
         # can get from user config
-        channel_name='autogpt',
-        sender_name='autogpt-agent-factory',
+        channel_name="autogpt",
+        sender_name="autogpt-agent-factory",
         sender_role=Role.AGENT_FACTORY,
     )
     agent_factory_emitter.send_message(
@@ -54,13 +51,17 @@ def bootstrap_agent(
     )
     if configuration_errors:
         agent_factory_emitter.send_message(
-            content={"message": "Configuration errors encountered, aborting agent setup."},
+            content={
+                "message": "Configuration errors encountered, aborting agent setup."
+            },
             message_type="error",
         )
         return
 
     agent_factory_emitter.send_message(
-        content={"message": "Agent configuration compiled. Constructing initial agent plan from user objective."},
+        content={
+            "message": "Agent configuration compiled. Constructing initial agent plan from user objective."
+        },
         message_type="log",
     )
 
@@ -71,8 +72,10 @@ def bootstrap_agent(
         user_objective,
     )
     agent_factory_emitter.send_message(
-        content={"message": "Translated user input into objective prompt.",
-                 "objective_prompt": objective_prompt},
+        content={
+            "message": "Translated user input into objective prompt.",
+            "objective_prompt": objective_prompt,
+        },
         message_type="log",
     )
 
@@ -85,8 +88,10 @@ def bootstrap_agent(
     agent_objective = model_response.content
 
     agent_factory_emitter.send_message(
-        content={"message": "Translated objective prompt into objective.",
-                 "objective": agent_objective},
+        content={
+            "message": "Translated objective prompt into objective.",
+            "objective": agent_objective,
+        },
         message_type="log",
     )
 

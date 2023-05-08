@@ -53,9 +53,8 @@ class ResourceBudget(abc.ABC):
 
 class BudgetManager(abc.ABC):
     """The BudgetManager class is a manager for constrained resources."""
-    configuration_defaults = {
-        "budget_manager": {}
-    }
+
+    configuration_defaults = {"budget_manager": {}}
 
     @abc.abstractmethod
     def __init__(self, *args, **kwargs):
@@ -87,7 +86,9 @@ class BudgetManager(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def update_resource_usage_and_cost(self, resource_name: str, *args, **kwargs) -> None:
+    def update_resource_usage_and_cost(
+        self, resource_name: str, *args, **kwargs
+    ) -> None:
         """Update the usage and cost of a resource."""
         ...
 
