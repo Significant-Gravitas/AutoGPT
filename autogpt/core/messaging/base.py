@@ -60,17 +60,19 @@ class MessageEmitter(abc.ABC):
     def __init__(
         self,
         message_channel: "MessageChannel",
-        *args,
-        **kwargs,
+        sender_name: str,
+        sender_role: Role,
+        **additional_metadata,
     ):
         ...
 
     @abc.abstractmethod
-    def send_message(self, content: dict) -> None:
+    def send_message(self, content: dict, **extra_metadata) -> None:
         """Send a message on this channel .
 
         Args:
             content: A json-serializable object containing the message content.
+            **extra_metadata: Any additional metadata to be included when emitting messages.
 
         """
         ...
@@ -105,21 +107,6 @@ class MessageChannel(abc.ABC):
             message_filter: A function that filters messages before they are sent to
                               the listener.  If the filter returns False, the message
                               is not sent to the listener.
-
-        """
-        ...
-
-    @abc.abstractmethod
-    def get_emitter(self, *args, **kwargs) -> MessageEmitter:
-        """Get an emitter for this channel.
-
-        Args:
-            *args: Positional arguments to pass to the MessageEmitter constructor.
-            **kwargs: Keyword arguments to pass to the MessageEmitter constructor.
-
-        Returns:
-            A MessageEmitter object that can be used to send messages on this channel
-            preserving all metadata.
 
         """
         ...
@@ -160,16 +147,24 @@ class MessageBroker(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def send_message(self, channel_name: str, content: Dict, *args, **kwargs) -> None:
-        """Send a message on a channel for a given sender.
-
-        This is an alternative method for sending messages by interacting with the
-        message broker directly.  It is equivalent to calling `send_message` with an
-        appropriate message channel.
+    def get_emitter(
+        self,
+        channel_name: str,
+        sender_name: str,
+        sender_role: Role,
+        **extra_metadata,
+    ) -> MessageEmitter:
+        """Get an emitter for this channel.
 
         Args:
-            channel_name: The name of the channel to send the message on.
-            content: A json-serializable object containing the message content.
+            channel_name: The name of the channel the emitter will send messages on.
+            sender_name: The name of the sender.
+            sender_role: The role of the sender.
+            extra_metadata: Any additional metadata to be included when emitting messages.
+
+        Returns:
+            A MessageEmitter object that can be used to send messages on this channel
+            preserving all metadata.
 
         """
         ...

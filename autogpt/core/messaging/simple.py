@@ -26,11 +26,16 @@ class SimpleMessageEmitter(MessageEmitter):
         self._additional_metadata = additional_metadata
         self._message_channel = message_channel
 
-    def send_message(self, content: Dict) -> None:
+    def send_message(self, content: Dict, **extra_metadata) -> None:
+        additional_metadata = {
+            **self._additional_metadata,
+            **extra_metadata,
+        }
+
         metadata = MessageMetadata(
             sender=self._sender,
             timestamp=datetime.now(),
-            additional_metadata=self._additional_metadata,
+            additional_metadata=additional_metadata,
         )
         message = Message(
             content=content,
@@ -59,14 +64,6 @@ class SimpleMessageChannel(MessageChannel):
     ) -> None:
         self._listeners.append((listener, message_filter))
 
-    def get_emitter(
-        self,
-        sender_name: str,
-        sender_role: Role,
-        **extra_metadata,
-    ) -> SimpleMessageEmitter:
-        return SimpleMessageEmitter(self, sender_name, sender_role, **extra_metadata)
-
     def send_message(self, message: Message) -> None:
         for listener, message_filter in self._listeners:
             if filtered_message := message_filter(message):
@@ -92,17 +89,20 @@ class SimpleMessageBroker(MessageBroker):
                 message_broker=self,
             )
 
-    def send_message(
+    def get_emitter(
         self,
         channel_name: str,
-        content: Dict,
         sender_name: str,
         sender_role: Role,
         **extra_metadata,
-    ) -> None:
+    ) -> MessageEmitter:
         channel = self._channels[channel_name]
-        emitter = channel.get_emitter(sender_name, sender_role, **extra_metadata)
-        emitter.send_message(content)
+        return SimpleMessageEmitter(
+            message_channel=channel,
+            sender_name=sender_name,
+            sender_role=sender_role,
+            **extra_metadata,
+        )
 
     def register_listener(
         self,
