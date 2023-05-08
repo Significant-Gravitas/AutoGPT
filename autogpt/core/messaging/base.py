@@ -1,7 +1,7 @@
+import dataclasses
 from abc import ABC, abstractmethod
 from enum import Enum, StrEnum
-import dataclasses
-from typing import Any, List, Callable, Union
+from typing import Any, Callable, List, Union
 
 
 class MessageCategory(StrEnum):

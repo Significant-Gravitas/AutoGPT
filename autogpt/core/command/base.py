@@ -1,31 +1,34 @@
 import abc
 import importlib
 import inspect
-from typing import Any, Callable, Optional, Tuple, Dict
 from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional, Tuple
+
 
 @dataclass
 class CommandResult:
     ok: bool
     message: str
 
+
 class Command(abc.ABC):
     """A class representing a command. Commands are actions which an agent can take.
 
-	Attributes:
-		name (str): The name of the command.
-		description (str): A brief description of what the command does.
-		signature (str): The signature of the function that theicommand executes. Defaults to None.
-	"""
+    Attributes:
+            name (str): The name of the command.
+            description (str): A brief description of what the command does.
+            signature (str): The signature of the function that theicommand executes. Defaults to None.
+    """
+
     def __init__(
-		self,
-		name: str,
-		description: str,
-		method: Callable[..., Any],
-		signature: str = "",
-		enabled: bool = True,
-		disabled_reason: Optional[str] = None
-	):
+        self,
+        name: str,
+        description: str,
+        method: Callable[..., Any],
+        signature: str = "",
+        enabled: bool = True,
+        disabled_reason: Optional[str] = None,
+    ):
         self.name = name
         self.description = description
         self.method = method
@@ -35,17 +38,19 @@ class Command(abc.ABC):
 
     def __call__(self, *args, **kwargs) -> CommandResult:
         if not self.enabled:
-            return CommandResult(False, f"Command '{self.name}' is disabled: {self.disabled_reason}")
-        
+            return CommandResult(
+                False, f"Command '{self.name}' is disabled: {self.disabled_reason}"
+            )
+
         args, kwargs = self.__pre_call__(*args, **kwargs)
-        
+
         command_result = self.method(*args, **kwargs)
         if isinstance(command_result, str):
             command_result = CommandResult(True, command_result)
-        
+
         command_result = self.__post_hook__(command_result)
         return command_result
-    
+
     def __pre_call__(self, *args, **kwargs) -> Tuple[Any, Dict[str, Any]]:
         # Return the unmodified *args and **kwargs by default, as a tuple and a dictionary
         return args, kwargs
@@ -65,14 +70,15 @@ class CommandRegistry(abc.ABC):
     as well as the scanning and loading of command plugins from a specified
     directory.
     """
+
     AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
-    
+
     def __init__(self):
         self.commands = {}
-        
+
     def register_command(self, cmd: Command) -> None:
         self.commands[cmd.name] = cmd
-    
+
     def list_commands(self) -> None:
         pass
 
@@ -86,14 +92,13 @@ class CommandRegistry(abc.ABC):
             if command_name not in self.commands:
                 raise KeyError(f"Command '{command_name}' not found in registry.")
             command = self.commands[command_name]
-            
+
             command_result = command(**kwargs)
             return command_result
-            
+
         except Exception as e:
             return CommandResult(False, f"Error: {str(e)}")
-        
-        
+
     def import_commands(self, module_name: str) -> None:
         """
         Imports the specified Python module containing command plugins.
