@@ -5,15 +5,15 @@ on:
     workflows: ["Python CI"]
     types:
       - completed
-  pull_request_target:
-    types:
-      - opened
-      - synchronize
+#  pull_request_target:
+#    types:
+#      - opened
+#      - synchronize
 
 
 jobs:
   download_artifact_and_post_comment:
-    if: ${{ github.event_name == 'workflow_run' || (github.event_name == 'pull_request_target' && github.event.action == 'synchronize') }}
+#    if: ${{ github.event_name == 'workflow_run' || (github.event_name == 'pull_request_target' && github.event.action == 'synchronize') }}
     runs-on: ubuntu-latest
 
     steps:
