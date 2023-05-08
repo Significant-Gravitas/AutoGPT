@@ -101,8 +101,9 @@ def bootstrap_agent(
     budget_manager = budget_manager_class(configuration)
     budget_manager.update_resource_usage_and_cost("llm_budget", model_response)
 
-    # TODO: Set up workspace
-    # TODO: Provision memory backend
+    workspace = agent_factory.get_system_class("workspace", configuration)
+    workspace_path = workspace.setup_workspace(configuration)
+    # TODO: Provision memory backend. Waiting on interface to stabilize
 
     message_broker.send_message(
         "agent_setup_complete",
