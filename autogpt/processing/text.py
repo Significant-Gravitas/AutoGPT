@@ -106,7 +106,9 @@ def summarize_text(
     ):  # reserve 50 tokens for summary prompt, 500 for the response
         prompt = summarization_prompt_template.format(content=text)
         logger.debug(f"Summarizing with {model}:\n{'-'*32}\n{prompt}\n{'-'*32}\n")
-        summary = create_text_completion(prompt, model, temperature=0, max_output_tokens=500)
+        summary = create_text_completion(
+            prompt, model, temperature=0, max_output_tokens=500
+        )
         logger.debug(f"Summary:\n{'-'*32}\n{summary}\n{'-'*32}\n")
         return summary, None
 

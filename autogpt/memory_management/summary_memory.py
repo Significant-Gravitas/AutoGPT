@@ -1,9 +1,9 @@
 import copy
 import json
-from typing import Dict, List, Tuple
 
 from autogpt.agent import Agent
 from autogpt.config import Config
+from autogpt.llm.base import Message
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
 
@@ -11,10 +11,10 @@ cfg = Config()
 
 
 def get_newly_trimmed_messages(
-    full_message_history: List[Dict[str, str]],
-    current_context: List[Dict[str, str]],
+    full_message_history: list[Message],
+    current_context: list[Message],
     last_memory_index: int,
-) -> Tuple[List[Dict[str, str]], int]:
+) -> tuple[list[Message], int]:
     """
     This function returns a list of dictionaries contained in full_message_history
     with an index higher than prev_index that are absent from current_context.
@@ -48,8 +48,8 @@ def get_newly_trimmed_messages(
 
 
 def update_running_summary(
-    agent: Agent, current_memory: str, new_events: List[Dict[str, str]]
-) -> str:
+    agent: Agent, current_summary: str, new_events: list[Message]
+) -> Message:
     """
     This function takes a list of dictionaries representing new events and combines them with the current summary,
     focusing on key and potentially important information to remember. The updated summary is returned in a message
@@ -87,26 +87,22 @@ def update_running_summary(
         elif event["role"] == "user":
             new_events.remove(event)
 
-    # This can happen at any point during execturion, not just the beginning
-    if len(new_events) == 0:
-        new_events = "Nothing new happened."
-
     prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
 
 You will receive the current summary and the your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
 
 Summary So Far:
 """
-{current_memory}
+{current_summary}
 """
 
 Latest Development:
 """
-{new_events}
+{new_events or "Nothing new happened."}
 """
 '''
 
-    messages = [
+    messages: list[Message] = [
         {
             "role": "user",
             "content": prompt,
@@ -120,19 +116,19 @@ Latest Development:
         PROMPT_SUMMARY_FILE_NAME,
     )
 
-    current_memory = create_chat_completion(messages, cfg.fast_llm_model)
+    current_summary = create_chat_completion(messages, cfg.fast_llm_model)
 
     agent.log_cycle_handler.log_cycle(
         agent.config.ai_name,
         agent.created_at,
         agent.cycle_count,
-        current_memory,
+        current_summary,
         SUMMARY_FILE_NAME,
     )
 
-    message_to_return = {
+    message_to_return: Message = {
         "role": "system",
-        "content": f"This reminds you of these events from your past: \n{current_memory}",
+        "content": f"This reminds you of these events from your past: \n{current_summary}",
     }
 
     return message_to_return

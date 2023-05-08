@@ -3,6 +3,7 @@ from random import shuffle
 
 from openai.error import RateLimitError
 
+from autogpt.agent.agent import Agent
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
@@ -10,11 +11,12 @@ from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.token_counter import count_message_tokens
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
+from autogpt.memory import MemoryItem, MemoryProvider
 
 cfg = Config()
 
 
-def create_chat_message(role, content) -> Message:
+def create_chat_message(role: str, content: str) -> Message:
     """
     Create a chat message with the given role and content.
 
@@ -28,7 +30,12 @@ def create_chat_message(role, content) -> Message:
     return {"role": role, "content": content}
 
 
-def generate_context(prompt, relevant_memory, full_message_history, model):
+def generate_context(
+    prompt: str,
+    relevant_memory: MemoryItem,
+    full_message_history: list[Message],
+    model: str,
+):
     current_context = [
         create_chat_message("system", prompt),
         create_chat_message(
@@ -55,7 +62,12 @@ def generate_context(prompt, relevant_memory, full_message_history, model):
 
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
-    agent, prompt, user_input, full_message_history, permanent_memory, token_limit
+    agent: Agent,
+    prompt: str,
+    user_input: str,
+    full_message_history: list[Message],
+    permanent_memory: MemoryProvider,
+    token_limit: int,
 ):
     """Interact with the OpenAI API, sending the prompt, user input, message history,
     and permanent memory."""
@@ -146,6 +158,7 @@ def chat_with_ai(
 
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
+
             from autogpt.memory_management.summary_memory import (
                 get_newly_trimmed_messages,
                 update_running_summary,
@@ -164,7 +177,7 @@ def chat_with_ai(
 
                 agent.summary_memory = update_running_summary(
                     agent,
-                    current_memory=agent.summary_memory,
+                    current_summary=agent.summary_memory["content"],
                     new_events=newly_trimmed_messages,
                 )
                 current_context.insert(insertion_index, agent.summary_memory)
@@ -200,7 +213,7 @@ def chat_with_ai(
                 if not plugin.can_handle_on_planning():
                     continue
                 plugin_response = plugin.on_planning(
-                    agent.prompt_generator, current_context
+                    agent.config.prompt_generator, current_context
                 )
                 if not plugin_response or plugin_response == "":
                     continue

@@ -10,11 +10,11 @@ from autogpt.config import Config
 from autogpt.logs import logger
 
 from ..memory_item import MemoryItem
+from ..provider import MemoryProvider
 from ..utils import Embedding, get_embedding
-from .base import MemoryProviderSingleton
 
 
-class JSONFileMemory(MemoryProviderSingleton):
+class JSONFileMemory(MemoryProvider):
     """Memory backend that stores memories in a JSON file"""
 
     SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS

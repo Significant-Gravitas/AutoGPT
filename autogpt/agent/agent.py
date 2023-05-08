@@ -3,10 +3,13 @@ from datetime import datetime
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
+from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config
+from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
 from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
+from autogpt.llm.base import Message as ChatMessage
 from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
@@ -14,6 +17,7 @@ from autogpt.log_cycle.log_cycle import (
     LogCycleHandler,
 )
 from autogpt.logs import logger, print_assistant_thoughts
+from autogpt.memory.provider import MemoryProvider
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
@@ -51,22 +55,24 @@ class Agent:
 
     def __init__(
         self,
-        ai_name,
-        memory,
-        full_message_history,
-        next_action_count,
-        command_registry,
-        config,
-        system_prompt,
-        triggering_prompt,
-        workspace_directory,
+        ai_name: str,
+        memory: MemoryProvider,
+        full_message_history: list[ChatMessage],
+        next_action_count: int,
+        command_registry: CommandRegistry,
+        config: AIConfig,
+        system_prompt: str,
+        triggering_prompt: str,
+        workspace_directory: str,
     ):
         cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
-        self.summary_memory = (
-            "I was created."  # Initial memory necessary to avoid hilucination
-        )
+        self.summary_memory: ChatMessage = {
+            # Initial memory necessary to avoid hallucination
+            "role": "assistant",
+            "content": "I was created.",
+        }
         self.last_memory_index = 0
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count

@@ -3,10 +3,10 @@ import abc
 
 from autogpt.singleton import AbstractSingleton
 
-from ..memory_item import MemoryItem
+from .memory_item import MemoryItem
 
 
-class MemoryProviderSingleton(AbstractSingleton):
+class MemoryProvider(AbstractSingleton):
     @abc.abstractmethod
     def add(self, item: MemoryItem):
         """Adds a MemoryItem to the memory index"""

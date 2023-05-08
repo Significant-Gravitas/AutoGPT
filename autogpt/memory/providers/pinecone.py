@@ -4,10 +4,10 @@ from colorama import Fore, Style
 from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
 
-from .base import MemoryProviderSingleton
+from ..provider import MemoryProvider
 
 
-class PineconeMemory(MemoryProviderSingleton):
+class PineconeMemory(MemoryProvider):
     def __init__(self, cfg):
         pinecone_api_key = cfg.pinecone_api_key
         pinecone_region = cfg.pinecone_region

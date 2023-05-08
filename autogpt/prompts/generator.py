@@ -2,6 +2,8 @@
 import json
 from typing import Any, Callable, Dict, List, Optional
 
+from autogpt.commands.command import CommandRegistry
+
 
 class PromptGenerator:
     """
@@ -19,7 +21,7 @@ class PromptGenerator:
         self.resources = []
         self.performance_evaluation = []
         self.goals = []
-        self.command_registry = None
+        self.command_registry: CommandRegistry | None = None
         self.name = "Bob"
         self.role = "AI"
         self.response_format = {

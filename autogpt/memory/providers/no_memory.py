@@ -4,10 +4,10 @@ from __future__ import annotations
 from typing import Any
 
 from .. import MemoryItem
-from .base import MemoryProviderSingleton
+from ..provider import MemoryProvider
 
 
-class NoMemory(MemoryProviderSingleton):
+class NoMemory(MemoryProvider):
     """
     A class that does not store any data. This is the default memory provider.
     """

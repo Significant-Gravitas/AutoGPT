@@ -16,11 +16,11 @@ from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
 
 from ..memory_item import MemoryItem
+from ..provider import MemoryProvider
 from ..utils import Embedding, get_embedding
-from .base import MemoryProviderSingleton
 
 
-class RedisMemory(MemoryProviderSingleton):
+class RedisMemory(MemoryProvider):
     cfg: Config
 
     redis: redis.Redis

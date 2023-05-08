@@ -180,7 +180,7 @@ def create_text_completion(
 @metered
 @retry_openai_api()
 def create_chat_completion(
-    messages: List[Message],  # type: ignore
+    messages: list[Message],  # type: ignore
     model: Optional[str] = None,
     temperature: float = None,
     max_tokens: Optional[int] = None,
