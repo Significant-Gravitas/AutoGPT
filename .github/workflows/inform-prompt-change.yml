@@ -1,14 +1,16 @@
 name: Download Artifact and Post Comment
 
 on:
-  workflow_run:
-    workflows: ["Python CI"]
-    types:
-      - completed
-#  pull_request_target:
+#  workflow_run:
+#    workflows: ["Python CI"]
 #    types:
-#      - opened
-#      - synchronize
+#      - completed
+  push:
+    branches: [ master ]
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
 
 
 jobs:
