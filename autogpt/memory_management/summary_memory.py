@@ -6,6 +6,7 @@ from autogpt.agent import Agent
 from autogpt.config import Config
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
+from autogpt.logs import logger
 
 cfg = Config()
 
@@ -75,10 +76,13 @@ def update_running_summary(
         if event["role"].lower() == "assistant" and event["content"]:
             event["role"] = "you"
 
-            # Remove "thoughts" dictionary from "content"
-            event["content"] = event["content"].replace('\\', '\\\\')
-            content_dict = json.loads(event["content"])
-
+            try:
+                # Remove "thoughts" dictionary from "content"
+                event["content"] = event["content"].replace('\\', '\\\\')
+                content_dict = json.loads(event["content"])
+            except json.decoder.JSONDecodeError:
+                logger.warning(f"JSONDecodeError: {event}")
+                continue
             if "thoughts" in content_dict:
                 del content_dict["thoughts"]
             event["content"] = json.dumps(content_dict)
