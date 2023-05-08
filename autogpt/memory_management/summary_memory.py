@@ -75,7 +75,13 @@ def update_running_summary(
             event["role"] = "you"
 
             # Remove "thoughts" dictionary from "content"
-            content_dict = json.loads(event["content"])
+            try:
+                content_dict = json.loads(event["content"])
+            except json.JSONDecodeError as e:
+                print(f"Error decoding JSON data: {e}")
+                # You can either provide a fallback value or raise a more specific exception here
+                content_dict = {}
+
             if "thoughts" in content_dict:
                 del content_dict["thoughts"]
             event["content"] = json.dumps(content_dict)
