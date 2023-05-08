@@ -76,7 +76,6 @@ jobs:
           CI: true
 
       - name: Archive xfail_reasons.log if benchmarks changed
-        if: steps.check_benchmarks.outputs.benchmarks_changed == 'true'
         uses: actions/upload-artifact@v2
         with:
           name: xfail_reasons_log
