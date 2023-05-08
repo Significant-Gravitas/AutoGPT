@@ -23,6 +23,19 @@ class Sender:
     name: str
     role: Role
 
+@dataclass
+class Priority:
+    """Struct for message priority."""
+    # Some way to describe importance of the message for the current process
+    importance: str
+
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+    def __str__(self):
+        return self.importance
 
 @dataclass
 class MessageMetadata:
@@ -32,7 +45,8 @@ class MessageMetadata:
     timestamp: datetime
     additional_metadata: Dict = None
     # TODO: what else goes here?
-
+    priority: Priority = None
+    
 
 @dataclass
 class Message:
