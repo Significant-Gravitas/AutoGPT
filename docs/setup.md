@@ -33,7 +33,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
 ### Set up with Docker
 
-1. Make sure you have Docker installed, see [requirements](#requirements)
+1. Make sure you have Docker installed, see [requirements](#📋-requirements)
 2. Pull the latest image from [Docker Hub]
 
         :::shell
