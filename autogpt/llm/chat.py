@@ -1,3 +1,4 @@
+import copy
 import time
 from random import shuffle
 
@@ -124,7 +125,7 @@ def chat_with_ai(
             # Add Messages until the token limit is reached or there are no more messages to add.
             while next_message_to_add_index >= 0:
                 # print (f"CURRENT TOKENS USED: {current_tokens_used}")
-                message_to_add = full_message_history[next_message_to_add_index]
+                message_to_add = copy.deepcopy(full_message_history[next_message_to_add_index])
 
                 tokens_to_add = count_message_tokens([message_to_add], model)
                 if current_tokens_used + tokens_to_add > send_token_limit:
@@ -138,7 +139,7 @@ def chat_with_ai(
                 # Add the most recent message to the start of the current context,
                 #  after the two system prompts.
                 current_context.insert(
-                    insertion_index, full_message_history[next_message_to_add_index]
+                    insertion_index, message_to_add
                 )
 
                 # Count the currently used tokens
@@ -192,8 +193,21 @@ def chat_with_ai(
                 logger.debug(system_message)
                 current_context.append(create_chat_message("system", system_message))
 
+            user_message = create_chat_message("user", user_input)
+
+            # Clean the context of the old user input
+            current_context = [msg for msg in current_context if msg != user_message]
+
+            # Change "system" to user so command results matter more
+            current_context = list(map(
+                lambda msg: create_chat_message("user", msg["content"])
+                if msg["role"] == "system" and current_context.index(msg) >= insertion_index
+                else msg,
+                current_context,
+            ))
+
             # Append user input, the length of this is accounted for above
-            current_context.extend([create_chat_message("user", user_input)])
+            current_context.extend([user_message])
 
             plugin_count = len(cfg.plugins)
             for i, plugin in enumerate(cfg.plugins):

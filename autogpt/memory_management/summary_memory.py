@@ -66,8 +66,6 @@ def update_running_summary(
         update_running_summary(new_events)
         # Returns: "This reminds you of these events from your past: \nI entered the kitchen and found a scrawled note saying 7."
     """
-    # Create a copy of the new_events list to prevent modifying the original list
-    new_events = copy.deepcopy(new_events)
 
     # Replace "assistant" with "you". This produces much better first person past tense results.
     for event in new_events:
