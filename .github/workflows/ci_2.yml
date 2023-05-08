@@ -1,0 +1,21 @@
+name: Python CI 2
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master, stable ]
+
+concurrency:
+  group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      min-python-version: "3.10"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
