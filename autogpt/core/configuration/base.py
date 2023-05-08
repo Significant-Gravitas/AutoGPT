@@ -8,6 +8,11 @@ class Configuration(abc.ABC):
 
     @property
     @abc.abstractmethod
+    def budget_manager(self):
+        pass
+
+    @property
+    @abc.abstractmethod
     def command_registry(self):
         pass
 
@@ -39,10 +44,6 @@ class Configuration(abc.ABC):
     @property
     @abc.abstractmethod
     def workspace(self):
-        pass
-
-    @abc.abstractmethod
-    def set_defaults(self, system_classes: list):
         pass
 
     @abc.abstractmethod

@@ -77,6 +77,22 @@ def start_message_broker(
         message_filter=log_filter,
     )
 
+    def error_filter(message: Message):
+        metadata = message.metadata
+        return (
+            is_server_message(message)
+            and metadata.additional_metadata["message_type"] == "error"
+        )
+
+    def error_callback(message: Message):
+        raise RuntimeError(message.content["message"])
+
+    message_broker.register_listener(
+        message_channel_name,
+        listener=error_callback,
+        message_filter=error_filter,
+    )
+
     return message_broker
 
 

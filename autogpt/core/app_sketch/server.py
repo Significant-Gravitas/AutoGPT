@@ -1,7 +1,10 @@
 import logging
 
 from autogpt.core.agent.base import Agent, AgentFactory
-from autogpt.core.messaging.base import Message
+from autogpt.core.messaging.base import (
+    Role,
+    Message,
+)
 
 
 def configure_agent_factory_logging(
@@ -33,8 +36,15 @@ def bootstrap_agent(
     user_configuration = message_content["user_configuration"]
     user_objective = message_content["user_objective"]
 
-    message_broker.send_message(
-        "agent_setup", {"message": "Startup request received, Setting up agent..."}
+    agent_factory_emitter = message_broker.get_emitter(
+        # can get from user config
+        channel_name='autogpt',
+        sender_name='autogpt-agent-factory',
+        sender_role=Role.AGENT_FACTORY,
+    )
+    agent_factory_emitter.send_message(
+        content={"message": "Startup request received, Setting up agent..."},
+        message_type="log",
     )
 
     # Either need to do validation as we're building the configuration, or shortly
@@ -43,21 +53,15 @@ def bootstrap_agent(
         user_configuration,
     )
     if configuration_errors:
-        message_broker.send_message(
-            "agent_setup",
-            {
-                "message": "Configuration errors encountered, aborting agent setup.",
-                "errors": configuration_errors,
-            },
+        agent_factory_emitter.send_message(
+            content={"message": "Configuration errors encountered, aborting agent setup."},
+            message_type="error",
         )
         return
 
-    message_broker.send_message(
-        "agent_setup",
-        {
-            "message": "Agent configuration compiled. Constructing initial agent plan from user objective.",
-            "configuration": configuration,
-        },
+    agent_factory_emitter.send_message(
+        content={"message": "Agent configuration compiled. Constructing initial agent plan from user objective."},
+        message_type="log",
     )
 
     agent_planner = agent_factory.get_system_class("planner", configuration)
@@ -66,16 +70,11 @@ def bootstrap_agent(
     objective_prompt = agent_planner.construct_objective_prompt_from_user_input(
         user_objective,
     )
-
-    message_broker.send_message(
-        "agent_setup",
-        {
-            "message": "Translated user input into objective prompt.",
-            "user_objective": user_objective,
-            "objective_prompt": objective_prompt,
-        },
+    agent_factory_emitter.send_message(
+        content={"message": "Translated user input into objective prompt.",
+                 "objective_prompt": objective_prompt},
+        message_type="log",
     )
-    # ...Update API budget, etc. ...)
 
     language_model = agent_factory.get_system_class("language_model", configuration)
     # TODO: is this a class method?  Or do we have the language model be
@@ -85,14 +84,16 @@ def bootstrap_agent(
     # This should be parsed into a standard format already
     agent_objective = model_response.content
 
-    message_broker.send_message(
-        "agent_setup",
-        {
-            "message": "Translated objective prompt into objective.",
-            "objective_prompt": objective_prompt,
-            "objective": agent_objective,
-        },
+    agent_factory_emitter.send_message(
+        content={"message": "Translated objective prompt into objective.",
+                 "objective": agent_objective},
+        message_type="log",
     )
+
+    budget_manager = agent_factory.get_system_class("budget_manager", configuration)
+    # TODO: is this a class method? Or do we have the budget manager be partially
+    #  initialized without access to any resources since this precedes Agent creation?
+
     # ...Update API budget, etc. ...
 
     # TODO: Set up workspace

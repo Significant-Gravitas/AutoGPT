@@ -1,64 +1,101 @@
 import abc
+from typing import Any
+
+
+class ResourceBudget(abc.ABC):
+    """Representation of the budget of a particular resource."""
+
+    configuration_defaults = {}
+
+    @abc.abstractmethod
+    def __init__(self, *args, **kwargs):
+        ...
+
+    @property
+    @abc.abstractmethod
+    def total_budget(self) -> float:
+        """Total budget for the resource."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def total_cost(self) -> float:
+        """Total cost of all prior resource usage."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def remaining_budget(self) -> float:
+        """Remaining budget for the resource."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def usage(self) -> Any:
+        """Total usage of the resource."""
+        ...
+
+    @abc.abstractmethod
+    def update_usage_and_cost(self, *args, **kwargs) -> None:
+        """Update the usage and cost of the resource."""
+        ...
+
+    @abc.abstractmethod
+    def get_resource_budget_prompt(self) -> str:
+        """Get the prompt to be used for the resource budget."""
+        # TODO: does this belong here?  Not really sure...
+        ...
+
+    @abc.abstractmethod
+    def __repr__(self):
+        ...
 
 
 class BudgetManager(abc.ABC):
-    """
-    The BudgetManager class is a manager for constrained resources.
-    Initially only supports monetary budgets, but could be extended to support time, memory, etc.
-    """
-
-    @abc.abstractmethod
-    def __init__(self, budget: float = 0.00, *args, **kwargs):
-        pass
-
-    @abc.abstractmethod
-    def set_budget(self, budget: float = 0.00) -> None:
-        pass
-
-    @abc.abstractmethod
-    def get_budget(self) -> float:
-        pass
-
-    @abc.abstractmethod
-    def get_spend(self) -> float:
-        pass
-
-    @abc.abstractmethod
-    def record_cost(self, amount: float = 0.00) -> None:
-        pass
-
-
-class Budget(abc.ABC):
-    # TODO: Not used yet
-    pass
-
-
-class BudgetManagerConcrete(BudgetManager):
+    """The BudgetManager class is a manager for constrained resources."""
     configuration_defaults = {
-        "budget_manager": {
-            "budget": 0.00  # This means the agent has an infinite budget
-        }
+        "budget_manager": {}
     }
 
-    initial_budget: float = 0.00
-    remaining_budget: float = 0.00
+    @abc.abstractmethod
+    def __init__(self, *args, **kwargs):
+        ...
 
-    def __init__(self, budget: float = 0.00, *args, **kwargs):
-        self.initial_budget = budget
-        self.set_budget(budget)
+    @abc.abstractmethod
+    def list_resources(self) -> list[str]:
+        """List the resources that are being managed."""
+        ...
 
-    def set_budget(self, budget: float = 0.00) -> None:
-        if budget < 0.00:
-            raise ValueError("Budget cannot be negative.")
-        self.remaining_budget = budget
+    @abc.abstractmethod
+    def get_total_budget(self, resource_name: str) -> float:
+        """Get the total budget for a resource."""
+        ...
 
-    def get_budget(self) -> float:
-        return self.remaining_budget
+    @abc.abstractmethod
+    def get_total_cost(self, resource_name: str) -> float:
+        """Get the total cost of a resource."""
+        ...
 
-    def get_spend(self) -> float:
-        return self.initial_budget - self.remaining_budget
+    @abc.abstractmethod
+    def get_remaining_budget(self, resource_name: str) -> float:
+        """Get the remaining budget for a resource."""
+        ...
 
-    def record_cost(self, amount: float = 0.00) -> None:
-        if amount > self.remaining_budget:
-            raise ValueError("Cost exceeds remaining budget.")
-        self.remaining_budget -= amount
+    @abc.abstractmethod
+    def get_resource_usage(self, resource_name: str) -> Any:
+        """Get the usage of a resource."""
+        ...
+
+    @abc.abstractmethod
+    def update_resource_usage_and_cost(self, resource_name: str, *args, **kwargs) -> None:
+        """Update the usage and cost of a resource."""
+        ...
+
+    @abc.abstractmethod
+    def get_resource_budget_prompt(self, resource_name: str) -> str:
+        """Get the prompt to be used for a resource budget."""
+        ...
+
+    @abc.abstractmethod
+    def __repr__(self) -> str:
+        ...
