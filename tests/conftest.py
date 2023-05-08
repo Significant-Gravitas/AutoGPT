@@ -42,9 +42,13 @@ def api_manager() -> ApiManager:
     return ApiManager()
 
 
-def pytest_report_teststatus(report, config):
-    if report.when == "call" and report.outcome == "skipped" and hasattr(report, "wasxfail"):
+def pytest_report_teststatus(report):
+    if (
+        report.when == "call"
+        and report.outcome == "skipped"
+        and hasattr(report, "wasxfail")
+    ):
         reason = report.wasxfail
         if "benchmarks" in reason and os.environ.get("CI"):
-            with open("xfail_reasons.log", "a") as f:
+            with open("xfail_reasons.log", "w") as f:
                 f.write(f"Test: {report.nodeid}\nReason: {reason}\n\n")
