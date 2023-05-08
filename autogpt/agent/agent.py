@@ -13,6 +13,7 @@ from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
+    USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
 from autogpt.logs import logger, print_assistant_thoughts
@@ -68,7 +69,7 @@ class Agent:
         self.ai_name = ai_name
         self.memory = memory
         self.summary_memory = (
-            "I was created."  # Initial memory necessary to avoid hilucination
+            "I was created."  # Initial memory necessary to avoid hallucination
         )
         self.last_memory_index = 0
         self.full_message_history = full_message_history
@@ -163,6 +164,12 @@ class Agent:
                     f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
                     f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
+
+                logger.info(
+                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands or "
+                    "'n' to exit program, or enter feedback for "
+                    f"{self.ai_name}..."
+                )
                 while True:
                     if cfg.chat_messages_enabled:
                         console_input = clean_input("Waiting for your response...")
@@ -229,6 +236,15 @@ class Agent:
                 )
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
+                self.log_cycle_handler.log_cycle(
+                    self.config.ai_name,
+                    self.created_at,
+                    self.cycle_count,
+                    user_input,
+                    USER_INPUT_FILE_NAME,
+                )
+            elif command_name == "self_feedback":
+                result = f"Self feedback: {user_input}"
             else:
                 for plugin in cfg.plugins:
                     if not plugin.can_handle_pre_command():
@@ -303,19 +319,17 @@ class Agent:
         ai_role = self.config.ai_role
 
         feedback_prompt = (
-            f"Below is a message from an AI agent with the role of {ai_role}. "
-            "Please review the provided Thought, Reasoning, Plan, and Criticism. "
-            "If these elements accurately contribute to the successful execution of the "
-            "assumed role, respond with the letter 'Y' followed by a space, and then "
-            "explain why it is effective. If the provided information is not suitable "
-            "for achieving the role's objectives, please provide one or more sentences "
-            "addressing the issue and suggesting a resolution."
+            f"Below is a message from me, an AI Agent, assuming the role of {ai_role}. "
+            "Whilst keeping knowledge of my slight limitations as an AI Agent, evaluate "
+            "my thought process, reasoning, and plan, and provide a concise paragraph "
+            "outlining potential improvements. Consider adding or removing ideas that "
+            "do not align with my role and explaining why, prioritizing thoughts based "
+            "on their significance, or simply refining my overall thought process."
         )
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
         thought = thoughts.get("thoughts", "")
-        criticism = thoughts.get("criticism", "")
-        feedback_thoughts = thought + reasoning + plan + criticism
+        feedback_thoughts = thought + reasoning + plan
         return create_chat_completion(
             [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
             llm_model,
