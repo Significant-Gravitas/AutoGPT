@@ -76,6 +76,7 @@ jobs:
           CI: true
 
       - name: Archive xfail_reasons.log if benchmarks changed
+        continue-on-error: true
         uses: actions/upload-artifact@v2
         with:
           name: xfail_reasons_log
