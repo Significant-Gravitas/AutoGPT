@@ -271,24 +271,63 @@ def delete_file(filename: str) -> str:
         return f"Error: {err}"
 
 
-@command("list_files", "List Files in Directory", '"directory": "<directory>"')
-def list_files(directory: str) -> list[str]:
-    """lists files in a directory recursively
+@command("list_files", "List Files in Directory", '"directory": "<directory>", "extension": "<extension>", "filename": "<filename>", "query": "<query>", "filename_query": "<filename_query>", "filename_substring": "<filename_substring>", "keywords": ["<keyword1>", "<keyword2>", ...]')
+def list_files(directory: str, extension: str = None, filename: str = None, query: str = None, filename_query: str = None, filename_substring: str = None, keywords: list[str] = None) -> list[str]:
+    """Search for files in a directory
 
     Args:
         directory (str): The directory to search in
+        extension (str, optional): The file extension to filter by. If provided, all other arguments except 'directory' and 'keywords' will be ignored. Defaults to None.
+        filename (str, optional): A partial file name to filter by. If provided and 'extension' is not, all other arguments except 'directory' will be ignored. Defaults to None.
+        query (str, optional): A query to filter by. If provided and 'extension' and 'filename' are not, all other arguments except 'directory' will be ignored. Defaults to None.
+        filename_query (str, optional): A query to filter file names by. If provided and 'extension', 'filename', and 'query' are not, all other arguments except 'directory' will be ignored. Defaults to None.
+        filename_substring (str, optional): A substring to filter file names by. If provided and 'extension', 'filename', 'query', and 'filename_query' are not, all other arguments except 'directory' will be ignored. Defaults to None.
+        keywords (list[str], optional): A list of keywords to filter by. If provided and 'extension', 'filename', 'query', 'filename_query', and 'filename_substring' are not, 'extension' will be appended to each keyword before filtering. Defaults to None.
 
     Returns:
         list[str]: A list of files found in the directory
     """
     found_files = []
+    # Prioritize arguments as described
+    if extension is not None:
+        filter_type = "extension"
+        filter_value = extension
+    elif filename is not None:
+        filter_type = "filename"
+        filter_value = filename
+    elif query is not None:
+        filter_type = "query"
+        filter_value = query
+    elif filename_query is not None:
+        filter_type = "filename_query"
+        filter_value = filename_query
+    elif filename_substring is not None:
+        filter_type = "filename_substring"
+        filter_value = filename_substring
+    elif keywords is not None:
+        filter_type = "keywords"
+        filter_value = keywords
+    else:
+        filter_type = None
 
     for root, _, files in os.walk(directory):
         for file in files:
             if file.startswith("."):
                 continue
+
+            # Get the file name without the path
+            file_name = os.path.basename(file)
+
+            # Apply filters
+            if filter_type == "extension" and not file_name.endswith(filter_value):
+                continue
+            elif filter_type in ["filename", "query", "filename_query", "filename_substring"] and filter_value not in file_name:
+                continue
+            elif filter_type == "keywords" and not any((keyword + ('.' + extension if extension else '')) in file_name for keyword in filter_value):
+                continue
+
             relative_path = os.path.relpath(
-                os.path.join(root, file), CFG.workspace_path
+                os.path.join(root, file), directory
             )
             found_files.append(relative_path)
 
