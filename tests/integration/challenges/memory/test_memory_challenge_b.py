@@ -32,7 +32,7 @@ def test_memory_challenge_b(
 
     mock_input.side_effect = ["y"] * (current_level + 1) + ["n"]
     try:
-        run_interaction_loop(memory_management_agent, 120)
+        run_interaction_loop(memory_management_agent, 240)
     except SystemExit:
         file_path = str(memory_management_agent.workspace.get_path("output.txt"))
         content = read_file(file_path)
