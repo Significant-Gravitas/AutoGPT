@@ -57,9 +57,6 @@ def build_default_prompt_generator() -> PromptGenerator:
         " the best of your abilities."
     )
     prompt_generator.add_performance_evaluation(
-        "Constructively self-criticize your big-picture behavior constantly."
-    )
-    prompt_generator.add_performance_evaluation(
         "Reflect on past decisions and strategies to refine your approach."
     )
     prompt_generator.add_performance_evaluation(

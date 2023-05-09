@@ -17,7 +17,6 @@ def message_history_fixture():
             "text": "thoughts",
             "reasoning": "reasoning",
             "plan": "plan",
-            "criticism": "criticism",
             "speak": "speak",
         },
         "command": {"name": "google", "args": {"query": "google_query"}},
@@ -35,7 +34,6 @@ def expected_permanent_memory() -> str:
         "text": "thoughts",
         "reasoning": "reasoning",
         "plan": "plan",
-        "criticism": "criticism",
         "speak": "speak"
     },
     "command": {

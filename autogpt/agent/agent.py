@@ -178,7 +178,7 @@ class Agent:
                         break
                     elif console_input.lower().strip() == "s":
                         logger.typewriter_log(
-                            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
+                            "-=-=-=-=-=-=-= THOUGHTS, REASONING AND PLAN WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
                             Fore.GREEN,
                             "",
                         )
@@ -311,12 +311,12 @@ class Agent:
     def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
         """Generates a feedback response based on the provided thoughts dictionary.
         This method takes in a dictionary of thoughts containing keys such as 'reasoning',
-        'plan', 'thoughts', and 'criticism'. It combines these elements into a single
+        'plan', and 'thoughts'. It combines these elements into a single
         feedback message and uses the create_chat_completion() function to generate a
         response based on the input message.
         Args:
             thoughts (dict): A dictionary containing thought elements like reasoning,
-            plan, thoughts, and criticism.
+            plan, and thoughts.
         Returns:
             str: A feedback response generated using the provided thoughts dictionary.
         """

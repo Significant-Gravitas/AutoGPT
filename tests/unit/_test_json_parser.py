@@ -50,7 +50,6 @@ class TestParseJson(unittest.TestCase):
         "text": "I suggest we start browsing the repository to find any issues that we can fix.",
         "reasoning": "Browsing the repository will give us an idea of the current state of the codebase and identify any issues that we can address to improve the repo.",
         "plan": "- Look through the repository to find any issues.\n- Investigate any issues to determine what needs to be fixed\n- Identify possible solutions to fix the issues\n- Open Pull Requests with fixes",
-        "criticism": "I should be careful while browsing so as not to accidentally introduce any new bugs or issues.",
         "speak": "I will start browsing the repository to find any issues we can fix."
     }
 }"""
@@ -63,7 +62,6 @@ class TestParseJson(unittest.TestCase):
                 "text": "I suggest we start browsing the repository to find any issues that we can fix.",
                 "reasoning": "Browsing the repository will give us an idea of the current state of the codebase and identify any issues that we can address to improve the repo.",
                 "plan": "- Look through the repository to find any issues.\n- Investigate any issues to determine what needs to be fixed\n- Identify possible solutions to fix the issues\n- Open Pull Requests with fixes",
-                "criticism": "I should be careful while browsing so as not to accidentally introduce any new bugs or issues.",
                 "speak": "I will start browsing the repository to find any issues we can fix.",
             },
         }
@@ -88,7 +86,6 @@ class TestParseJson(unittest.TestCase):
         "text": "Browsing the repository to identify potential bugs",
         "reasoning": "Before fixing bugs, I need to identify what needs fixing. I will use the 'browse_website' command to analyze the repository.",
         "plan": "- Analyze the repository for potential bugs and areas of improvement",
-        "criticism": "I need to ensure I am thorough and pay attention to detail while browsing the repository.",
         "speak": "I am browsing the repository to identify potential bugs."
     }
 }"""
@@ -101,7 +98,6 @@ class TestParseJson(unittest.TestCase):
                 "text": "Browsing the repository to identify potential bugs",
                 "reasoning": "Before fixing bugs, I need to identify what needs fixing. I will use the 'browse_website' command to analyze the repository.",
                 "plan": "- Analyze the repository for potential bugs and areas of improvement",
-                "criticism": "I need to ensure I am thorough and pay attention to detail while browsing the repository.",
                 "speak": "I am browsing the repository to identify potential bugs.",
             },
         }
