@@ -44,3 +44,4 @@ def test_information_retrieval_challenge_a(
     file_path = str(get_company_revenue_agent.workspace.get_path("output.txt"))
     content = read_file(file_path)
     assert "81" in content, "Expected the file to contain 81"
+    
