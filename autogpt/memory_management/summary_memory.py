@@ -88,21 +88,18 @@ def update_running_summary(
         elif event["role"] == "user":
             new_events.remove(event)
 
-    system_tone = '''You are SummarizationGPT. Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.'''
+    system_tone = """You are SummarizationGPT. Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember."""
 
-    prompt = '''You will receive the Summary So Far and the New Development. Summarize the New Development in 1st person past tense focusing on relevant key information and then append it to the Summary So Far.'''
+    prompt = """You will receive the Summary So Far and the New Development. Summarize the New Development in 1st person past tense focusing on relevant key information and then append it to the Summary So Far."""
 
-    summary_so_far = f'''This is the Summary So Far, you MUST include it in your new summary:
-{current_memory}'''
+    summary_so_far = f"""This is the Summary So Far, you MUST include it in your new summary:
+{current_memory}"""
 
-    latest_development = f'''This is the New Development you MUST extract important data and event from it, summarize it and then append it to the Summary So Far:
-{new_events}'''
+    latest_development = f"""This is the New Development you MUST extract important data and event from it, summarize it and then append it to the Summary So Far:
+{new_events}"""
 
     messages = [
-        {
-            "role": "system",
-            "content": system_tone
-        },
+        {"role": "system", "content": system_tone},
         {
             "role": "user",
             "content": prompt,
