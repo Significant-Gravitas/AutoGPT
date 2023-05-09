@@ -1,6 +1,7 @@
 import logging
 
-from autogpt.core.agent.base import Agent, AgentFactory
+from autogpt.core.agent.base import Agent
+from autogpt.core.agent.factory import AgentFactory
 from autogpt.core.messaging.base import Message, Role
 
 

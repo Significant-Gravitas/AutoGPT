@@ -1,7 +1,7 @@
 import logging
 
-from autogpt.core.app_sketch.server import bootstrap_agent, launch_agent
 from autogpt.core.messaging.simple import Message, Role, SimpleMessageBroker
+from autogpt.core.runner.server import bootstrap_agent, launch_agent
 
 
 def configure_application_logging(
