@@ -8,7 +8,8 @@ try:
     from autogpt.memory.milvus import MilvusMemory
 
     def mock_config() -> dict:
-        """Mock the Config class"""
+        """Mock the config object for testing purposes."""
+        # Return a mock config object with the required attributes
         return type(
             "MockConfig",
             (object,),
@@ -68,5 +69,5 @@ try:
             stats = self.memory.get_stats()
             self.assertEqual(15, len(stats))
 
-except:
-    print("Milvus not installed, skipping tests")
+except ImportError as err:
+    print(f"Skipping tests for MilvusMemory: {err}")

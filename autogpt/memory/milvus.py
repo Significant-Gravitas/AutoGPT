@@ -1,20 +1,76 @@
 """ Milvus memory storage provider."""
+import re
+
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
 
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.config import Config
+from autogpt.llm import get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton
 
 
 class MilvusMemory(MemoryProviderSingleton):
     """Milvus memory storage provider."""
 
-    def __init__(self, cfg) -> None:
+    def __init__(self, cfg: Config) -> None:
         """Construct a milvus memory storage connection.
 
         Args:
             cfg (Config): Auto-GPT global config.
         """
-        # connect to milvus server.
-        connections.connect(address=cfg.milvus_addr)
+        self.configure(cfg)
+
+        connect_kwargs = {}
+        if self.username:
+            connect_kwargs["user"] = self.username
+            connect_kwargs["password"] = self.password
+
+        connections.connect(
+            **connect_kwargs,
+            uri=self.uri or "",
+            address=self.address or "",
+            secure=self.secure,
+        )
+
+        self.init_collection()
+
+    def configure(self, cfg: Config) -> None:
+        # init with configuration.
+        self.uri = None
+        self.address = cfg.milvus_addr
+        self.secure = cfg.milvus_secure
+        self.username = cfg.milvus_username
+        self.password = cfg.milvus_password
+        self.collection_name = cfg.milvus_collection
+        # use HNSW by default.
+        self.index_params = {
+            "metric_type": "IP",
+            "index_type": "HNSW",
+            "params": {"M": 8, "efConstruction": 64},
+        }
+
+        if (self.username is None) != (self.password is None):
+            raise ValueError(
+                "Both username and password must be set to use authentication for Milvus"
+            )
+
+        # configured address may be a full URL.
+        if re.match(r"^(https?|tcp)://", self.address) is not None:
+            self.uri = self.address
+            self.address = None
+
+            if self.uri.startswith("https"):
+                self.secure = True
+
+            # Zilliz Cloud requires AutoIndex.
+            if re.match(r"^https://(.*)\.zillizcloud\.(com|cn)", self.uri) is not None:
+                self.index_params = {
+                    "metric_type": "IP",
+                    "index_type": "AUTOINDEX",
+                    "params": {},
+                }
+
+    def init_collection(self) -> None:
+        """Initialize collection in vector database."""
         fields = [
             FieldSchema(name="pk", dtype=DataType.INT64, is_primary=True, auto_id=True),
             FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=1536),
@@ -22,19 +78,14 @@ class MilvusMemory(MemoryProviderSingleton):
         ]
 
         # create collection if not exist and load it.
-        self.milvus_collection = cfg.milvus_collection
         self.schema = CollectionSchema(fields, "auto-gpt memory storage")
-        self.collection = Collection(self.milvus_collection, self.schema)
+        self.collection = Collection(self.collection_name, self.schema)
         # create index if not exist.
         if not self.collection.has_index():
             self.collection.release()
             self.collection.create_index(
                 "embeddings",
-                {
-                    "metric_type": "IP",
-                    "index_type": "HNSW",
-                    "params": {"M": 8, "efConstruction": 64},
-                },
+                self.index_params,
                 index_name="embeddings",
             )
         self.collection.load()
@@ -70,14 +121,10 @@ class MilvusMemory(MemoryProviderSingleton):
             str: log.
         """
         self.collection.drop()
-        self.collection = Collection(self.milvus_collection, self.schema)
+        self.collection = Collection(self.collection_name, self.schema)
         self.collection.create_index(
             "embeddings",
-            {
-                "metric_type": "IP",
-                "index_type": "HNSW",
-                "params": {"M": 8, "efConstruction": 64},
-            },
+            self.index_params,
             index_name="embeddings",
         )
         self.collection.load()
