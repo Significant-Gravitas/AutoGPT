@@ -131,7 +131,7 @@ class Agent:
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, cfg.speak_mode
+                        self, assistant_reply_json, cfg.speak_mode
                     )
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
