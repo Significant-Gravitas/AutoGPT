@@ -5,5 +5,5 @@ from autogpt.core.status import ShortStatus, Status
 status = Status(
     module_name=__name__,
     short_status=ShortStatus.TODO,
-    handoff_notes="The memory subsystem has not been started yet.",
+    handoff_notes=("Before times: The memory subsystem has not been started yet."),
 )

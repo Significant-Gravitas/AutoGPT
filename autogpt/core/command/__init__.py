@@ -5,5 +5,5 @@ from autogpt.core.status import ShortStatus, Status
 status = Status(
     module_name=__name__,
     short_status=ShortStatus.IN_PROGRESS,
-    handoff_notes="More work is needed, basic ideas are in place.",
+    handoff_notes=("Before times: More work is needed, basic ideas are in place."),
 )

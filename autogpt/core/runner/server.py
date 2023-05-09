@@ -3,6 +3,7 @@ import logging
 from autogpt.core.agent.base import Agent
 from autogpt.core.agent.factory import AgentFactory
 from autogpt.core.messaging.base import Message, Role
+from autogpt.core.plugin.base import PluginManager
 
 
 def configure_agent_factory_logging(

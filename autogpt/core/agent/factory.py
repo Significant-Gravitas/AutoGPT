@@ -5,6 +5,8 @@ from importlib import import_module
 from typing import List, Tuple
 
 from autogpt.core.configuration import Configuration
+from autogpt.core.plugin.base import PluginStorageFormat
+from autogpt.core.plugin.simple import SimplePluginService
 
 
 class AgentFactory:
@@ -12,11 +14,26 @@ class AgentFactory:
         # Which subsystems to use. These must be subclasses of the base classes,
         # but could come from plugins.
         "system": {
-            "budget_manager": "autogpt.core.budget.BudgetManager",
-            "command_registry": "autogpt.core.command.CommandRegistry",
-            "language_model": "autogpt.core.llm.LanguageModel",
-            "memory_backend": "autogpt.core.memory.MemoryBackend",
-            "planner": "autogpt.core.planning.Planner",
+            "budget_manager": {
+                "storage_format": PluginStorageFormat.INSTALLED_PACKAGE,
+                "storage_route": "autogpt.core.budget.BudgetManager",
+            },
+            "command_registry": {
+                "storage_format": PluginStorageFormat.INSTALLED_PACKAGE,
+                "storage_route": "autogpt.core.command.CommandRegistry",
+            },
+            "language_model": {
+                "storage_format": PluginStorageFormat.INSTALLED_PACKAGE,
+                "storage_route": "autogpt.core.llm.LanguageModel",
+            },
+            "memory_backend": {
+                "storage_format": PluginStorageFormat.INSTALLED_PACKAGE,
+                "storage_route": "autogpt.core.memory.MemoryBackend",
+            },
+            "planner": {
+                "storage_format": PluginStorageFormat.INSTALLED_PACKAGE,
+                "storage_route": "autogpt.core.planning.Planner",
+            },
         }
     }
 
@@ -49,13 +66,10 @@ class AgentFactory:
         if isinstance(configuration, Configuration):
             configuration = configuration.to_dict()
 
-        default_system_import_path = self.configuration_defaults["system"][system_name]
-        system_import_path = configuration["system"].get(
-            system_name, default_system_import_path
+        default_system_location = self.configuration_defaults["system"][system_name]
+        system_location = configuration["system"].get(
+            system_name, default_system_location
         )
-
-        module_path, _, class_name = system_import_path.rpartition(".")
-        module = import_module(module_path)
-        system_class = getattr(module, class_name)
+        system_class = SimplePluginService.get_plugin(system_location)
 
         return system_class

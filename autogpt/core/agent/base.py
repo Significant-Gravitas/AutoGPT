@@ -10,7 +10,6 @@ from autogpt.core.logging import Logger
 from autogpt.core.memory import MemoryBackend
 from autogpt.core.messaging import MessageBroker
 from autogpt.core.planning import Planner
-from autogpt.core.plugin import PluginManager
 from autogpt.core.workspace import Workspace
 
 
@@ -25,7 +24,6 @@ class Agent(abc.ABC):
         memory_backend: MemoryBackend,
         message_broker: MessageBroker,
         planner: Planner,
-        plugin_manager: PluginManager,
         workspace: Workspace,
     ):
         self.configuration = configuration
@@ -37,7 +35,6 @@ class Agent(abc.ABC):
         self.memory_backend = memory_backend
         self.message_broker = message_broker
         self.planner = planner
-        self.plugin_manager = plugin_manager
         self.workspace = workspace
 
     @classmethod

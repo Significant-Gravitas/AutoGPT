@@ -31,7 +31,7 @@ class Status:
         if detailed:
             return LONG_FORMAT.format(
                 module_name,
-                self.handoff_notes,
+                "\n\t".join(self.handoff_notes.split("\n")),
             )
         else:
             return TABLE_FORMAT.format(module_name, self.short_status.name)

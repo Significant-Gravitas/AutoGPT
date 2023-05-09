@@ -1,12 +1,10 @@
 import abc
 import enum
-import typing
 from dataclasses import dataclass
 from typing import Any, List
 
 from autogpt.core.configuration.base import Configuration
 from autogpt.core.logging.base import Logger
-from autogpt.core.plugin.base import PluginManager
 from autogpt.core.workspace.base import Workspace
 
 

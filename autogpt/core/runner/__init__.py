@@ -8,5 +8,7 @@ from autogpt.core.status import ShortStatus, Status
 status = Status(
     module_name=__name__,
     short_status=ShortStatus.IN_PROGRESS,
-    handoff_notes="A basic client and server is being sketched out. It is at the idea stage.",
+    handoff_notes=(
+        "Before times: A basic client and server is being sketched out. It is at the idea stage."
+    ),
 )

@@ -6,7 +6,6 @@ from typing import Dict, List
 from autogpt.core.configuration.base import Configuration
 from autogpt.core.logging.base import Logger
 from autogpt.core.planning.base import ModelPrompt
-from autogpt.core.plugin.base import PluginManager
 from autogpt.core.workspace.base import Workspace
 
 
@@ -75,7 +74,6 @@ class LanguageModel(abc.ABC):
         configuration: Configuration,
         logger: Logger,
         workspace: Workspace,
-        plugin_manager: PluginManager,
     ):
         ...
 
