@@ -3,7 +3,7 @@ import uuid
 
 import psycopg2cffi as psycopg2
 
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm import get_ada_embedding
 from autogpt.memory.base import MemoryProviderSingleton
 
 

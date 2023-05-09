@@ -2,6 +2,31 @@
 """Tests for the AnalyticDBMemory class."""
 
 import unittest
+from unittest.mock import MagicMock, patch
+
+MockStats = 0
+
+
+def MockAnalyticDBFetchone(*args, **kwargs):
+    return [MockStats]
+
+
+def MockAnalyticDBFetchall(*args, **kwargs):
+    return [
+        [
+            "Sample text 1",
+            "",
+            "mock_index_name",
+        ]
+    ]
+
+
+def MockAnalyticDBConnect(*args, **kwargs):
+    mock_conn = MagicMock(name="MockAnalyticDBConnection")
+    mock_conn.cursor().__enter__().fetchall.side_effect = MockAnalyticDBFetchall
+    mock_conn.cursor().__enter__().fetchone.side_effect = MockAnalyticDBFetchone
+    return mock_conn
+
 
 try:
     from autogpt.memory.analyticdb import AnalyticDBMemory
@@ -27,6 +52,7 @@ try:
     class TestAnalyticDBMemory(unittest.TestCase):
         """Tests for the AnalyticDB Memory class."""
 
+        @patch("psycopg2cffi.connect", new=MockAnalyticDBConnect)
         def setUp(self) -> None:
             """Set up the test environment"""
             self.cfg = mock_config()
@@ -34,7 +60,7 @@ try:
 
         def test_add(self) -> None:
             """Test adding a text to the cache"""
-            text = "Sample text"
+            text = "Sample text 1"
             self.memory.clear()
             self.memory.add(text)
             result = self.memory.get(text)
@@ -48,7 +74,7 @@ try:
 
         def test_get(self) -> None:
             """Test getting a text from the cache"""
-            text = "Sample text"
+            text = "Sample text 1"
             self.memory.clear()
             self.memory.add(text)
             result = self.memory.get(text)
@@ -64,6 +90,7 @@ try:
             result = self.memory.get_relevant(text1, 1)
             self.assertEqual(result, [text1])
 
+        @patch("tests.analyticdb_memory_test.MockStats", 1)
         def test_get_stats(self) -> None:
             """Test getting the cache stats"""
             text = "Sample text"
@@ -72,5 +99,5 @@ try:
             stats = self.memory.get_stats()
             self.assertEqual("Entities num: 1", stats)
 
-except:
+except Exception as e:
     print("AnalyticDB not installed, skipping tests")
