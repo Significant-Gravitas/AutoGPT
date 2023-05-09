@@ -3,7 +3,8 @@ import uuid
 
 import psycopg2cffi as psycopg2
 
-from autogpt.memory.base import MemoryProviderSingleton, get_ada_embedding
+from autogpt.memory.base import MemoryProviderSingleton
+from autogpt.llm_utils import get_ada_embedding
 
 
 class AnalyticDBMemory(MemoryProviderSingleton):
