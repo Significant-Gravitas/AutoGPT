@@ -1,15 +1,23 @@
 import random
 import string
 import unittest
+from unittest.mock import MagicMock, patch
 
 from autogpt.config import Config
 from autogpt.memory.analyticdb import AnalyticDBMemory
 
+def MockAnalyticDBFetchall(*args, **kwargs):
+    return [["I love machine learning and natural language processing","","mock_index_name"]]+[["mock_result","","mock_index_name"]]*2
+def MockAnalyticDBConnect(*args, **kwargs):
+    mock_conn = MagicMock(name='MockAnalyticDBConnection')
+    mock_conn.cursor().__enter__().fetchall.side_effect = MockAnalyticDBFetchall
+    return mock_conn
 
 class TestAnalyticDBMemory(unittest.TestCase):
     def random_string(self, length):
         return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
+    @patch('psycopg2cffi.connect', new=MockAnalyticDBConnect)
     def setUp(self):
         cfg = Config()
         cfg.pg_host = "your_analyticdb_host"
