@@ -60,7 +60,7 @@ def search_website_and_extract_related_links(url: str, question: str) -> str:
     global URL_MEMORY
     if url in URL_MEMORY: url = URL_MEMORY[url]
 
-    # qestion을 해결하기 위해 search가 필요할 경우 search_url로 변경합니다.
+    # qestion을 해결하기 위해 search가 필요할 경우 search_url로 변경합니다.    
     request_msg = f"""
         search_url is used in mobile web browsers.
         "input_url": "{url}"
@@ -69,7 +69,7 @@ def search_website_and_extract_related_links(url: str, question: str) -> str:
         {{"search_url": "..."}}
         If a seach is not needed, please answer as below.
         {{"search_url": None}}"""
-    resp = create_chat_completion(
+    """resp = create_chat_completion(
         model=CFG.smart_llm_model,
         messages=[{"role":"user", "content":request_msg}])
     try:
@@ -80,6 +80,7 @@ def search_website_and_extract_related_links(url: str, question: str) -> str:
             url = search_url
     except:
         pass
+    """
     
     try:
         html_content, driver = get_html_content_with_selenium(url)
