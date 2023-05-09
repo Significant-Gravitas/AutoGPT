@@ -66,6 +66,9 @@ def update_running_summary(
         update_running_summary(new_events)
         # Returns: "This reminds you of these events from your past: \nI entered the kitchen and found a scrawled note saying 7."
     """
+    # This can happen at any point during execution, not just the beginning
+    if len(new_events) == 0:
+        return current_memory
 
     # Replace "assistant" with "you". This produces much better first person past tense results.
     for event in new_events:
@@ -85,30 +88,33 @@ def update_running_summary(
         elif event["role"] == "user":
             new_events.remove(event)
 
-    # This can happen at any point during execution, not just the beginning
-    if len(new_events) == 0:
-        new_events = "Nothing new happened."
+    system_tone = '''You are SummarizationGPT. Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.'''
 
-    prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
+    prompt = '''You will receive the Summary So Far and the New Development. Summarize the New Development in 1st person past tense focusing on relevant key information and then append it to the Summary So Far.'''
 
-You will receive the current summary and the your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
+    summary_so_far = f'''This is the Summary So Far, you MUST include it in your new summary:
+{current_memory}'''
 
-Summary So Far:
-"""
-{current_memory}
-"""
-
-Latest Development:
-"""
-{new_events}
-"""
-'''
+    latest_development = f'''This is the New Development you MUST extract important data and event from it, summarize it and then append it to the Summary So Far:
+{new_events}'''
 
     messages = [
         {
+            "role": "system",
+            "content": system_tone
+        },
+        {
             "role": "user",
             "content": prompt,
-        }
+        },
+        {
+            "role": "user",
+            "content": summary_so_far,
+        },
+        {
+            "role": "user",
+            "content": latest_development,
+        },
     ]
     agent.log_cycle_handler.log_cycle(
         agent.config.ai_name,
@@ -128,9 +134,4 @@ Latest Development:
         SUMMARY_FILE_NAME,
     )
 
-    message_to_return = {
-        "role": "system",
-        "content": f"This reminds you of these events from your past: \n{current_memory}",
-    }
-
-    return message_to_return
+    return current_memory

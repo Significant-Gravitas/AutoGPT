@@ -125,7 +125,9 @@ def chat_with_ai(
             # Add Messages until the token limit is reached or there are no more messages to add.
             while next_message_to_add_index >= 0:
                 # print (f"CURRENT TOKENS USED: {current_tokens_used}")
-                message_to_add = copy.deepcopy(full_message_history[next_message_to_add_index])
+                message_to_add = copy.deepcopy(
+                    full_message_history[next_message_to_add_index]
+                )
 
                 tokens_to_add = count_message_tokens([message_to_add], model)
                 if current_tokens_used + tokens_to_add > send_token_limit:
@@ -138,9 +140,7 @@ def chat_with_ai(
 
                 # Add the most recent message to the start of the current context,
                 #  after the two system prompts.
-                current_context.insert(
-                    insertion_index, message_to_add
-                )
+                current_context.insert(insertion_index, message_to_add)
 
                 # Count the currently used tokens
                 current_tokens_used += tokens_to_add
@@ -168,7 +168,12 @@ def chat_with_ai(
                     current_memory=agent.summary_memory,
                     new_events=newly_trimmed_messages,
                 )
-                current_context.insert(insertion_index, agent.summary_memory)
+
+                user_message = create_chat_message(
+                    "user",
+                    f"This reminds you of these events from your past: \n{agent.summary_memory}",
+                )
+                current_context.insert(insertion_index, user_message)
 
             api_manager = ApiManager()
             # inform the AI about its remaining budget (if it has one)
@@ -199,12 +204,15 @@ def chat_with_ai(
             current_context = [msg for msg in current_context if msg != user_message]
 
             # Change "system" to user so command results matter more
-            current_context = list(map(
-                lambda msg: create_chat_message("user", msg["content"])
-                if msg["role"] == "system" and current_context.index(msg) >= insertion_index
-                else msg,
-                current_context,
-            ))
+            current_context = list(
+                map(
+                    lambda msg: create_chat_message("user", msg["content"])
+                    if msg["role"] == "system"
+                    and current_context.index(msg) >= insertion_index
+                    else msg,
+                    current_context,
+                )
+            )
 
             # Append user input, the length of this is accounted for above
             current_context.extend([user_message])
