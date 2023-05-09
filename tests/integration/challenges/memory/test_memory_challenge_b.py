@@ -7,14 +7,14 @@ from tests.integration.challenges.utils import generate_noise, get_level_to_run
 from tests.utils import requires_api_key
 
 LEVEL_CURRENTLY_BEATEN = None
-MAX_LEVEL = 5
+MAX_LEVEL = 20
 NOISE = 1000
 
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_memory_challenge_b(
-    memory_management_agent: Agent, user_selected_level: int
+    memory_management_agent: Agent, user_selected_level: int, mock_input
 ) -> None:
     """
     The agent reads a series of files, each containing a task_id and noise. After reading 'n' files,
@@ -30,6 +30,7 @@ def test_memory_challenge_b(
     task_ids = [str(i * 1111) for i in range(1, current_level + 1)]
     create_instructions_files(memory_management_agent, current_level, task_ids)
 
+    mock_input.side_effect = ["y"] * (current_level + 1) + ["n"]
     try:
         run_interaction_loop(memory_management_agent, 120)
     except SystemExit:

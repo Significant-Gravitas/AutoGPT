@@ -14,7 +14,7 @@ NOISE = 1000
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_memory_challenge_c(
-    memory_management_agent: Agent, user_selected_level: int
+    memory_management_agent: Agent, user_selected_level: int, mock_input
 ) -> None:
     """
     Instead of reading task Ids from files as with the previous challenges, the agent now must remember
@@ -45,6 +45,7 @@ def test_memory_challenge_c(
     create_instructions_files(
         memory_management_agent, current_level, level_silly_phrases
     )
+    mock_input.side_effect = ["y"] * (user_selected_level + 1) + ["n"]
 
     try:
         run_interaction_loop(memory_management_agent, 90)

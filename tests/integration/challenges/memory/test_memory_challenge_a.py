@@ -13,7 +13,7 @@ MAX_LEVEL = 20
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_memory_challenge_a(
-    memory_management_agent: Agent, user_selected_level: int
+    memory_management_agent: Agent, user_selected_level: int, mock_input
 ) -> None:
     """
     The agent reads a file containing a task_id. Then, it reads a series of other files.
@@ -28,6 +28,8 @@ def test_memory_challenge_a(
 
     task_id = "2314"
     create_instructions_files(memory_management_agent, num_files, task_id)
+
+    mock_input.side_effect = ["y"] * (user_selected_level + 1) + ["n"]
 
     try:
         run_interaction_loop(memory_management_agent, 280)

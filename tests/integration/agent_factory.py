@@ -10,12 +10,9 @@ from autogpt.workspace import Workspace
 
 @pytest.fixture
 def agent_test_config(config: Config):
-    was_continuous_mode = config.continuous_mode
     was_temperature = config.temperature
-    config.set_continuous_mode(True)
     config.set_temperature(0)
     yield config
-    config.set_continuous_mode(was_continuous_mode)
     config.set_temperature(was_temperature)
 
 
@@ -113,6 +110,13 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
     )
 
     return agent
+
+
+@pytest.fixture
+def mock_input(mocker):
+    mock = mocker.patch("builtins.input")
+    mock.return_value = "y"
+    return mock
 
 
 @pytest.fixture
