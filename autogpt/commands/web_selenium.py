@@ -46,7 +46,6 @@ URL_MEMORY = {
     "Search website and extract related links",
     '"url": "<url>", "question": "<question_to_find>"',
 )
-@validate_url
 def search_website_and_extract_related_links(url: str, question: str) -> str:    
     """Browse a website and return the hyperlinks related to the question
 
@@ -58,7 +57,9 @@ def search_website_and_extract_related_links(url: str, question: str) -> str:
         str: The answer and links to the user
     """
     global URL_MEMORY
-    if url in URL_MEMORY: url = URL_MEMORY[url]
+    if url in URL_MEMORY: 
+        print(url, URL_MEMORY[url])
+        url = URL_MEMORY[url]
 
     # qestion을 해결하기 위해 search가 필요할 경우 search_url로 변경합니다.    
     request_msg = f"""
@@ -91,13 +92,16 @@ def search_website_and_extract_related_links(url: str, question: str) -> str:
     text_link_pairs = []
     text_link_pairs.extend(get_header_text_link_pairs(html_content, url))
     text_link_pairs.extend(get_main_content_text_llink_pairs(html_content))
-    text, _ = zip(*text_link_pairs)
+    text_list, _ = zip(*text_link_pairs)    
     #add_header(driver)
-    solvable_msg = is_question_solvable_using_text(text, question)    
-    return_msg = get_links_related_to_question_with_chat(text_link_pairs, question)
+    suggested_next_item = what_should_do_next(text_list, question)    
+    return_msg = get_links_related_to_question_with_chat(text_link_pairs, suggested_next_item)
     close_browser(driver)
 
-    return solvable_msg + ' ' + return_msg
+    print('URL_MEMORY_STATE', URL_MEMORY)
+    
+    return suggested_next_item + ' ' + return_msg
+    #return return_msg
 
 
 @command(
@@ -143,12 +147,14 @@ def get_header_text_link_pairs(html_content, base_url='http:'):
     header_tags = soup.find_all(lambda tag: 'header' in tag.name or ('header' in tag.get('id', '')))
 
     # 태그의 텍스트, href 속성 값
-    text_link_pairs = set()  # Set으로 변경
+    text_link_pairs = []
     for header in header_tags:
         for descendant in header.descendants:
             if descendant.name == 'a' and descendant.get('href'):  # descendant가 a 태그이고 href 속성을 가지고 있으면
                 url = urljoin(base_url, descendant['href'])  # 상대 URL을 절대 URL로 변환
-                text_link_pairs.add((f"menu: {descendant.get_text(strip=True)}", f"{url}"))  # append 대신 add 사용
+                pair = (f"menu: {descendant.get_text(strip=True)}", f"{url}")
+                if pair not in text_link_pairs:
+                    text_link_pairs.append(pair)  # append 대신 add 사용
             
     return list(text_link_pairs)  # 최종적으로 다시 리스트로 변환
 
@@ -164,14 +170,16 @@ def get_main_content_text_llink_pairs(html_content):
     matches = re.findall(pattern, text)
 
     # 텍스트와 링크를 담을 리스트 초기화
-    t_link_pairs = set()
+    t_link_pairs = []
 
     # 각 매치에 대해
     for match in matches:
         # match는 (텍스트, 링크) 형태의 튜플
         t, link = match
         if t != '':
-            t_link_pairs.add((t, link))
+            pair = (t, link)
+            if pair not in t_link_pairs:
+                t_link_pairs.append(pair)
 
     return list(t_link_pairs)
 
@@ -202,50 +210,32 @@ def summarize_text_with_question(text: str, question: str, max_len=3500) -> str:
         messages=[{"role":"user", "content":request_msg}])
     return f'Website summary: {resp}  '
 
-def is_question_solvable_using_text(text: str, question: str, max_len=3500) -> str:
-    text = text[:max_len]    
-    request_msg = (f'"""{text}""" The above website text is extracted from the hyperlink, is it possible to answer the following question?'
-        f' question: "{question}"'        
+def what_should_do_next(text_list: str, question: str, max_len=3500) -> str:
+    cleaned_text = []
+    for sent in text_list:
+        sent = " ".join(sent.split())
+        if len(sent) == 0: continue
+        if len(sent)>20:
+            sent = sent[:20] + '...'
+        cleaned_text.append(sent)
+    cleaned_text = "\n".join(cleaned_text)    
+    
+    text = cleaned_text[:max_len]
+    
+    request_msg = (
+        f'{text}'
+        'Currently, we are conducting a web search. In the meantime, the text above has been retrieved from a website where menus and contents are listed. '
+        'And they all contain hyperlinks. '
+        f'What should we do next to find an """{question}"""?". Please answer shortly.'
     )
     
     resp = create_chat_completion(
         model=CFG.fast_llm_model,
         messages=[{"role":"user", "content":request_msg}])
-    return f'is_question_solvable_using_text: {resp}  '
+    return f'suggested_next_item: {resp}  '
     
-#@command(
-#    "get_hyperlinks_related_question",
-#    "Get hyperlinks related to question",
-#    '"url": "<url>", "question": "<what_you_want_hyperlinks_from_website>"',
-#)
-@validate_url
-def get_hyperlinks_related_to_question(url: str, question: str) -> str:
-    """Browse a website and return the hyperlinks related to the question
 
-    Args:
-        url (str): The url of the website to browse
-        question (str): The question asked by the user
-
-    Returns:
-        Tuple[str, WebDriver]: The answer and links to the user and the webdriver
-    """
-    global URL_MEMORY
-    if url in URL_MEMORY: url = URL_MEMORY[url]
-    try:
-        driver, text = scrape_text_with_selenium(url)
-    except WebDriverException as e:
-        msg = e.msg.split("\n")[0]
-        return f"Error: {msg}", None
-
-    add_header(driver)
-    links = scrape_links_with_selenium(driver, url)
-    return_msg = get_links_related_to_question_with_chat(links, question)
-    close_browser(driver)
-
-    return return_msg
-
-
-def get_links_related_to_question_with_chat(links: list[tuple[str, str]], question: str) -> str:
+def get_links_related_to_question_with_chat(links: list[tuple[str, str]], suggested_next_item: str) -> str:
     global URL_MEMORY
     link_texts, hyperlinks = zip(*links)
     cleaned_text = []
@@ -255,15 +245,15 @@ def get_links_related_to_question_with_chat(links: list[tuple[str, str]], questi
         if len(sent)>20:
             sent = sent[:20] + '...'
         cleaned_text.append(f'{i}: {sent}')     
-    cleaned_text = cleaned_text[:3500]
+    text = "\n".join(cleaned_text)
+    text = text[:3500]
     #ntokens = count_message_tokens([{"role": "user", "content": cleaned_text}], CFG.smart_llm_model)
 
     request_msg = (
-        'The following is the result of extracting only the text from the hyperlink and attaching a line_number to it. \n'
-        f'{cleaned_text}\n'
-        'Please return all appropriate line_numbers only for the following request:\n\n'
-        f'{question}'
-        #'If question has a specific request for the number of items, please extract 2 more.'
+        f'{text}'
+        '\n\nThe text above has been retrieved from a website where menus and contents are listed. And they all contain hyperlinks.'        
+        f'\n\nsuggested_next_item_to_solve_questoin: """{suggested_next_item}"""'        
+        '\n\nUpon receiving a suggestion like the one above, return the appropriate line number.'
     )
     messages = [{"role": "user", "content": request_msg}]
 
@@ -286,8 +276,7 @@ def get_links_related_to_question_with_chat(links: list[tuple[str, str]], questi
             
         return_msg = f"Links: {selected_links}"
     else:
-        return_msg = "Links: Couldn't find any links."
-
+        return_msg = "Links: Couldn't find any links."    
     return return_msg
 
 
