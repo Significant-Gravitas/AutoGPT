@@ -67,12 +67,15 @@ class MessageEmitter(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def send_message(self, content: dict, **extra_metadata) -> None:
-        """Send a message on this channel .
+    def send_message(self, content: dict, **extra_metadata) -> bool:
+        """Send a message on this channel.
 
         Args:
             content: A json-serializable object containing the message content.
             **extra_metadata: Any additional metadata to be included when emitting messages.
+
+        Returns:
+            True if the message was sent successfully, False otherwise.
 
         """
         ...
@@ -112,11 +115,14 @@ class MessageChannel(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def send_message(self, message: Message) -> None:
+    def send_message(self, message: Message) -> bool:
         """Send a message on this channel.
 
         Args:
             message: The message to send.
+
+        Returns:
+            True if the message was sent successfully, False otherwise.
 
         """
         ...
