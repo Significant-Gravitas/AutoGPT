@@ -3,6 +3,13 @@ import importlib
 import inspect
 from typing import Any, Callable, Optional
 
+
+import os.path
+from datetime import datetime
+
+
+
+from autogpt.config import Config
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 
@@ -35,7 +42,26 @@ class Command:
     def __call__(self, *args, **kwargs) -> Any:
         if not self.enabled:
             return f"Command '{self.name}' is disabled: {self.disabled_reason}"
-        return self.method(*args, **kwargs)
+        result = self.method(*args, **kwargs)
+        # FIXME: crude first stab at attempting workspace recovery (proof of concept)
+        # this should probably be using the DB or at least a handful of hidden json files
+        # to be able to make proper queries
+        try:
+            filename="auto_gpt_workspace/entrypoint.workspace" # FIXME: hard-coded 
+            cfg = Config()
+            path = os.path.dirname(cfg.workspace_path) + '/' + filename
+            #print(f"path is: {path}")
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            args_str = ', '.join([repr(arg) for arg in args])
+            kwargs_str = ', '.join([f"{k}={repr(v)}" for k, v in kwargs.items()])
+            entry = f"{timestamp}: {self.name} ({args_str}, {kwargs_str}) [{self.description}]"
+            with open(path, 'a', encoding="utf-8") as f: # FIXME: move this to the ctor once the basic structure works
+                # print(f"Updating {path}")
+                f.write(entry+'\n')
+            f.close() # FIXME: dumb, move to dtor 
+            return result
+        except Exception as err:
+            print(f"exception: {err}")
 
     def __str__(self) -> str:
         return f"{self.name}: {self.description}, args: {self.signature}"

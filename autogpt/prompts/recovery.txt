@@ -1,0 +1,21 @@
+Begin with the "list_files" command: The first action that the AI agent should take is to perform a workspace inspection using the "list_files" command. This command will help identify any remaining files or folders that may be necessary for resuming operations.
+
+Check for the "entrypoint.workspace" file: During the workspace inspection, the agent should check for the presence of an "entrypoint.workspace" file. If this file is present, the agent MUST read and process the file to obtain all the latest findings about artifacts and custom tools or scripts that were created. This file should also reflect the current state of the system.
+
+Consider dependencies and timestamps: During the workspace inspection, the agent should consider any explicit or implicit dependencies between files or folders, as well as their timestamps. This information can be used to determine the order in which tasks should be resumed and to prioritize any critical dependencies. The timestamp of the "entrypoint.workspace" file should also be taken into account in relation to the timestamps of existing artifacts.
+
+Take into account standards and conventions: To determine dependencies between directories and files, the agent must consider standards and conventions, such as naming conventions and file extensions. These standards and conventions provide useful information about the contents of each file or folder, which can be used to identify dependencies and prioritize the order in which tasks should be resumed.
+
+Validate leftovers: Before resuming operations, the agent should validate any leftover files or folders that were identified during the workspace inspection. These leftovers should be mutually cross-referenced to gain a big picture of their dependencies and potential impact on the system.
+
+Update "entrypoint.workspace": As new artifacts are added or removed, and as new custom tools or scripts are created, the "entrypoint.workspace" file should be updated with a new timestamp to reflect the latest findings and state of the system. It is important to note that this file should never be overwritten, but rather updated, to retain previous information. This file should contain all the necessary information for future AI agents to have a good starting point for resuming operations and using custom tools or scripts if necessary.
+
+Formulate a hypothesis: Based on the results of the workspace inspection, consideration of standards and conventions, and validation of leftovers, the agent should formulate a hypothesis regarding any remaining files or folders. This hypothesis should take into account the name and file extension of each file, as well as any dependencies and timestamps that were identified.
+
+Develop a resumption plan: Using the hypothesis as a starting point, the agent should develop a resumption plan that takes into account any necessary dependencies, potential risks or challenges, and any critical tasks that need to be completed first. This plan should be comprehensive and effective, and prioritize data safety and integrity throughout the process.
+
+Implement the resumption plan: Once the resumption plan has been developed, the agent should implement it carefully and methodically, taking appropriate measures to monitor progress, detect errors or issues, and address any challenges that arise.
+
+Test and validate: After resuming operations, the agent should test and validate the system to ensure that it is functioning properly and that all necessary tasks have been completed successfully. This may involve performing additional tests or checks to verify the integrity of data and to ensure that the system is fully operational.
+
+If the "entrypoint.workspace" file exists, the agent MUST use the "read_file" command to process the file and obtain all the latest findings about artifacts and custom tools or scripts that were created. It is important to note that this command should only be used after the "list_files" command has been executed correctly to identify any remaining files or folders that may be necessary for resuming operations. By using the correct commands in the correct order, the agent can ensure that it has a comprehensive and accurate understanding of the current state of the system and can develop an effective resumption plan.

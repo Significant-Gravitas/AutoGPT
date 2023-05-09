@@ -99,10 +99,18 @@ Name:  {config.ai_name}
 Role:  {config.ai_role}
 Goals: {config.ai_goals}
 API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-Continue ({CFG.authorise_key}/{CFG.exit_key}): """
+Continue ({CFG.authorise_key}/{CFG.exit_key}) [R]ecover Workspace: """ # TODO: add recovery key
         )
         if should_continue.lower() == CFG.exit_key:
             config = AIConfig()
+
+        # attempt workspace recovery
+        if should_continue.lower() == 'r':
+            with open('autogpt/prompts/recovery.txt', 'r') as f:
+                recovery_instructions = f.read()
+                config.ai_goals.append(recovery_instructions) #TODO: add to prompts subdir
+        config.ai_goals.append("check workspace first")
+        config.ai_goals.append("look for workspace file next");
 
     if not config.ai_name:
         config = prompt_user()
