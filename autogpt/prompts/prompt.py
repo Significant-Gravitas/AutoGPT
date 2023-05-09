@@ -41,15 +41,6 @@ def build_default_prompt_generator() -> PromptGenerator:
         'Exclusively use the commands listed in double quotes e.g. "command name"'
     )
 
-    # Define the command list
-    commands = [
-        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
-    ]
-
-    # Add commands to the PromptGenerator object
-    for command_label, command_name, args in commands:
-        prompt_generator.add_command(command_label, command_name, args)
-
     # Add resources to the PromptGenerator object
     prompt_generator.add_resource(
         "Internet access for searches and information gathering."

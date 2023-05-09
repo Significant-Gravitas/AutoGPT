@@ -30,6 +30,13 @@ class Config(metaclass=Singleton):
 
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
+
+        disabled_command_categories = os.getenv("DISABLED_COMMAND_CATEGORIES")
+        if disabled_command_categories:
+            self.disabled_command_categories = disabled_command_categories.split(",")
+        else:
+            self.disabled_command_categories = []
+
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
@@ -142,7 +149,12 @@ class Config(metaclass=Singleton):
             self.plugins_allowlist = plugins_allowlist.split(",")
         else:
             self.plugins_allowlist = []
-        self.plugins_denylist = []
+
+        plugins_denylist = os.getenv("DENYLISTED_PLUGINS")
+        if plugins_denylist:
+            self.plugins_denylist = plugins_denylist.split(",")
+        else:
+            self.plugins_denylist = []
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """

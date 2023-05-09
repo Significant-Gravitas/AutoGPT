@@ -6,8 +6,11 @@ from autogpt.logs import logger
 
 DEFAULT_PREFIX = "agent"
 FULL_MESSAGE_HISTORY_FILE_NAME = "full_message_history.json"
-PROMPT_NEXT_ACTION_FILE_NAME = "prompt_next_action.json"
+CURRENT_CONTEXT_FILE_NAME = "current_context.json"
 NEXT_ACTION_FILE_NAME = "next_action.json"
+PROMPT_SUMMARY_FILE_NAME = "prompt_summary.json"
+SUMMARY_FILE_NAME = "summary.txt"
+USER_INPUT_FILE_NAME = "user_input.txt"
 
 
 class LogCycleHandler:
