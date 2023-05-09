@@ -1,10 +1,10 @@
 # Memory Challenge C
 
-**Status**: Current level to beat: level 2
+**Status**: Current level to beat: level 1
 
 **Command to try**: 
 ```
-pytest test/test_memory/test_memory_challenge_c.py::test_memory_challenge_c --level=2
+pytest -s tests/integration/challenges/memory/test_memory_challenge_c.py --level=2
 ``
 
 ## Description
