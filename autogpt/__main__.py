@@ -1,7 +1,7 @@
 """Auto-GPT: A GPT powered AI Assistant"""
 import autogpt.cli
-import autogpt.core
+import autogpt.core.runner.cli
 
 if __name__ == "__main__":
     # autogpt.cli.main()
-    autogpt.core.v2()
+    autogpt.core.runner.cli.v2()
