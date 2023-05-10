@@ -7,6 +7,9 @@ import os.path
 import re
 from typing import Dict, Generator, Literal, Tuple
 
+import difflib 
+from termcolor import colored
+
 import charset_normalizer
 import requests
 from colorama import Back, Fore
@@ -21,6 +24,44 @@ from autogpt.utils import readable_file_size
 CFG = Config()
 
 Operation = Literal["write", "append", "delete"]
+
+def show_string_diff(filename, str_before, str_after):
+    # Compute the unified diff between the two strings
+    diff = list(difflib.unified_diff(str_before.splitlines(),
+                                     str_after.splitlines(),
+                                     fromfile=filename,
+                                     tofile=filename))
+
+    # Print out the colored diff
+    for line in diff:
+        if line.startswith('+'):
+            print(colored(line.rstrip(), 'green'))
+        elif line.startswith('-'):
+            print(colored(line.rstrip(), 'red'))
+        elif line.startswith('@@'):
+            print(colored(line.rstrip(), 'yellow'))
+        else:
+            print(line.rstrip())
+
+def show_file_diff2(file_contents_before, file_contents_after, filename):
+    # Split the strings into lines
+    file_before_contents = file_contents_before.splitlines()
+    file_after_contents = file_contents_after.splitlines()
+
+    # Compute the difference between the two files
+    differ = difflib.Differ()
+    diff = list(differ.compare(file_before_contents, file_after_contents))
+
+    # Print out the colored diff
+    for line in diff:
+        if line.startswith('-'):
+            print(colored(f"{filename} (before): " + line.rstrip(), 'red'))
+        elif line.startswith('+'):
+            print(colored(f"{filename} (after): " + line.rstrip(), 'green'))
+        elif line.startswith('?'):
+            print(colored(line.rstrip(), 'yellow'))
+        else:
+            print(line.rstrip())
 
 
 def text_checksum(text: str) -> str:
@@ -249,6 +290,7 @@ def update_file(filename: str, old_text: str, new_text: str, occurrence_index=No
     try:
         with open(filename, "r", encoding="utf-8") as f:
             content = f.read()
+            original = content;
 
         old_text = old_text.rstrip("\n")
         new_text = new_text.rstrip("\n")
@@ -276,6 +318,8 @@ def update_file(filename: str, old_text: str, new_text: str, occurrence_index=No
         with open(filename, "r", encoding="utf-8") as f:
             checksum = text_checksum(f.read())
         log_operation("update", filename, checksum=checksum)
+
+        show_string_diff(filename, original, new_content)
 
         return f"File {filename} updated successfully."
     except Exception as e:
