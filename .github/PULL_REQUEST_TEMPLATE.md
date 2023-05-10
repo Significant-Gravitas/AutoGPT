@@ -14,6 +14,8 @@ Provide clear documentation and explanations of the changes made.
 Ensure diffs are limited to the intended lines — no applying preferred formatting styles or line endings (unless that's what the PR is about).
 For guidance on committing only the specific lines you have changed, refer to this helpful video: https://youtu.be/8-hSNHHbiZg
 
+Check out our [wiki page on Contributing](https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing)
+
 By following these guidelines, your PRs are more likely to be merged quickly after testing, as long as they align with the project's overall direction. -->
 
 ### Background
