@@ -41,13 +41,12 @@ class PluginStorageFormat(StrEnum):
     # AUTOGPT_PLUGIN_SERVICE = "autogpt_plugin_service"  # Grab them from a service
 
 
+# A plugin storage route.
+#
+# This is a string that specifies where to load a plugin from
+# (e.g. an import path or file path).
 PluginStorageRoute = str
-PluginStorageRoute.__doc__ = """A plugin storage route.
 
-This is a string that specifies where to load a plugin from
-(e.g. an import path or file path).
-
-"""
 
 
 @dataclasses.dataclass
