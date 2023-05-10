@@ -8,14 +8,8 @@ from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.token_counter import count_message_tokens
+from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
-from autogpt.memory_management.store_memory import (
-    save_memory_trimmed_from_context_window,
-)
-from autogpt.memory_management.summary_memory import (
-    get_newly_trimmed_messages,
-    update_running_summary,
-)
 
 cfg = Config()
 
@@ -152,6 +146,10 @@ def chat_with_ai(
 
                 # Move to the next most recent message in the full message history
                 next_message_to_add_index -= 1
+            from autogpt.memory_management.summary_memory import (
+                get_newly_trimmed_messages,
+                update_running_summary,
+            )
 
             # Insert Memories
             if len(full_message_history) > 0:
@@ -163,7 +161,9 @@ def chat_with_ai(
                     current_context=current_context,
                     last_memory_index=agent.last_memory_index,
                 )
+
                 agent.summary_memory = update_running_summary(
+                    agent,
                     current_memory=agent.summary_memory,
                     new_events=newly_trimmed_messages,
                 )
@@ -200,7 +200,7 @@ def chat_with_ai(
                 if not plugin.can_handle_on_planning():
                     continue
                 plugin_response = plugin.on_planning(
-                    agent.prompt_generator, current_context
+                    agent.config.prompt_generator, current_context
                 )
                 if not plugin_response or plugin_response == "":
                     continue
@@ -231,6 +231,13 @@ def chat_with_ai(
                 logger.debug(f"{message['role'].capitalize()}: {message['content']}")
                 logger.debug("")
             logger.debug("----------- END OF CONTEXT ----------------")
+            agent.log_cycle_handler.log_cycle(
+                agent.config.ai_name,
+                agent.created_at,
+                agent.cycle_count,
+                current_context,
+                CURRENT_CONTEXT_FILE_NAME,
+            )
 
             # TODO: use a model defined elsewhere, so that model can contain
             # temperature and other settings we care about
