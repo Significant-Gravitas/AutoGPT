@@ -25,12 +25,16 @@ Plugin = (
 
 
 class PluginStorageFormat(StrEnum):
-    """Supported plugin storage formats."""
+    """Supported plugin storage formats.
 
-    AUTO = "auto"  # We'll try to determine the plugin load location
-    AUTOGPT_PLUGIN_REPO = "autogpt_plugin_repo"  # Grab them from our managed repo
+    Plugins can be stored at one of these supported locations.
+
+    """
+
+    # AUTO = "auto"  # We'll try to determine the plugin load location
+    # AUTOGPT_PLUGIN_REPO = "autogpt_plugin_repo"  # Grab them from our managed repo
     WORKSPACE = "workspace"  # Grab them from the workspace
-    OTHER_FILE_PATH = "other_file_path"  # Grab them from a file path
+    # OTHER_FILE_PATH = "other_file_path"  # Grab them from a file path
     INSTALLED_PACKAGE = "installed_package"  # Grab them from an installed package
     # PYPI = "pypi"  # Grab them from pypi
     # GITHUB = "github"  # Grab them from a github repo
@@ -38,37 +42,22 @@ class PluginStorageFormat(StrEnum):
 
 
 PluginStorageRoute = str
+PluginStorageRoute.__doc__ = """A plugin storage route.
 
+This is a string that specifies where to load a plugin from
+(e.g. an import path or file path).
 
-class PluginStorageRouteFormat(StrEnum):
-    """Supported plugin storage route formats."""
-
-    RAW_NAME = "raw_name"
-    IMPORT_PATH = "import_path"
-    FILE_PATH = "file_path"
-
-
-PLUGIN_FORMAT_MAP = {
-    PluginStorageFormat.AUTO: None,
-    PluginStorageFormat.AUTOGPT_PLUGIN_REPO: (
-        PluginStorageRouteFormat.RAW_NAME,
-        PluginStorageRouteFormat.IMPORT_PATH,
-    ),
-    PluginStorageFormat.WORKSPACE: (
-        PluginStorageRouteFormat.RAW_NAME,
-        PluginStorageRouteFormat.FILE_PATH,
-    ),
-    PluginStorageFormat.OTHER_FILE_PATH: (
-        PluginStorageRouteFormat.RAW_NAME,
-        PluginStorageRouteFormat.FILE_PATH,
-    ),
-    PluginStorageFormat.INSTALLED_PACKAGE: (PluginStorageRouteFormat.IMPORT_PATH,),
-}
+"""
 
 
 @dataclasses.dataclass
 class PluginLocation:
-    """A plugin location."""
+    """A plugin location.
+
+    This is a combination of a plugin storage format and a plugin storage route.
+    It is used by the PluginService to load plugins.
+
+    """
 
     storage_format: PluginStorageFormat
     storage_route: PluginStorageRoute
@@ -76,6 +65,8 @@ class PluginLocation:
 
 @dataclasses.dataclass
 class PluginMetadata:
+    """Metadata about a plugin."""
+
     name: str
     description: str
     type: PluginType
@@ -90,6 +81,46 @@ class PluginService(abc.ABC):
 
     @staticmethod
     @abc.abstractmethod
-    def get_plugin(plugin_location: PluginLocation) -> Plugin:
+    def get_plugin(plugin_location: PluginLocation) -> PluginType:
         """Get a plugin from a plugin location."""
+        ...
+
+    ####################################
+    # Low-level storage format loaders #
+    ####################################
+    @staticmethod
+    @abc.abstractmethod
+    def load_from_file_path(plugin_route: PluginStorageRoute) -> PluginType:
+        """Load a plugin from a file path."""
+
+        ...
+
+    @staticmethod
+    @abc.abstractmethod
+    def load_from_import_path(plugin_route: PluginStorageRoute) -> PluginType:
+        """Load a plugin from an import path."""
+        ...
+
+    @staticmethod
+    @abc.abstractmethod
+    def resolve_name_to_path(
+        plugin_route: PluginStorageRoute, path_type: str
+    ) -> PluginStorageRoute:
+        """Resolve a plugin name to a plugin path."""
+        ...
+
+    #####################################
+    # High-level storage format loaders #
+    #####################################
+
+    @staticmethod
+    @abc.abstractmethod
+    def load_from_workspace(plugin_route: PluginStorageRoute) -> PluginType:
+        """Load a plugin from the workspace."""
+        ...
+
+    @staticmethod
+    @abc.abstractmethod
+    def load_from_installed_package(plugin_route: PluginStorageRoute) -> PluginType:
+        """Load a plugin from an installed package."""
         ...
