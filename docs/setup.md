@@ -56,7 +56,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
               REDIS_HOST: ${REDIS_HOST:-redis}
             profiles: ["exclude-from-up"]
             volumes:
-              - ./auto_gpt_workspace:/app/auto_gpt_workspace
+              - ./auto_gpt_workspace:/app/autogpt/auto_gpt_workspace
               - ./data:/app/data
               ## allow auto-gpt to write logs to disk
               - ./logs:/app/logs
@@ -156,7 +156,18 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
 ### Run with Docker
 
-Easiest is to use `docker-compose`. Run the commands below in your Auto-GPT folder.
+Easiest is to use `docker-compose`. 
+
+Important: Docker Compose version 1.29.0 or later is required to use version 3.9 of the Compose file format.
+You can check the version of Docker Compose installed on your system by running the following command:
+
+	docker-compose version
+
+This will display the version of Docker Compose that is currently installed on your system.
+
+If you need to upgrade Docker Compose to a newer version, you can follow the installation instructions in the Docker documentation: https://docs.docker.com/compose/install/
+
+Once you have a recent version of docker-compose, run the commands below in your Auto-GPT folder.
 
 1. Build the image. If you have pulled the image from Docker Hub, skip this step.
 
