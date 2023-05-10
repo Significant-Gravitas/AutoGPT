@@ -93,7 +93,9 @@ def construct_main_ai_config() -> AIConfig:
             f"Would you like me to return to being {config.ai_name}?",
             speak_text=True,
         )
-        should_continue = clean_input(
+        should_continue='y'
+        if 0:
+            clean_input(
             f"""Continue with the last settings?
 Name:  {config.ai_name}
 Role:  {config.ai_role}

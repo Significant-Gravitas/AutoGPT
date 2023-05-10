@@ -7,6 +7,7 @@ from colorama import Fore, Style
 from git.repo import Repo
 
 from autogpt.logs import logger
+from autogpt.commands.command import CommandRegistry
 
 # Use readline if available (for clean_input)
 try:
@@ -16,8 +17,39 @@ except ImportError:
 
 from autogpt.config import Config
 
+import click
 
-def clean_input(prompt: str = "", talk=False):
+from prompt_toolkit import prompt as prompt_tk
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.completion import WordCompleter
+
+def shell_input(query, agent):
+    # Define a list of valid commands
+    # TODO receive from command mgr
+
+    valid_commands = [cmd.name for cmd in agent.command_registry.get_commands()]
+
+
+    # Define a WordCompleter with the valid commands
+    command_completer = WordCompleter(valid_commands)
+
+    # Set up the prompt with history and auto-completion
+    history_file = ".my_shell_history"
+    history = FileHistory(history_file)
+    while True:
+        # query = click.style(query, fg="magenta")
+        return prompt_tk(query, history=history, auto_suggest=AutoSuggestFromHistory(), completer=command_completer)
+        if line in valid_commands:
+            print(f"Executing {line}")
+            if line == "exit":
+                exit()
+        else:
+            print(f"Invalid command: {line}")
+
+
+
+def clean_input(prompt: str, agent):
     try:
         cfg = Config()
         if cfg.chat_messages_enabled:
@@ -50,7 +82,7 @@ def clean_input(prompt: str = "", talk=False):
 
         # ask for input, default when just pressing Enter is y
         logger.info("Asking user via keyboard...")
-        answer = input(prompt)
+        answer = shell_input(prompt, agent) # input(prompt)
         return answer
     except KeyboardInterrupt:
         logger.info("You interrupted Auto-GPT")

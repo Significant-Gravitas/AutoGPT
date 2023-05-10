@@ -168,10 +168,10 @@ class Agent:
                 )
                 while True:
                     if cfg.chat_messages_enabled:
-                        console_input = clean_input("Waiting for your response...")
+                        console_input = clean_input("Waiting for your response...", self)
                     else:
                         console_input = clean_input(
-                            Fore.MAGENTA + "Input:" + Style.RESET_ALL
+                            Fore.MAGENTA + "Input:" + Style.RESET_ALL, self
                         )
                     if console_input.lower().strip() == cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"

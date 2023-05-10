@@ -1,7 +1,7 @@
 import functools
 import importlib
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, List
 
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
@@ -78,6 +78,9 @@ class CommandRegistry:
 
     def get_command(self, name: str) -> Callable[..., Any]:
         return self.commands[name]
+
+    def get_commands(self) -> List[Command]:
+        return list(self.commands.values())
 
     def call(self, command_name: str, **kwargs) -> Any:
         if command_name not in self.commands:
