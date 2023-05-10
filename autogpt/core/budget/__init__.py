@@ -9,5 +9,6 @@ status = Status(
         "Before times: Sketched out BudgetManager.__init__\n"
         "5/6: First interface draft complete.\n"
         "5/7: Basic BudgetManager has been implemented and interface adjustments made.\n"
+        "5/10: BudgetManager interface revisions have been PR'ed and merged\n"
     ),
 )
