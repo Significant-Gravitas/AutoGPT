@@ -108,6 +108,11 @@ Continue ({CFG.authorise_key}/{CFG.exit_key}): """
         config = prompt_user()
         config.save(CFG.ai_settings_file)
 
+    logger.typewriter_log(
+            "NOTE:All files/directories created by this agent can be found inside its workspace at:",
+            Fore.YELLOW,
+            f"{CFG.workspace_path}",
+        )
     # set the total api budget
     api_manager = ApiManager()
     api_manager.set_total_budget(config.api_budget)
