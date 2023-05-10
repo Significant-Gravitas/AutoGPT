@@ -1,11 +1,15 @@
 import copy
 import json
 from typing import Dict, List, Tuple
+from jinja2 import Template
 
 from autogpt.agent import Agent
 from autogpt.config import Config
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
+from autogpt.prompts.default_prompts import (
+    DEFAULT_SUMMARY_MEMORY_PROMPT,
+)
 
 cfg = Config()
 
@@ -91,20 +95,9 @@ def update_running_summary(
     if len(new_events) == 0:
         new_events = "Nothing new happened."
 
-    prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
-
-You will receive the current summary and the your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
-
-Summary So Far:
-"""
-{current_memory}
-"""
-
-Latest Development:
-"""
-{new_events}
-"""
-'''
+    prompt = Template(DEFAULT_SUMMARY_MEMORY_PROMPT).render(
+        current_memory=current_memory, new_events=new_events
+    )
 
     messages = [
         {

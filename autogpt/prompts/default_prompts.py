@@ -27,3 +27,20 @@ DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC = (
 )
 
 DEFAULT_USER_DESIRE_PROMPT = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt
+
+#########################summary_memory.py#################################
+
+DEFAULT_SUMMARY_MEMORY_PROMPT = '''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
+
+You will receive the current summary and the your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
+
+Summary So Far:
+"""
+{{current_memory}}
+"""
+
+Latest Development:
+"""
+{{new_events}}
+"""
+'''
