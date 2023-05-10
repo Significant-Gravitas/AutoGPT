@@ -196,22 +196,27 @@ def instantiate_openai_plugin_clients(
     return plugins
 
 
-def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate]:
+def scan_plugins(cfg: Config, ai_cfg_plugins=None, debug: bool = False) -> List[AutoGPTPluginTemplate]:
     """Scan the plugins directory for plugins and loads them.
 
     Args:
         cfg (Config): Config instance including plugins config
+        ai_cfg_plugins (List[str], optional): List of plugins to load. Defaults to []. ignored when empty.
         debug (bool, optional): Enable debug logging. Defaults to False.
 
     Returns:
         List[Tuple[str, Path]]: List of plugins.
     """
+    if ai_cfg_plugins is None:
+        ai_cfg_plugins = []
+
     loaded_plugins = []
     # Generic plugins
     plugins_path_path = Path(cfg.plugins_dir)
 
     logger.debug(f"Allowlisted Plugins: {cfg.plugins_allowlist}")
     logger.debug(f"Denylisted Plugins: {cfg.plugins_denylist}")
+    logger.debug(f"AIconfig Plugins: {ai_cfg_plugins}")
 
     for plugin in plugins_path_path.glob("*.zip"):
         if moduleList := inspect_zip_for_modules(str(plugin), debug):
@@ -226,10 +231,12 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                         continue
                     a_module = getattr(zipped_module, key)
                     a_keys = dir(a_module)
+
                     if (
                         "_abc_impl" in a_keys
                         and a_module.__name__ != "AutoGPTPluginTemplate"
                         and denylist_allowlist_check(a_module.__name__, cfg)
+                        and (len(ai_cfg_plugins) == 0 or a_module.__name__ in ai_cfg_plugins)
                     ):
                         loaded_plugins.append(a_module())
     # OpenAI plugins

@@ -115,7 +115,9 @@ def run_auto_gpt(
 
     cfg.file_logger_path = str(file_logger_path)
 
-    cfg.set_plugins(scan_plugins(cfg, cfg.debug_mode))
+    ai_config = construct_main_ai_config()
+
+    cfg.set_plugins(scan_plugins(cfg, ai_config.plugins, cfg.debug_mode))
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
 
@@ -147,7 +149,6 @@ def run_auto_gpt(
         command_registry.import_commands(command_category)
 
     ai_name = ""
-    ai_config = construct_main_ai_config()
     ai_config.command_registry = command_registry
     # print(prompt)
     # Initialize variables

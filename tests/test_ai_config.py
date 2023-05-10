@@ -18,6 +18,10 @@ ai_goals:
 ai_name: McFamished
 ai_role: A hungry AI
 api_budget: 0.0
+plugins:
+- Plugin 1
+- "Plugin 2"
+- 'Plugin 3'
 """
     config_file = tmp_path / "ai_settings.yaml"
     config_file.write_text(yaml_content)
@@ -29,6 +33,9 @@ api_budget: 0.0
     assert ai_config.ai_goals[1] == "Goal 2, Eat the sandwich"
     assert ai_config.ai_goals[2] == "Goal 3 - Go to sleep"
     assert ai_config.ai_goals[3] == "Goal 4: Wake up"
+    assert ai_config.plugins[0] == "Plugin 1"
+    assert ai_config.plugins[1] == "Plugin 2"
+    assert ai_config.plugins[2] == "Plugin 3"
 
     config_file.write_text("")
     ai_config.save(config_file)
@@ -41,5 +48,9 @@ api_budget: 0.0
 ai_name: McFamished
 ai_role: A hungry AI
 api_budget: 0.0
+plugins:
+- Plugin 1
+- Plugin 2
+- Plugin 3
 """
     assert config_file.read_text() == yaml_content2

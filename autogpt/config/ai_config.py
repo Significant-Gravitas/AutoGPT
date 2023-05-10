@@ -27,6 +27,7 @@ class AIConfig:
         ai_role (str): The description of the AI's role.
         ai_goals (list): The list of objectives the AI is supposed to complete.
         api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+        plugins (list): The list of plugins to load.
     """
 
     def __init__(
@@ -35,6 +36,7 @@ class AIConfig:
         ai_role: str = "",
         ai_goals: list | None = None,
         api_budget: float = 0.0,
+        plugins: list | None = None,
     ) -> None:
         """
         Initialize a class instance
@@ -44,15 +46,21 @@ class AIConfig:
             ai_role (str): The description of the AI's role.
             ai_goals (list): The list of objectives the AI is supposed to complete.
             api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+            plugins (list): The list of plugins to load.
         Returns:
             None
         """
         if ai_goals is None:
             ai_goals = []
+
+        if plugins is None:
+            plugins = []
+
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
         self.api_budget = api_budget
+        self.plugins = plugins
         self.prompt_generator = None
         self.command_registry = None
 
@@ -86,8 +94,14 @@ class AIConfig:
             for goal in config_params.get("ai_goals", [])
         ]
         api_budget = config_params.get("api_budget", 0.0)
+        plugins = [
+            str(plugin).strip("{}").replace("'", "").replace('"', "")
+            if isinstance(plugin, dict)
+            else str(plugin)
+            for plugin in config_params.get("plugins", [])
+        ]
         # type: Type[AIConfig]
-        return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+        return AIConfig(ai_name, ai_role, ai_goals, api_budget, plugins)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
@@ -106,6 +120,7 @@ class AIConfig:
             "ai_role": self.ai_role,
             "ai_goals": self.ai_goals,
             "api_budget": self.api_budget,
+            "plugins": self.plugins,
         }
         with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
