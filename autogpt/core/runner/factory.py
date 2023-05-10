@@ -64,9 +64,8 @@ def bootstrap_agent(
         message_type="log",
     )
 
-    agent_planner = agent_factory.get_system_class("planner", configuration)
-    # TODO: is this a class method?  Or do we have the planner be partially initialized
-    #  without access to any resources since this precedes Agent creation?
+    agent_planner_class = agent_factory.get_system_class("planner", configuration)
+    agent_planner = agent_planner_class(configuration)
     objective_prompt = agent_planner.construct_objective_prompt_from_user_input(
         user_objective,
     )

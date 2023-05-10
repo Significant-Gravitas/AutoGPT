@@ -4,23 +4,25 @@ from dataclasses import dataclass
 from typing import Any, List
 
 from autogpt.core.configuration.base import Configuration
-from autogpt.core.logging.base import Logger
 from autogpt.core.workspace.base import Workspace
 
 
-class Role(enum.StrEnum):
+class ModelRole(enum.StrEnum):
     USER = "user"
     SYSTEM = "system"
     ASSISTANT = "assistant"
 
 
 @dataclass
-class Message:
-    role: Role
-    message: str
+class ModelMessage:
+    role: ModelRole
+    content: str
+
+    def to_dict(self):
+        return {"role": self.role, "content": self.content}
 
 
-ModelPrompt = List[Message]
+ModelPrompt = List[ModelMessage]
 
 
 @dataclass
@@ -43,12 +45,13 @@ class SelfFeedbackPromptContext:
 class Planner(abc.ABC):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
+    configuration_defaults = {"planner": {}}
+
     @abc.abstractmethod
     def __init__(
         self,
         configuration: Configuration,
-        logger: Logger,
-        workspace: Workspace,
+        workspace: Workspace = None,  # Workspace is not available during bootstrapping.
     ) -> None:
         ...
 
