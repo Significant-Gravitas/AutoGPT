@@ -175,11 +175,11 @@ def run_auto_gpt(
         ai_name=ai_name,
         memory=memory,
         full_message_history=full_message_history,
-        autonomous_cycles_budget=0,
+        autonomous_cycles_budget=next_action_count,
         command_registry=command_registry,
         config=ai_config,
         system_prompt=system_prompt,
-        initial_prompt=DEFAULT_TRIGGERING_PROMPT,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace_directory,
     )
     agent.start_interaction_loop()

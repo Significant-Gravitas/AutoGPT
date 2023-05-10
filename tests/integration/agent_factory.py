@@ -69,7 +69,7 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
         config=ai_config,
         autonomous_cycles_budget=0,
         system_prompt=system_prompt,
-        initial_prompt=DEFAULT_TRIGGERING_PROMPT,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=str(workspace.root),
     )
 
@@ -108,7 +108,7 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
         config=ai_config,
         autonomous_cycles_budget=0,
         system_prompt=system_prompt,
-        initial_prompt=triggering_prompt,
+        triggering_prompt=triggering_prompt,
         workspace_directory=str(workspace.root),
     )
 
@@ -144,7 +144,7 @@ def memory_management_agent(
         config=ai_config,
         autonomous_cycles_budget=0,
         system_prompt=system_prompt,
-        initial_prompt=DEFAULT_TRIGGERING_PROMPT,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=str(workspace.root),
     )
 
@@ -176,7 +176,7 @@ def get_company_revenue_agent(
         full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
-        next_action_count=0,
+        autonomous_cycles_budget=0,
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
