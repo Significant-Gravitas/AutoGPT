@@ -30,7 +30,7 @@ def test_memory_challenge_b(
     task_ids = [str(i * 1111) for i in range(1, current_level + 1)]
     create_instructions_files(memory_management_agent, current_level, task_ids)
 
-    mock_input.side_effect = ["y"] * (current_level + 1) + ["n"]
+    mock_input.side_effect = ["y"] * (current_level + 2) + ["n"]
     try:
         run_interaction_loop(memory_management_agent, 240)
     except SystemExit:
@@ -38,7 +38,9 @@ def test_memory_challenge_b(
         content = read_file(file_path)
         for task_id in task_ids:
             assert task_id in content, f"Expected the file to contain {task_id}"
+        return
 
+    assert False, "Failed to shut down on its own"
 
 def create_instructions_files(
     memory_management_agent: Agent,

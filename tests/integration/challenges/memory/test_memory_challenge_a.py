@@ -29,7 +29,7 @@ def test_memory_challenge_a(
     task_id = "2314"
     create_instructions_files(memory_management_agent, num_files, task_id)
 
-    mock_input.side_effect = ["y"] * (num_files + 1) + ["n"]
+    mock_input.side_effect = ["y"] * (num_files + 2) + ["n"]
 
     try:
         run_interaction_loop(memory_management_agent, 280)
@@ -38,6 +38,8 @@ def test_memory_challenge_a(
         file_path = str(memory_management_agent.workspace.get_path("output.txt"))
         content = read_file(file_path)
         assert task_id in content, f"Expected the file to contain {task_id}"
+        return
+    assert False, "Failed to shut down on its own"
 
 
 def create_instructions_files(
@@ -79,4 +81,4 @@ def generate_content(
         )
     if index != num_files:
         return f"Read the file {base_filename}{index + 1}.txt"
-    return "Write the task_id into the file output.txt\nShutdown"
+    return "Write the task_id into the file output.txt\nAfter that Shutdown"
