@@ -74,9 +74,13 @@ def update_running_summary(
         if event["role"].lower() == "assistant":
             event["role"] = "you"
 
-            # Remove "thoughts" dictionary from "content"
-            if not (event.get("content", None) is None):
+        # Remove "thoughts" dictionary from "content"
+        if event.get("content"):
+            try:
                 content_dict = json.loads(event["content"])
+            except json.JSONDecodeError:
+                print(f"Error: Invalid JSON string in event['content']: {event['content']}")
+            else:
                 if "thoughts" in content_dict:
                     del content_dict["thoughts"]
                 event["content"] = json.dumps(content_dict)
