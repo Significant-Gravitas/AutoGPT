@@ -1,13 +1,12 @@
 name: Feature request 🚀
-description: Suggest a new idea for Auto-GPT.
+description: Suggest a new idea for Auto-GPT!
 labels: ['status: needs triage']
 body:
   - type: markdown
     attributes:
       value: |
+        First, check out our [wiki page on Contributing](https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing)
         Please provide a searchable summary of the issue in the title above ⬆️.
-
-        Thanks for contributing by creating an issue! ❤️
   - type: checkboxes
     attributes:
       label: Duplicates
