@@ -75,8 +75,7 @@ class SimpleMessageChannel(MessageChannel):
 
 
 class SimpleMessageBroker(MessageBroker):
-    def __init__(self, logger):
-        self._logger = logger
+    def __init__(self):
         self._channels: Dict[str, SimpleMessageChannel] = {}
 
     def create_message_channel(
@@ -111,3 +110,6 @@ class SimpleMessageBroker(MessageBroker):
         message_filter: MessageFilter = lambda x: True,
     ) -> None:
         self._channels[message_channel].add_listener(listener, message_filter)
+
+    def __repr__(self) -> str:
+        return f"SimpleMessageBroker(channels={self._channels})"

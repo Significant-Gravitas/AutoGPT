@@ -2,8 +2,141 @@ import logging
 
 from autogpt.core.agent.base import Agent
 from autogpt.core.agent.factory import AgentFactory
-from autogpt.core.messaging.base import Message, Role
-from autogpt.core.plugin.base import PluginManager
+from autogpt.core.messaging.simple import (
+    Message,
+    MessageMetadata,
+    Role,
+    SimpleMessageBroker,
+)
+
+##################################################
+# Hacking stuff together for an in-process model #
+##################################################
+
+
+def get_message_broker() -> SimpleMessageBroker:
+    message_channel_name = "autogpt"
+
+    if hasattr(get_message_broker, "_MESSAGE_BROKER"):
+        return get_message_broker._MESSAGE_BROKER
+
+    message_broker = SimpleMessageBroker()
+    message_broker.create_message_channel(message_channel_name)
+
+    # def is_user_message(message: Message):
+    #     metadata = message.metadata
+    #     return (
+    #         metadata.sender.role == Role.USER
+    #     )
+    #
+    # def boostrap_filter(message: Message):
+    #     metadata = message.metadata
+    #     return (
+    #         is_user_message(message)
+    #         and metadata.additional_metadata[
+    #             "instruction"] == "bootstrap_agent"
+    #     )
+    #
+    # message_broker.register_listener(
+    #     message_channel_name,
+    #     listener=bootstrap_agent,
+    #     message_filter=boostrap_filter,
+    # )
+    #
+    # def launch_filter(message: Message):
+    #     metadata = message.metadata
+    #     return (
+    #             is_user_message(message)
+    #             and metadata.additional_metadata[
+    #                 "instruction"] == "launch_agent"
+    #     )
+    #
+    # message_broker.register_listener(
+    #     message_channel_name,
+    #     listener=launch_agent,
+    #     message_filter=launch_filter,
+    # )
+    #
+    # def is_server_message(message: Message):
+    #     metadata = message.metadata
+    #     return metadata.sender.role in [Role.AGENT, Role.AGENT_FACTORY]
+    #
+    # def log_filter(message: Message):
+    #     metadata = message.metadata
+    #     return (
+    #             is_server_message(message)
+    #             and metadata.additional_metadata["message_type"] == "log"
+    #     )
+    #
+    # def error_filter(message: Message):
+    #     metadata = message.metadata
+    #     return (
+    #             is_server_message(message)
+    #             and metadata.additional_metadata["message_type"] == "error"
+    #     )
+    #
+    # def error_callback(message: Message):
+    #     raise RuntimeError(message.content["message"])
+    #
+    # message_broker.register_listener(
+    #     message_channel_name,
+    #     listener=error_callback,
+    #     message_filter=error_filter,
+    # )
+
+    get_message_broker._MESSAGE_BROKER = message_broker
+
+    return get_message_broker._MESSAGE_BROKER
+
+
+class FakeApplicationServer:
+    """The interface to the 'application server' process.
+
+    This could be a restful API or something.
+
+    """
+
+    def __init__(self):
+        self._message_broker = get_message_broker()
+        self._user_emitter = self._message_broker.get_emitter(
+            channel_name="autogpt",
+            sender_name="autogpt-user",
+            sender_role=Role.USER,
+        )
+
+    def list_agents(self, request):
+        """List all agents."""
+        pass
+
+    def boostrap_new_agent(self, request):
+        """Bootstrap a new agent."""
+        self._user_emitter.send_message(**request.json)
+        response = object()
+        response.status_code = 200
+        return response
+
+    def launch_agent(self, request):
+        """Launch an agent."""
+        self._user_emitter.send_message(**request.json)
+        response = object()
+        response.status_code = 200
+        return response
+
+    def get_agent_plan(self, request):
+        """Get the plan for an agent."""
+        # TODO: need a clever hack here to get the agent plan since we'd have natural
+        #  asynchrony here with a webserver.
+        pass
+
+    def give_agent_feedback(self, request):
+        """Give feedback to an agent."""
+        self._user_emitter.send_message(**request.json)
+        response = object()
+        response.status_code = 200
+        return response
+
+
+application_server = FakeApplicationServer()
 
 
 def configure_agent_factory_logging(
