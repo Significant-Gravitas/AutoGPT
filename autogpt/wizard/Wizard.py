@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from questionary import prompt as questionary_prompt
 #from PyInquirer import prompt as pyinquirer_prompt
 
-from typing import Dict, Any
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QLineEdit, QDialogButtonBox
 
 
@@ -35,20 +35,20 @@ class PromptDialog(QDialog):
     def __init__(self, questions: Dict[str, Any]):
         super().__init__()
 
-        # Determine the title of the dialog
         if isinstance(questions, dict):
-            title = questions.get('name', 'Prompt Dialog')
+            title = questions.get('name', 'Auto-GPT Wizard')
             questions_list = questions.get('questions', [])
         else:
-            title = 'Prompt Dialog'
+            title = 'Auto-GPT Wizard'
             questions_list = questions
 
+        self.setWindowFlags(Qt.Dialog | Qt.CustomizeWindowHint | Qt.WindowCloseButtonHint | Qt.WindowContextHelpButtonHint)
         self.setWindowTitle(title)
 
         # Create a layout for the dialog
         layout = QVBoxLayout()
 
-        # Add labels and line edits for each question
+        # Add labels, line edits, and tooltips for each question
         self.answers = {}
         for question in questions_list:
             label = QLabel(question.get('message', ''))
@@ -56,6 +56,10 @@ class PromptDialog(QDialog):
             line_edit = QLineEdit()
             self.answers[question.get('name', '')] = line_edit
             layout.addWidget(line_edit)
+
+            tooltip = question.get('tooltip', None)
+            if tooltip:
+                line_edit.setToolTip(tooltip)
 
         # Add OK and Cancel buttons
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -84,6 +88,7 @@ class QtAdapter(PromptAdapter):
         else:
             # User canceled the dialog, so return an empty dictionary
             return {}
+
 ##
 # TODO new adapter for Agents (inter-agent messaging)
 
