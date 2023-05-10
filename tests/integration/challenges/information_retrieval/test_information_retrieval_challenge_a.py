@@ -21,7 +21,6 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 
 
 # @pytest.skip("Nobody beat this challenge yet")
-@pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)
@@ -34,7 +33,7 @@ def test_information_retrieval_challenge_a(
     :param get_company_revenue_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
     """
-    input_sequence = ["s", "s", "s", "s", "s", "EXIT"]
+    input_sequence = ["y", "y", "y", "y", "EXIT"]
     gen = input_generator(input_sequence)
     monkeypatch.setattr("builtins.input", lambda _: next(gen))
 

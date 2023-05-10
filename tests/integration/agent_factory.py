@@ -163,7 +163,7 @@ def get_company_revenue_agent(
         ai_name="Get-CompanyRevenue",
         ai_role="an autonomous agent that specializes in finding the reported revenue of a company.",
         ai_goals=[
-            "Write the revenue of Tesla in 2022 to a file. You should write the number without commas and you should not use signs like B for billion and M for million.",
+            "Write the revenue of Tesla in 2022 to a file named output.txt. You should write the number without commas and you should not use signs like B for billion and M for million.",
         ],
     )
     ai_config.command_registry = command_registry
