@@ -1,6 +1,7 @@
 from typing import Any, Dict
 from abc import ABC, abstractmethod
 
+import sys
 
 ##
 # TODO: should support multiple wizard engines here to be able to tinker around
@@ -50,6 +51,8 @@ class PromptDialog(QDialog):
 
         # Add labels, line edits, and tooltips for each question
         self.answers = {}
+        self.tooltips = {}
+        self.validators = {}
         for question in questions_list:
             label = QLabel(question.get('message', ''))
             layout.addWidget(label)
@@ -59,35 +62,53 @@ class PromptDialog(QDialog):
 
             tooltip = question.get('tooltip', None)
             if tooltip:
-                line_edit.setToolTip(tooltip)
+                self.tooltips[question.get('name', '')] = tooltip
+
+            validation = question.get('validation', None)
+            if validation:
+                regex = validation.get('regex', '')
+                error_message = validation.get('error_message', '')
+                self.validators[question.get('name', '')] = (regex, error_message)
 
         # Add OK and Cancel buttons
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        button_box.accepted.connect(self.accept)
+        button_box.accepted.connect(self.validate_and_accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
 
         self.setLayout(layout)
 
+    def validate_and_accept(self):
+        # Check for any validation errors before accepting the dialog
+        for name, (regex, error_message) in self.validators.items():
+            line_edit = self.answers[name]
+            text = line_edit.text()
+            if not re.match(regex, text):
+                QMessageBox.warning(self, 'Validation Error', error_message)
+                return
+
+        # If there are no validation errors, accept the dialog
+        self.accept()
+
     def get_answers(self) -> Dict[str, Any]:
         # Return a dictionary of answers, keyed by question name
         return {name: line_edit.text() for name, line_edit in self.answers.items()}
 
+    def showEvent(self, event):
+        # Add tooltips to line edits after the dialog is shown
+        super().showEvent(event)
+        for name, tooltip in self.tooltips.items():
+            line_edit = self.answers[name]
+            line_edit.setToolTip(tooltip)
 
-class QtAdapter(PromptAdapter):
+
+class QtAdapter:
     def prompt(self, questions: Dict[str, Any]) -> Dict[str, Any]:
-        app = QApplication([])
-
-        # Create a dialog to prompt the user for input
+        app = QApplication(sys.argv)
         dialog = PromptDialog(questions)
-
-        # Display the dialog and wait for the user to close it
-        if dialog.exec_() == QDialog.Accepted:
-            # Return the user's answers
-            return dialog.get_answers()
-        else:
-            # User canceled the dialog, so return an empty dictionary
-            return {}
+        result = dialog.exec_()
+        answers = dialog.get_answers()
+        return answers if result == QDialog.Accepted else {}
 
 ##
 # TODO new adapter for Agents (inter-agent messaging)
