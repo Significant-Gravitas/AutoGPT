@@ -58,6 +58,7 @@ def test_memory_challenge_c(
 
     assert False, "Failed to shut down on its own"
 
+
 def create_instructions_files(
     memory_management_agent: Agent,
     level: int,
