@@ -66,21 +66,22 @@ def run_auto_gpt(
         # Display some stuff to the user
         raise RuntimeError("Failed to launch agent.")
 
+    # HACK: this should operate in a GET to first ask for the agent plan,
+    #   then a POST to give feedback. That requires some asynchrony, so I'm
+    #   doing both things in one call here for now.
+    user_feedback = "Get started"
+
     while True:
-        # with Spinner():
-        response = application_server.get_agent_plan(make_request({}))
+        feedback_message = {
+            "user_feedback": user_feedback,
+        }
+        response = application_server.give_agent_feedback(
+            make_request(feedback_message),
+        )
         if response.status_code == 200:
+            print(response.json["content"])
             # Display some stuff to the user
             user_feedback = input("...")
 
         else:
-            raise RuntimeError("Failed to get agent plan.")
-
-        agent_feedback_message = {
-            "user_feedback": user_feedback,
-        }
-        response = application_server.give_agent_feedback(
-            make_request(agent_feedback_message),
-        )
-        if response.status_code != 200:
-            raise RuntimeError("Failed to give agent feedback.")
+            raise RuntimeError("Main loop failed")

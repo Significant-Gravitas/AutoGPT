@@ -12,5 +12,10 @@ status = Status(
         "Before times: A basic client and server is being sketched out. It is at the idea stage.\n"
         "5/9: Had a chat with Mer and David about the design of the message broker and a webservice first approach, which I think is smart.\n"
         "     Sketched out some of the ideas for that. Taking a break for now.\n"
+        "5/10: David chat round 2.  Worked out 3 concrete application designs to ground work \n"
+        "      1 client <-> 1 agent [existing autogpt]\n"
+        "      1 client <-> multi-agent [multi-project autogpt]\n"
+        "      multi-client <-> multi-agent [autogpt service]\n"
+        "      Did more backend work to mock webserver with message broker.\n"
     ),
 )

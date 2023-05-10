@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from importlib import import_module
 from typing import List, Tuple
 
 from autogpt.core.configuration import Configuration
