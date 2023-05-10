@@ -162,8 +162,8 @@ class Agent:
                 )
 
                 logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands or "
-                    "'n' to exit program, or enter feedback for "
+                    "Enter 'y' or Enter to authorise command, 'y -N' to run N continuous commands,"
+                    "'s' to run self-feedback commands, 'n' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
                 while True:
@@ -173,7 +173,10 @@ class Agent:
                         console_input = clean_input(
                             Fore.MAGENTA + "Input:" + Style.RESET_ALL
                         )
-                    if console_input.lower().strip() == cfg.authorise_key:
+                    if (
+                        console_input.lower().strip() == cfg.authorise_key
+                        or console_input.rstrip() == ""
+                    ):
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().strip() == "s":
