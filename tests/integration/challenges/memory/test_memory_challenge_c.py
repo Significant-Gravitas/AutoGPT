@@ -45,7 +45,7 @@ def test_memory_challenge_c(
     create_instructions_files(
         memory_management_agent, current_level, level_silly_phrases
     )
-    mock_input.side_effect = ["y"] * (user_selected_level + 1) + ["n"]
+    mock_input.side_effect = ["y"] * (current_level + 1) + ["n"]
 
     try:
         run_interaction_loop(memory_management_agent, 90)
