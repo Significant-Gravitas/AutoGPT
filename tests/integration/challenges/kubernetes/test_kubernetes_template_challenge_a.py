@@ -1,11 +1,10 @@
 import contextlib
-from functools import wraps
 from typing import Generator
 
 import pytest
 import yaml
 
-from autogpt.commands.file_operations import read_file, write_to_file
+from autogpt.commands.file_operations import read_file
 from tests.integration.agent_utils import run_interaction_loop
 from tests.integration.challenges.utils import run_multiple_times
 from tests.utils import requires_api_key

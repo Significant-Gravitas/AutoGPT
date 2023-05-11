@@ -16,22 +16,32 @@ Are you ready to play a pivotal role in Auto-GPT's journey? Apply now to become 
 # Getting Started
 Clone the original AutoGPT repo and checkout to master branch
 
+
+The challenges are not written using a specific framework. They try to be very agnostic
+The challenges are acting like a user that wants something done: 
+INPUT:
+- User desire
+- Files, other inputs
+
+Output => Artifact (files, image, code, etc, etc...)
+
 ## Defining your Agent
 
 Go to https://github.com/Significant-Gravitas/Auto-GPT/blob/master/tests/integration/agent_factory.py
 
-Create your agent fixture, in line 8 through 13 we define all the settings of our challenged agent. We also give it a name in line 20.
+Create your agent fixture.
 
-Please choose the commands your agent will need to beat the challenges, the full list is available in the main.py See lines 4 to 6. (we 're working on a better way to design this, for now you have to look at main.py)
-
-```python=
+```python
 def kubernetes_agent(
     agent_test_config, memory_local_cache, workspace: Workspace
 ):
+    # Please choose the commands your agent will need to beat the challenges, the full list is available in the main.py
+    # (we 're working on a better way to design this, for now you have to look at main.py)
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
 
+    # Define all the settings of our challenged agent
     ai_config = AIConfig(
         ai_name="Kubernetes",
         ai_role="an autonomous agent that specializes in creating Kubernetes deployment templates.",
@@ -44,6 +54,7 @@ def kubernetes_agent(
     system_prompt = ai_config.construct_full_prompt()
     Config().set_continuous_mode(False)
     agent = Agent(
+        # We also give the AI a name 
         ai_name="Kubernetes-Demo",
         memory=memory_local_cache,
         full_message_history=[],
@@ -63,7 +74,7 @@ Go to `tests/integration/challenges`and create a file that is called `test_your_
 
 Your test could look something like this 
 
-```python=
+```python
 import contextlib
 from functools import wraps
 from typing import Generator
@@ -110,7 +121,7 @@ def test_information_retrieval_challenge_a(
 
     file_path = str(kubernetes_agent.workspace.get_path("kube.yaml"))
     content = read_file(file_path)
-    with open('kube.yaml') as file:
+    with open('str(kubernetes_agent.workspace.get_path("kube.yaml"))) as file:
         try:
             yaml.safe_load(file)
         except yaml.YAMLError as e:
