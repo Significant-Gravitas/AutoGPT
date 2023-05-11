@@ -5,8 +5,8 @@ from typing import Type
 
 from autogpt.core.budget import BudgetManager
 from autogpt.core.command import Command, CommandRegistry
-from autogpt.core.llm import LanguageModel
 from autogpt.core.memory import MemoryBackend
+from autogpt.core.model import EmbeddingModel, LanguageModel
 from autogpt.core.planning import Planner
 
 # Expand to other types as needed
@@ -14,13 +14,20 @@ PluginType = (
     Type[BudgetManager]
     | Type[Command]
     | Type[CommandRegistry]
+    | Type[EmbeddingModel]
     | Type[LanguageModel]
     | Type[MemoryBackend]
     | Type[Planner]
 )
 
 Plugin = (
-    BudgetManager | Command | CommandRegistry | LanguageModel | MemoryBackend | Planner
+    BudgetManager
+    | Command
+    | CommandRegistry
+    | EmbeddingModel
+    | LanguageModel
+    | MemoryBackend
+    | Planner
 )
 
 
