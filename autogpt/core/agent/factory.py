@@ -72,3 +72,6 @@ class AgentFactory:
         system_class = SimplePluginService.get_plugin(system_location)
 
         return system_class
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}()"
