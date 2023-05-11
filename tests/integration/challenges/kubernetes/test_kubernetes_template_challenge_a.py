@@ -44,9 +44,10 @@ def test_information_retrieval_challenge_a(
 
     file_path = str(kubernetes_agent.workspace.get_path("kube.yaml"))
     content = read_file(file_path)
-    with open('kube.yaml') as file:
-        try:
-            yaml.safe_load(file)
-        except yaml.YAMLError as e:
-            assert False, f"Error while loading kube.yaml: {e}"
-    assert "nginx" in content, "Expected the file to contain nginx"
+
+    for word in ["apiVersion", "kind", "metadata", "spec"]:
+        assert word in content, f"Expected the file to contain {word}"
+
+    content = yaml.safe_load(content)
+    for word in ['Service', 'Deployment', 'Pod']:
+        assert word in content['kind'], f"Expected the file to contain {word}"
