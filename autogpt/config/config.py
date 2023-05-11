@@ -166,6 +166,9 @@ class Config(metaclass=Singleton):
         Returns:
             The matching deployment id if found, otherwise an empty string.
         """
+        if hasattr(self, 'azure_model_to_deployment_id_map') == False:
+            return ""
+
         if model == self.fast_llm_model:
             return self.azure_model_to_deployment_id_map[
                 "fast_llm_model_deployment_id"
@@ -204,6 +207,10 @@ class Config(metaclass=Singleton):
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", {})
 
     def set_azure_deployment_id_for_model(self, model: str, deployment_id: str):
+        """
+        Sets the relevant deployment id for the model specified.
+        """
+
         if model == self.fast_llm_model:
             self.azure_model_to_deployment_id_map[
                 "fast_llm_model_deployment_id"
