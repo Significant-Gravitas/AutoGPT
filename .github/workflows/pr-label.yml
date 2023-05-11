@@ -1,12 +1,15 @@
 name: "Pull Request auto-label"
+
 on:
   # So that PRs touching the same files as the push are updated
   push:
+    branches: [ master ]
   # So that the `dirtyLabel` is removed if conflicts are resolve
   # We recommend `pull_request_target` so that github secrets are available.
   # In `pull_request` we wouldn't be able to change labels of fork PRs
   pull_request_target:
-    types: [opened, synchronize]
+    types: [ opened, synchronize ]
+
 concurrency:
   group: ${{ format('pr-label-{0}', github.event.pull_request.number || github.sha) }}
   cancel-in-progress: true
@@ -26,3 +29,27 @@ jobs:
           repoToken: "${{ secrets.GITHUB_TOKEN }}"
           commentOnDirty: "This pull request has conflicts with the base branch, please resolve those so we can evaluate the pull request."
           commentOnClean: "Conflicts have been resolved! 🎉 A maintainer will review the pull request shortly."
+
+  size:
+    if: ${{ github.event_name == 'pull_request_target' }}
+    permissions:
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: codelytv/pr-size-labeler@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/xs'
+          xs_max_size: 2
+          s_label: 'size/s'
+          s_max_size: 10
+          m_label: 'size/m'
+          m_max_size: 50
+          l_label: 'size/l'
+          l_max_size: 200
+          xl_label: 'size/xl'
+          message_if_xl: >
+            This PR exceeds the recommended size of 200 lines.
+            Please make sure you are NOT addressing multiple issues with one PR.
+            Note this PR might be rejected due to its size  
