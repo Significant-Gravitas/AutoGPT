@@ -28,6 +28,7 @@ def python_test_file(config: Config, random_string):
 def random_string():
     return "".join(random.choice(string.ascii_lowercase) for _ in range(10))
 
+
 def test_compile_string():
     """Test the compile_string function."""
     valid_code = "print('Hello, World!')"

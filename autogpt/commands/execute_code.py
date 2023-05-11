@@ -12,10 +12,13 @@ from autogpt.logs import logger
 
 CFG = Config()
 
-@command("compile_string", "Only compile/validate Python string", '"code": "<code_string>"')
+
+@command(
+    "compile_string", "Only compile/validate Python string", '"code": "<code_string>"'
+)
 def compile_string(code: str) -> str:
     try:
-        compile(code, '<string>', 'exec')
+        compile(code, "<string>", "exec")
         return "Success"
     except SyntaxError as e:
         return "Errors: " + str(e)
