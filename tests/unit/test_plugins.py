@@ -133,6 +133,8 @@ def test_scan_plugins_generic(mock_config_generic_plugin):
 
 @pytest.fixture(scope="function")
 def cfg_continuous_mode_true():
+    """Returns a Config object with continuous_mode set to True"""
+
     class MockConfig:
         plugins_denylist = []
         plugins_allowlist = []
