@@ -84,7 +84,9 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "github-actions-bot@users.noreply.github.com"
           git fetch
-          git checkout "${{ github.head_ref }}" || echo "Changes already committed"
+          branch_name="$(git symbolic-ref --short HEAD || echo ${GITHUB_REF#refs/heads/})"
+          git checkout "$branch_name" || echo "Changes already committed"
           git add -A
           git commit -m "Update cassettes" || echo "No changes to commit"
           git push || echo "Changes already committed"
+
