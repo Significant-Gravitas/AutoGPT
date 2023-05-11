@@ -1,5 +1,12 @@
 """The planning system organizes the Agent's activities."""
-from autogpt.core.planning.base import Planner
+from autogpt.core.planning.base import (
+    ModelMessage,
+    ModelPrompt,
+    ModelRole,
+    Planner,
+    PlanningPromptContext,
+    SelfFeedbackPromptContext,
+)
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(

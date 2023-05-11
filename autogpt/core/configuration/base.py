@@ -18,6 +18,11 @@ class Configuration(abc.ABC):
 
     @property
     @abc.abstractmethod
+    def credentials(self):
+        pass
+
+    @property
+    @abc.abstractmethod
     def language_model(self):
         pass
 

@@ -27,11 +27,7 @@ class LanguageModel(Model):
     configuration_defaults = {"language_model": {}}
 
     @abc.abstractmethod
-    def __init__(
-        self,
-        configuration: Configuration,
-        workspace: Workspace,
-    ):
+    def __init__(self, *args, **kwargs):
         ...
 
     @abc.abstractmethod
