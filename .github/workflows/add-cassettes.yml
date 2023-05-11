@@ -1,0 +1,34 @@
+name: Merge and Commit Cassettes
+
+on:
+  pull_request:
+    types:
+      - closed
+
+jobs:
+  update-cassettes:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0  # This is necessary to fetch all branches and tags
+
+      - name: Download artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: cassettes
+          path: .  # Extract the artifact in the current working directory
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<email>"
+
+      - name: Commit and push
+        run: |
+          git add '**/cassettes/**/*.yaml'
+          git commit -m "Update cassettes" || echo "No changes to commit"
+          git push || echo "No changes to push"
