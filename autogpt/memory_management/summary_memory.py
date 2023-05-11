@@ -68,6 +68,7 @@ def update_running_summary(
     # Create a copy of the new_events list to prevent modifying the original list
     new_events = copy.deepcopy(new_events)
 
+    new_events = [event for event in new_events if event["role"].lower() != "user"]
     # Replace "assistant" with "you". This produces much better first person past tense results.
     for i, event in enumerate(new_events):
         if event["role"].lower() == "assistant":
@@ -84,13 +85,8 @@ def update_running_summary(
                     error_str = f"ERROR: invalid json format when attempting to remove 'thoughts' content from event: {event}"
                     logger.error(error_str)
                     continue
-
         elif event["role"].lower() == "system":
-            new_events[i]["role"] = "your computer"
-
-        # Delete all user messages
-        elif event["role"] == "user":
-            new_events.pop(i)    
+            new_events[i]["role"] = "your computer"  
 
     # This can happen at any point during execution, not just the beginning
     if len(new_events) == 0:
