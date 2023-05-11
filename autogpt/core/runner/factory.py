@@ -22,7 +22,7 @@ def get_agent_factory():
 
 def bootstrap_agent(
     message: Message,
-):
+) -> None:
     """Provision a new agent by getting an objective from the user and setting up agent resources."""
     # TODO: this could be an already running process we communicate with via the
     # message broker.  For now, we'll just do it in-process.
@@ -77,7 +77,9 @@ def bootstrap_agent(
         message_type="log",
     )
 
-    language_model = agent_factory.get_system_class("language_model", configuration)
+    language_model_class = agent_factory.get_system_class(
+        "language_model", configuration
+    )
     # TODO: is this a class method?  Or do we have the language model be
     #  partially initialized without access to any resources since this precedes
     #  Agent creation?

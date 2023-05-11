@@ -37,8 +37,9 @@ class PluginStorageFormat(StrEnum):
     # OTHER_FILE_PATH = "other_file_path"  # Grab them from a file path
     INSTALLED_PACKAGE = "installed_package"  # Grab them from an installed package
     # PYPI = "pypi"  # Grab them from pypi
-    # GITHUB = "github"  # Grab them from a github repo
+    # GIT = "git"  # Grab them from a git repo
     # AUTOGPT_PLUGIN_SERVICE = "autogpt_plugin_service"  # Grab them from a service
+    # OPENAPI_URL = "open_api_url" # Grab them from an openapi endpoint
 
 
 # A plugin storage route.
@@ -46,7 +47,6 @@ class PluginStorageFormat(StrEnum):
 # This is a string that specifies where to load a plugin from
 # (e.g. an import path or file path).
 PluginStorageRoute = str
-
 
 
 @dataclasses.dataclass
@@ -75,7 +75,9 @@ class PluginMetadata:
 class PluginService(abc.ABC):
     """Base class for plugin service.
 
-    The plugin service should be stateless. This defines
+    The plugin service should be stateless. This defines the interface for
+    loading plugins from various storage formats.
+
     """
 
     @staticmethod
