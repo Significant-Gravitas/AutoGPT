@@ -12,6 +12,7 @@ pytest_plugins = ["tests.integration.agent_factory"]
 
 PROXY = os.environ.get("PROXY")
 
+
 @pytest.fixture()
 def workspace_root(tmp_path: Path) -> Path:
     return tmp_path / "home/users/monty/auto_gpt_workspace"
