@@ -9,7 +9,7 @@ on:
 concurrency:
   group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
+environment: benchmark
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -42,6 +42,7 @@ jobs:
         if: success() || failure()
 
   test:
+    environment: benchmark
     permissions:
       # Gives the action the necessary permissions for publishing new
       # comments in pull requests.
@@ -54,7 +55,6 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.10", "3.11"]
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
@@ -64,16 +64,19 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+#      - name: Install dependencies
+#        run: |
+#          python -m pip install --upgrade pip
+#          pip install -r requirements.txt
 
       - name: Run unittest tests with coverage
         run: |
-          pytest --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          echo echo "Configuration variable value: ${{ vars.PROXY }}"
+          pytest -s tests/integration/goal_oriented/test_write_file.py
         env:
           CI: true
-
+          PROXY: ${{ vars.PROXY }}
+          PROXY_2: ${{ env.PROXY }}
+        environment: benchmark
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3

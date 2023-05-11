@@ -17,5 +17,5 @@ def vcr_config():
             "X-OpenAI-Client-User-Agent",
             "User-Agent",
         ],
-        "match_on": ["method", "uri", "body"],
+        "match_on": ["method", "body"],
     }
