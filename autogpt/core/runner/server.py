@@ -222,7 +222,7 @@ class InteractResponseBody(BaseModel):
 
 
 @router.post("/agents/{agent_id}")
-async def interact(request: Request, body: InteractRequestBody):
+async def interact(request: Request, agent_id: str, body: InteractRequestBody):
     """Interact with an agent."""
 
     # check headers
@@ -233,9 +233,12 @@ async def interact(request: Request, body: InteractRequestBody):
 
     # continue agent interaction with user input
 
-    return {"thoughts": "TBD", "messages": ["message1", "message2"]}
+    return {"thoughts": "TBD", "messages": ["message1", agent_id]}
 
 
 app = FastAPI()
 app.include_router(router, prefix="/api/v1")
-# NOTE: start with `uvicorn autogpt.core.runner.server:app --reload`
+# NOTE:
+# - start with `uvicorn autogpt.core.runner.server:app --reload --port=8080`
+# - see auto-generated API docs: http://localhost:8080/docs
+
