@@ -78,7 +78,7 @@ class Agent:
         self.command_registry = command_registry
         self.config = config
         self.system_prompt = system_prompt
-        self.initial_prompt = triggering_prompt
+        self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, CFG.restrict_to_workspace)
 
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -121,7 +121,7 @@ class Agent:
                 assistant_reply = chat_with_ai(
                     self,
                     self.system_prompt,
-                    self.initial_prompt,
+                    self.triggering_prompt,
                     self.full_message_history,
                     self.memory,
                     CFG.fast_token_limit,
@@ -410,7 +410,7 @@ class Agent:
 
     @staticmethod
     def determine_next_command(user_input: str):
-        command_name = None
+        command_name = str | None
         autonomous_cycles_remaining = 0
 
         if user_input.lower().rstrip() == "y":
