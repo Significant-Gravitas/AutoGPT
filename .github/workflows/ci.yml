@@ -84,9 +84,15 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "github-actions-bot@users.noreply.github.com"
           git fetch
-          branch_name="$(git symbolic-ref --short HEAD || echo ${GITHUB_REF#refs/heads/})"
-          git checkout "$branch_name" || echo "Changes already committed"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            branch_name="${{ github.head_ref }}"
+            git checkout "$branch_name" || echo "Changes already committed"
+          else
+            branch_name="$(git symbolic-ref --short HEAD || echo ${GITHUB_REF#refs/heads/})"
+            git checkout "$branch_name" || echo "Changes already committed"
+          fi
           git add -A
           git commit -m "Update cassettes" || echo "No changes to commit"
           git push || echo "Changes already committed"
+      
 
