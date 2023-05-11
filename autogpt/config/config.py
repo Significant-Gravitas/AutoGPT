@@ -41,7 +41,24 @@ class Config(metaclass=Singleton):
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
-        self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+
+        # It's better to set max limits and be explicit for better user experience IMO
+        model_limits = {
+            "gpt-4-32k": 32000,
+            "gpt-4": 8000,
+            "gpt-3.5-turbo": 4000,
+            "gpt-3.5-turbo-0301": 4000,
+        }
+
+        smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 4000))
+        max_limit = model_limits.get(self.smart_llm_model, smart_token_limit)
+
+        if smart_token_limit > max_limit:
+            print(f"Smart LLM model is {self.smart_llm_model}, setting max smart_token_limit to {max_limit}")
+            smart_token_limit = max_limit
+
+        self.smart_token_limit = smart_token_limit
+
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
         self.embedding_tokenizer = os.getenv("EMBEDDING_TOKENIZER", "cl100k_base")
         self.embedding_token_limit = int(os.getenv("EMBEDDING_TOKEN_LIMIT", 8191))
