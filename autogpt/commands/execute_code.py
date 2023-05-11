@@ -18,7 +18,7 @@ def compile_string(code: str) -> str:
         compile(code, '<string>', 'exec')
         return "Success"
     except SyntaxError as e:
-        return "Errors: " +e
+        return "Errors: " + str(e)
 
 
 @command("execute_python_file", "Execute Python File", '"filename": "<filename>"')

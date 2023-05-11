@@ -28,6 +28,20 @@ def python_test_file(config: Config, random_string):
 def random_string():
     return "".join(random.choice(string.ascii_lowercase) for _ in range(10))
 
+def test_compile_string():
+    """Test the compile_string function."""
+    valid_code = "print('Hello, World!')"
+    result = sut.compile_string(valid_code)
+    assert result == "Success"
+
+    invalid_code = "print('Hello, World!'"
+    result = sut.compile_string(invalid_code)
+    assert result.startswith("Errors:")
+
+    empty_code = ""
+    result = sut.compile_string(empty_code)
+    assert result == "Success"  # An empty code string is considered valid
+
 
 def test_execute_python_file(python_test_file: str, random_string: str):
     result = sut.execute_python_file(python_test_file)
