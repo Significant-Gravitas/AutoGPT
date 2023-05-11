@@ -10,7 +10,7 @@ from tests.utils import requires_api_key
 @pytest.mark.vcr
 @pytest.mark.integration_test
 @requires_api_key("OPENAI_API_KEY")
-def test_make_agent() -> None:
+def test_make_agent(patched_api_requestor) -> None:
     """Test that an agent can be created"""
     # Use the mock agent manager to avoid creating a real agent
     with patch("openai.ChatCompletion.create") as mock:

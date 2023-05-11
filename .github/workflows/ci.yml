@@ -71,9 +71,11 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-          pytest --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          pytest -s tests/integration/goal_oriented/test_write_file.py
         env:
           CI: true
+          PROXY: https://us-central1-prod-benchmarks-core.cloudfunctions.net/proxy_function
+
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3

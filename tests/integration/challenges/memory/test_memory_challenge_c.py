@@ -14,7 +14,7 @@ NOISE = 1000
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_memory_challenge_c(
-    memory_management_agent: Agent, user_selected_level: int
+    memory_management_agent: Agent, user_selected_level: int, patched_api_requestor
 ) -> None:
     """
     Instead of reading task Ids from files as with the previous challenges, the agent now must remember
