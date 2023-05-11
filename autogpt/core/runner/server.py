@@ -238,3 +238,4 @@ async def interact(request: Request, body: InteractRequestBody):
 
 app = FastAPI()
 app.include_router(router, prefix="/api/v1")
+# NOTE: start with `uvicorn autogpt.core.runner.server:app --reload`
