@@ -30,9 +30,7 @@ def get_newly_trimmed_messages(
         int: The new index value for use in the next loop.
     """
     # Select messages in full_message_history with an index higher than last_memory_index
-    new_messages = [
-        msg for i, msg in enumerate(full_message_history) if i > last_memory_index
-    ]
+    new_messages = full_message_history[-(len(full_message_history)-last_memory_index):]
 
     # Remove messages that are already present in current_context
     new_messages_not_in_context = [
