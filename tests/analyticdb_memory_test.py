@@ -28,6 +28,13 @@ def MockAnalyticDBConnect(*args, **kwargs):
     return mock_conn
 
 
+def MockGetAdaEmbedding(text: str) -> list[float]:
+    index = hash(text) % 1536
+    result = [0.0] * 1536
+    result[index] = 1.0
+    return result
+
+
 try:
     from autogpt.memory.analyticdb import AnalyticDBMemory
 
@@ -58,6 +65,7 @@ try:
             self.cfg = mock_config()
             self.memory = AnalyticDBMemory(self.cfg)
 
+        @patch("autogpt.memory.analyticdb.get_ada_embedding", new=MockGetAdaEmbedding)
         def test_add(self) -> None:
             """Test adding a text to the cache"""
             text = "Sample text 1"
@@ -72,6 +80,7 @@ try:
             stats = self.memory.get_stats()
             self.assertEqual("Entities num: 0", stats)
 
+        @patch("autogpt.memory.analyticdb.get_ada_embedding", new=MockGetAdaEmbedding)
         def test_get(self) -> None:
             """Test getting a text from the cache"""
             text = "Sample text 1"
@@ -80,6 +89,7 @@ try:
             result = self.memory.get(text)
             self.assertEqual(result, [text])
 
+        @patch("autogpt.memory.analyticdb.get_ada_embedding", new=MockGetAdaEmbedding)
         def test_get_relevant(self) -> None:
             """Test getting relevant texts from the cache"""
             text1 = "Sample text 1"
@@ -90,6 +100,7 @@ try:
             result = self.memory.get_relevant(text1, 1)
             self.assertEqual(result, [text1])
 
+        @patch("autogpt.memory.analyticdb.get_ada_embedding", new=MockGetAdaEmbedding)
         @patch("tests.analyticdb_memory_test.MockStats", 1)
         def test_get_stats(self) -> None:
             """Test getting the cache stats"""
