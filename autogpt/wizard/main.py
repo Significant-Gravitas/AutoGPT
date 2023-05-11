@@ -1,6 +1,6 @@
 import click
 
-from Wizard import ResponseAdapter
+from QtWizard import QtAdapter 
 from FileTemplating import TemplateAdapter
 
 import argparse
@@ -32,6 +32,9 @@ def main(filename):
     # show some meta info
     info = click.style(f"filename: {filename}, version:{version}, name:{name}", fg='green', bg='black', bold=True)
     click.echo(info)
+
+
+    ResponseAdapter = QtAdapter() # or PyInquirerAdapter()
 
     # and run the prompt loop
     answers = ResponseAdapter.prompt(questions)
