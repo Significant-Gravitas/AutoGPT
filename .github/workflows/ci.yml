@@ -79,22 +79,8 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
-      - name: Commit changes
-        run: |
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "github-actions-bot@users.noreply.github.com"
-          git fetch
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            branch_name="${{ github.head_ref }}"
-            git fetch origin "$branch_name"
-            git checkout -b "$branch_name" "FETCH_HEAD" || echo "Changes already committed"
-          else
-            branch_name="$(git symbolic-ref --short HEAD || echo ${GITHUB_REF#refs/heads/})"
-            git checkout "$branch_name" || echo "Changes already committed"
-          fi
-          git add -A
-          git commit -m "Update cassettes" || echo "No changes to commit"
-          git push || echo "Changes already committed"
-      
-      
-
+      - name: Upload cassettes as artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: cassettes
+          path: '**/cassettes/**/*.yaml'
