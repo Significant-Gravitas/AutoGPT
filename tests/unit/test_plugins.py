@@ -27,6 +27,7 @@ def mock_config_denylist_allowlist_check():
         plugins_allowlist = ["GoodPlugin"]
         authorise_key = "y"
         exit_key = "n"
+        continuous_mode = False
 
     return MockConfig()
 
@@ -128,3 +129,27 @@ def test_scan_plugins_generic(mock_config_generic_plugin):
     # Test that the function returns the correct number of plugins
     result = scan_plugins(mock_config_generic_plugin, debug=True)
     assert len(result) == 1
+
+
+@pytest.fixture(scope="function")
+def cfg_continuous_mode_true():
+    class MockConfig:
+        plugins_denylist = []
+        plugins_allowlist = []
+        continuous_mode = True
+
+    return MockConfig()
+
+
+def test_denylist_allowlist_check_continuous_mode_no_prompt(cfg_continuous_mode_true):
+    """
+    Test if the denylist_allowlist_check() function skips user prompting when the continuous_mode attribute is True.
+
+    Args:
+        cfg_continuous_mode_true (pytest.fixture): returns a Config object with continuous_mode set to True
+    """
+    plugin_name = "test_plugin"
+    cfg = Config()
+    result = denylist_allowlist_check(plugin_name, cfg_continuous_mode_true)
+
+    assert result is False
