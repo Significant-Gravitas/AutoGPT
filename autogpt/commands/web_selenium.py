@@ -7,6 +7,7 @@ from sys import platform
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -33,7 +34,7 @@ CFG = Config()
     '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
 )
 @validate_url
-def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
+def browse_website(url: str, question: str) -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -43,7 +44,14 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     Returns:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
     """
-    driver, text = scrape_text_with_selenium(url)
+    try:
+        driver, text = scrape_text_with_selenium(url)
+    except WebDriverException as e:
+        # These errors are often quite long and include lots of context.
+        # Just grab the first line.
+        msg = e.msg.split("\n")[0]
+        return f"Error: {msg}"
+
     add_header(driver)
     summary_text = summary.summarize_text(url, text, question, driver)
     links = scrape_links_with_selenium(driver, url)
@@ -52,7 +60,7 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     if len(links) > 5:
         links = links[:5]
     close_browser(driver)
-    return f"Answer gathered from website: {summary_text} \n \n Links: {links}", driver
+    return f"Answer gathered from website: {summary_text} \n \n Links: {links}"
 
 
 def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
@@ -167,4 +175,9 @@ def add_header(driver: WebDriver) -> None:
     Returns:
         None
     """
-    driver.execute_script(open(f"{FILE_DIR}/js/overlay.js", "r").read())
+    try:
+        with open(f"{FILE_DIR}/js/overlay.js", "r") as overlay_file:
+            overlay_script = overlay_file.read()
+        driver.execute_script(overlay_script)
+    except Exception as e:
+        print(f"Error executing overlay.js: {e}")

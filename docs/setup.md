@@ -23,7 +23,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 [openai/api limits]: https://platform.openai.com/docs/guides/rate-limits/overview#:~:text=Free%20trial%20users,RPM%0A40%2C000%20TPM
 
 !!! important
-    It's highly recommended that you keep keep track of your API costs on [the Usage page](https://platform.openai.com/account/usage).
+    It's highly recommended that you keep track of your API costs on [the Usage page](https://platform.openai.com/account/usage).
     You can also set limits on how much you spend on [the Usage limits page](https://platform.openai.com/account/billing/limits).
 
 ![For OpenAI API key to work, set up paid account at OpenAI API > Billing](./imgs/openai-api-key-billing-paid-account.png)
@@ -54,9 +54,15 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
             environment:
               MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
               REDIS_HOST: ${REDIS_HOST:-redis}
-            volumes:
-              - ./:/app
             profiles: ["exclude-from-up"]
+            volumes:
+              - ./auto_gpt_workspace:/app/autogpt/auto_gpt_workspace
+              - ./data:/app/data
+              ## allow auto-gpt to write logs to disk
+              - ./logs:/app/logs
+              ## uncomment following lines if you have / want to make use of these files
+              #- ./azure.yaml:/app/azure.yaml
+              #- ./ai_settings.yaml:/app/ai_settings.yaml
           redis:
             image: "redis/redis-stack-server:latest"
 
@@ -150,7 +156,18 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
 ### Run with Docker
 
-Easiest is to use `docker-compose`. Run the commands below in your Auto-GPT folder.
+Easiest is to use `docker-compose`. 
+
+Important: Docker Compose version 1.29.0 or later is required to use version 3.9 of the Compose file format.
+You can check the version of Docker Compose installed on your system by running the following command:
+
+	docker-compose version
+
+This will display the version of Docker Compose that is currently installed on your system.
+
+If you need to upgrade Docker Compose to a newer version, you can follow the installation instructions in the Docker documentation: https://docs.docker.com/compose/install/
+
+Once you have a recent version of docker-compose, run the commands below in your Auto-GPT folder.
 
 1. Build the image. If you have pulled the image from Docker Hub, skip this step.
 
