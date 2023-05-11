@@ -117,3 +117,17 @@ def test_set_debug_mode(config):
 
     # Reset debug mode
     config.set_debug_mode(debug_mode)
+
+
+def test_missing_azure_config(config, workspace):
+    config_file = workspace.get_path("azure_config.yaml")
+    with pytest.raises(FileNotFoundError):
+        config.load_azure_config(str(config_file))
+
+    config_file.write_text("")
+    config.load_azure_config(str(config_file))
+
+    assert config.openai_api_type == "azure"
+    assert config.openai_api_base == ""
+    assert config.openai_api_version == "2023-03-15-preview"
+    assert config.azure_model_to_deployment_id_map == {}
