@@ -86,7 +86,8 @@ jobs:
           git fetch
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             branch_name="${{ github.head_ref }}"
-            git checkout "$branch_name" || echo "Changes already committed"
+            git fetch origin "$branch_name"
+            git checkout -b "$branch_name" "FETCH_HEAD" || echo "Changes already committed"
           else
             branch_name="$(git symbolic-ref --short HEAD || echo ${GITHUB_REF#refs/heads/})"
             git checkout "$branch_name" || echo "Changes already committed"
@@ -94,5 +95,6 @@ jobs:
           git add -A
           git commit -m "Update cassettes" || echo "No changes to commit"
           git push || echo "Changes already committed"
+      
       
 
