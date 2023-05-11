@@ -21,12 +21,8 @@ class Workspace(abc.ABC):
     configuration_defaults = {}
 
     @abc.abstractmethod
-    def __init__(
-        self,
-        workspace_path: Path,
-        configuration: Configuration,
-        logger: Logger,
-    ):
+    @abc.abstractmethod
+    def __init__(self, *args, **kwargs):
         ...
 
     @property

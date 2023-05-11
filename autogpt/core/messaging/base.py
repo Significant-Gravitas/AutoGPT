@@ -89,11 +89,7 @@ class MessageChannel(abc.ABC):
     """Interface for a channel that can propagate messages to a group of listeners."""
 
     @abc.abstractmethod
-    def __init__(
-        self,
-        channel_name: str,
-        message_broker: "MessageBroker",
-    ):
+    def __init__(self, *args, **kwargs):
         ...
 
     @abc.abstractmethod
