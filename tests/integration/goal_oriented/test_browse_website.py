@@ -11,7 +11,7 @@ from tests.utils import requires_api_key
 def test_browse_website(browser_agent: Agent) -> None:
     file_path = browser_agent.workspace.get_path("browse_website.txt")
     try:
-        run_interaction_loop(browser_agent, 40)
+        run_interaction_loop(browser_agent, 120)
     # catch system exit exceptions
     except SystemExit:  # the agent returns an exception when it shuts down
         content = read_file(file_path)

@@ -34,7 +34,7 @@ def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
     result = []
     with zipfile.ZipFile(zip_path, "r") as zfile:
         for name in zfile.namelist():
-            if name.endswith("__init__.py"):
+            if name.endswith("__init__.py") and not name.startswith("__MACOSX"):
                 logger.debug(f"Found module '{name}' in the zipfile at: {name}")
                 result.append(name)
     if len(result) == 0:
@@ -210,6 +210,10 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
     loaded_plugins = []
     # Generic plugins
     plugins_path_path = Path(cfg.plugins_dir)
+
+    logger.debug(f"Allowlisted Plugins: {cfg.plugins_allowlist}")
+    logger.debug(f"Denylisted Plugins: {cfg.plugins_denylist}")
+
     for plugin in plugins_path_path.glob("*.zip"):
         if moduleList := inspect_zip_for_modules(str(plugin), debug):
             for module in moduleList:
@@ -258,9 +262,12 @@ def denylist_allowlist_check(plugin_name: str, cfg: Config) -> bool:
     Returns:
         True or False
     """
+    logger.debug(f"Checking if plugin {plugin_name} should be loaded")
     if plugin_name in cfg.plugins_denylist:
+        logger.debug(f"Not loading plugin {plugin_name} as it was in the denylist.")
         return False
     if plugin_name in cfg.plugins_allowlist:
+        logger.debug(f"Loading plugin {plugin_name} as it was in the allowlist.")
         return True
 
     if cfg.continuous_mode:

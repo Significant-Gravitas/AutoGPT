@@ -1,4 +1,5 @@
 import random
+from functools import wraps
 from typing import Optional
 
 import pytest
@@ -42,3 +43,21 @@ def generate_noise(noise_size) -> str:
             k=noise_size,
         )
     )
+
+
+def run_multiple_times(times):
+    """
+    Decorator that runs a test function multiple times.
+
+    :param times: The number of times the test function should be executed.
+    """
+
+    def decorator(test_func):
+        @wraps(test_func)
+        def wrapper(*args, **kwargs):
+            for _ in range(times):
+                test_func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
