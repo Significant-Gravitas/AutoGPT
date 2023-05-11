@@ -60,9 +60,14 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
               - ./data:/app/data
               ## allow auto-gpt to write logs to disk
               - ./logs:/app/logs
-              ## uncomment following lines if you have / want to make use of these files
-              #- ./azure.yaml:/app/azure.yaml
-              #- ./ai_settings.yaml:/app/ai_settings.yaml
+              ## uncomment following lines if you want to make use of these files
+              ## you must have them existing in the same folder as this docker-compose.yml
+              #- type: bind
+              #  source: ./azure.yaml
+              #  target: /app/azure.yaml
+              #- type: bind
+              #  source: ./ai_settings.yaml
+              #  target: /app/ai_settings.yaml
           redis:
             image: "redis/redis-stack-server:latest"
 
