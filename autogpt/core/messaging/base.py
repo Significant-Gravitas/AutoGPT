@@ -3,7 +3,7 @@ import abc
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Callable, Dict
+from typing import Awaitable, Callable, Dict
 
 
 class Role(StrEnum):
@@ -42,7 +42,7 @@ class Message:
     metadata: MessageMetadata
 
 
-Listener = Callable[[Message], None]
+Listener = Callable[[Message], Awaitable[None]]
 MessageFilter = Callable[[Message], bool]
 
 

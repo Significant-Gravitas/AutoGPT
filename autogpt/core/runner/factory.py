@@ -20,7 +20,7 @@ def get_agent_factory():
     return AgentFactory(agent_factory_logger)
 
 
-def bootstrap_agent(
+async def bootstrap_agent(
     message: Message,
 ) -> None:
     """Provision a new agent by getting an objective from the user and setting up agent resources."""
@@ -39,7 +39,7 @@ def bootstrap_agent(
         sender_name="autogpt-agent-factory",
         sender_role=Role.AGENT_FACTORY,
     )
-    agent_factory_emitter.send_message(
+    await agent_factory_emitter.send_message(
         content={"message": "Startup request received, Setting up agent..."},
     )
 
@@ -49,7 +49,7 @@ def bootstrap_agent(
         user_configuration,
     )
     if configuration_errors:
-        agent_factory_emitter.send_message(
+        await agent_factory_emitter.send_message(
             content={
                 "message": "Configuration errors encountered, aborting agent setup."
             },
@@ -57,7 +57,7 @@ def bootstrap_agent(
         )
         return
 
-    agent_factory_emitter.send_message(
+    await agent_factory_emitter.send_message(
         content={
             "message": "Agent configuration compiled. Constructing initial agent plan from user objective."
         },
@@ -69,7 +69,7 @@ def bootstrap_agent(
     objective_prompt = agent_planner.construct_objective_prompt_from_user_input(
         user_objective,
     )
-    agent_factory_emitter.send_message(
+    await agent_factory_emitter.send_message(
         content={
             "message": "Translated user input into objective prompt.",
             "objective_prompt": objective_prompt,
@@ -78,16 +78,17 @@ def bootstrap_agent(
     )
 
     language_model_class = agent_factory.get_system_class(
-        "language_model", configuration
+        "language_model",
+        configuration,
     )
-    # TODO: is this a class method?  Or do we have the language model be
-    #  partially initialized without access to any resources since this precedes
-    #  Agent creation?
-    model_response = language_model.construct_objective_from_prompt(objective_prompt)
+    language_model = language_model_class(configuration)
+    model_response = await language_model.construct_objective_from_prompt(
+        objective_prompt
+    )
     # This should be parsed into a standard format already
     agent_objective = model_response.content
 
-    agent_factory_emitter.send_message(
+    await agent_factory_emitter.send_message(
         content={
             "message": "Translated objective prompt into objective.",
             "objective": agent_objective,
@@ -105,7 +106,7 @@ def bootstrap_agent(
     workspace_path = workspace.setup_workspace(configuration)
     # TODO: Provision memory backend. Waiting on interface to stabilize
 
-    message_broker.send_message(
+    await message_broker.send_message(
         "agent_setup_complete",
         {"message": "Agent setup complete."},
     )

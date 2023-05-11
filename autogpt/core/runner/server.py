@@ -73,19 +73,19 @@ class FakeApplicationServer:
         message_broker = SimpleMessageBroker()
         message_broker.create_message_channel(message_channel_name)
 
-        self._message_broker.register_listener(
+        message_broker.register_listener(
             message_channel="autogpt",
             listener=self._add_to_queue,
             message_filter=MessageFilters.is_server_message,
         )
 
-        self._message_broker.register_listener(
+        message_broker.register_listener(
             message_channel="autogpt",
             listener=bootstrap_agent,
             message_filter=MessageFilters.is_user_bootstrap_message,
         )
 
-        self._message_broker.register_listener(
+        message_broker.register_listener(
             message_channel="autogpt",
             listener=launch_agent,
             message_filter=MessageFilters.is_user_launch_message,
@@ -96,7 +96,7 @@ class FakeApplicationServer:
     def _add_to_queue(self, message: Message):
         self.message_queue[message.metadata.sender.name].append(message)
 
-    def _send_message(
+    async def _send_message(
         self,
         request,
         extra_content: dict = None,
@@ -113,13 +113,13 @@ class FakeApplicationServer:
             response.status_code = 500
         return response
 
-    def list_agents(self, request):
+    async def list_agents(self, request):
         """List all agents."""
         pass
 
-    def boostrap_new_agent(self, request):
+    async def boostrap_new_agent(self, request):
         """Bootstrap a new agent."""
-        response = self._send_message(
+        response = await self._send_message(
             request,
             extra_content={"message_broker": self._message_broker},
             extra_metadata={"instruction": "bootstrap_agent"},
@@ -130,18 +130,18 @@ class FakeApplicationServer:
         response.json = agent_factory_responses
         return response
 
-    def launch_agent(self, request):
+    async def launch_agent(self, request):
         """Launch an agent."""
-        return self._send_message(request)
+        return await self._send_message(request)
 
-    def give_agent_feedback(self, request):
+    async def give_agent_feedback(self, request):
         """Give feedback to an agent."""
-        response = self._send_message(request)
+        response = await self._send_message(request)
         response.json = {
             "content": self.message_queue["autogpt-agent"].pop(),
         }
 
-    # def get_agent_plan(self, request):
+    # async def get_agent_plan(self, request):
     #     """Get the plan for an agent."""
     #     # TODO: need a clever hack here to get the agent plan since we'd have natural
     #     #  asynchrony here with a webserver.
@@ -157,7 +157,7 @@ def _get_workspace_path_from_agent_name(agent_name: str) -> str:
     return f"~/autogpt_workspace/{agent_name}"
 
 
-def launch_agent(message: Message):
+async def launch_agent(message: Message):
     message_content = message.content
     message_broker = message_content["message_broker"]
     agent_name = message_content["agent_name"]

@@ -26,7 +26,7 @@ class SimpleMessageEmitter(MessageEmitter):
         self._additional_metadata = additional_metadata
         self._message_channel = message_channel
 
-    def send_message(self, content: Dict, **extra_metadata) -> bool:
+    async def send_message(self, content: Dict, **extra_metadata) -> bool:
         additional_metadata = {
             **self._additional_metadata,
             **extra_metadata,
@@ -41,7 +41,7 @@ class SimpleMessageEmitter(MessageEmitter):
             content=content,
             metadata=metadata,
         )
-        return self._message_channel.send_message(message)
+        return await self._message_channel.send_message(message)
 
     def __repr__(self) -> str:
         return f"SimpleMessageEmitter(sender={self._sender}, channel={self._message_channel})"
@@ -64,10 +64,10 @@ class SimpleMessageChannel(MessageChannel):
     ) -> None:
         self._listeners.append((listener, message_filter))
 
-    def send_message(self, message: Message) -> bool:
+    async def send_message(self, message: Message) -> bool:
         for listener, message_filter in self._listeners:
             if filtered_message := message_filter(message):
-                listener(filtered_message)
+                await listener(filtered_message)
         return True
 
     def __repr__(self) -> str:

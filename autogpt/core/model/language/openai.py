@@ -93,14 +93,14 @@ class OpenAILanguageModel(LanguageModel):
         )
         return parse_openai_response(model_name, response)
 
-    def plan_next_action(
+    async def plan_next_action(
         self,
         planning_prompt: ModelPrompt,
         **kwargs,
     ) -> LanguageModelResponse:
         pass
 
-    def get_self_feedback(
+    async def get_self_feedback(
         self,
         self_feedback_prompt: ModelPrompt,
         **kwargs,

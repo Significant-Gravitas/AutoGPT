@@ -17,5 +17,6 @@ status = Status(
         "      1 client <-> multi-agent [multi-project autogpt]\n"
         "      multi-client <-> multi-agent [autogpt service]\n"
         "      Did more backend work to mock webserver with message broker.\n"
+        "5/11: Async deffed everything so far.\n"
     ),
 )
