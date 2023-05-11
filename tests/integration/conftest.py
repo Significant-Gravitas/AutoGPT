@@ -1,10 +1,11 @@
 import os
 
+import openai
 import pytest
 
 from tests.conftest import PROXY
 from tests.vcr.vcr_filter import before_record_request, before_record_response
-import openai
+
 
 @pytest.fixture(scope="session")
 def vcr_config():
@@ -26,6 +27,7 @@ def patch_api_base(requestor):
     new_api_base = f"{PROXY}/v1"
     requestor.api_base = new_api_base
     return requestor
+
 
 @pytest.fixture
 def patched_api_requestor(mocker):

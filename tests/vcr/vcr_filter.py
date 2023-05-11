@@ -30,7 +30,6 @@ else:
 NEW_URL = "api.openai.com"
 
 
-
 def replace_message_content(content: str, replacements: List[Dict[str, str]]) -> str:
     for replacement in replacements:
         pattern = re.compile(replacement["regex"])
@@ -70,7 +69,7 @@ def before_record_response(response: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def before_record_request(request: Any) -> Any:
-    request = replace_request_hostname(request, PROXY, NEW_URL)
+    request = replace_request_hostname(request, ORIGINAL_URL, NEW_URL)
 
     filtered_request = filter_hostnames(request)
     filtered_request_without_dynamic_data = replace_timestamp_in_request(
@@ -81,15 +80,17 @@ def before_record_request(request: Any) -> Any:
 
 from urllib.parse import urlparse, urlunparse
 
+
 def replace_request_hostname(request: Any, original_url: str, new_hostname: str) -> Any:
     parsed_url = urlparse(request.uri)
 
     if parsed_url.hostname in original_url:
-        new_path = parsed_url.path.replace('/proxy_function', '')
-        request.uri = urlunparse(parsed_url._replace(netloc=new_hostname, path=new_path, scheme="https"))
+        new_path = parsed_url.path.replace("/proxy_function", "")
+        request.uri = urlunparse(
+            parsed_url._replace(netloc=new_hostname, path=new_path, scheme="https")
+        )
 
     return request
-
 
 
 def filter_hostnames(request: Any) -> Any:
