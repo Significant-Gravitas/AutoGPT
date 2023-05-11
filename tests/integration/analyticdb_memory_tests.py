@@ -23,11 +23,19 @@ def MockAnalyticDBConnect(*args, **kwargs):
     return mock_conn
 
 
+def MockGetAdaEmbedding(text: str) -> list[float]:
+    index = hash(text) % 1536
+    result = [0.0] * 1536
+    result[index] = 1.0
+    return result
+
+
 class TestAnalyticDBMemory(unittest.TestCase):
     def random_string(self, length):
         return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
     @patch("psycopg2cffi.connect", new=MockAnalyticDBConnect)
+    @patch("autogpt.memory.analyticdb.get_ada_embedding", new=MockGetAdaEmbedding)
     def setUp(self):
         cfg = Config()
         cfg.pg_host = "your_analyticdb_host"
@@ -54,6 +62,7 @@ class TestAnalyticDBMemory(unittest.TestCase):
         for _ in range(5):
             self.memory.add(self.random_string(10))
 
+    @patch("autogpt.memory.analyticdb.get_ada_embedding", new=MockGetAdaEmbedding)
     def test_get_relevant(self):
         query = "I'm interested in artificial intelligence and NLP"
         k = 3
