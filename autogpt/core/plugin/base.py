@@ -1,6 +1,5 @@
 import abc
 import dataclasses
-from enum import StrEnum
 from typing import Type
 
 from autogpt.core.budget import BudgetManager
@@ -31,7 +30,7 @@ Plugin = (
 )
 
 
-class PluginStorageFormat(StrEnum):
+class PluginStorageFormat(str):
     """Supported plugin storage formats.
 
     Plugins can be stored at one of these supported locations.

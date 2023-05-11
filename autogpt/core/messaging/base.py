@@ -2,11 +2,10 @@
 import abc
 from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
 from typing import Callable, Dict
 
 
-class Role(StrEnum):
+class Role(str):
     """Enumeration of all entities capable of sending messages"""
 
     USER = "user"
