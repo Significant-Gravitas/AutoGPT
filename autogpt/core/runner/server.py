@@ -1,4 +1,8 @@
+import uuid
 from collections import defaultdict
+from fastapi import APIRouter, FastAPI, HTTPException, Request
+from pydantic import BaseModel
+from typing import List, Optional, Any
 
 from autogpt.core.agent.base import Agent
 from autogpt.core.messaging.simple import Message, Role, SimpleMessageBroker
@@ -165,3 +169,72 @@ def launch_agent(message: Message):
 
     agent = Agent.from_workspace(workspace_path, message_broker)
     agent.run()
+
+
+###############
+# HTTP SERVER #
+###############
+
+router = APIRouter()
+
+
+class CreateAgentRequestBody(BaseModel):
+    ai_name: str
+    ai_role: str
+    ai_goals: List[str]
+    # could add more config as needed
+
+
+class CreateAgentResponseBody(BaseModel):
+    agent_id: str
+
+
+@router.post("/agents")
+async def create_agent(request: Request, body: CreateAgentRequestBody):
+    """Create a new agent."""
+
+    # validate headers. This is where you would do auth.
+    # currently checks for an api key (as an example)
+    api_key = request.headers.get("openai_api_key")
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="missing openai_api_key header key",
+        )
+
+    # this is where you would do something with the request body
+    # ...
+
+    # initialize the agent
+
+    agent_id = uuid.uuid4().hex
+
+    return {"agent_id": agent_id}
+
+
+class InteractRequestBody(BaseModel):
+    user_input: Optional[str] = None
+
+
+class InteractResponseBody(BaseModel):
+    thoughts: Any # TBD
+    messages: List[str] # for example
+
+
+@router.post("/agents/{agent_id}")
+async def interact(request: Request, body: InteractRequestBody):
+    """Interact with an agent."""
+
+    # check headers
+
+    # check if agent_id exists
+
+    # get agent object from somewhere, e.g. a database/disk/global dict
+
+    # continue agent interaction with user input
+
+    return {"thoughts": "TBD", "messages": ["message1", "message2"]}
+
+
+app = FastAPI()
+app.include_router(router, prefix="/api/v1")
