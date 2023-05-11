@@ -26,9 +26,7 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)
-def test_information_retrieval_challenge_a(
-    kubernetes_agent, monkeypatch
-) -> None:
+def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs and checking the output file content.
 
@@ -49,5 +47,5 @@ def test_information_retrieval_challenge_a(
         assert word in content, f"Expected the file to contain {word}"
 
     content = yaml.safe_load(content)
-    for word in ['Service', 'Deployment', 'Pod']:
-        assert word in content['kind'], f"Expected the file to contain {word}"
+    for word in ["Service", "Deployment", "Pod"]:
+        assert word in content["kind"], f"Expected the file to contain {word}"
