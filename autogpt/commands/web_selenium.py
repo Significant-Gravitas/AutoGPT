@@ -36,17 +36,15 @@ from urllib.parse import urlparse, urljoin
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
-URL_MEMORY = {
-    
-}
+URL_MEMORY = {}
 
 
 @command(
-    "search_website_and_extract_related_links",
-    "Search website and extract related links",
-    '"url": "<url>", "question": "<question_to_find>"',
+    "browse_website",
+    "Browse website and extract related links",
+    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
 )
-def search_website_and_extract_related_links(url: str, question: str) -> str:    
+def browse_website(url: str, question: str) -> str:    
     """Browse a website and return the hyperlinks related to the question
 
     Args:
@@ -55,10 +53,10 @@ def search_website_and_extract_related_links(url: str, question: str) -> str:
 
     Returns:
         str: The answer and links to the user
-    """
+    """    
     global URL_MEMORY
     if url in URL_MEMORY: 
-        print(url, URL_MEMORY[url])
+        #print(url, '->', URL_MEMORY[url])
         url = URL_MEMORY[url]
 
     # qestion을 해결하기 위해 search가 필요할 경우 search_url로 변경합니다.    
@@ -92,27 +90,29 @@ def search_website_and_extract_related_links(url: str, question: str) -> str:
     text_link_pairs = []
     text_link_pairs.extend(get_header_text_link_pairs(html_content, url))
     text_link_pairs.extend(get_main_content_text_llink_pairs(html_content))
-    text_list, _ = zip(*text_link_pairs)    
+    #text_list, _ = zip(*text_link_pairs)    
     #add_header(driver)
-    suggested_next_item = what_should_do_next(text_list, question)    
-    return_msg = get_links_related_to_question_with_chat(text_link_pairs, suggested_next_item)
+    #suggested_next_item = what_should_do_next(text_list, question)    
+    #return_msg = get_links_related_to_question_with_chat(text_link_pairs, suggested_next_item)
+    #suggested_next_item2 = what_should_do_next2(suggested_next_item, return_msg)
+    return_msg = get_links_related_to_question_with_chat(text_link_pairs, question)
     close_browser(driver)
 
-    print('URL_MEMORY_STATE', URL_MEMORY)
+    #print('URL_MEMORY_STATE', URL_MEMORY)    
     
-    return suggested_next_item + ' ' + return_msg
+    return return_msg
     #return return_msg
 
 
 @command(
-    "get_website_text_summary",
-    "Get website text text summary",
+    "get_webpage_text_summary",
+    "Get webpage text summary",
     '"url": "<url>", "question": "<question>"',
 )
-def get_website_text_summary(url: str, question: str, max_len=3500) -> str:
+def get_webpage_text_summary(url: str, question: str, max_len=3500) -> str:
     global URL_MEMORY
     if url in URL_MEMORY:
-        print(url, URL_MEMORY[url])
+        #print(url, URL_MEMORY[url])
         url = URL_MEMORY[url]
     try:
         html_content, driver = get_html_content_with_selenium(url)
@@ -130,13 +130,13 @@ def get_website_text_summary(url: str, question: str, max_len=3500) -> str:
     text = text[:max_len]
     main_lang = get_main_language(text)
     request_msg = (        
-        f'Please summarize the website text in {main_lang}, with reference to "{question}":\n\n'
+        f'Please summarize the webpage text in {main_lang}, with reference to "{question}":\n\n'
         f'{text}'        
     )
     resp = create_chat_completion(
         model=CFG.fast_llm_model,
         messages=[{"role":"user", "content":request_msg}])
-    return f'Website summary: {resp}  '
+    return f'Webpage summary: {resp}  '
 
 
 def get_header_text_link_pairs(html_content, base_url='http:'):
@@ -162,26 +162,32 @@ def get_header_text_link_pairs(html_content, base_url='http:'):
 def get_main_content_text_llink_pairs(html_content):
     text = trafilatura.extract(html_content, include_links=True, include_formatting=True, favor_recall=True,
                          output_format='txt')
+    
+    # Text를 라인 단위로 분리
+    lines = text.split('\n')
+
     # '[...](...)' 형식의 텍스트 추출
     # 정규표현식 패턴 정의
     pattern = r'\[(.*?)\]\((.*?)\)'
-
-    # 텍스트에서 패턴에 맞는 부분 찾기
-    matches = re.findall(pattern, text)
-
+    
     # 텍스트와 링크를 담을 리스트 초기화
     t_link_pairs = []
+    
+    # 각 라인에 대해
+    for line in lines:
+        # 텍스트에서 패턴에 맞는 부분 찾기
+        matches = re.findall(pattern, line)        
 
-    # 각 매치에 대해
-    for match in matches:
-        # match는 (텍스트, 링크) 형태의 튜플
-        t, link = match
-        if t != '':
-            pair = (t, link)
-            if pair not in t_link_pairs:
-                t_link_pairs.append(pair)
-
-    return list(t_link_pairs)
+        # 각 매치에 대해, 가장 첫번째 것만 가져온다.
+        for match in matches:
+            # match는 (텍스트, 링크) 형태의 튜플
+            t, link = match
+            if t != '':
+                # 링크의 유효성 검사
+                parsed_link = urlparse(link)
+                if parsed_link.scheme and parsed_link.netloc and match not in t_link_pairs:
+                    t_link_pairs.append(match)
+    return t_link_pairs
 
 
 def get_main_language(text):
@@ -223,7 +229,7 @@ def what_should_do_next(text_list: str, question: str, max_len=3500) -> str:
     text = cleaned_text[:max_len]
     
     request_msg = (
-        f'{text}'
+        f'{text}\n\n'
         'Currently, we are conducting a web search. In the meantime, the text above has been retrieved from a website where menus and contents are listed. '
         'And they all contain hyperlinks. '
         f'What should we do next to find an """{question}"""?". Please answer shortly.'
@@ -233,9 +239,22 @@ def what_should_do_next(text_list: str, question: str, max_len=3500) -> str:
         model=CFG.fast_llm_model,
         messages=[{"role":"user", "content":request_msg}])
     return f'suggested_next_item: {resp}  '
+
+def what_should_do_next2(suggested_item: str, found_link: str) -> str:
+    
+    request_msg = (
+        f'당신이 "{suggested_item}"을 제안하여,'
+        f'"{found_link}" 의 결과를 가져왔습니다. '        
+        f'What should we do next to do. Please answer shortly.'
+    )
+    
+    resp = create_chat_completion(
+        model=CFG.fast_llm_model,
+        messages=[{"role":"user", "content":request_msg}])
+    return f'suggested_next_item: {resp}  '
     
 
-def get_links_related_to_question_with_chat(links: list[tuple[str, str]], suggested_next_item: str) -> str:
+def get_links_related_to_question_with_chat(links: list[tuple[str, str]], question: str) -> str:
     global URL_MEMORY
     link_texts, hyperlinks = zip(*links)
     cleaned_text = []
@@ -251,16 +270,17 @@ def get_links_related_to_question_with_chat(links: list[tuple[str, str]], sugges
 
     request_msg = (
         f'{text}'
-        '\n\nThe text above has been retrieved from a website where menus and contents are listed. And they all contain hyperlinks.'        
-        f'\n\nsuggested_next_item_to_solve_questoin: """{suggested_next_item}"""'        
-        '\n\nUpon receiving a suggestion like the one above, return the appropriate line number.'
+        '\n\nThe text above is extracted from hyperlinks found on a webpage.'
+        f'\n\nFor the question: "{question}", please answer using the following response format.'
+        '\n\nResponse Format: {"related_line_numbers": []}'
     )
     messages = [{"role": "user", "content": request_msg}]
 
-    resp = create_chat_completion(model=CFG.smart_llm_model, messages=messages)
+    resp = create_chat_completion(model=CFG.fast_llm_model, messages=messages)    
 
     try:
-        line_numbers = eval(resp)
+        resp = eval(resp)
+        line_numbers = resp['related_line_numbers']
         line_numbers = [line_numbers] if isinstance(line_numbers, int) else line_numbers
     except:
         line_numbers = [int(w) for w in resp.split() if w.isdigit()]
