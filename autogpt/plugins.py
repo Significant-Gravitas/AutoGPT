@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 from zipimport import zipimporter
-from colorama import Fore
 
 import openapi_python_client
 import requests
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
+from colorama import Fore
 from openapi_python_client.cli import Config as OpenAPIConfig
 
 from autogpt.config import Config
