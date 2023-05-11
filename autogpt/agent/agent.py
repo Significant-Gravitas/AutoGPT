@@ -20,7 +20,7 @@ from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.memory.base import MemoryProviderSingleton
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
-from autogpt.utils import clean_input
+from autogpt.utils import clean_input, send_chat_message_to_user
 from autogpt.workspace import Workspace
 
 CFG = Config()
@@ -414,11 +414,13 @@ class Agent:
         autonomous_cycles_remaining = 0
 
         if user_input.lower().rstrip() == "y":
+            command_name = None
             user_input = "GENERATE NEXT COMMAND JSON"
         elif user_input.lower().startswith(f"{CFG.authorise_key} -"):
             try:
                 autonomous_cycles_remaining = abs(int(user_input.split(" ")[1]))
                 user_input = "GENERATE NEXT COMMAND JSON"
+                command_name = None
             except ValueError:
                 command_name = "input error"
                 user_input = (
@@ -429,9 +431,10 @@ class Agent:
             command_name = "input error"
             user_input = "Invalid input format."
         elif user_input.lower().strip() == "n":
+            command_name = None
             user_input = "EXIT"
         elif user_input.lower().strip() == "s":
-            user_input = ""
+            user_input = None
             command_name = "self_feedback"
         else:
             user_input = user_input

@@ -17,6 +17,18 @@ except ImportError:
 from autogpt.config import Config
 
 
+def send_chat_message_to_user(report: str):
+    cfg = Config()
+    if not cfg.chat_messages_enabled:
+        return
+    for plugin in cfg.plugins:
+        if not hasattr(plugin, "can_handle_report"):
+            continue
+        if not plugin.can_handle_report():
+            continue
+        plugin.report(report)
+
+
 def clean_input(prompt: str = "", talk=False):
     try:
         cfg = Config()
