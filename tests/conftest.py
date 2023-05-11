@@ -10,9 +10,7 @@ from autogpt.workspace import Workspace
 
 pytest_plugins = ["tests.integration.agent_factory"]
 
-# PROXY = os.environ.get("PROXY")
-PROXY = "https://us-central1-prod-benchmarks-core.cloudfunctions.net/proxy_function"
-
+PROXY = os.environ.get("PROXY")
 
 @pytest.fixture()
 def workspace_root(tmp_path: Path) -> Path:
