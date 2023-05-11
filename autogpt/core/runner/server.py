@@ -77,21 +77,21 @@ class FakeApplicationServer:
         message_broker = SimpleMessageBroker()
         message_broker.create_message_channel(message_channel_name)
 
-        self._message_broker.register_listener(
+        message_broker.register_listener(
             message_channel="autogpt",
             listener=self._add_to_queue,
             message_filter=MessageFilters.is_server_message,
         )
 
-        self._message_broker.register_listener(
+        message_broker.register_listener(
             message_channel="autogpt",
             listener=bootstrap_agent,
             message_filter=MessageFilters.is_user_bootstrap_message,
         )
 
-        self._message_broker.register_listener(
+        message_broker.register_listener(
             message_channel="autogpt",
-            listener=launch_agent,
+            listener=self.launch_agent,
             message_filter=MessageFilters.is_user_launch_message,
         )
 
@@ -217,8 +217,8 @@ class InteractRequestBody(BaseModel):
 
 
 class InteractResponseBody(BaseModel):
-    thoughts: Any # TBD
-    messages: List[str] # for example
+    thoughts: Any  # TBD
+    messages: List[str]  # for example
 
 
 @router.post("/agents/{agent_id}")
