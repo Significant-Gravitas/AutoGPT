@@ -6,6 +6,7 @@ from autogpt.agent import Agent
 from autogpt.config import Config
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
+from autogpt.logs import logger
 
 cfg = Config()
 
@@ -70,22 +71,28 @@ def update_running_summary(
     new_events = copy.deepcopy(new_events)
 
     # Replace "assistant" with "you". This produces much better first person past tense results.
-    for event in new_events:
+    for i, event in enumerate(new_events):
         if event["role"].lower() == "assistant":
-            event["role"] = "you"
+            new_events[i]["role"] = "you"
 
             # Remove "thoughts" dictionary from "content"
-            content_dict = json.loads(event["content"])
-            if "thoughts" in content_dict:
-                del content_dict["thoughts"]
-            event["content"] = json.dumps(content_dict)
+            #TODO: Need a double check here to confirm '"thoughts":' is the correct identifier.
+            if '"thoughts":' in event["content"]:
+                try:
+                    content_dict = json.loads(event["content"])
+                    del content_dict["thoughts"]
+                    new_events[i]["content"] = json.dumps(content_dict)
+                except:
+                    error_str = f"ERROR: invalid json format when attempting to remove 'thoughts' content from event: {event}"
+                    logger.error(error_str)
+                    continue
 
         elif event["role"].lower() == "system":
-            event["role"] = "your computer"
+            new_events[i]["role"] = "your computer"
 
         # Delete all user messages
         elif event["role"] == "user":
-            new_events.remove(event)
+            new_events.pop(i)    
 
     # This can happen at any point during execution, not just the beginning
     if len(new_events) == 0:
