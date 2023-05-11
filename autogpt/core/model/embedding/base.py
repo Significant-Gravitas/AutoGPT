@@ -33,7 +33,7 @@ class EmbeddingModel(Model):
     @abc.abstractmethod
     def __init__(
         self,
-        configuration: Configuration,
+        configuration: "Configuration",
     ):
         ...
 
