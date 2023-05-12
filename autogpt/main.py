@@ -133,6 +133,7 @@ def run_auto_gpt(
         "autogpt.commands.write_tests",
         "autogpt.app",
         "autogpt.commands.task_statuses",
+        "autogpt.commands.internals",
     ]
     logger.debug(
         f"The following command categories are disabled: {cfg.disabled_command_categories}"
