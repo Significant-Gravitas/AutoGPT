@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 import platform
 from pathlib import Path
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 import distro
 import yaml
@@ -79,7 +79,12 @@ class AIConfig:
 
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
-        ai_goals = config_params.get("ai_goals", [])
+        ai_goals = [
+            str(goal).strip("{}").replace("'", "").replace('"', "")
+            if isinstance(goal, dict)
+            else str(goal)
+            for goal in config_params.get("ai_goals", [])
+        ]
         api_budget = config_params.get("api_budget", 0.0)
         # type: Type[AIConfig]
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)

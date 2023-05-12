@@ -1,4 +1,5 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
+[![Official Website](https://img.shields.io/badge/Official%20Website-agpt.co-blue?style=flat&logo=world&logoColor=white)](https://agpt.co)
 [![Unit Tests](https://img.shields.io/github/actions/workflow/status/Significant-Gravitas/Auto-GPT/ci.yml?label=unit%20tests)](https://github.com/Significant-Gravitas/Auto-GPT/actions/workflows/ci.yml)
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
 [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)](https://github.com/Significant-Gravitas/Auto-GPT/stargazers)
@@ -91,6 +92,7 @@ Your support is greatly appreciated. Development of this free, open-source proje
 
 ## Quickstart
 
+0. Check out the [wiki](https://github.com/Significant-Gravitas/Auto-GPT/wiki)
 1. Get an OpenAI [API Key](https://platform.openai.com/account/api-keys)
 2. Download the [latest release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
 3. Follow the [installation instructions][docs/setup]
@@ -99,21 +101,21 @@ Your support is greatly appreciated. Development of this free, open-source proje
 
 Please see the [documentation][docs] for full setup instructions and configuration options.
 
-[docs]: https://significant-gravitas.github.io/Auto-GPT/
+[docs]: https://docs.agpt.co/
 
 ## 📖 Documentation
 * [⚙️ Setup][docs/setup]
 * [💻 Usage][docs/usage]
 * [🔌 Plugins][docs/plugins]
 * Configuration
-  * [🔍 Web Search](https://significant-gravitas.github.io/Auto-GPT/configuration/search/)
-  * [🧠 Memory](https://significant-gravitas.github.io/Auto-GPT/configuration/memory/)
-  * [🗣️ Voice (TTS)](https://significant-gravitas.github.io/Auto-GPT/configuration/voice/)
-  * [🖼️ Image Generation](https://significant-gravitas.github.io/Auto-GPT/configuration/imagegen/)
+  * [🔍 Web Search](https://docs.agpt.co/configuration/search/)
+  * [🧠 Memory](https://docs.agpt.co/configuration/memory/)
+  * [🗣️ Voice (TTS)](https://docs.agpt.co/configuration/voice/)
+  * [🖼️ Image Generation](https://docs.agpt.co/configuration/imagegen/)
 
-[docs/setup]: https://significant-gravitas.github.io/Auto-GPT/setup/
-[docs/usage]: https://significant-gravitas.github.io/Auto-GPT/usage/
-[docs/plugins]: https://significant-gravitas.github.io/Auto-GPT/plugins/
+[docs/setup]: https://docs.agpt.co/setup/
+[docs/usage]: https://docs.agpt.co/usage/
+[docs/plugins]: https://docs.agpt.co/plugins/
 
 ## ⚠️ Limitations
 

@@ -35,15 +35,6 @@ def build_default_prompt_generator() -> PromptGenerator:
     for constraint in prompt_config.constraints:
         prompt_generator.add_constraint(constraint)
 
-    # Define the command list
-    commands = [
-        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
-    ]
-
-    # Add commands to the PromptGenerator object
-    for command_label, command_name, args in commands:
-        prompt_generator.add_command(command_label, command_name, args)
-
     # Add resources to the PromptGenerator object
     for resource in prompt_config.resources:
         prompt_generator.add_resource(resource)
