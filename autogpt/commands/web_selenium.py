@@ -41,11 +41,11 @@ URL_MEMORY = {}
 
 
 @command(
-    "browse_website",
+    "browse_website_and_extract_related_links",
     "Browse website and extract related links",
     '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
 )
-def browse_website(url: str, question: str) -> str:    
+def browse_website_and_extract_related_links(url: str, question: str) -> str:    
     """Browse a website and return the hyperlinks related to the question
 
     Args:
@@ -72,9 +72,49 @@ def browse_website(url: str, question: str) -> str:
     return_msg = get_links_related_to_question_with_chat(text_link_pairs, question)
     close_browser(driver)
 
+    return return_msg
+
+
+
+@command(
+    "browse_website_and_extract_related_text",
+    "Browse website and extract related text",
+    '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
+)
+def browse_website_and_extract_related_text(url: str, question: str) -> str:    
+    """Browse a website and return the hyperlinks related to the question
+
+    Args:
+        url (str): The url of the website to browse
+        question (str): The question asked by the user
+
+    Returns:
+        str: The answer and links to the user
+    """    
+    global URL_MEMORY
+    if url in URL_MEMORY: 
+        #print(url, '->', URL_MEMORY[url])
+        url = URL_MEMORY[url]    
+    
+    try:
+        driver, text = scrape_text_with_selenium(url)
+    except WebDriverException as e:
+        msg = e.msg.split("\n")[0]
+        return f"Error: {msg}", None
+    """
+    message = summary.create_message(text, driver)
+    resp = create_chat_completion(
+        model=CFG.fast_llm_model,
+        messages=[message])
+    """
+    add_header(driver)
+    summary_text = summary.summarize_text(url, text, question)
+
+    close_browser(driver)
+
     #print('URL_MEMORY_STATE', URL_MEMORY)    
     
-    return return_msg
+    return summary_text
     #return return_msg
 
 
@@ -219,7 +259,9 @@ def get_links_related_to_question_with_chat(links: list[tuple[str, str]], questi
             link = links[i][1]
             link_nick = f'URL_{len(URL_MEMORY)}'   
             URL_MEMORY[link_nick] = link
-            selected_links.append(f"{cleaned_text[i]} (url:{link_nick})")
+            selected_links.append(f"{cleaned_text[i]} ({link_nick})")
+            #if len(f'{selected_links}') > 1000:
+            #    break
             
         return_msg = f"Links: {selected_links}"
     else:
