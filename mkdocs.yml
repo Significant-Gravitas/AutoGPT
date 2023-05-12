@@ -23,11 +23,13 @@ nav:
       - Tasks:
         - Tasking: challenges/tasking/tasks.md
       - Planning:
+        - Coordination: challenges/planning/coordination.md
         - Plans: challenges/planning/planning.md 
         - Tool use: challenges/tool-use/using-tools.md
         - Option: challenges/options/explorations.md
         - Strategy: challenges/strategize/strategies.md
       - Learning:
+        - Trial and Error: challenges/experiential/trial_and_error.md
         - Experience: challenges/experiential/experience.md
         - Reward: challenges/fitness_function/reward_system.md
       - Memory:
@@ -38,6 +40,7 @@ nav:
       - Information retrieval:
         - Introduction: challenges/information_retrieval/introduction.md
         - Information Retrieval Challenge A: challenges/information_retrieval/challenge_a.md
+        - Read The Fine Manual: challenges/information_retrieval/rtfm.md
   - Submit a Challenge: challenges/submit.md
   - Beat a Challenge: challenges/beat.md
 
