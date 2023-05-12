@@ -20,6 +20,16 @@ nav:
   - Challenges:
     - Introduction: challenges/introduction.md
     - List of Challenges:
+      - Tasks:
+        - Tasking: challenges/tasking/tasks.md
+      - Planning:
+        - Plans: challenges/planning/planning.md 
+        - Tool use: challenges/tool-use/using-tools.md
+        - Option: challenges/options/explorations.md
+        - Strategy: challenges/strategize/strategies.md
+      - Learning:
+        - Experience: challenges/experiential/experience.md
+        - Reward: challenges/fitness_function/reward_system.md
       - Memory:
         - Introduction: challenges/memory/introduction.md
         - Memory Challenge A: challenges/memory/challenge_a.md
