@@ -16,24 +16,11 @@ jobs:
         with:
           fetch-depth: 0  # This is necessary to fetch all branches and tags
 
-      - name: Download artifact
+      - name: Download diff artifact
         uses: dawidd6/action-download-artifact@v2
         with:
           github_token: ${{secrets.GITHUB_TOKEN}}
           workflow: Python CI
-          name: cassettes-${{ github.event.pull_request.number }}
+          name: cassette-diff
           path: .
           pr: ${{ github.event.pull_request.number }}
-
-
-
-      - name: Configure Git
-        run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "<email>"
-
-      - name: Commit and push
-        run: |
-          git add '**/cassettes/**/*.yaml'
-          git commit -m "Update cassettes" || echo "No changes to commit"
-          git push || echo "No changes to push"

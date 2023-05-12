@@ -83,8 +83,12 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
-      - name: Upload cassettes as artifact
-        uses: actions/upload-artifact@v2
+      - name: Create diff and save to file
+        run: |
+          git diff HEAD^ HEAD > cassette-diff-${{ github.event.pull_request.number }}-${{ github.sha }}.txt
+
+      - name: Upload diff as artifact
+        uses: actions/upload-artifact@v3
         with:
-          name: cassettes-${{ github.event.pull_request.number }}
-          path: '**/cassettes/**/*.yaml'
+          name: cassette-diff
+          path: cassette-diff-${{ github.event.pull_request.number }}-${{ github.sha }}.txt
