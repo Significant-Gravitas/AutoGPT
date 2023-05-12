@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11"]
+        python-version: [ "3.10", "3.11" ]
 
     steps:
       - name: Check out repository
@@ -77,17 +77,11 @@ jobs:
         run: |
           git add .
 
-      - name: Create diff and save to file
-        run: |
-          git diff --cached > cassette-diff-${{ github.run_number }}-${{ github.sha }}.txt || echo "No diff to create"
-
       - name: Create new branch and commit changes
         run: |
-          git checkout -b Auto-GPT-cassettes || git checkout Auto-GPT-cassettes
+          git checkout -b cassette-diff-${{ github.run_number }}-${{ github.sha }}
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
-          git add cassette-diff-${{ github.run_number }}-${{ github.sha }}.txt
-          git commit -m "Add cassette diff"
-          git push origin Auto-GPT-cassettes
-      
-
+          git commit -m "Add new cassettes"
+          git push --set-upstream origin cassette-diff-${{ github.run_number }}-${{ github.sha }}
+  
