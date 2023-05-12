@@ -19,30 +19,6 @@ jobs:
       - name: Fetch all branches
         run: git fetch --all
 
-      - name: Setup Git user and GitHub token
-        run: |
-          git config user.email "github-actions@github.com"
-          git config user.name "GitHub Actions"
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-
-      - name: Find cassette branch and checkout
-        run: |
-          CASSETTE_BRANCH=$(git branch -r --list "origin/cassette-diff-${{ github.event.pull_request.number }}")
-          if [ -n "$CASSETTE_BRANCH" ]; then
-            git switch ${CASSETTE_BRANCH#origin/}
-          else
-            echo "No cassette branch found for this PR"
-            exit 1
-          fi
-
-      - name: Create and check out new branch for PR
-        run: |
-          git checkout -b cassette-pr-${{ github.event.pull_request.number }}
-
-      - name: Push new branch
-        run: |
-          git push -u origin cassette-pr-${{ github.event.pull_request.number }}
-
       - name: Create PR
         id: create_pr
         uses: peter-evans/create-pull-request@v5

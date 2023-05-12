@@ -86,5 +86,5 @@ jobs:
           git config user.name "GitHub Actions"
           git commit -m "Add new cassettes"
           git checkout -b cassette-diff-${{ github.event.pull_request.number }}
-          git push origin cassette-diff-${{ github.event.pull_request.number }}
+          git push -f origin cassette-diff-${{ github.event.pull_request.number }}
           echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
