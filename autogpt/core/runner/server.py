@@ -93,7 +93,7 @@ class FakeApplicationServer:
 
         return message_broker
 
-    def _add_to_queue(self, message: Message):
+    async def _add_to_queue(self, message: Message):
         self.message_queue[message.metadata.sender.name].append(message)
 
     async def _send_message(

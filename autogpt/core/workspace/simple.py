@@ -26,18 +26,33 @@ class SimpleWorkspace(Workspace):
         return Path(self._configuration["root"])
 
     @property
-    def restrict_to_worksfpace(self) -> bool:
+    def debug_log_path(self) -> Path:
+        return self.root / "logs" / "debug.log"
+
+    @property
+    def cycle_log_path(self) -> Path:
+        return self.root / "logs" / "cycle.log"
+
+    @property
+    def restrict_to_workspace(self) -> bool:
         return self._configuration["restrict_to_workspace"]
 
     @staticmethod
     def setup_workspace(configuration: Configuration, logger: logging.Logger) -> Path:
-        # Need to figure out some root directory for building agent workspaces.
+        # TODO: Need to figure out some root directory for building agent workspaces.
         ai_name = configuration.planner["ai_name"]
         workspace_root = Path.home() / "auto-gpt" / ai_name
         workspace_root.mkdir(parents=True, exist_ok=True)
         configuration.workspace["root"] = str(workspace_root)
         with (workspace_root / "configuration.yml").open("w") as f:
             yaml.safe_dump(configuration.to_dict(), f)
+
+        # TODO: What are all the kinds of logs we want here?
+        log_path = workspace_root / "logs"
+        log_path.mkdir(parents=True, exist_ok=True)
+        (log_path / "debug.log").touch()
+        (log_path / "cycle.log").touch()
+
         return workspace_root
 
     def get_path(self, relative_path: str | Path) -> Path:

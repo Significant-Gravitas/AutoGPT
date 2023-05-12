@@ -139,27 +139,22 @@ class SimpleAgentFactory:
 
         return model_response
 
-    def provision_new_agent(self, configuration: Configuration):
+    def provision_new_agent(self, configuration: Configuration) -> None:
         """Provision a new agent.
 
         This will create a new workspace and set up all the agent's on-disk resources.
 
         """
-
-        # TODO: Okay, we need to
-        #   1. Create a new workspace directory
-        #   2. Setup the memory backend (create on disk if needed,
-        #      otherwise just set configuration)
-        #   3. Persist all plugins to the workspace directory so they can be loaded
-        #      from there on agent startup and avoid any, like version issues and stuff
-        #   4. Setup logging directories/files/services.
-        #   5. Persist the configuration to the workspace directory
-
         workspace_class: Type[Workspace] = self.get_system_class(
             "workspace",
             configuration,
         )
         workspace_path = workspace_class.setup_workspace(configuration, self._logger)
+        # TODO: Still need to
+        #   - Setup the memory backend (create on disk if needed,
+        #     otherwise just set configuration)
+        #   - Persist all plugins to the workspace directory so they can be loaded
+        #     from there on agent startup and avoid any, like version issues and stuff
 
     def __repr__(self):
         return f"{self.__class__.__name__}()"

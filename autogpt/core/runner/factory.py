@@ -73,6 +73,14 @@ class AgentFactoryMessageEmitter:
             message_type="log",
         )
 
+    async def send_agent_setup_complete_message(self):
+        await self._emitter.send_message(
+            content={
+                "message": "Agent setup complete.",
+            },
+            message_type="log",
+        )
+
 
 async def bootstrap_agent(
     message: Message,
@@ -113,9 +121,5 @@ async def bootstrap_agent(
     # Set the agents goals
     configuration.planner.update(model_response.content)
 
-    # TODO: Provision memory backend. Waiting on interface to stabilize
-
-    await message_broker.send_message(
-        "agent_setup_complete",
-        {"message": "Agent setup complete."},
-    )
+    agent_factory.provision_new_agent(configuration)
+    await agent_factory_emitter.send_agent_setup_complete_message()
