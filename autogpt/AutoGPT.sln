@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.33627.172
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "AutoGPT", "AutoGPT\AutoGPT.pyproj", "{B6D61750-4E2F-4E52-8131-8CA1DA582C68}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B6D61750-4E2F-4E52-8131-8CA1DA582C68}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6D61750-4E2F-4E52-8131-8CA1DA582C68}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1B1BAD90-F00E-4F97-B132-513B72C6A1DB}
+	EndGlobalSection
+EndGlobal
