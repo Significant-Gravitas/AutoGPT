@@ -34,7 +34,7 @@ CFG = Config()
     '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
 )
 @validate_url
-def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
+def browse_website(url: str, question: str) -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -50,7 +50,7 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
         msg = e.msg.split("\n")[0]
-        return f"Error: {msg}", None
+        return f"Error: {msg}"
 
     add_header(driver)
     summary_text = summary.summarize_text(url, text, question, driver)
@@ -60,7 +60,7 @@ def browse_website(url: str, question: str) -> tuple[str, WebDriver]:
     if len(links) > 5:
         links = links[:5]
     close_browser(driver)
-    return f"Answer gathered from website: {summary_text} \n \n Links: {links}", driver
+    return f"Answer gathered from website: {summary_text} \n \n Links: {links}"
 
 
 def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
