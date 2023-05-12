@@ -1,14 +1,9 @@
 import abc
-import typing
 from dataclasses import dataclass
 from typing import Dict
 
 from autogpt.core.model.base import Model, ModelInfo, ModelResponse
-
-if typing.TYPE_CHECKING:
-    from autogpt.core.configuration import Configuration
-    from autogpt.core.planning.base import ModelPrompt
-    from autogpt.core.workspace import Workspace
+from autogpt.core.planning.base import ModelPrompt
 
 
 @dataclass
