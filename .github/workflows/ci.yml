@@ -13,6 +13,7 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    if: contains(github.head_ref, 'cassette-github-action-PR') == false
     env:
       min-python-version: "3.10"
 
