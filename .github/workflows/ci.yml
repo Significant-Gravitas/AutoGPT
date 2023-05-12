@@ -94,10 +94,11 @@ jobs:
           else
             git checkout -b cassette-diff-${{ github.run_number }}-${{ github.sha }}
             if [ -n "$COMMIT_SHA" ] && git cat-file -e $COMMIT_SHA^{commit}; then
-              git cherry-pick $COMMIT_SHA
+              git cherry-pick $COMMIT_SHA || git cherry-pick --skip
             fi
           fi
           git push --force origin cassette-diff-${{ github.run_number }}-${{ github.sha }} || echo "Push failed, commits already pushed"
+      
       
       
       
