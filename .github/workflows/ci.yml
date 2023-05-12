@@ -88,8 +88,13 @@ jobs:
 
       - name: Create new branch and cherry-pick commit
         run: |
-          git checkout cassette-diff-${{ github.run_number }}-${{ github.sha }} || git checkout -b cassette-diff-${{ github.run_number }}-${{ github.sha }}
+          if git show-ref --quiet refs/heads/cassette-diff-${{ github.run_number }}-${{ github.sha }}; then
+            git checkout cassette-diff-${{ github.run_number }}-${{ github.sha }}
+          else
+            git checkout -b cassette-diff-${{ github.run_number }}-${{ github.sha }}
+          fi
           git cherry-pick $COMMIT_SHA
           git push origin cassette-diff-${{ github.run_number }}-${{ github.sha }} || echo "Push failed, commits already pushed"
+      
       
       
