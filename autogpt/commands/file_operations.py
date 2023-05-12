@@ -8,6 +8,9 @@ from typing import Dict, Generator, Literal, Tuple
 
 import charset_normalizer
 import requests
+
+import re
+
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
 
@@ -16,6 +19,7 @@ from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
+
 
 CFG = Config()
 
@@ -143,21 +147,30 @@ def split_file(
         start += max_length - overlap
 
 
-@command("read_file", "Read file", '"filename": "<filename>"')
-def read_file(filename: str) -> str:
-    """Read a file and return the contents
+@command("read_file", "Read file", '"filename": "<filename>", "search_pattern": "<pattern>"')
+def read_file(filename: str, search_pattern: str = None) -> str:
+    """Read a file and search for lines matching a pattern
 
     Args:
         filename (str): The name of the file to read
+        search_pattern (str, optional): The pattern to search for in each line
 
     Returns:
-        str: The contents of the file
+        str: The lines that match the search pattern
     """
     try:
         charset_match = charset_normalizer.from_path(filename).best()
         encoding = charset_match.encoding
         logger.debug(f"Read file '{filename}' with encoding '{encoding}'")
-        return str(charset_match)
+
+        with open(filename, 'r', encoding=encoding) as file:
+            lines = file.readlines()
+
+            if search_pattern:
+                matches = [line for line in lines if re.search(search_pattern, line)]
+                return ''.join(matches)
+
+            return str(charset_match) 
     except Exception as err:
         return f"Error: {err}"
 
