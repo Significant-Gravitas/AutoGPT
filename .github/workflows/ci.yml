@@ -79,9 +79,8 @@ jobs:
 
       - name: Create new branch and commit changes
         run: |
-          git checkout -b cassette-diff-${{ github.run_number }}-${{ github.sha }}
+          git checkout cassette-diff-${{ github.run_number }}-${{ github.sha }} || git checkout -b cassette-diff-${{ github.run_number }}-${{ github.sha }}
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git commit -m "Add new cassettes"
-          git push --set-upstream origin cassette-diff-${{ github.run_number }}-${{ github.sha }}
-  
+          git push origin cassette-diff-${{ github.run_number }}-${{ github.sha }} || echo "Push failed, commits already pushed"
