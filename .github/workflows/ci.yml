@@ -79,3 +79,14 @@ jobs:
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
+
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v5
+
+      - name: Comment PR URL in the current PR
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          message: |
+            New pull request created: [#${{ steps.cpr.outputs.pull-request-number }}](${{ steps.cpr.outputs.pull-request-url }})
