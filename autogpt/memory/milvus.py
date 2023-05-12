@@ -31,7 +31,7 @@ class MilvusMemory(MemoryProviderSingleton):
             secure=self.secure,
         )
 
-        self.init_collection(cfg)
+        self.init_collection()
 
     def configure(self, cfg: Config) -> None:
         # init with configuration.
@@ -69,13 +69,11 @@ class MilvusMemory(MemoryProviderSingleton):
                     "params": {},
                 }
 
-    def init_collection(self, cfg: Config) -> None:
+    def init_collection(self) -> None:
         """Initialize collection in vector database."""
         fields = [
             FieldSchema(name="pk", dtype=DataType.INT64, is_primary=True, auto_id=True),
-            FieldSchema(
-                name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=cfg.embed_dim
-            ),
+            FieldSchema(name="embeddings", dtype=DataType.FLOAT_VECTOR, dim=1536),
             FieldSchema(name="raw_text", dtype=DataType.VARCHAR, max_length=65535),
         ]
 

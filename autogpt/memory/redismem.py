@@ -14,6 +14,15 @@ from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton
 
+SCHEMA = [
+    TextField("data"),
+    VectorField(
+        "embedding",
+        "HNSW",
+        {"TYPE": "FLOAT32", "DIM": 1536, "DISTANCE_METRIC": "COSINE"},
+    ),
+]
+
 
 class RedisMemory(MemoryProviderSingleton):
     def __init__(self, cfg):
@@ -25,19 +34,10 @@ class RedisMemory(MemoryProviderSingleton):
 
         Returns: None
         """
-        schema = [
-            TextField("data"),
-            VectorField(
-                "embedding",
-                "HNSW",
-                {"TYPE": "FLOAT32", "DIM": cfg.embed_dim, "DISTANCE_METRIC": "COSINE"},
-            ),
-        ]
-
         redis_host = cfg.redis_host
         redis_port = cfg.redis_port
         redis_password = cfg.redis_password
-        self.dimension = cfg.embed_dim
+        self.dimension = 1536
         self.redis = redis.Redis(
             host=redis_host,
             port=redis_port,
@@ -67,7 +67,7 @@ class RedisMemory(MemoryProviderSingleton):
             self.redis.flushall()
         try:
             self.redis.ft(f"{cfg.memory_index}").create_index(
-                fields=schema,
+                fields=SCHEMA,
                 definition=IndexDefinition(
                     prefix=[f"{cfg.memory_index}:"], index_type=IndexType.HASH
                 ),

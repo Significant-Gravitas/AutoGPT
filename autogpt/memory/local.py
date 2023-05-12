@@ -14,28 +14,16 @@ EMBED_DIM = 1536
 SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS
 
 
-def create_default_embeddings(embed_dim: int):
-    return np.zeros((0, embed_dim)).astype(np.float32)
+def create_default_embeddings():
+    return np.zeros((0, EMBED_DIM)).astype(np.float32)
 
 
 @dataclasses.dataclass
 class CacheContent:
     texts: List[str] = dataclasses.field(default_factory=list)
     embeddings: np.ndarray = dataclasses.field(
-        default_factory=create_default_embeddings(EMBED_DIM)
+        default_factory=create_default_embeddings
     )
-
-    def __init__(self, embed_dim: int) -> None:
-        """Initialize a class instance
-
-        Args:
-            embed_dim: Embedding dimension
-
-        Returns:
-            None
-        """
-        self.texts: List[str] = []
-        self.embeddings: np.ndarray = create_default_embeddings(embed_dim)
 
 
 class LocalCache(MemoryProviderSingleton):
@@ -59,9 +47,7 @@ class LocalCache(MemoryProviderSingleton):
         with self.filename.open("w+b") as f:
             f.write(file_content)
 
-        self.embed_dim = cfg.embed_dim
-
-        self.data = CacheContent(self.embed_dim)
+        self.data = CacheContent()
 
     def add(self, text: str):
         """
@@ -100,7 +86,7 @@ class LocalCache(MemoryProviderSingleton):
 
         Returns: A message indicating that the memory has been cleared.
         """
-        self.data = CacheContent(self.embed_dim)
+        self.data = CacheContent()
         return "Obliviated"
 
     def get(self, data: str) -> list[Any] | None:
@@ -115,7 +101,7 @@ class LocalCache(MemoryProviderSingleton):
         return self.get_relevant(data, 1)
 
     def get_relevant(self, text: str, k: int) -> list[Any]:
-        """
+        """ "
         matrix-vector mult to find score-for-each-row-of-matrix
          get indices for top-k winning scores
          return texts for those indices
