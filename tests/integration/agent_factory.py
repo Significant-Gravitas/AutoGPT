@@ -108,7 +108,7 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
         config=ai_config,
         next_action_count=0,
         system_prompt=system_prompt,
-        triggering_prompt=triggering_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
     )
 
