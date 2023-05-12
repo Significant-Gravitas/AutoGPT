@@ -86,5 +86,5 @@ jobs:
       - name: Upload cassettes as artifact
         uses: actions/upload-artifact@v2
         with:
-          name: cassettes
+          name: cassettes-${{ github.event.pull_request.number }}
           path: '**/cassettes/**/*.yaml'

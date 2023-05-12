@@ -21,9 +21,10 @@ jobs:
         with:
           github_token: ${{secrets.GITHUB_TOKEN}}
           workflow: Python CI
-          name: cassettes
+          name: cassettes-${{ github.event.pull_request.number }}
           path: .
           pr: ${{ github.event.pull_request.number }}
+
 
 
       - name: Configure Git
