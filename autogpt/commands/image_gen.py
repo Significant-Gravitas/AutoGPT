@@ -11,6 +11,7 @@ from PIL import Image
 
 from autogpt.commands.command import command
 from autogpt.config import Config
+from autogpt.logs import logger
 
 CFG = Config()
 
@@ -67,8 +68,15 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
         response = requests.post(
             API_URL,
             headers=headers,
-            json={"inputs": prompt},
+            json={
+                "inputs": prompt,
+            },
         )
+
+        image = Image.open(io.BytesIO(response.content))
+        logger.info(f"Image Generated for prompt:{prompt}")
+
+        image.save(filename)
 
         if response.ok:
             try:
@@ -109,12 +117,11 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
     Returns:
         str: The filename of the image
     """
-    openai.api_key = CFG.openai_api_key
 
     # Check for supported image sizes
     if size not in [256, 512, 1024]:
         closest = min([256, 512, 1024], key=lambda x: abs(x - size))
-        print(
+        logger.info(
             f"DALL-E only supports image sizes of 256x256, 512x512, or 1024x1024. Setting to {closest}, was {size}."
         )
         size = closest
@@ -124,9 +131,10 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
         n=1,
         size=f"{size}x{size}",
         response_format="b64_json",
+        api_key=CFG.openai_api_key,
     )
 
-    print(f"Image Generated for prompt:{prompt}")
+    logger.info(f"Image Generated for prompt:{prompt}")
 
     image_data = b64decode(response["data"][0]["b64_json"])
 
@@ -175,7 +183,7 @@ def generate_image_with_sd_webui(
         },
     )
 
-    print(f"Image Generated for prompt:{prompt}")
+    logger.info(f"Image Generated for prompt:{prompt}")
 
     # Save the image to disk
     response = response.json()

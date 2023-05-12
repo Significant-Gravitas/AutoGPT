@@ -6,6 +6,7 @@ from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.config import Config
+from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.generator import PromptGenerator
@@ -119,10 +120,6 @@ def execute_command(
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
-        elif command_name == "do_nothing":
-            return f"Error: No action performed. Reason: {arguments['reason']}"
-        elif command_name == "task_complete":
-            shutdown()
         else:
             for command in prompt.commands:
                 if (
@@ -170,12 +167,6 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
         str or list: The hyperlinks on the page
     """
     return scrape_links(url)
-
-
-def shutdown() -> NoReturn:
-    """Shut down the program"""
-    print("Shutting down...")
-    quit()
 
 
 @command(
