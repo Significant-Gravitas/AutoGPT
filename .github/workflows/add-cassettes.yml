@@ -46,4 +46,4 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           message: |
-            New pull request created for cassettes: [HERE](${{ steps.create_pr.outputs.pull-request-url }}. Please merge it asap.)
+            New pull request created for cassettes: [HERE](${{ steps.create_pr.outputs.pull-request-url }}). Please merge it asap.
