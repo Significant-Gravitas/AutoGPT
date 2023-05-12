@@ -98,7 +98,32 @@ jobs:
             fi
           fi
           git push --force origin cassette-diff-${{ github.event.pull_request.number }} || echo "Push failed, commits already pushed"
-      
-      
-      
+
+      - name: Create PR and comment link in original PR
+        uses: actions/github-script@v5
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            const { owner, repo, number } = context.issue;
+            const branch = `cassette-diff-${number}`;
+            const title = `Cassette diff PR for PR #${number}`;
+            const body = `This is the cassette diff PR for PR #${number}`;
+
+            // Create a new PR
+            const newPr = await github.pulls.create({
+              owner,
+              repo,
+              title,
+              head: branch,
+              base: 'master',
+              body,
+            });
+
+            // Comment in the original PR
+            await github.issues.createComment({
+              owner,
+              repo,
+              issue_number: number,
+              body: `Created new cassette diff PR: [#${newPr.data.number}](${newPr.data.html_url})`,
+            });
     
