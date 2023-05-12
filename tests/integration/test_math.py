@@ -18,5 +18,6 @@ def test_evaluate_expression():
 
     # Test case 3: Invalid expression
     expr = "2 / 0"  # Division by zero
-    with pytest.raises(ZeroDivisionError):
+    with pytest.raises(ZeroDivisionError) as exc_info:
         evaluate_expression(expr)
+    assert str(exc_info.value) == "Error: Division by zero"
