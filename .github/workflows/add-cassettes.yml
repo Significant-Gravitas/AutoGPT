@@ -19,14 +19,17 @@ jobs:
       - name: Fetch all branches
         run: git fetch --all
 
+      - name: Set user information
+        run: |
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+
       - name: Find cassette branch and cherry-pick
         run: |
           CASSETTE_BRANCH=$(git branch -r --list "origin/cassette-diff-${{ github.event.pull_request.number }}")
           if [ -n "$CASSETTE_BRANCH" ]; then
             git switch ${GITHUB_REF#refs/heads/}
             git cherry-pick $(git log $CASSETTE_BRANCH -n 1 --pretty=format:"%H")
-            git config user.email "github-actions@github.com"
-            git config user.name "GitHub Actions"
             git push origin ${GITHUB_REF#refs/heads/}
           else
             echo "No cassette branch found for this PR"
