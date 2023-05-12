@@ -23,3 +23,9 @@ The challenge focuses on addressing the issue of redundant task repetition in an
 ## Success Evaluation
 
 The success of the challenge is evaluated based on the reduction of redundant task repetition in the AI agent's behavior. The evaluation involves measuring the number of "thinking steps" required to accomplish goals and tracking changes over time. Success is demonstrated by a consistent decrease in the number of thinking steps, indicating that the agent is becoming more efficient in avoiding redundant work. Additionally, the success evaluation involves verifying that regression tests using the prompt/objective library yield positive results, confirming that modifications or updates do not reintroduce the problem. The ultimate measure of success is an AI agent that demonstrates improved performance, reduced redundant task repetition, and enhanced efficiency in achieving goals.
+
+
+## Future Challenges
+
+Once we have a working system in place, we should consider adapting this system to also maintain regression tests for other crucial metrics, especially in terms of API tokens required to accomplish a certain goal (in other words, agents able to accomplish a task using fewer API/LLM steps should be rewarded!)
+
