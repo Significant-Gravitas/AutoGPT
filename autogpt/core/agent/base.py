@@ -1,9 +1,6 @@
-from __future__ import annotations
-
 import abc
-
-from autogpt.core.messaging import MessageBroker
-from autogpt.core.workspace import Workspace
+import logging
+from pathlib import Path
 
 
 class Agent(abc.ABC):
@@ -14,8 +11,10 @@ class Agent(abc.ABC):
     @classmethod
     @abc.abstractmethod
     def from_workspace(
-        cls, workpace_path: Workspace, message_broker: MessageBroker
-    ) -> Agent:
+        cls,
+        workspace_path: Path,
+        logger: logging.Logger,
+    ) -> "Agent":
         ...
 
     @abc.abstractmethod

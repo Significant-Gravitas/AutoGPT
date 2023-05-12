@@ -34,6 +34,10 @@ class SimpleWorkspace(Workspace):
         return self.root / "logs" / "cycle.log"
 
     @property
+    def configuration_path(self) -> Path:
+        return self.root / "configuration.yml"
+
+    @property
     def restrict_to_workspace(self) -> bool:
         return self._configuration["restrict_to_workspace"]
 
@@ -54,6 +58,12 @@ class SimpleWorkspace(Workspace):
         (log_path / "cycle.log").touch()
 
         return workspace_root
+
+    @staticmethod
+    def load_configuration(workspace_root: Path) -> Configuration:
+        with (workspace_root / "configuration.yml").open("r") as f:
+            configuration = yaml.safe_load(f)
+        return Configuration.from_dict(configuration)
 
     def get_path(self, relative_path: str | Path) -> Path:
         """Get the full path for an item in the workspace.

@@ -1,8 +1,8 @@
 from collections import defaultdict
 
-from autogpt.core.agent.base import Agent
 from autogpt.core.messaging.simple import Message, Role, SimpleMessageBroker
-from autogpt.core.runner.factory import bootstrap_agent
+from autogpt.core.runner.agent import agent_context
+from autogpt.core.runner.factory import agent_factory_context
 
 ##################################################
 # Hacking stuff together for an in-process model #
@@ -81,13 +81,13 @@ class FakeApplicationServer:
 
         message_broker.register_listener(
             message_channel="autogpt",
-            listener=bootstrap_agent,
+            listener=agent_factory_context.bootstrap_agent,
             message_filter=MessageFilters.is_user_bootstrap_message,
         )
 
         message_broker.register_listener(
             message_channel="autogpt",
-            listener=launch_agent,
+            listener=agent_context.launch_agent,
             message_filter=MessageFilters.is_user_launch_message,
         )
 
@@ -149,19 +149,3 @@ class FakeApplicationServer:
 
 
 application_server = FakeApplicationServer()
-
-
-def _get_workspace_path_from_agent_name(agent_name: str) -> str:
-    # FIXME: Very much a stand-in for later logic. This could be a whole agent registry
-    #  system and probably lives on the client side instead of here
-    return f"~/autogpt_workspace/{agent_name}"
-
-
-async def launch_agent(message: Message):
-    message_content = message.content
-    message_broker = message_content["message_broker"]
-    agent_name = message_content["agent_name"]
-    workspace_path = _get_workspace_path_from_agent_name(agent_name)
-
-    agent = Agent.from_workspace(workspace_path, message_broker)
-    agent.run()

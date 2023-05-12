@@ -1,3 +1,4 @@
+import logging
 import math
 from typing import Any, Dict
 
@@ -81,7 +82,11 @@ class SimpleBudgetManager(BudgetManager):
         }
     }
 
-    def __init__(self, configuration: Configuration):
+    def __init__(
+        self,
+        configuration: Configuration,
+        logger: logging.Logger,
+    ):
         self._configuration = configuration.budget_manager
         self._resources: dict[str, ResourceBudget] = {
             "openai_budget": OpenAIBudget(self._configuration["openai_budget"])

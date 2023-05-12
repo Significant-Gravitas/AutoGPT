@@ -8,6 +8,11 @@ class Configuration(abc.ABC):
 
     @property
     @abc.abstractmethod
+    def system(self):
+        pass
+
+    @property
+    @abc.abstractmethod
     def budget_manager(self):
         pass
 
@@ -53,6 +58,10 @@ class Configuration(abc.ABC):
 
     @abc.abstractmethod
     def to_dict(self):
+        pass
+
+    @abc.abstractmethod
+    def from_dict(self):
         pass
 
     @abc.abstractmethod
