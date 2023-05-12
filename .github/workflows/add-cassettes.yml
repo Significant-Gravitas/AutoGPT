@@ -24,7 +24,7 @@ jobs:
           CASSETTE_BRANCH=$(git branch -r --list "origin/cassette-diff-${{ github.run_number }}-${{ github.event.pull_request.merge_commit_sha }}")
           if [ -n "$CASSETTE_BRANCH" ]; then
             git switch ${GITHUB_REF#refs/heads/}
-            git cherry-pick $(git log $CASSETTE_BRANCH -n 1 --pretty=format:"%H"))
+            git cherry-pick $(git log $CASSETTE_BRANCH -n 1 --pretty=format:"%H")
             git config user.email "github-actions@github.com"
             git config user.name "GitHub Actions"
             git push origin ${GITHUB_REF#refs/heads/}
