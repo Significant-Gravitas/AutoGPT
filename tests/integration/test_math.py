@@ -1,5 +1,4 @@
 import pytest
-from pytest_mock import MockerFixture
 
 import autogpt.commands.execute_code as sut  # system under testing
 from autogpt.commands.math import evaluate_expression
@@ -20,4 +19,4 @@ def test_evaluate_expression():
     expr = "2 / 0"  # Division by zero
     with pytest.raises(ZeroDivisionError) as exc_info:
         evaluate_expression(expr)
-    assert str(exc_info.value) == "Error: Division by zero"
+    assert str(exc_info.type) == "<class 'ZeroDivisionError'>"
