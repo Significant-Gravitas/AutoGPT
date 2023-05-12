@@ -81,8 +81,10 @@ jobs:
         run: |
           git diff --cached > cassette-diff-${{ github.run_number }}-${{ github.sha }}.txt || echo "No diff to create"
 
-      - name: Upload diff as artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: cassette-diff
-          path: cassette-diff-${{ github.run_number }}-${{ github.sha }}.txt
+      - name: Create new branch and commit changes
+        run: |
+          git checkout -b Auto-GPT-cassettes || git checkout Auto-GPT-cassettes
+          git add cassette-diff-${{ github.run_number }}-${{ github.sha }}.txt
+          git commit -m "Add cassette diff"
+          git push origin Auto-GPT-cassettes
+
