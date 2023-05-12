@@ -4,6 +4,8 @@ An AI agent needs the capability to handle constrained entity-resource instantia
 
 The challenge aims to test the AI agent's capability to instantiate a constrained entity within time constraints and query the unit test to determine availability. By successfully completing the challenge, the agent demonstrates its proficiency in managing time constraints, querying availability, and making informed decisions based on the provided resource.
 
+The goal for the AI agent is to coordinate a meeting between Persons "Joe" and "Jane" by querying the meeting planner through shell execution (the unit test). The agent needs to extract availability information for both individuals and identify overlapping time slots where both Joe and Jane are available. The agent should then suggest suitable meeting times that accommodate the schedules of both individuals. The success of the AI agent is measured by its ability to effectively coordinate the meeting, considering the availability constraints of both Joe and Jane, and proposing appropriate meeting times that satisfy both parties.
+
 ## Description
 
 Design a unit test that involves the coordination of a meeting between two entities by instantiating a constrained entity and a resource. For example, consider the scenario where the two entities are "Person A" and "Person B," and the resource is "Time" representing their availability. The challenge is to create an object by instantiating both persons and finding a mutually available time slot within certain constraints, such as conflicting schedules or limited time availability.
