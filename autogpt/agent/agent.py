@@ -118,7 +118,7 @@ class Agent:
                     self.memory,
                     cfg.fast_token_limit,
                     cfg.fast_llm_model,
-                ) 
+                )
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
             for plugin in cfg.plugins:

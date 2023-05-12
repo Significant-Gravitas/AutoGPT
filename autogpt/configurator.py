@@ -12,6 +12,7 @@ CFG = Config()
 GPT_4_MODEL = "gpt-4"
 GPT_3_MODEL = "gpt-3.5-turbo"
 
+
 def create_config(
     continuous: bool,
     continuous_limit: int,
