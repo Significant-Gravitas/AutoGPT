@@ -73,7 +73,7 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-          pytest -s tests/integration/goal_oriented/test_write_file.py
+          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
         env:
           CI: true
           PROXY: https://us-central1-prod-benchmarks-core.cloudfunctions.net/proxy_function

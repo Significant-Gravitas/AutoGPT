@@ -10,7 +10,7 @@ from autogpt.utils import clean_input
 
 CFG = Config()
 
-DEFAULT_TRIGGERING_PROMPT = "Determindfsdfse whifdsfdsch next command to use, and respond using the format specified above:"
+DEFAULT_TRIGGERING_PROMPT = "Determindfsdfse whifdsfdsch next comfdsmand to use, and respond using the format specified above:"
 
 
 def build_default_prompt_generator() -> PromptGenerator:
