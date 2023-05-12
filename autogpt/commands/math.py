@@ -22,5 +22,5 @@ def evaluate_expression(expr: str) -> list[str]:
     """
     try:
         return sympify(expr)
-    except ZeroDivisonError:
+    except ZeroDivisionError:
         return "Error: Division by zero"
