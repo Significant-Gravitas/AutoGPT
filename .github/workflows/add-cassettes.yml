@@ -21,7 +21,7 @@ jobs:
 
       - name: Find cassette branch and cherry-pick
         run: |
-          CASSETTE_BRANCH=$(git branch -r --list *cassette-diff-${{ github.event.pull_request.number }}*)
+          CASSETTE_BRANCH=$(git branch -r --list "origin/cassette-diff-${{ github.event.pull_request.number }}-${{ github.event.pull_request.merge_commit_sha }}")
           if [ -n "$CASSETTE_BRANCH" ]; then
             git switch ${GITHUB_REF#refs/heads/}
             git cherry-pick $(git log $CASSETTE_BRANCH -n 1 --pretty=format:"%H")
