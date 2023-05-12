@@ -53,3 +53,4 @@ pytest-integration
 pytest-mock
 vcrpy
 pytest-recording
+pytest-xdist
