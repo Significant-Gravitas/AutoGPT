@@ -80,7 +80,7 @@ jobs:
       - name: Stage new files and commit
         run: |
           git add .
-          git diff --cached --quiet || exit 0 # If no changes, exit
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git commit -m "Add new cassettes"
@@ -90,11 +90,15 @@ jobs:
         run: |
           if git show-ref --quiet refs/heads/cassette-diff-${{ github.run_number }}-${{ github.sha }}; then
             git checkout cassette-diff-${{ github.run_number }}-${{ github.sha }}
+            git reset --hard $COMMIT_SHA
           else
             git checkout -b cassette-diff-${{ github.run_number }}-${{ github.sha }}
+            if [ -n "$COMMIT_SHA" ] && git cat-file -e $COMMIT_SHA^{commit}; then
+              git cherry-pick $COMMIT_SHA
+            fi
           fi
-          git cherry-pick $COMMIT_SHA
-          git push origin cassette-diff-${{ github.run_number }}-${{ github.sha }} || echo "Push failed, commits already pushed"
+          git push --force origin cassette-diff-${{ github.run_number }}-${{ github.sha }} || echo "Push failed, commits already pushed"
+      
       
       
       
