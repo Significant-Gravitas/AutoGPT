@@ -71,7 +71,7 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-          pytest --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
         env:
           CI: true
 
