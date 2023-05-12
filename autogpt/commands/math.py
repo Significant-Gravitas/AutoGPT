@@ -1,9 +1,10 @@
 """Math evaluation module."""
 from __future__ import annotations
 
+from sympy import sympify
+
 from autogpt.commands.command import command
 
-from sympy import sympify
 
 @command(
     "evaluate_expression",

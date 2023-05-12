@@ -2,8 +2,8 @@ import pytest
 from pytest_mock import MockerFixture
 
 import autogpt.commands.execute_code as sut  # system under testing
-
 from autogpt.commands.math import evaluate_expression
+
 
 def test_evaluate_expression():
     # Test case 1: Valid expression
@@ -20,4 +20,3 @@ def test_evaluate_expression():
     expr = "2 / 0"  # Division by zero
     with pytest.raises(ZeroDivisionError):
         evaluate_expression(expr)
-
