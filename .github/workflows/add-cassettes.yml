@@ -22,7 +22,7 @@ jobs:
       - name: Reset branch
         run: |
           git checkout ${{ github.event.pull_request.base.ref }}
-          git reset --hard origin/${{ github.event.pull_request.base.ref }}
+          git reset --hard origin/cassette-pr-${{ github.event.pull_request.number }}
 
       - name: Create PR
         id: create_pr
