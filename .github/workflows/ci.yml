@@ -77,53 +77,5 @@ jobs:
           CI: true
           PROXY: https://us-central1-prod-benchmarks-core.cloudfunctions.net/proxy_function
 
-      - name: Stage new files and commit
-        run: |
-          git add .
-          git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git config user.email "github-actions@github.com"
-          git config user.name "GitHub Actions"
-          git commit -m "Add new cassettes"
-          echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
-
-      - name: Create new branch and cherry-pick commit
-        run: |
-          if git show-ref --quiet refs/heads/cassette-diff-${{ github.event.pull_request.number }}; then
-            git checkout cassette-diff-${{ github.event.pull_request.number }}
-            git reset --hard $COMMIT_SHA
-          else
-            git checkout -b cassette-diff-${{ github.event.pull_request.number }}
-            if [ -n "$COMMIT_SHA" ] && git cat-file -e $COMMIT_SHA^{commit}; then
-              git cherry-pick $COMMIT_SHA || git cherry-pick --skip
-            fi
-          fi
-          git push --force origin cassette-diff-${{ github.event.pull_request.number }} || echo "Push failed, commits already pushed"
-
-      - name: Create PR and comment link in original PR
-        uses: actions/github-script@v5
-        with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
-          script: |
-            const { owner, repo, number } = context.issue;
-            const branch = `cassette-diff-${number}`;
-            const title = `Cassette diff PR for PR #${number}`;
-            const body = `This is the cassette diff PR for PR #${number}`;
-
-            // Create a new PR
-            const newPr = await github.pulls.create({
-              owner,
-              repo,
-              title,
-              head: branch,
-              base: 'master',
-              body,
-            });
-
-            // Comment in the original PR
-            await github.issues.createComment({
-              owner,
-              repo,
-              issue_number: number,
-              body: `Created new cassette diff PR: [#${newPr.data.number}](${newPr.data.html_url})`,
-            });
-    
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
