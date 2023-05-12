@@ -22,7 +22,9 @@ jobs:
           github_token: ${{secrets.GITHUB_TOKEN}}
           workflow: Python CI
           name: cassettes
-          path: .  # Extract the artifact in the current working directory
+          path: .
+          pr: ${{ github.event.pull_request.number }}
+
 
       - name: Configure Git
         run: |
