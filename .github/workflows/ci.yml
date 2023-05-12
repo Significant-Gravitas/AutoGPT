@@ -88,16 +88,16 @@ jobs:
 
       - name: Create new branch and cherry-pick commit
         run: |
-          if git show-ref --quiet refs/heads/cassette-diff-${{ github.event.pull_request.number }}-${{ github.sha }}; then
-            git checkout cassette-diff-${{ github.event.pull_request.number }}-${{ github.sha }}
+          if git show-ref --quiet refs/heads/cassette-diff-${{ github.event.pull_request.number }}; then
+            git checkout cassette-diff-${{ github.event.pull_request.number }}
             git reset --hard $COMMIT_SHA
           else
-            git checkout -b cassette-diff-${{ github.event.pull_request.number }}-${{ github.sha }}
+            git checkout -b cassette-diff-${{ github.event.pull_request.number }}
             if [ -n "$COMMIT_SHA" ] && git cat-file -e $COMMIT_SHA^{commit}; then
               git cherry-pick $COMMIT_SHA || git cherry-pick --skip
             fi
           fi
-          git push --force origin cassette-diff-${{ github.event.pull_request.number }}-${{ github.sha }} || echo "Push failed, commits already pushed"
+          git push --force origin cassette-diff-${{ github.event.pull_request.number }} || echo "Push failed, commits already pushed"
       
       
       
