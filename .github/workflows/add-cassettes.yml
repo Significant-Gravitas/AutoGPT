@@ -19,10 +19,11 @@ jobs:
       - name: Fetch all branches
         run: git fetch --all
 
-      - name: Set user information
+      - name: Setup Git user and GitHub token
         run: |
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
 
       - name: Find cassette branch and cherry-pick
         run: |
