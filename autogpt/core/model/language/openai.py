@@ -139,7 +139,7 @@ class OpenAILanguageModel(LanguageModel):
     @staticmethod
     def _parse_agent_objective_model_response(
         response_text: str,
-    ) -> dict[str, str]:
+    ) -> dict:
         """Parse the actual text response from the objective model.
 
         Args:

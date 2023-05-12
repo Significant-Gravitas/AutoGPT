@@ -54,6 +54,21 @@ DEFAULT_OBJECTIVE_USER_PROMPT_TEMPLATE = (
 class SimplePlanner(Planner):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
+    configuration_defaults = {
+        "planner": {
+            "ai_name": "Entrepreneur-GPT",
+            "ai_role": (
+                "An AI designed to autonomously develop and run businesses with "
+                "the sole goal of increasing your net worth."
+            ),
+            "ai_goals": [
+                "Increase net worth",
+                "Grow Twitter Account",
+                "Develop and manage multiple businesses autonomously",
+            ],
+        }
+    }
+
     def __init__(
         self,
         configuration: Configuration,

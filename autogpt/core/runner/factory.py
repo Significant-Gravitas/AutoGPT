@@ -110,9 +110,9 @@ async def bootstrap_agent(
         configuration,
     )
     await agent_factory_emitter.send_agent_objective_message(model_response.content)
+    # Set the agents goals
+    configuration.planner.update(model_response.content)
 
-    workspace = agent_factory.get_system_class("workspace", configuration)
-    workspace_path = workspace.setup_workspace(configuration)
     # TODO: Provision memory backend. Waiting on interface to stabilize
 
     await message_broker.send_message(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Tuple
+from typing import List, Tuple, Type
 
 from autogpt.core.budget.simple import SimpleBudgetManager
 from autogpt.core.configuration import Configuration
@@ -12,6 +12,7 @@ from autogpt.core.model.language.openai import (
 )
 from autogpt.core.planning.simple import ModelPrompt, SimplePlanner
 from autogpt.core.plugin.simple import PluginStorageFormat, SimplePluginService
+from autogpt.core.workspace import Workspace
 
 
 class SimpleAgentFactory:
@@ -137,6 +138,28 @@ class SimpleAgentFactory:
         budget_manager.update_resource_usage_and_cost("openai_budget", model_response)
 
         return model_response
+
+    def provision_new_agent(self, configuration: Configuration):
+        """Provision a new agent.
+
+        This will create a new workspace and set up all the agent's on-disk resources.
+
+        """
+
+        # TODO: Okay, we need to
+        #   1. Create a new workspace directory
+        #   2. Setup the memory backend (create on disk if needed,
+        #      otherwise just set configuration)
+        #   3. Persist all plugins to the workspace directory so they can be loaded
+        #      from there on agent startup and avoid any, like version issues and stuff
+        #   4. Setup logging directories/files/services.
+        #   5. Persist the configuration to the workspace directory
+
+        workspace_class: Type[Workspace] = self.get_system_class(
+            "workspace",
+            configuration,
+        )
+        workspace_path = workspace_class.setup_workspace(configuration, self._logger)
 
     def __repr__(self):
         return f"{self.__class__.__name__}()"

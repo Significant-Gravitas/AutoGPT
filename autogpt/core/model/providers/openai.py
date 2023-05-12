@@ -170,7 +170,7 @@ def parse_credentials(model: str, credentials: dict, use_azure: bool) -> Dict[st
     return parsed_credentials
 
 
-OpenAIChatParser = Callable[[str], dict[str, str]]
+OpenAIChatParser = Callable[[str], dict]
 OpenAIEmbeddingParser = Callable[[List[float]], List[float]]
 
 
