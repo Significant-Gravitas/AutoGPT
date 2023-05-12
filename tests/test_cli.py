@@ -1,36 +1,32 @@
+from unittest import mock
 import pytest
 from click.testing import CliRunner
 
 from autogpt import cli
 from autogpt.config.config import Config
 from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL
+from autogpt.singleton import Singleton
 
 
-@pytest.fixture(scope="function")
-def mocked_config():
-    global Config
-    oldConfigClass = Config
+def test_gpt4only_cli_arg():
+    with mock.patch.object(Config, "set_smart_llm_model") as mocked_set_smart_llm_model:
+        with mock.patch.object(
+            Config, "set_fast_llm_model"
+        ) as mocked_set_fast_llm_model:
+            runner = CliRunner()
+            runner.invoke(cli.main, ["--gpt4only"])
 
-    class MockConfig(oldConfigClass):
-        pass
-
-    yield
-    Config = oldConfigClass
-
-
-def test_gpt4only_cli_arg(mocked_config):
-    runner = CliRunner()
-    runner.invoke(cli.main, ["--gpt4only"])
-
-    config = Config()
-    assert config.smart_llm_model == GPT_4_MODEL
-    assert config.fast_llm_model == GPT_4_MODEL
+            mocked_set_smart_llm_model.assert_called_once_with(GPT_4_MODEL)
+            mocked_set_fast_llm_model.assert_called_once_with(GPT_4_MODEL)
 
 
-def test_gpt3only_cli_arg(mocked_config):
-    runner = CliRunner()
-    runner.invoke(cli.main, ["--gpt3only"])
+def test_gpt3only_cli_arg():
+    with mock.patch.object(Config, "set_smart_llm_model") as mocked_set_smart_llm_model:
+        with mock.patch.object(
+            Config, "set_fast_llm_model"
+        ) as mocked_set_fast_llm_model:
+            runner = CliRunner()
+            runner.invoke(cli.main, ["--gpt3only"])
 
-    config = Config()
-    assert config.smart_llm_model == GPT_3_MODEL
-    assert config.fast_llm_model == GPT_3_MODEL
+            mocked_set_smart_llm_model.assert_called_once_with(GPT_3_MODEL)
+            mocked_set_fast_llm_model.assert_called_once_with(GPT_3_MODEL)
