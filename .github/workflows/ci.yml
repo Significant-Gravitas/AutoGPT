@@ -19,8 +19,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
@@ -45,12 +43,7 @@ jobs:
 
   test:
     permissions:
-      # Gives the action the necessary permissions for publishing new
-      # comments in pull requests.
       pull-requests: write
-      # Gives the action the necessary permissions for pushing data to the
-      # python-coverage-comment-action branch, and for editing existing
-      # comments (to avoid publishing multiple comments in the same PR)
       contents: write
     runs-on: ubuntu-latest
     strategy:
@@ -61,7 +54,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
@@ -80,20 +73,16 @@ jobs:
           CI: true
           PROXY: https://us-central1-prod-benchmarks-core.cloudfunctions.net/proxy_function
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+      - name: Stage new files
+        run: |
+          git add .
 
       - name: Create diff and save to file
         run: |
-          if GIT_SHA_PARENT=$(git rev-parse HEAD^ 2>/dev/null); then
-            git diff $GIT_SHA_PARENT HEAD > cassette-diff-${{ github.event.pull_request.number }}-${{ github.sha }}.txt
-          else
-            echo "No parent commit to diff against. Skipping diff generation."
-          fi
-      
+          git diff --cached > cassette-diff-${{ github.run_number }}-${{ github.sha }}.txt || echo "No diff to create"
 
       - name: Upload diff as artifact
         uses: actions/upload-artifact@v3
         with:
           name: cassette-diff
-          path: cassette-diff-${{ github.event.pull_request.number }}-${{ github.sha }}.txt
+          path: cassette-diff-${{ github.run_number }}-${{ github.sha }}.txt
