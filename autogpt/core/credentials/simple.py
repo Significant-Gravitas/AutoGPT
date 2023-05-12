@@ -1,9 +1,10 @@
 from typing import Dict
 
 from autogpt.core.configuration import Configuration
+from autogpt.core.credentials.base import CredentialsManager
 
 
-class CredentialsManager:
+class SimpleCredentialsManager(CredentialsManager):
     configuration_defaults = {
         "credentials": {
             "openai": {

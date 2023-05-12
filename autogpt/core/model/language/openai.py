@@ -40,7 +40,6 @@ class OpenAILanguageModel(LanguageModel):
     def __init__(
         self,
         configuration: Configuration,
-        logger: logging.Logger,
         credentials_manager: CredentialsManager,
     ):
         """Initialize the OpenAI Language Model.
@@ -49,7 +48,6 @@ class OpenAILanguageModel(LanguageModel):
             model_info (openai.LanguageModelInfo): Model information.
         """
         self._configuration = configuration.language_model
-        self._logger = logger
 
         raw_credentials = credentials_manager.get_credentials("openai")
         use_azure = self._configuration["use_azure"]
