@@ -24,6 +24,9 @@ nav:
         - Looping: challenges/looping.md
       - Tasks:
         - Tasking: challenges/tasking/tasks.md
+      - Compliance:
+        - Constraints: challenges/compliance/compliance-with-constraints.md
+        - Performance: challenges/compliance/compliance-with-performance.md  
       - Planning:
         - Coordination: challenges/planning/coordination.md
         - Plans: challenges/planning/planning.md 
