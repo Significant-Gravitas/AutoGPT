@@ -29,6 +29,7 @@ from autogpt.llm.token_counter import count_message_tokens
 
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
+import pycountry
 
 import trafilatura
 import re
@@ -57,29 +58,7 @@ def browse_website(url: str, question: str) -> str:
     global URL_MEMORY
     if url in URL_MEMORY: 
         #print(url, '->', URL_MEMORY[url])
-        url = URL_MEMORY[url]
-
-    # qestion을 해결하기 위해 search가 필요할 경우 search_url로 변경합니다.    
-    request_msg = f"""
-        search_url is used in mobile web browsers.
-        "input_url": "{url}"
-        "question": "{question}"
-        If a search is needed to solve it, 
-        {{"search_url": "..."}}
-        If a seach is not needed, please answer as below.
-        {{"search_url": None}}"""
-    """resp = create_chat_completion(
-        model=CFG.smart_llm_model,
-        messages=[{"role":"user", "content":request_msg}])
-    try:
-        resp = eval(resp)
-        search_url = resp['search_url']
-        print(f'search_url:{search_url}')
-        if search_url:
-            url = search_url
-    except:
-        pass
-    """
+        url = URL_MEMORY[url]    
     
     try:
         html_content, driver = get_html_content_with_selenium(url)
@@ -89,12 +68,7 @@ def browse_website(url: str, question: str) -> str:
     
     text_link_pairs = []
     text_link_pairs.extend(get_header_text_link_pairs(html_content, url))
-    text_link_pairs.extend(get_main_content_text_llink_pairs(html_content))
-    #text_list, _ = zip(*text_link_pairs)    
-    #add_header(driver)
-    #suggested_next_item = what_should_do_next(text_list, question)    
-    #return_msg = get_links_related_to_question_with_chat(text_link_pairs, suggested_next_item)
-    #suggested_next_item2 = what_should_do_next2(suggested_next_item, return_msg)
+    text_link_pairs.extend(get_main_content_text_link_pairs(html_content))
     return_msg = get_links_related_to_question_with_chat(text_link_pairs, question)
     close_browser(driver)
 
@@ -130,7 +104,7 @@ def get_webpage_text_summary(url: str, question: str, max_len=3500) -> str:
     text = text[:max_len]
     main_lang = get_main_language(text)
     request_msg = (        
-        f'Please summarize the webpage text in {main_lang}, with reference to "{question}":\n\n'
+        f'Please summarize the webpage text in {main_lang}", with reference to "{question}":\n\n'
         f'{text}'        
     )
     resp = create_chat_completion(
@@ -159,7 +133,7 @@ def get_header_text_link_pairs(html_content, base_url='http:'):
     return list(text_link_pairs)  # 최종적으로 다시 리스트로 변환
 
 
-def get_main_content_text_llink_pairs(html_content):
+def get_main_content_text_link_pairs(html_content):
     text = trafilatura.extract(html_content, include_links=True, include_formatting=True, favor_recall=True,
                          output_format='txt')
     
@@ -192,67 +166,17 @@ def get_main_content_text_llink_pairs(html_content):
 
 def get_main_language(text):
     try:
-        language = detect(text)
+        lang_code = detect(text)
     except LangDetectException:
-        language = "unknown"
+        lang_code = "unknown"
+
+    try:
+        language = pycountry.languages.get(alpha_2=lang_code).name
+    except AttributeError:
+        language = "Unknown language"
 
     return language
 
-
-def summarize_text_with_question(text: str, question: str, max_len=3500) -> str:
-    text = text[:max_len]
-    #request_msg = (
-    #    'The following text is extracted from a webpage. Please briefly answer whether it contains the necessary information to resolve the question.\n\n'
-    #    f'{text} \n\n'
-    #    f'-- question:{question}'
-    #)
-    request_msg = (f'"""{text}""" Using the above text, answer the following'
-        f' question: "{question}" -- if the question cannot be answered using the text,'
-        " summarize the text. Please output in the language used in the above text."
-    )
-    
-    resp = create_chat_completion(
-        model=CFG.fast_llm_model,
-        messages=[{"role":"user", "content":request_msg}])
-    return f'Website summary: {resp}  '
-
-def what_should_do_next(text_list: str, question: str, max_len=3500) -> str:
-    cleaned_text = []
-    for sent in text_list:
-        sent = " ".join(sent.split())
-        if len(sent) == 0: continue
-        if len(sent)>20:
-            sent = sent[:20] + '...'
-        cleaned_text.append(sent)
-    cleaned_text = "\n".join(cleaned_text)    
-    
-    text = cleaned_text[:max_len]
-    
-    request_msg = (
-        f'{text}\n\n'
-        'Currently, we are conducting a web search. In the meantime, the text above has been retrieved from a website where menus and contents are listed. '
-        'And they all contain hyperlinks. '
-        f'What should we do next to find an """{question}"""?". Please answer shortly.'
-    )
-    
-    resp = create_chat_completion(
-        model=CFG.fast_llm_model,
-        messages=[{"role":"user", "content":request_msg}])
-    return f'suggested_next_item: {resp}  '
-
-def what_should_do_next2(suggested_item: str, found_link: str) -> str:
-    
-    request_msg = (
-        f'당신이 "{suggested_item}"을 제안하여,'
-        f'"{found_link}" 의 결과를 가져왔습니다. '        
-        f'What should we do next to do. Please answer shortly.'
-    )
-    
-    resp = create_chat_completion(
-        model=CFG.fast_llm_model,
-        messages=[{"role":"user", "content":request_msg}])
-    return f'suggested_next_item: {resp}  '
-    
 
 def get_links_related_to_question_with_chat(links: list[tuple[str, str]], question: str) -> str:
     global URL_MEMORY
@@ -270,17 +194,20 @@ def get_links_related_to_question_with_chat(links: list[tuple[str, str]], questi
 
     request_msg = (
         f'{text}'
-        '\n\nThe text above is extracted from hyperlinks found on a webpage.'
-        f'\n\nFor the question: "{question}", please answer using the following response format.'
-        '\n\nResponse Format: {"related_line_numbers": []}'
+        '\n\nThe text(menus, contents) above is extracted from hyperlinks found on a webpage. '
+        f'\n\nFor the question: "{question}",'
+        '\nPlease respond like as following:'
+        '\n{"related_line_numbers":[], "if_no_related_line_number_which_menu_to_click_for_retry": []}'
     )
     messages = [{"role": "user", "content": request_msg}]
 
-    resp = create_chat_completion(model=CFG.fast_llm_model, messages=messages)    
+    resp = create_chat_completion(model=CFG.smart_llm_model, messages=messages)    
 
     try:
         resp = eval(resp)
         line_numbers = resp['related_line_numbers']
+        if len(line_numbers) == 0:
+            line_numbers = resp['if_no_related_line_number_which_menu_to_click_for_retry']
         line_numbers = [line_numbers] if isinstance(line_numbers, int) else line_numbers
     except:
         line_numbers = [int(w) for w in resp.split() if w.isdigit()]
@@ -292,7 +219,7 @@ def get_links_related_to_question_with_chat(links: list[tuple[str, str]], questi
             link = links[i][1]
             link_nick = f'URL_{len(URL_MEMORY)}'   
             URL_MEMORY[link_nick] = link
-            selected_links.append(f"{cleaned_text[i]} ({link_nick})")
+            selected_links.append(f"{cleaned_text[i]} (url:{link_nick})")
             
         return_msg = f"Links: {selected_links}"
     else:
