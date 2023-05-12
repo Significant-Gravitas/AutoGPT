@@ -20,4 +20,7 @@ def evaluate_expression(expr: str) -> list[str]:
     Returns:
         A result string from SymPy
     """
-    return sympify(expr)
+    try:
+        return sympify(expr)
+    except ZeroDivisonError:
+        return "Error:Division by zero"
