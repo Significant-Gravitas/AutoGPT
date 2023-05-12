@@ -16,11 +16,15 @@ jobs:
         with:
           fetch-depth: 0  # This is necessary to fetch all branches and tags
 
-      - name: Download diff artifact
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          github_token: ${{secrets.GITHUB_TOKEN}}
-          workflow: Python CI
-          name: cassette-diff
-          path: .
-          pr: ${{ github.event.pull_request.number }}
+      - name: Fetch all branches
+        run: git fetch --all
+
+      - name: Find cassette branch and cherry-pick
+        run: |
+          CASSETTE_BRANCH=$(git branch -r --list *cassette-diff-${{ github.event.pull_request.number }}*)
+          if [ -n "$CASSETTE_BRANCH" ]; then
+            git switch ${GITHUB_REF#refs/heads/}
+            git cherry-pick $(git log $CASSETTE_BRANCH -n 1 --pretty=format:"%H")
+          else
+            echo "No cassette branch found for this PR"
+          fi

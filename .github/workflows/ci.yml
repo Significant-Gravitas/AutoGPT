@@ -79,8 +79,10 @@ jobs:
 
       - name: Create new branch and commit changes
         run: |
+          git diff --cached --quiet || exit 0 # If no changes, exit
           git checkout cassette-diff-${{ github.run_number }}-${{ github.sha }} || git checkout -b cassette-diff-${{ github.run_number }}-${{ github.sha }}
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git commit -m "Add new cassettes"
           git push origin cassette-diff-${{ github.run_number }}-${{ github.sha }} || echo "Push failed, commits already pushed"
+      
