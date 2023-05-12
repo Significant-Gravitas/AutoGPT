@@ -85,7 +85,12 @@ jobs:
 
       - name: Create diff and save to file
         run: |
-          git diff HEAD^ HEAD > cassette-diff-${{ github.event.pull_request.number }}-${{ github.sha }}.txt
+          if GIT_SHA_PARENT=$(git rev-parse HEAD^ 2>/dev/null); then
+            git diff $GIT_SHA_PARENT HEAD > cassette-diff-${{ github.event.pull_request.number }}-${{ github.sha }}.txt
+          else
+            echo "No parent commit to diff against. Skipping diff generation."
+          fi
+      
 
       - name: Upload diff as artifact
         uses: actions/upload-artifact@v3
