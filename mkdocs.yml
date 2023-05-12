@@ -36,7 +36,8 @@ nav:
       - Learning:
         - Trial and Error: challenges/experiential/trial_and_error.md
         - Experience: challenges/experiential/experience.md
-        - Reward: challenges/fitness_function/reward_system.md
+        - Reward via CPU/RAM tracking: challenges/fitness_function/reward_system.md
+        - Reward via feedback tracking: challenges/fitness_function/feedback_tracking.md
       - Memory:
         - Introduction: challenges/memory/introduction.md
         - Memory Challenge A: challenges/memory/challenge_a.md
