@@ -84,7 +84,10 @@ jobs:
       - name: Create new branch and commit changes
         run: |
           git checkout -b Auto-GPT-cassettes || git checkout Auto-GPT-cassettes
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
           git add cassette-diff-${{ github.run_number }}-${{ github.sha }}.txt
           git commit -m "Add cassette diff"
           git push origin Auto-GPT-cassettes
+      
 
