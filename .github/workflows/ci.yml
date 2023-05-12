@@ -78,16 +78,23 @@ jobs:
           CI: true
           PROXY: https://us-central1-prod-benchmarks-core.cloudfunctions.net/proxy_function
 
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5
+      - name: Stage new files and commit
+        run: |
+          git add .
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git commit -m "Add new cassettes"
+          echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
-      - name: Create Pull Request
-        id: cpr
-        uses: peter-evans/create-pull-request@v5
-
-      - name: Comment PR URL in the current PR
-        uses: thollander/actions-comment-pull-request@v2
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          message: |
-            New pull request created: [#${{ steps.cpr.outputs.pull-request-number }}](${{ steps.cpr.outputs.pull-request-url }})
+      - name: Create new branch and cherry-pick commit
+        run: |
+          if git show-ref --quiet refs/heads/cassette-diff-${{ github.event.pull_request.number }}; then
+            git checkout cassette-diff-${{ github.event.pull_request.number }}
+            git reset --hard $COMMIT_SHA
+          else
+            git checkout -b cassette-diff-${{ github.event.pull_request.number }}
+            if [ -n "$COMMIT_SHA" ] && git cat-file -e $COMMIT_SHA^{commit}; then
+              git cherry-pick $COMMIT_SHA || git cherry-pick --skip
+            fi
+          fi

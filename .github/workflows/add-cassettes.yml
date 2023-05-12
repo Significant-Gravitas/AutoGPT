@@ -25,13 +25,40 @@ jobs:
           git config user.name "GitHub Actions"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
 
-      - name: Find cassette branch and cherry-pick
+      - name: Find cassette branch and checkout
         run: |
           CASSETTE_BRANCH=$(git branch -r --list "origin/cassette-diff-${{ github.event.pull_request.number }}")
           if [ -n "$CASSETTE_BRANCH" ]; then
-            git switch ${GITHUB_REF#refs/heads/}
-            git cherry-pick $(git log $CASSETTE_BRANCH -n 1 --pretty=format:"%H")
-            git push origin ${GITHUB_REF#refs/heads/}
+            git switch ${CASSETTE_BRANCH#origin/}
           else
             echo "No cassette branch found for this PR"
+            exit 1
           fi
+
+      - name: Create and check out new branch for PR
+        run: |
+          git checkout -b cassette-pr-${{ github.event.pull_request.number }}
+
+      - name: Push new branch
+        run: |
+          git push -u origin cassette-pr-${{ github.event.pull_request.number }}
+
+      - name: Create PR
+        id: create_pr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: Update cassettes
+          committer: GitHub <noreply@github.com>
+          author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
+          signoff: false
+          branch: cassette-pr-${{ github.event.pull_request.number }}
+          delete-branch: false
+          title: "Update cassettes"
+          body: "This PR updates the cassettes."
+          draft: false
+
+      - name: Check PR
+        run: |
+          echo "Pull Request Number - ${{ steps.create_pr.outputs.pull-request-number }}"
+          echo "Pull Request URL - ${{ steps.create_pr.outputs.pull-request-url }}"
