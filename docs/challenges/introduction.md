@@ -1,7 +1,7 @@
 introduction.md
 # Introduction to Challenges
 
-Welcome to the Auto-GPT Challenges page! This is a space where we encourage community members to collaborate and contribute towards improving Auto-GPT by identifying and solving challenges that Auto-GPT is not yet able to achieve.
+Welcome to the Auto-GPT Challenges page! This is a space where we encourage community members to collaborate and contribute towards improving Auto-GPT by identifying and solving challenges that Auto-GPT is not yet able to achieve, or not yet in an efficient manner.
 
 ## What are challenges?
 
