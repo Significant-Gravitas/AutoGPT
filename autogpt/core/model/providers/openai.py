@@ -1,7 +1,7 @@
 import functools
 import logging
 import time
-from typing import Callable, Dict, ParamSpec, TypeVar, overload
+from typing import Callable, Dict, List, ParamSpec, TypeVar, overload
 
 import openai
 from openai.error import APIError, RateLimitError, Timeout
@@ -170,10 +170,15 @@ def parse_credentials(model: str, credentials: dict, use_azure: bool) -> Dict[st
     return parsed_credentials
 
 
+OpenAIChatParser = Callable[[str], dict[str, str]]
+OpenAIEmbeddingParser = Callable[[List[float]], List[float]]
+
+
 @overload
 def parse_openai_response(
     model_name: str,
     openai_response: openai.Completion,
+    content_parser: OpenAIChatParser,
 ) -> LanguageModelResponse:
     ...
 
@@ -182,12 +187,15 @@ def parse_openai_response(
 def parse_openai_response(
     model_name: str,
     openai_response: openai.Embedding,
+    content_parser: OpenAIEmbeddingParser,
 ) -> EmbeddingModelResponse:
     ...
 
 
 def parse_openai_response(
-    model_name: str, openai_response: openai.Completion | openai.Embedding
+    model_name: str,
+    openai_response: openai.Completion | openai.Embedding,
+    content_parser: OpenAIChatParser | OpenAIEmbeddingParser,
 ) -> ModelResponse:
     """Parse a response from the"""
     response_args = {
@@ -198,12 +206,12 @@ def parse_openai_response(
     if model_name in OPEN_AI_EMBEDDING_MODELS:
         return EmbeddingModelResponse(
             **response_args,
-            embedding=openai_response.embeddings[0],
+            embedding=content_parser(openai_response.embeddings[0]),
         )
     elif model_name in OPEN_AI_LANGUAGE_MODELS:
         return LanguageModelResponse(
             **response_args,
-            content=openai_response.choices[0].text,
+            content=content_parser(openai_response.choices[0].text),
         )
     else:
         raise NotImplementedError(f"Unknown model {model_name}")

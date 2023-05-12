@@ -20,7 +20,7 @@ class LanguageModelInfo(ModelInfo):
 class LanguageModelResponse(ModelResponse):
     """Standard response struct for a response from a language model."""
 
-    content: str = None
+    content: dict = None
 
 
 class LanguageModel(Model):

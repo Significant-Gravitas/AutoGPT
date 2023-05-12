@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Dict
 
 from autogpt.core.configuration import Configuration
@@ -40,6 +41,7 @@ class OpenAILanguageModel(LanguageModel):
     def __init__(
         self,
         configuration: Configuration,
+        logger: logging.Logger,
         credentials_manager: CredentialsManager,
     ):
         """Initialize the OpenAI Language Model.
@@ -48,6 +50,7 @@ class OpenAILanguageModel(LanguageModel):
             model_info (openai.LanguageModelInfo): Model information.
         """
         self._configuration = configuration.language_model
+        self._logger = logger
 
         raw_credentials = credentials_manager.get_credentials("openai")
         use_azure = self._configuration["use_azure"]
@@ -89,7 +92,11 @@ class OpenAILanguageModel(LanguageModel):
             messages=objective_prompt,
             **self._get_chat_kwargs(model, **kwargs),
         )
-        return parse_openai_response(model_name, response)
+        return parse_openai_response(
+            model_name,
+            response,
+            content_parser=self._parse_agent_objective_model_response,
+        )
 
     async def plan_next_action(
         self,
@@ -106,7 +113,16 @@ class OpenAILanguageModel(LanguageModel):
         pass
 
     def _get_chat_kwargs(self, model: str, **kwargs) -> dict:
-        """Get kwargs for chat API call."""
+        """Get kwargs for chat API call.
+
+        Args:
+            model: The model to use.
+            kwargs: Keyword arguments to override the default values.
+
+        Returns:
+            The kwargs for the chat API call.
+
+        """
         model_config = self._configuration["models"][model]
         chat_kwargs = {
             "model": model_config["name"],
@@ -119,3 +135,36 @@ class OpenAILanguageModel(LanguageModel):
             raise ValueError(f"Unexpected keyword arguments: {kwargs.keys()}")
 
         return chat_kwargs
+
+    @staticmethod
+    def _parse_agent_objective_model_response(
+        response_text: str,
+    ) -> dict[str, str]:
+        """Parse the actual text response from the objective model.
+
+        Args:
+            response_text: The raw response text from the objective model.
+
+        Returns:
+            The parsed response.
+
+        """
+        ai_name = re.search(
+            r"Name(?:\s*):(?:\s*)(.*)", response_text, re.IGNORECASE
+        ).group(1)
+        ai_role = (
+            re.search(
+                r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
+                response_text,
+                re.IGNORECASE | re.DOTALL,
+            )
+            .group(1)
+            .strip()
+        )
+        ai_goals = re.findall(r"(?<=\n)-\s*(.*)", response_text)
+        parsed_response = {
+            "ai_name": ai_name,
+            "ai_role": ai_role,
+            "ai_goals": ai_goals,
+        }
+        return parsed_response

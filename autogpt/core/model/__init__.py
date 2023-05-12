@@ -18,6 +18,6 @@ status = Status(
     handoff_notes=(
         "Before times: Interface has been created. Next up is creating a basic implementation.\n"
         "5/11: Refactored interface to split out embedding and language models.\n"
-        "      Created a basic implementation of the language model and work out some utilities.\n"
+        "      Created a basic implementation of the language model and work out several utilities.\n"
     ),
 )
