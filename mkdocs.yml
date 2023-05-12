@@ -20,6 +20,8 @@ nav:
   - Challenges:
     - Introduction: challenges/introduction.md
     - List of Challenges:
+      - General:
+        - Looping: challenges/looping.md
       - Tasks:
         - Tasking: challenges/tasking/tasks.md
       - Planning:
