@@ -35,6 +35,7 @@ nav:
         - Strategy: challenges/strategize/strategies.md
       - Learning:
         - Trial and Error: challenges/experiential/trial_and_error.md
+        - Educated Guessing: challenges/experiential/educated_guess.md
         - Experience: challenges/experiential/experience.md
         - Reward via CPU/RAM tracking: challenges/fitness_function/reward_system.md
         - Reward via feedback tracking: challenges/fitness_function/feedback_tracking.md
