@@ -28,10 +28,7 @@ jobs:
         id: create_pr
         uses: peter-evans/create-pull-request@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: Update cassettes
-          committer: GitHub <noreply@github.com>
-          author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
           signoff: false
           branch: cassette-diff-${{ github.event.pull_request.number }}
           delete-branch: false
