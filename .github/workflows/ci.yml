@@ -73,16 +73,19 @@ jobs:
           CI: true
           PROXY: https://us-central1-prod-benchmarks-core.cloudfunctions.net/proxy_function
 
-      - name: Stage new files
+      - name: Stage new files and commit
         run: |
           git add .
-
-      - name: Create new branch and commit changes
-        run: |
           git diff --cached --quiet || exit 0 # If no changes, exit
-          git checkout cassette-diff-${{ github.run_number }}-${{ github.sha }} || git checkout -b cassette-diff-${{ github.run_number }}-${{ github.sha }}
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git commit -m "Add new cassettes"
+          echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Create new branch and cherry-pick commit
+        run: |
+          git checkout cassette-diff-${{ github.run_number }}-${{ github.sha }} || git checkout -b cassette-diff-${{ github.run_number }}-${{ github.sha }}
+          git cherry-pick $COMMIT_SHA
           git push origin cassette-diff-${{ github.run_number }}-${{ github.sha }} || echo "Push failed, commits already pushed"
+      
       
