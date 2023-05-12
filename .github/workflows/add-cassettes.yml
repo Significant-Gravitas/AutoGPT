@@ -17,8 +17,10 @@ jobs:
           fetch-depth: 0  # This is necessary to fetch all branches and tags
 
       - name: Download artifact
-        uses: actions/download-artifact@v2
+        uses: dawidd6/action-download-artifact@v2
         with:
+          github_token: ${{secrets.GITHUB_TOKEN}}
+          workflow: Python CI
           name: cassettes
           path: .  # Extract the artifact in the current working directory
 
