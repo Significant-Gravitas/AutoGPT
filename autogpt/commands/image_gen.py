@@ -73,32 +73,27 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
             },
         )
 
-        image = Image.open(io.BytesIO(response.content))
-        logger.info(f"Image Generated for prompt:{prompt}")
-
-        image.save(filename)
-
         if response.ok:
             try:
                 image = Image.open(io.BytesIO(response.content))
-                print(f"Image Generated for prompt:{prompt}")
+                logger.info(f"Image Generated for prompt:{prompt}")
                 image.save(filename)
                 return f"Saved to disk:{filename}"
             except Exception as e:
-                print(e)
+                logger.error(e)
                 break
         else:
             try:
                 error = json.loads(response.text)
                 if "estimated_time" in error:
                     delay = error["estimated_time"]
-                    print(response.text)
-                    print("Retrying in", delay)
+                    logger.debug(response.text)
+                    logger.info("Retrying in", delay)
                     time.sleep(delay)
                 else:
                     break
             except Exception as e:
-                print(e)
+                logger.error(e)
                 break
 
         retry_count += 1
