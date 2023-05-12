@@ -6,6 +6,7 @@ from autogpt.agent import Agent
 from autogpt.config import Config
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
+from autogpt.logs import logger
 
 cfg = Config()
 
@@ -77,14 +78,12 @@ def update_running_summary(
             # Remove "thoughts" dictionary from "content"
             try:
                 content_dict = json.loads(event["content"])
-            except json.JSONDecodeError as e:
-                print(f"Error decoding JSON data: {e}")
-                # You can either provide a fallback value or raise a more specific exception here
-                content_dict = {}
-
-            if "thoughts" in content_dict:
-                del content_dict["thoughts"]
-            event["content"] = json.dumps(content_dict)
+                if "thoughts" in content_dict:
+                    del content_dict["thoughts"]
+                event["content"] = json.dumps(content_dict)
+            except json.decoder.JSONDecodeError:
+                if cfg.debug_mode:
+                    logger.error(f"Error: Invalid JSON: {event['content']}\n")
 
         elif event["role"].lower() == "system":
             event["role"] = "your computer"
