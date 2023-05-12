@@ -19,6 +19,11 @@ jobs:
       - name: Fetch all branches
         run: git fetch --all
 
+      - name: Reset branch
+        run: |
+          git checkout ${{ github.event.pull_request.base.ref }}
+          git reset --hard origin/${{ github.event.pull_request.base.ref }}
+
       - name: Create PR
         id: create_pr
         uses: peter-evans/create-pull-request@v5
