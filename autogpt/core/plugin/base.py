@@ -4,25 +4,28 @@ from typing import Type
 
 from autogpt.core.budget import BudgetManager
 from autogpt.core.command import Command, CommandRegistry
+from autogpt.core.credentials import CredentialsManager
 from autogpt.core.memory import MemoryBackend
 from autogpt.core.model import EmbeddingModel, LanguageModel
 from autogpt.core.planning import Planner
 
 # Expand to other types as needed
 PluginType = (
-    Type[BudgetManager]
-    | Type[Command]
-    | Type[CommandRegistry]
-    | Type[EmbeddingModel]
-    | Type[LanguageModel]
-    | Type[MemoryBackend]
-    | Type[Planner]
+    Type[BudgetManager]  # Swappable maybe never (think about budgets for resources)
+    | Type[Command]  # Swappable now
+    | Type[CommandRegistry]  # Swappable maybe never
+    | Type[CredentialsManager]  # Swappable never
+    | Type[EmbeddingModel]  # Swappable soon
+    | Type[LanguageModel]  # Swappable soon
+    | Type[MemoryBackend]  # Swappable now
+    | Type[Planner]  # Swappable soon
 )
 
 Plugin = (
     BudgetManager
     | Command
     | CommandRegistry
+    | CredentialsManager
     | EmbeddingModel
     | LanguageModel
     | MemoryBackend
@@ -37,15 +40,45 @@ class PluginStorageFormat(str):
 
     """
 
-    # AUTO = "auto"  # We'll try to determine the plugin load location
-    # AUTOGPT_PLUGIN_REPO = "autogpt_plugin_repo"  # Grab them from our managed repo
-    WORKSPACE = "workspace"  # Grab them from the workspace
-    # OTHER_FILE_PATH = "other_file_path"  # Grab them from a file path
-    INSTALLED_PACKAGE = "installed_package"  # Grab them from an installed package
-    # PYPI = "pypi"  # Grab them from pypi
-    # GIT = "git"  # Grab them from a git repo
-    # AUTOGPT_PLUGIN_SERVICE = "autogpt_plugin_service"  # Grab them from a service
-    # OPENAPI_URL = "open_api_url" # Grab them from an openapi endpoint
+    INSTALLED_PACKAGE = "installed_package"  # Required now, loads system defaults
+    WORKSPACE = "workspace"  # Required now
+    # OPENAPI_URL = "open_api_url"           # Soon (requires some tooling we don't have yet).
+    # OTHER_FILE_PATH = "other_file_path"    # Maybe later (maybe now)
+    # GIT = "git"                            # Maybe later (or soon)
+    # PYPI = "pypi"                          # Maybe later
+    # AUTOGPT_PLUGIN_SERVICE = "autogpt_plugin_service"  # Long term solution, requires design
+    # AUTO = "auto"                          # Feature for later maybe, automatically find plugin.
+
+
+# Installed package example
+# PluginLocation(
+#     storage_format='installed_package',
+#     storage_route='autogpt_plugins.twitter.SendTwitterMessage'
+# )
+# Workspace example
+# PluginLocation(
+#     storage_format='workspace',
+#     storage_route='relative/path/to/plugin.pkl'
+#     OR
+#     storage_route='relative/path/to/plugin.py'
+# )
+# Git
+# PluginLocation(
+#     storage_format='git',
+#     Exact format TBD.
+#     storage_route='https://github.com/gravelBridge/AutoGPT-WolframAlpha/blob/main/autogpt-wolframalpha/wolfram_alpha.py'
+# )
+# PyPI
+# PluginLocation(
+#     storage_format='pypi',
+#     storage_route='package_name'
+# )
+
+
+# PluginLocation(
+#     storage_format='installed_package',
+#     storage_route='autogpt_plugins.twitter.SendTwitterMessage'
+# )
 
 
 # A plugin storage route.

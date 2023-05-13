@@ -1,14 +1,15 @@
+import logging
 import math
 from typing import Any, Dict
 
 from autogpt.core.budget.base import BudgetManager, ResourceBudget
 from autogpt.core.configuration.base import Configuration
-from autogpt.core.llm.base import LLMResponse
+from autogpt.core.model.base import ModelResponse
 
 
-class LLMBudget(ResourceBudget):
+class OpenAIBudget(ResourceBudget):
     configuration_defaults = {
-        "llm_budget": {
+        "openai_budget": {
             "total_budget": math.inf,
             "total_cost": 0,
             "usage": {
@@ -40,7 +41,7 @@ class LLMBudget(ResourceBudget):
     def usage(self) -> Dict[str, int]:
         return self._configuration["usage"]
 
-    def update_usage_and_cost(self, llm_response: LLMResponse) -> None:
+    def update_usage_and_cost(self, llm_response: ModelResponse) -> None:
         model_info = llm_response.model_info
         self._configuration["usage"]["prompt_tokens"] += llm_response.prompt_tokens_used
         self._configuration["usage"][
@@ -77,14 +78,18 @@ class SimpleBudgetManager(BudgetManager):
         "budget_manager": {
             # TODO: this should be more dynamically configurable in a later
             #  iteration so that users can budget multiple resources.
-            "llm_budget": LLMBudget.configuration_defaults["llm_budget"],
+            "openai_budget": OpenAIBudget.configuration_defaults["openai_budget"],
         }
     }
 
-    def __init__(self, configuration: Configuration):
+    def __init__(
+        self,
+        configuration: Configuration,
+        logger: logging.Logger,
+    ):
         self._configuration = configuration.budget_manager
         self._resources: dict[str, ResourceBudget] = {
-            "llm_budget": LLMBudget(self._configuration["llm_budget"])
+            "openai_budget": OpenAIBudget(self._configuration["openai_budget"])
         }
 
     def list_resources(self) -> list[str]:

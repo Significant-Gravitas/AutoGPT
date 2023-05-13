@@ -1,11 +1,11 @@
 """The language model acts as the core intelligence of the Agent."""
 from autogpt.core.model.base import Model, ModelInfo, ModelResponse
-from autogpt.core.model.embedding.base import (
+from autogpt.core.model.embedding import (
     EmbeddingModel,
     EmbeddingModelInfo,
     EmbeddingModelResponse,
 )
-from autogpt.core.model.language.base import (
+from autogpt.core.model.language import (
     LanguageModel,
     LanguageModelInfo,
     LanguageModelResponse,
@@ -18,5 +18,6 @@ status = Status(
     handoff_notes=(
         "Before times: Interface has been created. Next up is creating a basic implementation.\n"
         "5/11: Refactored interface to split out embedding and language models.\n"
+        "      Created a basic implementation of the language model and work out several utilities.\n"
     ),
 )

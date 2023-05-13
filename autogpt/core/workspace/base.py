@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import abc
+import logging
 import typing
 from pathlib import Path
 
 if typing.TYPE_CHECKING:
     from autogpt.core.configuration.base import Configuration
-    from autogpt.core.logging.base import Logger
 
 
 class Workspace(abc.ABC):
@@ -21,12 +21,7 @@ class Workspace(abc.ABC):
     configuration_defaults = {}
 
     @abc.abstractmethod
-    def __init__(
-        self,
-        workspace_path: Path,
-        configuration: Configuration,
-        logger: Logger,
-    ):
+    def __init__(self, *args, **kwargs):
         ...
 
     @property
@@ -37,13 +32,13 @@ class Workspace(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def restrict_to_workspace(self):
+    def restrict_to_workspace(self) -> bool:
         """Whether to restrict generated paths to the workspace."""
         ...
 
     @staticmethod
     @abc.abstractmethod
-    def setup_workspace(configuration: Configuration, logger: Logger) -> Path:
+    def setup_workspace(configuration: Configuration, logger: logging.Logger) -> Path:
         """Create the workspace root directory and set up all initial content.
 
         Parameters

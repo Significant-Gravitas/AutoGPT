@@ -47,11 +47,7 @@ class Planner(abc.ABC):
     configuration_defaults = {"planner": {}}
 
     @abc.abstractmethod
-    def __init__(
-        self,
-        configuration: Configuration,
-        workspace: Workspace = None,  # Workspace is not available during bootstrapping.
-    ) -> None:
+    def __init__(self, *args, **kwargs):
         ...
 
     @staticmethod

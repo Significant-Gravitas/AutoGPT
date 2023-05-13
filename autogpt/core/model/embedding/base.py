@@ -31,10 +31,7 @@ class EmbeddingModel(Model):
     configuration_defaults = {"embedding_model": {}}
 
     @abc.abstractmethod
-    def __init__(
-        self,
-        configuration: "Configuration",
-    ):
+    def __init__(self, *args, **kwargs):
         ...
 
     @abc.abstractmethod

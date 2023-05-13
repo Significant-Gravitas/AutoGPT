@@ -2,7 +2,8 @@
 import abc
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Dict
+from enum import StrEnum
+from typing import Awaitable, Callable, Dict
 
 
 class Role(str):
@@ -41,7 +42,7 @@ class Message:
     metadata: MessageMetadata
 
 
-Listener = Callable[[Message], None]
+Listener = Callable[[Message], Awaitable[None]]
 MessageFilter = Callable[[Message], bool]
 
 
@@ -88,11 +89,7 @@ class MessageChannel(abc.ABC):
     """Interface for a channel that can propagate messages to a group of listeners."""
 
     @abc.abstractmethod
-    def __init__(
-        self,
-        channel_name: str,
-        message_broker: "MessageBroker",
-    ):
+    def __init__(self, *args, **kwargs):
         ...
 
     @abc.abstractmethod

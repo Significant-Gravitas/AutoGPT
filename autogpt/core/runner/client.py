@@ -22,7 +22,7 @@ def make_request(content, **metadata):
     return request
 
 
-def run_auto_gpt(
+async def run_auto_gpt(
     user_configuration: dict,  # Need to figure out what's in here
 ):
     # Configure logging before we do anything else.
@@ -45,7 +45,7 @@ def run_auto_gpt(
             "user_configuration": user_configuration,
         }
         # Post to https endpoint here maybe instead
-        response = application_server.boostrap_new_agent(
+        response = await application_server.boostrap_new_agent(
             make_request(user_objective_message),
         )
         if response.status_code == 200:
@@ -57,7 +57,7 @@ def run_auto_gpt(
     launch_agent_message = {
         "agent": user_configuration["agent_name"],
     }
-    response = application_server.launch_agent(
+    response = await application_server.launch_agent(
         make_request(launch_agent_message),
     )
     if response.status_code != 200:
@@ -73,7 +73,7 @@ def run_auto_gpt(
         feedback_message = {
             "user_feedback": user_feedback,
         }
-        response = application_server.give_agent_feedback(
+        response = await application_server.give_agent_feedback(
             make_request(feedback_message),
         )
         if response.status_code == 200:

@@ -17,5 +17,10 @@ status = Status(
         "      1 client <-> multi-agent [multi-project autogpt]\n"
         "      multi-client <-> multi-agent [autogpt service]\n"
         "      Did more backend work to mock webserver with message broker.\n"
+        "5/11: Async deffed everything so far.\n"
+        "      Made it the rest of the way through agent bootstrapping. Need solutions for plugins and memory,\n"
+        "      but those can come later by other folks.\n"
+        "      Moved agent and agent factory inside context objects to represent the processes they'll run in.\n"
+        "      Started working on agent launching.\n"
     ),
 )
