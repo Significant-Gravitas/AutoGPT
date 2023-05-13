@@ -2,7 +2,7 @@ import uuid
 from collections import defaultdict
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 
 from autogpt.core.agent.base import Agent
 from autogpt.core.messaging.simple import Message, Role, SimpleMessageBroker
@@ -217,7 +217,7 @@ class InteractRequestBody(BaseModel):
 
 
 class InteractResponseBody(BaseModel):
-    thoughts: Any  # TBD
+    thoughts: Dict[str, str]  # TBD
     messages: List[str]  # for example
 
 
@@ -233,7 +233,25 @@ async def interact(request: Request, agent_id: str, body: InteractRequestBody):
 
     # continue agent interaction with user input
 
-    return {"thoughts": "TBD", "messages": ["message1", agent_id]}
+    return {
+        "thoughts": {
+            "thoughts": {
+                "text": "text",
+                "reasoning": "reasoning",
+                "plan": "plan",
+                "criticism": "criticism",
+                "speak": "speak",
+            },
+            "commands": {
+                "name": "name",
+                "args": {
+                    "arg_1": "value_1",
+                    "arg_2": "value_2"
+                }
+            }
+        },
+        "messages": ["message1", agent_id]
+    }
 
 
 app = FastAPI()
