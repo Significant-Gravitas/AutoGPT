@@ -13,6 +13,7 @@ services:
     environment:
       MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
       REDIS_HOST: ${REDIS_HOST:-redis}
+    command: ["python", "-m", "autogpt", "--install-plugin-deps"]
     volumes:
       - ./:/app
     profiles: ["exclude-from-up"]
