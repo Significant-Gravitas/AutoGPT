@@ -128,7 +128,7 @@ def test_scan_plugins_generic(mock_config_generic_plugin):
     # Test that the function returns the correct number of plugins
     result = scan_plugins(mock_config_generic_plugin, debug=True)
     assert len(result) == 1
-    result = scan_plugins(mock_config_generic_plugin, ['AutoGPTPVicuna'], debug=True)
+    result = scan_plugins(mock_config_generic_plugin, ["AutoGPTPVicuna"], debug=True)
     assert len(result) == 1
-    result = scan_plugins(mock_config_generic_plugin, ['AutoGPTPVicunX'], debug=True)
+    result = scan_plugins(mock_config_generic_plugin, ["AutoGPTPVicunX"], debug=True)
     assert len(result) == 0

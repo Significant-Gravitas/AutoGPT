@@ -196,7 +196,9 @@ def instantiate_openai_plugin_clients(
     return plugins
 
 
-def scan_plugins(cfg: Config, ai_cfg_plugins=None, debug: bool = False) -> List[AutoGPTPluginTemplate]:
+def scan_plugins(
+    cfg: Config, ai_cfg_plugins=None, debug: bool = False
+) -> List[AutoGPTPluginTemplate]:
     """Scan the plugins directory for plugins and loads them.
 
     Args:
@@ -236,7 +238,10 @@ def scan_plugins(cfg: Config, ai_cfg_plugins=None, debug: bool = False) -> List[
                         "_abc_impl" in a_keys
                         and a_module.__name__ != "AutoGPTPluginTemplate"
                         and denylist_allowlist_check(a_module.__name__, cfg)
-                        and (len(ai_cfg_plugins) == 0 or a_module.__name__ in ai_cfg_plugins)
+                        and (
+                            len(ai_cfg_plugins) == 0
+                            or a_module.__name__ in ai_cfg_plugins
+                        )
                     ):
                         loaded_plugins.append(a_module())
     # OpenAI plugins
