@@ -43,16 +43,9 @@ def client() -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    # stdout, stderr = process.communicate()
-    # print("stdout:", stdout)
-    # print("stderr:", stderr)
-    time.sleep(2)
-    breakpoint()
-    autogpt.core.runner.client.run()
+    time.sleep(2)  # wait for server to start
 
-    # invoke httpserver in a subprocess
-    # launch client application
-    # client will make http request to 2 http endpoints
+    autogpt.core.runner.client.run()
 
 
 # @v2.command()
