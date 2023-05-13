@@ -10,7 +10,7 @@ from tests.utils import requires_api_key
 
 
 @requires_api_key("OPENAI_API_KEY")
-@pytest.mark.vcr
+# @pytest.mark.vcr
 def test_write_file(writer_agent: Agent, patched_api_requestor) -> None:
     file_path = str(writer_agent.workspace.get_path("hello_world.txt"))
     try:
