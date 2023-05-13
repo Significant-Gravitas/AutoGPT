@@ -27,7 +27,7 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 @run_multiple_times(3)
 def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> None:
     """
-    Test the challenge_a function in a given agent by mocking user inputs 
+    Test the challenge_a function in a given agent by mocking user inputs
     and checking the output file content.
 
     :param get_company_revenue_agent: The agent to test.

@@ -216,4 +216,3 @@ def kubernetes_agent(memory_local_cache, workspace: Workspace):
     )
 
     return agent
-
