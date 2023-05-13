@@ -181,6 +181,8 @@ def create_chat_completion(
                 )
                 warned_user = True
         except (APIError, Timeout) as e:
+            if e.http_status != 502 :
+                raise
             if attempt == num_retries - 1:
                 raise
         logger.debug(
