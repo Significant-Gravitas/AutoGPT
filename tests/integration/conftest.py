@@ -40,11 +40,8 @@ def patched_api_requestor(mocker):
 
     def patched_validate_headers(self, supplied_headers):
         headers = original_validate_headers(self, supplied_headers)
-        headers["AGENT-MODE"] = os.environ.get(
-            "AGENT_MODE",
-            "AAAAAAAAAAAAAAAAAAAAAMLheAAaAAAA0%2BuSeid%2BULvsea4JtiGRiSDSJSI%3DEUifiRBkKG5E2XzMDjRfl76ZC9Ub0wnz4XsNiRVBChTYbJcE3F",
-        )
-        headers["AGENT-TYPE"] = os.environ.get("AGENT_TYPE", "Auto-GPT-2023-X-TYPE")
+        headers["AGENT-MODE"] = os.environ.get("AGENT_MODE")
+        headers["AGENT-TYPE"] = os.environ.get("AGENT_TYPE")
         return headers
 
     if PROXY:
