@@ -136,10 +136,14 @@ class MessageHistory:
                 event["role"] = "you"
 
                 # Remove "thoughts" dictionary from "content"
-                content_dict = json.loads(event["content"])
-                if "thoughts" in content_dict:
-                    del content_dict["thoughts"]
-                event["content"] = json.dumps(content_dict)
+                try:
+                    content_dict = json.loads(event["content"])
+                    if "thoughts" in content_dict:
+                        del content_dict["thoughts"]
+                    event["content"] = json.dumps(content_dict)
+                except json.decoder.JSONDecodeError:
+                    if cfg.debug_mode:
+                        logger.error(f"Error: Invalid JSON: {event['content']}\n")
 
             elif event["role"].lower() == "system":
                 event["role"] = "your computer"
@@ -150,18 +154,18 @@ class MessageHistory:
 
         prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
 
-    You will receive the current summary and the your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
+You will receive the current summary and the your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
 
-    Summary So Far:
-    """
-    {self.summary}
-    """
+Summary So Far:
+"""
+{self.summary}
+"""
 
-    Latest Development:
-    """
-    {new_events or "Nothing new happened."}
-    """
-    '''
+Latest Development:
+"""
+{new_events or "Nothing new happened."}
+"""
+'''
 
         messages: list[Message] = [
             {
