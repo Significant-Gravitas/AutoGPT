@@ -65,3 +65,18 @@ def server() -> None:
         None,
     )
     autogpt.core.runner.server.launch_agent("msg")
+
+
+@runner.command()
+def httpserver() -> None:
+    """Run the Auto-GPT runner httpserver."""
+    import uvicorn
+
+    print("Running Auto-GPT runner httpserver...")
+    uvicorn.run(
+        "autogpt.core.runner.server:app",
+        workers=1,
+        host="0.0.0.0",
+        port=8080,
+        reload=True,
+    )

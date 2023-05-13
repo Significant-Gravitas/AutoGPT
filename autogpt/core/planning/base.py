@@ -1,5 +1,4 @@
 import abc
-import enum
 from dataclasses import dataclass
 from typing import Any, List
 
@@ -7,7 +6,7 @@ from autogpt.core.configuration.base import Configuration
 from autogpt.core.workspace.base import Workspace
 
 
-class ModelRole(enum.StrEnum):
+class ModelRole(str):
     USER = "user"
     SYSTEM = "system"
     ASSISTANT = "assistant"

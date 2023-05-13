@@ -37,7 +37,7 @@ class LanguageModel(Model):
 
     @abc.abstractmethod
     def determine_agent_objective(
-        self, objective_prompt: ModelPrompt
+        self, objective_prompt: "ModelPrompt"
     ) -> LanguageModelResponse:
         """Chat with a language model to determine the agent's objective.
 
@@ -51,7 +51,7 @@ class LanguageModel(Model):
         ...
 
     @abc.abstractmethod
-    def plan_next_action(self, planning_prompt: ModelPrompt) -> LanguageModelResponse:
+    def plan_next_action(self, planning_prompt: "ModelPrompt") -> LanguageModelResponse:
         """Chat with a language model to plan the agent's next action.
 
         Args:
@@ -65,7 +65,7 @@ class LanguageModel(Model):
 
     @abc.abstractmethod
     def get_self_feedback(
-        self, self_feedback_prompt: ModelPrompt
+        self, self_feedback_prompt: "ModelPrompt"
     ) -> LanguageModelResponse:
         """Chat with a language model to get feedback on the agent's performance.
 
