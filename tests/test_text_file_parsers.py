@@ -9,7 +9,7 @@ import yaml
 from bs4 import BeautifulSoup
 from PyPDF2 import PdfWriter
 
-from autogpt.commands.file_operations_utils import read_textual_file, is_file_binary_fn
+from autogpt.commands.file_operations_utils import is_file_binary_fn, read_textual_file
 
 plain_text_str = "Hello, world!"
 
