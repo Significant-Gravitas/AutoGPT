@@ -1,5 +1,4 @@
 from autogpt.core.configuration import Configuration
-from autogpt.core.logging import Logger
 from autogpt.core.planning.base import (
     ModelMessage,
     ModelPrompt,
