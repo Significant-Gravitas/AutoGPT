@@ -1,6 +1,9 @@
 import json
+import os
 import re
 from typing import Any, Dict, List
+
+from tests.conftest import PROXY
 
 REPLACEMENTS: List[Dict[str, str]] = [
     {
@@ -12,6 +15,19 @@ REPLACEMENTS: List[Dict[str, str]] = [
         "replacement": "",
     },
 ]
+
+ALLOWED_HOSTNAMES: List[str] = [
+    "api.openai.com",
+    "localhost:50337",
+]
+
+if PROXY:
+    ALLOWED_HOSTNAMES.append(PROXY)
+    ORIGINAL_URL = PROXY
+else:
+    ORIGINAL_URL = "no_ci"
+
+NEW_URL = "api.openai.com"
 
 
 def replace_message_content(content: str, replacements: List[Dict[str, str]]) -> str:
@@ -53,6 +69,8 @@ def before_record_response(response: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def before_record_request(request: Any) -> Any:
+    request = replace_request_hostname(request, ORIGINAL_URL, NEW_URL)
+
     filtered_request = filter_hostnames(request)
     filtered_request_without_dynamic_data = replace_timestamp_in_request(
         filtered_request
@@ -60,14 +78,24 @@ def before_record_request(request: Any) -> Any:
     return filtered_request_without_dynamic_data
 
 
-def filter_hostnames(request: Any) -> Any:
-    allowed_hostnames: List[str] = [
-        "api.openai.com",
-        "localhost:50337",
-    ]
+from urllib.parse import urlparse, urlunparse
 
+
+def replace_request_hostname(request: Any, original_url: str, new_hostname: str) -> Any:
+    parsed_url = urlparse(request.uri)
+
+    if parsed_url.hostname in original_url:
+        new_path = parsed_url.path.replace("/proxy_function", "")
+        request.uri = urlunparse(
+            parsed_url._replace(netloc=new_hostname, path=new_path, scheme="https")
+        )
+
+    return request
+
+
+def filter_hostnames(request: Any) -> Any:
     # Add your implementation here for filtering hostnames
-    if any(hostname in request.url for hostname in allowed_hostnames):
+    if any(hostname in request.url for hostname in ALLOWED_HOSTNAMES):
         return request
     else:
         return None
