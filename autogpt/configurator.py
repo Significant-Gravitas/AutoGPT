@@ -112,6 +112,9 @@ def create_config(
         CFG.ai_settings_file = file
         CFG.skip_reprompt = True
 
+    if browser_name:
+        CFG.selenium_web_browser = browser_name
+
     if allow_downloads:
         logger.typewriter_log("Native Downloading:", Fore.GREEN, "ENABLED")
         logger.typewriter_log(
@@ -129,6 +132,3 @@ def create_config(
 
     if skip_news:
         CFG.skip_news = True
-
-    if browser_name:
-        CFG.selenium_web_browser = browser_name
