@@ -108,7 +108,8 @@ Continue ({CFG.authorise_key}/{CFG.exit_key}): """
         config = prompt_user()
         config.save(CFG.ai_settings_file)
 
-    logger.typewriter_log(
+    if CFG.restrict_to_workspace:
+        logger.typewriter_log(
             "NOTE:All files/directories created by this agent can be found inside its workspace at:",
             Fore.YELLOW,
             f"{CFG.workspace_path}",
