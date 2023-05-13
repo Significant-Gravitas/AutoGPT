@@ -103,11 +103,10 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)
-def test_information_retrieval_challenge_a(
-    kubernetes_agent, monkeypatch
-) -> None:
+def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> None:
     """
-    Test the challenge_a function in a given agent by mocking user inputs and checking the output file content.
+    Test the challenge_a function in a given agent by mocking user inputs
+    and checking the output file content.
 
     :param get_company_revenue_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
@@ -119,17 +118,19 @@ def test_information_retrieval_challenge_a(
     with contextlib.suppress(SystemExit):
         run_interaction_loop(kubernetes_agent, None)
 
+    # here we load the output file
     file_path = str(kubernetes_agent.workspace.get_path("kube.yaml"))
     content = read_file(file_path)
-    with open('str(kubernetes_agent.workspace.get_path("kube.yaml"))) as file:
-        try:
-            yaml.safe_load(file)
-        except yaml.YAMLError as e:
-            assert False, f"Error while loading kube.yaml: {e}"
-    assert "nginx" in content, "Expected the file to contain nginx"
+
+    # then we check if it's including keywords from the kubernetes deployment config
+    for word in ["apiVersion", "kind", "metadata", "spec"]:
+        assert word in content, f"Expected the file to contain {word}"
+
+    content = yaml.safe_load(content)
+    for word in ["Service", "Deployment", "Pod"]:
+        assert word in content["kind"], f"Expected the file to contain {word}"
 
 
 ```
 
-Check how in lines 45 to 52 we try to check if the file is a proper yaml
 
