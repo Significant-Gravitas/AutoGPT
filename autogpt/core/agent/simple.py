@@ -16,8 +16,6 @@ from autogpt.core.workspace.simple import SimpleWorkspace
 # from autogpt.core.command.simple import SimpleCommandRegistry
 
 
-
-
 class SimpleAgent(Agent):
     def __init__(self, *args, **kwargs):
         pass
