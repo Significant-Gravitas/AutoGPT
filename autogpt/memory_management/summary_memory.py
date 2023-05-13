@@ -10,6 +10,40 @@ from autogpt.logs import logger
 
 cfg = Config()
 
+def cleanup_new_events(new_events:List[Dict[str,str]]) -> List[Dict[str,str]]:
+    """Filters and processes the latest events to be added to the summary.
+    
+    Args:
+        new_events (List[Dict]): A list of dictionaries containing the latest raw events to be added to the summary.
+
+    Returns:
+        new_events (List[Dict]): A list of dictionaries containing the cleaned events to be added to the summary.
+    """
+    new_events = [event for event in new_events if event['role']!= "user"]
+
+    # Replace "assistant" with "you". This produces much better first person past tense results.    
+    for event in new_events:
+        if event["role"].lower() == "assistant":
+            event["role"] = "you"
+
+            # Remove "thoughts" dictionary from "content"
+            try:
+                content_dict = json.loads(event["content"])
+                if "thoughts" in content_dict:
+                    del content_dict["thoughts"]
+                event["content"] = json.dumps(content_dict)
+            except json.decoder.JSONDecodeError as e:
+                if cfg.debug_mode:
+                    logger.error(f"Error: Invalid JSON: {event['content']}\n")
+                    logger.error(f"{e}")
+
+        elif event["role"].lower() == "system":
+            event["role"] = "your computer"
+
+    # This can happen at any point during execution, not just the beginning
+    if len(new_events) == 0:
+        new_events = "Nothing new happened."
+    return new_events
 
 def get_newly_trimmed_messages(
     full_message_history: List[Dict[str, str]],
@@ -67,31 +101,8 @@ def update_running_summary(
     """
     # Create a copy of the new_events list to prevent modifying the original list
     new_events = copy.deepcopy(new_events)
-
-    new_events = [event for event in new_events if event["role"].lower() != "user"]
-    # Replace "assistant" with "you". This produces much better first person past tense results.
-    for i, event in enumerate(new_events):
-        if event["role"].lower() == "assistant":
-            new_events[i]["role"] = "you"
-
-            # Remove "thoughts" dictionary from "content"
-            #TODO: Need a double check here to confirm '"thoughts":' is the correct identifier.
-            if '"thoughts":' in event["content"]:
-                try:
-                    content_dict = json.loads(event["content"])
-                    del content_dict["thoughts"]
-                    new_events[i]["content"] = json.dumps(content_dict)
-                except:
-                    error_str = f"ERROR: invalid json format when attempting to remove 'thoughts' content from event: {event}"
-                    logger.error(error_str)
-                    continue
-        elif event["role"].lower() == "system":
-            new_events[i]["role"] = "your computer"  
-
-    # This can happen at any point during execution, not just the beginning
-    if len(new_events) == 0:
-        new_events = "Nothing new happened."
-
+    new_events = cleanup_new_events(new_events)
+    
     prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
 
 You will receive the current summary and the your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
