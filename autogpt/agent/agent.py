@@ -148,19 +148,19 @@ class Agent:
                 assistant_reply_json,
                 NEXT_ACTION_FILE_NAME,
             )
-
-            if not cfg.continuous_mode and self.next_action_count == 0:
-                # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
-                # Get key press: Prompt the user to press enter to continue or escape
-                # to exit
-                self.user_input = ""
-                logger.typewriter_log(
+            
+            logger.typewriter_log(
                     "NEXT ACTION: ",
                     Fore.CYAN,
                     f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
                     f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
 
+            if not cfg.continuous_mode and self.next_action_count == 0:
+                # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+                # Get key press: Prompt the user to press enter to continue or escape
+                # to exit
+                self.user_input = ""
                 logger.info(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
                     "'n' to exit program, or enter feedback for "
@@ -234,25 +234,10 @@ class Agent:
                 elif user_input == "EXIT":
                     logger.info("Exiting...")
                     break
-            elif self.next_action_count > 0 and not cfg.continuous_mode:
+            else:
                 # Print authorized commands left value
                 logger.typewriter_log(
                     f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
-                )
-                # Print command
-                logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
-                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-                )
-            else:
-                # Print command
-                logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
-                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
                 )
 
             # Execute command
