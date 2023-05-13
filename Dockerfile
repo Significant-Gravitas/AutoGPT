@@ -37,6 +37,6 @@ RUN sed -i '/Items below this point will not be included in the Docker Image/,$d
 WORKDIR /app
 ONBUILD COPY autogpt/ ./autogpt
 ONBUILD COPY scripts/ ./scripts
-
+ONBUILD COPY plugins/ ./plugins
 
 FROM autogpt-${BUILD_TYPE} AS auto-gpt
