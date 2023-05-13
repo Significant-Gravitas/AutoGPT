@@ -1,8 +1,9 @@
 import uuid
 from collections import defaultdict
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from typing import List, Optional, Any, Dict
 
 from autogpt.core.messaging.simple import Message, Role, SimpleMessageBroker
 from autogpt.core.runner.agent import agent_context
@@ -244,13 +245,10 @@ async def interact(request: Request, agent_id: str, body: InteractRequestBody):
             },
             "commands": {
                 "name": "name",
-                "args": {
-                    "arg_1": "value_1",
-                    "arg_2": "value_2"
-                }
-            }
+                "args": {"arg_1": "value_1", "arg_2": "value_2"},
+            },
         },
-        "messages": ["message1", agent_id]
+        "messages": ["message1", agent_id],
     }
 
 
@@ -259,4 +257,3 @@ app.include_router(router, prefix="/api/v1")
 # NOTE:
 # - start with `uvicorn autogpt.core.runner.server:app --reload --port=8080`
 # - see auto-generated API docs: http://localhost:8080/docs
-

@@ -5,16 +5,17 @@ from autogpt.core.agent.base import Agent
 from autogpt.core.budget.simple import SimpleBudgetManager
 from autogpt.core.configuration import Configuration
 
-# from autogpt.core.command.simple import SimpleCommandRegistry
-from autogpt.core.credentials.simple import SimpleCredentialsManager
-
 # from autogpt.core.memory.simple import SimpleMemoryBackend
-from autogpt.core.model.language.openai import OpenAILanguageModel
+from autogpt.core.model.language.simple import OpenAILanguageModel
 
 # from autogpt.core.model.embedding.openai import OpenAIEmbeddingModel
 from autogpt.core.planning.simple import SimplePlanner
 from autogpt.core.plugin.simple import SimplePluginService
 from autogpt.core.workspace.simple import SimpleWorkspace
+
+# from autogpt.core.command.simple import SimpleCommandRegistry
+
+
 
 
 class SimpleAgent(Agent):
@@ -29,12 +30,6 @@ class SimpleAgent(Agent):
     ) -> "SimpleAgent":
         configuration: Configuration = SimpleWorkspace.load_configuration(
             workspace_path,
-        )
-
-        credentials: SimpleCredentialsManager = SimpleAgent.load_system(
-            "credentials",
-            configuration,
-            logger,
         )
 
         budget_manager: SimpleBudgetManager = SimpleAgent.load_system(
@@ -58,13 +53,11 @@ class SimpleAgent(Agent):
             "language_model",
             configuration,
             logger,
-            credentials=credentials,
         )
         # memory_backend: SimpleMemoryBackend = SimpleAgent.load_system(
         #     "memory_backend",
         #     configuration,
         #     logger,
-        #     credentials=credentials,
         # )
         planner: SimplePlanner = SimpleAgent.load_system(
             "planner",
@@ -79,7 +72,6 @@ class SimpleAgent(Agent):
         return SimpleAgent(
             configuration=configuration,
             logger=logger,
-            credentials=credentials,
             budget_manager=budget_manager,
             language_model=language_model,
             planner=planner,

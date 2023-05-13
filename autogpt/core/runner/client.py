@@ -1,6 +1,7 @@
-import logging
-import requests
 import json
+import logging
+
+import requests
 
 # This could be a client library, or they could simply use requests to hit the API.
 # For now, we'll do everything in-process.

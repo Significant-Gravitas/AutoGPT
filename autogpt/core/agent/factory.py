@@ -5,8 +5,7 @@ from typing import List, Tuple, Type
 
 from autogpt.core.budget.simple import SimpleBudgetManager
 from autogpt.core.configuration import Configuration
-from autogpt.core.credentials.simple import SimpleCredentialsManager
-from autogpt.core.model.language.openai import (
+from autogpt.core.model.language.simple import (
     LanguageModelResponse,
     OpenAILanguageModel,
 )
@@ -117,15 +116,10 @@ class SimpleAgentFactory:
         objective_prompt: ModelPrompt,
         configuration: Configuration,
     ) -> LanguageModelResponse:
-        credentials_manager: SimpleCredentialsManager = self.get_system_instance(
-            "credentials",
-            configuration,
-        )
         language_model: OpenAILanguageModel = self.get_system_instance(
             "language_model",
             configuration,
             logger=self._logger.getChild("language_model"),
-            credentials_manager=credentials_manager,
         )
         budget_manager: SimpleBudgetManager = self.get_system_instance(
             "budget_manager",

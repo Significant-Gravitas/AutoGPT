@@ -1,7 +1,16 @@
 import abc
+from typing import Type
 
 
-class CredentialsManager(abc.ABC):
+class CredentialsConsumer(abc.ABC):
+    credentials_defaults = {}
+
+    @abc.abstractmethod
+    def __init__(self, *args, **kwargs):
+        ...
+
+
+class CredentialsService(abc.ABC):
     configuration_defaults = {"credentials": {}}
 
     @abc.abstractmethod
@@ -9,8 +18,12 @@ class CredentialsManager(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def add_credentials(self, service_name: str, credentials: dict) -> None:
-        """Add credentials for a service."""
+    def register_credentials(
+        self,
+        service_name: str,
+        credentials_consumer: Type[CredentialsConsumer],
+    ) -> None:
+        """Add credentials for a service, resolving defaults with user provided overrides.."""
         ...
 
     @abc.abstractmethod

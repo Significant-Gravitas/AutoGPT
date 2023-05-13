@@ -1,12 +1,10 @@
 import abc
-import typing
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Any, Callable, TypeVar
 
-from autogpt.core.model.base import Model, ModelInfo, ModelResponse
+from autogpt.core.model.base import ModelInfo, ModelProvider, ModelResponse, ModelType
 
-if typing.TYPE_CHECKING:
-    from autogpt.core.configuration import Configuration
+Embedding = list[float]
 
 
 @dataclass
@@ -20,22 +18,20 @@ class EmbeddingModelInfo(ModelInfo):
 class EmbeddingModelResponse(ModelResponse):
     """Standard response struct for a response from an embedding model."""
 
-    embedding: List[float] = field(default_factory=list)
+    embedding: Embedding = field(default_factory=list)
 
     def __post_init__(self):
         if self.completion_tokens_used:
             raise ValueError("Embeddings should not have completion tokens used.")
 
 
-class EmbeddingModel(Model):
-    configuration_defaults = {"embedding_model": {}}
-
+class EmbeddingModel(ModelType):
     @abc.abstractmethod
     def __init__(self, *args, **kwargs):
         ...
 
     @abc.abstractmethod
-    def list_models(self) -> Dict[str, EmbeddingModelInfo]:
+    def list_models(self) -> dict[str, EmbeddingModelInfo]:
         """List all available models."""
         ...
 
@@ -45,7 +41,7 @@ class EmbeddingModel(Model):
         ...
 
     @abc.abstractmethod
-    def get_embedding(self, text: str) -> EmbeddingModelResponse:
+    async def get_embedding(self, text: str) -> EmbeddingModelResponse:
         """Get the embedding for a prompt.
 
         Args:
@@ -55,4 +51,20 @@ class EmbeddingModel(Model):
             The response from the embedding model.
 
         """
+        ...
+
+
+class EmbeddingModelProvider(ModelProvider):
+    @abc.abstractmethod
+    def __init__(self, *args, **kwargs):
+        ...
+
+    @abc.abstractmethod
+    async def create_embedding(
+        self,
+        text: str,
+        model_name: str,
+        embedding_parser: Callable[[Embedding], Embedding],
+        **kwargs,
+    ) -> EmbeddingModelResponse:
         ...

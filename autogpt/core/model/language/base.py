@@ -1,8 +1,8 @@
 import abc
 from dataclasses import dataclass
-from typing import Dict
+from typing import Any, Callable
 
-from autogpt.core.model.base import Model, ModelInfo, ModelResponse
+from autogpt.core.model.base import ModelInfo, ModelProvider, ModelResponse, ModelType
 from autogpt.core.planning.base import ModelPrompt
 
 
@@ -18,7 +18,7 @@ class LanguageModelResponse(ModelResponse):
     content: dict = None
 
 
-class LanguageModel(Model):
+class LanguageModel(ModelType):
     configuration_defaults = {"language_model": {}}
 
     @abc.abstractmethod
@@ -26,7 +26,7 @@ class LanguageModel(Model):
         ...
 
     @abc.abstractmethod
-    def list_models(self) -> Dict[str, LanguageModelInfo]:
+    def list_models(self) -> dict[str, LanguageModelInfo]:
         """List all available models."""
         ...
 
@@ -77,4 +77,20 @@ class LanguageModel(Model):
             The response from the language model.
 
         """
+        ...
+
+
+class LanguageModelProvider(ModelProvider):
+    @abc.abstractmethod
+    def __init__(self, *args, **kwargs):
+        ...
+
+    @abc.abstractmethod
+    async def create_language_completion(
+        self,
+        model_prompt: ModelPrompt,
+        model_name: str,
+        completion_parser: Callable[[str], dict],
+        **kwargs,
+    ) -> LanguageModelResponse:
         ...

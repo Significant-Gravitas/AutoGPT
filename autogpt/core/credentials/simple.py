@@ -1,37 +1,31 @@
-from typing import Dict
+import logging
+from typing import Type
 
-from autogpt.core.configuration import Configuration
-from autogpt.core.credentials.base import CredentialsManager
+from autogpt.core.configuration.base import Configuration
+from autogpt.core.credentials.base import CredentialsConsumer, CredentialsService
 
 
-class SimpleCredentialsManager(CredentialsManager):
-    configuration_defaults = {
-        "credentials": {
-            "openai": {
-                "api_key": "YOUR_API_KEY",
-                "azure_configuration": {
-                    "api_type": "azure",
-                    "api_base": "YOUR_AZURE_API_BASE",
-                    "api_version": "YOUR_AZURE_API_VERSION",
-                    "deployment_ids": {
-                        "fast_model": "YOUR_FAST_LLM_MODEL_DEPLOYMENT_ID",
-                        "smart_model": "YOUR_SMART_LLM_MODEL_DEPLOYMENT_ID",
-                        "embedding_model": "YOUR_EMBEDDING_MODEL_DEPLOYMENT_ID",
-                    },
-                },
-            },
-        },
-    }
+class SimpleCredentialsService(CredentialsService):
+    # Credentials defaults are set by classes that inherit from CredentialsConsumer.
+    configuration_defaults = {"credentials": {}}
 
-    def __init__(self, configuration: Configuration):
-        self._configuration = configuration.credentials
+    def __init__(self, configuration: Configuration, logger: logging.Logger):
+        self._configuration = configuration.credentials.copy()
+        self._logger = logger
+        self._credentials = {}
 
-    def add_credentials(self, service_name: str, credentials: Dict):
-        self._configuration[service_name] = credentials
-        # TODO: Save to file.
+    def register_credentials(
+        self,
+        service_name: str,
+        credentials_consumer: Type[CredentialsConsumer],
+    ) -> None:
+        default_credentials = credentials_consumer.credentials_defaults
+        override_credentials = self._configuration.get(service_name, {})
+        credentials = {**default_credentials, **override_credentials}
+        self._credentials[service_name] = credentials
 
-    def get_credentials(self, service_name: str) -> Dict[str, Dict]:
-        return self._configuration[service_name].copy()
+    def get_credentials(self, service_name: str) -> dict:
+        return self._credentials[service_name].copy()
 
     def __repr__(self):
-        return f"CredentialsManager(services={list(self._configuration)}"
+        return f"SimpleCredentialsService({list(self._credentials)})"

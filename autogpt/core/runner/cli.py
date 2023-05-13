@@ -1,8 +1,9 @@
-import click
-import sys
-import subprocess
 import shlex
+import subprocess
+import sys
 import time
+
+import click
 
 
 @click.group()

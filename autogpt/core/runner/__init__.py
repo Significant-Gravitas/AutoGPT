@@ -22,5 +22,6 @@ status = Status(
         "      but those can come later by other folks.\n"
         "      Moved agent and agent factory inside context objects to represent the processes they'll run in.\n"
         "      Started working on agent launching.\n"
+        "5/12: Worked with Merwan and David to set up a FastAPI server and run the cli through it.\n"
     ),
 )
