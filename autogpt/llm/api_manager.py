@@ -3,8 +3,8 @@ from __future__ import annotations
 import openai
 
 from autogpt.config import Config
+from autogpt.llm.modelsinfo import COSTS
 from autogpt.logs import logger
-from autogpt.modelsinfo import COSTS
 from autogpt.singleton import Singleton
 
 

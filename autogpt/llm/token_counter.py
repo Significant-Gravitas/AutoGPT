@@ -5,8 +5,8 @@ from typing import List
 
 import tiktoken
 
+from autogpt.llm.base import Message
 from autogpt.logs import logger
-from autogpt.types.openai import Message
 
 
 def count_message_tokens(
