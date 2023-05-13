@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 import copy
 import json
+from typing import TYPE_CHECKING
 
-from autogpt.agent import Agent
+if TYPE_CHECKING:
+    from autogpt.agent import Agent
+
 from autogpt.config import Config
 from autogpt.json_utils.utilities import (
     LLM_DEFAULT_RESPONSE_FORMAT,
@@ -92,7 +97,7 @@ class MessageHistory:
             else next_message_content
         )
 
-        return f"Assistant Reply: {assistant_reply}\nResult: {result}\nHuman Feedback:{user_input}"
+        return f"Assistant Reply: {assistant_reply}\nResult: {result}\nHuman Feedback: {user_input}"
 
     def summary_message(self) -> Message:
         return {

@@ -12,12 +12,11 @@ from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
 from autogpt.config import Config
-from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
 
 from ..memory_item import MemoryItem
 from ..utils import Embedding, get_embedding
-from . import ContextMemoryProvider
+from .abstract import ContextMemoryProvider
 
 
 class RedisMemory(ContextMemoryProvider):

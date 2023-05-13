@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from .. import MemoryItem
-from . import ContextMemoryProvider
+from .abstract import ContextMemoryProvider
 
 
 class NoMemory(ContextMemoryProvider):

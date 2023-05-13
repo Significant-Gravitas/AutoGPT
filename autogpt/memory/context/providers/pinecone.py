@@ -1,10 +1,10 @@
 import pinecone
 from colorama import Fore, Style
 
-from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
 
-from . import ContextMemoryProvider
+from ..utils import get_embedding
+from .abstract import ContextMemoryProvider
 
 
 class PineconeMemory(ContextMemoryProvider):
@@ -47,8 +47,8 @@ class PineconeMemory(ContextMemoryProvider):
             )
         self.index = pinecone.Index(table_name)
 
-    def add(self, data):
-        vector = get_ada_embedding(data)
+    def add(self, data: str):
+        vector = get_embedding(data)
         # no metadata here. We may wish to change that long term.
         self.index.upsert([(str(self.vec_num), vector, {"raw_text": data})])
         _text = f"Inserting data into memory at index: {self.vec_num}:\n data: {data}"
@@ -62,13 +62,13 @@ class PineconeMemory(ContextMemoryProvider):
         self.index.delete(deleteAll=True)
         return "Obliviated"
 
-    def get_relevant(self, data, num_relevant=5):
+    def get_relevant(self, query: str, num_relevant=5):
         """
-        Returns all the data in the memory that is relevant to the given data.
-        :param data: The data to compare to.
+        Returns all the data in the memory that is relevant to the given query.
+        :param query: The query to compare to.
         :param num_relevant: The number of relevant data to return. Defaults to 5
         """
-        query_embedding = get_ada_embedding(data)
+        query_embedding = get_embedding(query)
         results = self.index.query(
             query_embedding, top_k=num_relevant, include_metadata=True
         )

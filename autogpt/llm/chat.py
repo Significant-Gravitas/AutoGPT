@@ -1,7 +1,6 @@
 import time
 from random import shuffle
 
-from autogpt.agent.agent import Agent
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
@@ -60,7 +59,7 @@ def generate_context(
 
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
-    agent: Agent,
+    agent,
     system_prompt: str,
     user_input: str,
     token_limit: int,
@@ -101,9 +100,7 @@ def chat_with_ai(
         current_tokens_used,
         insertion_index,
         message_chain,
-    ) = generate_context(
-        system_prompt, relevant_memory, agent.history.messages, model
-    )
+    ) = generate_context(system_prompt, relevant_memory, agent.history.messages, model)
 
     # while current_tokens_used > 2500:
     #     # remove memories until we are under 2500 tokens
@@ -157,22 +154,17 @@ def chat_with_ai(
     api_manager = ApiManager()
     # inform the AI about its remaining budget (if it has one)
     if api_manager.get_total_budget() > 0.0:
-        remaining_budget = (
-            api_manager.get_total_budget() - api_manager.get_total_cost()
-        )
+        remaining_budget = api_manager.get_total_budget() - api_manager.get_total_cost()
         if remaining_budget < 0:
             remaining_budget = 0
-        budget_message = (
-            f"Your remaining API budget is ${remaining_budget:.3f}"
-            + (
-                " BUDGET EXCEEDED! SHUT DOWN!\n\n"
-                if remaining_budget == 0
-                else " Budget very nearly exceeded! Shut down gracefully!\n\n"
-                if remaining_budget < 0.005
-                else " Budget nearly exceeded. Finish up.\n\n"
-                if remaining_budget < 0.01
-                else "\n\n"
-            )
+        budget_message = f"Your remaining API budget is ${remaining_budget:.3f}" + (
+            " BUDGET EXCEEDED! SHUT DOWN!\n\n"
+            if remaining_budget == 0
+            else " Budget very nearly exceeded! Shut down gracefully!\n\n"
+            if remaining_budget < 0.005
+            else " Budget nearly exceeded. Finish up.\n\n"
+            if remaining_budget < 0.01
+            else "\n\n"
         )
         logger.debug(budget_message)
         message_chain.append(create_chat_message("system", budget_message))
@@ -193,9 +185,7 @@ def chat_with_ai(
             [create_chat_message("system", plugin_response)], model
         )
         if current_tokens_used + tokens_to_add > send_token_limit:
-            logger.debug(
-                f"Plugin response too long, skipping: {plugin_response}"
-            )
+            logger.debug(f"Plugin response too long, skipping: {plugin_response}")
             logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
             break
         message_chain.append(create_chat_message("system", plugin_response))

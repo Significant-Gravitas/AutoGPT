@@ -5,7 +5,7 @@ from pathlib import Path
 
 from colorama import Fore, Style
 
-from autogpt.agent.agent import Agent
+from autogpt.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config, check_openai_api_key
 from autogpt.configurator import create_config

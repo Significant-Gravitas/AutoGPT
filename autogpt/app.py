@@ -14,7 +14,6 @@ from autogpt.speech import say_text
 from autogpt.url_utils.validators import validate_url
 
 CFG = Config()
-AGENT_MANAGER = AgentManager()
 
 
 def is_valid_int(value: str) -> bool:
@@ -187,6 +186,8 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     Returns:
         str: The response of the agent
     """
+    agent_manager = AgentManager()
+
     # Remove underscores from name
     voice_name = name.replace("_", " ")
 
@@ -196,13 +197,13 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     # Create agent
     if CFG.speak_mode:
         say_text(agent_intro, 1)
-    key, ack = AGENT_MANAGER.create_agent(task, first_message, model)
+    key, ack = agent_manager.create_agent(task, first_message, model)
 
     if CFG.speak_mode:
         say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
     # Assign task (prompt), get response
-    agent_response = AGENT_MANAGER.message_agent(key, prompt)
+    agent_response = agent_manager.message_agent(key, prompt)
 
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
@@ -212,7 +213,7 @@ def message_agent(key: str, message: str) -> str:
     """Message an agent with a given key and message"""
     # Check if the key is a valid integer
     if is_valid_int(key):
-        agent_response = AGENT_MANAGER.message_agent(int(key), message)
+        agent_response = AgentManager().message_agent(int(key), message)
     else:
         return "Invalid key, must be an integer."
 
@@ -230,7 +231,7 @@ def list_agents() -> str:
         str: A list of all agents
     """
     return "List of agents:\n" + "\n".join(
-        [str(x[0]) + ": " + x[1] for x in AGENT_MANAGER.list_agents()]
+        [str(x[0]) + ": " + x[1] for x in AgentManager().list_agents()]
     )
 
 
@@ -244,5 +245,5 @@ def delete_agent(key: str) -> str:
     Returns:
         str: A message indicating whether the agent was deleted or not
     """
-    result = AGENT_MANAGER.delete_agent(key)
+    result = AgentManager().delete_agent(key)
     return f"Agent {key} deleted." if result else f"Agent {key} does not exist."

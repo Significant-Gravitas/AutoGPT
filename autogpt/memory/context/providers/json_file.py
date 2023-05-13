@@ -11,7 +11,7 @@ from autogpt.logs import logger
 
 from ..memory_item import MemoryItem
 from ..utils import Embedding, get_embedding
-from . import ContextMemoryProvider
+from .abstract import ContextMemoryProvider
 
 
 class JSONFileMemory(ContextMemoryProvider):

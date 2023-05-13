@@ -6,7 +6,7 @@ from weaviate.util import generate_uuid5
 from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
 
-from . import ContextMemoryProvider
+from .abstract import ContextMemoryProvider
 
 
 def default_schema(weaviate_index):
