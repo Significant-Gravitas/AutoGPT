@@ -3,7 +3,9 @@ import logging
 import unittest
 import json
 from autogpt.memory_management_summary_memory import cleanup_new_events
+from autogpt.config import Config
 
+cfg = Config()
 logger = logging.getLogger('test_log')
 logger.setLevel(logging.ERROR)
 
@@ -67,3 +69,39 @@ class TestSummaryMemory(unittest.TestCase):
         new_events =  [self.core_test_events[0]]
         new_events = cleanup_new_events(new_events)
         assert new_events == "Nothing new happened."
+    
+    def show_proof_that_latest_PR_still_fails(self):
+        def old_code(new_events:List[Dict[str,str]]) -> List[Dict[str,str]]:
+            """Shows proof that logic post- latest PR commit still does not function as expected"""
+            # Replace "assistant" with "you". This produces much better first person past tense results.
+            for event in new_events:
+                if event["role"].lower() == "assistant":
+                    event["role"] = "you"
+
+                    # Remove "thoughts" dictionary from "content"
+                    try:
+                        content_dict = json.loads(event["content"])
+                        if "thoughts" in content_dict:
+                            del content_dict["thoughts"]
+                        event["content"] = json.dumps(content_dict)
+                    except json.decoder.JSONDecodeError:
+                        if cfg.debug_mode:
+                            logger.error(f"Error: Invalid JSON: {event['content']}\n")
+
+                elif event["role"].lower() == "system":
+                    event["role"] = "your computer"
+
+                # Delete all user messages
+                elif event["role"] == "user":
+                    new_events.remove(event)
+
+            # This can happen at any point during execution, not just the beginning
+            if len(new_events) == 0:
+                new_events = "Nothing new happened."
+            return new_events
+        pass_test =  self.core_test_events + self.good_json_event
+        pass_new_events = old_code(pass_test)
+        assert '"thoughts":' not in pass_new_events[2]['content']
+        assert pass_new_events[0]['role'] == "your computer"
+        assert pass_new_events[1]['role'] == "you"
+        assert pass_new_events[2]['role'] == "you"
