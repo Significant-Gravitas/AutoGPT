@@ -4,6 +4,8 @@ import copy
 import json
 from typing import TYPE_CHECKING
 
+from autogpt.memory.context.memory_item import MemoryItem
+
 if TYPE_CHECKING:
     from autogpt.agent import Agent
 
@@ -19,40 +21,36 @@ from autogpt.logs import logger
 from autogpt.memory.context import ContextMemory
 
 
-class MessageHistory:
+class MessageHistory(list[Message]):
     agent: Agent
 
-    messages: list[Message]
     summary: str
 
-    last_memory_index: int
+    last_trimmed_index: int
 
     def __init__(self, agent: Agent):
         self.agent = agent
-        self.messages = []
         self.summary = "I was created."
-        self.last_memory_index = 0
+        self.last_trimmed_index = 0
 
-    def add(self, message: Message):
-        self.messages.append(message)
-
-    def get_trimmed_messages(
+    def trim_messages(
         self,
         current_message_chain: list[Message],
-    ) -> list[Message]:
+    ) -> tuple[Message, list[Message]]:
         """
         Returns a list of trimmed messages: messages which are in the message history
         but not in current_message_chain.
 
         Args:
-            current_message_chain (list): The messages currently in the context.
+            current_message_chain (list[Message]): The messages currently in the context.
 
         Returns:
-            list: A list of messages that are in full_message_history with an index higher than last_memory_index and absent from current_context.
+            Message: A message with the new running summary after adding the trimmed messages.
+            list[Message]: A list of messages that are in full_message_history with an index higher than last_trimmed_index and absent from current_message_chain.
         """
-        # Select messages in full_message_history with an index higher than last_memory_index
+        # Select messages in full_message_history with an index higher than last_trimmed_index
         new_messages = [
-            msg for i, msg in enumerate(self.messages) if i > self.last_memory_index
+            msg for i, msg in enumerate(self) if i > self.last_trimmed_index
         ]
 
         # Remove messages that are already present in current_message_chain
@@ -60,44 +58,38 @@ class MessageHistory:
             msg for msg in new_messages if msg not in current_message_chain
         ]
 
+        # agent.history.archive(
+        #     new_messages_not_in_chain,
+        #     agent.memory,
+        # )
+
+        new_summary_message = self.update_running_summary(
+            new_events=new_messages_not_in_chain
+        )
+
         # Find the index of the last message processed
         if new_messages_not_in_chain:
             last_message = new_messages_not_in_chain[-1]
-            self.last_memory_index = self.messages.index(last_message)
+            self.last_trimmed_index = self.index(last_message)
 
-        return new_messages_not_in_chain
+        return new_summary_message, new_messages_not_in_chain
 
-    def save_memory_trimmed_from_context_window(
+    def archive(
         self,
-        next_message_to_add_index: int,
+        up_to_index: int,
         permanent_memory: ContextMemory,
     ):
-        while next_message_to_add_index >= 0:
-            message_content = self.messages[next_message_to_add_index]["content"]
-            if is_string_valid_json(message_content, LLM_DEFAULT_RESPONSE_FORMAT):
-                next_message = self.messages[next_message_to_add_index + 1]
-                memory_to_add = self.format_memory(
-                    message_content, next_message["content"]
-                )
+        """Saves messages up to the given index to permanent memory"""
+
+        while up_to_index >= 0:
+            ai_message = self[up_to_index]
+            if is_string_valid_json(ai_message["content"], LLM_DEFAULT_RESPONSE_FORMAT):
+                next_message = self[up_to_index + 1]
+                memory_to_add = MemoryItem.from_ai_action(ai_message, next_message)
                 logger.debug(f"Storing the following memory: {memory_to_add}")
                 permanent_memory.add(memory_to_add)
 
-            next_message_to_add_index -= 1
-
-    def format_memory(self, assistant_reply: str, next_message_content: str):
-        # the next_message_content is a variable to stores either the user_input or the command following the assistant_reply
-        result = (
-            "None"
-            if next_message_content.startswith("Command")
-            else next_message_content
-        )
-        user_input = (
-            "None"
-            if next_message_content.startswith("Human feedback")
-            else next_message_content
-        )
-
-        return f"Assistant Reply: {assistant_reply}\nResult: {result}\nHuman Feedback: {user_input}"
+            up_to_index -= 1
 
     def summary_message(self) -> Message:
         return {

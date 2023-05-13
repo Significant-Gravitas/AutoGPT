@@ -95,7 +95,7 @@ class Agent:
                 self.config.ai_name,
                 self.created_at,
                 self.cycle_count,
-                self.history.messages,
+                self.history,
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
             if (
@@ -284,10 +284,10 @@ class Agent:
             # Check if there's a result from the command append it to the message
             # history
             if result is not None:
-                self.history.add(create_chat_message("system", result))
+                self.history.append(create_chat_message("system", result))
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
             else:
-                self.history.add(
+                self.history.append(
                     create_chat_message("system", "Unable to execute command")
                 )
                 logger.typewriter_log(

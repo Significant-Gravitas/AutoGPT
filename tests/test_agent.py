@@ -30,10 +30,10 @@ def agent():
     return agent
 
 
-def test_agent_initialization(agent):
+def test_agent_initialization(agent: Agent):
     assert agent.ai_name == "Test AI"
     assert agent.memory == agent.memory
-    assert agent.history_memory.messages == []
+    assert agent.history == []
     assert agent.next_action_count == 0
     assert agent.command_registry == agent.command_registry
     assert agent.config == agent.config

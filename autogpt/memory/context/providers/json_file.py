@@ -58,9 +58,8 @@ class JSONFileMemory(ContextMemoryProvider):
 
     def get_relevant(self, query: str, k: int) -> list[MemoryItem]:
         """
-        matrix-vector mult to find score-for-each-row-of-matrix
-         get indices for top-k winning scores
-         return texts for those indices
+        Returns the top-k most relevant memories for the given query
+
         Args:
             text: str
             k: int

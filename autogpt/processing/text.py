@@ -60,13 +60,13 @@ def chunk_content(
 
 
 def summarize_text(
-    text: str, question: Optional[str] = None, max_chunk_length: Optional[int] = None
+    text: str, instruction: Optional[str] = None, max_chunk_length: Optional[int] = None
 ) -> tuple[str, None | list[tuple[str, str]]]:
     """Summarize text using the OpenAI API
 
     Args:
         text (str): The text to summarize
-        question (str): A question to focus the summary content
+        instruction (str): Additional instruction for summarization, e.g. "focus on information related to polar bears", "omit personal information contained in the text"
 
     Returns:
         str: The summary of the text
@@ -81,14 +81,12 @@ def summarize_text(
 
     summarization_prompt_template = (
         (
-            "Consisely summarize the following text, focusing on "
-            f'information related to the question "{question}". '
-            "Do not answer the question itself. "
+            f"Consisely summarize the following text; {instruction}. "
             "If the text does not contain information, describe the type of text.\n"
             '\nText: """{content}"""\n'
             "\nSummary/description:"
         )
-        if question is not None
+        if instruction is not None
         else (
             "Consisely summarize the following text, "
             "covering the topics present in the text and nothing more. "
@@ -110,7 +108,7 @@ def summarize_text(
             prompt, model, temperature=0, max_output_tokens=500
         )
         logger.debug(f"Summary:\n{'-'*32}\n{summary}\n{'-'*32}\n")
-        return summary, None
+        return summary.strip(), None
 
     summaries: list[str] = []
     chunks = list(split_text(text, for_model=model))
@@ -119,14 +117,16 @@ def summarize_text(
         logger.info(
             f"Summarizing chunk {i + 1} / {len(chunks)} of length {chunk_length} tokens"
         )
-        summary, _ = summarize_text(chunk, question)
+        summary, _ = summarize_text(chunk, instruction)
         summaries.append(summary)
 
     logger.info(f"Summarized {len(chunks)} chunks")
 
     summary, _ = summarize_text("\n\n".join(summaries))
 
-    return summary, [(summaries[i], chunks[i][0]) for i in range(0, len(chunks))]
+    return summary.strip(), [
+        (summaries[i], chunks[i][0]) for i in range(0, len(chunks))
+    ]
 
 
 def split_text(
