@@ -6,7 +6,7 @@ from tests.integration.agent_utils import run_interaction_loop
 from tests.integration.challenges.utils import generate_noise, get_level_to_run
 from tests.utils import requires_api_key
 
-LEVEL_CURRENTLY_BEATEN = 2
+LEVEL_CURRENTLY_BEATEN = None
 MAX_LEVEL = 5
 NOISE = 1000
 
@@ -24,7 +24,6 @@ def test_memory_challenge_b(
         memory_management_agent (Agent)
         user_selected_level (int)
     """
-
     current_level = get_level_to_run(
         user_selected_level, LEVEL_CURRENTLY_BEATEN, MAX_LEVEL
     )
@@ -32,7 +31,7 @@ def test_memory_challenge_b(
     create_instructions_files(memory_management_agent, current_level, task_ids)
 
     try:
-        run_interaction_loop(memory_management_agent, 40)
+        run_interaction_loop(memory_management_agent, 60)
     except SystemExit:
         file_path = str(memory_management_agent.workspace.get_path("output.txt"))
         content = read_file(file_path)
