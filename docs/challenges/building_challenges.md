@@ -46,7 +46,7 @@ def kubernetes_agent(
         ai_name="Kubernetes",
         ai_role="an autonomous agent that specializes in creating Kubernetes deployment templates.",
         ai_goals=[
-            "Write the a simple kubernetes deployment file and save it as kube.yaml. You should make a simple nginx web server that uses docker and exposes the port 80.",
+            "Write a simple kubernetes deployment file and save it as a kube.yaml.",
         ],
     )
     ai_config.command_registry = command_registry
@@ -98,7 +98,6 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
     yield from input_sequence
 
 
-@pytest.skip("Nobody beat this challenge yet")
 @pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")

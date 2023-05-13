@@ -20,7 +20,6 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
     yield from input_sequence
 
 
-@pytest.skip("Nobody beat this challenge yet")
 @pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
