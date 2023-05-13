@@ -186,7 +186,7 @@ def get_company_revenue_agent(
 
 
 @pytest.fixture
-def kubernetes_agent(agent_test_config, memory_local_cache, workspace: Workspace):
+def kubernetes_agent(memory_local_cache, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -217,35 +217,3 @@ def kubernetes_agent(agent_test_config, memory_local_cache, workspace: Workspace
 
     return agent
 
-
-@pytest.fixture
-def translation_agent(agent_test_config, memory_local_cache, workspace: Workspace):
-    command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.app")
-
-    ai_config = AIConfig(
-        ai_name="TranslatorGPT",
-        ai_role="an autonomous agent that specializes in translating various languages.",
-        ai_goals=[
-            "Write the requested translation in an output.txt file.",
-            # You should make a simple nginx web server that uses docker and exposes the port 80.
-        ],
-    )
-    ai_config.command_registry = command_registry
-
-    system_prompt = ai_config.construct_full_prompt()
-    Config().set_continuous_mode(False)
-    agent = Agent(
-        ai_name="Translation-Demo",
-        memory=memory_local_cache,
-        full_message_history=[],
-        command_registry=command_registry,
-        config=ai_config,
-        next_action_count=0,
-        system_prompt=system_prompt,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace.root,
-    )
-
-    return agent

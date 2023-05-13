@@ -10,7 +10,7 @@ Join us in shaping the future of Auto-GPT by designing challenges that test its 
 
 ⚙️ DevOps Skills: Experience with CI pipelines in GitHub and possibly Google Cloud Platform will be instrumental in streamlining our operations.
 
-Are you ready to play a pivotal role in Auto-GPT's journey? Apply now to become a Challenge Creator! 🚀
+Are you ready to play a pivotal role in Auto-GPT's journey? Apply now to become a Challenge Creator by opening a PR! 🚀
 
 
 # Getting Started
