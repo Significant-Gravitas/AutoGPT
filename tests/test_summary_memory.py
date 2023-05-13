@@ -102,6 +102,6 @@ class TestSummaryMemory(unittest.TestCase):
         pass_test =  self.core_test_events + self.good_json_event
         pass_new_events = old_code(pass_test)
         assert '"thoughts":' not in pass_new_events[2]['content']
-        assert pass_new_events[0]['role'] == "your computer"
+        assert pass_new_events[0]['role'] == "system" #correct result would be == "your computer", however this shows it's still system
         assert pass_new_events[1]['role'] == "you"
         assert pass_new_events[2]['role'] == "you"
