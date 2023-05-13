@@ -1,7 +1,7 @@
 import pinecone
 from colorama import Fore, Style
 
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton
 
@@ -32,12 +32,15 @@ class PineconeMemory(MemoryProviderSingleton):
             logger.double_check(
                 "Please ensure you have setup and configured Pinecone properly for use."
                 + f"You can check out {Fore.CYAN + Style.BRIGHT}"
-                "https://github.com/Torantulino/Auto-GPT#-pinecone-api-key-setup"
+                "https://docs.agpt.co/configuration/memory/#pinecone-api-key-setup"
                 f"{Style.RESET_ALL} to ensure you've set up everything correctly."
             )
             exit(1)
 
         if table_name not in pinecone.list_indexes():
+            logger.typewriter_log(
+                "Connecting Pinecone. This may take some time...", Fore.MAGENTA, ""
+            )
             pinecone.create_index(
                 table_name, dimension=dimension, metric=metric, pod_type=pod_type
             )

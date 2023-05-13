@@ -7,7 +7,7 @@ from typing import Any, List
 import numpy as np
 import orjson
 
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm import get_ada_embedding
 from autogpt.memory.base import MemoryProviderSingleton
 
 EMBED_DIM = 1536

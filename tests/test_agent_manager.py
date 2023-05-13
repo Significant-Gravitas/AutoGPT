@@ -1,7 +1,7 @@
 import pytest
 
 from autogpt.agent.agent_manager import AgentManager
-from autogpt.llm_utils import create_chat_completion
+from autogpt.llm import create_chat_completion
 
 
 @pytest.fixture

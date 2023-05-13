@@ -10,7 +10,7 @@ from redis.commands.search.field import TextField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm import get_ada_embedding
 from autogpt.logs import logger
 from autogpt.memory.base import MemoryProviderSingleton
 
@@ -58,7 +58,7 @@ class RedisMemory(MemoryProviderSingleton):
             logger.double_check(
                 "Please ensure you have setup and configured Redis properly for use. "
                 + f"You can check out {Fore.CYAN + Style.BRIGHT}"
-                f"https://github.com/Torantulino/Auto-GPT#redis-setup{Style.RESET_ALL}"
+                f"https://docs.agpt.co/configuration/memory/#redis-setup{Style.RESET_ALL}"
                 " to ensure you've set up everything correctly."
             )
             exit(1)
@@ -73,7 +73,7 @@ class RedisMemory(MemoryProviderSingleton):
                 ),
             )
         except Exception as e:
-            print("Error creating Redis search index: ", e)
+            logger.warn("Error creating Redis search index: ", e)
         existing_vec_num = self.redis.get(f"{cfg.memory_index}-vec_num")
         self.vec_num = int(existing_vec_num.decode("utf-8")) if existing_vec_num else 0
 
@@ -145,7 +145,7 @@ class RedisMemory(MemoryProviderSingleton):
                 query, query_params={"vector": query_vector}
             )
         except Exception as e:
-            print("Error calling Redis search: ", e)
+            logger.warn("Error calling Redis search: ", e)
             return None
         return [result.data for result in results.docs]
 
