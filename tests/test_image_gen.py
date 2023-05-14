@@ -81,6 +81,7 @@ def test_sd_webui_negative_prompt(config, workspace, image_size):
 
     assert image_hash != neg_image_hash
 
+
 def lst(txt):
     """Extract the file path from the output of `generate_image()`"""
     return Path(txt.split(":", maxsplit=1)[1].strip())
@@ -103,46 +104,47 @@ def generate_and_validate(
     assert image_path.exists()
     with Image.open(image_path) as img:
         assert img.size == (image_size, image_size)
-        
-        
-# @requires_api_key("HUGGINGFACE_API_TOKEN")
+
+
 @pytest.mark.parametrize(
     "return_text",
     [
-        '{"error":"Model [model] is currently loading","estimated_time": [delay]}', # Delay
-        '{"error":"Model [model] is currently loading"}',# No delay
-        '{"error:}', # Bad JSON
-        '', # Bad Image
-        ]
+        '{"error":"Model [model] is currently loading","estimated_time": [delay]}',  # Delay
+        '{"error":"Model [model] is currently loading"}',  # No delay
+        '{"error:}',  # Bad JSON
+        "",  # Bad Image
+    ],
 )
 @pytest.mark.parametrize(
     "image_model",
     ["CompVis/stable-diffusion-v1-4", "stabilityai/stable-diffusion-2-1"],
 )
 @pytest.mark.parametrize("delay", [10, 0])
-def test_huggingface_fail_request_with_delay(config, workspace, image_size, image_model, return_text, delay):
-    config.huggingface_api_token = "1"
-    
-    return_text = return_text.replace('[model]', image_model).replace('[delay]', str(delay))
-        
-    with(patch("requests.post")) as mock_post:
-        if return_text == '':
+def test_huggingface_fail_request_with_delay(
+    config, workspace, image_size, image_model, return_text, delay
+):
+    return_text = return_text.replace("[model]", image_model).replace(
+        "[delay]", str(delay)
+    )
+
+    with patch("requests.post") as mock_post:
+        if return_text == "":
             # Test bad image
             mock_post.return_value.status_code = 200
             mock_post.return_value.ok = True
-            mock_post.return_value.content = b'bad image'
+            mock_post.return_value.content = b"bad image"
         else:
             # Test delay and bad json
             mock_post.return_value.status_code = 500
             mock_post.return_value.ok = False
             mock_post.return_value.text = return_text
-            
+
         config.image_provider = "huggingface"
         config.huggingface_image_model = image_model
         prompt = "astronaut riding a horse"
-        
-        with(patch("time.sleep")) as mock_sleep:
-            # Verify request fails.                                                                                                                                                                                                              
+
+        with patch("time.sleep") as mock_sleep:
+            # Verify request fails.
             result = generate_image(prompt, image_size)
             assert result == "Error creating image."
 
