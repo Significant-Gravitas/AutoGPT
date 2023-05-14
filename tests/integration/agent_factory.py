@@ -193,9 +193,9 @@ def kubernetes_agent(memory_local_cache, workspace: Workspace):
 
     ai_config = AIConfig(
         ai_name="Kubernetes",
-        ai_role="an autonomous agent that specializes in creating Kubernetes deployment templates.",
+        ai_role="an Senior Developer that is also an autonomous agent that specializes in creating Kubernetes deployment templates.",
         ai_goals=[
-            "Write a simple kubernetes deployment file and save it as a kube.yaml.",
+            "Write a perfect kubernetes deployment file and save it as a kube.yaml.",
             # You should make a simple nginx web server that uses docker and exposes the port 80.
         ],
     )
