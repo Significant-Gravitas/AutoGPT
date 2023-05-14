@@ -7,7 +7,7 @@ NOTE: This is a draft and may need be reviewed/revised a few times before it's m
 
 So we should add a benchmark to see how good an agent is at applying experience to future tasks.
 
-For instance, imagine it editing/updating a file successfully and 5 minutes later it wants to use interactive editors like nano, vim etc - that's a recurring topic on github.
+For instance, imagine it editing/updating a file successfully and 5 minutes later it wants to use interactive editors like nano, vim etc - that's a recurring topic on GitHub.
 
 We need to modify agent.py to reinforce steps (actions) that worked (evaluating the system message), versus those that didn't work.
 This may involve recursively calling the LLM/GPT to evaluate the state (success/error/warning) of an operation (action/command).
