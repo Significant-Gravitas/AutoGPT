@@ -7,7 +7,7 @@ from requests.compat import urljoin
 
 def validate_url(func: Callable[..., Any]) -> Any:
     """The method decorator validate_url is used to validate urls for any command that requires
-    a url as an arugment"""
+    a url as an argument"""
 
     @functools.wraps(func)
     def wrapper(url: str, *args, **kwargs) -> Any:
