@@ -4,7 +4,7 @@ from typing import Type
 
 from autogpt.core.budget import BudgetManager
 from autogpt.core.command import Command, CommandRegistry
-from autogpt.core.credentials import CredentialsManager
+from autogpt.core.credentials import CredentialsService
 from autogpt.core.memory import MemoryBackend
 from autogpt.core.model import EmbeddingModel, LanguageModel
 from autogpt.core.planning import Planner
@@ -14,7 +14,7 @@ PluginType = (
     Type[BudgetManager]  # Swappable maybe never (think about budgets for resources)
     | Type[Command]  # Swappable now
     | Type[CommandRegistry]  # Swappable maybe never
-    | Type[CredentialsManager]  # Swappable never
+    | Type[CredentialsService]  # Swappable never
     | Type[EmbeddingModel]  # Swappable soon
     | Type[LanguageModel]  # Swappable soon
     | Type[MemoryBackend]  # Swappable now
@@ -25,7 +25,7 @@ Plugin = (
     BudgetManager
     | Command
     | CommandRegistry
-    | CredentialsManager
+    | CredentialsService
     | EmbeddingModel
     | LanguageModel
     | MemoryBackend
