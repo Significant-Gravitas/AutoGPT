@@ -1,17 +1,19 @@
 import abc
-from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Callable
 
-from autogpt.core.model.base import ModelInfo, ModelProvider, ModelResponse, ModelType
+from autogpt.core.model.base import (
+    ModelInfo,
+    ModelProvider,
+    ModelResponse,
+    ModelType,
+)
 from autogpt.core.planning.base import ModelPrompt
 
 
-@dataclass
 class LanguageModelInfo(ModelInfo):
     """Struct for language model information."""
 
 
-@dataclass
 class LanguageModelResponse(ModelResponse):
     """Standard response struct for a response from a language model."""
 
@@ -19,25 +21,12 @@ class LanguageModelResponse(ModelResponse):
 
 
 class LanguageModel(ModelType):
-    configuration_defaults = {"language_model": {}}
 
     @abc.abstractmethod
-    def __init__(self, *args, **kwargs):
-        ...
-
-    @abc.abstractmethod
-    def list_models(self) -> dict[str, LanguageModelInfo]:
-        """List all available models."""
-        ...
-
-    @abc.abstractmethod
-    def get_model_info(self, model_name: str) -> LanguageModelInfo:
-        """Get information about a specific model."""
-        ...
-
-    @abc.abstractmethod
-    def determine_agent_objective(
-        self, objective_prompt: "ModelPrompt"
+    async def determine_agent_objective(
+        self,
+        objective_prompt: "ModelPrompt",
+        **kwargs,
     ) -> LanguageModelResponse:
         """Chat with a language model to determine the agent's objective.
 
@@ -51,7 +40,11 @@ class LanguageModel(ModelType):
         ...
 
     @abc.abstractmethod
-    def plan_next_action(self, planning_prompt: "ModelPrompt") -> LanguageModelResponse:
+    async def plan_next_action(
+        self,
+        planning_prompt: "ModelPrompt",
+        **kwargs,
+    ) -> LanguageModelResponse:
         """Chat with a language model to plan the agent's next action.
 
         Args:
@@ -64,8 +57,10 @@ class LanguageModel(ModelType):
         ...
 
     @abc.abstractmethod
-    def get_self_feedback(
-        self, self_feedback_prompt: "ModelPrompt"
+    async def get_self_feedback(
+        self,
+        self_feedback_prompt: "ModelPrompt",
+        **kwargs,
     ) -> LanguageModelResponse:
         """Chat with a language model to get feedback on the agent's performance.
 
@@ -81,9 +76,6 @@ class LanguageModel(ModelType):
 
 
 class LanguageModelProvider(ModelProvider):
-    @abc.abstractmethod
-    def __init__(self, *args, **kwargs):
-        ...
 
     @abc.abstractmethod
     async def create_language_completion(

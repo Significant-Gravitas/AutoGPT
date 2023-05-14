@@ -4,7 +4,7 @@ import time
 from typing import Callable, ParamSpec, TypeVar
 
 import openai
-from openai.error import APIError, RateLimitError, Timeout
+from openai.error import APIError, RateLimitError
 
 from autogpt.core.credentials.simple import (
     CredentialsConsumer,

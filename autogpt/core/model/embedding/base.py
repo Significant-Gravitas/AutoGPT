@@ -1,44 +1,35 @@
 import abc
-from dataclasses import dataclass, field
-from typing import Any, Callable, TypeVar
+from typing import Callable
 
-from autogpt.core.model.base import ModelInfo, ModelProvider, ModelResponse, ModelType
+from pydantic import Field, validator
+
+from autogpt.core.model.base import (
+    ModelInfo, ModelProvider, ModelResponse, ModelType,
+)
 
 Embedding = list[float]
 
 
-@dataclass
 class EmbeddingModelInfo(ModelInfo):
     """Struct for embedding model information."""
 
     embedding_dimensions: int
 
 
-@dataclass
 class EmbeddingModelResponse(ModelResponse):
     """Standard response struct for a response from an embedding model."""
 
-    embedding: Embedding = field(default_factory=list)
+    embedding: Embedding = Field(default_factory=list)
 
-    def __post_init__(self):
-        if self.completion_tokens_used:
+    @classmethod
+    @validator("completion_tokens_used")
+    def _verify_no_completion_tokens_used(cls, v):
+        if v > 0:
             raise ValueError("Embeddings should not have completion tokens used.")
+        return v
 
 
 class EmbeddingModel(ModelType):
-    @abc.abstractmethod
-    def __init__(self, *args, **kwargs):
-        ...
-
-    @abc.abstractmethod
-    def list_models(self) -> dict[str, EmbeddingModelInfo]:
-        """List all available models."""
-        ...
-
-    @abc.abstractmethod
-    def get_model_info(self, model_name: str) -> EmbeddingModelInfo:
-        """Get information about a specific model."""
-        ...
 
     @abc.abstractmethod
     async def get_embedding(self, text: str) -> EmbeddingModelResponse:
@@ -55,9 +46,6 @@ class EmbeddingModel(ModelType):
 
 
 class EmbeddingModelProvider(ModelProvider):
-    @abc.abstractmethod
-    def __init__(self, *args, **kwargs):
-        ...
 
     @abc.abstractmethod
     async def create_embedding(

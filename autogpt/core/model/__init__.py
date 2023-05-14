@@ -1,5 +1,10 @@
 """The language model acts as the core intelligence of the Agent."""
-from autogpt.core.model.base import ModelInfo, ModelResponse, ModelType
+from autogpt.core.model.base import (
+    ModelInfo,
+    ModelResponse,
+    ModelType,
+    ModelProvider,
+)
 from autogpt.core.model.embedding import (
     EmbeddingModel,
     EmbeddingModelInfo,
@@ -10,6 +15,7 @@ from autogpt.core.model.language import (
     LanguageModelInfo,
     LanguageModelResponse,
 )
+
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(
