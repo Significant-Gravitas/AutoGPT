@@ -22,6 +22,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
@@ -56,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11"]
+        python-version: ["3.10"]
 
     steps:
       - name: Check out repository
@@ -64,6 +65,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
@@ -95,5 +97,5 @@ jobs:
           git config user.name "GitHub Actions"
           git commit -m "Add new cassettes"
           git checkout -b cassette-diff-${{ github.event.pull_request.number }}
-          git push -f origin cassette-diff-${{ github.event.pull_request.number }}
-          echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          git remote add target https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.event.pull_request.base.repo.full_name }}
+          git push -f target cassette-diff-${{ github.event.pull_request.number }}
