@@ -1,13 +1,13 @@
-from uuid import UUID
 from datetime import datetime
 from typing import Dict
+from uuid import UUID
 
 from autogpt.core.messaging.base import (
     Listener,
     Message,
-    MessageContent,
     MessageBroker,
     MessageChannel,
+    MessageContent,
     MessageEmitter,
     MessageFilter,
     Role,

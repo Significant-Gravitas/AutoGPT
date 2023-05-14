@@ -1,6 +1,5 @@
 from collections import defaultdict
 
-
 from autogpt.core.runner.agent import agent_context
 from autogpt.core.runner.factory import agent_factory_context
 
@@ -56,7 +55,7 @@ class FakeApplicationServer:
     #     pass
 
 
-#application_server = FakeApplicationServer()
+# application_server = FakeApplicationServer()
 
 
 def _get_workspace_path_from_agent_name(agent_name: str) -> str:
@@ -78,4 +77,3 @@ def launch_agent(message: Message):
 ###############
 # HTTP SERVER #
 ###############
-

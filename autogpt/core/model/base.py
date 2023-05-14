@@ -33,6 +33,7 @@ class ModelType(abc.ABC):
     details of domain logic.
 
     """
+
     ...
 
 
@@ -43,4 +44,5 @@ class ModelProvider(abc.ABC):
     provider-specific details to the generic ModelType interface.
 
     """
+
     ...

@@ -3,9 +3,7 @@ from typing import Callable
 
 from pydantic import Field, validator
 
-from autogpt.core.model.base import (
-    ModelInfo, ModelProvider, ModelResponse, ModelType,
-)
+from autogpt.core.model.base import ModelInfo, ModelProvider, ModelResponse, ModelType
 
 Embedding = list[float]
 
@@ -30,7 +28,6 @@ class EmbeddingModelResponse(ModelResponse):
 
 
 class EmbeddingModel(ModelType):
-
     @abc.abstractmethod
     async def get_embedding(self, text: str) -> EmbeddingModelResponse:
         """Get the embedding for a prompt.
@@ -46,7 +43,6 @@ class EmbeddingModel(ModelType):
 
 
 class EmbeddingModelProvider(ModelProvider):
-
     @abc.abstractmethod
     async def create_embedding(
         self,

@@ -22,7 +22,9 @@ class AgentFactoryContext:
         self.configure_agent_factory_logging(agent_factory_logger)
         self._agent_factory = SimpleAgentFactory(agent_factory_logger)
 
-        message_broker: SimpleMessageBroker = message.additional_metadata["message_broker"]
+        message_broker: SimpleMessageBroker = message.additional_metadata[
+            "message_broker"
+        ]
         self._emitter = message_broker.get_emitter(
             # can get from user config
             channel_name="autogpt",
@@ -69,9 +71,9 @@ class AgentFactoryContext:
 
         agent_info = AgentInfo(
             objective=agent_objective,
-            name=content['ai_name'],
-            role=content['ai_role'],
-            goals=content['ai_goals'],
+            name=content["ai_name"],
+            role=content["ai_role"],
+            goals=content["ai_goals"],
         )
         self._emitter.send_message(
             content=agent_info,
@@ -87,7 +89,6 @@ class AgentFactoryContext:
 
         user_configuration: dict = message_content["user_configuration"]
         user_objective: str = message_content["user_objective"]
-
 
         self._agent_factory.provision_new_agent(configuration)
         await self.send_agent_setup_complete_message()

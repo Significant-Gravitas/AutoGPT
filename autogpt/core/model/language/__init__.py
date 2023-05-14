@@ -1,9 +1,7 @@
 from autogpt.core.model.language.base import (
     LanguageModel,
     LanguageModelInfo,
-    LanguageModelResponse,
     LanguageModelProvider,
+    LanguageModelResponse,
 )
-from autogpt.core.model.language.simple import (
-    SimpleLanguageModel,
-)
+from autogpt.core.model.language.simple import SimpleLanguageModel

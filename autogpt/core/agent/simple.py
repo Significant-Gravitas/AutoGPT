@@ -5,12 +5,13 @@ from autogpt.core.agent.base import Agent
 from autogpt.core.budget.simple import SimpleBudgetManager
 from autogpt.core.configuration import Configuration
 
-# from autogpt.core.memory.simple import SimpleMemoryBackend
-
 # from autogpt.core.model.embedding.openai import OpenAIEmbeddingModel
 from autogpt.core.planning.simple import SimplePlanner
 from autogpt.core.plugin.simple import SimplePluginService
 from autogpt.core.workspace.simple import SimpleWorkspace
+
+# from autogpt.core.memory.simple import SimpleMemoryBackend
+
 
 # from autogpt.core.command.simple import SimpleCommandRegistry
 

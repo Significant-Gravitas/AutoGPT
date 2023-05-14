@@ -1,4 +1,4 @@
-from autogpt.core.credentials.base import CredentialsService, CredentialsConsumer
+from autogpt.core.credentials.base import CredentialsConsumer, CredentialsService
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(

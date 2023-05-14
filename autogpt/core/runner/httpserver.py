@@ -4,18 +4,10 @@ from collections import defaultdict
 
 from fastapi import APIRouter, FastAPI, Request
 
-from autogpt.core.messaging.simple import (
-    SimpleMessageBroker,
-    Message,
-    Role,
-)
-from autogpt.core.runner.schema import (
-    AgentConfiguration,
-    InteractRequestBody,
-)
-from autogpt.core.runner.factory import agent_factory_context
+from autogpt.core.messaging.simple import Message, Role, SimpleMessageBroker
 from autogpt.core.runner.agent import agent_context
-
+from autogpt.core.runner.factory import agent_factory_context
+from autogpt.core.runner.schema import AgentConfiguration, InteractRequestBody
 
 router = APIRouter()
 
@@ -26,7 +18,6 @@ router = APIRouter()
 
 
 class ApplicationQueue:
-
     queue = defaultdict(asyncio.queues.Queue)
 
     class Config:
@@ -58,33 +49,32 @@ class MessageFilters:
 
     @staticmethod
     def is_server_message(message: Message):
-        return (
-            MessageFilters.is_agent_message(message)
-            | MessageFilters.is_agent_factory_message(message)
-        )
+        return MessageFilters.is_agent_message(
+            message
+        ) | MessageFilters.is_agent_factory_message(message)
 
     @staticmethod
     def is_parse_goals_message(message: Message):
         metadata = message.additional_metadata
         return (
-            MessageFilters.is_user_message(message)
-            & metadata["instruction"] == "parse_goals"
+            MessageFilters.is_user_message(message) & metadata["instruction"]
+            == "parse_goals"
         )
 
     @staticmethod
     def is_user_bootstrap_message(message: Message):
         metadata = message.additional_metadata
         return (
-            MessageFilters.is_user_message(message)
-            & metadata["instruction"] == "bootstrap_agent"
+            MessageFilters.is_user_message(message) & metadata["instruction"]
+            == "bootstrap_agent"
         )
 
     @staticmethod
     def is_user_launch_message(message: Message):
         metadata = message.additional_metadata
         return (
-            MessageFilters.is_user_message(message)
-            & metadata["instruction"] == "launch_agent"
+            MessageFilters.is_user_message(message) & metadata["instruction"]
+            == "launch_agent"
         )
 
 
@@ -162,7 +152,6 @@ async def create_agent(request: Request, agent_configuration: AgentConfiguration
         )
         agent_info_message = await APPLICATION_MESSAGE_QUEUE.get("autogpt")
 
-
         # 2. Send message with update agent info
         pass
 
@@ -170,8 +159,6 @@ async def create_agent(request: Request, agent_configuration: AgentConfiguration
         content=agent_configuration.dict(),
         additional_metadata={"instruction": "bootstrap_agent"},
     )
-
-
 
     agent_id = uuid.uuid4().hex
 
@@ -213,4 +200,3 @@ app.include_router(router, prefix="/api/v1")
 # NOTE:
 # - start with `uvicorn autogpt.core.runner.server:app --reload --port=8080`
 # - see auto-generated API docs: http://localhost:8080/docs
-

@@ -1,12 +1,7 @@
 import abc
 from typing import Callable
 
-from autogpt.core.model.base import (
-    ModelInfo,
-    ModelProvider,
-    ModelResponse,
-    ModelType,
-)
+from autogpt.core.model.base import ModelInfo, ModelProvider, ModelResponse, ModelType
 from autogpt.core.planning.base import ModelPrompt
 
 
@@ -21,7 +16,6 @@ class LanguageModelResponse(ModelResponse):
 
 
 class LanguageModel(ModelType):
-
     @abc.abstractmethod
     async def determine_agent_objective(
         self,
@@ -76,7 +70,6 @@ class LanguageModel(ModelType):
 
 
 class LanguageModelProvider(ModelProvider):
-
     @abc.abstractmethod
     async def create_language_completion(
         self,

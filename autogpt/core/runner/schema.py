@@ -15,6 +15,7 @@ class AgentInfo(MessageContent):
 
 class AgentConfiguration(MessageContent):
     """Configuration for creation of a new agent."""
+
     # We'll want to get this schema from the configuration, so it needs to be dynamic.
     user_configuration: dict
     agent_goals: AgentInfo
@@ -35,4 +36,3 @@ class InteractRequestBody(BaseModel):
 class InteractResponseBody(BaseModel):
     thoughts: dict[str, str]  # TBD
     messages: list[str]  # for example
-

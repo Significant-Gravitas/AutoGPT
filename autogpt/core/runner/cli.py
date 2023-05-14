@@ -17,17 +17,17 @@ def autogpt():
 
 @autogpt.command()
 @click.option(
-    'host',
-    '--host',
-    default='localhost',
-    help='The host for the webserver.',
+    "host",
+    "--host",
+    default="localhost",
+    help="The host for the webserver.",
     type=click.STRING,
 )
 @click.option(
-    'port',
-    '--port',
+    "port",
+    "--port",
     default=8080,
-    help='The port of the webserver.',
+    help="The port of the webserver.",
     type=click.INT,
 )
 def httpserver(host: str, port: int) -> None:
@@ -46,7 +46,9 @@ def httpserver(host: str, port: int) -> None:
 def autogpt_server():
     host = "localhost"
     port = 8080
-    cmd = shlex.split(f"{sys.executable} autogpt/core/runner/cli.py httpserver --host {host} --port {port}")
+    cmd = shlex.split(
+        f"{sys.executable} autogpt/core/runner/cli.py httpserver --host {host} --port {port}"
+    )
     server_process = subprocess.Popen(args=cmd)
     started = False
     while not started:

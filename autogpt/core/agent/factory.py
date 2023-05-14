@@ -5,11 +5,7 @@ from typing import List, Tuple, Type
 
 from autogpt.core.budget.simple import SimpleBudgetManager
 from autogpt.core.configuration import Configuration
-from autogpt.core.model import (
-    SimpleLanguageModel,
-    LanguageModelResponse,
-)
-
+from autogpt.core.model import LanguageModelResponse, SimpleLanguageModel
 from autogpt.core.planning.simple import ModelPrompt, SimplePlanner
 from autogpt.core.plugin.simple import PluginStorageFormat, SimplePluginService
 from autogpt.core.workspace import Workspace

@@ -21,6 +21,7 @@ class Role(str, enum.Enum):
 
 class Sender(BaseModel):
     """Struct for metadata about a sender."""
+
     id: UUID
     name: str
     role: Role
@@ -32,6 +33,7 @@ class MessageContent(BaseModel):
 
 class Message(BaseModel):
     """Struct for a message and its metadata."""
+
     sender: Sender
     timestamp: datetime
     additional_metadata: dict = None
