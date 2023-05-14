@@ -42,5 +42,5 @@
   "remoteUser": "vscode",
 
   // Add the freshly containerized repo to the list of safe repositories
-  "postCreateCommand": "git config --global --add safe.directory /workspace/Auto-GPT"
+  "postCreateCommand": "git config --global --add safe.directory /workspace/Auto-GPT && pip3 install --user -r requirements.txt"
 }
