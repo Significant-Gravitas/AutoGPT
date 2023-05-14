@@ -43,4 +43,4 @@ flake8 .
 Or:
 ``` shell
 python -m flake8 .
-```
+```s

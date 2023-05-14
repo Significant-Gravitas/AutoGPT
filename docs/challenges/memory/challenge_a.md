@@ -36,4 +36,3 @@ Write the task_id into the file output.txt.
 ## Objective
 
 The objective of this challenge is to test the agent's ability to follow instructions and maintain memory of the task Id throughout the process. The agent successfully completed this challenge if it wrote the task id in a file.
-

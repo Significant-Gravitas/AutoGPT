@@ -131,5 +131,3 @@ def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> Non
 
 
 ```
-
-

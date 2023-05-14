@@ -5,4 +5,3 @@
 See our [Plugins Repo](https://github.com/Significant-Gravitas/Auto-GPT-Plugins) for more info on how to install all the amazing plugins the community has built!
 
 Alternatively, developers can use the [Auto-GPT Plugin Template](https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template) as a starting point for creating your own plugins.
-
