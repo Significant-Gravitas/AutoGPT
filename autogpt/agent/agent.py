@@ -109,37 +109,35 @@ class Agent:
             # DEBUG COMMAND
             # print(assistant_reply)
 
+            # Experimental DSL Parser
             # Parse the DSL-formatted string using the DSLParser
-            dsl_parser = DSLParser()
-            braindump, command, key_updates = dsl_parser.parse(assistant_reply)
+            # dsl_parser = DSLParser()
+            # braindump, command, key_updates = dsl_parser.parse(assistant_reply)
 
-            assistant_reply_dict = {
-                "braindump": braindump,
-                "command": command,
-                "key_updates": key_updates,
-            }
+            # assistant_reply_dict = {
+            #     "braindump": braindump,
+            #     "command": command,
+            #     "key_updates": key_updates,
+            # }
 
-            # Convert the dictionary into a JSON string
-            assistant_reply_json = json.dumps(assistant_reply_dict)
-            assistant_reply_obj = json.loads(assistant_reply_json)
+            # # Convert the dictionary into a JSON string
+            # assistant_reply_json = json.dumps(assistant_reply_dict)
+            # assistant_reply_obj = json.loads(assistant_reply_json)
 
             # DEBUG COMMANDS
             # print("\nASSISTANT REPLY JSON\n")
             # print(assistant_reply_json)
             # print("\n")
 
-            # Instantiate JsonFixer and fix the JSON
-            json_fixer = JsonFixer()
-            assistant_reply_json = json_fixer.fix_and_parse_json(assistant_reply)
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
-                validate_json(assistant_reply_obj, "llm_response_format_1")
+                validate_json(assistant_reply_json, "llm_response_format_1")
                 # Get command name and arguments
                 try:
-                    print_assistant_thoughts(self.ai_name, assistant_reply_obj)
-                    command_name, arguments = get_command(assistant_reply_obj)
+                    print_assistant_thoughts(self.ai_name, assistant_reply_json)
+                    command_name, arguments = get_command(assistant_reply_json)
                     # command_name, arguments = assistant_reply_json_valid["command"]["name"], assistant_reply_json_valid["command"]["args"]
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")

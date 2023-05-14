@@ -272,8 +272,7 @@ def execute_command(command_name: str, arguments):
         else:
             return (
                 f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
-                " list for available commands and only respond in the specified DSL syntax."
-                # Both JSON and DSL syntax seem to prompt correctly :shrug:
+                " list for available commands and only respond in the specified JSON."
             )
     except Exception as e:
         return f"Error: {str(e)}"
