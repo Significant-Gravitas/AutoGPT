@@ -128,10 +128,14 @@ class Agent:
                 except Exception as e:
                     logger.error("Error: \n", str(e))
                 else:
-                    self._print_assistant_thoughts(arguments, assistant_reply_json, cfg, command_name)
+                    self._print_assistant_thoughts(
+                        arguments, assistant_reply_json, cfg, command_name
+                    )
 
             if not cfg.continuous_mode and self.next_action_count == 0:
-                updated_command_name, user_input = self._get_user_input(assistant_reply_json, cfg)
+                updated_command_name, user_input = self._get_user_input(
+                    assistant_reply_json, cfg
+                )
                 if updated_command_name is not None:
                     command_name = updated_command_name
 
@@ -175,11 +179,11 @@ class Agent:
             validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
         return assistant_reply_json
 
-    def _print_assistant_thoughts(self, arguments, assistant_reply_json, cfg, command_name):
+    def _print_assistant_thoughts(
+        self, arguments, assistant_reply_json, cfg, command_name
+    ):
         # Print Assistant thoughts
-        print_assistant_thoughts(
-            self.ai_name, assistant_reply_json, cfg.speak_mode
-        )
+        print_assistant_thoughts(self.ai_name, assistant_reply_json, cfg.speak_mode)
         if cfg.speak_mode:
             say_text(f"I want to execute {command_name}")
         self.log_cycle_handler.log_cycle(
@@ -210,9 +214,7 @@ class Agent:
             if cfg.chat_messages_enabled:
                 console_input = clean_input("Waiting for your response...")
             else:
-                console_input = clean_input(
-                    Fore.MAGENTA + "Input:" + Style.RESET_ALL
-                )
+                console_input = clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
             if console_input.lower().strip() == cfg.authorise_key:
                 user_input = "GENERATE NEXT COMMAND JSON"
                 break
@@ -239,9 +241,7 @@ class Agent:
                 continue
             elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
                 try:
-                    self.next_action_count = abs(
-                        int(console_input.split(" ")[1])
-                    )
+                    self.next_action_count = abs(int(console_input.split(" ")[1]))
                     user_input = "GENERATE NEXT COMMAND JSON"
                 except ValueError:
                     logger.warn(
@@ -269,9 +269,7 @@ class Agent:
     def _execute(self, arguments, cfg, command_name, user_input):
         # Execute command
         if command_name is not None and command_name.lower().startswith("error"):
-            result = (
-                f"Command {command_name} threw the following error: {arguments}"
-            )
+            result = f"Command {command_name} threw the following error: {arguments}"
         elif command_name == "human_feedback":
             result = f"Human feedback: {user_input}"
         elif command_name == "self_feedback":
@@ -280,9 +278,7 @@ class Agent:
             for plugin in cfg.plugins:
                 if not plugin.can_handle_pre_command():
                     continue
-                command_name, arguments = plugin.pre_command(
-                    command_name, arguments
-                )
+                command_name, arguments = plugin.pre_command(command_name, arguments)
             command_result = execute_command(
                 self.command_registry,
                 command_name,
