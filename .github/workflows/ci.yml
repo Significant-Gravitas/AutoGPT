@@ -97,5 +97,5 @@ jobs:
           git config user.name "GitHub Actions"
           git commit -m "Add new cassettes"
           git checkout -b cassette-diff-${{ github.event.pull_request.number }}
-          git push -f origin cassette-diff-${{ github.event.pull_request.number }}
-          echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          git remote add target https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.event.pull_request.base.repo.full_name }}
+          git push -f target cassette-diff-${{ github.event.pull_request.number }}
