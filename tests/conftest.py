@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,8 @@ from autogpt.llm import ApiManager
 from autogpt.workspace import Workspace
 
 pytest_plugins = ["tests.integration.agent_factory"]
+
+PROXY = os.environ.get("PROXY")
 
 
 @pytest.fixture()
