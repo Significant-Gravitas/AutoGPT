@@ -1,0 +1,49 @@
+name: Merge and Commit Cassettes
+
+on:
+  pull_request_target:
+    types:
+      - closed
+
+jobs:
+  update-cassettes:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # This is necessary to fetch all branches and tags
+
+      - name: Fetch all branches
+        run: git fetch --all
+
+      - name: Reset branch
+        run: |
+          git checkout ${{ github.event.pull_request.base.ref }}
+          git reset --hard origin/cassette-diff-${{ github.event.pull_request.number }}
+
+      - name: Create PR
+        id: create_pr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: Update cassettes
+          signoff: false
+          branch: cassette-diff-${{ github.event.pull_request.number }}
+          delete-branch: false
+          title: "Update cassettes"
+          body: "This PR updates the cassettes."
+          draft: false
+
+      - name: Check PR
+        run: |
+          echo "Pull Request Number - ${{ steps.create_pr.outputs.pull-request-number }}"
+          echo "Pull Request URL - ${{ steps.create_pr.outputs.pull-request-url }}"
+
+      - name: Comment PR URL in the current PR
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          message: |
+            New pull request created for cassettes: [HERE](${{ steps.create_pr.outputs.pull-request-url }}). Please merge it asap.
