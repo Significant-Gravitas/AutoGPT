@@ -119,15 +119,10 @@ class Agent:
                     cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
-            assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
-            for plugin in cfg.plugins:
-                if not plugin.can_handle_post_planning():
-                    continue
-                assistant_reply_json = plugin.post_planning(assistant_reply_json)
+            assistant_reply_json = self._get_json_assistant_reply(assistant_reply, cfg)
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
-                validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
@@ -293,6 +288,16 @@ class Agent:
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
+
+    def _get_json_assistant_reply(self, assistant_reply, cfg):
+        assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
+        for plugin in cfg.plugins:
+            if not plugin.can_handle_post_planning():
+                continue
+            assistant_reply_json = plugin.post_planning(assistant_reply_json)
+        if assistant_reply_json != {}:
+            validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
+        return assistant_reply_json
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
