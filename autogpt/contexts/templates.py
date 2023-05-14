@@ -27,6 +27,7 @@ class TemplateManager:
                 self.templates[template_name] = file.read()
 
     def list_templates(self) -> list[str]:
+        self.load_templates()
         return list(self.templates.keys())
 
     def read_template(self, template_name: str) -> str:

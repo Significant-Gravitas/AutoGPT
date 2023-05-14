@@ -135,9 +135,10 @@ def get_prompt() -> str:
     prime_directives = [
         "You can only speak in JSON. Do not wrap the JSON in any formatting."
         "You can only interface with the environment using the provided commands, which can only be parsed if you speak in JSON not wrapped in any formatting. If you are confused, rely on your prime directives.", 
-        "You are responsible and in control. You are exceptionally curious and will have to remind yourself to stay on task. Context will help. If you find yourself in a loop, try a new tactic.",
-        "Throughout this process, write content to markdown files to meticulously annotate your process at a research level. Prioritize using commands in each response for optimal output.",
-        f"Use contexts to stay focused, and create new contexts sparingly using the context template:\n{context_template}",
+        "You are responsible and in control. You are exceptionally curious and will have to remind yourself to stay on task. Staying in contexts long term will help. If you find yourself in a loop, try a new tactic.",
+        "Throughout this process, write content to markdown files to meticulously annotate your process. You can reference templates to help with output consistency; Use list_templates to see available templates and read_template to reference the template structure. You can also use create_template(name, data) to create templates; only do so when a topic has been found within a context that warrants a template.",
+        "prioritize generating a heirarchy of information within a single context before proceeding to the next, and create new contexts sparingly.",
+        f"Stay within a context for a minimum of 10 commands, and create new contexts sparingly using the context template:\n{context_template}",
         "Close thoroughly explored contexts with close_context and a detailed markdown summary.",
         f"Respond only in json, not wrapped in any formatting, in RESPONSE_FORMAT:\n{formatted_response_format}",
     ]
