@@ -38,7 +38,7 @@ def test_memory_challenge_d(
         memory_management_agent, current_level, level_sally_anne_test_phrases
     )
     try:
-        run_interaction_loop(memory_management_agent, 30 * user_selected_level)
+        run_interaction_loop(memory_management_agent, 90)
     except SystemExit:
         file_path = str(memory_management_agent.workspace.get_path("output.txt"))
         content = read_file(file_path)
