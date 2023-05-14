@@ -93,3 +93,13 @@ To print out debug logs:
 ``` shell
 ./run.sh --debug
 ```
+
+## Disabling Command Categories
+
+If you want to selectively disable some command groups, you can use the `DISABLED_COMMAND_CATEGORIES` config in your `.env`. You can find the list of categories in your `.env.template`
+
+For example, to disable coding related features, set it to the value below:
+
+```ini
+DISABLED_COMMAND_CATEGORIES=autogpt.commands.analyze_code,autogpt.commands.execute_code,autogpt.commands.git_operations,autogpt.commands.improve_code,autogpt.commands.write_tests
+```
