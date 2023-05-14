@@ -119,13 +119,13 @@ class OpenAIProvider(
             credentials_service,
             models=list(self._configuration["models"]),
         )
-        retry_handler = OpenAIRetryHandler(
+        retry_handler = _OpenAIRetryHandler(
             logger=self._logger,
             num_retries=self._configuration["retries_per_request"],
         )
 
-        self._create_completion = retry_handler(create_completion)
-        self._create_embedding = retry_handler(create_embedding)
+        self._create_completion = retry_handler(_create_completion)
+        self._create_embedding = retry_handler(_create_embedding)
 
     async def create_language_completion(
         self,
@@ -248,7 +248,7 @@ class OpenAIProvider(
         return "OpenAIProvider()"
 
 
-async def create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
+async def _create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
     """Embed text using the OpenAI API.
 
     Args:
@@ -264,7 +264,7 @@ async def create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
     )
 
 
-async def create_completion(messages: ModelPrompt, *_, **kwargs) -> openai.Completion:
+async def _create_completion(messages: ModelPrompt, *_, **kwargs) -> openai.Completion:
     """Create a chat completion using the OpenAI API.
 
     Args:
@@ -280,11 +280,11 @@ async def create_completion(messages: ModelPrompt, *_, **kwargs) -> openai.Compl
     )
 
 
-T = TypeVar("T")
-P = ParamSpec("P")
+_T = TypeVar("_T")
+_P = ParamSpec("_P")
 
 
-class OpenAIRetryHandler:
+class _OpenAIRetryHandler:
     """Retry Handler for OpenAI API call.
 
     Args:
@@ -312,20 +312,20 @@ class OpenAIRetryHandler:
         self._backoff_base = backoff_base
         self._warn_user = warn_user
 
-    def _log_rate_limit_error(self):
+    def _log_rate_limit_error(self) -> None:
         self._logger.debug(self._retry_limit_msg)
         if self._warn_user:
             self._logger.warning(self._api_key_error_msg)
             self._warn_user = False
 
-    def _backoff(self, attempt: int):
+    def _backoff(self, attempt: int) -> None:
         backoff = self._backoff_base ** (attempt + 2)
         self._logger.debug(self._backoff_msg.format(backoff=backoff))
         time.sleep(backoff)
 
-    def __call__(self, func: Callable[P, T]) -> Callable[P, T]:
+    def __call__(self, func: Callable[_P, _T]) -> Callable[_P, _T]:
         @functools.wraps(func)
-        async def _wrapped(*args, **kwargs):
+        async def _wrapped(*args: _P.args, **kwargs: _P.kwargs) -> _T:
             num_attempts = self._num_retries + 1  # +1 for the first attempt
             for attempt in range(1, num_attempts + 1):
                 try:

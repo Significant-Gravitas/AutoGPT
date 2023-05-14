@@ -6,14 +6,25 @@ from autogpt.core.model.base import (
     ModelProvider,
 )
 from autogpt.core.model.embedding import (
+    Embedding,
     EmbeddingModel,
     EmbeddingModelInfo,
     EmbeddingModelResponse,
+    EmbeddingModelProvider,
+    SimpleEmbeddingModel,
 )
 from autogpt.core.model.language import (
     LanguageModel,
     LanguageModelInfo,
     LanguageModelResponse,
+    LanguageModelProvider,
+    SimpleLanguageModel,
+)
+from autogpt.core.model.providers import (
+    OPEN_AI_LANGUAGE_MODELS,
+    OPEN_AI_EMBEDDING_MODELS,
+    OPEN_AI_MODELS,
+    OpenAIProvider,
 )
 
 from autogpt.core.status import ShortStatus, Status
