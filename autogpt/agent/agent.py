@@ -128,11 +128,10 @@ class Agent:
             # print(assistant_reply_json)
             # print("\n")
 
-            # Deprecated by DslParser
             # Instantiate JsonFixer and fix the JSON
-            # json_fixer = JsonFixer()
-            # assistant_reply_json = json_fixer.fix_and_parse_json(assistant_reply)
-            # assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
+            json_fixer = JsonFixer()
+            assistant_reply_json = json_fixer.fix_and_parse_json(assistant_reply)
+            assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
