@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "prebuild-install": "^7.1.1"
+  }
+}

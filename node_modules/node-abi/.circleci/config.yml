@@ -1,0 +1,45 @@
+step-restore-cache: &step-restore-cache
+  restore_cache:
+    keys:
+      - v1-dependencies-{{ arch }}-{{ checksum "yarn.lock" }}
+      - v1-dependencies-{{ arch }}
+
+steps-test: &steps-test
+  steps:
+    - checkout
+    - *step-restore-cache
+    - run: yarn --frozen-lockfile
+    - save_cache:
+        paths:
+          - node_modules
+        key: v1-dependencies-{{ arch }}-{{ checksum "yarn.lock" }}
+    - run: yarn test
+
+version: 2.1
+orbs:
+  cfa: continuousauth/npm@1.0.2
+jobs:
+  test-linux-14:
+    docker:
+      - image: cimg/node:14.21
+    <<: *steps-test
+  test-linux-16:
+    docker:
+      - image: cimg/node:16.19
+    <<: *steps-test
+
+workflows:
+  test_and_release:
+    # Run test jobs first, release only when all the test jobs are successful
+    jobs:
+      - test-linux-14
+      - test-linux-16
+      - cfa/release:
+          requires:
+            - test-linux-14
+            - test-linux-16
+          filters:
+            branches:
+              only:
+                - main
+          context: cfa-release

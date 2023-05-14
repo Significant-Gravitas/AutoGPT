@@ -1,0 +1,38 @@
+{
+  "name": "node-abi",
+  "version": "3.40.0",
+  "description": "Get the Node ABI for a given target and runtime, and vice versa.",
+  "main": "index.js",
+  "scripts": {
+    "test": "tape test/index.js",
+    "update-abi-registry": "node --unhandled-rejections=strict scripts/update-abi-registry.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/electron/node-abi.git"
+  },
+  "keywords": [
+    "node",
+    "electron",
+    "node_module_version",
+    "abi",
+    "v8"
+  ],
+  "author": "Lukas Geiger",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/electron/node-abi/issues"
+  },
+  "homepage": "https://github.com/electron/node-abi#readme",
+  "devDependencies": {
+    "@continuous-auth/semantic-release-npm": "^3.0.0",
+    "got": "^11.8.2",
+    "tape": "^5.3.1"
+  },
+  "dependencies": {
+    "semver": "^7.3.5"
+  },
+  "engines": {
+    "node": ">=10"
+  }
+}

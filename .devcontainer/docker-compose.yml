@@ -1,19 +1,22 @@
-# To boot the app run the following:
-# docker-compose run auto-gpt
-version: '3.9'
-
+version: "3.9"
 services:
   auto-gpt:
+    image: significantgravitas/auto-gpt
     depends_on:
       - redis
-    build:
-      dockerfile: .devcontainer/Dockerfile
-      context: ../
-    tty: true
+    env_file:
+      - .env
     environment:
       MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
       REDIS_HOST: ${REDIS_HOST:-redis}
+    profiles: ["exclude-from-up"]
     volumes:
-      - ../:/workspace/Auto-GPT
+      - ./auto_gpt_workspace:/app/autogpt/auto_gpt_workspace
+      - ./data:/app/data
+      ## allow auto-gpt to write logs to disk
+      - ./logs:/app/logs
+      ## uncomment following lines if you have / want to make use of these files
+      #- ./azure.yaml:/app/azure.yaml
+      #- ./ai_settings.yaml:/app/ai_settings.yaml
   redis:
-    image: 'redis/redis-stack-server:latest'
+    image: "redis/redis-stack-server:latest"

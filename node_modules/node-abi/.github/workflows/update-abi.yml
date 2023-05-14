@@ -1,0 +1,42 @@
+name: Auto-update ABI JSON file
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'
+jobs:
+  autoupdate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # tag: v3.3.0
+    - uses: actions/setup-node@64ed1c7eab4cce3362f8c340dee64e5eaeef8f7c  # tag: v3.6.0
+      with:
+        node-version: '12.x'
+    - name: Get npm cache directory
+      id: npm-cache
+      run: |
+        echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
+    - uses: actions/cache@627f0f41f6904a5b1efbaed9f96d9eb58e92e920  # tag: v3.2.4
+      with:
+        path: ${{ steps.npm-cache.outputs.dir }}
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+    - run: npm install --no-package-lock
+    - name: Update ABI registry
+      run: npm run update-abi-registry
+    - name: Commit Changes to ABI registry
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "machine github.com login $GITHUB_ACTOR password $GITHUB_TOKEN" > ~/.netrc
+        chmod 600 ~/.netrc
+        git add abi_registry.json
+        if test -n "$(git status -s)"; then
+          git config user.name "GitHub Actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git diff --cached
+          git commit -m "feat: update ABI registry"
+          git push origin HEAD:$GITHUB_REF
+        else
+          echo No update needed
+        fi
