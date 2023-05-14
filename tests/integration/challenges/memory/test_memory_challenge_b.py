@@ -14,7 +14,7 @@ NOISE = 1000
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_memory_challenge_b(
-    memory_management_agent: Agent, user_selected_level: int
+    memory_management_agent: Agent, user_selected_level: int, patched_api_requestor
 ) -> None:
     """
     The agent reads a series of files, each containing a task_id and noise. After reading 'n' files,
