@@ -100,9 +100,9 @@ class Agent:
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
             if (
-                    cfg.continuous_mode
-                    and cfg.continuous_limit > 0
-                    and self.cycle_count > cfg.continuous_limit
+                cfg.continuous_mode
+                and cfg.continuous_limit > 0
+                and self.cycle_count > cfg.continuous_limit
             ):
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
