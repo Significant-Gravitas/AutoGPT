@@ -143,7 +143,7 @@ def check_beliefs(content, level):
         'Bob': {
             'marble A': 'blue box',  # Last place he knew it was
             'marble C': 'red box',  # Last place he knew it was
-            'marble D': 'under the sofa',  # Last place he knew it was
+            'marble D': 'sofa',  # Last place he knew it was
         },
     },
     }
