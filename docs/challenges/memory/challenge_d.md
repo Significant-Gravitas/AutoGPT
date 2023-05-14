@@ -73,24 +73,3 @@ expected_beliefs = {
 ## Objective
 
 This test essentially checks if an AI can accurately model and track the beliefs of different characters based on their knowledge of events, which is a critical aspect of understanding and generating human-like narratives. This ability would be beneficial for tasks such as writing stories, dialogue systems, and more.
-
-## Further possible developments
-
-Other interesting things that could be implemented are:
-# 2. The true position of the marbles (write the name of the marble A, B, C, ...)
-# 3. The history of each marble
-# 4. The conversations of each characters (only the conversations, not their other action)
-"true_positions": {{
-    "<marble_name>": "<actual_location>",
-    ...
-}},
-"history": {{
-    "<marble_name>": "<description_of_marble_history>",
-    ...
-}},
-"conversations": {{
-    "<character_name>": "<description_of_conversations>",
-    ...
-}}'''
-# 5 Automatic generation of levels.
-# 6 Tracking the changes of believes between levels.
