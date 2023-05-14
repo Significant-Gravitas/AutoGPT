@@ -3,10 +3,6 @@ import logging
 
 import requests
 
-# This could be a client library, or they could simply use requests to hit the API.
-# For now, we'll do everything in-process.
-from autogpt.core.runner.server import application_server
-
 
 def configure_client_application_logging(
     application_logger: logging.Logger,

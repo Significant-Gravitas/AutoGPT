@@ -1,5 +1,7 @@
 """The Agent is an autonomouos entity guided by a LLM provider."""
 from autogpt.core.agent.base import Agent
+from autogpt.core.agent.simple import SimpleAgent
+from autogpt.core.agent.factory import SimpleAgentFactory
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(

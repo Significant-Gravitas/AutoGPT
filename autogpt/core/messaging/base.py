@@ -1,44 +1,41 @@
 """Abstract interface for a message broker system."""
 import abc
-from dataclasses import dataclass
+import enum
 from datetime import datetime
-from typing import Awaitable, Callable, Dict
+from typing import Awaitable, Callable
+from uuid import UUID
+
+from pydantic import BaseModel
 
 
-class Role(str):
-    """Enumeration of all entities capable of sending messages"""
-
+class Role(str, enum.Enum):
+    # Client side
     USER = "user"
     CLIENT_APPLICATION = "client_application"
+    # Server side
+    APPLICATION_SERVER = "application_server"
     AGENT_FACTORY = "agent_factory"
+    # Agent side
     AGENT = "agent"
 
 
-@dataclass
-class Sender:
+class Sender(BaseModel):
     """Struct for metadata about a sender."""
-
-    # We'll need some kind of uuids at some point.  Names are fine for now.
+    id: UUID
     name: str
     role: Role
 
 
-@dataclass
-class MessageMetadata:
-    """Struct for metadata about a message."""
+class MessageContent(BaseModel):
+    pass
 
+
+class Message(BaseModel):
+    """Struct for a message and its metadata."""
     sender: Sender
     timestamp: datetime
-    additional_metadata: Dict = None
-    # TODO: what else goes here?
-
-
-@dataclass
-class Message:
-    """Struct for a message and its metadata."""
-
-    content: dict  # Some json struct we can define with a strict schema
-    metadata: MessageMetadata
+    additional_metadata: dict = None
+    content: MessageContent
 
 
 Listener = Callable[[Message], Awaitable[None]]
@@ -56,17 +53,11 @@ class MessageEmitter(abc.ABC):
     """
 
     @abc.abstractmethod
-    def __init__(
-        self,
-        message_channel: "MessageChannel",
-        sender_name: str,
-        sender_role: Role,
-        **additional_metadata,
-    ):
+    def __init__(self, *args, **kwargs):
         ...
 
     @abc.abstractmethod
-    def send_message(self, content: dict, **extra_metadata) -> bool:
+    def send_message(self, content: MessageContent, **extra_metadata) -> bool:
         """Send a message on this channel.
 
         Args:
@@ -151,6 +142,7 @@ class MessageBroker(abc.ABC):
     def get_emitter(
         self,
         channel_name: str,
+        sender_uuid: UUID,
         sender_name: str,
         sender_role: Role,
         **extra_metadata,
@@ -159,6 +151,7 @@ class MessageBroker(abc.ABC):
 
         Args:
             channel_name: The name of the channel the emitter will send messages on.
+            sender_uuid: The UUID of the sender.
             sender_name: The name of the sender.
             sender_role: The role of the sender.
             extra_metadata: Any additional metadata to be included when emitting messages.

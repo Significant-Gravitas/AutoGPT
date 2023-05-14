@@ -1,14 +1,15 @@
+from uuid import UUID
 from datetime import datetime
 from typing import Dict
 
 from autogpt.core.messaging.base import (
     Listener,
     Message,
+    MessageContent,
     MessageBroker,
     MessageChannel,
     MessageEmitter,
     MessageFilter,
-    MessageMetadata,
     Role,
     Sender,
 )
@@ -18,28 +19,25 @@ class SimpleMessageEmitter(MessageEmitter):
     def __init__(
         self,
         message_channel: "SimpleMessageChannel",
+        sender_uuid: UUID,
         sender_name: str,
         sender_role: Role,
         **additional_metadata,
     ):
-        self._sender = Sender(name=sender_name, role=sender_role)
+        self._sender = Sender(id=sender_uuid, name=sender_name, role=sender_role)
         self._additional_metadata = additional_metadata
         self._message_channel = message_channel
 
-    async def send_message(self, content: Dict, **extra_metadata) -> bool:
+    async def send_message(self, content: MessageContent, **extra_metadata) -> bool:
         additional_metadata = {
             **self._additional_metadata,
             **extra_metadata,
         }
-
-        metadata = MessageMetadata(
+        message = Message(
             sender=self._sender,
             timestamp=datetime.now(),
             additional_metadata=additional_metadata,
-        )
-        message = Message(
             content=content,
-            metadata=metadata,
         )
         return await self._message_channel.send_message(message)
 
@@ -92,6 +90,7 @@ class SimpleMessageBroker(MessageBroker):
     def get_emitter(
         self,
         channel_name: str,
+        sender_uuid: UUID,
         sender_name: str,
         sender_role: Role,
         **extra_metadata,
@@ -99,6 +98,7 @@ class SimpleMessageBroker(MessageBroker):
         channel = self._channels[channel_name]
         return SimpleMessageEmitter(
             message_channel=channel,
+            sender_uuid=sender_uuid,
             sender_name=sender_name,
             sender_role=sender_role,
             **extra_metadata,

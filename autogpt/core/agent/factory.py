@@ -5,10 +5,11 @@ from typing import List, Tuple, Type
 
 from autogpt.core.budget.simple import SimpleBudgetManager
 from autogpt.core.configuration import Configuration
-from autogpt.core.model.language.simple import (
+from autogpt.core.model import (
+    SimpleLanguageModel,
     LanguageModelResponse,
-    OpenAILanguageModel,
 )
+
 from autogpt.core.planning.simple import ModelPrompt, SimplePlanner
 from autogpt.core.plugin.simple import PluginStorageFormat, SimplePluginService
 from autogpt.core.workspace import Workspace
@@ -116,7 +117,7 @@ class SimpleAgentFactory:
         objective_prompt: ModelPrompt,
         configuration: Configuration,
     ) -> LanguageModelResponse:
-        language_model: OpenAILanguageModel = self.get_system_instance(
+        language_model: SimpleLanguageModel = self.get_system_instance(
             "language_model",
             configuration,
             logger=self._logger.getChild("language_model"),
@@ -125,7 +126,6 @@ class SimpleAgentFactory:
             "budget_manager",
             configuration,
         )
-
         model_response = await language_model.determine_agent_objective(
             objective_prompt,
         )

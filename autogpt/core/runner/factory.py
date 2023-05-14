@@ -1,11 +1,14 @@
 import logging
+import uuid
 
 from autogpt.core.agent.factory import SimpleAgentFactory
 from autogpt.core.messaging.simple import Message, Role, SimpleMessageBroker
+from autogpt.core.runner.schema import AgentConfiguration, AgentInfo
 
 
 class AgentFactoryContext:
     def __init__(self):
+        self._uuid = uuid.uuid4()
         self._agent_factory = None
         self._message_broker = None
         self._emitter = None
@@ -19,24 +22,22 @@ class AgentFactoryContext:
         self.configure_agent_factory_logging(agent_factory_logger)
         self._agent_factory = SimpleAgentFactory(agent_factory_logger)
 
-        message_content: dict = message.content
-        message_broker: SimpleMessageBroker = message_content["message_broker"]
+        message_broker: SimpleMessageBroker = message.additional_metadata["message_broker"]
         self._emitter = message_broker.get_emitter(
             # can get from user config
             channel_name="autogpt",
+            sender_uuid=self._uuid,
             sender_name="autogpt-agent-factory",
             sender_role=Role.AGENT_FACTORY,
         )
 
-    async def bootstrap_agent(self, message: Message):
-        """Provision a new agent by getting an objective from the user and setting up agent resources."""
+    async def parse_goals(self, message: Message):
         if self._agent_factory is None:
             await self.start_agent_factory(message)
 
-        message_content: dict = message.content
-
-        user_configuration: dict = message_content["user_configuration"]
-        user_objective: str = message_content["user_objective"]
+        message_content: AgentConfiguration = message.content
+        user_configuration: dict = message_content.user_configuration
+        agent_objective: str = message_content.agent_goals.objective
 
         await self.send_confirmation_message()
         # Either need to do validation as we're building the configuration, or shortly
@@ -51,7 +52,7 @@ class AgentFactoryContext:
 
         objective_prompt = (
             self._agent_factory.construct_objective_prompt_from_user_input(
-                user_objective,
+                agent_objective,
                 configuration,
             )
         )
@@ -61,12 +62,38 @@ class AgentFactoryContext:
             objective_prompt,
             configuration,
         )
-        await self.send_agent_objective_message(model_response.content)
+        content = model_response.content
+        await self.send_agent_objective_message(content)
         # Set the agents goals
-        configuration.planner.update(model_response.content)
+        configuration.planner.update(content)
+
+        agent_info = AgentInfo(
+            objective=agent_objective,
+            name=content['ai_name'],
+            role=content['ai_role'],
+            goals=content['ai_goals'],
+        )
+        self._emitter.send_message(
+            content=agent_info,
+            message_type="parse_goals_complete",
+        )
+
+    async def bootstrap_agent(self, message: Message):
+        """Provision a new agent by getting an objective from the user and setting up agent resources."""
+        if self._agent_factory is None:
+            await self.start_agent_factory(message)
+
+        message_content: dict = message.content
+
+        user_configuration: dict = message_content["user_configuration"]
+        user_objective: str = message_content["user_objective"]
+
 
         self._agent_factory.provision_new_agent(configuration)
         await self.send_agent_setup_complete_message()
+
+    async def parse_user_objective_into_goals(self, user_objective):
+        pass
 
     async def send_confirmation_message(self):
         await self._emitter.send_message(

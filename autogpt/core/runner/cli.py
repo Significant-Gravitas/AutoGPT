@@ -1,9 +1,12 @@
+import contextlib
 import shlex
 import subprocess
 import sys
 import time
 
 import click
+import requests
+import uvicorn
 
 
 @click.group()
@@ -13,18 +16,47 @@ def autogpt():
 
 
 @autogpt.command()
-def httpserver() -> None:
+@click.option(
+    'host',
+    '--host',
+    default='localhost',
+    help='The host for the webserver.',
+    type=click.STRING,
+)
+@click.option(
+    'port',
+    '--port',
+    default=8080,
+    help='The port of the webserver.',
+    type=click.INT,
+)
+def httpserver(host: str, port: int) -> None:
     """Run the Auto-GPT runner httpserver."""
-    import uvicorn
-
-    print("Running Auto-GPT runner httpserver...")
+    click.echo("Running Auto-GPT runner httpserver...")
     uvicorn.run(
-        "autogpt.core.runner.server:app",
+        "autogpt.core.runner.httpserver:app",
         workers=1,
-        host="localhost",
-        port=8080,
+        host=host,
+        port=port,
         reload=True,
     )
+
+
+@contextlib.contextmanager
+def autogpt_server():
+    host = "localhost"
+    port = 8080
+    cmd = shlex.split(f"{sys.executable} autogpt/core/runner/cli.py httpserver --host {host} --port {port}")
+    server_process = subprocess.Popen(args=cmd)
+    started = False
+    while not started:
+        try:
+            requests.get(f"https://{host}:{port}")
+            started = True
+        except requests.exceptions.ConnectionError:
+            time.sleep(0.1)
+    yield server_process
+    server_process.terminate()
 
 
 @autogpt.command()
@@ -32,21 +64,8 @@ def client() -> None:
     """Run the Auto-GPT runner client."""
     import autogpt.core.runner.client
 
-    # print("Running Auto-GPT runner client...")
-    # autogpt.core.runner.client.run()
-
-    cmd = f"{sys.executable} autogpt/core/runner/cli.py httpserver"
-    cmds = shlex.split(cmd)
-    print("cmds:", cmds)
-
-    process = subprocess.Popen(
-        args=cmds,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    time.sleep(2)  # wait for server to start
-
-    autogpt.core.runner.client.run()
+    with autogpt_server():
+        autogpt.core.runner.client.run()
 
 
 # @v2.command()
@@ -56,25 +75,25 @@ def client() -> None:
 #     print(f"Is async: {is_async}")
 
 
-# @v2.command()
-# @click.option("-d", "--detailed", is_flag=True, help="Show detailed status.")
-# def status(detailed: bool):
-#     import importlib
-#     import pkgutil
+@autogpt.command()
+@click.option("-d", "--detailed", is_flag=True, help="Show detailed status.")
+def status(detailed: bool):
+    import importlib
+    import pkgutil
 
-#     import autogpt.core
-#     from autogpt.core.status import print_status
+    import autogpt.core
+    from autogpt.core.status import print_status
 
-#     status_list = []
-#     for loader, package_name, is_pkg in pkgutil.iter_modules(autogpt.core.__path__):
-#         if is_pkg:
-#             subpackage = importlib.import_module(
-#                 f"{autogpt.core.__name__}.{package_name}"
-#             )
-#             if hasattr(subpackage, "status"):
-#                 status_list.append(subpackage.status)
+    status_list = []
+    for loader, package_name, is_pkg in pkgutil.iter_modules(autogpt.core.__path__):
+        if is_pkg:
+            subpackage = importlib.import_module(
+                f"{autogpt.core.__name__}.{package_name}"
+            )
+            if hasattr(subpackage, "status"):
+                status_list.append(subpackage.status)
 
-#     print_status(status_list, detailed)
+    print_status(status_list, detailed)
 
 
 # @click.group()

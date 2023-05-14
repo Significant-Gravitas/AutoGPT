@@ -1,4 +1,4 @@
-from autogpt.core.credentials.base import CredentialsManager, ServiceCredentials
+from autogpt.core.credentials.base import CredentialsService, CredentialsConsumer
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(
@@ -7,5 +7,7 @@ status = Status(
     handoff_notes=(
         "5/11: Realized we need something to manage credentials now or commit ourselves to leaving a pretty big mess.\n"
         "      Created a credentials manager and a credentials provider for openai.\n"
+        "5/12: Refactored the credentials manager to be a service and the credentials provider to be a consumer.\n"
+        "      Created a credentials provider for openai.\n"
     ),
 )

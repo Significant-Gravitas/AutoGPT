@@ -6,7 +6,6 @@ from autogpt.core.budget.simple import SimpleBudgetManager
 from autogpt.core.configuration import Configuration
 
 # from autogpt.core.memory.simple import SimpleMemoryBackend
-from autogpt.core.model.language.simple import OpenAILanguageModel
 
 # from autogpt.core.model.embedding.openai import OpenAIEmbeddingModel
 from autogpt.core.planning.simple import SimplePlanner
@@ -47,11 +46,11 @@ class SimpleAgent(Agent):
         #     logger,
         #     credentials=credentials,
         # )
-        language_model: OpenAILanguageModel = SimpleAgent.load_system(
-            "language_model",
-            configuration,
-            logger,
-        )
+        # language_model: OpenAILanguageModel = SimpleAgent.load_system(
+        #     "language_model",
+        #     configuration,
+        #     logger,
+        # )
         # memory_backend: SimpleMemoryBackend = SimpleAgent.load_system(
         #     "memory_backend",
         #     configuration,
@@ -71,7 +70,7 @@ class SimpleAgent(Agent):
             configuration=configuration,
             logger=logger,
             budget_manager=budget_manager,
-            language_model=language_model,
+            # language_model=language_model,
             planner=planner,
             workspace=workspace,
             # command_registry=command_registry,
