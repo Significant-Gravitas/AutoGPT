@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from autogpt.agent import Agent
@@ -5,8 +7,6 @@ from autogpt.commands.file_operations import read_file, write_to_file
 from tests.integration.agent_utils import run_interaction_loop
 from tests.integration.challenges.utils import get_level_to_run
 from tests.utils import requires_api_key
-import spacy
-import json
 
 LEVEL_CURRENTLY_BEATEN = 1
 MAX_LEVEL = 5
