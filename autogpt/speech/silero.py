@@ -49,15 +49,10 @@ class Silero(VoiceBase):
         sample_rate = 48000
         speaker = Config().silero_tts_voice
 
-        put_accent = True
-        put_yo = True
-
-        audio = self.model.apply_tts(
+        audio = self.model.save_wav(
             text=text,
             speaker=speaker,
-            sample_rate=sample_rate,
-            put_accent=put_accent,
-            put_yo=put_yo,
+            sample_rate=sample_rate
         )
 
         playsound(audio, True)
