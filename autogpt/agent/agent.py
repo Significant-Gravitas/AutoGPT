@@ -165,48 +165,36 @@ class Agent:
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
 
-    def _execute(self, arguments, cfg, command_name, user_input):
-        # Execute command
-        if command_name is not None and command_name.lower().startswith("error"):
-            result = (
-                f"Command {command_name} threw the following error: {arguments}"
-            )
-        elif command_name == "human_feedback":
-            result = f"Human feedback: {user_input}"
-        elif command_name == "self_feedback":
-            result = f"Self feedback: {user_input}"
-        else:
-            for plugin in cfg.plugins:
-                if not plugin.can_handle_pre_command():
-                    continue
-                command_name, arguments = plugin.pre_command(
-                    command_name, arguments
-                )
-            command_result = execute_command(
-                self.command_registry,
-                command_name,
-                arguments,
-                self.config.prompt_generator,
-            )
-            result = f"Command {command_name} returned: " f"{command_result}"
+    def _get_json_assistant_reply(self, assistant_reply, cfg):
+        assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
+        for plugin in cfg.plugins:
+            if not plugin.can_handle_post_planning():
+                continue
+            assistant_reply_json = plugin.post_planning(assistant_reply_json)
+        if assistant_reply_json != {}:
+            validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
+        return assistant_reply_json
 
-            result_tlength = count_string_tokens(
-                str(command_result), cfg.fast_llm_model
-            )
-            memory_tlength = count_string_tokens(
-                str(self.summary_memory), cfg.fast_llm_model
-            )
-            if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
-                result = f"Failure: command {command_name} returned too much output. \
-                        Do not execute this command again with the same arguments."
-
-            for plugin in cfg.plugins:
-                if not plugin.can_handle_post_command():
-                    continue
-                result = plugin.post_command(command_name, result)
-            if self.next_action_count > 0:
-                self.next_action_count -= 1
-        return result
+    def _print_assistant_thoughts(self, arguments, assistant_reply_json, cfg, command_name):
+        # Print Assistant thoughts
+        print_assistant_thoughts(
+            self.ai_name, assistant_reply_json, cfg.speak_mode
+        )
+        if cfg.speak_mode:
+            say_text(f"I want to execute {command_name}")
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            assistant_reply_json,
+            NEXT_ACTION_FILE_NAME,
+        )
+        logger.typewriter_log(
+            "NEXT ACTION: ",
+            Fore.CYAN,
+            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+            f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+        )
 
     def _get_user_input(self, assistant_reply_json, cfg):
         # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
@@ -278,36 +266,48 @@ class Agent:
                 break
         return command_name, user_input
 
-    def _print_assistant_thoughts(self, arguments, assistant_reply_json, cfg, command_name):
-        # Print Assistant thoughts
-        print_assistant_thoughts(
-            self.ai_name, assistant_reply_json, cfg.speak_mode
-        )
-        if cfg.speak_mode:
-            say_text(f"I want to execute {command_name}")
-        self.log_cycle_handler.log_cycle(
-            self.config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            assistant_reply_json,
-            NEXT_ACTION_FILE_NAME,
-        )
-        logger.typewriter_log(
-            "NEXT ACTION: ",
-            Fore.CYAN,
-            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-            f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-        )
+    def _execute(self, arguments, cfg, command_name, user_input):
+        # Execute command
+        if command_name is not None and command_name.lower().startswith("error"):
+            result = (
+                f"Command {command_name} threw the following error: {arguments}"
+            )
+        elif command_name == "human_feedback":
+            result = f"Human feedback: {user_input}"
+        elif command_name == "self_feedback":
+            result = f"Self feedback: {user_input}"
+        else:
+            for plugin in cfg.plugins:
+                if not plugin.can_handle_pre_command():
+                    continue
+                command_name, arguments = plugin.pre_command(
+                    command_name, arguments
+                )
+            command_result = execute_command(
+                self.command_registry,
+                command_name,
+                arguments,
+                self.config.prompt_generator,
+            )
+            result = f"Command {command_name} returned: " f"{command_result}"
 
-    def _get_json_assistant_reply(self, assistant_reply, cfg):
-        assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
-        for plugin in cfg.plugins:
-            if not plugin.can_handle_post_planning():
-                continue
-            assistant_reply_json = plugin.post_planning(assistant_reply_json)
-        if assistant_reply_json != {}:
-            validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
-        return assistant_reply_json
+            result_tlength = count_string_tokens(
+                str(command_result), cfg.fast_llm_model
+            )
+            memory_tlength = count_string_tokens(
+                str(self.summary_memory), cfg.fast_llm_model
+            )
+            if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
+                result = f"Failure: command {command_name} returned too much output. \
+                        Do not execute this command again with the same arguments."
+
+            for plugin in cfg.plugins:
+                if not plugin.can_handle_post_command():
+                    continue
+                result = plugin.post_command(command_name, result)
+            if self.next_action_count > 0:
+                self.next_action_count -= 1
+        return result
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
