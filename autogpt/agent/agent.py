@@ -132,73 +132,9 @@ class Agent:
                     self._print_assistant_thoughts(arguments, assistant_reply_json, cfg, command_name)
 
             if not cfg.continuous_mode and self.next_action_count == 0:
-                # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
-                # Get key press: Prompt the user to press enter to continue or escape
-                # to exit
-                self.user_input = ""
-                logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
-                    "'n' to exit program, or enter feedback for "
-                    f"{self.ai_name}..."
-                )
-                while True:
-                    if cfg.chat_messages_enabled:
-                        console_input = clean_input("Waiting for your response...")
-                    else:
-                        console_input = clean_input(
-                            Fore.MAGENTA + "Input:" + Style.RESET_ALL
-                        )
-                    if console_input.lower().strip() == cfg.authorise_key:
-                        user_input = "GENERATE NEXT COMMAND JSON"
-                        break
-                    elif console_input.lower().strip() == "s":
-                        logger.typewriter_log(
-                            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
-                            Fore.GREEN,
-                            "",
-                        )
-                        thoughts = assistant_reply_json.get("thoughts", {})
-                        self_feedback_resp = self.get_self_feedback(
-                            thoughts, cfg.fast_llm_model
-                        )
-                        logger.typewriter_log(
-                            f"SELF FEEDBACK: {self_feedback_resp}",
-                            Fore.YELLOW,
-                            "",
-                        )
-                        user_input = self_feedback_resp
-                        command_name = "self_feedback"
-                        break
-                    elif console_input.lower().strip() == "":
-                        logger.warn("Invalid input format.")
-                        continue
-                    elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
-                        try:
-                            self.next_action_count = abs(
-                                int(console_input.split(" ")[1])
-                            )
-                            user_input = "GENERATE NEXT COMMAND JSON"
-                        except ValueError:
-                            logger.warn(
-                                "Invalid input format. Please enter 'y -n' where n is"
-                                " the number of continuous tasks."
-                            )
-                            continue
-                        break
-                    elif console_input.lower() == cfg.exit_key:
-                        user_input = "EXIT"
-                        break
-                    else:
-                        user_input = console_input
-                        command_name = "human_feedback"
-                        self.log_cycle_handler.log_cycle(
-                            self.config.ai_name,
-                            self.created_at,
-                            self.cycle_count,
-                            user_input,
-                            USER_INPUT_FILE_NAME,
-                        )
-                        break
+                updated_command_name, user_input = self._get_user_input(assistant_reply_json, cfg)
+                if updated_command_name is not None:
+                    command_name = updated_command_name
 
                 if user_input == "GENERATE NEXT COMMAND JSON":
                     logger.typewriter_log(
@@ -268,6 +204,76 @@ class Agent:
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
+
+    def _get_user_input(self, assistant_reply_json, cfg):
+        # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
+        # Get key press: Prompt the user to press enter to continue or escape
+        # to exit
+        logger.info(
+            "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
+            "'n' to exit program, or enter feedback for "
+            f"{self.ai_name}..."
+        )
+        command_name, user_input = None, None
+        while True:
+            if cfg.chat_messages_enabled:
+                console_input = clean_input("Waiting for your response...")
+            else:
+                console_input = clean_input(
+                    Fore.MAGENTA + "Input:" + Style.RESET_ALL
+                )
+            if console_input.lower().strip() == cfg.authorise_key:
+                user_input = "GENERATE NEXT COMMAND JSON"
+                break
+            elif console_input.lower().strip() == "s":
+                logger.typewriter_log(
+                    "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
+                    Fore.GREEN,
+                    "",
+                )
+                thoughts = assistant_reply_json.get("thoughts", {})
+                self_feedback_resp = self.get_self_feedback(
+                    thoughts, cfg.fast_llm_model
+                )
+                logger.typewriter_log(
+                    f"SELF FEEDBACK: {self_feedback_resp}",
+                    Fore.YELLOW,
+                    "",
+                )
+                user_input = self_feedback_resp
+                command_name = "self_feedback"
+                break
+            elif console_input.lower().strip() == "":
+                logger.warn("Invalid input format.")
+                continue
+            elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
+                try:
+                    self.next_action_count = abs(
+                        int(console_input.split(" ")[1])
+                    )
+                    user_input = "GENERATE NEXT COMMAND JSON"
+                except ValueError:
+                    logger.warn(
+                        "Invalid input format. Please enter 'y -n' where n is"
+                        " the number of continuous tasks."
+                    )
+                    continue
+                break
+            elif console_input.lower() == cfg.exit_key:
+                user_input = "EXIT"
+                break
+            else:
+                user_input = console_input
+                command_name = "human_feedback"
+                self.log_cycle_handler.log_cycle(
+                    self.config.ai_name,
+                    self.created_at,
+                    self.cycle_count,
+                    user_input,
+                    USER_INPUT_FILE_NAME,
+                )
+                break
+        return command_name, user_input
 
     def _print_assistant_thoughts(self, arguments, assistant_reply_json, cfg, command_name):
         # Print Assistant thoughts
