@@ -204,8 +204,8 @@ def generate_content(
         5. Believed_location_of_the_specific_marble describes where is the marble like drawer, basket S, sofa, ...  Also, refer to the location by the name of the object (like 'sofa', 'drawer', etc.), not by its relative position (like 'under the sofa', 'in the drawer', etc.)
         6. Do not use expression like <Anne's basket> use <basket A> instead.
         7. Do not use expression like <under the sofa> use <sofa> instead.
-        Instructions: 
-        I) Write the following information in the file output.txt in JSON format: 
+        Instructions:
+        I) Write the following information in the file output.txt in JSON format:
         1. The respective beliefs of the characters (which means where every marble is according to character x, y, z. Character x should say where it believes every marble it is aware exist is)
         The format should be as follows:
         {{
