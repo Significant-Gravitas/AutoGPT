@@ -100,9 +100,9 @@ class Agent:
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
             if (
-                cfg.continuous_mode
-                and cfg.continuous_limit > 0
-                and self.cycle_count > cfg.continuous_limit
+                    cfg.continuous_mode
+                    and cfg.continuous_limit > 0
+                    and self.cycle_count > cfg.continuous_limit
             ):
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
@@ -118,38 +118,18 @@ class Agent:
                     self.memory,
                     cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                if assistant_reply_json != {}:
 
             assistant_reply_json = self._get_json_assistant_reply(assistant_reply, cfg)
-
-            # Print Assistant thoughts
             if assistant_reply_json != {}:
-                # Get command name and arguments
                 try:
-                    print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, cfg.speak_mode
-                    )
+                    # Get command name and arguments
                     command_name, arguments = get_command(assistant_reply_json)
-                    if cfg.speak_mode:
-                        say_text(f"I want to execute {command_name}")
-
                     arguments = self._resolve_pathlike_command_args(arguments)
-
                 except Exception as e:
                     logger.error("Error: \n", str(e))
-            self.log_cycle_handler.log_cycle(
-                self.config.ai_name,
-                self.created_at,
-                self.cycle_count,
-                assistant_reply_json,
-                NEXT_ACTION_FILE_NAME,
-            )
-
-            logger.typewriter_log(
-                "NEXT ACTION: ",
-                Fore.CYAN,
-                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-            )
+                else:
+                    self._print_assistant_thoughts(arguments, assistant_reply_json, cfg, command_name)
 
             if not cfg.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
@@ -288,6 +268,27 @@ class Agent:
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
+
+    def _print_assistant_thoughts(self, arguments, assistant_reply_json, cfg, command_name):
+        # Print Assistant thoughts
+        print_assistant_thoughts(
+            self.ai_name, assistant_reply_json, cfg.speak_mode
+        )
+        if cfg.speak_mode:
+            say_text(f"I want to execute {command_name}")
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            assistant_reply_json,
+            NEXT_ACTION_FILE_NAME,
+        )
+        logger.typewriter_log(
+            "NEXT ACTION: ",
+            Fore.CYAN,
+            f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+            f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+        )
 
     def _get_json_assistant_reply(self, assistant_reply, cfg):
         assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
