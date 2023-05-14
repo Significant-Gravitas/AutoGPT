@@ -22,7 +22,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
-          repository: <fork-owner>/<fork-repo>
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
@@ -65,7 +65,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
-          repository: <fork-owner>/<fork-repo>
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
