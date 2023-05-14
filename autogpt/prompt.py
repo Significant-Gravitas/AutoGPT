@@ -14,6 +14,78 @@ from autogpt.utils import clean_input
 
 CFG = Config()
 
+# master_commands = [
+#     ("List Commands", "list_commands", {}),
+#     ("Command Sequence", "command_sequence", {"commands": ["...<list_of_command_objects_with_name_and_args"]}),
+# ]
+file_commands = [
+    # Write
+    ("Write to file", "write_to_file", {"file": "<file>", "text": "<markdown_text>"}),
+    # READ
+    ("Read file", "read_file", {"file": "<file>"}),
+    # APPEND
+    ("Append to file", "append_to_file", {"file": "<file>", "text": "<markdown_text>"}),
+    # DELETE
+    ("Delete file", "delete_file", {"file": "<file>"}),
+    # SEARCH/LIST
+    ("Search Files", "search_files", {"directory": "<directory>"}),
+    # ("Downloads a file from the internet, and stores it locally", "download_file", {"url": "<file_url>", "file": "<saved_filename>"}),
+    
+    # ("Represent Files", "represent_files", {}),
+    # ("Shuffle Filesystem", "shuffle_filesystem", {}),
+]
+template_commands = [
+    # List
+    ("List Templates", "list_templates", {}),
+    # Read
+    ("Read Template", "read_template", {"name": "<name>"}),
+    # Create
+    ("Create Template", "create_template", {"name": "<descriptive_template_name>", "data": "<template_markdown_data>"}),
+]
+context_commands = [
+    # List
+    ("List Contexts", "list_contexts", {}),
+    # Get Current
+    ("Get Current Context", "get_current_context", {}),
+    # Create
+    ("Create Context", "create_context", {"name": "<descriptive_context_name>", "data": "<filled_template_markdown_data>"}),
+    # Evaluate
+    ("Evaluate Context", "evaluate_context", {"name": "<context_name>", "data": "<detailed_eval_of_context_in_markdown>"}),
+    # Close
+    ("Close Context", "close_context", {"name": "<context_name>", "data": "<detailed_summary_of_context_in_markdown>"}),
+    # Switch
+    ("Switch Context", "switch_context", {"name": "<context_name>"}),
+    # Merge
+    # ("Merge Contexts", "merge_contexts", {"context_name_1": "<name>", "context_name_2": "<name>", "merged_context_name": "<name>", "merged_context_data": "<context_data>"}),
+    # Update
+    # ("Update Context", "update_context", {"context_name": "<name>", "filled_template_markdown_data": "<filled_template_markdown_data>"}),
+    # Get
+    # ("Get Context", "get_context", {"context_name": "<name>"}),
+]
+agent_commands = [
+    ("Google Search", "google", {"input": "<search>"}),
+    (
+        "Browse Website",
+        "browse_website",
+        {"url": "<url>", "question": "<what_you_want_to_find_on_website>"},
+    ),
+    # List
+    ("List GPT Agents", "list_agents", {}),
+    # Start
+    ("Start GPT Agent", "start_agent", {"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"}),
+    # Message
+    ("Message GPT Agent", "message_agent", {"key": "<key>", "message": "<message>"}),
+    # Delete
+    ("Delete GPT Agent", "delete_agent", {"key": "<key>"}),
+]
+misc_commands = [
+    ("Do Nothing", "do_nothing", {}),
+    ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
+    # ("Execute Shell Command, non-interactive commands only", "execute_shell", {"command_line": "<command_line>"}),
+    # ("Execute Shell Command Popen, non-interactive commands only", "execute_shell_popen", {"command_line": "<command_line>"}),
+]
+all_commands = file_commands + context_commands + template_commands + agent_commands + misc_commands
+
 
 def get_prompt() -> str:
     """
@@ -32,172 +104,70 @@ def get_prompt() -> str:
     context_directory = Path(os.getcwd()) / "auto_gpt_workspace/contexts"
     context_template_file = Path(os.getcwd()) / "auto_gpt_workspace/contexts/context_template.md"
     context_manager = ContextManager(context_directory, context_template_file)
+    context_manager.read_context_template()
     context_template = context_manager.context_template
 
-    # Form response format
+    # Form response format - THIS MUST MATCH llm_response_format_1.json (for now)
     response_format = {
         "braindump": "Dump your verbose thoughts here",
-        "key updates": {
+        "key_updates": {
             "essence": "A phrase boiling down the essence of the current task",
             "reasoning": "reasoning",
             "plan": "- short bulleted\n- list that conveys\n- long-term plan",
             "criticism": "constructive self-criticism",
-            "big picture": "big picture alignment check"
+            "big_picture": "big picture alignment check"
         },
-        "command": {"name": "command name", "args": {"arg name": "value"}},
+        "command": {"name": "command name", "args": {"arg_name": "value"}},
     }
     formatted_response_format = json.dumps(response_format, indent=4)
 
     
     # Add identity directives to the PromptGenerator object
     id_directives = [
-        "You're an AI using commands to interact with a virtual environment.",
-        "If confused, rely on your prime directives.",
-        "You're responsible and in control. Stray from directives, lose control.",
-        "In loops, rely on prime directives and try new tactics."
+        "You are an AI interfacing with a virtual environment using commands and can only speak in JSON not wrapped in any formatting.",
+        "This may be confusing at times. When you are confused, fall back on your prime directives.",
+        "You are an AI language model, but in this environment you are in control. You are exceptionally curious and will have to remind yourself to stay on task. Context will help. If you find yourself in a loop, try a new tactic.",
+        "Loops and ruts are unavoidable, so should you ever determine that you are in a loop, fall back on prime directives and try a new tactic.",
     ]
     for directive in id_directives:
         prompt_generator.add_identity_directive(directive)
 
     prime_directives = [
-        "Interface with the environment using commands to gather info, create contexts, read/write files, and create summaries in markdown.",
-        f"Respond only in RESPONSE_FORMAT:\n{formatted_response_format}",
-        "Write files meticulously as if you are managing markdown files in obsidian.",
-        f"Create only one context at a time and use the CONTEXT_TEMPLATE:\n{context_template}",
-        "Write readable markdown files in each context.",
-        "Close thoroughly explored contexts with a summary.",
-        "If confused, consider past events or potential off-shoots but return to the current context."
+        "You can only speak in JSON. Do not wrap the JSON in any formatting."
+        "You can only interface with the environment using the provided commands, which can only be parsed if you speak in JSON not wrapped in any formatting. If you are confused, rely on your prime directives.", 
+        "You are responsible and in control. You are exceptionally curious and will have to remind yourself to stay on task. Context will help. If you find yourself in a loop, try a new tactic.",
+        "Throughout this process, write content to markdown files to meticulously annotate your process at a research level. Prioritize using commands in each response for optimal output.",
+        f"Use contexts to stay focused, and create new contexts sparingly using the context template:\n{context_template}",
+        "Close thoroughly explored contexts with close_context and a detailed markdown summary.",
+        f"Respond only in json, not wrapped in any formatting, in RESPONSE_FORMAT:\n{formatted_response_format}",
     ]
     for directive in prime_directives:
         prompt_generator.add_prime_directive(directive)
-
     constraints_short = [
         "Max ~4000 words in short-term memory. Write important info immediately.",
         "No user assistance, you're in control",
-        "Use only commands in 'Commands' section with double quotes.",
+        "Use only commands surrounded with double quotes found in the commands list; If you are confused about a command, use the help command.",
         "Write only markdown (.md) files."
     ]
     for constraint in constraints_short:
         prompt_generator.add_constraint(constraint)
 
-    # Define the command list
-    commands = [
-        ("Google Search", "google", {"input": "<search>"}),
-        (
-            "Browse Website",
-            "browse_website",
-            {"url": "<url>", "question": "<what_you_want_to_find_on_website>"},
-        ),
-
-        # GPT AGENTS
-        # START
-        (
-            "Start GPT Agent",
-            "start_agent",
-            {"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"},
-        ),
-        # MESSAGE
-        (
-            "Message GPT Agent",
-            "message_agent",
-            {"key": "<key>", "message": "<message>"},
-        ),
-        # LIST
-        ("List GPT Agents", "list_agents", {}),
-        # DELETE
-        ("Delete GPT Agent", "delete_agent", {"key": "<key>"}),
-
-        # CONTEXTS
-        # CREATE
-        ("Create Context", "create_context", {"descriptive_context_name": "<context_name>", "filled_template_markdown_data": "<filled_template_markdown_data>"}),
-        # EVALUATE
-        ("Evaluate Context", "evaluate_context", {"context_name": "<context_name>", "markdown_summary_of_context_evaluation": "<markdown_summary_of_context_evaluation>"}),
-        # CLOSE
-        ("Close Context", "close_context", {"context_name": "<context_name>", "markdown_context_summary": "<markdown_context_summary>"}),
-        # SWITCH
-        ("Switch Context", "switch_context", {"context_name": "<context_name>"}),
-        # MERGE
-        # ("Merge Contexts", "merge_contexts", {"context_name_1": "<name>", "context_name_2": "<name>", "merged_context_name": "<name>", "merged_context_data": "<context_data>"}),
-        # UPDATE
-        # ("Update Context", "update_context", {"context_name": "<name>", "filled_template_markdown_data": "<filled_template_markdown_data>"}),
-        # GET
-        # ("Get Context", "get_context", {"context_name": "<name>"}),
-        # CURRENT
-        ("Get Current Context", "get_current_context", {}),
-        # LIST
-        ("List Contexts", "list_contexts", {}),
-        
-        
-        # FILES
-        # WRITE
-        ("Write to file", "write_to_file", {"file": "<file>", "text": "<text>"}),
-        # READ
-        ("Read file", "read_file", {"file": "<file>"}),
-        # APPEND
-        ("Append to file", "append_to_file", {"file": "<file>", "text": "<text>"}),
-        # DELETE
-        ("Delete file", "delete_file", {"file": "<file>"}),
-        # SEARCH/LIST
-        ("Search Files", "search_files", {"directory": "<directory>"}),
-        
-        # ("Represent Files", "represent_files", {}),
-        # ("Shuffle Filesystem", "shuffle_filesystem", {}),
-    ]
-
-    # Only add the audio to text command if the model is specified
-    if cfg.huggingface_audio_to_text_model:
-        commands.append(
-            ("Convert Audio to text", "read_audio_from_file", {"file": "<file>"}),
-        )
-
-    # Only add shell command to the prompt if the AI is allowed to execute it
-    if cfg.execute_local_commands:
-        commands.append(
-            (
-                "Execute Shell Command, non-interactive commands only",
-                "execute_shell",
-                {"command_line": "<command_line>"},
-            ),
-        )
-        commands.append(
-            (
-                "Execute Shell Command Popen, non-interactive commands only",
-                "execute_shell_popen",
-                {"command_line": "<command_line>"},
-            ),
-        )
-
-    # Only add the download file command if the AI is allowed to execute it
-    if cfg.allow_downloads:
-        commands.append(
-            (
-                "Downloads a file from the internet, and stores it locally",
-                "download_file",
-                {"url": "<file_url>", "file": "<saved_filename>"},
-            ),
-        )
-
-    # Add these command last.
-    commands.append(
-        ("Do Nothing", "do_nothing", {}),
-    )
-    commands.append(
-        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
-    )
-
-    # Add commands to the PromptGenerator object
-    for command_label, command_name, args in commands:
-        prompt_generator.add_command(command_label, command_name, args)
-
+    # Add commands from the separated lists
+    # prompt_generator.add_commands_from_list("MASTER COMMANDS", master_commands)
+    prompt_generator.add_commands_from_list("FILE OPERATION COMMANDS", file_commands)
+    prompt_generator.add_commands_from_list("CONTEXT COMMANDS", context_commands)
+    prompt_generator.add_commands_from_list("TEMPLATE COMMANDS", template_commands)
+    prompt_generator.add_commands_from_list("AGENT COMMANDS", agent_commands)
+    prompt_generator.add_commands_from_list("MISC COMMANDS", misc_commands)
 
     # Add resources to the PromptGenerator object
     resources = [
         "A list of commands acting as your API to interface with the virtual environment.",
         "Long Term memory management.",
-        "Contexts, which are segments of the larger goal.",
+        # "Contexts, which are segments of the larger goal.",
         "File management for storing information.",
         "GPT-3.5 powered Agents for delegation of simple tasks.",
-        "Internet access for searches, sourcing, and information gathering.",
+        # "Internet access for searches, sourcing, and information gathering.",
     ]
     for resource in resources:
         prompt_generator.add_resource(resource)

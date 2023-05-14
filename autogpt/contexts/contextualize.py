@@ -2,15 +2,19 @@ import json
 import os
 from pathlib import Path
 import re
+from autogpt.contexts.templates import TemplateManager
 
 from autogpt.workspace import CONTEXTS_PATH
 from autogpt.contexts.markdown_parsing import get_header_levels, matches_template
 
 class ContextManager:
     _instance = None
+    template_manager = TemplateManager()
 
     def get_context_manager_instance():
         return ContextManager()
+
+    max_active_contexts = 2
 
     context_count = 0
     open_context_count = 0
@@ -36,7 +40,7 @@ class ContextManager:
 
     def copy_template_to_directory(self):
         """
-        Copy the context template to the context directory.
+        Copy the default context template to the context directory.
         """
         current_script_path = Path(__file__).resolve().parent
         template_path = current_script_path / "context_template.md"
@@ -51,7 +55,7 @@ class ContextManager:
 
     def read_context_template(self):
         """
-        Read the context template from the file specified during initialization.
+        Read the default context template.
         """
         with open(self.context_template_file, "r") as file:
             self.context_template = file.read()
@@ -96,19 +100,23 @@ class ContextManager:
         return context_folder
 
 
-    def create_new_context(self, context_name, context_data):
+    def create_new_context(self, context_name, context_data, template=None):
         """
         Create a new context using the provided name and data.
 
         :param context_name: Name of the new context
         :param context_data: Data to be included in the new context
+        :param template: Optional template to use when creating the context
         """
 
-        if (self.open_context_count >= 2):
-            return f"There are already 2 contexts open. Please conclude a context before creating a new one. Current context: {self.current_context}"
-
-        if not self.matches_context_template(context_data, self.context_template):
-            return self.matches_context_template(context_data, self.context_template)
+        if (self.open_context_count >= self.max_active_contexts):
+            return f"There are already {self.max_active_contexts} contexts open. Please conclude a context before creating a new one. Current context: {self.current_context}"
+        
+        if template is not None:
+            if not self.matches_context_template(context_data, template):
+                return self.matches_context_template(context_data, template)
+        elif not self.matches_context_template(context_data, self.template_manager.get_default_template()):
+            return self.matches_context_template(context_data, self.template_manager.get_default_template())
 
         self.context_count += 1
         self.open_context_count += 1

@@ -1,7 +1,6 @@
 """ A module for generating custom prompt strings."""
 from __future__ import annotations
 
-import json
 from typing import Any
 
 
@@ -20,45 +19,17 @@ class PromptGenerator:
         self.prime_directives = []
         self.constraints = []
         self.commands = []
+        self.categorized_commands = {}
         self.resources = []
         self.performance_evaluation = []
-        self.response_format = {
-            "braindump": "Dump your verbose thoughts here",
-            "key updates": {
-                "essence": "A phrase boiling down the essence of the current task",
-                "reasoning": "reasoning",
-                "plan": "- short bulleted\n- list that conveys\n- long-term plan",
-                "criticism": "constructive self-criticism",
-                "big picture": "big picture alignment check"
-            },
-            "command": {"name": "command name", "args": {"arg name": "value"}},
-        }
 
     def add_identity_directive(self, constraint: str) -> None:
-        """
-        Add a constraint to the constraints list.
-
-        Args:
-            constraint (str): The constraint to be added.
-        """
         self.identity_directives.append(constraint)
         
     def add_prime_directive(self, constraint: str) -> None:
-        """
-        Add a constraint to the constraints list.
-
-        Args:
-            constraint (str): The constraint to be added.
-        """
         self.prime_directives.append(constraint)
 
     def add_constraint(self, constraint: str) -> None:
-        """
-        Add a constraint to the constraints list.
-
-        Args:
-            constraint (str): The constraint to be added.
-        """
         self.constraints.append(constraint)
 
     def add_command(self, command_label: str, command_name: str, args=None) -> None:
@@ -137,6 +108,45 @@ class PromptGenerator:
         else:
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(items))
 
+    #todo: rework to handle list of commands
+    def add_commands_from_list(self, category: str, command_list: list[tuple[str, str, dict]]) -> None:
+        """
+        Add commands from a list of tuples containing command label, name, and arguments
+        under a specified category.
+
+        Args:
+            category (str): The category under which the commands should be added.
+            command_list (list[tuple[str, str, dict]]): A list of command tuples.
+        """
+        if category not in self.categorized_commands:
+            self.categorized_commands[category] = []
+
+        for command in command_list:
+            label, name, args = command
+            self.add_command(label, name, args)
+            command_dict = {
+                "label": label,
+                "name": name,
+                "args": args,
+            }
+            self.categorized_commands[category].append(command_dict)
+
+
+    #todo: rework to handle list of commands
+    def _generate_categorized_commands(self) -> str:
+        """
+        Generate a formatted string representation of the categorized commands.
+
+        Returns:
+            str: The formatted categorized commands string.
+        """
+        output = []
+        for category, command_list in self.categorized_commands.items():
+            output.append(f"{category.upper()}:")
+            output.append(self._generate_numbered_list(command_list, item_type='command'))
+            output.append("")
+        return "\n".join(output)
+
     def generate_prompt_string(self) -> str:
         """
         Generate a prompt string based on the constraints, commands, resources,
@@ -145,18 +155,16 @@ class PromptGenerator:
         Returns:
             str: The generated prompt string.
         """
-        formatted_response_format = json.dumps(self.response_format, indent=4)
         output = (
-            f"IDENTITY DIRECTIVES:\n{self._generate_numbered_list(self.identity_directives)}\n\n"
-            f"PRIME DIRECTIVES:\n{self._generate_numbered_list(self.prime_directives)}\n\n"
-            f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
-            "COMMANDS (HOW YOU INTERFACE WITH THE VIRTUAL ENVIRONMENT):\n"
-            f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
-            f"RESOURCES (your current primary toolset):\n{self._generate_numbered_list(self.resources)}\n\n"
-            "Performance Evaluations:\n"
+            f"Your identity directives:\n{self._generate_numbered_list(self.identity_directives)}\n\n"
+            f"Your prime directives:\n{self._generate_numbered_list(self.prime_directives)}\n\n"
+            f"Your constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
+            "Your Available commands - Use these by filling in the arguments <with_your_input>:\n"
+            f"{self._generate_categorized_commands()}\n"
+            "Note, only the arguments above will work, anything else will error\n\n"
+            f"Your resources:\n{self._generate_numbered_list(self.resources)}\n\n"
+            "Your performance eval metrics:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}"
-            # "Friendly reminder: To ensure compatibility with the virtual environment, only respond in RESPONSE_FORMAT\n"
-            # f"RESPONSE_FORMAT------------ \n{formatted_response_format}\n----------------------"
         )
         # print(output)
         return output

@@ -91,7 +91,7 @@ def read_file(filename: str) -> str:
         str: The contents of the file
     """
     try:
-        filepath = path_in_workspace(filename)
+        filepath =  path_in_workspace(filename)
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
         return content

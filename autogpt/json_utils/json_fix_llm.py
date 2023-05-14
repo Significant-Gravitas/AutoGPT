@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 from colorama import Fore
 from regex import regex
@@ -24,12 +24,12 @@ JSON_SCHEMA = """
             "arg name": "value"
         }
     },
-    "key updates": {
+    "key_updates": {
+        "system_feedback": "Feedback on how to make you more powerful & efficient",
         "essence": "A phrase boiling down the essence of the current task",
         "reasoning": "reasoning",
-        "plan": "- short bulleted\n- list that conveys\n- long-term plan",
         "criticism": "constructive self-criticism",
-        "big picture": "big picture alignment check"
+        "big_picture": "big picture alignment check"
     },
 }
 """
@@ -113,30 +113,33 @@ def fix_json_using_multiple_techniques(assistant_reply: str) -> Dict[Any, Any]:
 
 
 def fix_and_parse_json(
-    json_to_load: str, try_to_fix_with_gpt: bool = True
+    json_to_load: Union[str, Dict], try_to_fix_with_gpt: bool = True
 ) -> Dict[Any, Any]:
     """Fix and parse JSON string
 
     Args:
-        json_to_load (str): The JSON string.
+        json_to_load (Union[str, Dict]): The JSON string or dictionary.
         try_to_fix_with_gpt (bool, optional): Try to fix the JSON with GPT.
             Defaults to True.
 
     Returns:
-        str or dict[Any, Any]: The parsed JSON.
+        dict[Any, Any]: The parsed JSON.
     """
+
+    # If the input is already a dictionary, return it directly
+    if isinstance(json_to_load, dict):
+        return json_to_load
 
     if isinstance(json_to_load, str):
         json_to_load = json_to_load.replace("\t", "")
 
-
     with contextlib.suppress(json.JSONDecodeError):
-        json_to_load = json_to_load.replace("\t", "")
-        # return json.loads(json_to_load)
+        return json.loads(json_to_load)
 
     with contextlib.suppress(json.JSONDecodeError):
         json_to_load = correct_json(json_to_load)
         return json.loads(json_to_load)
+
     # Let's do something manually:
     # sometimes GPT responds with something BEFORE the braces:
     # "I'm sorry, I don't understand. Please try again."
@@ -152,6 +155,7 @@ def fix_and_parse_json(
         return json.loads(maybe_fixed_json)
     except (json.JSONDecodeError, ValueError) as e:
         return try_ai_fix(try_to_fix_with_gpt, e, json_to_load)
+
 
 
 def try_ai_fix(

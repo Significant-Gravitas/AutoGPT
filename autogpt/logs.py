@@ -204,160 +204,43 @@ logger = Logger()
 
 def print_assistant_thoughts(ai_name, assistant_reply):
     """Prints the assistant's thoughts to the console"""
-    from autogpt.json_utils.json_fix_llm import (
-        attempt_to_fix_json_by_finding_outermost_brackets,
-        fix_and_parse_json,
+
+    # Braindump response
+    response_natural_language = assistant_reply.get("braindump")
+    logger.typewriter_log(
+        f"{ai_name.upper()} Braindump:", Fore.YELLOW, f"{response_natural_language}"
     )
-
-    try:
-        try:
-            # Parse and print Assistant response
-            assistant_reply_json = fix_and_parse_json(assistant_reply)
-        except json.JSONDecodeError:
-            logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
-            assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
-                assistant_reply
+    # Key updates
+    response_key_updates = assistant_reply.get("key_updates", {})
+    if response_key_updates:
+        response_system_feedback = response_key_updates.get("system_feedback")
+        response_essence = response_key_updates.get("essence")
+        response_reasoning = response_key_updates.get("reasoning")
+        response_plan = response_key_updates.get("plan")
+        response_criticism = response_key_updates.get("criticism")
+        response_big_picture = response_key_updates.get("big_picture")
+        if response_system_feedback:
+            logger.typewriter_log(
+                "SYSTEM FEEDBACK:", Fore.YELLOW, f"{response_system_feedback}"
             )
-            if isinstance(assistant_reply_json, str):
-                assistant_reply_json = fix_and_parse_json(assistant_reply_json)
-
-        # Check if assistant_reply_json is a string and attempt to parse
-        # it into a JSON object
-        if isinstance(assistant_reply_json, str):
-            try:
-                assistant_reply_json = json.loads(assistant_reply_json)
-            except json.JSONDecodeError:
-                logger.error("Error: Invalid JSON\n", assistant_reply)
-                assistant_reply_json = (
-                    attempt_to_fix_json_by_finding_outermost_brackets(
-                        assistant_reply_json
-                    )
-                )
-
-        # Braindump response
-        response_natural_language=assistant_reply_json.get("braindump")
-        logger.typewriter_log(
-            f"{ai_name.upper()} Braindump:", Fore.YELLOW, f"{response_natural_language}"
-        )
-        # Key updates
-        response_key_updates = assistant_reply_json.get("key updates", {})
-        if response_key_updates:
-            response_essence = response_key_updates.get("essence")
-            response_reasoning = response_key_updates.get("reasoning")
-            response_plan = response_key_updates.get("plan")
-            response_criticism = response_key_updates.get("criticism")
-            response_big_picture = response_key_updates.get("big picture")
-            if response_essence:
-                logger.typewriter_log(
-                    "ESSENCE:", Fore.YELLOW, f"{response_essence}"
-                )
-            if response_reasoning:
-                logger.typewriter_log(
-                    "REASONING:", Fore.YELLOW, f"{response_reasoning}"
-                )
-            if response_plan:
-                logger.typewriter_log(
-                    "PLAN:", Fore.YELLOW, f"{response_plan}"
-                )
-            if response_criticism:
-                logger.typewriter_log(
-                    "CRITICISM:", Fore.YELLOW, f"{response_criticism}"
-                )
-            if response_big_picture:
-                logger.typewriter_log(
-                    "BIG PICTURE:", Fore.YELLOW, f"{response_big_picture}"
-                )
-        return assistant_reply_json
-
-    except json.decoder.JSONDecodeError:
-        logger.error("Error: Invalid JSON\n", assistant_reply)
-        if CFG.speak_mode:
-            say_text(
-                "I have received an invalid JSON response from the OpenAI API."
-                " I cannot ignore this response."
+        if response_essence:
+            logger.typewriter_log(
+                "ESSENCE:", Fore.YELLOW, f"{response_essence}"
             )
-
-    # All other errors, return "Error: + error message"
-    except Exception:
-        call_stack = traceback.format_exc()
-        logger.error("Error: \n", call_stack)
-
-
-def print_assistant_thoughts(ai_name, assistant_reply):
-    """Prints the assistant's thoughts to the console"""
-    from autogpt.json_utils.json_fix_llm import (
-        attempt_to_fix_json_by_finding_outermost_brackets,
-        fix_and_parse_json,
-    )
-
-    try:
-        if isinstance(assistant_reply, dict):
-            assistant_reply_json = assistant_reply
-        else:
-            try:
-                assistant_reply_json = fix_and_parse_json(assistant_reply)
-            except json.JSONDecodeError:
-                logger.error("Error: Invalid JSON in assistant thoughts\n", assistant_reply)
-                assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
-                    assistant_reply
-                )
-                if isinstance(assistant_reply_json, str):
-                    assistant_reply_json = fix_and_parse_json(assistant_reply_json)
-
-
-        if isinstance(assistant_reply_json, str):
-            try:
-                assistant_reply_json = json.loads(assistant_reply_json)
-            except json.JSONDecodeError:
-                logger.error("Error: Invalid JSON\n", assistant_reply)
-                assistant_reply_json = (
-                    attempt_to_fix_json_by_finding_outermost_brackets(
-                        assistant_reply_json
-                    )
-                )
-
-        response_natural_language = assistant_reply_json.get("braindump")
-        logger.typewriter_log(
-            f"{ai_name.upper()} Braindump:", Fore.YELLOW, f"{response_natural_language}"
-        )
-
-        response_key_updates = assistant_reply_json.get("key updates", {})
-        if response_key_updates:
-            response_essence = response_key_updates.get("essence")
-            response_reasoning = response_key_updates.get("reasoning")
-            response_plan = response_key_updates.get("plan")
-            response_criticism = response_key_updates.get("criticism")
-            response_big_picture = response_key_updates.get("big picture")
-            if response_essence:
-                logger.typewriter_log(
-                    "ESSENCE:", Fore.YELLOW, f"{response_essence}"
-                )
-            if response_reasoning:
-                logger.typewriter_log(
-                    "REASONING:", Fore.YELLOW, f"{response_reasoning}"
-                )
-            if response_plan:
-                logger.typewriter_log(
-                    "PLAN:", Fore.YELLOW, f"{response_plan}"
-                )
-            if response_criticism:
-                logger.typewriter_log(
-                    "CRITICISM:", Fore.YELLOW, f"{response_criticism}"
-                )
-            if response_big_picture:
-                logger.typewriter_log(
-                    "BIG PICTURE:", Fore.YELLOW, f"{response_big_picture}"
-                )
-        return assistant_reply_json
-
-    except json.decoder.JSONDecodeError:
-        logger.error("Error: Invalid JSON\n", assistant_reply)
-        if CFG.speak_mode:
-            say_text(
-                "I have received an invalid JSON response from the OpenAI API."
-                " I cannot ignore this response."
+        if response_reasoning:
+            logger.typewriter_log(
+                "REASONING:", Fore.YELLOW, f"{response_reasoning}"
             )
-
-    except Exception:
-        call_stack = traceback.format_exc()
-        logger.error("Error: \n", call_stack)
+        if response_plan:
+            logger.typewriter_log(
+                "PLAN:", Fore.YELLOW, f"{response_plan}"
+            )
+        if response_criticism:
+            logger.typewriter_log(
+                "CRITICISM:", Fore.YELLOW, f"{response_criticism}"
+            )
+        if response_big_picture:
+            logger.typewriter_log(
+                "BIG PICTURE:", Fore.YELLOW, f"{response_big_picture}"
+            )
+    return assistant_reply

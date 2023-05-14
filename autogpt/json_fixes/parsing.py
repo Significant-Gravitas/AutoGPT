@@ -13,25 +13,14 @@ from autogpt.logs import logger
 
 CFG = Config()
 
+class IgnoreTrailingCommasDecoder(json.JSONDecoder):
+    def decode(self, s, _w=None):
+        s = s.replace(",}", "}")
+        s = s.replace(",]", "]")
+        return super(IgnoreTrailingCommasDecoder, self).decode(s, _w)
 
-JSON_SCHEMA = """
-{
-    "braindump": "Dump your verbose thoughts here",
-    "command": {
-        "name": "command name",
-        "args": {
-            "arg name": "value"
-        }
-    },
-    "key updates": {
-        "essence": "A phrase boiling down the essence of the current task",
-        "reasoning": "reasoning",
-        "plan": "- short bulleted\n- list that conveys\n- long-term plan",
-        "criticism": "constructive self-criticism",
-        "big picture": "big picture alignment check"
-    },
-}
-"""
+def loads_ignore_trailing_commas(s):
+    return json.loads(s, cls=IgnoreTrailingCommasDecoder)
 
 
 def correct_json(json_to_load: str) -> str:
@@ -86,16 +75,16 @@ def fix_and_parse_json(
     # print(json_to_load)
     json_to_load = extract_code_block(json_to_load)
 
+    if isinstance(json_to_load, dict):
+        json_to_load = json.dumps(json_to_load)
+
     with contextlib.suppress(json.JSONDecodeError):
-        if isinstance(json_to_load, dict):
-            json_to_load = json.dumps(json_to_load).replace("\t", "")
-        else:
-            json_to_load = json_to_load.replace("\t", "")
-        return json.loads(json_to_load)
+        json_to_load = json_to_load.replace("\t", "")
+        return loads_ignore_trailing_commas(json_to_load)
 
     with contextlib.suppress(json.JSONDecodeError):
         json_to_load = correct_json(json_to_load)
-        return json.loads(json_to_load)
+        return loads_ignore_trailing_commas(json_to_load)
     # Let's do something manually:
     # sometimes GPT responds with something BEFORE the braces:
     # "I'm sorry, I don't understand. Please try again."

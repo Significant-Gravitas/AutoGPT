@@ -19,6 +19,8 @@ from autogpt.commands.file_operations import (
     search_files,
     write_to_file,
 )
+from autogpt.commands.web_selenium import browse_website
+from autogpt.contexts.templates import TemplateManager
 from autogpt.commands.google_search import google_official_search, google_search
 from autogpt.commands.image_gen import generate_image
 from autogpt.commands.web_playwright import scrape_links, scrape_text
@@ -28,16 +30,17 @@ from autogpt.json_fixes.parsing import fix_and_parse_json
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.speech import say_text
-from autogpt.commands.web_selenium import browse_website
 from autogpt.commands.git_operations import clone_repository
 from autogpt.commands.twitter import send_tweet
 from autogpt.workspace import CONTEXTS_PATH
+from autogpt.prompt import all_commands
 
 
 CFG = Config()
 AGENT_MANAGER = AgentManager()
 context_template_file = CONTEXTS_PATH / "context_template.md"
 context_manager = ContextManager(CONTEXTS_PATH, context_template_file)
+template_manager = TemplateManager()
 
 
 def is_valid_int(value: str) -> bool:
@@ -124,6 +127,30 @@ def execute_command(command_name: str, arguments):
     """
     try:
         command_name = map_command_synonyms(command_name.lower())
+        # todo: unecessary pretty sure
+        # if command_name == "list_commands":
+        #     formatted_commands = "\n".join([f"\"{command_name}\": {args}" for _, command_name, args in all_commands])
+        #     return formatted_commands
+        # todo: work out multiple commands in one request
+        # if command_name == "command_sequence":
+        #     try:
+        #         commands = arguments["commands"]
+        #         if isinstance(commands, str):
+        #             commands = json.loads(commands)
+
+        #         results = []
+        #         for command in commands:
+        #             if isinstance(command, str):
+        #                 command = json.loads(command)
+        #             command_result = execute_command(command["name"], command["args"])
+        #             result_str = f"{command['name']} command result: {command_result}"
+        #             results.append(result_str)
+
+        #         return "\n".join(results)
+        #     except Exception as e:
+        #         return "command_sequence failed. Ensure you provide the commands in proper json with a name and the correct args"
+
+
         if command_name == "google":
             # Check if the Google API key is set and use the official search method
             # If the API key is not set or has only whitespaces, use the unofficial
@@ -160,24 +187,45 @@ def execute_command(command_name: str, arguments):
             return list_agents()
         elif command_name == "delete_agent":
             return delete_agent(arguments["key"])
+
+
+        # Templates
+        elif command_name == "list_templates": # LIST
+            template_manager = TemplateManager()
+            return template_manager.list_templates()
+        elif command_name == "read_template": # READ
+            template_name = arguments["name"]
+            template_manager = TemplateManager()
+            return template_manager.read_template(template_name)
+        elif command_name == "create_template": # CREATE
+            template_name = arguments["name"]
+            template_data = arguments["data"]
+            template_manager = TemplateManager()
+            return template_manager.create_template(template_name, template_data)
         
         # CONTEXTS
 
+        elif command_name == "list_contexts": # LIST
+            return context_manager.list_contexts()
+        elif command_name == "get_current_context": # CURRENT
+            return context_manager.get_current_context()
         elif command_name == "create_context": # CREATE
-            context_name = arguments["descriptive_context_name"]
-            context_data = arguments["filled_template_markdown_data"]
+            context_name = arguments["name"]
+            context_data = arguments["data"]
             return context_manager.create_new_context(context_name, context_data)
         elif command_name == "evaluate_context": # EVALUATE
-            context_name = arguments["context_name"]
-            summary_of_context_evaluation = arguments["markdown_summary_of_context_evaluation"]
-            return context_manager.evaluate_context_success(context_name, summary_of_context_evaluation)
+            context_name = arguments["name"]
+            context_eval = arguments["data"]
+            return context_manager.evaluate_context_success(context_name, context_eval)
         elif command_name == "close_context": # CLOSE
-            context_name = arguments["context_name"]
-            markdown_context_summary = arguments["markdown_context_summary"]
-            return context_manager.close_context(context_name, markdown_context_summary)
+            context_name = arguments["name"]
+            context_close_summary = arguments["data"]
+            return context_manager.close_context(context_name, context_close_summary)
         elif command_name == "switch_context": # SWITCH
-            context_name = arguments["context_name"]
+            context_name = arguments["name"]
             return context_manager.switch_context(context_name)
+
+        # Todo: Implement these, change args
         elif command_name == "merge_contexts": # MERGE
             context_name_1 = arguments["context_name_1"]
             context_name_2 = arguments["context_name_2"]
@@ -191,10 +239,6 @@ def execute_command(command_name: str, arguments):
         elif command_name == "get_context": # GET
             context_name = arguments["context_name"]
             return context_manager.get_context(context_name)
-        elif command_name == "get_current_context": # CURRENT
-            return context_manager.get_current_context()
-        elif command_name == "list_contexts": # LIST
-            return context_manager.list_contexts()
 
         
         elif command_name == "get_text_summary":
@@ -228,8 +272,8 @@ def execute_command(command_name: str, arguments):
         else:
             return (
                 f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
-                " list for available commands and only respond in the specified JSON"
-                " format."
+                " list for available commands and only respond in the specified DSL syntax."
+                # Both JSON and DSL syntax seem to prompt correctly :shrug:
             )
     except Exception as e:
         return f"Error: {str(e)}"

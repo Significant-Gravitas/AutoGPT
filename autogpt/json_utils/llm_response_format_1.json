@@ -14,19 +14,19 @@
             "required": ["name", "args"],
             "additionalProperties": false
         },
-        "key updates": {
+        "key_updates": {
             "type": "object",
             "properties": {
                 "essence": {"type": "string"},
                 "reasoning": {"type": "string"},
                 "plan": {"type": "string"},
                 "criticism": {"type": "string"},
-                "big picture": {"type": "string"}
+                "big_picture": {"type": "string"}
             },
-            "required": ["essence", "reasoning", "plan", "criticism", "big picture"],
+            "required": ["essence", "reasoning", "plan", "criticism", "big_picture"],
             "additionalProperties": false
         }
     },
-    "required": ["braindump", "command", "key updates"],
+    "required": ["braindump", "command", "key_updates"],
     "additionalProperties": false
 }

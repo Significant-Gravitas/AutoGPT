@@ -112,10 +112,10 @@ class AIConfig:
 
         # Construct full prompt
         full_prompt = (
-            f"...continuing the AI self-improvement protocol.\n"
-            f"...commands and resources ready for {self.ai_name}.\n"
+            f"...continuing the virtual environment.\n"
+            f"...commands ready for {self.ai_name}.\n"
             f"...aligning {self.ai_name}.\n"
-            f"Ready to continue.\n\n"
+            f"Everything you have is in the prompt that follows. Ensure you comply with all requirements.\n\n"
             f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
         )
         for i, goal in enumerate(self.ai_goals):

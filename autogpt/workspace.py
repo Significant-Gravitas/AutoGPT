@@ -33,7 +33,7 @@ if not os.path.exists(WORKSPACE_PATH / "contexts"):
 #     return safe_path_join(WORKSPACE_PATH, relative_path)
 
 
-def path_in_workspace(relative_path: str | Path) -> Path:
+def path_in_workspace(relative_path: str | Path, forceContextFolder: bool = False) -> Path:
     """
     Get the absolute path of a file or folder in the workspace, taking into account the current context.
 
@@ -45,7 +45,7 @@ def path_in_workspace(relative_path: str | Path) -> Path:
     contextualize_module = importlib.import_module("autogpt.contexts.contextualize")
     context_manager = contextualize_module.ContextManager()
     current_context_folder = context_manager.current_context_folder
-    if current_context_folder:
+    if forceContextFolder and current_context_folder:
         return safe_path_join(current_context_folder / relative_path)
     else:
         return safe_path_join(WORKSPACE_PATH / relative_path)
