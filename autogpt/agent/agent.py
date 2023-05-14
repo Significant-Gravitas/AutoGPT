@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -6,6 +8,12 @@ from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
 from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
 from autogpt.llm.token_counter import count_string_tokens
+from autogpt.log_cycle.log_cycle import (
+    FULL_MESSAGE_HISTORY_FILE_NAME,
+    NEXT_ACTION_FILE_NAME,
+    USER_INPUT_FILE_NAME,
+    LogCycleHandler,
+)
 from autogpt.logs import logger, print_assistant_thoughts
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
@@ -58,7 +66,7 @@ class Agent:
         self.ai_name = ai_name
         self.memory = memory
         self.summary_memory = (
-            "I was created."  # Initial memory necessary to avoid hilucination
+            "I was created."  # Initial memory necessary to avoid hallucination
         )
         self.last_memory_index = 0
         self.full_message_history = full_message_history
@@ -68,22 +76,33 @@ class Agent:
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
+        self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.cycle_count = 0
+        self.log_cycle_handler = LogCycleHandler()
 
     def start_interaction_loop(self):
         # Interaction Loop
         cfg = Config()
-        loop_count = 0
+        self.cycle_count = 0
         command_name = None
         arguments = None
         user_input = ""
 
         while True:
             # Discontinue if continuous limit is reached
-            loop_count += 1
+            self.cycle_count += 1
+            self.log_cycle_handler.log_count_within_cycle = 0
+            self.log_cycle_handler.log_cycle(
+                self.config.ai_name,
+                self.created_at,
+                self.cycle_count,
+                self.full_message_history,
+                FULL_MESSAGE_HISTORY_FILE_NAME,
+            )
             if (
                 cfg.continuous_mode
                 and cfg.continuous_limit > 0
-                and loop_count > cfg.continuous_limit
+                and self.cycle_count > cfg.continuous_limit
             ):
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
@@ -104,7 +123,7 @@ class Agent:
             for plugin in cfg.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
-                assistant_reply_json = plugin.post_planning(self, assistant_reply_json)
+                assistant_reply_json = plugin.post_planning(assistant_reply_json)
 
             # Print Assistant thoughts
             if assistant_reply_json != {}:
@@ -122,21 +141,28 @@ class Agent:
 
                 except Exception as e:
                     logger.error("Error: \n", str(e))
+            self.log_cycle_handler.log_cycle(
+                self.config.ai_name,
+                self.created_at,
+                self.cycle_count,
+                assistant_reply_json,
+                NEXT_ACTION_FILE_NAME,
+            )
+
+            logger.typewriter_log(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+                f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+            )
 
             if not cfg.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 self.user_input = ""
-                logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                    f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-                )
-
                 logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands"
+                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
                     "'n' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
@@ -165,10 +191,8 @@ class Agent:
                             Fore.YELLOW,
                             "",
                         )
-                        if self_feedback_resp[0].lower().strip() == cfg.authorise_key:
-                            user_input = "GENERATE NEXT COMMAND JSON"
-                        else:
-                            user_input = self_feedback_resp
+                        user_input = self_feedback_resp
+                        command_name = "self_feedback"
                         break
                     elif console_input.lower().strip() == "":
                         logger.warn("Invalid input format.")
@@ -192,6 +216,13 @@ class Agent:
                     else:
                         user_input = console_input
                         command_name = "human_feedback"
+                        self.log_cycle_handler.log_cycle(
+                            self.config.ai_name,
+                            self.created_at,
+                            self.cycle_count,
+                            user_input,
+                            USER_INPUT_FILE_NAME,
+                        )
                         break
 
                 if user_input == "GENERATE NEXT COMMAND JSON":
@@ -204,12 +235,9 @@ class Agent:
                     logger.info("Exiting...")
                     break
             else:
-                # Print command
+                # Print authorized commands left value
                 logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
-                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                    f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
                 )
 
             # Execute command
@@ -219,6 +247,8 @@ class Agent:
                 )
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
+            elif command_name == "self_feedback":
+                result = f"Self feedback: {user_input}"
             else:
                 for plugin in cfg.plugins:
                     if not plugin.can_handle_pre_command():
@@ -289,12 +319,11 @@ class Agent:
         """
         ai_role = self.config.ai_role
 
-        feedback_prompt = f"Below is a message from an AI agent with the role of {ai_role}. Please review the provided Thought, Reasoning, Plan, and Criticism. If these elements accurately contribute to the successful execution of the assumed role, respond with the letter 'Y' followed by a space, and then explain why it is effective. If the provided information is not suitable for achieving the role's objectives, please provide one or more sentences addressing the issue and suggesting a resolution."
+        feedback_prompt = f"Below is a message from me, an AI Agent, assuming the role of {ai_role}. whilst keeping knowledge of my slight limitations as an AI Agent Please evaluate my thought process, reasoning, and plan, and provide a concise paragraph outlining potential improvements. Consider adding or removing ideas that do not align with my role and explaining why, prioritizing thoughts based on their significance, or simply refining my overall thought process."
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
         thought = thoughts.get("thoughts", "")
-        criticism = thoughts.get("criticism", "")
-        feedback_thoughts = thought + reasoning + plan + criticism
+        feedback_thoughts = thought + reasoning + plan
         return create_chat_completion(
             [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
             llm_model,
