@@ -25,6 +25,16 @@ class MemoryItem:
     e_chunks: list[Embedding]
     metadata: dict
 
+    def relevance(self, compare_to: Embedding):
+        summary_relevance = np.dot(self.e_summary, compare_to)
+        chunk_relevances = np.dot(self.e_chunks, compare_to)
+        logger.debug(f"Relevance of summary: {summary_relevance}")
+        logger.debug(f"Relevance of chunks: {chunk_relevances}")
+
+        relevance_scores = [summary_relevance, *chunk_relevances]
+        logger.debug(f"Relevance scores: {relevance_scores}")
+        return max(relevance_scores)
+
     @staticmethod
     def from_text(
         text: str,

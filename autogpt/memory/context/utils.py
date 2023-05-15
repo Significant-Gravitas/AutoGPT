@@ -6,6 +6,7 @@ import openai
 
 from autogpt.config import Config
 from autogpt.llm.llm_utils import metered, retry_openai_api
+from autogpt.logs import logger
 
 Embedding = list[np.float32]
 """Embedding vector"""
@@ -38,7 +39,7 @@ def get_embedding(
         List[float]: The embedding.
     """
     cfg = Config()
-    multiple = isinstance(input, list) and not isinstance(input[0], int)
+    multiple = isinstance(input, list) and all(not isinstance(i, int) for i in input)
 
     if isinstance(input, str):
         input = input.replace("\n", " ")
@@ -50,6 +51,12 @@ def get_embedding(
         kwargs = {"engine": cfg.get_azure_deployment_id_for_model(model)}
     else:
         kwargs = {"model": model}
+
+    logger.debug(
+        f"Getting embedding{f's for {len(input)} inputs' if multiple else ''}"
+        f" with model '{model}'"
+        + (f" via Azure deployment '{kwargs['engine']}'" if cfg.use_azure else "")
+    )
 
     embeddings = openai.Embedding.create(
         input=input,

@@ -73,7 +73,7 @@ class JSONFileMemory(ContextMemoryProvider):
 
         logger.debug(f"Searching for {k} relevant items; {len(self.memories)} in index")
 
-        scores: list[float] = [np.dot(m.e_summary, e_query) for m in self.memories]
+        scores: list[float] = [m.relevance(e_query) for m in self.memories]
         # scores: list[float] = np.dot([m.e for m in self.memories], e_query)
         logger.debug(f"Memory match scores: {scores}")
 

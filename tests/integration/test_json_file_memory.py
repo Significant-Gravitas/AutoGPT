@@ -113,10 +113,11 @@ def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embed
 @requires_api_key("OPENAI_API_KEY")
 def test_json_memory_get_relevant(config: Config) -> None:
     index = JSONFileMemory(config)
-    mem1 = MemoryItem.from_text_file("Sample text", ".")
-    mem2 = MemoryItem.from_text_file("Grocery list:\n- Pancake mix", ".")
-    mem3 = MemoryItem.from_text_file("What is your favorite color?", ".")
-    mem4 = MemoryItem.from_text_file("Lorem ipsum dolor sit amet", ".")
+    mem1 = MemoryItem.from_text_file("Sample text", "sample.txt")
+    mem2 = MemoryItem.from_text_file("Grocery list:\n- Pancake mix", "groceries.txt")
+    mem3 = MemoryItem.from_text_file("What is your favorite color?", "color.txt")
+    lipsum = "Lorem ipsum dolor sit amet"
+    mem4 = MemoryItem.from_text_file(" ".join([lipsum]*100), "lipsum.txt")
     index.add(mem1)
     index.add(mem2)
     index.add(mem3)
@@ -125,7 +126,7 @@ def test_json_memory_get_relevant(config: Config) -> None:
     assert index.get_relevant(mem1.raw_content, 1)[0] == mem1
     assert index.get_relevant(mem2.raw_content, 1)[0] == mem2
     assert index.get_relevant(mem3.raw_content, 1)[0] == mem3
-    assert index.get_relevant(mem4.raw_content, 1)[0] == mem4
+    assert index.get_relevant(lipsum, 2) == [mem4, mem1]
 
 
 def test_json_memory_get_stats(config: Config, memory_item: MemoryItem) -> None:
