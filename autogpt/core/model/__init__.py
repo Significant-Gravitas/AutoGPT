@@ -32,5 +32,6 @@ status = Status(
         "      Created a basic implementation of the language model and work out several utilities.\n"
         "5/12: Restructure the relationship between the language/embedding models and providers and figure\n"
         "      out how to do credentials in a reasonable way.\n"
+        "5/14: Use pydantic models for configuration.\n"
     ),
 )

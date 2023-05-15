@@ -1,14 +1,20 @@
 import functools
 import logging
 import time
-from typing import Callable, ParamSpec, TypeVar
+from typing import Callable, Literal, ParamSpec, TypeVar
 
 import openai
 from openai.error import APIError, RateLimitError
+from pydantic import SecretStr
 
 from autogpt.core.credentials.simple import (
     CredentialsConsumer,
-    SimpleCredentialsService,
+)
+from autogpt.core.configuration import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    Credentials,
 )
 from autogpt.core.model.embedding.base import (
     Embedding,
@@ -64,64 +70,97 @@ OPEN_AI_MODELS = {
 }
 
 
+class AzureCredentials(Credentials):
+    use_azure: bool
+    api_type: str
+    api_base: str
+    api_version: str
+    deployment_ids: dict[str, SecretStr]
+
+
+class OpenAICredentials(Credentials):
+    api_key: SecretStr
+    azure: AzureCredentials
+
+
+class ModelCredentials(Credentials):
+    api_key: SecretStr
+    api_type: str | None = None
+    api_base: str | None = None
+    api_version: str | None = None
+    deployment_id: SecretStr | None = None
+
+
+class OpenAIModelConfiguration(SystemConfiguration):
+    name: str
+    model_type: Literal["language", "embedding"]
+    max_tokens: int | None = None
+    temperature: float | None = None
+
+
+class OpenAIConfiguration(SystemConfiguration):
+    retries_per_request: int
+    models: dict[str, OpenAIModelConfiguration]
+
+
 class OpenAIProvider(
-    CredentialsConsumer,
+    Configurable,
     LanguageModelProvider,
     EmbeddingModelProvider,
 ):
-    configuration_defaults = {
-        "openai": {
-            "retries_per_request": 10,
-            "models": {
-                "fast_model": {
-                    "name": "gpt-3.5-turbo",
-                    "max_tokens": 100,
-                    "temperature": 0.9,
-                },
-                "smart_model": {
-                    "name": "gpt-4",
-                    "max_tokens": 100,
-                    "temperature": 0.9,
-                },
-                "embedding_model": {
-                    "name": "text-embedding-ada-002",
-                },
+    defaults = SystemSettings(
+        name="openai_provider",
+        description="Provides access to OpenAI's API.",
+        configuration=OpenAIConfiguration(
+            retries_per_request=10,
+            models={
+                "fast_model": OpenAIModelConfiguration(
+                    name="gpt-3.5-turbo",
+                    model_type="language",
+                    max_tokens=100,
+                    temperature=0.9,
+                ),
+                "smart_model": OpenAIModelConfiguration(
+                    name="gpt-4",
+                    model_type="language",
+                    max_tokens=100,
+                    temperature=0.9,
+                ),
+                "embedding_model": OpenAIModelConfiguration(
+                    name="text-embedding-ada-002",
+                    model_type="embedding",
+                ),
             },
-        },
-    }
-
-    credentials_defaults = {
-        "openai": {
-            "api_key": "YOUR_API_KEY",
-            "use_azure": False,
-            "azure_configuration": {
-                "api_type": "azure",
-                "api_base": "YOUR_AZURE_API_BASE",
-                "api_version": "YOUR_AZURE_API_VERSION",
-                "deployment_ids": {
+        ),
+        credentials=OpenAICredentials(
+            api_key="YOUR_API_KEY",
+            azure=AzureCredentials(
+                use_azure=False,
+                api_type="azure",
+                api_base="YOUR_AZURE_API_BASE",
+                api_version="YOUR_AZURE_API_VERSION",
+                deployment_ids={
                     "fast_model": "YOUR_FAST_LLM_MODEL_DEPLOYMENT_ID",
                     "smart_model": "YOUR_SMART_LLM_MODEL_DEPLOYMENT_ID",
                     "embedding_model": "YOUR_EMBEDDING_MODEL_DEPLOYMENT_ID",
                 },
-            },
-        },
-    }
+            ),
+        ),
+    )
 
     def __init__(
         self,
-        configuration: dict,
+        configuration: OpenAIConfiguration,
+        credentials: OpenAICredentials,
         logger: logging.Logger,
-        credentials_service: SimpleCredentialsService,
     ):
-        self._configuration = configuration["openai"]
+        self._configuration = configuration
+        self._credentials = self._parse_credentials(credentials, models=list(configuration.models))
         self._logger = logger
-        self._credentials = self._get_credentials(
-            credentials_service,
-            models=list(self._configuration["models"]),
-        )
+
         retry_handler = _OpenAIRetryHandler(
             logger=self._logger,
-            num_retries=self._configuration["retries_per_request"],
+            num_retries=self._configuration.retries_per_request,
         )
 
         self._create_completion = retry_handler(_create_completion)
@@ -171,26 +210,25 @@ class OpenAIProvider(
             )
 
     @staticmethod
-    def _get_credentials(
-        credentials_service: SimpleCredentialsService,
+    def _parse_credentials(
+        raw_credentials: OpenAICredentials,
         models: list[str],
-    ) -> dict:
+    ) -> dict[str, ModelCredentials]:
         """Get the credentials for the OpenAI API."""
-        raw_credentials = credentials_service.get_credentials("openai")
         parsed_credentials = {}
         for model in models:
             model_credentials = {
-                "api_key": raw_credentials["api_key"],
+                "api_key": raw_credentials.api_key,
             }
-            if raw_credentials["use_azure"]:
-                azure_config = raw_credentials["azure_configuration"]
+            azure_config = raw_credentials.azure
+            if azure_config.use_azure:
                 model_credentials = {
                     **model_credentials,
-                    "api_base": azure_config["api_base"],
-                    "api_version": azure_config["api_version"],
-                    "deployment_id": azure_config["deployment_ids"][model],
+                    "api_base": azure_config.api_base,
+                    "api_version": azure_config.api_version,
+                    "deployment_id": azure_config.deployment_ids[model],
                 }
-            parsed_credentials[model] = model_credentials
+            parsed_credentials[model] = ModelCredentials.parse_obj(model_credentials)
 
         return parsed_credentials
 
@@ -205,11 +243,11 @@ class OpenAIProvider(
             The kwargs for the chat API call.
 
         """
-        model_config = self._configuration["models"][model]
+        model_config = self._configuration.models[model]
         completion_kwargs = {
-            "model": model_config["name"],
-            "max_tokens": kwargs.pop("max_tokens", model_config["max_tokens"]),
-            "temperature": kwargs.pop("temperature", model_config["temperature"]),
+            "model": model_config.name,
+            "max_tokens": kwargs.pop("max_tokens", model_config.max_tokens),
+            "temperature": kwargs.pop("temperature", model_config.temperature),
             **self._credentials[model],
         }
 
@@ -233,7 +271,7 @@ class OpenAIProvider(
             The kwargs for the embedding API call.
 
         """
-        model_config = self._configuration["models"][model]
+        model_config = self._configuration.models[model]
         embedding_kwargs = {
             "model": model_config["name"],
             **self._credentials[model],

@@ -1,7 +1,11 @@
 import logging
 import re
 
-from autogpt.core.configuration import Configuration
+from autogpt.core.configuration import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+)
 from autogpt.core.model.language.base import (
     LanguageModel,
     LanguageModelProvider,
@@ -10,14 +14,25 @@ from autogpt.core.model.language.base import (
 from autogpt.core.planning import ModelPrompt
 
 
-class SimpleLanguageModel(LanguageModel):
+class LanguageModelConfiguration(SystemConfiguration):
+    """Configuration for the language model."""
+
+
+class SimpleLanguageModel(LanguageModel, Configurable):
+
+    defaults = SystemSettings(
+        name="simple_language_model",
+        description="A simple language model.",
+        configuration=LanguageModelConfiguration(),
+    )
+
     def __init__(
         self,
-        configuration: Configuration,
+        configuration: LanguageModelConfiguration,
         logger: logging.Logger,
         model_provider: LanguageModelProvider,
     ):
-        self._configuration = configuration.language_model
+        self._configuration = configuration
         self._logger = logger
         self._provider = model_provider
 

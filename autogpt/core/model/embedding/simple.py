@@ -1,6 +1,10 @@
 import logging
 
-from autogpt.core.configuration import Configuration
+from autogpt.core.configuration import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+)
 from autogpt.core.model.embedding.base import (
     EmbeddingModel,
     EmbeddingModelProvider,
@@ -8,10 +12,21 @@ from autogpt.core.model.embedding.base import (
 )
 
 
-class SimpleEmbeddingModel(EmbeddingModel):
+class EmbeddingModelConfiguration(SystemConfiguration):
+    """Configuration for the embedding model."""
+
+
+class SimpleEmbeddingModel(EmbeddingModel, Configurable):
+
+    defaults = SystemSettings(
+        name="simple_embedding_model",
+        description="A simple embedding model.",
+        configuration=EmbeddingModelConfiguration(),
+    )
+
     def __init__(
         self,
-        configuration: Configuration,
+        configuration: EmbeddingModelConfiguration,
         logger: logging.Logger,
         model_provider: EmbeddingModelProvider,
     ):
