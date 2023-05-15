@@ -1,25 +1,14 @@
-import typing
-
 from pydantic import BaseModel
 
-if typing.TYPE_CHECKING:
-    # These are all cyclic imports, so we need to use strings.
-
-    from autogpt.core.model import (
-        EmbeddingModelConfiguration,
-        LanguageModelConfiguration,
-        Prov,
-    )
-    from autogpt.core.planning import PlannerConfiguration
-    from autogpt.core.workspace import WorkspaceConfiguration
+from autogpt.core.configuration.schema import SystemSettings
 
 
 class AgentConfiguration(BaseModel):
-    embedding_mode: "EmbeddingModelConfiguration"
-    language_model: "LanguageModelConfiguration"
-    model_provider: dict[str, "OpenAIConfiguration"]
-    planning: "PlannerConfiguration"
-    workspace: "WorkspaceConfiguration"
+    embedding_model: SystemSettings
+    language_model: SystemSettings
+    model_providers: dict[str, SystemSettings]
+    planning: SystemSettings
+    workspace: SystemSettings
 
 
 #

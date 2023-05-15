@@ -1,6 +1,6 @@
 from pydantic import Field, SecretStr, validator
 
-from autogpt.core.configuration import Credentials
+from autogpt.core.configuration import Credentials, SystemConfiguration
 
 
 class ProviderModelCredentials(Credentials):
@@ -65,3 +65,7 @@ class ProviderCredentials(Credentials):
             model_dict.update(provider_credentials)
             self.models[model_name] = ProviderModelCredentials(**model_dict)
         return self.models
+
+
+class ProviderConfiguration(SystemConfiguration):
+    pass
