@@ -1,6 +1,6 @@
 """Text processing functions"""
 from math import ceil
-from typing import Dict, Generator, Optional
+from typing import Optional
 
 import spacy
 import tiktoken
@@ -143,6 +143,7 @@ def summarize_text(
 def split_text(
     text: str,
     for_model: str = CFG.fast_llm_model,
+    with_overlap=True,
     max_chunk_length: Optional[int] = None,
 ):
     """Split text into chunks of sentences, with each chunk not exceeding the maximum length
@@ -178,6 +179,8 @@ def split_text(
 
     current_chunk: list[str] = []
     current_chunk_length = 0
+    last_sentence = None
+    last_sentence_length = 0
 
     i = 0
     while i < len(sentences):
@@ -185,9 +188,8 @@ def split_text(
         sentence_length = count_string_tokens(sentence, for_model)
         expected_chunk_length = current_chunk_length + 1 + sentence_length
 
-        # TODO: implement overlap
         if (
-            expected_chunk_length <= max_length
+            expected_chunk_length < max_length
             # try to create chunks of approximately equal size
             and expected_chunk_length - (sentence_length / 2) < target_chunk_length
         ):
@@ -195,18 +197,42 @@ def split_text(
             current_chunk_length = expected_chunk_length
 
         elif sentence_length < max_length:
-            yield " ".join(current_chunk), current_chunk_length
+            if last_sentence:
+                yield " ".join(current_chunk), current_chunk_length
+                current_chunk = []
+                current_chunk_length = 0
 
-            current_chunk = [sentence]
-            current_chunk_length = sentence_length
+                if with_overlap:
+                    overlap_max_length = max_length - sentence_length - 1
+                    if last_sentence_length < overlap_max_length:
+                        current_chunk += [last_sentence]
+                        current_chunk_length += last_sentence_length + 1
+                    elif overlap_max_length > 5:
+                        # add as much from the end of the last sentence as fits
+                        current_chunk += [
+                            list(
+                                chunk_content(
+                                    last_sentence,
+                                    for_model,
+                                    overlap_max_length,
+                                )
+                            ).pop()[0],
+                        ]
+                        current_chunk_length += overlap_max_length + 1
 
-        else:  # sentence longer than maximum length
+            current_chunk += [sentence]
+            current_chunk_length += sentence_length
+
+        else:  # sentence longer than maximum length -> chop up and try again
             sentences[i : i + 1] = [
                 chunk
                 for chunk, _ in chunk_content(sentence, for_model, target_chunk_length)
             ]
             continue
+
         i += 1
+        last_sentence = sentence
+        last_sentence_length = sentence_length
 
     if current_chunk:
         yield " ".join(current_chunk), current_chunk_length
