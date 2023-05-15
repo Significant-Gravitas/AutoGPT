@@ -42,7 +42,7 @@ class ContextMemoryProvider(MutableSet[MemoryItem], AbstractSingleton):
         logger.debug(f"Searching for {k} relevant items; {len(self)} in index")
 
         relevances = [m.relevance_for(query, e_query) for m in self]
-        logger.debug(f"Memory match scores: {relevances}")
+        logger.debug(f"Memory match scores: {[str(r) for r in relevances]}")
 
         # take last k items and reverse
         top_k_indices = np.argsort([r.score for r in relevances])[-k:][::-1]

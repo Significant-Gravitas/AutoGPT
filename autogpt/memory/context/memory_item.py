@@ -214,5 +214,8 @@ class MemoryItemRelevance:
         i_relmax = np.argmax(self.chunk_relevance_scores)
         return self.memory_item.chunks[i_relmax], self.chunk_relevance_scores[i_relmax]
 
-    def __str___(self):
-        return f"({self.summary_relevance_score}) {self.chunk_relevance_scores}"
+    def __str__(self):
+        return (
+            f"{self.memory_item.summary} ({self.summary_relevance_score}) "
+            f"{self.chunk_relevance_scores}"
+        )
