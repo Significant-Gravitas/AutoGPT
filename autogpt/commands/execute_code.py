@@ -1,9 +1,8 @@
 """Execute code in a Docker container"""
 import os
-import subprocess
 import pathlib
+import subprocess
 import venv
-
 from pathlib import Path
 
 import docker
