@@ -30,7 +30,8 @@ class MemoryItem:
         text: str,
         source_type: MemoryDocType,
         metadata: dict = {},
-        summarization_instruction: str | None = None,
+        how_to_summarize: str | None = None,
+        question_for_summary: str | None = None,
     ):
         cfg = Config()
         logger.debug(f"Memorizing text:\n{'-'*32}\n{text}\n{'-'*32}\n")
@@ -48,7 +49,11 @@ class MemoryItem:
         chunk_summaries = [
             summary
             for summary, _ in [
-                summarize_text(text_chunk, summarization_instruction)
+                summarize_text(
+                    text_chunk,
+                    instruction=how_to_summarize,
+                    question=question_for_summary,
+                )
                 for text_chunk in chunks
             ]
         ]
@@ -60,7 +65,9 @@ class MemoryItem:
             chunk_summaries[0]
             if len(chunks) == 1
             else summarize_text(
-                "\n\n".join(chunk_summaries), summarization_instruction
+                "\n\n".join(chunk_summaries),
+                instruction=how_to_summarize,
+                question=question_for_summary,
             )[0]
         )
         logger.debug("Total summary: " + summary)
@@ -115,14 +122,19 @@ class MemoryItem:
         )
 
         return MemoryItem.from_text(
-            memory_content,
-            "agent_history",
-            summarization_instruction="if possible, also make clear the link between the command in the assistant's response and the command result. Do not mention the human feedback if there is none",
+            text=memory_content,
+            source_type="agent_history",
+            how_to_summarize="if possible, also make clear the link between the command in the assistant's response and the command result. Do not mention the human feedback if there is none",
         )
 
     @staticmethod
-    def from_webpage(content: str, url: str):
-        return MemoryItem.from_text(content, "webpage", {"location": url})
+    def from_webpage(content: str, url: str, question: str | None = None):
+        return MemoryItem.from_text(
+            text=content,
+            source_type="webpage",
+            metadata={"location": url},
+            question_for_summary=question,
+        )
 
     def __str__(self) -> str:
         token_length = count_string_tokens(self.raw_content, Config().embedding_model)

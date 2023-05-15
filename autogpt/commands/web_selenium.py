@@ -209,12 +209,9 @@ def summarize_memorize_webpage(
     memory = get_memory(CFG)
 
     if isinstance(memory, NoMemory):
-        summary, chunks = summarize_text(
-            text,
-            f'focus on information related to the question "{question}". Do not answer the question itself',
-        )
+        summary, chunks = summarize_text(text, question=question)
         return summary
 
-    new_memory = MemoryItem.from_webpage(text, url)
+    new_memory = MemoryItem.from_webpage(text, url, question=question)
     memory.add(new_memory)
     return new_memory.summary

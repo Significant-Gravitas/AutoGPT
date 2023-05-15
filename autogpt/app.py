@@ -150,10 +150,7 @@ def get_text_summary(url: str, question: str) -> str:
         str: The summary of the text
     """
     text = scrape_text(url)
-    summary, _ = summarize_text(
-        text,
-        f'focus on information related to the question "{question}". Do not answer the question itself',
-    )
+    summary, _ = summarize_text(text, question=question)
 
     return f""" "Result" : {summary}"""
 

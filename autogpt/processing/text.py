@@ -60,7 +60,7 @@ def chunk_content(
 
 
 def summarize_text(
-    text: str, instruction: Optional[str] = None, max_chunk_length: Optional[int] = None
+    text: str, instruction: Optional[str] = None, question: Optional[str] = None
 ) -> tuple[str, None | list[tuple[str, str]]]:
     """Summarize text using the OpenAI API
 
@@ -76,8 +76,17 @@ def summarize_text(
     if not text:
         raise ValueError("No text to summarize")
 
+    if instruction and question:
+        raise ValueError("Parameters 'question' and 'instructions' cannot both be set")
+
     # model = CFG.fast_llm_model      # does not support text completion :(
     model = "text-davinci-003"
+
+    if question:
+        instruction = (
+            f'include any information that can be used to answer the question "{question}". '
+            "Do not directly answer the question itself"
+        )
 
     summarization_prompt_template = (
         (
@@ -99,9 +108,11 @@ def summarize_text(
     token_length = count_string_tokens(text, model)
     logger.info(f"Text length: {token_length} tokens")
 
-    if not must_chunk_content(
-        text, model, _max_chunk_length(model, max_chunk_length) - 550
-    ):  # reserve 50 tokens for summary prompt, 500 for the response
+    # reserve 50 tokens for summary prompt, 500 for the response
+    max_chunk_length = _max_chunk_length(model) - 550
+    logger.info(f"Max chunk length: {max_chunk_length} tokens")
+
+    if not must_chunk_content(text, model, max_chunk_length):
         prompt = summarization_prompt_template.format(content=text)
         logger.debug(f"Summarizing with {model}:\n{'-'*32}\n{prompt}\n{'-'*32}\n")
         summary = create_text_completion(
@@ -111,7 +122,7 @@ def summarize_text(
         return summary.strip(), None
 
     summaries: list[str] = []
-    chunks = list(split_text(text, for_model=model))
+    chunks = list(split_text(text, for_model=model, max_chunk_length=max_chunk_length))
 
     for i, (chunk, chunk_length) in enumerate(chunks):
         logger.info(
@@ -168,7 +179,9 @@ def split_text(
     current_chunk: list[str] = []
     current_chunk_length = 0
 
-    for sentence in sentences:
+    i = 0
+    while i < len(sentences):
+        sentence = sentences[i]
         sentence_length = count_string_tokens(sentence, for_model)
         expected_chunk_length = current_chunk_length + 1 + sentence_length
 
@@ -187,8 +200,13 @@ def split_text(
             current_chunk = [sentence]
             current_chunk_length = sentence_length
 
-        else:
-            raise ValueError(f"Sentence is too long: {sentence_length} tokens.")
+        else:  # sentence longer than maximum length
+            sentences[i : i + 1] = [
+                chunk
+                for chunk, _ in chunk_content(sentence, for_model, target_chunk_length)
+            ]
+            continue
+        i += 1
 
     if current_chunk:
         yield " ".join(current_chunk), current_chunk_length
