@@ -32,7 +32,7 @@ class PineconeMemory(MemoryProviderSingleton):
             logger.double_check(
                 "Please ensure you have setup and configured Pinecone properly for use."
                 + f"You can check out {Fore.CYAN + Style.BRIGHT}"
-                "https://github.com/Torantulino/Auto-GPT#-pinecone-api-key-setup"
+                "https://docs.agpt.co/configuration/memory/#pinecone-api-key-setup"
                 f"{Style.RESET_ALL} to ensure you've set up everything correctly."
             )
             exit(1)
