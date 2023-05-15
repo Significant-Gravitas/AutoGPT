@@ -6,10 +6,10 @@ from autogpt.commands.analyze_code import analyze_code
 
 @pytest.fixture
 def mock_call_ai_function(mocker):
-    return mocker.patch('autogpt.commands.analyze_code.call_ai_function')
+    return mocker.patch("autogpt.commands.analyze_code.call_ai_function")
+
 
 class TestAnalyzeCode:
-
     def test_positive_analyze_code(self, mock_call_ai_function):
         # Positive Test
         mock_call_ai_function.return_value = ["Suggestion 1", "Suggestion 2"]
@@ -19,7 +19,8 @@ class TestAnalyzeCode:
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
-            "Analyzes the given code and returns a list of suggestions for improvements.")
+            "Analyzes the given code and returns a list of suggestions for improvements."
+        )
 
     def test_negative_analyze_code(self, mock_call_ai_function):
         # Negative Test
@@ -30,7 +31,8 @@ class TestAnalyzeCode:
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
-            "Analyzes the given code and returns a list of suggestions for improvements.")
+            "Analyzes the given code and returns a list of suggestions for improvements."
+        )
 
     def test_error_analyze_code(self, mock_call_ai_function):
         # Error Test
@@ -41,7 +43,8 @@ class TestAnalyzeCode:
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
-            "Analyzes the given code and returns a list of suggestions for improvements.")
+            "Analyzes the given code and returns a list of suggestions for improvements."
+        )
 
     def test_edge_analyze_code_empty_code(self, mock_call_ai_function):
         # Edge Test
@@ -52,4 +55,5 @@ class TestAnalyzeCode:
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
-            "Analyzes the given code and returns a list of suggestions for improvements.")
+            "Analyzes the given code and returns a list of suggestions for improvements."
+        )
