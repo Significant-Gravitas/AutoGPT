@@ -128,7 +128,7 @@ def create_directory_if_not_exists(directory_path: str) -> bool:
 
 
 def initialize_openai_plugins(
-    manifests_specs: dict, cfg: Config, debug: bool = False
+        manifests_specs: dict, cfg: Config, debug: bool = False
 ) -> dict:
     """
     Initialize OpenAI plugins.
@@ -178,7 +178,7 @@ def initialize_openai_plugins(
 
 
 def instantiate_openai_plugin_clients(
-    manifests_specs_clients: dict, cfg: Config, debug: bool = False
+        manifests_specs_clients: dict, cfg: Config, debug: bool = False
 ) -> dict:
     """
     Instantiates BaseOpenAIPlugin instances for each OpenAI plugin.
@@ -226,12 +226,21 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                         continue
                     a_module = getattr(zipped_module, key)
                     a_keys = dir(a_module)
-                    if (
-                        "_abc_impl" in a_keys
+
+                    is_plugin = False
+                    if "_abc_impl" in a_keys:
+                        for base in a_module.__bases__:
+                            if base.__name__ == "AutoGPTPluginTemplate":
+                                is_plugin = True
+                                break
+
+                    if (is_plugin
                         and a_module.__name__ != "AutoGPTPluginTemplate"
                         and denylist_allowlist_check(a_module.__name__, cfg)
                     ):
                         loaded_plugins.append(a_module())
+
+
     # OpenAI plugins
     if cfg.plugins_openai:
         manifests_specs = fetch_openai_plugins_manifest_and_spec(cfg)
