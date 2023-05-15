@@ -13,15 +13,18 @@ from autogpt.core.workspace.base import Workspace
 
 
 class WorkspaceConfiguration(SystemConfiguration):
-    root: str = ""
-    restrict_to_workspace: bool = True
+    root: str
+    restrict_to_workspace: bool
 
 
 class SimpleWorkspace(Configurable, Workspace):
     defaults = SystemSettings(
         name="workspace",
         description="The workspace is the root directory for all agent activity.",
-        configuration=WorkspaceConfiguration(),
+        configuration=WorkspaceConfiguration(
+            root="",
+            restrict_to_workspace=True,
+        ),
     )
 
     NULL_BYTES = ["\0", "\000", "\x00", r"\z", "\u0000", "%00"]

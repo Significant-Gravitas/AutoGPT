@@ -32,9 +32,7 @@ class LanguageModelClassification(str, enum.Enum):
 class LanguageModelConfiguration(SystemConfiguration):
     """Configuration for the language model."""
 
-    models: dict[LanguageModelClassification, ModelConfiguration] = Field(
-        default_factory=dict
-    )
+    models: dict[LanguageModelClassification, ModelConfiguration]
 
 
 class SimpleLanguageModel(LanguageModel, Configurable):

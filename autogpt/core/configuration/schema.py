@@ -4,17 +4,27 @@ import typing
 from pydantic import BaseModel, SecretField
 
 
-class Credentials(BaseModel):
+class SystemConfiguration(BaseModel):
     pass
 
+
+class Credentials(SystemConfiguration):
     class Config:
         json_encoders = {
             SecretField: lambda v: v.get_secret_value() if v else None,
         }
 
 
-class SystemConfiguration(BaseModel):
-    pass
+class ResourceBudget(SystemConfiguration):
+    total_budget: float
+    total_cost: float
+    remaining_budget: float
+    usage: typing.Any
+
+    @abc.abstractmethod
+    def update_usage_and_cost(self, *args, **kwargs) -> None:
+        """Update the usage and cost of the resource."""
+        ...
 
 
 class SystemSettings(BaseModel):
@@ -22,6 +32,7 @@ class SystemSettings(BaseModel):
     description: str
     configuration: SystemConfiguration | None = None
     credentials: Credentials | None = None
+    budget: ResourceBudget | None = None
 
 
 class Configurable(abc.ABC):

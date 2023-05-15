@@ -1,6 +1,9 @@
+import math
+
 from pydantic import Field, SecretStr, validator
 
-from autogpt.core.configuration import Credentials, SystemConfiguration
+from autogpt.core.configuration import Credentials, ResourceBudget, SystemConfiguration
+from autogpt.core.model.base import ModelResponse
 
 
 class ProviderModelCredentials(Credentials):
@@ -65,6 +68,49 @@ class ProviderCredentials(Credentials):
             model_dict.update(provider_credentials)
             self.models[model_name] = ProviderModelCredentials(**model_dict)
         return self.models
+
+
+class ProviderBudgetUsage(SystemConfiguration):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class ProviderBudget(ResourceBudget):
+    """Budget for a model provider."""
+
+    usage: ProviderBudgetUsage
+    graceful_shutdown_threshold: float
+    warning_threshold: float
+
+    def update_usage_and_cost(self, llm_response: ModelResponse) -> None:
+        model_info = llm_response.model_info
+        self.usage.prompt_tokens += llm_response.prompt_tokens_used
+        self.usage.completion_tokens += llm_response.completion_tokens_used
+        self.usage.total_tokens += (
+            llm_response.prompt_tokens_used + llm_response.completion_tokens_used
+        )
+        incremental_cost = (
+            llm_response.prompt_tokens_used * model_info.prompt_token_cost
+            + llm_response.completion_tokens_used * model_info.completion_token_cost
+        ) / 1000
+        self.total_cost += incremental_cost
+        self.remaining_budget -= incremental_cost
+
+    def get_resource_budget_prompt(self) -> str:
+        """Get the prompt to be used for the resource budget."""
+        if self.total_budget == math.inf:
+            return ""
+
+        resource_prompt = f"Your remaining API budget is ${self.remaining_budget:.3f}"
+        if self.remaining_budget <= 0:
+            resource_prompt += " BUDGET EXCEEDED! SHUT DOWN!\n\n"
+        elif self.remaining_budget < self.graceful_shutdown_threshold:
+            resource_prompt += " Budget very nearly exceeded! Shut down gracefully!\n\n"
+        elif self.remaining_budget < self.warning_threshold:
+            resource_prompt += " Budget nearly exceeded. Finish up.\n\n"
+
+        return resource_prompt
 
 
 class ProviderConfiguration(SystemConfiguration):

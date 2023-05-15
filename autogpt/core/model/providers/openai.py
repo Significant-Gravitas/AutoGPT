@@ -1,6 +1,7 @@
 import enum
 import functools
 import logging
+import math
 import time
 from typing import Callable, ParamSpec, TypeVar
 
@@ -20,6 +21,8 @@ from autogpt.core.model.base import (
     ProviderName,
 )
 from autogpt.core.model.providers.base import (
+    ProviderBudget,
+    ProviderBudgetUsage,
     ProviderCredentials,
     ProviderModelCredentials,
 )
@@ -112,6 +115,18 @@ class OpenAIProvider(
                 OpenAIModelNames.GPT3: ProviderModelCredentials(),
                 OpenAIModelNames.ADA: ProviderModelCredentials(),
             },
+        ),
+        budget=ProviderBudget(
+            total_budget=math.inf,
+            total_cost=0.0,
+            remaining_budget=math.inf,
+            usage=ProviderBudgetUsage(
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+            ),
+            graceful_shutdown_threshold=0.005,
+            warning_threshold=0.01,
         ),
     )
 

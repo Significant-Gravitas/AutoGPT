@@ -1,5 +1,5 @@
 """The budget subsystem manages resource limits for the Agent."""
-from autogpt.core.budget.base import BudgetManager
+from autogpt.core.budget.base import BudgetManager, ResourceBudget
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(

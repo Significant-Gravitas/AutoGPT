@@ -10,12 +10,12 @@ from autogpt.core.model.base import (
     LanguageModelProvider,
     LanguageModelResponse,
     Model,
+    ModelConfiguration,
     ModelInfo,
     ModelProvider,
     ModelResponse,
     ModelService,
     ProviderName,
-    ModelConfiguration,
 )
 from autogpt.core.model.embedding import (
     EmbeddingModelConfiguration,

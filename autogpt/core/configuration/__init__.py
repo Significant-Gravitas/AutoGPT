@@ -3,6 +3,7 @@ from autogpt.core.configuration.base import AgentConfiguration
 from autogpt.core.configuration.schema import (
     Configurable,
     Credentials,
+    ResourceBudget,
     SystemConfiguration,
     SystemSettings,
 )
