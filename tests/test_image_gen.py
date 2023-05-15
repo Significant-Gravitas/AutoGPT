@@ -6,8 +6,8 @@ import pytest
 from PIL import Image
 
 from autogpt.commands.image_gen import generate_image, generate_image_with_sd_webui
-from tests.utils import requires_api_key
 from autogpt.config import Config
+from tests.utils import requires_api_key
 
 
 @pytest.fixture(params=[256, 512, 1024])
