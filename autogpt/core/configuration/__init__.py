@@ -1,5 +1,4 @@
 """The configuration encapsulates settings for all Agent subsystems."""
-from autogpt.core.configuration.base import AgentSettings
 from autogpt.core.configuration.schema import (
     Configurable,
     SystemConfiguration,

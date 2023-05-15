@@ -2,6 +2,7 @@ from autogpt.core.resource.model_providers.openai import (
     OPEN_AI_MODELS,
     OpenAIModelName,
     OpenAIProvider,
+    OpenAISettings,
 )
 from autogpt.core.resource.model_providers.schema import (
     Embedding,
@@ -24,7 +25,9 @@ from autogpt.core.resource.model_providers.schema import (
 )
 
 __all__ = [
+    "ModelProvider",
     "ModelProviderName",
+    "ModelProviderSettings",
     "EmbeddingModelProvider",
     "EmbeddingModelProviderModelResponse",
     "LanguageModelProvider",

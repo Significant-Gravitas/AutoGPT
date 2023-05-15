@@ -1,7 +1,7 @@
 """The workspace is the central hub for the Agent's on disk resources."""
 from autogpt.core.status import ShortStatus, Status
 from autogpt.core.workspace.base import Workspace
-from autogpt.core.workspace.simple import SimpleWorkspace, WorkspaceConfiguration
+from autogpt.core.workspace.simple import SimpleWorkspace, WorkspaceSettings
 
 status = Status(
     module_name=__name__,

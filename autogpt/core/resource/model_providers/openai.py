@@ -89,16 +89,16 @@ OPEN_AI_MODELS = {
 class OpenAICredentials(ModelProviderCredentials):
     use_azure: bool = False
 
-    @root_validator()
-    def validate_api_key(cls, values):
-        api_key = values.get("api_key")
-        models = values.get("models").dict()
-        if api_key is None:
-            for model, credentials in models.items():
-                if credentials.api_key is None:
-                    raise ValueError(
-                        f"Either api_key for the provider or api_key for model {model} must be provided."
-                    )
+    # @root_validator()
+    # def validate_api_key(cls, values):
+    #     api_key = values.get("api_key")
+    #     models = values.get("models")
+    #     if api_key is None:
+    #         for model, credentials in models.items():
+    #             if credentials.api_key is None:
+    #                 raise ValueError(
+    #                     f"Either api_key for the provider or api_key for model {model} must be provided."
+    #                 )
 
 
 class OpenAIConfiguration(SystemConfiguration):
@@ -110,12 +110,18 @@ class OpenAIModelProviderBudget(ModelProviderBudget):
     warning_threshold: float
 
 
+class OpenAISettings(ModelProviderSettings):
+    configuration: OpenAIConfiguration
+    credentials: OpenAICredentials
+    budget: OpenAIModelProviderBudget
+
+
 class OpenAIProvider(
     Configurable,
     LanguageModelProvider,
     EmbeddingModelProvider,
 ):
-    defaults = ModelProviderSettings(
+    defaults = OpenAISettings(
         name="openai_provider",
         description="Provides access to OpenAI's API.",
         configuration=OpenAIConfiguration(

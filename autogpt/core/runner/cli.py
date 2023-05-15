@@ -30,7 +30,7 @@ def autogpt():
     help="The port of the webserver.",
     type=click.INT,
 )
-def httpserver(host: str, port: int) -> None:
+def server(host: str, port: int) -> None:
     """Run the Auto-GPT runner httpserver."""
     click.echo("Running Auto-GPT runner httpserver...")
     uvicorn.run(
@@ -42,27 +42,6 @@ def httpserver(host: str, port: int) -> None:
     )
 
 
-@contextlib.contextmanager
-def autogpt_server():
-    host = "localhost"
-    port = 8080
-    cmd = shlex.split(
-        f"{sys.executable} autogpt/core/runner/cli.py httpserver --host {host} --port {port}"
-    )
-    server_process = subprocess.Popen(
-        args=cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
-    started = False
-    while not started:
-        try:
-            requests.get(f"http://{host}:{port}")
-            started = True
-        except requests.exceptions.ConnectionError:
-            time.sleep(0.1)
-    yield server_process
-    server_process.terminate()
-
-
 @autogpt.command()
 def client() -> None:
     """Run the Auto-GPT runner client."""
@@ -70,6 +49,16 @@ def client() -> None:
 
     with autogpt_server():
         autogpt.core.runner.client.run()
+
+
+@autogpt.command()
+@click.option("--pdb", is_flag=True, help="Run the agent with pdb.")
+def test(pdb):
+    from autogpt.core.runner.settings import make_default_settings
+    from autogpt.core.runner.utils import handle_exceptions
+
+    main = handle_exceptions(make_default_settings, with_debugger=pdb)
+    main()
 
 
 # @v2.command()
@@ -100,27 +89,25 @@ def status(detailed: bool):
     print_status(status_list, detailed)
 
 
-# @click.group()
-# def runner() -> None:
-#     """Auto-GPT Runner commands"""
-#     pass
-
-
-# @runner.command()
-# def server() -> None:
-#     """Run the Auto-GPT runner server."""
-#     import autogpt.core.messaging.base
-#     import autogpt.core.runner.server
-
-#     print("Running Auto-GPT runner server...")
-#     msg = autogpt.core.messaging.base.Message(
-#         {
-#             "message": "Translated user input into objective prompt.",
-#             "objective_prompt": "test auto-gpt",
-#         },
-#         None,
-#     )
-#     autogpt.core.runner.server.launch_agent("msg")
+@contextlib.contextmanager
+def autogpt_server():
+    host = "localhost"
+    port = 8080
+    cmd = shlex.split(
+        f"{sys.executable} autogpt/core/runner/cli.py httpserver --host {host} --port {port}"
+    )
+    server_process = subprocess.Popen(
+        args=cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    started = False
+    while not started:
+        try:
+            requests.get(f"http://{host}:{port}")
+            started = True
+        except requests.exceptions.ConnectionError:
+            time.sleep(0.1)
+    yield server_process
+    server_process.terminate()
 
 
 if __name__ == "__main__":

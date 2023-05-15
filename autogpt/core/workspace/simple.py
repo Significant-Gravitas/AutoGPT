@@ -1,15 +1,15 @@
 import logging
+import typing
 from pathlib import Path
 
 import yaml
 
-from autogpt.core.configuration import (
-    AgentSettings,
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-)
+from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.workspace.base import Workspace
+
+if typing.TYPE_CHECKING:
+    # Cyclic import
+    from autogpt.core.agent.simple import AgentSettings
 
 
 class WorkspaceConfiguration(SystemConfiguration):
@@ -17,8 +17,12 @@ class WorkspaceConfiguration(SystemConfiguration):
     restrict_to_workspace: bool
 
 
+class WorkspaceSettings(SystemSettings):
+    configuration: WorkspaceConfiguration
+
+
 class SimpleWorkspace(Configurable, Workspace):
-    defaults = SystemSettings(
+    defaults = WorkspaceSettings(
         name="workspace",
         description="The workspace is the root directory for all agent activity.",
         configuration=WorkspaceConfiguration(
@@ -58,7 +62,7 @@ class SimpleWorkspace(Configurable, Workspace):
         return self._configuration.restrict_to_workspace
 
     @staticmethod
-    def setup_workspace(settings: AgentSettings, logger: logging.Logger) -> Path:
+    def setup_workspace(settings: "AgentSettings", logger: logging.Logger) -> Path:
         # TODO: Need to figure out some root directory for building agent workspaces.
         planning_config = settings.planning.configuration
         agent_name = planning_config.agent_name
@@ -80,9 +84,13 @@ class SimpleWorkspace(Configurable, Workspace):
         return workspace_root
 
     @staticmethod
-    def load_agent_settings(workspace_root: Path) -> AgentSettings:
+    def load_agent_settings(workspace_root: Path) -> "AgentSettings":
+        # Cyclic import
+        from autogpt.core.agent.simple import AgentSettings
+
         with (workspace_root / "configuration.yml").open("r") as f:
             configuration = yaml.safe_load(f)
+
         return AgentSettings.parse_obj(configuration)
 
     def get_path(self, relative_path: str | Path) -> Path:

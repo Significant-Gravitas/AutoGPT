@@ -6,10 +6,7 @@ from autogpt.core.resource.schema import (
     ProviderUsage,
     ResourceType,
 )
-from autogpt.core.resource.simple import (
-    ResourceManagerConfiguration,
-    SimpleResourceManager,
-)
+from autogpt.core.resource.simple import ResourceManagerSettings, SimpleResourceManager
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(

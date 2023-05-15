@@ -35,8 +35,12 @@ class LanguageModelConfiguration(SystemConfiguration):
     models: dict[LanguageModelClassification, ModelConfiguration]
 
 
+class LanguageModelSettings(SystemSettings):
+    configuration: LanguageModelConfiguration
+
+
 class SimpleLanguageModel(LanguageModel, Configurable):
-    defaults = SystemSettings(
+    defaults = LanguageModelSettings(
         name="simple_language_model",
         description="A simple language model.",
         configuration=LanguageModelConfiguration(

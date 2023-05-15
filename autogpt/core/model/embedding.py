@@ -13,8 +13,12 @@ from autogpt.core.resource.model_providers import (
 )
 
 
+class EmbeddingModelSettings(SystemSettings):
+    configuration: ModelConfiguration
+
+
 class SimpleEmbeddingModel(EmbeddingModel, Configurable):
-    defaults = SystemSettings(
+    defaults = EmbeddingModelSettings(
         name="simple_embedding_model",
         description="A simple embedding model.",
         configuration=ModelConfiguration(

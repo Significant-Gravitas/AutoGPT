@@ -11,8 +11,10 @@ from autogpt.core.plugin.base import (
 
 class SimplePluginService(PluginService):
     @staticmethod
-    def get_plugin(plugin_location: PluginLocation) -> PluginType:
+    def get_plugin(plugin_location: dict | PluginLocation) -> PluginType:
         """Get a plugin from a plugin location."""
+        if isinstance(plugin_location, dict):
+            plugin_location = PluginLocation.parse_obj(plugin_location)
         if plugin_location.storage_format == PluginStorageFormat.WORKSPACE:
             return SimplePluginService.load_from_workspace(
                 plugin_location.storage_route

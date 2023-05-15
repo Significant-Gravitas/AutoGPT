@@ -5,7 +5,8 @@ from typing import Type
 from pydantic import BaseModel
 
 from autogpt.core.command import Command, CommandRegistry
-from autogpt.core.memory import MemoryBackend
+from autogpt.core.configuration import SystemConfiguration
+from autogpt.core.memory import Memory
 from autogpt.core.model import EmbeddingModel, LanguageModel
 from autogpt.core.planning import Planner
 from autogpt.core.resource import ResourceManager
@@ -17,7 +18,7 @@ PluginType = (
     | Type[CommandRegistry]  # Swappable maybe never
     | Type[EmbeddingModel]  # Swappable soon
     | Type[LanguageModel]  # Swappable soon
-    | Type[MemoryBackend]  # Swappable now
+    | Type[Memory]  # Swappable now
     | Type[Planner]  # Swappable soon
 )
 
@@ -27,7 +28,7 @@ Plugin = (
     | CommandRegistry
     | EmbeddingModel
     | LanguageModel
-    | MemoryBackend
+    | Memory
     | Planner
 )
 
@@ -87,7 +88,7 @@ class PluginStorageFormat(str, enum.Enum):
 PluginStorageRoute = str
 
 
-class PluginLocation(BaseModel):
+class PluginLocation(SystemConfiguration):
     """A plugin location.
 
     This is a combination of a plugin storage format and a plugin storage route.

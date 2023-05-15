@@ -6,8 +6,8 @@ from autogpt.core.model.base import (
     LanguageModelResponse,
     ModelConfiguration,
 )
-from autogpt.core.model.embedding import SimpleEmbeddingModel
-from autogpt.core.model.language import SimpleLanguageModel
+from autogpt.core.model.embedding import EmbeddingModelSettings, SimpleEmbeddingModel
+from autogpt.core.model.language import LanguageModelSettings, SimpleLanguageModel
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(

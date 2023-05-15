@@ -10,8 +10,12 @@ class ResourceManagerConfiguration(SystemConfiguration):
     pass
 
 
+class ResourceManagerSettings(SystemSettings):
+    configuration = ResourceManagerConfiguration()
+
+
 class SimpleResourceManager(ResourceManager, Configurable):
-    defaults = SystemSettings(
+    defaults = ResourceManagerSettings(
         name="budget_manager",
         description="The budget manager is responsible for tracking resource usage.",
         configuration=ResourceManagerConfiguration(),

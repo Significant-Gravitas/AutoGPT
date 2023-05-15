@@ -11,5 +11,6 @@ status = Status(
         "Before times: Sketched out Agent.__init__\n"
         "5/7: Interface has been created. Work is needed on the agent factory.\n"
         "5/8: Agent factory has been adjusted to use the new plugin system."
+        "5/15: Get configuration compilation working.\n"
     ),
 )

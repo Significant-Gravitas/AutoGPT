@@ -1,5 +1,5 @@
 import abc
 
 
-class MemoryBackend(abc.ABC):
+class Memory(abc.ABC):
     pass
