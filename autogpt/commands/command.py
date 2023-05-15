@@ -3,13 +3,10 @@ import importlib
 import inspect
 from typing import Any, Callable, Optional
 
-from autogpt.config import Config
 from autogpt.logs import logger
 
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
-
-cfg = Config()
 
 
 class Command:
