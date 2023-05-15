@@ -143,7 +143,7 @@ def command(
     """The command decorator is used to create Command objects from ordinary functions."""
 
     if not enabled:
-        if disabled_reason is not None and cfg.debug_mode:
+        if disabled_reason is not None:
             logger.debug(f"Command '{name}' is disabled: {disabled_reason}")
         return lambda func: func
 
