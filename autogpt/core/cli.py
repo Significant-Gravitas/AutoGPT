@@ -31,7 +31,7 @@ def start() -> None:
 @main.command()
 @click.option("--host", default="0.0.0.0", help="Host address.")
 @click.option("--port", default=8000, help="Listening port.")
-def run_server(host: str, port: int):
+def server(host: str, port: int):
     """Run the AutoGPT server."""
     import uvicorn
 
