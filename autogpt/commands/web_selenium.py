@@ -215,7 +215,7 @@ def summarize_memorize_webpage(
     memory = get_memory(CFG)
 
     if isinstance(memory, NoMemory):
-        summary, chunks = summarize_text(text, question=question)
+        summary, _ = summarize_text(text, question=question)
         return summary
 
     new_memory = MemoryItem.from_webpage(text, url, question=question)

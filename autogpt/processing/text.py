@@ -158,7 +158,7 @@ def split_text(
     Raises:
         ValueError: when a sentence is longer than the maximum length
     """
-    max_length = max_chunk_length or _max_chunk_length(for_model)
+    max_length = _max_chunk_length(for_model, max_chunk_length)
 
     # flatten paragraphs to improve performance
     text = text.replace("\n", " ")
