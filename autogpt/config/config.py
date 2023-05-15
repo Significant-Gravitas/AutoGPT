@@ -129,7 +129,7 @@ class Config(metaclass=Singleton):
         )
 
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
-        self.redis_port = os.getenv("REDIS_PORT", "6379")
+        self.redis_port = int(os.getenv("REDIS_PORT", "6379"))
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
         self.wipe_redis_on_start = os.getenv("WIPE_REDIS_ON_START", "True") == "True"
         self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
