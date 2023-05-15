@@ -1,9 +1,7 @@
 import pytest
 
 from autogpt.config import Config
-from autogpt.plugins import (
-    scan_plugins,
-)
+from autogpt.plugins import scan_plugins
 
 PLUGINS_TEST_DIR = "tests/unit/data/test_plugins"
 PLUGIN_TEST_OPENAI = "https://weathergpt.vercel.app/"

@@ -1,7 +1,6 @@
 import pytest
 
 from autogpt.agent import Agent
-from autogpt.commands.file_operations import read_file
 from tests.integration.agent_utils import run_interaction_loop
 from tests.utils import requires_api_key
 
@@ -14,5 +13,5 @@ def test_browse_website(browser_agent: Agent) -> None:
         run_interaction_loop(browser_agent, 120)
     # catch system exit exceptions
     except SystemExit:  # the agent returns an exception when it shuts down
-        content = read_file(file_path)
+        content = open(file_path, encoding="utf-8").read()
         assert "£25.89" in content, f"Expected £25.89, got {content}"

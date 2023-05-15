@@ -117,7 +117,7 @@ def test_json_memory_get_relevant(config: Config) -> None:
     mem2 = MemoryItem.from_text_file("Grocery list:\n- Pancake mix", "groceries.txt")
     mem3 = MemoryItem.from_text_file("What is your favorite color?", "color.txt")
     lipsum = "Lorem ipsum dolor sit amet"
-    mem4 = MemoryItem.from_text_file(" ".join([lipsum]*100), "lipsum.txt")
+    mem4 = MemoryItem.from_text_file(" ".join([lipsum] * 100), "lipsum.txt")
     index.add(mem1)
     index.add(mem2)
     index.add(mem3)

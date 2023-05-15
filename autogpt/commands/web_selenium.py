@@ -10,8 +10,10 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.service import Service as ChromeDriverService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.firefox.service import Service as GeckoDriverService
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.safari.options import Options as SafariOptions
 from selenium.webdriver.support import expected_conditions as EC
@@ -93,7 +95,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
             options.headless = True
             options.add_argument("--disable-gpu")
         driver = webdriver.Firefox(
-            executable_path=GeckoDriverManager().install(), options=options
+            service=GeckoDriverService(GeckoDriverManager().install()), options=options
         )
     elif CFG.selenium_web_browser == "safari":
         # Requires a bit more setup on the users end
@@ -112,9 +114,9 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         chromium_driver_path = Path("/usr/bin/chromedriver")
 
         driver = webdriver.Chrome(
-            executable_path=chromium_driver_path
+            service=ChromeDriverService(str(chromium_driver_path))
             if chromium_driver_path.exists()
-            else ChromeDriverManager().install(),
+            else ChromeDriverService(ChromeDriverManager().install()),
             options=options,
         )
     driver.get(url)
