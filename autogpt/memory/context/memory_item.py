@@ -163,6 +163,7 @@ class MemoryItemRelevance:
     Class that encapsulates memory relevance search functionality and data.
     Instances contain a MemoryItem and its relevance scores for a given query.
     """
+
     memory_item: MemoryItem
     for_query: str
     summary_relevance_score: float

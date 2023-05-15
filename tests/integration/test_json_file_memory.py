@@ -41,6 +41,7 @@ def memory_item(mock_embedding: Embedding):
         raw_content="test content",
         summary="test content summary",
         e_summary=mock_embedding,
+        chunks=["test content"],
         e_chunks=[mock_embedding],
         metadata={},
     )
@@ -123,10 +124,10 @@ def test_json_memory_get_relevant(config: Config) -> None:
     index.add(mem3)
     index.add(mem4)
 
-    assert index.get_relevant(mem1.raw_content, 1)[0] == mem1
-    assert index.get_relevant(mem2.raw_content, 1)[0] == mem2
-    assert index.get_relevant(mem3.raw_content, 1)[0] == mem3
-    assert index.get_relevant(lipsum, 2) == [mem4, mem1]
+    assert index.get_relevant(mem1.raw_content, 1)[0].memory_item == mem1
+    assert index.get_relevant(mem2.raw_content, 1)[0].memory_item == mem2
+    assert index.get_relevant(mem3.raw_content, 1)[0].memory_item == mem3
+    assert [mr.memory_item for mr in index.get_relevant(lipsum, 2)] == [mem4, mem1]
 
 
 def test_json_memory_get_stats(config: Config, memory_item: MemoryItem) -> None:
