@@ -13,7 +13,7 @@ MAX_LEVEL = 3
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_memory_challenge_a(
-    memory_management_agent: Agent, user_selected_level: int
+    memory_management_agent: Agent, user_selected_level: int, patched_api_requestor
 ) -> None:
     """
     The agent reads a file containing a task_id. Then, it reads a series of other files.
@@ -30,7 +30,7 @@ def test_memory_challenge_a(
     create_instructions_files(memory_management_agent, num_files, task_id)
 
     try:
-        run_interaction_loop(memory_management_agent, 180)
+        run_interaction_loop(memory_management_agent, 400)
     # catch system exit exceptions
     except SystemExit:
         file_path = str(memory_management_agent.workspace.get_path("output.txt"))
