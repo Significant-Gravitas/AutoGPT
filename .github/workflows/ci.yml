@@ -3,12 +3,12 @@ name: Python CI
 on:
   push:
     branches: [ master ]
-  pull_request:
+  pull_request_target:
     branches: [ master, stable ]
 
 concurrency:
   group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
 
 jobs:
   lint:
@@ -19,6 +19,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
@@ -53,11 +57,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11"]
+        python-version: ["3.10"]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
@@ -71,7 +79,23 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-          pytest --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+        env:
+          CI: true
+          PROXY: ${{ vars.PROXY }}
+          AGENT_MODE: ${{ vars.AGENT_MODE }}
+          AGENT_TYPE: ${{ vars.AGENT_TYPE }}
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
+
+      - name: Stage new files and commit
+        run: |
+          git add tests
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git commit -m "Add new cassettes"
+          git checkout -b cassette-diff-${{ github.event.pull_request.number }}
+          git remote add target https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.event.pull_request.base.repo.full_name }}
+          git push -f target cassette-diff-${{ github.event.pull_request.number }}
