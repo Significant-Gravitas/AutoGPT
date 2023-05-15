@@ -3,27 +3,43 @@ from pathlib import Path
 
 import yaml
 
-from autogpt.core.configuration import Configuration
+from autogpt.core.configuration import (
+    AgentConfiguration,
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+)
 from autogpt.core.workspace.base import Workspace
 
 
-class SimpleWorkspace(Workspace):
-    configuration_defaults = {
-        "workspace": {
-            "root": None,
-            "restrict_to_workspace": True,
-        }
-    }
+class WorkspaceConfiguration(SystemConfiguration):
+    root: str
+    restrict_to_workspace: bool
+
+
+class SimpleWorkspace(Configurable, Workspace):
+    defaults = SystemSettings(
+        name="workspace",
+        description="The workspace is the root directory for all agent activity.",
+        configuration=WorkspaceConfiguration(
+            root=None,
+            restrict_to_workspace=True,
+        ),
+    )
 
     NULL_BYTES = ["\0", "\000", "\x00", r"\z", "\u0000", "%00"]
 
-    def __init__(self, configuration: Configuration, logger: logging.Logger):
-        self._configuration = configuration.workspace
+    def __init__(
+        self,
+        configuration: WorkspaceConfiguration,
+        logger: logging.Logger,
+    ):
+        self._configuration = configuration
         self._logger = logger.getChild("workspace")
 
     @property
     def root(self) -> Path:
-        return Path(self._configuration["root"])
+        return Path(self._configuration.root)
 
     @property
     def debug_log_path(self) -> Path:
@@ -39,10 +55,10 @@ class SimpleWorkspace(Workspace):
 
     @property
     def restrict_to_workspace(self) -> bool:
-        return self._configuration["restrict_to_workspace"]
+        return self._configuration.restrict_to_workspace
 
     @staticmethod
-    def setup_workspace(configuration: Configuration, logger: logging.Logger) -> Path:
+    def setup_workspace(configuration: AgentConfiguration, logger: logging.Logger) -> Path:
         # TODO: Need to figure out some root directory for building agent workspaces.
         ai_name = configuration.planner["ai_name"]
         workspace_root = Path.home() / "auto-gpt" / ai_name
@@ -60,10 +76,10 @@ class SimpleWorkspace(Workspace):
         return workspace_root
 
     @staticmethod
-    def load_configuration(workspace_root: Path) -> Configuration:
+    def load_configuration(workspace_root: Path) -> AgentConfiguration:
         with (workspace_root / "configuration.yml").open("r") as f:
             configuration = yaml.safe_load(f)
-        return Configuration.from_dict(configuration)
+        return AgentConfiguration.parse_obj(configuration)
 
     def get_path(self, relative_path: str | Path) -> Path:
         """Get the full path for an item in the workspace.

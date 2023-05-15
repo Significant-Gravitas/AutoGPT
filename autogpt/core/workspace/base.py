@@ -5,8 +5,9 @@ import logging
 import typing
 from pathlib import Path
 
+
 if typing.TYPE_CHECKING:
-    from autogpt.core.configuration.base import Configuration
+    from autogpt.core.configuration import AgentConfiguration
 
 
 class Workspace(abc.ABC):
@@ -17,12 +18,6 @@ class Workspace(abc.ABC):
     workspace.
 
     """
-
-    configuration_defaults = {}
-
-    @abc.abstractmethod
-    def __init__(self, *args, **kwargs):
-        ...
 
     @property
     @abc.abstractmethod
@@ -38,7 +33,7 @@ class Workspace(abc.ABC):
 
     @staticmethod
     @abc.abstractmethod
-    def setup_workspace(configuration: Configuration, logger: logging.Logger) -> Path:
+    def setup_workspace(configuration: AgentConfiguration, logger: logging.Logger) -> Path:
         """Create the workspace root directory and set up all initial content.
 
         Parameters

@@ -8,5 +8,6 @@ status = Status(
     handoff_notes=(
         "Before times: Interface has been created. Basic example needs to be created.\n"
         "5/11: Ported most of the existing logic and added a little extra for system setup.\n"
+        "5/14: Use pydantic models for configuration.\n"
     ),
 )
