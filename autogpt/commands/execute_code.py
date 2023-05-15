@@ -97,6 +97,11 @@ def execute_python_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
+def load_disallowed_commands() -> list:
+    """Load disallowed commands from environment variable"""
+    return [cmd.strip() for cmd in os.getenv('DISALLOWED_COMMANDS', '').split(',')]
+
+
 @command(
     "execute_shell",
     "Execute Shell Command, non-interactive commands only",
@@ -107,7 +112,8 @@ def execute_python_file(filename: str) -> str:
     "in your config. Do not attempt to bypass the restriction.",
 )
 def execute_shell(command_line: str) -> str:
-    """Execute a shell command and return the output
+    """
+    Execute a shell command and return the output.
 
     Args:
         command_line (str): The command line to execute
@@ -115,6 +121,11 @@ def execute_shell(command_line: str) -> str:
     Returns:
         str: The output of the command
     """
+
+    disallowed_commands = load_disallowed_commands()
+
+    if any(command in command_line for command in disallowed_commands):
+        return ("Error: Disallowed command detected. Use another command to fulfill task")
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
@@ -129,9 +140,9 @@ def execute_shell(command_line: str) -> str:
     output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
 
     # Change back to whatever the prior working dir was
-
     os.chdir(current_dir)
     return output
+
 
 
 @command(
