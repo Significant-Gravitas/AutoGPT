@@ -113,24 +113,20 @@ def execute_command(
         # TODO: Remove commands below after they are moved to the command registry.
         command_name = map_command_synonyms(command_name.lower())
 
-        if command_name == "memory_add":
-            return get_memory(CFG).add(arguments["string"])
-
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
-        else:
-            for command in prompt.commands:
-                if (
-                    command_name == command["label"].lower()
-                    or command_name == command["name"].lower()
-                ):
-                    return command["function"](**arguments)
-            return (
-                f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
-                " list for available commands and only respond in the specified JSON"
-                " format."
-            )
+        for command in prompt.commands:
+            if (
+                command_name == command["label"].lower()
+                or command_name == command["name"].lower()
+            ):
+                return command["function"](**arguments)
+        return (
+            f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
+            " list for available commands and only respond in the specified JSON"
+            " format."
+        )
     except Exception as e:
         return f"Error: {str(e)}"
 
