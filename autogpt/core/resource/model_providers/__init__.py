@@ -35,4 +35,5 @@ __all__ = [
     "OpenAIModelName",
     "OPEN_AI_MODELS",
     "OpenAIProvider",
+    "OpenAISettings",
 ]
