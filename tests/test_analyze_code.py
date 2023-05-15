@@ -19,7 +19,7 @@ class TestAnalyzeCode:
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
-            "Analyzes the given code and returns a list of suggestions for improvements."
+            "Analyzes the given code and returns a list of suggestions for improvements.",
         )
 
     def test_negative_analyze_code(self, mock_call_ai_function):
@@ -31,7 +31,7 @@ class TestAnalyzeCode:
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
-            "Analyzes the given code and returns a list of suggestions for improvements."
+            "Analyzes the given code and returns a list of suggestions for improvements.",
         )
 
     def test_error_analyze_code(self, mock_call_ai_function):
@@ -43,7 +43,7 @@ class TestAnalyzeCode:
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
-            "Analyzes the given code and returns a list of suggestions for improvements."
+            "Analyzes the given code and returns a list of suggestions for improvements.",
         )
 
     def test_edge_analyze_code_empty_code(self, mock_call_ai_function):
@@ -55,5 +55,5 @@ class TestAnalyzeCode:
         mock_call_ai_function.assert_called_once_with(
             "def analyze_code(code: str) -> list[str]:",
             [code],
-            "Analyzes the given code and returns a list of suggestions for improvements."
+            "Analyzes the given code and returns a list of suggestions for improvements.",
         )
