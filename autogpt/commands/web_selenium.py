@@ -4,18 +4,20 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from sys import platform
-from typing import Optional
+from typing import Optional, Type
 
 from bs4 import BeautifulSoup
-from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
+from selenium.webdriver.chrome.webdriver import WebDriver as ChromeDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.firefox.service import Service as GeckoDriverService
+from selenium.webdriver.firefox.webdriver import WebDriver as FirefoxDriver
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.safari.options import Options as SafariOptions
+from selenium.webdriver.safari.webdriver import WebDriver as SafariDriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
@@ -28,6 +30,8 @@ from autogpt.memory.context import MemoryItem, NoMemory, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import summarize_text
 from autogpt.url_utils.validators import validate_url
+
+BrowserOptions = ChromeOptions | FirefoxOptions | SafariOptions
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
@@ -79,13 +83,13 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
     """
     logging.getLogger("selenium").setLevel(logging.CRITICAL)
 
-    options_available = {
+    options_available: dict[str, Type[BrowserOptions]] = {
         "chrome": ChromeOptions,
         "safari": SafariOptions,
         "firefox": FirefoxOptions,
     }
 
-    options = options_available[CFG.selenium_web_browser]()
+    options: BrowserOptions = options_available[CFG.selenium_web_browser]()
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
@@ -94,13 +98,13 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         if CFG.selenium_headless:
             options.headless = True
             options.add_argument("--disable-gpu")
-        driver = webdriver.Firefox(
+        driver = FirefoxDriver(
             service=GeckoDriverService(GeckoDriverManager().install()), options=options
         )
     elif CFG.selenium_web_browser == "safari":
         # Requires a bit more setup on the users end
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
-        driver = webdriver.Safari(options=options)
+        driver = SafariDriver(options=options)
     else:
         if platform == "linux" or platform == "linux2":
             options.add_argument("--disable-dev-shm-usage")
@@ -113,7 +117,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
 
         chromium_driver_path = Path("/usr/bin/chromedriver")
 
-        driver = webdriver.Chrome(
+        driver = ChromeDriver(
             service=ChromeDriverService(str(chromium_driver_path))
             if chromium_driver_path.exists()
             else ChromeDriverService(ChromeDriverManager().install()),
