@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 
 from autogpt.core.configuration import (
-    AgentConfiguration,
+    AgentSettings,
     Configurable,
     SystemConfiguration,
     SystemSettings,
@@ -58,16 +58,18 @@ class SimpleWorkspace(Configurable, Workspace):
         return self._configuration.restrict_to_workspace
 
     @staticmethod
-    def setup_workspace(
-        configuration: AgentConfiguration, logger: logging.Logger
-    ) -> Path:
+    def setup_workspace(settings: AgentSettings, logger: logging.Logger) -> Path:
         # TODO: Need to figure out some root directory for building agent workspaces.
-        ai_name = configuration.planner["ai_name"]
-        workspace_root = Path.home() / "auto-gpt" / ai_name
+        planning_config = settings.planning.configuration
+        agent_name = planning_config.agent_name
+        workspace_root = Path.home() / "auto-gpt" / agent_name
         workspace_root.mkdir(parents=True, exist_ok=True)
-        configuration.workspace["root"] = str(workspace_root)
-        with (workspace_root / "configuration.yml").open("w") as f:
-            yaml.safe_dump(configuration.to_dict(), f)
+
+        workspace_config = settings.workspace.configuration
+
+        workspace_config.root = str(workspace_root)
+        with (workspace_root / "agent_settings.yml").open("w") as f:
+            yaml.safe_dump(settings.dict(), f)
 
         # TODO: What are all the kinds of logs we want here?
         log_path = workspace_root / "logs"
@@ -78,10 +80,10 @@ class SimpleWorkspace(Configurable, Workspace):
         return workspace_root
 
     @staticmethod
-    def load_configuration(workspace_root: Path) -> AgentConfiguration:
+    def load_agent_settings(workspace_root: Path) -> AgentSettings:
         with (workspace_root / "configuration.yml").open("r") as f:
             configuration = yaml.safe_load(f)
-        return AgentConfiguration.parse_obj(configuration)
+        return AgentSettings.parse_obj(configuration)
 
     def get_path(self, relative_path: str | Path) -> Path:
         """Get the full path for an item in the workspace.

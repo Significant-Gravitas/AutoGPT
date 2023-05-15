@@ -1,8 +1,6 @@
 import abc
 from typing import Any
 
-from autogpt.core.configuration import SystemConfiguration
-
 
 class BudgetManager(abc.ABC):
     """The BudgetManager class is a manager for constrained resources."""

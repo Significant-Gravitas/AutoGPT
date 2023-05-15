@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from autogpt.core.configuration.schema import SystemSettings
 
 
-class AgentConfiguration(BaseModel):
+class AgentSettings(BaseModel):
     embedding_model: SystemSettings
     language_model: SystemSettings
     model_providers: dict[str, SystemSettings]
