@@ -38,17 +38,8 @@ def build_default_prompt_generator() -> PromptGenerator:
     )
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint(
-        'Exclusively use the commands listed in double quotes e.g. "command name"'
+        "Exclusively use the commands listed below e.g. command_name"
     )
-
-    # Define the command list
-    commands = [
-        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
-    ]
-
-    # Add commands to the PromptGenerator object
-    for command_label, command_name, args in commands:
-        prompt_generator.add_command(command_label, command_name, args)
 
     # Add resources to the PromptGenerator object
     prompt_generator.add_resource(
