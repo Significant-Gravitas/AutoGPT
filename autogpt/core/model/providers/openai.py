@@ -1,31 +1,27 @@
+import enum
 import functools
 import logging
 import time
-from typing import Callable, Literal, ParamSpec, TypeVar
+from typing import Callable, ParamSpec, TypeVar
 
 import openai
 from openai.error import APIError, RateLimitError
-from pydantic import SecretStr
+from pydantic import root_validator
 
-from autogpt.core.credentials.simple import (
-    CredentialsConsumer,
-)
-from autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-    Credentials,
-)
-from autogpt.core.model.embedding.base import (
+from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
+from autogpt.core.model.base import (
     Embedding,
     EmbeddingModelInfo,
     EmbeddingModelProvider,
     EmbeddingModelResponse,
-)
-from autogpt.core.model.language.base import (
     LanguageModelInfo,
     LanguageModelProvider,
     LanguageModelResponse,
+    ProviderName,
+)
+from autogpt.core.model.providers.base import (
+    ProviderCredentials,
+    ProviderModelCredentials,
 )
 from autogpt.core.planning import ModelPrompt
 
@@ -33,21 +29,31 @@ OpenAIChatParser = Callable[[str], dict]
 OpenAIEmbeddingParser = Callable[[list[float]], list[float]]
 
 
+class OpenAIModelNames(str, enum.Enum):
+    GPT3 = "gpt-3.5-turbo"
+    GPT4 = "gpt-4"
+    GPT4_32K = "gpt-4-32k"
+    ADA = "text-embedding-ada-002"
+
+
 OPEN_AI_LANGUAGE_MODELS = {
-    "gpt-3.5-turbo": LanguageModelInfo(
-        name="gpt-3.5-turbo",
+    OpenAIModelNames.GPT3: LanguageModelInfo(
+        name=OpenAIModelNames.GPT3,
+        provider_name=ProviderName.OPENAI,
         prompt_token_cost=0.002,
         completion_token_cost=0.002,
         max_tokens=4096,
     ),
-    "gpt-4": LanguageModelInfo(
-        name="gpt-4",
+    OpenAIModelNames.GPT4: LanguageModelInfo(
+        name=OpenAIModelNames.GPT4,
+        provider_name=ProviderName.OPENAI,
         prompt_token_cost=0.03,
         completion_token_cost=0.06,
         max_tokens=8192,
     ),
-    "gpt-4-32k": LanguageModelInfo(
-        name="gpt-4-32k",
+    OpenAIModelNames.GPT4_32K: LanguageModelInfo(
+        name=OpenAIModelNames.GPT4_32K,
+        provider_name=ProviderName.OPENAI,
         prompt_token_cost=0.06,
         completion_token_cost=0.12,
         max_tokens=32768,
@@ -55,8 +61,9 @@ OPEN_AI_LANGUAGE_MODELS = {
 }
 
 OPEN_AI_EMBEDDING_MODELS = {
-    "text-embedding-ada-002": EmbeddingModelInfo(
-        name="text-embedding-ada-002",
+    OpenAIModelNames.ADA: EmbeddingModelInfo(
+        name=OpenAIModelNames.ADA,
+        provider_name=ProviderName.OPENAI,
         prompt_token_cost=0.0004,
         completion_token_cost=0.0,
         max_tokens=8191,
@@ -70,37 +77,23 @@ OPEN_AI_MODELS = {
 }
 
 
-class AzureCredentials(Credentials):
-    use_azure: bool
-    api_type: str
-    api_base: str
-    api_version: str
-    deployment_ids: dict[str, SecretStr]
+class OpenAICredentials(ProviderCredentials):
+    use_azure: bool = False
 
-
-class OpenAICredentials(Credentials):
-    api_key: SecretStr
-    azure: AzureCredentials
-
-
-class ModelCredentials(Credentials):
-    api_key: SecretStr
-    api_type: str | None = None
-    api_base: str | None = None
-    api_version: str | None = None
-    deployment_id: SecretStr | None = None
-
-
-class OpenAIModelConfiguration(SystemConfiguration):
-    name: str
-    model_type: Literal["language", "embedding"]
-    max_tokens: int | None = None
-    temperature: float | None = None
+    @root_validator()
+    def validate_api_key(cls, values):
+        api_key = values.get("api_key")
+        models = values.get("models").dict()
+        if api_key is None:
+            for model, credentials in models.items():
+                if credentials.api_key is None:
+                    raise ValueError(
+                        f"Either api_key for the provider or api_key for model {model} must be provided."
+                    )
 
 
 class OpenAIConfiguration(SystemConfiguration):
     retries_per_request: int
-    models: dict[str, OpenAIModelConfiguration]
 
 
 class OpenAIProvider(
@@ -113,38 +106,12 @@ class OpenAIProvider(
         description="Provides access to OpenAI's API.",
         configuration=OpenAIConfiguration(
             retries_per_request=10,
-            models={
-                "fast_model": OpenAIModelConfiguration(
-                    name="gpt-3.5-turbo",
-                    model_type="language",
-                    max_tokens=100,
-                    temperature=0.9,
-                ),
-                "smart_model": OpenAIModelConfiguration(
-                    name="gpt-4",
-                    model_type="language",
-                    max_tokens=100,
-                    temperature=0.9,
-                ),
-                "embedding_model": OpenAIModelConfiguration(
-                    name="text-embedding-ada-002",
-                    model_type="embedding",
-                ),
-            },
         ),
         credentials=OpenAICredentials(
-            api_key="YOUR_API_KEY",
-            azure=AzureCredentials(
-                use_azure=False,
-                api_type="azure",
-                api_base="YOUR_AZURE_API_BASE",
-                api_version="YOUR_AZURE_API_VERSION",
-                deployment_ids={
-                    "fast_model": "YOUR_FAST_LLM_MODEL_DEPLOYMENT_ID",
-                    "smart_model": "YOUR_SMART_LLM_MODEL_DEPLOYMENT_ID",
-                    "embedding_model": "YOUR_EMBEDDING_MODEL_DEPLOYMENT_ID",
-                },
-            ),
+            models={
+                OpenAIModelNames.GPT3: ProviderModelCredentials(),
+                OpenAIModelNames.ADA: ProviderModelCredentials(),
+            },
         ),
     )
 
@@ -155,7 +122,10 @@ class OpenAIProvider(
         logger: logging.Logger,
     ):
         self._configuration = configuration
-        self._credentials = self._parse_credentials(credentials, models=list(configuration.models))
+        # Resolve global credentials with model specific credentials
+        self._model_credentials: dict[
+            str, ProviderModelCredentials
+        ] = credentials.get_model_credentials()
         self._logger = logger
 
         retry_handler = _OpenAIRetryHandler(
@@ -169,7 +139,7 @@ class OpenAIProvider(
     async def create_language_completion(
         self,
         model_prompt: ModelPrompt,
-        model_name: str,
+        model_name: OpenAIModelNames,
         completion_parser: Callable[[str], dict],
         **kwargs,
     ) -> LanguageModelResponse:
@@ -190,7 +160,7 @@ class OpenAIProvider(
     async def create_embedding(
         self,
         text: str,
-        model_name: str,
+        model_name: OpenAIModelNames,
         embedding_parser: Callable[[Embedding], Embedding],
         **kwargs,
     ) -> EmbeddingModelResponse:
@@ -209,30 +179,7 @@ class OpenAIProvider(
                 embedding=embedding_parser(response.embeddings[0]),
             )
 
-    @staticmethod
-    def _parse_credentials(
-        raw_credentials: OpenAICredentials,
-        models: list[str],
-    ) -> dict[str, ModelCredentials]:
-        """Get the credentials for the OpenAI API."""
-        parsed_credentials = {}
-        for model in models:
-            model_credentials = {
-                "api_key": raw_credentials.api_key,
-            }
-            azure_config = raw_credentials.azure
-            if azure_config.use_azure:
-                model_credentials = {
-                    **model_credentials,
-                    "api_base": azure_config.api_base,
-                    "api_version": azure_config.api_version,
-                    "deployment_id": azure_config.deployment_ids[model],
-                }
-            parsed_credentials[model] = ModelCredentials.parse_obj(model_credentials)
-
-        return parsed_credentials
-
-    def _get_completion_kwargs(self, model: str, **kwargs) -> dict:
+    def _get_completion_kwargs(self, model_name: OpenAIModelNames, **kwargs) -> dict:
         """Get kwargs for completion API call.
 
         Args:
@@ -243,22 +190,17 @@ class OpenAIProvider(
             The kwargs for the chat API call.
 
         """
-        model_config = self._configuration.models[model]
         completion_kwargs = {
-            "model": model_config.name,
-            "max_tokens": kwargs.pop("max_tokens", model_config.max_tokens),
-            "temperature": kwargs.pop("temperature", model_config.temperature),
-            **self._credentials[model],
+            "model": model_name,
+            **kwargs,
+            **self._model_credentials[model_name],
         }
-
-        if kwargs:
-            raise ValueError(f"Unexpected keyword arguments: {kwargs.keys()}")
 
         return completion_kwargs
 
     def _get_embedding_kwargs(
         self,
-        model: str,
+        model_name: OpenAIModelNames,
         **kwargs,
     ) -> dict:
         """Get kwargs for embedding API call.
@@ -271,14 +213,11 @@ class OpenAIProvider(
             The kwargs for the embedding API call.
 
         """
-        model_config = self._configuration.models[model]
         embedding_kwargs = {
-            "model": model_config["name"],
-            **self._credentials[model],
+            "model": model_name,
+            **kwargs,
+            **self._model_credentials[model_name],
         }
-
-        if kwargs:
-            raise ValueError(f"Unexpected keyword arguments: {kwargs.keys()}")
 
         return embedding_kwargs
 

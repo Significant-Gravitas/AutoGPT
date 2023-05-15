@@ -1,40 +1,77 @@
+import enum
 import logging
 import re
 
-from autogpt.core.configuration import (
-    Configurable,
-    SystemConfiguration,
-    SystemSettings,
-)
-from autogpt.core.model.language.base import (
+from pydantic import Field
+
+from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
+from autogpt.core.model.base import (
     LanguageModel,
     LanguageModelProvider,
     LanguageModelResponse,
+    ModelConfiguration,
+    ProviderName,
 )
+from autogpt.core.model.providers.openai import OpenAIModelNames
 from autogpt.core.planning import ModelPrompt
+
+
+class LanguageModelClassification(str, enum.Enum):
+    """The LanguageModelClassification is a functional description of the model.
+
+    This is used to determine what kind of model to use for a given prompt.
+    Sometimes we prefer a faster or cheaper model to accomplish a task when
+    possible.
+
+    """
+
+    FAST_MODEL: str = "fast_model"
+    SMART_MODEL: str = "smart_model"
 
 
 class LanguageModelConfiguration(SystemConfiguration):
     """Configuration for the language model."""
 
+    models: dict[LanguageModelClassification, ModelConfiguration] = Field(
+        default_factory=dict
+    )
+
 
 class SimpleLanguageModel(LanguageModel, Configurable):
-
     defaults = SystemSettings(
         name="simple_language_model",
         description="A simple language model.",
-        configuration=LanguageModelConfiguration(),
+        configuration=LanguageModelConfiguration(
+            models={
+                LanguageModelClassification.FAST_MODEL: ModelConfiguration(
+                    name=OpenAIModelNames.GPT3,
+                    provider_name=ProviderName.OPENAI,
+                    max_tokens=100,
+                    temperature=0.9,
+                ),
+                LanguageModelClassification.SMART_MODEL: ModelConfiguration(
+                    name=OpenAIModelNames.GPT3,
+                    provider_name=ProviderName.OPENAI,
+                    max_tokens=100,
+                    temperature=0.9,
+                ),
+            },
+        ),
     )
 
     def __init__(
         self,
         configuration: LanguageModelConfiguration,
         logger: logging.Logger,
-        model_provider: LanguageModelProvider,
+        model_providers: dict[ProviderName, LanguageModelProvider],
     ):
         self._configuration = configuration
         self._logger = logger
-        self._provider = model_provider
+
+        # Map model classifications to model providers
+        self._providers: dict[LanguageModelClassification, LanguageModelProvider] = {}
+        for model, model_config in self._configuration.models.items():
+            self._providers[model] = model_providers[model_config.provider_name]
 
     async def determine_agent_objective(
         self,
@@ -50,10 +87,12 @@ class SimpleLanguageModel(LanguageModel, Configurable):
             The response from the language model.
 
         """
-        model = "fast_model"
-        return await self._provider.create_language_completion(
+        model_classification = LanguageModelClassification.FAST_MODEL
+        model_config = self._configuration.models[model_classification]
+        provider = self._providers[model_classification]
+        return await provider.create_language_completion(
             model_prompt=objective_prompt,
-            model_name=model,
+            **model_config.dict(exclude_none=True),
             completion_parser=self._parse_agent_objective_model_response,
         )
 
@@ -62,10 +101,12 @@ class SimpleLanguageModel(LanguageModel, Configurable):
         planning_prompt: ModelPrompt,
         **kwargs,
     ) -> LanguageModelResponse:
-        model = "fast_model"
-        return await self._provider.create_language_completion(
+        model_classification = LanguageModelClassification.FAST_MODEL
+        model_name = self._configuration.models[model_classification].name
+        provider = self._providers[model_classification]
+        return await provider.create_language_completion(
             model_prompt=planning_prompt,
-            model_name=model,
+            model_name=model_name,
             completion_parser=self._parse_agent_action_model_response,
         )
 
@@ -74,10 +115,12 @@ class SimpleLanguageModel(LanguageModel, Configurable):
         self_feedback_prompt: ModelPrompt,
         **kwargs,
     ) -> LanguageModelResponse:
-        model = "fast_model"
-        return await self._provider.create_language_completion(
+        model_classification = LanguageModelClassification.FAST_MODEL
+        model_name = self._configuration.models[model_classification].name
+        provider = self._providers[model_classification]
+        return await provider.create_language_completion(
             model_prompt=self_feedback_prompt,
-            model_name=model,
+            model_name=model_name,
             completion_parser=self._parse_agent_feedback_model_response,
         )
 

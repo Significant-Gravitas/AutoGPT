@@ -1,10 +1,6 @@
 import logging
 
-from autogpt.core.configuration import (
-    SystemSettings,
-    SystemConfiguration,
-    Configurable,
-)
+from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.planning.base import (
     ModelMessage,
     ModelPrompt,
@@ -58,6 +54,7 @@ DEFAULT_OBJECTIVE_USER_PROMPT_TEMPLATE = (
 
 class PlannerConfiguration(SystemConfiguration):
     """Configuration for the Planner subsystem."""
+
     agent_name: str
     agent_role: str
     agent_goals: list[str]
@@ -80,14 +77,14 @@ class SimplePlanner(Planner, Configurable):
                 "Grow Twitter Account",
                 "Develop and manage multiple businesses autonomously",
             ],
-        )
+        ),
     )
 
     def __init__(
         self,
         configuration: PlannerConfiguration,
         logger: logging.Logger = None,  # Logger is not available during bootstrapping.
-        workspace: Workspace = None,    # Workspace is not available during bootstrapping.
+        workspace: Workspace = None,  # Workspace is not available during bootstrapping.
     ) -> None:
         self._configuration = configuration
         self._logger = logger

@@ -1,10 +1,12 @@
 import abc
 import dataclasses
+import enum
 from typing import Type
+
+from pydantic import BaseModel
 
 from autogpt.core.budget import BudgetManager
 from autogpt.core.command import Command, CommandRegistry
-from autogpt.core.credentials import CredentialsService
 from autogpt.core.memory import MemoryBackend
 from autogpt.core.model import EmbeddingModel, LanguageModel
 from autogpt.core.planning import Planner
@@ -14,7 +16,6 @@ PluginType = (
     Type[BudgetManager]  # Swappable maybe never (think about budgets for resources)
     | Type[Command]  # Swappable now
     | Type[CommandRegistry]  # Swappable maybe never
-    | Type[CredentialsService]  # Swappable never
     | Type[EmbeddingModel]  # Swappable soon
     | Type[LanguageModel]  # Swappable soon
     | Type[MemoryBackend]  # Swappable now
@@ -25,7 +26,6 @@ Plugin = (
     BudgetManager
     | Command
     | CommandRegistry
-    | CredentialsService
     | EmbeddingModel
     | LanguageModel
     | MemoryBackend
@@ -33,7 +33,7 @@ Plugin = (
 )
 
 
-class PluginStorageFormat(str):
+class PluginStorageFormat(enum.Enum, str):
     """Supported plugin storage formats.
 
     Plugins can be stored at one of these supported locations.
@@ -88,8 +88,7 @@ class PluginStorageFormat(str):
 PluginStorageRoute = str
 
 
-@dataclasses.dataclass
-class PluginLocation:
+class PluginLocation(BaseModel):
     """A plugin location.
 
     This is a combination of a plugin storage format and a plugin storage route.
@@ -101,8 +100,7 @@ class PluginLocation:
     storage_route: PluginStorageRoute
 
 
-@dataclasses.dataclass
-class PluginMetadata:
+class PluginMetadata(BaseModel):
     """Metadata about a plugin."""
 
     name: str

@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel
 
 
-class ModelRole(enum.Enum, str):
+class ModelRole(str, enum.Enum):
     USER = "user"
     SYSTEM = "system"
     ASSISTANT = "assistant"

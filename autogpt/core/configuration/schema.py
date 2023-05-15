@@ -24,8 +24,9 @@ class SystemSettings(BaseModel):
     credentials: Credentials | None = None
 
 
-class Configurable(BaseModel, abc.ABC):
+class Configurable(abc.ABC):
     """A base class for all configurable objects."""
+
     defaults: typing.ClassVar[SystemSettings]
 
     @classmethod
@@ -35,5 +36,3 @@ class Configurable(BaseModel, abc.ABC):
         final_configuration = cls.defaults.dict()
         final_configuration.update(configuration)
         return cls.defaults.__class__.parse_obj(configuration)
-
-

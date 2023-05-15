@@ -13,18 +13,15 @@ from autogpt.core.workspace.base import Workspace
 
 
 class WorkspaceConfiguration(SystemConfiguration):
-    root: str
-    restrict_to_workspace: bool
+    root: str = ""
+    restrict_to_workspace: bool = True
 
 
 class SimpleWorkspace(Configurable, Workspace):
     defaults = SystemSettings(
         name="workspace",
         description="The workspace is the root directory for all agent activity.",
-        configuration=WorkspaceConfiguration(
-            root=None,
-            restrict_to_workspace=True,
-        ),
+        configuration=WorkspaceConfiguration(),
     )
 
     NULL_BYTES = ["\0", "\000", "\x00", r"\z", "\u0000", "%00"]
@@ -58,7 +55,9 @@ class SimpleWorkspace(Configurable, Workspace):
         return self._configuration.restrict_to_workspace
 
     @staticmethod
-    def setup_workspace(configuration: AgentConfiguration, logger: logging.Logger) -> Path:
+    def setup_workspace(
+        configuration: AgentConfiguration, logger: logging.Logger
+    ) -> Path:
         # TODO: Need to figure out some root directory for building agent workspaces.
         ai_name = configuration.planner["ai_name"]
         workspace_root = Path.home() / "auto-gpt" / ai_name

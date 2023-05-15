@@ -55,10 +55,6 @@ class MessageEmitter(abc.ABC):
     """
 
     @abc.abstractmethod
-    def __init__(self, *args, **kwargs):
-        ...
-
-    @abc.abstractmethod
     def send_message(self, content: MessageContent, **extra_metadata) -> bool:
         """Send a message on this channel.
 
@@ -79,10 +75,6 @@ class MessageEmitter(abc.ABC):
 
 class MessageChannel(abc.ABC):
     """Interface for a channel that can propagate messages to a group of listeners."""
-
-    @abc.abstractmethod
-    def __init__(self, *args, **kwargs):
-        ...
 
     @abc.abstractmethod
     def add_listener(
@@ -122,10 +114,6 @@ class MessageChannel(abc.ABC):
 
 class MessageBroker(abc.ABC):
     """Interface for a broker that can create message channels and propagate messages."""
-
-    @abc.abstractmethod
-    def __init__(self, *args, **kwargs):
-        ...
 
     @abc.abstractmethod
     def create_message_channel(

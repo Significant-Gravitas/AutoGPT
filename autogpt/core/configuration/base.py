@@ -2,20 +2,26 @@ import typing
 
 from pydantic import BaseModel
 
-
 if typing.TYPE_CHECKING:
     # These are all cyclic imports, so we need to use strings.
-    from autogpt.core.workspace.simple import WorkspaceConfiguration
+
+    from autogpt.core.model import (
+        EmbeddingModelConfiguration,
+        LanguageModelConfiguration,
+        Prov,
+    )
+    from autogpt.core.planning import PlannerConfiguration
+    from autogpt.core.workspace import WorkspaceConfiguration
 
 
 class AgentConfiguration(BaseModel):
-
+    embedding_mode: "EmbeddingModelConfiguration"
+    language_model: "LanguageModelConfiguration"
+    model_provider: dict[str, "OpenAIConfiguration"]
+    planning: "PlannerConfiguration"
     workspace: "WorkspaceConfiguration"
 
-    class Config:
-        extra = "forbid"
-        allow_mutation = False
-        validate_assignment = True
+
 #
 # class AgentConfiguration(abc.ABC):
 #     @abc.abstractmethod

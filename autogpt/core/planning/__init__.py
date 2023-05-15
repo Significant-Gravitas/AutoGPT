@@ -7,6 +7,7 @@ from autogpt.core.planning.base import (
     PlanningPromptContext,
     SelfFeedbackPromptContext,
 )
+from autogpt.core.planning.simple import PlannerConfiguration, SimplePlanner
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(
