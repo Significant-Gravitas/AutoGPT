@@ -1,5 +1,12 @@
 """The configuration encapsulates settings for all Agent subsystems."""
-from autogpt.core.configuration.base import Configuration
+from autogpt.core.configuration.base import AgentConfiguration
+from autogpt.core.configuration.schema import (
+    Credentials,
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+)
+
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(

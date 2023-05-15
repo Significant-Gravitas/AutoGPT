@@ -1,69 +1,85 @@
-import abc
+import typing
+
+from pydantic import BaseModel
 
 
-class Configuration(abc.ABC):
-    @abc.abstractmethod
-    def __init__(self, *arg, **kwargs):
-        pass
+if typing.TYPE_CHECKING:
+    # These are all cyclic imports, so we need to use strings.
+    from autogpt.core.workspace.simple import WorkspaceConfiguration
 
-    @property
-    @abc.abstractmethod
-    def system(self):
-        pass
 
-    @property
-    @abc.abstractmethod
-    def budget_manager(self):
-        pass
+class AgentConfiguration(BaseModel):
 
-    @property
-    @abc.abstractmethod
-    def command_registry(self):
-        pass
+    workspace: "WorkspaceConfiguration"
 
-    @property
-    @abc.abstractmethod
-    def credentials(self):
-        pass
-
-    @property
-    @abc.abstractmethod
-    def language_model(self):
-        pass
-
-    @property
-    @abc.abstractmethod
-    def memory_backend(self):
-        pass
-
-    @property
-    @abc.abstractmethod
-    def message_broker(self):
-        pass
-
-    @property
-    @abc.abstractmethod
-    def planner(self):
-        pass
-
-    @property
-    @abc.abstractmethod
-    def plugin_manager(self):
-        pass
-
-    @property
-    @abc.abstractmethod
-    def workspace(self):
-        pass
-
-    @abc.abstractmethod
-    def to_dict(self):
-        pass
-
-    @abc.abstractmethod
-    def from_dict(self):
-        pass
-
-    @abc.abstractmethod
-    def __repr__(self):
-        pass
+    class Config:
+        extra = "forbid"
+        allow_mutation = False
+        validate_assignment = True
+#
+# class AgentConfiguration(abc.ABC):
+#     @abc.abstractmethod
+#     def __init__(self, *arg, **kwargs):
+#         pass
+#
+#     @property
+#     @abc.abstractmethod
+#     def system(self):
+#         pass
+#
+#     @property
+#     @abc.abstractmethod
+#     def budget_manager(self):
+#         pass
+#
+#     @property
+#     @abc.abstractmethod
+#     def command_registry(self):
+#         pass
+#
+#     @property
+#     @abc.abstractmethod
+#     def credentials(self):
+#         pass
+#
+#     @property
+#     @abc.abstractmethod
+#     def language_model(self):
+#         pass
+#
+#     @property
+#     @abc.abstractmethod
+#     def memory_backend(self):
+#         pass
+#
+#     @property
+#     @abc.abstractmethod
+#     def message_broker(self):
+#         pass
+#
+#     @property
+#     @abc.abstractmethod
+#     def planner(self):
+#         pass
+#
+#     @property
+#     @abc.abstractmethod
+#     def plugin_manager(self):
+#         pass
+#
+#     @property
+#     @abc.abstractmethod
+#     def workspace(self):
+#         pass
+#
+#     @abc.abstractmethod
+#     def to_dict(self):
+#         pass
+#
+#     @abc.abstractmethod
+#     def from_dict(self):
+#         pass
+#
+#     @abc.abstractmethod
+#     def __repr__(self):
+#         pass
