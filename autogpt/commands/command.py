@@ -65,7 +65,9 @@ class CommandRegistry:
 
     def register(self, cmd: Command) -> None:
         if cmd.name in self.commands:
-            logger.warn(f"Command '{cmd.name}' already registered and will be overwritten!")
+            logger.warn(
+                f"Command '{cmd.name}' already registered and will be overwritten!"
+            )
         self.commands[cmd.name] = cmd
 
     def unregister(self, command_name: str):
