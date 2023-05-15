@@ -3,31 +3,29 @@ import logging
 from autogpt.core.configuration import Configurable, SystemSettings
 from autogpt.core.model.base import (
     EmbeddingModel,
-    EmbeddingModelProvider,
     EmbeddingModelResponse,
     ModelConfiguration,
-    ProviderName,
 )
-from autogpt.core.model.providers.openai import OpenAIModelNames
-
-
-class EmbeddingModelConfiguration(ModelConfiguration):
-    """Configuration for the embedding model."""
+from autogpt.core.resource.model_providers import (
+    EmbeddingModelProvider,
+    ModelProviderName,
+    OpenAIModelName,
+)
 
 
 class SimpleEmbeddingModel(EmbeddingModel, Configurable):
     defaults = SystemSettings(
         name="simple_embedding_model",
         description="A simple embedding model.",
-        configuration=EmbeddingModelConfiguration(
-            name=OpenAIModelNames.ADA,
-            provider_name=ProviderName.OPENAI,
+        configuration=ModelConfiguration(
+            name=OpenAIModelName.ADA,
+            provider_name=ModelProviderName.OPENAI,
         ),
     )
 
     def __init__(
         self,
-        configuration: EmbeddingModelConfiguration,
+        configuration: ModelConfiguration,
         logger: logging.Logger,
         model_provider: EmbeddingModelProvider,
     ):
@@ -45,8 +43,9 @@ class SimpleEmbeddingModel(EmbeddingModel, Configurable):
             The response from the embedding model.
 
         """
-        return await self._model_provider.create_embedding(
+        response = await self._model_provider.create_embedding(
             text,
             model_name="embedding_model",
             embedding_parser=lambda x: x,
         )
+        return EmbeddingModelResponse.parse_obj(response.dict())

@@ -1,38 +1,21 @@
 import abc
 import typing
 
-from pydantic import BaseModel, SecretField
+from pydantic import BaseModel
 
 
 class SystemConfiguration(BaseModel):
+    """A base class for all system configuration."""
+
     pass
 
 
-class Credentials(SystemConfiguration):
-    class Config:
-        json_encoders = {
-            SecretField: lambda v: v.get_secret_value() if v else None,
-        }
-
-
-class ResourceBudget(SystemConfiguration):
-    total_budget: float
-    total_cost: float
-    remaining_budget: float
-    usage: typing.Any
-
-    @abc.abstractmethod
-    def update_usage_and_cost(self, *args, **kwargs) -> None:
-        """Update the usage and cost of the resource."""
-        ...
-
-
 class SystemSettings(BaseModel):
+    """A base class for all system settings."""
+
     name: str
     description: str
     configuration: SystemConfiguration | None = None
-    credentials: Credentials | None = None
-    budget: ResourceBudget | None = None
 
 
 class Configurable(abc.ABC):

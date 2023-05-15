@@ -2,18 +2,18 @@ import enum
 import logging
 import re
 
-from pydantic import Field
-
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.model.base import (
     LanguageModel,
-    LanguageModelProvider,
     LanguageModelResponse,
     ModelConfiguration,
-    ProviderName,
 )
-from autogpt.core.model.providers.openai import OpenAIModelNames
 from autogpt.core.planning import ModelPrompt
+from autogpt.core.resource.model_providers import (
+    LanguageModelProvider,
+    ModelProviderName,
+    OpenAIModelName,
+)
 
 
 class LanguageModelClassification(str, enum.Enum):
@@ -42,14 +42,14 @@ class SimpleLanguageModel(LanguageModel, Configurable):
         configuration=LanguageModelConfiguration(
             models={
                 LanguageModelClassification.FAST_MODEL: ModelConfiguration(
-                    name=OpenAIModelNames.GPT3,
-                    provider_name=ProviderName.OPENAI,
+                    name=OpenAIModelName.GPT3,
+                    provider_name=ModelProviderName.OPENAI,
                     max_tokens=100,
                     temperature=0.9,
                 ),
                 LanguageModelClassification.SMART_MODEL: ModelConfiguration(
-                    name=OpenAIModelNames.GPT3,
-                    provider_name=ProviderName.OPENAI,
+                    name=OpenAIModelName.GPT3,
+                    provider_name=ModelProviderName.OPENAI,
                     max_tokens=100,
                     temperature=0.9,
                 ),
@@ -61,7 +61,7 @@ class SimpleLanguageModel(LanguageModel, Configurable):
         self,
         configuration: LanguageModelConfiguration,
         logger: logging.Logger,
-        model_providers: dict[ProviderName, LanguageModelProvider],
+        model_providers: dict[ModelProviderName, LanguageModelProvider],
     ):
         self._configuration = configuration
         self._logger = logger
@@ -88,11 +88,12 @@ class SimpleLanguageModel(LanguageModel, Configurable):
         model_classification = LanguageModelClassification.FAST_MODEL
         model_config = self._configuration.models[model_classification]
         provider = self._providers[model_classification]
-        return await provider.create_language_completion(
+        response = await provider.create_language_completion(
             model_prompt=objective_prompt,
             **model_config.dict(exclude_none=True),
             completion_parser=self._parse_agent_objective_model_response,
         )
+        return LanguageModelResponse.parse_obj(response.dict())
 
     async def plan_next_action(
         self,
@@ -102,11 +103,13 @@ class SimpleLanguageModel(LanguageModel, Configurable):
         model_classification = LanguageModelClassification.FAST_MODEL
         model_name = self._configuration.models[model_classification].name
         provider = self._providers[model_classification]
-        return await provider.create_language_completion(
+        response = await provider.create_language_completion(
             model_prompt=planning_prompt,
             model_name=model_name,
             completion_parser=self._parse_agent_action_model_response,
         )
+
+        return LanguageModelResponse.parse_obj(response.dict())
 
     async def get_self_feedback(
         self,
@@ -116,11 +119,13 @@ class SimpleLanguageModel(LanguageModel, Configurable):
         model_classification = LanguageModelClassification.FAST_MODEL
         model_name = self._configuration.models[model_classification].name
         provider = self._providers[model_classification]
-        return await provider.create_language_completion(
+        response = await provider.create_language_completion(
             model_prompt=self_feedback_prompt,
             model_name=model_name,
             completion_parser=self._parse_agent_feedback_model_response,
         )
+
+        return LanguageModelResponse.parse_obj(response.dict())
 
     @staticmethod
     def _parse_agent_objective_model_response(

@@ -1,22 +1,4 @@
 """The language model acts as the core intelligence of the Agent."""
-from autogpt.core.model.base import (
-    Embedding,
-    EmbeddingModel,
-    EmbeddingModelInfo,
-    EmbeddingModelProvider,
-    EmbeddingModelResponse,
-    LanguageModel,
-    LanguageModelInfo,
-    LanguageModelProvider,
-    LanguageModelResponse,
-    Model,
-    ModelConfiguration,
-    ModelInfo,
-    ModelProvider,
-    ModelResponse,
-    ModelService,
-    ProviderName,
-)
 from autogpt.core.model.embedding import (
     EmbeddingModelConfiguration,
     SimpleEmbeddingModel,

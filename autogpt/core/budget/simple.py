@@ -2,12 +2,7 @@ import logging
 from typing import Any
 
 from autogpt.core.budget.base import BudgetManager
-from autogpt.core.configuration import (
-    Configurable,
-    ResourceBudget,
-    SystemConfiguration,
-    SystemSettings,
-)
+from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 
 
 class BudgetConfiguration(SystemConfiguration):
