@@ -1,54 +1,41 @@
 import abc
-from dataclasses import dataclass
-from typing import Any, List
+import enum
+from typing import Any
 
-from autogpt.core.configuration.base import Configuration
-from autogpt.core.workspace.base import Workspace
+from pydantic import BaseModel
 
 
-class ModelRole(str):
+class ModelRole(enum.Enum, str):
     USER = "user"
     SYSTEM = "system"
     ASSISTANT = "assistant"
 
 
-@dataclass
-class ModelMessage:
+class ModelMessage(BaseModel):
     role: ModelRole
     content: str
 
-    def to_dict(self):
-        return {"role": self.role, "content": self.content}
+
+ModelPrompt = list[ModelMessage]
 
 
-ModelPrompt = List[ModelMessage]
-
-
-@dataclass
-class PlanningPromptContext:
+class PlanningPromptContext(BaseModel):
     progress: Any  # To be defined (maybe here, as this might be a good place for summarization)
     last_command_result: Any  # To be defined in the command interface
     memories: Any  # List[Memory] # To be defined in the memory interface
     user_feedback: Any  # Probably just a raw string
 
 
-@dataclass
-class SelfFeedbackPromptContext:
+class SelfFeedbackPromptContext(BaseModel):
     # Using existing args here
     reasoning: str
-    plan: List[str]
+    plan: list[str]
     thoughts: str
     criticism: str
 
 
 class Planner(abc.ABC):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
-
-    configuration_defaults = {"planner": {}}
-
-    @abc.abstractmethod
-    def __init__(self, *args, **kwargs):
-        ...
 
     @staticmethod
     @abc.abstractmethod

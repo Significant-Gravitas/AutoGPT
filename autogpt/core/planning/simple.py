@@ -1,4 +1,10 @@
-from autogpt.core.configuration import Configuration
+import logging
+
+from autogpt.core.configuration import (
+    SystemSettings,
+    SystemConfiguration,
+    Configurable,
+)
 from autogpt.core.planning.base import (
     ModelMessage,
     ModelPrompt,
@@ -50,30 +56,42 @@ DEFAULT_OBJECTIVE_USER_PROMPT_TEMPLATE = (
 )
 
 
-class SimplePlanner(Planner):
+class PlannerConfiguration(SystemConfiguration):
+    """Configuration for the Planner subsystem."""
+    agent_name: str
+    agent_role: str
+    agent_goals: list[str]
+
+
+class SimplePlanner(Planner, Configurable):
     """Manages the agent's planning and goal-setting by constructing language model prompts."""
 
-    configuration_defaults = {
-        "planner": {
-            "ai_name": "Entrepreneur-GPT",
-            "ai_role": (
+    defaults = SystemSettings(
+        name="planner",
+        description="Manages the agent's planning and goal-setting by constructing language model prompts.",
+        configuration=PlannerConfiguration(
+            agent_name="Entrepreneur-GPT",
+            agent_role=(
                 "An AI designed to autonomously develop and run businesses with "
                 "the sole goal of increasing your net worth."
             ),
-            "ai_goals": [
+            agent_goals=[
                 "Increase net worth",
                 "Grow Twitter Account",
                 "Develop and manage multiple businesses autonomously",
             ],
-        }
-    }
+        )
+    )
 
     def __init__(
         self,
-        configuration: Configuration,
-        workspace: Workspace = None,  # Workspace is not available during bootstrapping.
+        configuration: PlannerConfiguration,
+        logger: logging.Logger = None,  # Logger is not available during bootstrapping.
+        workspace: Workspace = None,    # Workspace is not available during bootstrapping.
     ) -> None:
-        self._configuration = configuration.planner
+        self._configuration = configuration
+        self._logger = logger
+        self._workspace = workspace
 
     @staticmethod
     def construct_objective_prompt_from_user_input(user_objective: str) -> ModelPrompt:

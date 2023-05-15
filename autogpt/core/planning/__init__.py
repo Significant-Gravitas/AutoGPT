@@ -15,5 +15,6 @@ status = Status(
     handoff_notes=(
         "Before times: Interface has been created. Basic example needs to be created.\n"
         "5/10: SimplePlanner started and has an implementation for the objective prompt, which is all we need for bootstrapping.\n"
+        "5/14: Use pydantic models for configuration.\n"
     ),
 )
