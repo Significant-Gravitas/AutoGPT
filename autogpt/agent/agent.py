@@ -61,8 +61,8 @@ class Agent:
         system_prompt,
         triggering_prompt,
         workspace_directory,
+        cfg,
     ):
-        cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
         self.summary_memory = (
@@ -79,10 +79,10 @@ class Agent:
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
+        self.cfg = cfg
 
     def start_interaction_loop(self):
         # Interaction Loop
-        cfg = Config()
         self.cycle_count = 0
         command_name = None
         arguments = None
@@ -100,12 +100,14 @@ class Agent:
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
             if (
-                cfg.continuous_mode
-                and cfg.continuous_limit > 0
-                and self.cycle_count > cfg.continuous_limit
+                self.cfg.continuous_mode
+                and self.cfg.continuous_limit > 0
+                and self.cycle_count > self.cfg.continuous_limit
             ):
                 logger.typewriter_log(
-                    "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
+                    "Continuous Limit Reached: ",
+                    Fore.YELLOW,
+                    f"{self.cfg.continuous_limit}",
                 )
                 break
             # Send message to AI, get response
@@ -116,11 +118,11 @@ class Agent:
                     self.triggering_prompt,
                     self.full_message_history,
                     self.memory,
-                    cfg.fast_token_limit,
+                    self.cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
-            for plugin in cfg.plugins:
+            for plugin in self.cfg.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
                 assistant_reply_json = plugin.post_planning(assistant_reply_json)
@@ -131,10 +133,10 @@ class Agent:
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, cfg.speak_mode
+                        self.ai_name, assistant_reply_json, self.cfg.speak_mode
                     )
                     command_name, arguments = get_command(assistant_reply_json)
-                    if cfg.speak_mode:
+                    if self.cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
 
                     arguments = self._resolve_pathlike_command_args(arguments)
@@ -156,7 +158,7 @@ class Agent:
                 f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
             )
 
-            if not cfg.continuous_mode and self.next_action_count == 0:
+            if not self.cfg.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -167,13 +169,13 @@ class Agent:
                     f"{self.ai_name}..."
                 )
                 while True:
-                    if cfg.chat_messages_enabled:
+                    if self.cfg.chat_messages_enabled:
                         console_input = clean_input("Waiting for your response...")
                     else:
                         console_input = clean_input(
                             Fore.MAGENTA + "Input:" + Style.RESET_ALL
                         )
-                    if console_input.lower().strip() == cfg.authorise_key:
+                    if console_input.lower().strip() == self.cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().strip() == "s":
@@ -184,7 +186,7 @@ class Agent:
                         )
                         thoughts = assistant_reply_json.get("thoughts", {})
                         self_feedback_resp = self.get_self_feedback(
-                            thoughts, cfg.fast_llm_model
+                            thoughts, self.cfg.fast_llm_model
                         )
                         logger.typewriter_log(
                             f"SELF FEEDBACK: {self_feedback_resp}",
@@ -197,7 +199,9 @@ class Agent:
                     elif console_input.lower().strip() == "":
                         logger.warn("Invalid input format.")
                         continue
-                    elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
+                    elif console_input.lower().startswith(
+                        f"{self.cfg.authorise_key} -"
+                    ):
                         try:
                             self.next_action_count = abs(
                                 int(console_input.split(" ")[1])
@@ -210,7 +214,7 @@ class Agent:
                             )
                             continue
                         break
-                    elif console_input.lower() == cfg.exit_key:
+                    elif console_input.lower() == self.cfg.exit_key:
                         user_input = "EXIT"
                         break
                     else:
@@ -250,7 +254,7 @@ class Agent:
             elif command_name == "self_feedback":
                 result = f"Self feedback: {user_input}"
             else:
-                for plugin in cfg.plugins:
+                for plugin in self.cfg.plugins:
                     if not plugin.can_handle_pre_command():
                         continue
                     command_name, arguments = plugin.pre_command(
@@ -265,16 +269,16 @@ class Agent:
                 result = f"Command {command_name} returned: " f"{command_result}"
 
                 result_tlength = count_string_tokens(
-                    str(command_result), cfg.fast_llm_model
+                    str(command_result), self.cfg.fast_llm_model
                 )
                 memory_tlength = count_string_tokens(
-                    str(self.summary_memory), cfg.fast_llm_model
+                    str(self.summary_memory), self.cfg.fast_llm_model
                 )
-                if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
+                if result_tlength + memory_tlength + 600 > self.cfg.fast_token_limit:
                     result = f"Failure: command {command_name} returned too much output. \
                         Do not execute this command again with the same arguments."
 
-                for plugin in cfg.plugins:
+                for plugin in self.cfg.plugins:
                     if not plugin.can_handle_post_command():
                         continue
                     result = plugin.post_command(command_name, result)

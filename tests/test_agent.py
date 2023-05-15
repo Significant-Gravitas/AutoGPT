@@ -28,6 +28,7 @@ def agent():
         system_prompt,
         triggering_prompt,
         workspace_directory,
+        Config(),
     )
     return agent
 

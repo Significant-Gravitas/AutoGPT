@@ -71,6 +71,7 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
+        cfg=Config(),
     )
 
     return agent
@@ -110,6 +111,7 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
         system_prompt=system_prompt,
         triggering_prompt=triggering_prompt,
         workspace_directory=workspace.root,
+        cfg=Config(),
     )
 
     return agent
@@ -146,6 +148,7 @@ def memory_management_agent(
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
+        cfg=Config(),
     )
 
     return agent
@@ -180,6 +183,7 @@ def get_company_revenue_agent(
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
+        cfg=Config(),
     )
 
     return agent
@@ -213,6 +217,7 @@ def kubernetes_agent(memory_local_cache, workspace: Workspace):
         system_prompt=system_prompt,
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
+        cfg=Config(),
     )
 
     return agent
