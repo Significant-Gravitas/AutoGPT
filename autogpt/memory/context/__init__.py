@@ -1,7 +1,7 @@
 from autogpt.config import Config
 from autogpt.logs import logger
 
-from .memory_item import MemoryItem
+from .memory_item import MemoryItem, MemoryItemRelevance
 from .providers import ContextMemoryProvider as ContextMemory
 from .providers.json_file import JSONFileMemory
 from .providers.no_memory import NoMemory
@@ -105,6 +105,7 @@ def get_supported_memory_backends():
 __all__ = [
     "get_memory",
     "MemoryItem",
+    "MemoryItemRelevance",
     "ContextMemory",
     "JSONFileMemory",
     "NoMemory",

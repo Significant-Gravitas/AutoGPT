@@ -9,7 +9,7 @@ import orjson
 from autogpt.config import Config
 from autogpt.logs import logger
 
-from ..memory_item import MemoryItem
+from ..memory_item import MemoryItem, MemoryItemRelevance
 from ..utils import Embedding, get_embedding
 from .abstract import ContextMemoryProvider
 
@@ -44,7 +44,7 @@ class JSONFileMemory(ContextMemoryProvider):
         self.save_index()
         return len(self.memories)
 
-    def get(self, query: str) -> MemoryItem | None:
+    def get(self, query: str) -> MemoryItemRelevance | None:
         """
         Gets the data from the memory that is most relevant to the given query.
 
@@ -56,15 +56,16 @@ class JSONFileMemory(ContextMemoryProvider):
         result = self.get_relevant(query, 1)
         return result[0] if result else None
 
-    def get_relevant(self, query: str, k: int) -> list[MemoryItem]:
+    def get_relevant(self, query: str, k: int) -> list[MemoryItemRelevance]:
         """
         Returns the top-k most relevant memories for the given query
 
         Args:
-            text: str
-            k: int
+            query: the query to compare stored memories to
+            k: the number of relevant memories to fetch
 
-        Returns: list[Memory] containing the top [k] relevant memories
+        Returns:
+            list[MemoryItemRelevance] containing the top [k] relevant memories
         """
         if len(self.memories) < 1:
             return []
@@ -73,13 +74,13 @@ class JSONFileMemory(ContextMemoryProvider):
 
         logger.debug(f"Searching for {k} relevant items; {len(self.memories)} in index")
 
-        scores: list[float] = [m.relevance(e_query) for m in self.memories]
-        # scores: list[float] = np.dot([m.e for m in self.memories], e_query)
-        logger.debug(f"Memory match scores: {scores}")
+        relevances = [m.relevance_for(query, e_query) for m in self.memories]
+        logger.debug(f"Memory match scores: {relevances}")
 
-        top_k_indices = np.argsort(scores)[-k:][::-1]  # take last 5 items and reverse
+        # take last k items and reverse
+        top_k_indices = np.argsort([r.score for r in relevances])[-k:][::-1]
 
-        return [self.memories[i] for i in top_k_indices]
+        return [relevances[i] for i in top_k_indices]
 
     def get_stats(self) -> tuple[int, int]:
         """

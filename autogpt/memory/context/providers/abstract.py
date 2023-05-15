@@ -1,6 +1,6 @@
 import abc
 
-from autogpt.memory.context import MemoryItem
+from autogpt.memory.context import MemoryItem, MemoryItemRelevance
 from autogpt.singleton import AbstractSingleton
 
 
@@ -11,12 +11,12 @@ class ContextMemoryProvider(AbstractSingleton):
         pass
 
     @abc.abstractmethod
-    def get(self, query: str) -> MemoryItem | None:
+    def get(self, query: str) -> MemoryItemRelevance | None:
         """Gets an item from memory based on the query"""
         pass
 
     @abc.abstractmethod
-    def get_relevant(self, query: str, num_relevant=5) -> list[MemoryItem]:
+    def get_relevant(self, query: str, num_relevant=5) -> list[MemoryItemRelevance]:
         """Gets relevant memory items for the query"""
         pass
 

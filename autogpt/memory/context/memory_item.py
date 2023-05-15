@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import dataclasses
 import json
 from typing import Literal
@@ -22,18 +24,12 @@ class MemoryItem:
     raw_content: str
     summary: str
     e_summary: Embedding
+    chunks: list[str]
     e_chunks: list[Embedding]
     metadata: dict
 
-    def relevance(self, compare_to: Embedding):
-        summary_relevance = np.dot(self.e_summary, compare_to)
-        chunk_relevances = np.dot(self.e_chunks, compare_to)
-        logger.debug(f"Relevance of summary: {summary_relevance}")
-        logger.debug(f"Relevance of chunks: {chunk_relevances}")
-
-        relevance_scores = [summary_relevance, *chunk_relevances]
-        logger.debug(f"Relevance scores: {relevance_scores}")
-        return max(relevance_scores)
+    def relevance_for(self, query: str, e_query: Embedding | None = None):
+        return MemoryItemRelevance.of(self, query, e_query)
 
     @staticmethod
     def from_text(
@@ -92,6 +88,7 @@ class MemoryItem:
             text,
             summary,
             e_summary,
+            chunks,
             e_chunks,
             metadata=metadata,
         )
@@ -158,3 +155,63 @@ Metadata: {json.dumps(self.metadata, indent=2)}
 {self.raw_content}
 ==========================================
 """
+
+
+@dataclasses.dataclass
+class MemoryItemRelevance:
+    """
+    Class that encapsulates memory relevance search functionality and data.
+    Instances contain a MemoryItem and its relevance scores for a given query.
+    """
+    memory_item: MemoryItem
+    for_query: str
+    summary_relevance_score: float
+    chunk_relevance_scores: list[float]
+
+    @staticmethod
+    def of(
+        memory_item: MemoryItem, for_query: str, e_query: Embedding | None = None
+    ) -> MemoryItemRelevance:
+        e_query = e_query or get_embedding(for_query)
+        _, srs, crs = MemoryItemRelevance.calculate_scores(memory_item, e_query)
+        return MemoryItemRelevance(
+            for_query=for_query,
+            memory_item=memory_item,
+            summary_relevance_score=srs,
+            chunk_relevance_scores=crs,
+        )
+
+    @staticmethod
+    def calculate_scores(
+        memory: MemoryItem, compare_to: Embedding
+    ) -> tuple[float, float, list[float]]:
+        """
+        Calculates similarity between given embedding and all embeddings of the memory
+
+        Returns:
+            float: the aggregate (max) relevance score of the memory
+            float: the relevance score of the memory summary
+            list: the relevance scores of the memory chunks
+        """
+        summary_relevance_score = np.dot(memory.e_summary, compare_to)
+        chunk_relevance_scores = np.dot(memory.e_chunks, compare_to)
+        logger.debug(f"Relevance of summary: {summary_relevance_score}")
+        logger.debug(f"Relevance of chunks: {chunk_relevance_scores}")
+
+        relevance_scores = [summary_relevance_score, *chunk_relevance_scores]
+        logger.debug(f"Relevance scores: {relevance_scores}")
+        return max(relevance_scores), summary_relevance_score, chunk_relevance_scores
+
+    @property
+    def score(self) -> float:
+        """The aggregate relevance score of the memory item for the given query"""
+        return max([self.summary_relevance_score, *self.chunk_relevance_scores])
+
+    @property
+    def most_relevant_chunk(self) -> tuple[str, float]:
+        """The most relevant chunk of the memory item + its score for the given query"""
+        i_relmax = np.argmax(self.chunk_relevance_scores)
+        return self.memory_item.chunks[i_relmax], self.chunk_relevance_scores[i_relmax]
+
+    def __str___(self):
+        return f"({self.summary_relevance_score}) {self.chunk_relevance_scores}"
