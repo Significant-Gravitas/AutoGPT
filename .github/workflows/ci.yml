@@ -82,7 +82,7 @@ jobs:
           pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
         env:
           CI: true
-          PROXY: ${{ vars.PROXY }}
+          PROXY: ${{ secrets.PROXY }}
           AGENT_MODE: ${{ vars.AGENT_MODE }}
           AGENT_TYPE: ${{ vars.AGENT_TYPE }}
 
