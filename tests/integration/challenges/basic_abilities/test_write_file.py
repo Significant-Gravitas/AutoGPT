@@ -3,7 +3,10 @@ from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
-from tests.integration.challenges.utils import run_interaction_loop
+from tests.integration.challenges.utils import (
+    run_interaction_loop,
+    run_test_based_on_current_score,
+)
 from tests.utils import requires_api_key
 
 CYCLE_COUNT = 3
@@ -11,6 +14,7 @@ CYCLE_COUNT = 3
 
 @requires_api_key("OPENAI_API_KEY")
 @pytest.mark.vcr
+@run_test_based_on_current_score
 def test_write_file(
     writer_agent: Agent,
     patched_api_requestor: MockerFixture,
