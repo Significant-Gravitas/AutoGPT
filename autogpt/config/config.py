@@ -9,6 +9,7 @@ from colorama import Fore
 
 from autogpt.singleton import Singleton
 
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 
 class Config(metaclass=Singleton):
     """
@@ -43,15 +44,13 @@ class Config(metaclass=Singleton):
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
 
         # It's better to set max limits and be explicit for better user experience IMO
-        model_limits = {
-            "gpt-4-32k": 32000,
-            "gpt-4": 8000,
-            "gpt-3.5-turbo": 4000,
-            "gpt-3.5-turbo-0301": 4000,
-        }
-
         smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 4000))
-        max_limit = model_limits.get(self.smart_llm_model, smart_token_limit)
+        model_info = OPEN_AI_CHAT_MODELS.get(self.smart_llm_model)
+
+        if model_info is not None:
+            max_limit = model_info.max_tokens
+        else:
+            max_limit = smart_token_limit
 
         if smart_token_limit > max_limit:
             print(f"Smart LLM model is {self.smart_llm_model}, setting max smart_token_limit to {max_limit}")
