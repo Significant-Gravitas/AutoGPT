@@ -108,7 +108,9 @@ def execute_python_file(filename: str) -> str:
 
             filepath = Path(filename)
 
-            script_process = subprocess.Popen([venv_python, filepath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            script_process = subprocess.Popen(
+                [venv_python, filepath], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
             script_stdout, script_stderr = script_process.communicate()
 
             # Wait for the script to complete
