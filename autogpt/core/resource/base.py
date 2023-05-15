@@ -2,7 +2,7 @@ import abc
 from typing import Any
 
 
-class BudgetManager(abc.ABC):
+class ResourceManager(abc.ABC):
     """The BudgetManager class is a manager for constrained resources."""
 
     @abc.abstractmethod

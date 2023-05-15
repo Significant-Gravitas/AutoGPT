@@ -3,11 +3,11 @@ from __future__ import annotations
 import logging
 from typing import List, Tuple, Type
 
-from autogpt.core.budget.simple import SimpleBudgetManager
-from autogpt.core.configuration import Configuration
+from autogpt.core.configuration import AgentSettings
 from autogpt.core.model import LanguageModelResponse, SimpleLanguageModel
 from autogpt.core.planning.simple import ModelPrompt, SimplePlanner
 from autogpt.core.plugin.simple import PluginStorageFormat, SimplePluginService
+from autogpt.core.resource import SimpleResourceManager
 from autogpt.core.workspace import Workspace
 
 

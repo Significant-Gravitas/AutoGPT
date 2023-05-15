@@ -2,12 +2,12 @@ import logging
 from pathlib import Path
 
 from autogpt.core.agent.base import Agent
-from autogpt.core.budget.simple import SimpleBudgetManager
-from autogpt.core.configuration import Configuration
+from autogpt.core.configuration import AgentSettings
 
 # from autogpt.core.model.embedding.openai import OpenAIEmbeddingModel
 from autogpt.core.planning.simple import SimplePlanner
 from autogpt.core.plugin.simple import SimplePluginService
+from autogpt.core.resource import SimpleResourceManager
 from autogpt.core.workspace.simple import SimpleWorkspace
 
 # from autogpt.core.memory.simple import SimpleMemoryBackend
@@ -26,13 +26,13 @@ class SimpleAgent(Agent):
         workspace_path: Path,
         logger: logging.Logger,
     ) -> "SimpleAgent":
-        configuration: Configuration = SimpleWorkspace.load_configuration(
+        agent_settings: AgentSettings = SimpleWorkspace.load_agent_settings(
             workspace_path,
         )
 
-        budget_manager: SimpleBudgetManager = SimpleAgent.load_system(
+        resource_manager: SimpleResourceManager = SimpleAgent.load_system(
             "budget_manager",
-            configuration,
+            agent_settings,
             logger,
         )
         # command_registry: SimpleCommandRegistry = SimpleAgent.load_system(
@@ -59,18 +59,18 @@ class SimpleAgent(Agent):
         # )
         planner: SimplePlanner = SimpleAgent.load_system(
             "planner",
-            configuration,
+            agent_settings,
             logger,
         )
         workspace: SimpleWorkspace = SimpleAgent.load_system(
             "workspace",
-            configuration,
+            agent_settings,
             logger,
         )
         return SimpleAgent(
-            configuration=configuration,
+            agent_settings=agent_settings,
             logger=logger,
-            budget_manager=budget_manager,
+            resource_manager=resource_manager,
             # language_model=language_model,
             planner=planner,
             workspace=workspace,
@@ -88,16 +88,16 @@ class SimpleAgent(Agent):
     @staticmethod
     def load_system(
         system_name: str,
-        configuration: Configuration,
+        agent_settings: AgentSettings,
         logger: logging.Logger,
         **kwargs,
     ):
         logger.debug(f"Loading system {system_name}")
-        system_load_config = configuration.system[system_name]
+        system_load_config = agent_settings.system[system_name]
         system_class = SimplePluginService.get_plugin(system_load_config)
 
         system_logger = logger.getChild(system_name)
-        system_config = getattr(configuration, system_name)
+        system_config = getattr(agent_settings, system_name)
         return system_class(system_config, system_logger, **kwargs)
 
     def __repr__(self):

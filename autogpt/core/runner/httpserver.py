@@ -91,7 +91,7 @@ def get_message_broker() -> SimpleMessageBroker:
 
     message_broker.register_listener(
         message_channel="autogpt",
-        listener=agent_context.parse_goals,
+        listener=agent_factory_context.parse_goals,
         message_filter=MessageFilters.is_parse_goals_message,
     )
 

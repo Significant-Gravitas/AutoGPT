@@ -1,19 +1,18 @@
 import abc
-import dataclasses
 import enum
 from typing import Type
 
 from pydantic import BaseModel
 
-from autogpt.core.budget import BudgetManager
 from autogpt.core.command import Command, CommandRegistry
 from autogpt.core.memory import MemoryBackend
 from autogpt.core.model import EmbeddingModel, LanguageModel
 from autogpt.core.planning import Planner
+from autogpt.core.resource import ResourceManager
 
 # Expand to other types as needed
 PluginType = (
-    Type[BudgetManager]  # Swappable maybe never (think about budgets for resources)
+    Type[ResourceManager]  # Swappable maybe never (think about budgets for resources)
     | Type[Command]  # Swappable now
     | Type[CommandRegistry]  # Swappable maybe never
     | Type[EmbeddingModel]  # Swappable soon
@@ -23,7 +22,7 @@ PluginType = (
 )
 
 Plugin = (
-    BudgetManager
+    ResourceManager
     | Command
     | CommandRegistry
     | EmbeddingModel
@@ -33,7 +32,7 @@ Plugin = (
 )
 
 
-class PluginStorageFormat(enum.Enum, str):
+class PluginStorageFormat(str, enum.Enum):
     """Supported plugin storage formats.
 
     Plugins can be stored at one of these supported locations.

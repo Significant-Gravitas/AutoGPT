@@ -90,6 +90,7 @@ def run():
     )
 
     header = {"Content-Type": "application/json", "openai_api_key": "asdf"}
+    print("Sending: ", header, body)
     response = requests.post(
         "http://localhost:8080/api/v1/agents", data=body, headers=header
     )

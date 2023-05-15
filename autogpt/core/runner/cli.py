@@ -49,11 +49,13 @@ def autogpt_server():
     cmd = shlex.split(
         f"{sys.executable} autogpt/core/runner/cli.py httpserver --host {host} --port {port}"
     )
-    server_process = subprocess.Popen(args=cmd)
+    server_process = subprocess.Popen(
+        args=cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
     started = False
     while not started:
         try:
-            requests.get(f"https://{host}:{port}")
+            requests.get(f"http://{host}:{port}")
             started = True
         except requests.exceptions.ConnectionError:
             time.sleep(0.1)

@@ -1,26 +1,27 @@
 import logging
 from typing import Any
 
-from autogpt.core.budget.base import BudgetManager
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
+from autogpt.core.resource.base import ResourceManager
+from autogpt.core.resource.schema import ProviderBudget
 
 
-class BudgetConfiguration(SystemConfiguration):
+class ResourceManagerConfiguration(SystemConfiguration):
     pass
 
 
-class SimpleBudgetManager(BudgetManager, Configurable):
+class SimpleResourceManager(ResourceManager, Configurable):
     defaults = SystemSettings(
         name="budget_manager",
         description="The budget manager is responsible for tracking resource usage.",
-        configuration=BudgetConfiguration(),
+        configuration=ResourceManagerConfiguration(),
     )
 
     def __init__(
         self,
-        configuration: BudgetConfiguration,
+        configuration: ResourceManagerConfiguration,
         logger: logging.Logger,
-        resources: dict[str, ResourceBudget],
+        resources: dict[str, ProviderBudget],
     ):
         self._configuration = configuration
         self._logger = logger

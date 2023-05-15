@@ -1,16 +1,13 @@
 """The language model acts as the core intelligence of the Agent."""
-from autogpt.core.model.embedding import (
-    EmbeddingModelConfiguration,
-    SimpleEmbeddingModel,
+from autogpt.core.model.base import (
+    EmbeddingModel,
+    EmbeddingModelResponse,
+    LanguageModel,
+    LanguageModelResponse,
+    ModelConfiguration,
 )
-from autogpt.core.model.language import LanguageModelConfiguration, SimpleLanguageModel
-from autogpt.core.model.providers import (
-    OPEN_AI_EMBEDDING_MODELS,
-    OPEN_AI_LANGUAGE_MODELS,
-    OPEN_AI_MODELS,
-    OpenAIConfiguration,
-    OpenAIProvider,
-)
+from autogpt.core.model.embedding import SimpleEmbeddingModel
+from autogpt.core.model.language import SimpleLanguageModel
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(
