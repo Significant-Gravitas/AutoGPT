@@ -16,6 +16,7 @@ from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_
 from autogpt.utils import (
     get_current_git_branch,
     get_latest_bulletin,
+    get_legal_warning,
     markdown_to_ansi_style,
 )
 from autogpt.workspace import Workspace
@@ -59,6 +60,10 @@ def run_auto_gpt(
         allow_downloads,
         skip_news,
     )
+
+    if cfg.continuous_mode:
+        for line in get_legal_warning().split("\n"):
+            logger.warn(markdown_to_ansi_style(line), "LEGAL:", Fore.RED)
 
     if not cfg.skip_news:
         motd, is_new_motd = get_latest_bulletin()
