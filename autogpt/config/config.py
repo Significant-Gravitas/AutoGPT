@@ -44,7 +44,7 @@ class Config(metaclass=Singleton):
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
 
         # It's better to set max limits and be explicit for better user experience IMO
-        smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 4000))
+        smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         model_info = OPEN_AI_CHAT_MODELS.get(self.smart_llm_model)
 
         if model_info is not None:
