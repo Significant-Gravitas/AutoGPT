@@ -95,11 +95,13 @@ jobs:
 
       - name: Stage new files and commit
         run: |
+          COMMIT_SHA=$(git rev-parse HEAD) # take the sha before committing the cassette
           git add tests
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git commit -m "Add new cassettes"
-          git checkout -b cassette-diff-${{ github.event.pull_request.number }}
+          
+          git checkout -b cassette-diff-${COMMIT_SHA}
           git remote add target https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.event.pull_request.base.repo.full_name }}
-          git push -f target cassette-diff-${{ github.event.pull_request.number }}
+          git push -f target cassette-diff-${COMMIT_SHA}
