@@ -92,6 +92,7 @@ Your support is greatly appreciated. Development of this free, open-source proje
 
 ## Quickstart
 
+0. Check out the [wiki](https://github.com/Significant-Gravitas/Auto-GPT/wiki)
 1. Get an OpenAI [API Key](https://platform.openai.com/account/api-keys)
 2. Download the [latest release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
 3. Follow the [installation instructions][docs/setup]

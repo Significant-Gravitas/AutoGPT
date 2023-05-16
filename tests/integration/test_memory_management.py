@@ -52,7 +52,10 @@ Human Feedback:Command Result: Important Information."""
 @requires_api_key("OPENAI_API_KEY")
 @pytest.mark.vcr
 def test_save_memory_trimmed_from_context_window(
-    message_history_fixture, expected_permanent_memory, config: Config
+    message_history_fixture,
+    expected_permanent_memory,
+    config: Config,
+    patched_api_requestor,
 ):
     next_message_to_add_index = len(message_history_fixture) - 1
     memory = get_memory(config, init=True)
