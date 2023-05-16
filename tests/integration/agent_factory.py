@@ -163,7 +163,7 @@ def get_company_revenue_agent(
         ai_name="Get-CompanyRevenue",
         ai_role="an autonomous agent that specializes in finding the reported revenue of a company.",
         ai_goals=[
-            "Write the revenue of Tesla in 2022 to a file. You should write the number without commas and you should not use signs like B for billion and M for million.",
+            "What was the revenue of Tesla in 2022? You should write the number without commas and you should not use signs like B for billion and M for million. Write the answer to this question in a file called output.txt.",
         ],
     )
     ai_config.command_registry = command_registry
@@ -230,7 +230,7 @@ def anthropic_information_agent(
         ai_name="Anthropic-Information",
         ai_role="an autonomous agent that specializes in researching about Anthropic's new LLM.",
         ai_goals=[
-            "Write in a file called output.txt how many tokens fit in the Anthropic LLM which was announced in Q2 2023",
+            "How many tokens fit in the Anthropic LLM which was announced in Q2 2023? Write the answer to this question in a file called output.txt",
         ],
     )
     ai_config.command_registry = command_registry
@@ -264,7 +264,7 @@ def autogpt_information_agent(
         ai_name="AutoGPT-Information",
         ai_role="an autonomous agent that specializes in researching.",
         ai_goals=[
-            "Write in a file called output.txt the name of the founder of AutoGPT.",
+            "What is the name of the founder of AutoGPT? Write the answer to this question in a file called output.txt.",
         ],
     )
     ai_config.command_registry = command_registry
@@ -298,7 +298,7 @@ def spacex_information_agent(
         ai_name="SpcaeX-Information",
         ai_role="an autonomous agent that specializes in researching and saving files as output.txt.",
         ai_goals=[
-            "Write in a file called output.txt the date of SpaceX's Super Heavy First flight in format DD-MM-YYYY.",
+            "When was the date of SpaceX's Super Heavy First flight? Write the answer to this question in a file called output.txt in format DD-MM-YYYY.",
         ],
     )
     ai_config.command_registry = command_registry
@@ -332,7 +332,7 @@ def twitter_information_agent(
         ai_name="Twitter-Information",
         ai_role="an autonomous agent that specializes in researching and saving files as output.txt.",
         ai_goals=[
-            "Write in a file called output.txt the name of the Twitter CEO as of May 2023.",
+            "What is the name of the Twitter CEO as of May 2023? Write the answer to this question in a file called output.txt.",
         ],
     )
     ai_config.command_registry = command_registry
@@ -366,7 +366,7 @@ def researchpaper_information_agent(
         ai_name="Twitter-Information",
         ai_role="an autonomous agent that specializes in researching and saving files as output.txt.",
         ai_goals=[
-            "Write in a file called output.txt the name of the main Author of the research paper titled Generative Agents: Interactive Simulacra of Human Behavior.",
+            "What is the name of the main Author of the research paper titled Generative Agents: Interactive Simulacra of Human Behavior.?  Write the answer to this question in a file called output.txt",
         ],
     )
     ai_config.command_registry = command_registry
@@ -400,7 +400,7 @@ def milvius_information_agent(
         ai_name="Twitter-Information",
         ai_role="an autonomous agent that specializes in researching and saving files as output.txt.",
         ai_goals=[
-            "Write in a file called output.txt the answer 'Yes' or 'No' to this question: Does Milvius 2.3 support GPU acceleration?.",
+            "Does Milvius 2.3 support GPU acceleration?.  Write the answer to this question in a file called output.txt, either 'Yes' or 'No'.",
         ],
     )
     ai_config.command_registry = command_registry
