@@ -2,12 +2,11 @@ import uuid
 
 from fastapi import APIRouter, FastAPI, Request
 
-from autogpt.core.runner.cli_web_app.server.services.users import USER_SERVICE
 from autogpt.core.runner.cli_web_app.server.schema import (
     InteractRequestBody,
     InteractResponseBody,
 )
-
+from autogpt.core.runner.cli_web_app.server.services.users import USER_SERVICE
 
 router = APIRouter()
 

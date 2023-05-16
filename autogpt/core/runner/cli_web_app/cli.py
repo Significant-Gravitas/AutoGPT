@@ -1,6 +1,4 @@
-import asyncio
 import contextlib
-import functools
 import pathlib
 import shlex
 import subprocess
@@ -12,13 +10,22 @@ import requests
 import uvicorn
 import yaml
 
-DEFAULT_SETTINGS_FILE = str(pathlib.Path("~/auto-gpt/settings.yaml").expanduser())
+from autogpt.core.runner.client_lib.shared_click_commands import (
+    DEFAULT_SETTINGS_FILE,
+    make_settings,
+    status,
+)
+from autogpt.core.runner.client_lib.utils import coroutine
 
 
 @click.group()
 def autogpt():
     """Temporary command group for v2 commands."""
     pass
+
+
+autogpt.add_command(make_settings)
+autogpt.add_command(status)
 
 
 @autogpt.command()
@@ -40,7 +47,7 @@ def server(host: str, port: int) -> None:
     """Run the Auto-GPT runner httpserver."""
     click.echo("Running Auto-GPT runner httpserver...")
     uvicorn.run(
-        "autogpt.core.runner.server.api:app",
+        "autogpt.core.runner.cli_web_app.server.api:app",
         workers=1,
         host=host,
         port=port,
@@ -62,31 +69,10 @@ async def client(settings_file) -> None:
     if settings_file.exists():
         settings = yaml.safe_load(settings_file.read_text())
 
-    from autogpt.core.runner.cli_web_app.client import run_auto_gpt
+    from autogpt.core.runner.cli_web_app.client.client import run
 
     with autogpt_server():
-        await run_auto_gpt(settings)
-
-
-@autogpt.command()
-@click.option("-d", "--detailed", is_flag=True, help="Show detailed status.")
-def status(detailed: bool):
-    import importlib
-    import pkgutil
-
-    import autogpt.core
-    from autogpt.core.status import print_status
-
-    status_list = []
-    for loader, package_name, is_pkg in pkgutil.iter_modules(autogpt.core.__path__):
-        if is_pkg:
-            subpackage = importlib.import_module(
-                f"{autogpt.core.__name__}.{package_name}"
-            )
-            if hasattr(subpackage, "status"):
-                status_list.append(subpackage.status)
-
-    print_status(status_list, detailed)
+        run()
 
 
 @contextlib.contextmanager
@@ -94,10 +80,10 @@ def autogpt_server():
     host = "localhost"
     port = 8080
     cmd = shlex.split(
-        f"{sys.executable} autogpt/core/runner/cli.py server --host {host} --port {port}"
+        f"{sys.executable} autogpt/core/runner/cli_web_app/cli.py server --host {host} --port {port}"
     )
     server_process = subprocess.Popen(
-        args=cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        args=cmd,
     )
     started = False
 

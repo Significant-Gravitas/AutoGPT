@@ -3,12 +3,13 @@ from pathlib import Path
 import click
 import yaml
 
-from autogpt.core.runner.app_lib.shared_click_commands import (
+from autogpt.core.runner.cli_app.main import run_auto_gpt
+from autogpt.core.runner.client_lib.shared_click_commands import (
     DEFAULT_SETTINGS_FILE,
     make_settings,
+    status,
 )
-from autogpt.core.runner.app_lib.utils import coroutine, handle_exceptions
-from autogpt.core.runner.cli_app.main import run_auto_gpt
+from autogpt.core.runner.client_lib.utils import coroutine, handle_exceptions
 
 
 @click.group()
@@ -18,6 +19,7 @@ def autogpt():
 
 
 autogpt.add_command(make_settings)
+autogpt.add_command(status)
 
 
 @autogpt.command()
