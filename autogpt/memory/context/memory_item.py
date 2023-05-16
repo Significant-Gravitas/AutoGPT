@@ -23,8 +23,9 @@ class MemoryItem:
 
     raw_content: str
     summary: str
-    e_summary: Embedding
     chunks: list[str]
+    chunk_summaries: list[str]
+    e_summary: Embedding
     e_chunks: list[Embedding]
     metadata: dict
 
@@ -87,8 +88,9 @@ class MemoryItem:
         return MemoryItem(
             text,
             summary,
-            e_summary,
             chunks,
+            chunk_summaries,
+            e_summary,
             e_chunks,
             metadata=metadata,
         )

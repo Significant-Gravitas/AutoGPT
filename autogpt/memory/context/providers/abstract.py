@@ -22,7 +22,7 @@ class ContextMemoryProvider(MutableSet[MemoryItem], AbstractSingleton):
         result = self.get_relevant(query, 1)
         return result[0] if result else None
 
-    def get_relevant(self, query: str, k: int) -> list[MemoryItemRelevance]:
+    def get_relevant(self, query: str, k: int) -> Sequence[MemoryItemRelevance]:
         """
         Returns the top-k most relevant memories for the given query
 

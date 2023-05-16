@@ -1,4 +1,4 @@
-from typing import overload
+from typing import Any, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -8,7 +8,7 @@ from autogpt.config import Config
 from autogpt.llm.llm_utils import metered, retry_openai_api
 from autogpt.logs import logger
 
-Embedding = list[np.float32]
+Embedding = list[np.float32] | np.ndarray[Any, np.dtype[np.float32]]
 """Embedding vector"""
 TText = list[int]
 """Token array representing text"""

@@ -1,18 +1,18 @@
 """Redis memory provider."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterator
 
-import numpy as np
 import redis
 from colorama import Fore, Style
 from redis.commands.json.commands import JSONCommands
-from redis.commands.search.field import Field, TextField, VectorField
+from redis.commands.search.field import TextField, VectorField
 from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 
 from autogpt.config import Config
 from autogpt.logs import logger
+from autogpt.memory.context import MemoryItemRelevance
 
 from ..memory_item import MemoryItem
 from ..utils import Embedding, get_embedding
@@ -23,18 +23,23 @@ class RedisMemory(ContextMemoryProvider):
     cfg: Config
 
     redis: redis.Redis
-    dimension: int
     index_name: str
 
-    n_memories: int
-    """Number of items currently in memory"""
+    id_seq: int
+    """Last sequential ID in index"""
 
+    @property
+    def id_seq_key(self):
+        return f"{self.index_name}-id_seq"
+
+    DIMENSION = 1536
     SCHEMA = [
-        TextField("raw_content"),
+        TextField("content"),
+        TextField("summary"),
         VectorField(
             "embedding",
             "HNSW",
-            {"TYPE": "FLOAT32", "DIM": 1536, "DISTANCE_METRIC": "IP"},
+            {"TYPE": "FLOAT32", "DIM": DIMENSION, "DISTANCE_METRIC": "IP"},
         ),
     ]
 
@@ -57,8 +62,8 @@ class RedisMemory(ContextMemoryProvider):
             port=redis_port,
             password=redis_password,
             db=0,  # Cannot be changed
+            decode_responses=True,
         )
-        self.dimension = 1536
         self.index_name = cfg.memory_index
 
         # Check redis connection
@@ -81,94 +86,160 @@ class RedisMemory(ContextMemoryProvider):
         if cfg.wipe_redis_on_start:
             self.clear()
         try:
-            self.redis.ft(f"{self.index_name}").create_index(
+            self.redis.ft(self.index_name).create_index(
                 fields=self.SCHEMA,
                 definition=IndexDefinition(
                     prefix=[f"{self.index_name}:"], index_type=IndexType.HASH
                 ),
             )
         except Exception as e:
-            logger.warn("Error creating Redis search index: ", e)
+            logger.warn(f"Error creating Redis search index: {e}")
 
-        n_existing_memories: bytes | None = self.redis.get(
-            f"{self.index_name}-n_memories"
+        stored_id_seq: str | None = self.redis.get(self.id_seq_key)
+        self.id_seq = int(stored_id_seq) if stored_id_seq else 0
+
+    def __iter__(self) -> Iterator[MemoryItem]:
+        for hkey in self.redis.keys(f"{self.index_name}:*[0-9]_header"):
+            meta = self.redis.hget(hkey, "metadata")
+            memory = self._retrieve(meta["memory_id"])
+            if not memory:
+                continue
+            yield memory
+
+    def __contains__(self, x: MemoryItem) -> bool:
+        return bool(self._find(x))
+
+    def __len__(self) -> int:
+        return len(self.redis.keys(f"{self.index_name}:*[0-9]_header"))
+
+    def add(self, item: MemoryItem):
+        id = self._increment_id_seq()
+        self._set(
+            f"{id}_header",
+            item.raw_content,
+            item.summary,
+            item.e_summary,
+            item.metadata | {"memory_id": id},
         )
-        self.n_memories = (
-            int(n_existing_memories.decode("utf-8")) if n_existing_memories else 0
+
+        for j, chunk in enumerate(item.chunks):
+            self._set(
+                f"{id}_chunk-{j}",
+                chunk,
+                item.chunk_summaries[j],
+                item.e_chunks[j],
+                {"memory_id": id, "chunk_pos": j},
+            )
+
+    def _set(
+        self,
+        key: str,
+        content: str,
+        summary: str,
+        embedding: Embedding,
+        metadata: dict[str, Any] | None = None,
+    ):
+        data_dict = {
+            "content": content,
+            "summary": summary,
+            "embedding": embedding.tobytes(),
+            "metadata": metadata,
+        }
+
+        self.redis.hset(f"{self.index_name}:{key}", mapping=data_dict)
+        logger.debug(
+            f"Inserting item into Redis collection at key '{key}':\n"
+            f"summary: {summary}\n"
+            f"metadata: {metadata}\n"
+            f"content: {content}"
         )
 
-    def add(self, document: str) -> MemoryItem | None:
-        """
-        Adds a data point to the memory.
-
-        Args:
-            data: The data to add.
-
-        Returns: Message indicating that the data has been added.
-        """
-        if "Command Error:" in document:
+    def _retrieve(self, id: int) -> MemoryItem | None:
+        hkey = f"{self.index_name}:{id}_header"
+        if not self.redis.exists(hkey):
             return None
 
-        memory = MemoryItem.from_text(document)
+        header = self.redis.hgetall(hkey)
+        chunks = []
+        for ckey in self.redis.keys(f"{self.index_name}:{id}_chunk-*[0-9]"):
+            chunks.append(self.redis.hgetall(ckey))
 
-        data_dict = {"raw_content": document, "embedding": memory.e_summary.tobytes()}
-
-        pipe = self.redis.pipeline()
-        pipe.hset(f"{self.index_name}:{self.n_memories}", mapping=data_dict)
-        logger.debug(
-            f"Inserting data into memory at index: {self.n_memories}:\n"
-            f"data: {document}"
+        return MemoryItem(
+            raw_content=header["content"],
+            summary=header["summary"],
+            metadata=header["metadata"],
+            e_summary=header["embedding"],
+            e_chunks=[c["embedding"] for c in chunks],
+            chunks=[c["content"] for c in chunks],
+            chunk_summaries=[c["summary"] for c in chunks],
         )
-        self.n_memories += 1
-        pipe.set(f"{self.index_name}-n_memories", self.n_memories)
-        pipe.execute()
-        return memory
 
-    def get(self, data: str) -> list[Any] | None:
-        """
-        Gets the data from the memory that is most relevant to the given data.
+    def _find(self, item: MemoryItem) -> MemoryItem | None:
+        results = self.redis.ft(self.index_name).search(
+            Query("@content:$content").return_field("metadata"),
+            {"content": item.raw_content},
+        )
+        if not results.docs:
+            return None
+        return self._retrieve(results.docs[0]["metadata"]["memory_id"])
 
-        Args:
-            data: The data to compare to.
+    def _increment_id_seq(self):
+        self.id_seq = self.redis.incrby(self.id_seq_key)
+        return self.id_seq
 
-        Returns: The most relevant data.
-        """
-        return self.get_relevant(data, 1)
+    def get_relevant(self, query: str, k: int) -> list[MemoryItemRelevance]:
+        v_query = get_embedding(query).tobytes()
 
-    def get_relevant(self, query: str, num_relevant: int = 5) -> list[Any] | None:
-        """
-        Returns all the data in the memory that is relevant to the given data.
-        Args:
-            data: The data to compare to.
-            num_relevant: The number of relevant data to return.
-
-        Returns: A list of the most relevant data.
-        """
-        query_embedding = get_embedding(query)
-        base_query = f"*=>[KNN {num_relevant} @embedding $vector AS vector_score]"
-        query = (
-            Query(base_query)
-            .return_fields("raw_content", "vector_score")
-            .sort_by("vector_score")
+        base_search_query = f"*=>[KNN @embedding $v_query AS relevance_score]"
+        search_query = (
+            Query(base_search_query)
+            .return_fields("metadata", "relevance_score")
+            .sort_by("relevance_score")
             .dialect(2)
         )
-        query_vector = query_embedding.tobytes()
 
         try:
-            results = self.redis.ft(f"{self.index_name}").search(
-                query, query_params={"vector": query_vector}
+            search_result = self.redis.ft(self.index_name).search(
+                search_query, query_params={"v_query": v_query}
             )
         except Exception as e:
-            logger.warn("Error calling Redis search: ", e)
-            return None
-        return [result.data for result in results.docs]
+            logger.warn(f"Error calling Redis search: {e}")
+            return []
 
-    def get_stats(self):
-        """
-        Returns: The stats of the memory index.
-        """
-        return self.redis.ft(f"{self.index_name}").info()
+        results: list[MemoryItemRelevance] = []
+        result_ids: list[int] = []
+        for r in search_result.docs:
+            id = r["metadata"]["memory_id"]
+            if id in result_ids:
+                continue
+
+            pieces = filter(
+                lambda d: d["metadata"]["memory_id"] == id, search_result.docs
+            )
+            header = next(filter(lambda p: "chunk_pos" not in p["metadata"], pieces))
+            chunks = list(filter(lambda p: "chunk_pos" in p["metadata"], pieces))
+            chunks.sort(key=lambda c: c["metadata"]["chunk_pos"])
+            results.append(
+                MemoryItemRelevance(
+                    memory_item=self._retrieve(id),
+                    for_query=query,
+                    summary_relevance_score=header["relevance_score"],
+                    chunk_relevance_scores=[cr["relevance_score"] for cr in chunks],
+                )
+            )
+            result_ids.append(id)
+
+            if len(results) == k:
+                break
+        return results
+
+    def discard(self, item: MemoryItem):
+        if not item.metadata["memory_id"]:
+            item = self._find(item)
+        if item:
+            id = item.metadata["memory_id"]
+            self.redis.delete(self.redis.keys(f"{self.index_name}:{id}_[hc][eh][au][dn][ek]?*"))
 
     def clear(self) -> None:
         """Clears the Redis database."""
-        self.redis.flushall()
+        self.redis.flushdb()
