@@ -1,3 +1,5 @@
+import signal
+import sys
 from datetime import datetime
 
 from colorama import Fore, Style
@@ -88,6 +90,20 @@ class Agent:
         arguments = None
         user_input = ""
 
+        # Signal handler for interrupting y -N
+        def signal_handler(signum, frame):
+            if self.next_action_count == 0:
+                sys.exit()
+            else:
+                print(
+                    Fore.RED
+                    + "Interrupt signal received. Stopping continuous command execution."
+                    + Style.RESET_ALL
+                )
+                self.next_action_count = 0
+
+        signal.signal(signal.SIGINT, signal_handler)
+
         while True:
             # Discontinue if continuous limit is reached
             self.cycle_count += 1
@@ -149,20 +165,20 @@ class Agent:
                 NEXT_ACTION_FILE_NAME,
             )
 
+            logger.typewriter_log(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+                f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+            )
+
             if not cfg.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 self.user_input = ""
-                logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                    f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-                )
-
                 logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands or "
+                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
                     "'n' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
@@ -235,12 +251,9 @@ class Agent:
                     logger.info("Exiting...")
                     break
             else:
-                # Print command
+                # Print authorized commands left value
                 logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
-                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                    f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
                 )
 
             # Execute command
