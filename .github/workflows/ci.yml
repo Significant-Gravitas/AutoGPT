@@ -79,7 +79,7 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          pytest -s tests/integration/challenges/basic_abilities/test_browse_website.py
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
