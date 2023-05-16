@@ -53,6 +53,8 @@ async def run_auto_gpt(user_configuration: dict):
         SimpleAgent.provision_agent(agent_settings, client_logger)
         click.echo("agent is provisioned")
 
+    # launch agent interaction loop
+
 
 def parse_objective_prompt(agent_objective_prompt: ModelPrompt) -> str:
     parsed_prompt = "Agent Objective:\n"
