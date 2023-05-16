@@ -9,7 +9,6 @@ from colorama import Fore
 
 from autogpt.singleton import Singleton
 
-from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 
 class Config(metaclass=Singleton):
     """
@@ -17,6 +16,9 @@ class Config(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
+        """Import within the init function to avoid circular imports"""
+        from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+
         """Initialize the Config class"""
         self.workspace_path = None
         self.file_logger_path = None
