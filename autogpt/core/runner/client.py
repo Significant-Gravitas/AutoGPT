@@ -4,8 +4,6 @@ import logging
 import requests
 
 
-
-
 async def run_auto_gpt(
     user_configuration: dict,  # Need to figure out what's in here
 ):
@@ -16,7 +14,9 @@ async def run_auto_gpt(
         client_logger,
         user_configuration,
     )
-    import pdb; pdb.set_trace()
+    import pdb
+
+    pdb.set_trace()
 
     # This application either starts an existing agent or builds a new one.
     if user_configuration["agent_name"] is None:

@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import functools
+import pathlib
 import shlex
 import subprocess
 import sys
@@ -9,6 +10,9 @@ import time
 import click
 import requests
 import uvicorn
+import yaml
+
+DEFAULT_SETTINGS_FILE = str(pathlib.Path("~/auto-gpt/settings.yaml").expanduser())
 
 
 def coroutine(f):
@@ -53,32 +57,35 @@ def server(host: str, port: int) -> None:
 
 
 @autogpt.command()
-@click.option("--settings-file", type=click.Path(exists=True))
+@click.option(
+    "--settings-file",
+    type=click.Path(),
+    default=DEFAULT_SETTINGS_FILE,
+)
 @coroutine
 async def client(settings_file) -> None:
     """Run the Auto-GPT runner client."""
+    settings_file = pathlib.Path(settings_file)
+    settings = {}
+    if settings_file.exists():
+        settings = yaml.safe_load(settings_file.read_text())
+
     from autogpt.core.runner.client import run_auto_gpt
+
     with autogpt_server():
-        await run_auto_gpt({})
+        await run_auto_gpt(settings)
 
 
 @autogpt.command()
 @click.option(
     "--settings-file",
     type=click.Path(),
-    default="~/auto-gpt/agent_settings.yml",
+    default=DEFAULT_SETTINGS_FILE,
 )
 def config(settings_file: str) -> None:
     from autogpt.core.runner.settings import make_default_settings
-    make_default_settings(settings_file)
 
-
-
-# @v2.command()
-# @click.option("-a", "--is-async", is_flag=True, help="Run the agent asynchronously.")
-# def run(is_async: bool):
-#     print("Running v2 agent...")
-#     print(f"Is async: {is_async}")
+    make_default_settings(pathlib.Path(settings_file))
 
 
 @autogpt.command()
@@ -122,11 +129,6 @@ def autogpt_server():
             time.sleep(0.2)
     yield server_process
     server_process.terminate()
-
-
-
-
-
 
 
 if __name__ == "__main__":
