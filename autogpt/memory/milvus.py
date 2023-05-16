@@ -4,7 +4,7 @@ import re
 from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections
 
 from autogpt.config import Config
-from autogpt.llm_utils import get_ada_embedding
+from autogpt.llm import get_ada_embedding
 from autogpt.memory.base import MemoryProviderSingleton
 
 
