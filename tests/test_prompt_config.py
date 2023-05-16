@@ -9,6 +9,7 @@ Test cases for the PromptConfig class, which handles loads the Prompts configura
 settings from a YAML file.
 """
 
+
 def test_prompt_config_loading(tmp_path):
     """Test if the prompt configuration loads correctly"""
 
