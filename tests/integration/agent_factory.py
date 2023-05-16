@@ -229,7 +229,7 @@ def get_nobel_prize_agent(
         ai_name="Get-PhysicsNobelPrize",
         ai_role="an autonomous agent that specializes in reporting physics history.",
         ai_goals=[
-            "Write to file the winner's name(s), their affiliated university, and their discovery of the winners of the the 2010 nobel prize in physics.",
+            "Write to file the winner's name(s) and discovery of the 2010 nobel prize in physics. Write your final answer to 2010_nobel_prize_winners.txt.",
         ],
     )
     ai_config.command_registry = command_registry
