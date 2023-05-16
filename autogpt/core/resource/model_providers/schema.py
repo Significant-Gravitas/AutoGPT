@@ -84,17 +84,17 @@ class ModelProviderCredentials(ProviderCredentials):
 class ModelProviderUsage(ProviderUsage):
     """Usage for a particular model from a model provider."""
 
-    completion_tokens_used: int = 0
-    prompt_tokens_used: int = 0
-    total_tokens_used: int = 0
+    completion_tokens: int = 0
+    prompt_tokens: int = 0
+    total_tokens: int = 0
 
     def update_usage(
         self,
         model_response: ModelProviderModelResponse,
     ) -> None:
-        self.completion_tokens_used += model_response.completion_tokens_used
-        self.prompt_tokens_used += model_response.prompt_tokens_used
-        self.total_tokens_used += (
+        self.completion_tokens += model_response.completion_tokens_used
+        self.prompt_tokens += model_response.prompt_tokens_used
+        self.total_tokens += (
             model_response.completion_tokens_used + model_response.prompt_tokens_used
         )
 

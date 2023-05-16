@@ -4,21 +4,6 @@ import logging
 import requests
 
 
-def configure_client_application_logging(
-    application_logger: logging.Logger,
-    user_configuration: dict,
-):
-    application_logger.setLevel(logging.DEBUG)
-
-
-def make_request(content, **metadata):
-    """Convert args to a json string."""
-    request = object()
-    request.json = {
-        "content": content,
-        "metadata": metadata,
-    }
-    return request
 
 
 async def run_auto_gpt(
@@ -31,6 +16,7 @@ async def run_auto_gpt(
         client_logger,
         user_configuration,
     )
+    import pdb; pdb.set_trace()
 
     # This application either starts an existing agent or builds a new one.
     if user_configuration["agent_name"] is None:
@@ -84,14 +70,31 @@ async def run_auto_gpt(
             raise RuntimeError("Main loop failed")
 
 
-def run():
-    body = json.dumps(
-        {"ai_name": "HelloBot", "ai_role": "test", "ai_goals": ["goal1", "goal2"]}
-    )
+def configure_client_application_logging(
+    application_logger: logging.Logger,
+    user_configuration: dict,
+):
+    application_logger.setLevel(logging.DEBUG)
 
-    header = {"Content-Type": "application/json", "openai_api_key": "asdf"}
-    print("Sending: ", header, body)
-    response = requests.post(
-        "http://localhost:8080/api/v1/agents", data=body, headers=header
-    )
-    print(response.content.decode("utf-8"))
+
+def make_request(content, **metadata):
+    """Convert args to a json string."""
+    request = object()
+    request.json = {
+        "content": content,
+        "metadata": metadata,
+    }
+    return request
+
+
+# def run():
+#     body = json.dumps(
+#         {"ai_name": "HelloBot", "ai_role": "test", "ai_goals": ["goal1", "goal2"]}
+#     )
+#
+#     header = {"Content-Type": "application/json", "openai_api_key": "asdf"}
+#     print("Sending: ", header, body)
+#     response = requests.post(
+#         "http://localhost:8080/api/v1/agents", data=body, headers=header
+#     )
+#     print(response.content.decode("utf-8"))

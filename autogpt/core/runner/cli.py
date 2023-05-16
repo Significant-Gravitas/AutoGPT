@@ -1,4 +1,6 @@
+import asyncio
 import contextlib
+import functools
 import shlex
 import subprocess
 import sys
@@ -7,6 +9,14 @@ import time
 import click
 import requests
 import uvicorn
+
+
+def coroutine(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(f(*args, **kwargs))
+
+    return wrapper
 
 
 @click.group()
@@ -43,22 +53,25 @@ def server(host: str, port: int) -> None:
 
 
 @autogpt.command()
-def client() -> None:
+@click.option("--settings-file", type=click.Path(exists=True))
+@coroutine
+async def client(settings_file) -> None:
     """Run the Auto-GPT runner client."""
-    import autogpt.core.runner.client
-
+    from autogpt.core.runner.client import run_auto_gpt
     with autogpt_server():
-        autogpt.core.runner.client.run()
+        await run_auto_gpt({})
 
 
 @autogpt.command()
-@click.option("--pdb", is_flag=True, help="Run the agent with pdb.")
-def test(pdb):
+@click.option(
+    "--settings-file",
+    type=click.Path(),
+    default="~/auto-gpt/agent_settings.yml",
+)
+def config(settings_file: str) -> None:
     from autogpt.core.runner.settings import make_default_settings
-    from autogpt.core.runner.utils import handle_exceptions
+    make_default_settings(settings_file)
 
-    main = handle_exceptions(make_default_settings, with_debugger=pdb)
-    main()
 
 
 # @v2.command()
@@ -94,20 +107,26 @@ def autogpt_server():
     host = "localhost"
     port = 8080
     cmd = shlex.split(
-        f"{sys.executable} autogpt/core/runner/cli.py httpserver --host {host} --port {port}"
+        f"{sys.executable} autogpt/core/runner/cli.py server --host {host} --port {port}"
     )
     server_process = subprocess.Popen(
         args=cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
     started = False
+
     while not started:
         try:
             requests.get(f"http://{host}:{port}")
             started = True
         except requests.exceptions.ConnectionError:
-            time.sleep(0.1)
+            time.sleep(0.2)
     yield server_process
     server_process.terminate()
+
+
+
+
+
 
 
 if __name__ == "__main__":

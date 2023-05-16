@@ -7,7 +7,9 @@ from pydantic import BaseModel
 class SystemConfiguration(BaseModel):
     """A base class for all system configuration."""
 
-    pass
+    class Config:
+        extra = "forbid"
+        use_enum_values = True
 
 
 class SystemSettings(BaseModel):
@@ -18,6 +20,7 @@ class SystemSettings(BaseModel):
 
     class Config:
         extra = "forbid"
+        use_enum_values = True
 
 
 class Configurable(abc.ABC):
