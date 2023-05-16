@@ -1,5 +1,7 @@
 """ Image Generation Module for AutoGPT."""
 import io
+import json
+import time
 import uuid
 from base64 import b64decode
 
@@ -61,20 +63,42 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
         "X-Use-Cache": "false",
     }
 
-    response = requests.post(
-        API_URL,
-        headers=headers,
-        json={
-            "inputs": prompt,
-        },
-    )
+    retry_count = 0
+    while retry_count < 10:
+        response = requests.post(
+            API_URL,
+            headers=headers,
+            json={
+                "inputs": prompt,
+            },
+        )
 
-    image = Image.open(io.BytesIO(response.content))
-    logger.info(f"Image Generated for prompt:{prompt}")
+        if response.ok:
+            try:
+                image = Image.open(io.BytesIO(response.content))
+                logger.info(f"Image Generated for prompt:{prompt}")
+                image.save(filename)
+                return f"Saved to disk:{filename}"
+            except Exception as e:
+                logger.error(e)
+                break
+        else:
+            try:
+                error = json.loads(response.text)
+                if "estimated_time" in error:
+                    delay = error["estimated_time"]
+                    logger.debug(response.text)
+                    logger.info("Retrying in", delay)
+                    time.sleep(delay)
+                else:
+                    break
+            except Exception as e:
+                logger.error(e)
+                break
 
-    image.save(filename)
+        retry_count += 1
 
-    return f"Saved to disk:{filename}"
+    return f"Error creating image."
 
 
 def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
