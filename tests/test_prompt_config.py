@@ -1,8 +1,4 @@
-import autogpt.configurator
-from autogpt.config.config import Config
 from autogpt.config.prompt_config import PromptConfig
-
-CFG = Config()
 
 """
 Test cases for the PromptConfig class, which handles loads the Prompts configuration
