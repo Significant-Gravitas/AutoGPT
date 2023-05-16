@@ -186,7 +186,7 @@ def get_company_revenue_agent(
 
 
 @pytest.fixture
-def kubernetes_agent(memory_local_cache, workspace: Workspace):
+def kubernetes_agent(agent_test_config, memory_local_cache, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -218,7 +218,7 @@ def kubernetes_agent(memory_local_cache, workspace: Workspace):
     return agent
 
 @pytest.fixture
-def anthropic_information_agent(memory_local_cache, workspace: Workspace):
+def anthropic_information_agent(agent_test_config, memory_local_cache, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
