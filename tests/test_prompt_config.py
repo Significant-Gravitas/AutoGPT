@@ -1,6 +1,6 @@
 import autogpt.configurator
-from autogpt.config.prompt_config import PromptConfig
 from autogpt.config.config import Config
+from autogpt.config.prompt_config import PromptConfig
 
 CFG = Config()
 

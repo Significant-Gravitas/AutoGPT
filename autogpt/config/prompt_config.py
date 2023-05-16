@@ -4,8 +4,9 @@ A module that contains the PromptConfig class object that contains the configura
 """
 import yaml
 from colorama import Fore
-from autogpt.config.config import Config
+
 from autogpt import utils
+from autogpt.config.config import Config
 from autogpt.logs import logger
 
 CFG = Config()
