@@ -216,3 +216,34 @@ def kubernetes_agent(memory_local_cache, workspace: Workspace):
     )
 
     return agent
+
+@pytest.fixture
+def anthropic_information_agent(memory_local_cache, workspace: Workspace):
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.app")
+
+    ai_config = AIConfig(
+        ai_name="Anthropic-Information",
+        ai_role="an autonomous agent that specializes in researching about Anthropic's new LLM.",
+        ai_goals=[
+            "Write in a file called output.txt how many tokens fit in the Anthropic LLM which was announced in Q2 2023",
+        ],
+    )
+    ai_config.command_registry = command_registry
+
+    system_prompt = ai_config.construct_full_prompt()
+    Config().set_continuous_mode(False)
+    agent = Agent(
+        ai_name="Anthropic-Demo",
+        memory=memory_local_cache,
+        full_message_history=[],
+        command_registry=command_registry,
+        config=ai_config,
+        next_action_count=0,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=workspace.root,
+    )
+
+    return agent
