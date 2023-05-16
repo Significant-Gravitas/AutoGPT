@@ -128,7 +128,7 @@ def validate_command(command: str) -> bool:
     CFG.execute_local_commands,
     "You are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-    "in your config. Do not attempt to bypass the restriction.",
+    "in your config file: .env - do not attempt to bypass the restriction.",
 )
 def execute_shell(command_line: str) -> str:
     """Execute a shell command and return the output
