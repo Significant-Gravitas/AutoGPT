@@ -9,6 +9,7 @@ Test cases for the PromptConfig class, which handles loads the Prompts configura
 settings from a YAML file.
 """
 
+
 def test_configurator(tmp_path):
     """Test if the configurator validates the file correctly"""
 
@@ -30,6 +31,7 @@ def test_configurator(tmp_path):
     config_file.write_text(yaml_content)
 
     autogpt.configurator.create_config(prompt_settings_file=tmp_path)
+
 
 def test_prompt_config_loading(tmp_path):
     """Test if the prompt configuration loads correctly"""
@@ -64,5 +66,11 @@ performance_evaluations:
     assert prompt_config.resources[2] == "A third test resource"
     assert len(prompt_config.performance_evaluations) == 3
     assert prompt_config.performance_evaluations[0] == "A test performance evaluation"
-    assert prompt_config.performance_evaluations[1] == "Another test performance evaluation"
-    assert prompt_config.performance_evaluations[2] == "A third test performance evaluation"
+    assert (
+        prompt_config.performance_evaluations[1]
+        == "Another test performance evaluation"
+    )
+    assert (
+        prompt_config.performance_evaluations[2]
+        == "A third test performance evaluation"
+    )
