@@ -53,7 +53,9 @@ class Config(metaclass=Singleton):
             max_limit = smart_token_limit
 
         if smart_token_limit > max_limit:
-            print(f"Smart LLM model is {self.smart_llm_model}, setting max smart_token_limit to {max_limit}")
+            print(
+                f"Smart LLM model is {self.smart_llm_model}, setting max smart_token_limit to {max_limit}"
+            )
             smart_token_limit = max_limit
 
         self.smart_token_limit = smart_token_limit
