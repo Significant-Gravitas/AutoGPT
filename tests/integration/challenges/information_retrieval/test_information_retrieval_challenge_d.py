@@ -13,8 +13,8 @@ from autogpt.agent import Agent
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)
-def test_information_retrieval_challenge_a(
-    get_company_revenue_agent: Agent,
+def test_information_retrieval_challenge_d(
+    spacex_information_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
 ) -> None:
@@ -24,9 +24,8 @@ def test_information_retrieval_challenge_a(
     :param get_company_revenue_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
     """
-    run_interaction_loop(monkeypatch, get_company_revenue_agent, CYCLE_COUNT)
+    run_interaction_loop(monkeypatch, spacex_information_agent, CYCLE_COUNT)
 
-    file_path = str(get_company_revenue_agent.workspace.get_path("output.txt"))
+    file_path = str(spacex_information_agent.workspace.get_path("output.txt"))
     content = read_file(file_path)
-    print(content)
-    assert "81" in content, "Expected the file to contain 81"
+    assert "20-04-2023" == content

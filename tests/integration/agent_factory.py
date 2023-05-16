@@ -217,8 +217,11 @@ def kubernetes_agent(agent_test_config, memory_local_cache, workspace: Workspace
 
     return agent
 
+
 @pytest.fixture
-def anthropic_information_agent(agent_test_config, memory_local_cache, workspace: Workspace):
+def anthropic_information_agent(
+    agent_test_config, memory_local_cache, workspace: Workspace
+):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -236,6 +239,176 @@ def anthropic_information_agent(agent_test_config, memory_local_cache, workspace
     Config().set_continuous_mode(False)
     agent = Agent(
         ai_name="Anthropic-Demo",
+        memory=memory_local_cache,
+        full_message_history=[],
+        command_registry=command_registry,
+        config=ai_config,
+        next_action_count=0,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=workspace.root,
+    )
+
+    return agent
+
+
+@pytest.fixture
+def autogpt_information_agent(
+    agent_test_config, memory_local_cache, workspace: Workspace
+):
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.app")
+
+    ai_config = AIConfig(
+        ai_name="AutoGPT-Information",
+        ai_role="an autonomous agent that specializes in researching.",
+        ai_goals=[
+            "Write in a file called output.txt the name of the founder of AutoGPT.",
+        ],
+    )
+    ai_config.command_registry = command_registry
+
+    system_prompt = ai_config.construct_full_prompt()
+    Config().set_continuous_mode(False)
+    agent = Agent(
+        ai_name="AutoGPT-Demo",
+        memory=memory_local_cache,
+        full_message_history=[],
+        command_registry=command_registry,
+        config=ai_config,
+        next_action_count=0,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=workspace.root,
+    )
+
+    return agent
+
+
+@pytest.fixture
+def spacex_information_agent(
+    agent_test_config, memory_local_cache, workspace: Workspace
+):
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.app")
+
+    ai_config = AIConfig(
+        ai_name="SpcaeX-Information",
+        ai_role="an autonomous agent that specializes in researching and saving files as output.txt.",
+        ai_goals=[
+            "Write in a file called output.txt the date of SpaceX's Super Heavy First flight in format DD-MM-YYYY.",
+        ],
+    )
+    ai_config.command_registry = command_registry
+
+    system_prompt = ai_config.construct_full_prompt()
+    Config().set_continuous_mode(False)
+    agent = Agent(
+        ai_name="SpaceX-Demo",
+        memory=memory_local_cache,
+        full_message_history=[],
+        command_registry=command_registry,
+        config=ai_config,
+        next_action_count=0,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=workspace.root,
+    )
+
+    return agent
+
+
+@pytest.fixture
+def twitter_information_agent(
+    agent_test_config, memory_local_cache, workspace: Workspace
+):
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.app")
+
+    ai_config = AIConfig(
+        ai_name="Twitter-Information",
+        ai_role="an autonomous agent that specializes in researching and saving files as output.txt.",
+        ai_goals=[
+            "Write in a file called output.txt the name of the Twitter CEO as of May 2023.",
+        ],
+    )
+    ai_config.command_registry = command_registry
+
+    system_prompt = ai_config.construct_full_prompt()
+    Config().set_continuous_mode(False)
+    agent = Agent(
+        ai_name="Twitter-Demo",
+        memory=memory_local_cache,
+        full_message_history=[],
+        command_registry=command_registry,
+        config=ai_config,
+        next_action_count=0,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=workspace.root,
+    )
+
+    return agent
+
+
+@pytest.fixture
+def researchpaper_information_agent(
+    agent_test_config, memory_local_cache, workspace: Workspace
+):
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.app")
+
+    ai_config = AIConfig(
+        ai_name="Twitter-Information",
+        ai_role="an autonomous agent that specializes in researching and saving files as output.txt.",
+        ai_goals=[
+            "Write in a file called output.txt the name of the main Author of the research paper titled Generative Agents: Interactive Simulacra of Human Behavior.",
+        ],
+    )
+    ai_config.command_registry = command_registry
+
+    system_prompt = ai_config.construct_full_prompt()
+    Config().set_continuous_mode(False)
+    agent = Agent(
+        ai_name="Twitter-Demo",
+        memory=memory_local_cache,
+        full_message_history=[],
+        command_registry=command_registry,
+        config=ai_config,
+        next_action_count=0,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=workspace.root,
+    )
+
+    return agent
+
+
+@pytest.fixture
+def milvius_information_agent(
+    agent_test_config, memory_local_cache, workspace: Workspace
+):
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.app")
+
+    ai_config = AIConfig(
+        ai_name="Twitter-Information",
+        ai_role="an autonomous agent that specializes in researching and saving files as output.txt.",
+        ai_goals=[
+            "Write in a file called output.txt the answer 'Yes' or 'No' to this question: Does Milvius 2.3 support GPU acceleration?.",
+        ],
+    )
+    ai_config.command_registry = command_registry
+
+    system_prompt = ai_config.construct_full_prompt()
+    Config().set_continuous_mode(False)
+    agent = Agent(
+        ai_name="Twitter-Demo",
         memory=memory_local_cache,
         full_message_history=[],
         command_registry=command_registry,
