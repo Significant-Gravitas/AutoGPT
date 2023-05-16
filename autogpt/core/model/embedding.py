@@ -29,13 +29,13 @@ class SimpleEmbeddingModel(EmbeddingModel, Configurable):
 
     def __init__(
         self,
-        configuration: ModelConfiguration,
+        settings: EmbeddingModelSettings,
         logger: logging.Logger,
-        model_provider: EmbeddingModelProvider,
+        model_providers: dict[ModelProviderName, EmbeddingModelProvider],
     ):
-        self._configuration = configuration
+        self._configuration = settings.configuration
         self._logger = logger
-        self._model_provider = model_provider
+        self._model_provider = model_providers[self._configuration.provider_name]
 
     async def get_embedding(self, text: str) -> EmbeddingModelResponse:
         """Get the embedding for a prompt.

@@ -99,7 +99,7 @@ class SimpleAgent(Agent, Configurable):
 
     def __init__(
         self,
-        configuration: AgentConfiguration,
+        settings: AgentSystemSettings,
         logger: logging.Logger,
         command_registry: SimpleCommandRegistry,
         memory: SimpleMemory,
@@ -109,7 +109,7 @@ class SimpleAgent(Agent, Configurable):
         planning: SimplePlanner,
         workspace: SimpleWorkspace,
     ):
-        self._configuration = configuration
+        self._configuration = settings.configuration
         self._logger = logger
         self._command_registry = command_registry
         self._memory = memory
@@ -121,26 +121,61 @@ class SimpleAgent(Agent, Configurable):
         self._planning = planning
         self._workspace = workspace
 
+    @classmethod
+    def from_workspace(
+        cls,
+        workspace_path: Path,
+        logger: logging.Logger,
+    ) -> "Agent":
+        agent_settings = SimpleWorkspace.load_agent_settings(workspace_path)
+        agent_args = {}
+
+        agent_args["settings"] = agent_settings.agent
+        agent_args["logger"] = logger
+        agent_args["workspace"] = cls._get_system_instance(
+            "workspace",
+            agent_settings,
+            logger,
+        )
+        agent_args["openai_provider"] = cls._get_system_instance(
+            "openai_provider",
+            agent_settings,
+            logger,
+        )
+        agent_args["embedding_model"] = cls._get_system_instance(
+            "embedding_model",
+            agent_settings,
+            logger,
+            model_providers={"openai": agent_args["openai_provider"]},
+        )
+        agent_args["language_model"] = cls._get_system_instance(
+            "language_model",
+            agent_settings,
+            logger,
+            model_providers={"openai": agent_args["openai_provider"]},
+        )
+        agent_args["command_registry"] = cls._get_system_instance(
+            "command_registry",
+            agent_settings,
+            logger,
+        )
+        agent_args["memory"] = cls._get_system_instance(
+            "memory",
+            agent_settings,
+            logger,
+        )
+        agent_args["planning"] = cls._get_system_instance(
+            "planning",
+            agent_settings,
+            logger,
+        )
+        return cls(**agent_args)
+
     def step(self, *args, **kwargs):
         pass
 
     def run(self):
         pass
-
-    @staticmethod
-    def load_system(
-        system_name: str,
-        agent_settings: AgentSettings,
-        logger: logging.Logger,
-        **kwargs,
-    ):
-        logger.debug(f"Loading system {system_name}")
-        system_load_config = agent_settings.system[system_name]
-        system_class = SimplePluginService.get_plugin(system_load_config)
-
-        system_logger = logger.getChild(system_name)
-        system_config = getattr(agent_settings, system_name)
-        return system_class(system_config, system_logger, **kwargs)
 
     def __repr__(self):
         return "SimpleAgent()"
@@ -242,7 +277,7 @@ class SimpleAgent(Agent, Configurable):
             agent_settings,
             logger=logger,
         )
-        workspace.setup_workspace(agent_settings, logger)
+        return workspace.setup_workspace(agent_settings, logger)
 
     @classmethod
     def _get_system_instance(

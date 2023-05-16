@@ -1,3 +1,5 @@
+import logging
+
 from autogpt.core.command.base import Command, CommandRegistry
 from autogpt.core.configuration.schema import (
     Configurable,
@@ -20,3 +22,11 @@ class SimpleCommandRegistry(CommandRegistry, Configurable):
         description="A simple command registry.",
         configuration=CommandRegistryConfiguration(),
     )
+
+    def __init__(
+        self,
+        settings: CommandRegistrySettings,
+        logger: logging.Logger,
+    ):
+        self._configuration = settings.configuration
+        self._logger = logger

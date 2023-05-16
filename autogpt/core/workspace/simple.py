@@ -1,3 +1,4 @@
+import json
 import logging
 import typing
 from pathlib import Path
@@ -187,7 +188,7 @@ class SimpleWorkspace(Configurable, Workspace):
         # Cyclic import
         from autogpt.core.agent.simple import AgentSettings
 
-        with (workspace_root / "configuration.yml").open("r") as f:
-            configuration = yaml.safe_load(f)
+        with (workspace_root / "agent_settings.json").open("r") as f:
+            agent_settings = json.load(f)
 
-        return AgentSettings.parse_obj(configuration)
+        return AgentSettings.parse_obj(agent_settings)

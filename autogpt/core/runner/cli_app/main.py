@@ -3,7 +3,7 @@ import click
 from autogpt.core.agent import AgentSettings, SimpleAgent
 from autogpt.core.model import LanguageModelResponse
 from autogpt.core.planning import ModelPrompt
-from autogpt.core.runner.app_lib.logging import get_client_logger
+from autogpt.core.runner.client_lib.logging import get_client_logger
 
 
 async def run_auto_gpt(user_configuration: dict):
@@ -50,10 +50,15 @@ async def run_auto_gpt(user_configuration: dict):
         agent_settings.update_agent_name_and_goals(name_and_goals.content)
 
         # Step 3. Provision the agent.
-        SimpleAgent.provision_agent(agent_settings, client_logger)
+        agent_workspace = SimpleAgent.provision_agent(agent_settings, client_logger)
         click.echo("agent is provisioned")
 
     # launch agent interaction loop
+    agent = SimpleAgent.from_workspace(
+        agent_workspace,
+        client_logger,
+    )
+    click.echo("agent is loaded")
 
 
 def parse_objective_prompt(agent_objective_prompt: ModelPrompt) -> str:
