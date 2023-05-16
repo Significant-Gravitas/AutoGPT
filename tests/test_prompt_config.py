@@ -18,11 +18,11 @@ def test_configurator(tmp_path):
     - A test constraint
     - Another test constraint
     - A third test constraint
-    resources: 
+    resources:
     - A test resource
     - Another test resource
     - A third test resource
-    performance_evaluations: 
+    performance_evaluations:
     - A test performance evaluation
     - Another test performance evaluation
     - A third test performance evaluation
@@ -41,11 +41,11 @@ constraints:
 - A test constraint
 - Another test constraint
 - A third test constraint
-resources: 
+resources:
 - A test resource
 - Another test resource
 - A third test resource
-performance_evaluations: 
+performance_evaluations:
 - A test performance evaluation
 - Another test performance evaluation
 - A third test performance evaluation
