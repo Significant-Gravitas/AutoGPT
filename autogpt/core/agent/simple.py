@@ -177,7 +177,7 @@ class SimpleAgent(Agent, Configurable):
         for system_name, system_location in system_locations.items():
             logger.debug(f"Compiling configuration for system {system_name}")
             system_class = SimplePluginService.get_plugin(system_location)
-            configuration_dict[system_name] = system_class.process_user_configuration(
+            configuration_dict[system_name] = system_class.build_agent_configuration(
                 user_configuration.get(system_name, {})
             ).dict()
 

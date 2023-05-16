@@ -36,9 +36,9 @@ def handle_exceptions(
     """
 
     @functools.wraps(application_main)
-    def wrapped(*args: P.args, **kwargs: P.kwargs) -> T:
+    async def wrapped(*args: P.args, **kwargs: P.kwargs) -> T:
         try:
-            return application_main(*args, **kwargs)
+            return await application_main(*args, **kwargs)
         except (BdbQuit, KeyboardInterrupt, click.Abort):
             raise
         except Exception as e:

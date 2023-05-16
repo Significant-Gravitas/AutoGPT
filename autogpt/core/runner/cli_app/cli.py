@@ -7,7 +7,7 @@ from autogpt.core.runner.app_lib.shared_click_commands import (
     DEFAULT_SETTINGS_FILE,
     make_settings,
 )
-from autogpt.core.runner.app_lib.utils import coroutine
+from autogpt.core.runner.app_lib.utils import coroutine, handle_exceptions
 from autogpt.core.runner.cli_app.main import run_auto_gpt
 
 
@@ -26,15 +26,21 @@ autogpt.add_command(make_settings)
     type=click.Path(),
     default=DEFAULT_SETTINGS_FILE,
 )
+@click.option(
+    "--pdb",
+    is_flag=True,
+    help="Drop into a debugger if an error is raised.",
+)
 @coroutine
-async def run(settings_file: str) -> None:
+async def run(settings_file: str, pdb: bool) -> None:
     """Run the Auto-GPT agent."""
     click.echo("Running Auto-GPT agent...")
     settings_file = Path(settings_file)
     settings = {}
     if settings_file.exists():
         settings = yaml.safe_load(settings_file.read_text())
-    await run_auto_gpt(settings)
+    main = handle_exceptions(run_auto_gpt, with_debugger=pdb)
+    await main(settings)
 
 
 if __name__ == "__main__":

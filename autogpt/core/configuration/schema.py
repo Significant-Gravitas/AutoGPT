@@ -43,8 +43,8 @@ class Configurable(abc.ABC):
     def build_agent_configuration(cls, configuration: dict) -> SystemSettings:
         """Process the configuration for this object."""
 
-        final_configuration = cls.defaults.dict()
-        final_configuration.update(configuration)
+        defaults = cls.defaults.dict()
+        final_configuration = deep_update(defaults, configuration)
 
         return cls.defaults.__class__.parse_obj(final_configuration)
 
@@ -79,3 +79,26 @@ def _get_user_config_fields(instance: BaseModel) -> dict[str, Any]:
             }
 
     return user_config_fields
+
+
+def deep_update(original_dict: dict, update_dict: dict) -> dict:
+    """
+    Recursively update a dictionary.
+
+    Args:
+        original_dict (dict): The dictionary to be updated.
+        update_dict (dict): The dictionary to update with.
+
+    Returns:
+        dict: The updated dictionary.
+    """
+    for key, value in update_dict.items():
+        if (
+            key in original_dict
+            and isinstance(original_dict[key], dict)
+            and isinstance(value, dict)
+        ):
+            original_dict[key] = deep_update(original_dict[key], value)
+        else:
+            original_dict[key] = value
+    return original_dict

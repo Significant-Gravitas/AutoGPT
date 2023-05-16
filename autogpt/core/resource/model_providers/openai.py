@@ -234,7 +234,7 @@ class OpenAIProvider(
         completion_kwargs = {
             "model": model_name,
             **kwargs,
-            **self._model_credentials[model_name].dict(),
+            **self._model_credentials[model_name].unmasked(),
         }
 
         return completion_kwargs
@@ -257,7 +257,7 @@ class OpenAIProvider(
         embedding_kwargs = {
             "model": model_name,
             **kwargs,
-            **self._model_credentials[model_name].dict(),
+            **self._model_credentials[model_name].unmasked(),
         }
 
         return embedding_kwargs
@@ -293,7 +293,6 @@ async def _create_completion(messages: ModelPrompt, *_, **kwargs) -> openai.Comp
         str: The completion.
     """
     messages = [message.dict() for message in messages]
-    breakpoint()
     return await openai.ChatCompletion.acreate(
         messages=messages,
         **kwargs,
