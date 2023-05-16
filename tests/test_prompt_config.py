@@ -9,30 +9,6 @@ Test cases for the PromptConfig class, which handles loads the Prompts configura
 settings from a YAML file.
 """
 
-
-def test_configurator(tmp_path):
-    """Test if the configurator validates the file correctly"""
-
-    yaml_content = """
-    constraints:
-    - A test constraint
-    - Another test constraint
-    - A third test constraint
-    resources:
-    - A test resource
-    - Another test resource
-    - A third test resource
-    performance_evaluations:
-    - A test performance evaluation
-    - Another test performance evaluation
-    - A third test performance evaluation
-    """
-    config_file = tmp_path / "prompt_settings.yaml"
-    config_file.write_text(yaml_content)
-
-    autogpt.configurator.create_config(prompt_settings_file=tmp_path)
-
-
 def test_prompt_config_loading(tmp_path):
     """Test if the prompt configuration loads correctly"""
 
@@ -50,11 +26,10 @@ performance_evaluations:
 - Another test performance evaluation
 - A third test performance evaluation
 """
-    config_file = tmp_path / "prompt_settings.yaml"
+    config_file = tmp_path / "test_prompt_settings.yaml"
     config_file.write_text(yaml_content)
 
-    CFG.prompt_settings_file = config_file
-    prompt_config = PromptConfig()
+    prompt_config = PromptConfig(config_file)
 
     assert len(prompt_config.constraints) == 3
     assert prompt_config.constraints[0] == "A test constraint"
