@@ -45,6 +45,10 @@ jobs:
         run: isort . --check
         if: success() || failure()
 
+      - name: Check mypy formatting
+        run: mypy
+        if: success() || failure()
+
   test:
     permissions:
       # Gives the action the necessary permissions for publishing new
