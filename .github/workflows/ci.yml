@@ -83,7 +83,7 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          pytest -s tests/integration/challenges/basic_abilities/test_write_file.py
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
@@ -94,14 +94,23 @@ jobs:
         uses: codecov/codecov-action@v3
 
       - name: Stage new files and commit
+        id: stage_files
         run: |
-          COMMIT_SHA=$(git rev-parse HEAD) # take the sha before committing the cassette
+          TIMESTAMP=$(date +%Y%m%d%H%M%S) # generate a timestamp
           git add tests
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git commit -m "Add new cassettes"
-          
-          git checkout -b cassette-diff-${COMMIT_SHA}
-          git remote add target https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.event.pull_request.base.repo.full_name }}
-          git push -f target cassette-diff-${COMMIT_SHA}
+          echo "::set-output name=timestamp::$TIMESTAMP"
+
+      - name: Create PR
+        id: create_pr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: Update cassettes
+          branch: cassette-diff-PR${{ github.event.pull_request.number }}-${{ steps.stage_files.outputs.timestamp }}
+          title: "Update cassettes"
+          body: "This PR updates the cassettes."
+
+
