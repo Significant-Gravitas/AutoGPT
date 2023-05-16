@@ -99,6 +99,32 @@ Your support is greatly appreciated. Development of this free, open-source proje
 4. Configure any additional features you want, or install some [plugins][docs/plugins]
 5. [Run][docs/usage] the app
 
+## Commands
+
+Sure! Here's a tab-delimited format of the numbered items you provided:
+
+1.  analyze_code: Analyze Code, args: 'code': '<full_code_string>'
+2.  execute_python_file: Execute Python File, args: 'filename': '<filename>'
+3.  append_to_file: Append to file, args: 'filename': '<filename>', 'text': '<text>'
+4.  delete_file: Delete file, args: 'filename': '<filename>'
+5.  list_files: List Files in Directory, args: 'directory': '<directory>'
+6.  read_file: Read file, args: 'filename': '<filename>'
+7.  write_to_file: Write to file, args: 'filename': '<filename>', 'text': '<text>'
+8.  google: Google Search, args: 'query': '<query>'
+9.  improve_code: Get Improved Code, args: 'suggestions': '<list_of_suggestions>', 'code': '<full_code_string>'
+10. send_tweet: Send Tweet, args: 'tweet_text': '<tweet_text>'
+11. browse_website: Browse Website, args: 'url': '<url>', 'question': '<what_you_want_to_find_on_website>'
+12. write_tests: Write Tests, args: 'code': '<full_code_string>', 'focus': '<list_of_focus_areas>'
+13. delete_agent: Delete GPT Agent, args: 'key': '<key>'
+14. get_hyperlinks: Get text summary, args: 'url': '<url>'
+15. get_text_summary: Get text summary, args: 'url': '<url>', 'question': '<question>'
+16. list_agents: List GPT Agents, args: () -> str
+17. message_agent: Message GPT Agent, args: 'key': '<key>', 'message': '<message>'
+18. start_agent: Start GPT Agent, args: 'name': '<name>', 'task': '<short_task_desc>', 'prompt': '<prompt>'
+19. Task Complete (Shutdown): 'task_complete', args: 'reason': '<reason>'
+
+Each item is separated by a tab character for clear distinction.
+
 Please see the [documentation][docs] for full setup instructions and configuration options.
 
 [docs]: https://docs.agpt.co/
