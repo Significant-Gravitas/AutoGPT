@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Annotated, Any
 
 from pydantic import BaseModel
 
@@ -144,6 +145,20 @@ class SimpleAgent(Agent, Configurable):
     ###############################################################
 
     @classmethod
+    def build_user_configuration(cls) -> dict[str, Any]:
+        """Build the user's configuration."""
+        configuration_dict = {
+            "agent": cls.get_user_config(),
+        }
+
+        system_locations = configuration_dict["agent"]["configuration"]["systems"]
+        for system_name, system_location in system_locations.items():
+            system_class = SimplePluginService.get_plugin(system_location)
+            configuration_dict[system_name] = system_class.get_user_config()
+        configuration_dict = _prune_empty_dicts(configuration_dict)
+        return configuration_dict
+
+    @classmethod
     def compile_settings(
         cls, logger: logging.Logger, user_configuration: dict
     ) -> AgentSettings:
@@ -151,7 +166,7 @@ class SimpleAgent(Agent, Configurable):
         logger.debug("Compiling agent settings")
         logger.debug("Processing agent system configuration.")
         configuration_dict = {
-            "agent": cls.process_user_configuration(
+            "agent": cls.build_agent_configuration(
                 user_configuration.get("agent", {})
             ).dict(),
         }
@@ -231,3 +246,26 @@ class SimpleAgent(Agent, Configurable):
             **kwargs,
         )
         return system_instance
+
+
+def _prune_empty_dicts(d: dict) -> dict:
+    """
+    Prune branches from a nested dictionary if the branch only contains empty dictionaries at the leaves.
+
+    Args:
+        d: The dictionary to prune.
+
+    Returns:
+        The pruned dictionary.
+    """
+    pruned = {}
+    for key, value in d.items():
+        if isinstance(value, dict):
+            pruned_value = _prune_empty_dicts(value)
+            if (
+                pruned_value
+            ):  # if the pruned dictionary is not empty, add it to the result
+                pruned[key] = pruned_value
+        else:
+            pruned[key] = value
+    return pruned

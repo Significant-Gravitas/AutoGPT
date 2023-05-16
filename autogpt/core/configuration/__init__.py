@@ -3,6 +3,7 @@ from autogpt.core.configuration.schema import (
     Configurable,
     SystemConfiguration,
     SystemSettings,
+    UserConfigurable,
 )
 from autogpt.core.status import ShortStatus, Status
 

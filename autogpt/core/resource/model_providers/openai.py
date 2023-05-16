@@ -8,7 +8,11 @@ from typing import Callable, ParamSpec, TypeVar
 import openai
 from openai.error import APIError, RateLimitError
 
-from autogpt.core.configuration import Configurable, SystemConfiguration
+from autogpt.core.configuration import (
+    Configurable,
+    SystemConfiguration,
+    UserConfigurable,
+)
 from autogpt.core.planning import ModelPrompt
 from autogpt.core.resource.model_providers.schema import (
     Embedding,
@@ -101,12 +105,12 @@ class OpenAICredentials(ModelProviderCredentials):
 
 
 class OpenAIConfiguration(SystemConfiguration):
-    retries_per_request: int
+    retries_per_request: int = UserConfigurable()
 
 
 class OpenAIModelProviderBudget(ModelProviderBudget):
-    graceful_shutdown_threshold: float
-    warning_threshold: float
+    graceful_shutdown_threshold: float = UserConfigurable()
+    warning_threshold: float = UserConfigurable()
 
 
 class OpenAISettings(ModelProviderSettings):
@@ -289,6 +293,7 @@ async def _create_completion(messages: ModelPrompt, *_, **kwargs) -> openai.Comp
         str: The completion.
     """
     messages = [message.dict() for message in messages]
+    breakpoint()
     return await openai.ChatCompletion.acreate(
         messages=messages,
         **kwargs,

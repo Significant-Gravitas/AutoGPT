@@ -5,7 +5,7 @@ from typing import Type
 from pydantic import BaseModel
 
 from autogpt.core.command import Command, CommandRegistry
-from autogpt.core.configuration import SystemConfiguration
+from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.memory import Memory
 from autogpt.core.model import EmbeddingModel, LanguageModel
 from autogpt.core.planning import Planner
@@ -86,8 +86,8 @@ class PluginLocation(SystemConfiguration):
 
     """
 
-    storage_format: PluginStorageFormat
-    storage_route: PluginStorageRoute
+    storage_format: PluginStorageFormat = UserConfigurable()
+    storage_route: PluginStorageRoute = UserConfigurable()
 
 
 class PluginMetadata(BaseModel):

@@ -2,7 +2,9 @@ import pathlib
 
 import click
 
-DEFAULT_SETTINGS_FILE = str(pathlib.Path("~/auto-gpt/settings.yaml").expanduser())
+DEFAULT_SETTINGS_FILE = str(
+    pathlib.Path("~/auto-gpt/default_agent_settings.yml").expanduser()
+)
 
 
 @click.command()
@@ -12,6 +14,6 @@ DEFAULT_SETTINGS_FILE = str(pathlib.Path("~/auto-gpt/settings.yaml").expanduser(
     default=DEFAULT_SETTINGS_FILE,
 )
 def make_settings(settings_file: str) -> None:
-    from autogpt.core.runner.app_lib.settings import make_default_settings
+    from autogpt.core.runner.app_lib.settings import make_user_configuration
 
-    make_default_settings(pathlib.Path(settings_file))
+    make_user_configuration(pathlib.Path(settings_file))

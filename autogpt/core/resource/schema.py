@@ -3,7 +3,11 @@ import enum
 
 from pydantic import SecretField
 
-from autogpt.core.configuration import SystemConfiguration, SystemSettings
+from autogpt.core.configuration import (
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
+)
 
 
 class ResourceType(str, enum.Enum):
@@ -21,7 +25,7 @@ class ProviderUsage(SystemConfiguration, abc.ABC):
 
 
 class ProviderBudget(SystemConfiguration):
-    total_budget: float
+    total_budget: float = UserConfigurable()
     total_cost: float
     remaining_budget: float
     usage: ProviderUsage

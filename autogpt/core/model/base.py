@@ -1,6 +1,6 @@
 import abc
 
-from autogpt.core.configuration import SystemConfiguration
+from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.planning import ModelPrompt
 from autogpt.core.resource.model_providers import (
     EmbeddingModelProviderModelResponse,
@@ -12,9 +12,9 @@ from autogpt.core.resource.model_providers import (
 class ModelConfiguration(SystemConfiguration):
     """Struct for model configuration."""
 
-    model_name: str
-    provider_name: ModelProviderName
-    temperature: float | None = None
+    model_name: str = UserConfigurable()
+    provider_name: ModelProviderName = UserConfigurable()
+    temperature: float | None = UserConfigurable()
 
 
 class Model(abc.ABC):

@@ -1,6 +1,5 @@
 import asyncio
 import functools
-import pdb
 from bdb import BdbQuit
 from typing import Callable, ParamSpec, TypeVar
 
@@ -44,6 +43,8 @@ def handle_exceptions(
             raise
         except Exception as e:
             if with_debugger:
+                import pdb
+
                 pdb.post_mortem()
             else:
                 raise

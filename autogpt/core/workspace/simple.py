@@ -4,7 +4,12 @@ from pathlib import Path
 
 import yaml
 
-from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
+from autogpt.core.configuration import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
+)
 from autogpt.core.workspace.base import Workspace
 
 if typing.TYPE_CHECKING:
@@ -14,7 +19,8 @@ if typing.TYPE_CHECKING:
 
 class WorkspaceConfiguration(SystemConfiguration):
     root: str
-    restrict_to_workspace: bool
+    parent: str = UserConfigurable()
+    restrict_to_workspace: bool = UserConfigurable()
 
 
 class WorkspaceSettings(SystemSettings):
@@ -27,6 +33,7 @@ class SimpleWorkspace(Configurable, Workspace):
         description="The workspace is the root directory for all agent activity.",
         configuration=WorkspaceConfiguration(
             root="",
+            parent="~/auto-gpt/agents",
             restrict_to_workspace=True,
         ),
     )

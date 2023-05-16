@@ -1,6 +1,11 @@
 import logging
 
-from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
+from autogpt.core.configuration import (
+    Configurable,
+    SystemConfiguration,
+    SystemSettings,
+    UserConfigurable,
+)
 from autogpt.core.planning.base import (
     ModelMessage,
     ModelPrompt,

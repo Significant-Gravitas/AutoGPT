@@ -4,6 +4,7 @@ from typing import Callable, ClassVar
 
 from pydantic import BaseModel, Field, SecretStr, validator
 
+from autogpt.core.configuration import UserConfigurable
 from autogpt.core.planning.base import ModelPrompt
 from autogpt.core.resource.schema import (
     ProviderBudget,
@@ -51,11 +52,11 @@ class ModelProviderModelResponse(BaseModel):
 class ModelProviderModelCredentials(ProviderCredentials):
     """Credentials for a particular model from a model provider."""
 
-    api_key: SecretStr | None = None
-    api_type: SecretStr | None = None
-    api_base: SecretStr | None = None
-    api_version: SecretStr | None = None
-    deployment_id: SecretStr | None = None
+    api_key: SecretStr | None = UserConfigurable(default=None)
+    api_type: SecretStr | None = UserConfigurable(default=None)
+    api_base: SecretStr | None = UserConfigurable(default=None)
+    api_version: SecretStr | None = UserConfigurable(default=None)
+    deployment_id: SecretStr | None = UserConfigurable(default=None)
 
     class Config:
         extra = "ignore"
@@ -64,11 +65,11 @@ class ModelProviderModelCredentials(ProviderCredentials):
 class ModelProviderCredentials(ProviderCredentials):
     """Credentials for all models from a model provider."""
 
-    api_key: SecretStr | None = None
-    api_type: SecretStr | None = None
-    api_base: SecretStr | None = None
-    api_version: SecretStr | None = None
-    deployment_id: SecretStr | None = None
+    api_key: SecretStr | None = UserConfigurable(default=None)
+    api_type: SecretStr | None = UserConfigurable(default=None)
+    api_base: SecretStr | None = UserConfigurable(default=None)
+    api_version: SecretStr | None = UserConfigurable(default=None)
+    deployment_id: SecretStr | None = UserConfigurable(default=None)
     models: dict[str, ModelProviderModelCredentials] | None = None
 
     def get_credentials(self):
@@ -103,7 +104,7 @@ class ModelProviderUsage(ProviderUsage):
 
 
 class ModelProviderBudget(ProviderBudget):
-    total_budget: float
+    total_budget: float = UserConfigurable()
     total_cost: float
     remaining_budget: float
     usage: ModelProviderUsage
