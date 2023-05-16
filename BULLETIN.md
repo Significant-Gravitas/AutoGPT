@@ -3,7 +3,7 @@ Check out *https://agpt.co*, the official news & updates site for Auto-GPT!
 The documentation also has a place here, at *https://docs.agpt.co*
 
 # 🚀 v0.3.1 Release 🚀
-Over a week and 47 pull requests have passed since v0.2.2, and we are happy to announce
+Over a week and 47 pull requests have passed since v0.3.0, and we are happy to announce
 the release of v0.3.1! *From now on, we will be focusing on major improvements* rather
 than bugfixes, as we feel stability has reached a reasonable level. Most remaining
 issues relate to limitations in prompt generation and the memory system, which will be
