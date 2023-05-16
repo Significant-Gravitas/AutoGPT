@@ -167,7 +167,7 @@ AutoGPT (the "System") is a project that connects a GPT-like artificial intellig
 The developers, contributors, and maintainers of the AutoGPT project (collectively, the "Project Parties") make no warranties or representations, express or implied, about the System's performance, accuracy, reliability, or safety. By using the System, you understand and agree that the Project Parties shall not be liable for any actions taken by the System or any consequences resulting from such actions.
 
 ## User Responsibility and Respondeat Superior Liability
-As a user of the System, you are responsible for supervising and monitoring the actions of the System while it is operating on your 
+As a user of the System, you are responsible for supervising and monitoring the actions of the System while it is operating on your
 behalf. You acknowledge that using the System could expose you to potential liability including but not limited to respondeat superior and you agree to assume all risks and liabilities associated with such potential liability.
 
 ## Indemnification
