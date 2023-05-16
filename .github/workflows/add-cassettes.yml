@@ -22,7 +22,7 @@ jobs:
       - name: Reset branch
         run: |
           git checkout ${{ github.event.pull_request.base.ref }}
-          git reset --hard origin/cassette-diff-${{ github.event.pull_request.number }}
+          git reset --hard origin/cassette-diff-${{ github.event.pull_request.head.sha }}
 
       - name: Create PR
         id: create_pr
@@ -30,7 +30,7 @@ jobs:
         with:
           commit-message: Update cassettes
           signoff: false
-          branch: cassette-diff-${{ github.event.pull_request.number }}
+          branch: cassette-diff-${{ github.event.pull_request.head.sha }}
           delete-branch: false
           title: "Update cassettes"
           body: "This PR updates the cassettes."
