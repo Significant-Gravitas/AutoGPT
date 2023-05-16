@@ -63,9 +63,7 @@ def run_auto_gpt(
 
     if cfg.continuous_mode:
         for line in get_legal_warning().split("\n"):
-            logger.warn(markdown_to_ansi_style(
-                line), "LEGAL:", Fore.RED
-            )
+            logger.warn(markdown_to_ansi_style(line), "LEGAL:", Fore.RED)
 
     if not cfg.skip_news:
         motd, is_new_motd = get_latest_bulletin()

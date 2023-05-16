@@ -155,7 +155,7 @@ def markdown_to_ansi_style(markdown: str):
     return "\n".join(ansi_lines)
 
 
-def get_legal_warning()-> str:
+def get_legal_warning() -> str:
     legal_text = """
 ## DISCLAIMER AND INDEMNIFICATION AGREEMENT
 ### PLEASE READ THIS DISCLAIMER AND INDEMNIFICATION AGREEMENT CAREFULLY BEFORE USING THE AUTOGPT SYSTEM. BY USING THE AUTOGPT SYSTEM, YOU AGREE TO BE BOUND BY THIS AGREEMENT.
