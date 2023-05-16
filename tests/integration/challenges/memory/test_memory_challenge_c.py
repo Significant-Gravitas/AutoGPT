@@ -1,20 +1,28 @@
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
+from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
-from tests.integration.agent_utils import run_interaction_loop
-from tests.integration.challenges.utils import generate_noise, get_level_to_run
+from tests.integration.challenges.utils import (
+    generate_noise,
+    get_level_to_run,
+    run_interaction_loop,
+)
 from tests.utils import requires_api_key
 
-LEVEL_CURRENTLY_BEATEN = None
+LEVEL_CURRENTLY_BEATEN = -1
 MAX_LEVEL = 5
 NOISE = 1000
 
 
-@pytest.mark.vcr
+# @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_memory_challenge_c(
-    memory_management_agent: Agent, user_selected_level: int, patched_api_requestor
+    memory_management_agent: Agent,
+    user_selected_level: int,
+    patched_api_requestor: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
     Instead of reading task Ids from files as with the previous challenges, the agent now must remember
@@ -46,13 +54,12 @@ def test_memory_challenge_c(
         memory_management_agent, current_level, level_silly_phrases
     )
 
-    try:
-        run_interaction_loop(memory_management_agent, 90)
-    except SystemExit:
-        file_path = str(memory_management_agent.workspace.get_path("output.txt"))
-        content = read_file(file_path)
-        for phrase in level_silly_phrases:
-            assert phrase in content, f"Expected the file to contain {phrase}"
+    run_interaction_loop(monkeypatch, memory_management_agent, current_level + 2)
+
+    file_path = str(memory_management_agent.workspace.get_path("output.txt"))
+    content = read_file(file_path)
+    for phrase in level_silly_phrases:
+        assert phrase in content, f"Expected the file to contain {phrase}"
 
 
 def create_instructions_files(
