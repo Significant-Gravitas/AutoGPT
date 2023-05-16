@@ -126,14 +126,18 @@ class Agent:
                 break
             # Send message to AI, get response
             with Spinner("Thinking... "):
-                assistant_reply = chat_with_ai(
-                    self,
-                    self.system_prompt,
-                    self.triggering_prompt,
-                    self.full_message_history,
-                    self.memory,
-                    cfg.fast_token_limit,
-                )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                try:
+                    assistant_reply = chat_with_ai(
+                        self,
+                        self.system_prompt,
+                        self.triggering_prompt,
+                        self.full_message_history,
+                        self.memory,
+                        cfg.fast_token_limit,
+                    )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                except Exception as e:
+                    logger.error(f"Exception {e} encountered. Retrying.")
+                    continue
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
             for plugin in cfg.plugins:
