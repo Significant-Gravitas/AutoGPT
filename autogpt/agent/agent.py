@@ -1,10 +1,8 @@
+import signal
+import sys
 from datetime import datetime
 
 from colorama import Fore, Style
-
-import signal
-
-import sys
 
 from autogpt.app import execute_command, get_command
 from autogpt.config import Config
@@ -92,12 +90,16 @@ class Agent:
         arguments = None
         user_input = ""
 
-        #Signal handler for interrupting y -N
+        # Signal handler for interrupting y -N
         def signal_handler(signum, frame):
             if self.next_action_count == 0:
                 sys.exit()
             else:
-                print(Fore.RED + "Interrupt signal received. Stopping continuous command execution." + Style.RESET_ALL)
+                print(
+                    Fore.RED
+                    + "Interrupt signal received. Stopping continuous command execution."
+                    + Style.RESET_ALL
+                )
                 self.next_action_count = 0
 
         signal.signal(signal.SIGINT, signal_handler)
