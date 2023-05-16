@@ -12,7 +12,7 @@ from autogpt.workspace import Workspace
 def agent_test_config(config: Config):
     was_continuous_mode = config.continuous_mode
     was_temperature = config.temperature
-    config.set_continuous_mode(True)
+    config.set_continuous_mode(False)
     config.set_temperature(0)
     yield config
     config.set_continuous_mode(was_continuous_mode)
