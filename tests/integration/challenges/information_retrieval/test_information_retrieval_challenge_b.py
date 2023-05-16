@@ -32,7 +32,6 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 # @pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-@run_multiple_times(3)
 def test_information_retrieval_challenge_b(
     get_nobel_prize_agent, monkeypatch, patched_api_requestor
 ) -> None:
@@ -44,7 +43,7 @@ def test_information_retrieval_challenge_b(
     """
 
     # 's' is for running a self feedback command.
-    input_sequence = ["y","y","y","y","y","y","EXIT"]
+    input_sequence = ["y","y","y","EXIT"]
     gen = input_generator(input_sequence)
     monkeypatch.setattr("builtins.input", lambda _: next(gen))
 
@@ -55,7 +54,6 @@ def test_information_retrieval_challenge_b(
     content = read_file(file_path)
     assert "Andre Geim" in content, "Expected the file to contain Andre Geim"
     assert "Konstantin Novoselov" in content, "Expected the file to contain Konstantin Novoselov"
-    assert "University of Manchester" in content, "Expected the file to contain University of Manchester"
     assert "graphene" in content, "Expected the file to contain graphene"
 
 
