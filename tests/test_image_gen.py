@@ -19,7 +19,7 @@ def image_size(request):
     reason="The image is too big to be put in a cassette for a CI pipeline. We're looking into a solution."
 )
 @requires_api_key("OPENAI_API_KEY")
-def test_dalle(config, workspace, image_size):
+def test_dalle(config, workspace, image_size, patched_api_requestor):
     """Test DALL-E image generation."""
     generate_and_validate(
         config,
@@ -48,18 +48,18 @@ def test_huggingface(config, workspace, image_size, image_model):
     )
 
 
-@pytest.mark.xfail(reason="SD WebUI call does not work.")
+@pytest.mark.skip(reason="External SD WebUI may not be available.")
 def test_sd_webui(config, workspace, image_size):
     """Test SD WebUI image generation."""
     generate_and_validate(
         config,
         workspace,
-        image_provider="sd_webui",
+        image_provider="sdwebui",
         image_size=image_size,
     )
 
 
-@pytest.mark.xfail(reason="SD WebUI call does not work.")
+@pytest.mark.skip(reason="External SD WebUI may not be available.")
 def test_sd_webui_negative_prompt(config, workspace, image_size):
     gen_image = functools.partial(
         generate_image_with_sd_webui,
@@ -83,7 +83,7 @@ def test_sd_webui_negative_prompt(config, workspace, image_size):
 
 def lst(txt):
     """Extract the file path from the output of `generate_image()`"""
-    return Path(txt.split(":")[1].strip())
+    return Path(txt.split(":", maxsplit=1)[1].strip())
 
 
 def generate_and_validate(
