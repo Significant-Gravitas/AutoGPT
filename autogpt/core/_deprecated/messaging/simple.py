@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Dict
 from uuid import UUID
 
-from autogpt.core.runner.cli_web_app.messaging import (
+from autogpt.core._deprecated.messaging import (
     Listener,
     Message,
     MessageBroker,
