@@ -10,6 +10,7 @@ from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
+from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.safari.options import Options as SafariOptions
@@ -17,6 +18,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 import autogpt.processing.text as summary
 from autogpt.commands.command import command
@@ -78,6 +80,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         "chrome": ChromeOptions,
         "safari": SafariOptions,
         "firefox": FirefoxOptions,
+        "edge": EdgeOptions,
     }
 
     options = options_available[CFG.selenium_web_browser]()
@@ -96,6 +99,10 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         # Requires a bit more setup on the users end
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
+    elif CFG.selenium_web_browser == "edge":
+        driver = webdriver.Edge(
+            executable_path=EdgeChromiumDriverManager().install(), options=options
+        )
     else:
         if platform == "linux" or platform == "linux2":
             options.add_argument("--disable-dev-shm-usage")
