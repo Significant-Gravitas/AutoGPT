@@ -1,6 +1,7 @@
 import logging
+from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -36,6 +37,8 @@ class AgentSystems(SystemConfiguration):
 
 
 class AgentConfiguration(SystemConfiguration):
+    cycle_count: int
+    creation_time: str
     systems: AgentSystems
 
 
@@ -64,6 +67,8 @@ class SimpleAgent(Agent, Configurable):
         name="simple_agent",
         description="A simple agent.",
         configuration=AgentConfiguration(
+            cycle_count=0,
+            creation_time="",
             systems=AgentSystems(
                 command_registry=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
@@ -172,9 +177,7 @@ class SimpleAgent(Agent, Configurable):
         return cls(**agent_args)
 
     def step(self, *args, **kwargs):
-        pass
-
-    def run(self):
+        self._configuration.cycle_count += 1
         pass
 
     def __repr__(self):
@@ -272,6 +275,9 @@ class SimpleAgent(Agent, Configurable):
         agent_settings: AgentSettings,
         logger: logging.Logger,
     ):
+        agent_settings.agent.configuration.creation_time = datetime.now().strftime(
+            "%Y%m%d_%H%M%S"
+        )
         workspace: SimpleWorkspace = cls._get_system_instance(
             "workspace",
             agent_settings,

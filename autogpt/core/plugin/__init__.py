@@ -13,5 +13,6 @@ status = Status(
         "5/11: Talked with Nick about plans for the plugin service including which plugins we'll support out of the box and which loading formats\n"
         "      we'll support.  Both are documented in the code. Also discussed how to handle listener plugins (punt, app server will deal with it).\n"
         "      and plugin metrics (punt, app server will deal with it).\n"
+        "5/16: Some small fiddling with pydantic models to get configuration working.\n"
     ),
 )

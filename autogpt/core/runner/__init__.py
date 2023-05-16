@@ -23,5 +23,10 @@ status = Status(
         "      Moved agent and agent factory inside context objects to represent the processes they'll run in.\n"
         "      Started working on agent launching.\n"
         "5/12: Worked with Merwan and David to set up a FastAPI server and run the cli through it.\n"
+        "5/16: Split the runner into a cli app where I can work without any of the complexity of the webserver.\n"
+        "      or message broker; and a cli-based web app where David and others can think about the actual UI and\n"
+        "      details of the server interaction. Added tools to generate a user configuration file. Got agent bootstrapping\n"
+        "      and initialization working with the new configuration system. Started working on main execution step.\n"
+        "      Currently collating the execution prompt from across the codebase.\n"
     ),
 )

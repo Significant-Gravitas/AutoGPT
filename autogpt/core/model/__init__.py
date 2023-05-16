@@ -20,5 +20,8 @@ status = Status(
         "5/12: Restructure the relationship between the language/embedding models and providers and figure\n"
         "      out how to do credentials in a reasonable way.\n"
         "5/14: Use pydantic models for configuration.\n"
+        "5/16: Language model works for the objective prompt. There's an unresolved token count relationship\n"
+        "      between the language model and the planner class. Need to get model info to the planner so it \n"
+        "      can make decisions about how to use the prompt space it has available. Method TBD.\n"
     ),
 )

@@ -16,7 +16,9 @@ class ModelMessage(BaseModel):
     content: str
 
 
-ModelPrompt = list[ModelMessage]
+class ModelPrompt(BaseModel):
+    messages: list[ModelMessage]
+    tokens_used: int
 
 
 class PlanningPromptContext(BaseModel):

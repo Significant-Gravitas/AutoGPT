@@ -10,5 +10,7 @@ status = Status(
         "Before times: Interface has been created. Basic example needs to be created.\n"
         "5/11: Ported most of the existing logic and added a little extra for system setup.\n"
         "5/14: Use pydantic models for configuration.\n"
+        "5/16: Workspace is setup. User configuration now gets written by default to ~/auto-gpt\n"
+        "      and new agents get their own workspaces in ~/auto-gpt/agents.\n"
     ),
 )
