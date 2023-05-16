@@ -46,15 +46,13 @@ class SimpleLanguageModel(LanguageModel, Configurable):
         configuration=LanguageModelConfiguration(
             models={
                 LanguageModelClassification.FAST_MODEL: ModelConfiguration(
-                    name=OpenAIModelName.GPT3,
+                    model_name=OpenAIModelName.GPT3,
                     provider_name=ModelProviderName.OPENAI,
-                    max_tokens=100,
                     temperature=0.9,
                 ),
                 LanguageModelClassification.SMART_MODEL: ModelConfiguration(
-                    name=OpenAIModelName.GPT3,
+                    model_name=OpenAIModelName.GPT4,
                     provider_name=ModelProviderName.OPENAI,
-                    max_tokens=100,
                     temperature=0.9,
                 ),
             },
@@ -63,11 +61,11 @@ class SimpleLanguageModel(LanguageModel, Configurable):
 
     def __init__(
         self,
-        configuration: LanguageModelConfiguration,
+        settings: LanguageModelSettings,
         logger: logging.Logger,
         model_providers: dict[ModelProviderName, LanguageModelProvider],
     ):
-        self._configuration = configuration
+        self._configuration = settings.configuration
         self._logger = logger
 
         # Map model classifications to model providers
@@ -90,11 +88,16 @@ class SimpleLanguageModel(LanguageModel, Configurable):
 
         """
         model_classification = LanguageModelClassification.FAST_MODEL
-        model_config = self._configuration.models[model_classification]
+        model_config = self._configuration.models[model_classification].dict(
+            exclude_none=True
+        )
+        # Provider name is useful for us but not for the provider which
+        # already knows its own name.
+        del model_config["provider_name"]
         provider = self._providers[model_classification]
         response = await provider.create_language_completion(
             model_prompt=objective_prompt,
-            **model_config.dict(exclude_none=True),
+            **model_config,
             completion_parser=self._parse_agent_objective_model_response,
         )
         return LanguageModelResponse.parse_obj(response.dict())
@@ -105,11 +108,11 @@ class SimpleLanguageModel(LanguageModel, Configurable):
         **kwargs,
     ) -> LanguageModelResponse:
         model_classification = LanguageModelClassification.FAST_MODEL
-        model_name = self._configuration.models[model_classification].name
+        model_config = self._configuration.models[model_classification]
         provider = self._providers[model_classification]
         response = await provider.create_language_completion(
             model_prompt=planning_prompt,
-            model_name=model_name,
+            **model_config.dict(exclude_none=True),
             completion_parser=self._parse_agent_action_model_response,
         )
 
@@ -144,10 +147,10 @@ class SimpleLanguageModel(LanguageModel, Configurable):
             The parsed response.
 
         """
-        ai_name = re.search(
+        agent_name = re.search(
             r"Name(?:\s*):(?:\s*)(.*)", response_text, re.IGNORECASE
         ).group(1)
-        ai_role = (
+        agent_role = (
             re.search(
                 r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
                 response_text,
@@ -156,11 +159,11 @@ class SimpleLanguageModel(LanguageModel, Configurable):
             .group(1)
             .strip()
         )
-        ai_goals = re.findall(r"(?<=\n)-\s*(.*)", response_text)
+        agent_goals = re.findall(r"(?<=\n)-\s*(.*)", response_text)
         parsed_response = {
-            "ai_name": ai_name,
-            "ai_role": ai_role,
-            "ai_goals": ai_goals,
+            "agent_name": agent_name,
+            "agent_role": agent_role,
+            "agent_goals": agent_goals,
         }
         return parsed_response
 

@@ -1,3 +1,4 @@
+import asyncio
 import functools
 import pdb
 from bdb import BdbQuit
@@ -48,3 +49,11 @@ def handle_exceptions(
                 raise
 
     return wrapped
+
+
+def coroutine(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(f(*args, **kwargs))
+
+    return wrapper

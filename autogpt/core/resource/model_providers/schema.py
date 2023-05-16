@@ -57,6 +57,9 @@ class ModelProviderModelCredentials(ProviderCredentials):
     api_version: SecretStr | None = None
     deployment_id: SecretStr | None = None
 
+    class Config:
+        extra = "ignore"
+
 
 class ModelProviderCredentials(ProviderCredentials):
     """Credentials for all models from a model provider."""
@@ -108,9 +111,9 @@ class ModelProviderBudget(ProviderBudget):
     def update_usage_and_cost(
         self,
         model_response: ModelProviderModelResponse,
-        model_info: ModelProviderModelInfo,
     ) -> None:
         """Update the usage and cost of the provider."""
+        model_info = model_response.model_info
         self.usage.update_usage(model_response)
         incremental_cost = (
             model_response.completion_tokens_used * model_info.completion_token_cost
@@ -180,6 +183,7 @@ class LanguageModelProviderModelInfo(ModelProviderModelInfo):
     """Struct for language model information."""
 
     model_service = ModelProviderService.LANGUAGE
+    max_tokens: int
 
 
 class LanguageModelProviderModelResponse(ModelProviderModelResponse):

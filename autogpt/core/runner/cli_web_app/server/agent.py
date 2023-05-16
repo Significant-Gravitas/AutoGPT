@@ -1,7 +1,11 @@
 from pathlib import Path
 
 from autogpt.core.agent.simple import SimpleAgent
-from autogpt.core.messaging.simple import Message, Role, SimpleMessageBroker
+from autogpt.core.runner.cli_web_app.messaging.simple import (
+    Message,
+    Role,
+    SimpleMessageBroker,
+)
 
 
 class AgentContext:

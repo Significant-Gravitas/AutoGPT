@@ -88,11 +88,11 @@ class SimplePlanner(Planner, Configurable):
 
     def __init__(
         self,
-        configuration: PlannerConfiguration,
-        logger: logging.Logger = None,  # Logger is not available during bootstrapping.
+        settings: PlannerSettings,
+        logger: logging.Logger,
         workspace: Workspace = None,  # Workspace is not available during bootstrapping.
     ) -> None:
-        self._configuration = configuration
+        self._configuration = settings.configuration
         self._logger = logger
         self._workspace = workspace
 
@@ -104,7 +104,9 @@ class SimplePlanner(Planner, Configurable):
         )
         user_message = ModelMessage(
             role=ModelRole.USER,
-            content=DEFAULT_OBJECTIVE_USER_PROMPT_TEMPLATE.format(user_objective),
+            content=DEFAULT_OBJECTIVE_USER_PROMPT_TEMPLATE.format(
+                user_objective=user_objective,
+            ),
         )
         return [system_message, user_message]
 

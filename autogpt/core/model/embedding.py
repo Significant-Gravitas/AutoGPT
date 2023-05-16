@@ -22,7 +22,7 @@ class SimpleEmbeddingModel(EmbeddingModel, Configurable):
         name="simple_embedding_model",
         description="A simple embedding model.",
         configuration=ModelConfiguration(
-            name=OpenAIModelName.ADA,
+            model_name=OpenAIModelName.ADA,
             provider_name=ModelProviderName.OPENAI,
         ),
     )

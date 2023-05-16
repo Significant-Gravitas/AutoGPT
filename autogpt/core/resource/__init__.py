@@ -1,4 +1,3 @@
-from autogpt.core.resource.base import ResourceManager
 from autogpt.core.resource.schema import (
     ProviderBudget,
     ProviderCredentials,
@@ -6,7 +5,6 @@ from autogpt.core.resource.schema import (
     ProviderUsage,
     ResourceType,
 )
-from autogpt.core.resource.simple import ResourceManagerSettings, SimpleResourceManager
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(

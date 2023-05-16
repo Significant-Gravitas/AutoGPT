@@ -1,34 +1,33 @@
 import json
 import logging
 
+import click
 import requests
 
 
-async def run_auto_gpt(
-    user_configuration: dict,  # Need to figure out what's in here
-):
-    # Configure logging before we do anything else.
-    # Application logs need a place to live.
-    client_logger = logging.getLogger("autogpt_client_application")
-    configure_client_application_logging(
-        client_logger,
-        user_configuration,
-    )
-    import pdb
+async def run_auto_gpt(user_configuration: dict):
+    """Run the Auto-GPT CLI client."""
+    client_logger = get_client_logger()
 
-    pdb.set_trace()
+    agent_name = (
+        user_configuration.get("planning", {})
+        .get("configuration", {})
+        .get("agent_name", "")
+    )
+
+    if not agent_name:
+        user_objective = click.prompt("What do you want Auto-GPT to do?")
+        # Construct a message to send to the agent.  Real format TBD.
+        user_objective_message = {
+            "user_objective": user_objective,
+            "user_configuration": user_configuration,
+        }
 
     # This application either starts an existing agent or builds a new one.
     if user_configuration["agent_name"] is None:
         # Find out the user's objective for the new agent.
         user_objective = input("...")
-        # Construct a message to send to the agent.  Real format TBD.
-        user_objective_message = {
-            "user_objective": user_objective,
-            # These will need structures with some strongly-enforced fields to be
-            # interpreted by the bootstrapping system.
-            "user_configuration": user_configuration,
-        }
+
         # Post to https endpoint here maybe instead
         response = await application_server.boostrap_new_agent(
             make_request(user_objective_message),
@@ -70,20 +69,16 @@ async def run_auto_gpt(
             raise RuntimeError("Main loop failed")
 
 
-def configure_client_application_logging(
-    application_logger: logging.Logger,
-    user_configuration: dict,
-):
-    application_logger.setLevel(logging.DEBUG)
-
-
 def make_request(content, **metadata):
     """Convert args to a json string."""
-    request = object()
-    request.json = {
-        "content": content,
-        "metadata": metadata,
+    header = {"Content-Type": "application/json"}
+    body = json.dumps(
+        {"content": content, "metadata": metadata},
+    )
+    request = {
+        "url": "http://localhost:8080/api/v1/agents",
     }
+
     return request
 
 

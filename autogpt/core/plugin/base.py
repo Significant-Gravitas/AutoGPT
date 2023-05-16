@@ -9,12 +9,10 @@ from autogpt.core.configuration import SystemConfiguration
 from autogpt.core.memory import Memory
 from autogpt.core.model import EmbeddingModel, LanguageModel
 from autogpt.core.planning import Planner
-from autogpt.core.resource import ResourceManager
 
 # Expand to other types as needed
 PluginType = (
-    Type[ResourceManager]  # Swappable maybe never (think about budgets for resources)
-    | Type[Command]  # Swappable now
+    Type[Command]  # Swappable now
     | Type[CommandRegistry]  # Swappable maybe never
     | Type[EmbeddingModel]  # Swappable soon
     | Type[LanguageModel]  # Swappable soon
@@ -22,15 +20,7 @@ PluginType = (
     | Type[Planner]  # Swappable soon
 )
 
-Plugin = (
-    ResourceManager
-    | Command
-    | CommandRegistry
-    | EmbeddingModel
-    | LanguageModel
-    | Memory
-    | Planner
-)
+Plugin = Command | CommandRegistry | EmbeddingModel | LanguageModel | Memory | Planner
 
 
 class PluginStorageFormat(str, enum.Enum):

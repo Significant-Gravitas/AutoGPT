@@ -15,14 +15,6 @@ import yaml
 DEFAULT_SETTINGS_FILE = str(pathlib.Path("~/auto-gpt/settings.yaml").expanduser())
 
 
-def coroutine(f):
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        return asyncio.run(f(*args, **kwargs))
-
-    return wrapper
-
-
 @click.group()
 def autogpt():
     """Temporary command group for v2 commands."""
@@ -48,7 +40,7 @@ def server(host: str, port: int) -> None:
     """Run the Auto-GPT runner httpserver."""
     click.echo("Running Auto-GPT runner httpserver...")
     uvicorn.run(
-        "autogpt.core.runner.httpserver:app",
+        "autogpt.core.runner.server.api:app",
         workers=1,
         host=host,
         port=port,
@@ -70,22 +62,10 @@ async def client(settings_file) -> None:
     if settings_file.exists():
         settings = yaml.safe_load(settings_file.read_text())
 
-    from autogpt.core.runner.client import run_auto_gpt
+    from autogpt.core.runner.cli_web_app.client import run_auto_gpt
 
     with autogpt_server():
         await run_auto_gpt(settings)
-
-
-@autogpt.command()
-@click.option(
-    "--settings-file",
-    type=click.Path(),
-    default=DEFAULT_SETTINGS_FILE,
-)
-def config(settings_file: str) -> None:
-    from autogpt.core.runner.settings import make_default_settings
-
-    make_default_settings(pathlib.Path(settings_file))
 
 
 @autogpt.command()

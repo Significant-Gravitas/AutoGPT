@@ -12,9 +12,8 @@ from autogpt.core.resource.model_providers import (
 class ModelConfiguration(SystemConfiguration):
     """Struct for model configuration."""
 
-    name: str
+    model_name: str
     provider_name: ModelProviderName
-    max_tokens: int | None = None
     temperature: float | None = None
 
 

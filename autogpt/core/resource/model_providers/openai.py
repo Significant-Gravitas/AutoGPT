@@ -7,7 +7,6 @@ from typing import Callable, ParamSpec, TypeVar
 
 import openai
 from openai.error import APIError, RateLimitError
-from pydantic import root_validator
 
 from autogpt.core.configuration import Configurable, SystemConfiguration
 from autogpt.core.planning import ModelPrompt
@@ -59,7 +58,7 @@ OPEN_AI_LANGUAGE_MODELS = {
         provider_name=ModelProviderName.OPENAI,
         prompt_token_cost=0.002,
         completion_token_cost=0.002,
-        max_tokens=4096,
+        max_tokens=4097,
     ),
     OpenAIModelName.GPT4: LanguageModelProviderModelInfo(
         name=OpenAIModelName.GPT4,
@@ -149,15 +148,16 @@ class OpenAIProvider(
 
     def __init__(
         self,
-        configuration: OpenAIConfiguration,
-        credentials: OpenAICredentials,
+        settings: OpenAISettings,
         logger: logging.Logger,
     ):
-        self._configuration = configuration
+        self._configuration = settings.configuration
         # Resolve global credentials with model specific credentials
         self._model_credentials: dict[
             str, ModelProviderModelCredentials
-        ] = credentials.get_credentials()
+        ] = settings.credentials.get_credentials()
+        self._budget = settings.budget
+
         self._logger = logger
 
         retry_handler = _OpenAIRetryHandler(
@@ -186,8 +186,10 @@ class OpenAIProvider(
             "prompt_tokens_used": response.usage.prompt_tokens,
             "completion_tokens_used": response.usage.completion_tokens,
         }
-        content = completion_parser(response.choices[0].text)
-        return LanguageModelProviderModelResponse(**response_args, content=content)
+        content = completion_parser(response.choices[0].message.content)
+        response = LanguageModelProviderModelResponse(**response_args, content=content)
+        self._budget.update_usage_and_cost(response)
+        return response
 
     async def create_embedding(
         self,
@@ -205,11 +207,12 @@ class OpenAIProvider(
             "prompt_tokens_used": response.usage.prompt_tokens,
             "completion_tokens_used": response.usage.completion_tokens,
         }
-        if model_name in OPEN_AI_EMBEDDING_MODELS:
-            return EmbeddingModelProviderModelResponse(
-                **response_args,
-                embedding=embedding_parser(response.embeddings[0]),
-            )
+        response = EmbeddingModelProviderModelResponse(
+            **response_args,
+            embedding=embedding_parser(response.embeddings[0]),
+        )
+        self._budget.update_usage_and_cost(response)
+        return response
 
     def _get_completion_kwargs(self, model_name: OpenAIModelName, **kwargs) -> dict:
         """Get kwargs for completion API call.
@@ -222,10 +225,12 @@ class OpenAIProvider(
             The kwargs for the chat API call.
 
         """
+        known_kwargs = {}
+
         completion_kwargs = {
             "model": model_name,
             **kwargs,
-            **self._model_credentials[model_name],
+            **self._model_credentials[model_name].dict(),
         }
 
         return completion_kwargs
@@ -248,7 +253,7 @@ class OpenAIProvider(
         embedding_kwargs = {
             "model": model_name,
             **kwargs,
-            **self._model_credentials[model_name],
+            **self._model_credentials[model_name].dict(),
         }
 
         return embedding_kwargs
@@ -283,7 +288,8 @@ async def _create_completion(messages: ModelPrompt, *_, **kwargs) -> openai.Comp
     Returns:
         str: The completion.
     """
-    return await openai.Completion.acreate(
+    messages = [message.dict() for message in messages]
+    return await openai.ChatCompletion.acreate(
         messages=messages,
         **kwargs,
     )

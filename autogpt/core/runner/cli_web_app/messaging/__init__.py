@@ -1,5 +1,4 @@
 """The messaging system provides a protocol for Agent communication with other agents and users."""
-from autogpt.core.messaging.base import Message, MessageBroker
 from autogpt.core.status import ShortStatus, Status
 
 status = Status(

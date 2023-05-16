@@ -2,10 +2,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, validator
 
-from autogpt.core.messaging.base import MessageContent
 
-
-class AgentInfo(MessageContent):
+class AgentInfo(BaseModel):
     id: UUID = None
     objective: str = ""
     name: str = ""
@@ -13,7 +11,7 @@ class AgentInfo(MessageContent):
     goals: list[str] = []
 
 
-class AgentConfiguration(MessageContent):
+class AgentConfiguration(BaseModel):
     """Configuration for creation of a new agent."""
 
     # We'll want to get this schema from the configuration, so it needs to be dynamic.

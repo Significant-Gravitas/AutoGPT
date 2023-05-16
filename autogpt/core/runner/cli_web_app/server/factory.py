@@ -2,8 +2,12 @@ import logging
 import uuid
 
 from autogpt.core.agent.factory import SimpleAgentFactory
-from autogpt.core.messaging.simple import Message, Role, SimpleMessageBroker
-from autogpt.core.runner.schema import AgentConfiguration, AgentInfo
+from autogpt.core.runner.app_lib.schema import AgentConfiguration, AgentInfo
+from autogpt.core.runner.cli_web_app.messaging.simple import (
+    Message,
+    Role,
+    SimpleMessageBroker,
+)
 
 
 class AgentFactoryContext:
