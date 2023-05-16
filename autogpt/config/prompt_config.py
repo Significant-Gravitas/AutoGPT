@@ -10,6 +10,7 @@ from autogpt.logs import logger
 
 CFG = Config()
 
+
 class PromptConfig:
     """
     A class object that contains the configuration information for the prompt, which will be used by the prompt generator
