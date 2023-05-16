@@ -2,7 +2,7 @@ import logging
 import typing
 from pathlib import Path
 
-import yaml
+from pydantic import SecretField
 
 from autogpt.core.configuration import (
     Configurable,
@@ -67,38 +67,6 @@ class SimpleWorkspace(Configurable, Workspace):
     @property
     def restrict_to_workspace(self) -> bool:
         return self._configuration.restrict_to_workspace
-
-    @staticmethod
-    def setup_workspace(settings: "AgentSettings", logger: logging.Logger) -> Path:
-        # TODO: Need to figure out some root directory for building agent workspaces.
-        planning_config = settings.planning.configuration
-        agent_name = planning_config.agent_name
-        workspace_root = Path.home() / "auto-gpt" / agent_name
-        workspace_root.mkdir(parents=True, exist_ok=True)
-
-        workspace_config = settings.workspace.configuration
-
-        workspace_config.root = str(workspace_root)
-        with (workspace_root / "agent_settings.yml").open("w") as f:
-            yaml.safe_dump(settings.dict(), f)
-
-        # TODO: What are all the kinds of logs we want here?
-        log_path = workspace_root / "logs"
-        log_path.mkdir(parents=True, exist_ok=True)
-        (log_path / "debug.log").touch()
-        (log_path / "cycle.log").touch()
-
-        return workspace_root
-
-    @staticmethod
-    def load_agent_settings(workspace_root: Path) -> "AgentSettings":
-        # Cyclic import
-        from autogpt.core.agent.simple import AgentSettings
-
-        with (workspace_root / "configuration.yml").open("r") as f:
-            configuration = yaml.safe_load(f)
-
-        return AgentSettings.parse_obj(configuration)
 
     def get_path(self, relative_path: str | Path) -> Path:
         """Get the full path for an item in the workspace.
@@ -179,3 +147,47 @@ class SimpleWorkspace(Configurable, Workspace):
             )
 
         return full_path
+
+    ###################################
+    # Factory methods for agent setup #
+    ###################################
+
+    @staticmethod
+    def setup_workspace(settings: "AgentSettings", logger: logging.Logger) -> Path:
+        workspace_parent = settings.workspace.configuration.parent
+        workspace_parent = Path(workspace_parent).expanduser().resolve()
+        workspace_parent.mkdir(parents=True, exist_ok=True)
+
+        planning_config = settings.planning.configuration
+        agent_name = planning_config.agent_name
+
+        workspace_root = workspace_parent / agent_name
+        workspace_root.mkdir(parents=True, exist_ok=True)
+
+        settings.workspace.configuration.root = str(workspace_root)
+
+        with (workspace_root / "agent_settings.json").open("w") as f:
+            settings_json = settings.json(
+                encoder=lambda x: x.get_secret_value()
+                if isinstance(x, SecretField)
+                else x,
+            )
+            f.write(settings_json)
+
+        # TODO: What are all the kinds of logs we want here?
+        log_path = workspace_root / "logs"
+        log_path.mkdir(parents=True, exist_ok=True)
+        (log_path / "debug.log").touch()
+        (log_path / "cycle.log").touch()
+
+        return workspace_root
+
+    @staticmethod
+    def load_agent_settings(workspace_root: Path) -> "AgentSettings":
+        # Cyclic import
+        from autogpt.core.agent.simple import AgentSettings
+
+        with (workspace_root / "configuration.yml").open("r") as f:
+            configuration = yaml.safe_load(f)
+
+        return AgentSettings.parse_obj(configuration)

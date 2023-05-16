@@ -53,6 +53,11 @@ class AgentSettings(BaseModel):
     planning: PlannerSettings
     workspace: WorkspaceSettings
 
+    def update_agent_name_and_goals(self, agent_goals: dict) -> None:
+        self.planning.configuration.agent_name = agent_goals["agent_name"]
+        self.planning.configuration.agent_role = agent_goals["agent_role"]
+        self.planning.configuration.agent_goals = agent_goals["agent_goals"]
+
 
 class SimpleAgent(Agent, Configurable):
     defaults = AgentSystemSettings(
@@ -225,6 +230,19 @@ class SimpleAgent(Agent, Configurable):
         )
 
         return model_response
+
+    @classmethod
+    def provision_agent(
+        cls,
+        agent_settings: AgentSettings,
+        logger: logging.Logger,
+    ):
+        workspace: SimpleWorkspace = cls._get_system_instance(
+            "workspace",
+            agent_settings,
+            logger=logger,
+        )
+        workspace.setup_workspace(agent_settings, logger)
 
     @classmethod
     def _get_system_instance(

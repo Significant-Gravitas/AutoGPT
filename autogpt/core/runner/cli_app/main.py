@@ -17,28 +17,41 @@ async def run_auto_gpt(user_configuration: dict):
     )
 
     if not agent_workspace:  # We don't have an agent yet.
+        #################
+        # Bootstrapping #
+        #################
+        # Step 1. Collate the user's settings with the default system settings.
         agent_settings: AgentSettings = SimpleAgent.compile_settings(
             client_logger,
             user_configuration,
         )
 
+        # Step 2. Get a name and goals for the agent.
+        # First we need to figure out what the user wants to do with the agent.
+        # We'll do this by asking the user for a prompt.
         user_objective = click.prompt("What do you want Auto-GPT to do?")
 
+        # Convert it into a prompt for the model.
         agent_objective_prompt = (
             SimpleAgent.construct_objective_prompt_from_user_objective(
                 user_objective, agent_settings, client_logger
             )
         )
-
         click.echo(parse_objective_prompt(agent_objective_prompt))
-
+        # Then have the language model generate a name, a role, and goals
+        # for the agent from the prompt.
         name_and_goals = await SimpleAgent.determine_agent_name_and_goals(
             agent_objective_prompt,
             agent_settings,
             client_logger,
         )
-
         click.echo(parse_agent_name_and_goals(name_and_goals))
+        # Finally, update the agent settings with the name and goals.
+        agent_settings.update_agent_name_and_goals(name_and_goals.content)
+
+        # Step 3. Provision the agent.
+        SimpleAgent.provision_agent(agent_settings, client_logger)
+        click.echo("agent is provisioned")
 
 
 def parse_objective_prompt(agent_objective_prompt: ModelPrompt) -> str:

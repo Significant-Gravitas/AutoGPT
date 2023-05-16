@@ -2,7 +2,7 @@ import abc
 import typing
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretBytes, SecretField, SecretStr
 
 
 def UserConfigurable(*args, **kwargs):
