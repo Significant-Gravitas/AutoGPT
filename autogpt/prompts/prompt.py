@@ -38,17 +38,8 @@ def build_default_prompt_generator() -> PromptGenerator:
     )
     prompt_generator.add_constraint("No user assistance")
     prompt_generator.add_constraint(
-        'Exclusively use the commands listed in double quotes e.g. "command name"'
+        "Exclusively use the commands listed below e.g. command_name"
     )
-
-    # Define the command list
-    commands = [
-        ("Task Complete (Shutdown)", "task_complete", {"reason": "<reason>"}),
-    ]
-
-    # Add commands to the PromptGenerator object
-    for command_label, command_name, args in commands:
-        prompt_generator.add_command(command_label, command_name, args)
 
     # Add resources to the PromptGenerator object
     prompt_generator.add_resource(
@@ -117,6 +108,12 @@ Continue ({CFG.authorise_key}/{CFG.exit_key}): """
         config = prompt_user()
         config.save(CFG.ai_settings_file)
 
+    if CFG.restrict_to_workspace:
+        logger.typewriter_log(
+            "NOTE:All files/directories created by this agent can be found inside its workspace at:",
+            Fore.YELLOW,
+            f"{CFG.workspace_path}",
+        )
     # set the total api budget
     api_manager = ApiManager()
     api_manager.set_total_budget(config.api_budget)
