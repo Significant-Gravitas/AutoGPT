@@ -133,3 +133,6 @@ def test_check_smart_llm_model_access(config):
         )
         check_smart_llm_model_access()  # should set smart_llm_model to fast_llm_model
         assert config.smart_llm_model == config.fast_llm_model
+
+        # Reset smart_llm_model
+        config.set_smart_llm_model(smart_model)
