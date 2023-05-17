@@ -9,7 +9,7 @@ CYCLE_COUNT = 3
 from autogpt.agent import Agent
 
 
-# @pytest.mark.skip("This challenge hasn't been beaten yet.")
+# @pytest.mark.skip("This challenge hasn't been beaten yet.") # Beaten on May 17 2023
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)
