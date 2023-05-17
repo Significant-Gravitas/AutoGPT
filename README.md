@@ -9,10 +9,10 @@
 
 <hr/>
 
-### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
+### 🔴 USE `stable` not `master` 🔴
 
 **Download the latest `stable` release from here: https://github.com/Significant-Gravitas/Auto-GPT/releases/latest.**
-The `master` branch may often be in a **broken** state.
+The `master` branch is under heavy development and may often be in a **broken** state.
 
 <hr/>
 
