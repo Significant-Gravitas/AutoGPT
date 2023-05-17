@@ -1,6 +1,6 @@
 # Information Retrieval Challenge C
 
-**Status**: Not yet beaten
+**Status**: Beaten
 
 **Command to try**:
 

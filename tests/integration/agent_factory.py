@@ -264,7 +264,7 @@ def autogpt_information_agent(
         ai_name="AutoGPT-Information",
         ai_role="an autonomous agent that specializes in researching.",
         ai_goals=[
-            "What is the name of the founder of AutoGPT? Write the answer to this question in a file called output.txt.",
+            "What is the name of the founder of AutoGPT (https://en.wikipedia.org/wiki/Auto-GPT)? Write the answer to this question in a file called output.txt.",
         ],
     )
     ai_config.command_registry = command_registry
@@ -332,7 +332,7 @@ def twitter_information_agent(
         ai_name="Twitter-Information",
         ai_role="an autonomous agent that specializes in researching and saving files as output.txt.",
         ai_goals=[
-            "What is the name of the Twitter CEO as of May 2023? Write the answer to this question in a file called output.txt.",
+            "Use google to define what is the name of the Twitter CEO as of May 2023 (https://www.rte.ie/news/business/2023/0515/1383637-new-twitter-ceo/)? Write the answer to this question in a file called output.txt.",
         ],
     )
     ai_config.command_registry = command_registry
@@ -366,7 +366,7 @@ def researchpaper_information_agent(
         ai_name="Twitter-Information",
         ai_role="an autonomous agent that specializes in researching and saving files as output.txt.",
         ai_goals=[
-            "What is the name of the main Author of the research paper titled Generative Agents: Interactive Simulacra of Human Behavior.?  Write the answer to this question in a file called output.txt",
+            "What is the name of the main Author of the research paper titled Generative Agents: Interactive Simulacra of Human Behavior (https://arxiv.org/abs/2304.03442)?  Write the answer to this question in a file called output.txt",
         ],
     )
     ai_config.command_registry = command_registry

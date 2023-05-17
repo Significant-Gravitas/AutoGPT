@@ -19,7 +19,7 @@ def test_information_retrieval_challenge_f(
     patched_api_requestor: MockerFixture,
 ) -> None:
     """
-    Test the challenge_a function in a given agent by mocking user inputs and checking the output file content.
+    Test the challenge_f function in a given agent by mocking user inputs and checking the output file content.
 
     :param get_company_revenue_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.

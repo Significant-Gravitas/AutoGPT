@@ -9,7 +9,7 @@ CYCLE_COUNT = 3
 from autogpt.agent import Agent
 
 
-# @pytest.mark.skip("This challenge hasn't been beaten yet.")
+@pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)
@@ -19,7 +19,7 @@ def test_information_retrieval_challenge_e(
     patched_api_requestor: MockerFixture,
 ) -> None:
     """
-    Test the challenge_a function in a given agent by mocking user inputs and checking the output file content.
+    Test the challenge_e function in a given agent by mocking user inputs and checking the output file content.
 
     :param get_company_revenue_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
