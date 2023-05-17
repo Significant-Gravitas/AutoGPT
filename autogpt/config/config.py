@@ -307,3 +307,5 @@ def check_openai_api_key() -> None:
         )
         print("You can get your key from https://platform.openai.com/account/api-keys")
         exit(1)
+
+

@@ -9,7 +9,7 @@ import numpy as np
 import openai
 import tiktoken
 from colorama import Fore, Style
-from openai.error import APIError, RateLimitError, Timeout
+from openai.error import APIError, RateLimitError, Timeout, InvalidRequestError
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
@@ -293,3 +293,16 @@ def create_embedding(
     )  # normalize the length to one
     chunk_embeddings = chunk_embeddings.tolist()
     return chunk_embeddings
+
+
+def check_gpt4_access() -> bool:
+    """Check if GPT-4 model is available for use."""
+    model = "gpt-4"
+    messages = [
+        {"role": "user", "content": "Who won the world series in 2020?"},
+    ]
+    try:
+        create_chat_completion(model=model, messages=messages, temperature=0)
+        return True
+    except InvalidRequestError:
+        return False
