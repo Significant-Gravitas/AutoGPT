@@ -9,10 +9,10 @@ from autogpt.commands.command import command
 from autogpt.config import Config
 
 CFG = Config()
-
+from . import URL_MEMORY
 
 @command("google", "Google Search", '"query": "<query>"', not CFG.google_api_key)
-def google_search(query: str, num_results: int = 8) -> str:
+def google_search(query: str, num_results: int = 20) -> str:
     """Return the results of a Google search
 
     Args:
@@ -22,15 +22,20 @@ def google_search(query: str, num_results: int = 8) -> str:
     Returns:
         str: The results of the search.
     """
+    global URL_MEMORY
     search_results = []
     if not query:
         return json.dumps(search_results)
 
     results = ddg(query, max_results=num_results)
-    if not results:
+    if not results:        
         return json.dumps(search_results)
 
     for j in results:
+        url_alias = f'URL_{len(URL_MEMORY)}'
+        URL_MEMORY[url_alias] = j['href']
+        j['href'] = url_alias
+        del j['body']
         search_results.append(j)
 
     results = json.dumps(search_results, ensure_ascii=False, indent=4)
@@ -58,6 +63,7 @@ def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
 
+    global URL_MEMORY
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
         api_key = CFG.google_api_key

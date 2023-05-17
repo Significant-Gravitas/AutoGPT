@@ -37,8 +37,7 @@ from urllib.parse import urlparse, urljoin
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
-URL_MEMORY = {}
-
+from . import URL_MEMORY
 
 @command(
     "browse_website_and_extract_related_links",
@@ -75,7 +74,6 @@ def browse_website_and_extract_related_links(url: str, question: str) -> str:
     return return_msg
 
 
-
 @command(
     "browse_website_and_extract_related_text",
     "Browse website and extract related text",
@@ -93,7 +91,7 @@ def browse_website_and_extract_related_text(url: str, question: str) -> str:
     """    
     global URL_MEMORY
     if url in URL_MEMORY: 
-        #print(url, '->', URL_MEMORY[url])
+        print(url, '->', URL_MEMORY[url])
         url = URL_MEMORY[url]    
     
     try:
@@ -112,10 +110,7 @@ def browse_website_and_extract_related_text(url: str, question: str) -> str:
 
     close_browser(driver)
 
-    #print('URL_MEMORY_STATE', URL_MEMORY)    
-    
     return summary_text
-    #return return_msg
 
 
 @command(
@@ -126,7 +121,7 @@ def browse_website_and_extract_related_text(url: str, question: str) -> str:
 def get_webpage_text_summary(url: str, question: str, max_len=3500) -> str:
     global URL_MEMORY
     if url in URL_MEMORY:
-        #print(url, URL_MEMORY[url])
+        print(url, URL_MEMORY[url])
         url = URL_MEMORY[url]
     try:
         html_content, driver = get_html_content_with_selenium(url)
@@ -219,6 +214,9 @@ def get_main_language(text):
 
 
 def get_links_related_to_question_with_chat(links: list[tuple[str, str]], question: str) -> str:
+    if len(links) == 0:
+        return "Links: Couldn't find any links."   
+    
     global URL_MEMORY
     link_texts, hyperlinks = zip(*links)
     cleaned_text = []
@@ -257,7 +255,7 @@ def get_links_related_to_question_with_chat(links: list[tuple[str, str]], questi
     if line_numbers:
         for i in line_numbers:
             link = links[i][1]
-            link_nick = f'URL_{len(URL_MEMORY)}'   
+            link_nick = f'URL_{len(URL_MEMORY)}'
             URL_MEMORY[link_nick] = link
             selected_links.append(f"{cleaned_text[i]} ({link_nick})")
             #if len(f'{selected_links}') > 1000:
