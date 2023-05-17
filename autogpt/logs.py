@@ -292,4 +292,3 @@ def print_assistant_thoughts(
             say_text(assistant_thoughts_speak)
         else:
             logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
-
