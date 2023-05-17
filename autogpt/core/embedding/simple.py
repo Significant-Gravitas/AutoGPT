@@ -2,14 +2,11 @@ import logging
 
 from autogpt.core.configuration import (
     Configurable,
-    SystemSettings,
     SystemConfiguration,
+    SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.embedding.base import (
-    EmbeddingModel,
-    EmbeddingModelResponse,
-)
+from autogpt.core.embedding.base import EmbeddingModel, EmbeddingModelResponse
 from autogpt.core.resource.model_providers import (
     EmbeddingModelProvider,
     ModelProviderName,
@@ -19,6 +16,7 @@ from autogpt.core.resource.model_providers import (
 
 class EmbeddingModelConfiguration(SystemConfiguration):
     """Configuration for the embedding model"""
+
     model_name: str = UserConfigurable()
     provider_name: ModelProviderName = UserConfigurable()
 

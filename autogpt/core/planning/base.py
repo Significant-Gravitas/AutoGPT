@@ -1,9 +1,9 @@
 import abc
 
 from autogpt.core.planning.schema import (
+    LanguageModelResponse,
     PlanningContext,
     ReflectionContext,
-    LanguageModelResponse,
 )
 
 
@@ -28,7 +28,6 @@ class Planner(abc.ABC):
 
     @abc.abstractmethod
     async def plan(self, context: PlanningContext) -> LanguageModelResponse:
-
         """Plan the next action for the Agent.
 
         Args:

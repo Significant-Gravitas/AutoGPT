@@ -8,16 +8,9 @@ from pydantic import BaseModel
 from autogpt.core.agent.base import Agent
 from autogpt.core.command import CommandRegistrySettings, SimpleCommandRegistry
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
+from autogpt.core.embedding import EmbeddingModelSettings, SimpleEmbeddingModel
 from autogpt.core.memory import MemorySettings, SimpleMemory
-from autogpt.core.embedding import (
-    EmbeddingModelSettings,
-    SimpleEmbeddingModel,
-)
-from autogpt.core.planning import (
-    LanguageModelResponse,
-    PlannerSettings,
-    SimplePlanner,
-)
+from autogpt.core.planning import LanguageModelResponse, PlannerSettings, SimplePlanner
 from autogpt.core.plugin.simple import (
     PluginLocation,
     PluginStorageFormat,
@@ -216,7 +209,6 @@ class SimpleAgent(Agent, Configurable):
 
         return AgentSettings.parse_obj(configuration_dict)
 
-
     @classmethod
     async def determine_agent_name_and_goals(
         cls,
@@ -224,7 +216,6 @@ class SimpleAgent(Agent, Configurable):
         agent_settings: AgentSettings,
         logger: logging.Logger,
     ) -> LanguageModelResponse:
-
         provider: OpenAIProvider = cls._get_system_instance(
             "openai_provider",
             agent_settings,

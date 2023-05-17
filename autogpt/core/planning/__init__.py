@@ -1,12 +1,12 @@
 """The planning system organizes the Agent's activities."""
+from autogpt.core.planning.base import Planner
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
     LanguageModelPrompt,
+    LanguageModelResponse,
     PlanningContext,
     ReflectionContext,
-    LanguageModelResponse,
 )
-from autogpt.core.planning.base import Planner
 from autogpt.core.planning.simple import PlannerSettings, SimplePlanner
 from autogpt.core.status import ShortStatus, Status
 

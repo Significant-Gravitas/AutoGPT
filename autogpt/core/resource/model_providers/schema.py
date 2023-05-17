@@ -5,7 +5,6 @@ from typing import Callable, ClassVar
 from pydantic import BaseModel, Field, SecretStr, validator
 
 from autogpt.core.configuration import UserConfigurable
-
 from autogpt.core.resource.schema import (
     ProviderBudget,
     ProviderCredentials,

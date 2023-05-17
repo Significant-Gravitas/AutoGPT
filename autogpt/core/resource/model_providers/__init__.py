@@ -9,9 +9,11 @@ from autogpt.core.resource.model_providers.schema import (
     EmbeddingModelProvider,
     EmbeddingModelProviderModelInfo,
     EmbeddingModelProviderModelResponse,
+    LanguageModelMessage,
     LanguageModelProvider,
     LanguageModelProviderModelInfo,
     LanguageModelProviderModelResponse,
+    MessageRole,
     ModelProvider,
     ModelProviderBudget,
     ModelProviderCredentials,
@@ -22,8 +24,6 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProviderService,
     ModelProviderSettings,
     ModelProviderUsage,
-    LanguageModelMessage,
-    MessageRole,
 )
 
 __all__ = [

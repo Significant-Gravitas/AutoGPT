@@ -1,8 +1,6 @@
 import abc
 
-from autogpt.core.resource.model_providers import (
-    EmbeddingModelProviderModelResponse,
-)
+from autogpt.core.resource.model_providers import EmbeddingModelProviderModelResponse
 
 
 class EmbeddingModelResponse(EmbeddingModelProviderModelResponse):

@@ -8,13 +8,6 @@ from autogpt.core.configuration import (
     SystemSettings,
     UserConfigurable,
 )
-from autogpt.core.resource.model_providers import (
-    ModelProviderName,
-    OpenAIModelName,
-    LanguageModelProvider,
-    LanguageModelMessage,
-    MessageRole,
-)
 from autogpt.core.planning import templates
 from autogpt.core.planning.base import Planner
 from autogpt.core.planning.schema import (
@@ -23,6 +16,13 @@ from autogpt.core.planning.schema import (
     LanguageModelResponse,
     PlanningContext,
     ReflectionContext,
+)
+from autogpt.core.resource.model_providers import (
+    LanguageModelMessage,
+    LanguageModelProvider,
+    MessageRole,
+    ModelProviderName,
+    OpenAIModelName,
 )
 from autogpt.core.workspace import Workspace
 
@@ -134,7 +134,7 @@ class SimplePlanner(Planner, Configurable):
         self,
         model_classification: LanguageModelClassification,
         prompt: LanguageModelPrompt,
-        completion_parser: Callable[[str], dict]
+        completion_parser: Callable[[str], dict],
     ) -> LanguageModelResponse:
         model_configuration = self._configuration.models[model_classification].dict()
         del model_configuration["provider_name"]

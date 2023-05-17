@@ -4,8 +4,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from autogpt.core.resource.model_providers.schema import (
+    LanguageModelMessage,
     LanguageModelProviderModelResponse,
-    LanguageModelMessage
 )
 
 
@@ -20,8 +20,6 @@ class LanguageModelClassification(str, enum.Enum):
 
     FAST_MODEL: str = "fast_model"
     SMART_MODEL: str = "smart_model"
-
-
 
 
 class LanguageModelPrompt(BaseModel):
@@ -46,4 +44,3 @@ class ReflectionContext(BaseModel):
     plan: list[str]
     thoughts: str
     criticism: str
-

@@ -23,7 +23,14 @@ PluginType = (
     | Type[Planner]  # Swappable soon
 )
 
-Plugin = Command | CommandRegistry | EmbeddingModelProvider | LanguageModelProvider | Memory | Planner
+Plugin = (
+    Command
+    | CommandRegistry
+    | EmbeddingModelProvider
+    | LanguageModelProvider
+    | Memory
+    | Planner
+)
 
 
 class PluginStorageFormat(str, enum.Enum):

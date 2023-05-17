@@ -18,6 +18,7 @@ from autogpt.core.resource.model_providers.schema import (
     EmbeddingModelProvider,
     EmbeddingModelProviderModelInfo,
     EmbeddingModelProviderModelResponse,
+    LanguageModelMessage,
     LanguageModelProvider,
     LanguageModelProviderModelInfo,
     LanguageModelProviderModelResponse,
@@ -28,7 +29,6 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProviderService,
     ModelProviderSettings,
     ModelProviderUsage,
-    LanguageModelMessage,
 )
 
 OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
@@ -280,7 +280,9 @@ async def _create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
     )
 
 
-async def _create_completion(messages: list[LanguageModelMessage], *_, **kwargs) -> openai.Completion:
+async def _create_completion(
+    messages: list[LanguageModelMessage], *_, **kwargs
+) -> openai.Completion:
     """Create a chat completion using the OpenAI API.
 
     Args:
