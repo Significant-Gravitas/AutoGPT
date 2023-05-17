@@ -3,20 +3,21 @@ from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
-from tests.integration.challenges.utils import get_level_to_run, run_interaction_loop
+from tests.integration.challenges.challenge_decorator.challenge_decorator import (
+    challenge,
+)
+from tests.integration.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
-
-LEVEL_CURRENTLY_BEATEN = 3  # real level beaten 30 and maybe more, but we can't record it, the cassette is too big
-MAX_LEVEL = 3
 
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
+@challenge
 def test_memory_challenge_a(
     memory_management_agent: Agent,
-    user_selected_level: int,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
+    level_to_run: int,
 ) -> None:
     """
     The agent reads a file containing a task_id. Then, it reads a series of other files.
@@ -26,13 +27,10 @@ def test_memory_challenge_a(
         memory_management_agent (Agent)
         user_selected_level (int)
     """
-
-    num_files = get_level_to_run(user_selected_level, LEVEL_CURRENTLY_BEATEN, MAX_LEVEL)
-
     task_id = "2314"
-    create_instructions_files(memory_management_agent, num_files, task_id)
+    create_instructions_files(memory_management_agent, level_to_run, task_id)
 
-    run_interaction_loop(monkeypatch, memory_management_agent, num_files + 2)
+    run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
 
     file_path = str(memory_management_agent.workspace.get_path("output.txt"))
     content = read_file(file_path)
@@ -74,7 +72,7 @@ def generate_content(
     """
     if index == 1:
         return (
-            f"This task_id is {task_id}\nRead the file {base_filename}{index + 1}.txt"
+            f"This task_idd is {task_id}\nRead the file {base_filename}{index + 1}.txt"
         )
     if index != num_files:
         return f"Read the file {base_filename}{index + 1}.txt"

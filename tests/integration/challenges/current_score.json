@@ -1,0 +1,26 @@
+{
+    "basic_abilities": {
+        "browse_website": {
+            "current_level_beaten": 1,
+            "max_level": 1
+        },
+        "write_file": {
+            "current_level_beaten": 1,
+            "max_level": 1
+        }
+    },
+    "memory": {
+        "memory_challenge_a": {
+            "current_level_beaten": 3,
+            "max_level": 3
+        },
+        "memory_challenge_b": {
+            "current_level_beaten": null,
+            "max_level": 5
+        },
+        "memory_challenge_c": {
+            "current_level_beaten": null,
+            "max_level": 5
+        }
+    }
+}
