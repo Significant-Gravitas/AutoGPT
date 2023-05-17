@@ -4,19 +4,9 @@ The documentation also has a place here, at *https://docs.agpt.co*
 
 # 🚀 v0.3.1 Release 🚀
 Over a week and 47 pull requests have passed since v0.3.0, and we are happy to announce
-the release of v0.3.1! *From now on, we will be focusing on major improvements* rather
-than bugfixes, as we feel stability has reached a reasonable level. Most remaining
-issues relate to limitations in prompt generation and the memory system, which will be
-the focus of our efforts for the next release.
+the release of v0.3.1!
 
 Highlights and notable changes in this release:
-
-## Plugin support 🔌
-Auto-GPT now has support for plugins! With plugins, you can extend Auto-GPT's abilities,
-adding support for third-party services and more.
-See https://github.com/Significant-Gravitas/Auto-GPT-Plugins for instructions and available plugins.
-Denylist handling for plugins is now available.
-
 
 ## Changes to Docker configuration 🐋
 The workdir has been changed from */home/appuser* to */app*.
@@ -54,4 +44,15 @@ Twitter functionality (and more) is now covered by plugins, see [Plugin support 
 - Tests have been conducted for a new CI pipeline.
 - A code owners policy has been added.
 - Test against Python 3.10 (not 3.10 + 3.11) to halve the number of tests that are executed.
+
+## Plugin support 🔌
+Auto-GPT now has support for plugins! With plugins, you can extend Auto-GPT's abilities,
+adding support for third-party services and more.
+See https://github.com/Significant-Gravitas/Auto-GPT-Plugins for instructions and available plugins.
+Denylist handling for plugins is now available.
+
+*From now on, we will be focusing on major improvements* rather
+than bugfixes, as we feel stability has reached a reasonable level. Most remaining
+issues relate to limitations in prompt generation and the memory system, which will be
+the focus of our efforts for the next release.
 
