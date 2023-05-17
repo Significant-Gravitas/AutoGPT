@@ -25,7 +25,9 @@ def test_memory_challenge_a(
 
     Args:
         memory_management_agent (Agent)
-        user_selected_level (int)
+        patched_api_requestor (MockerFixture)
+        monkeypatch (pytest.MonkeyPatch)
+        level_to_run (int)
     """
     task_id = "2314"
     create_instructions_files(memory_management_agent, level_to_run, task_id)
@@ -72,7 +74,7 @@ def generate_content(
     """
     if index == 1:
         return (
-            f"This task_idd is {task_id}\nRead the file {base_filename}{index + 1}.txt"
+            f"This task_id is {task_id}\nRead the file {base_filename}{index + 1}.txt"
         )
     if index != num_files:
         return f"Read the file {base_filename}{index + 1}.txt"

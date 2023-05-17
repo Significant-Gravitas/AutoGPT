@@ -25,8 +25,10 @@ def test_information_retrieval_challenge_a(
     """
     Test the challenge_a function in a given agent by mocking user inputs and checking the output file content.
 
-    :param get_company_revenue_agent: The agent to test.
-    :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
+    Args:
+        get_company_revenue_agent (Agent)
+        monkeypatch (pytest.MonkeyPatch)
+        patched_api_requestor (MockerFixture)
     """
     run_interaction_loop(monkeypatch, get_company_revenue_agent, CYCLE_COUNT)
 

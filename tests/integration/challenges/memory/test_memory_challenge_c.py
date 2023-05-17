@@ -28,7 +28,9 @@ def test_memory_challenge_c(
 
     Args:
         memory_management_agent (Agent)
-        user_selected_level (int)
+        patched_api_requestor (MockerFixture)
+        monkeypatch (pytest.MonkeyPatch)
+        level_to_run (int)
     """
 
     silly_phrases = [

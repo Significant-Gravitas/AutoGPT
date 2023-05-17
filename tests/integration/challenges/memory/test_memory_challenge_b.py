@@ -27,7 +27,9 @@ def test_memory_challenge_b(
 
     Args:
         memory_management_agent (Agent)
-        user_selected_level (int)
+        patched_api_requestor (MockerFixture)
+        monkeypatch (pytest.MonkeyPatch)
+        level_to_run (int)
     """
 
     task_ids = [str(i * 1111) for i in range(1, level_to_run + 1)]
