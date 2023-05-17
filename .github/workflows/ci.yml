@@ -96,8 +96,6 @@ jobs:
       - name: Stage new files, commit, and check for new cassettes
         id: stage_files
         run: |
-          git fetch origin ${{ github.base_ref }}
-
           git add tests
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git config user.email "github-actions@github.com"
