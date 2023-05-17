@@ -4,10 +4,8 @@ for the AI and ensures it behaves as a singleton.
 """
 from unittest.mock import patch
 
-import pytest
 from openai import InvalidRequestError
 
-from autogpt.config import Config
 from autogpt.llm.llm_utils import check_smart_llm_model_access
 
 
@@ -123,9 +121,7 @@ def test_set_debug_mode(config):
 
 
 def test_check_smart_llm_model_access(config):
-    with patch(
-        "openai.ChatCompletion.create"
-    ) as mock_create_chat_completion:
+    with patch("openai.ChatCompletion.create") as mock_create_chat_completion:
         # Test when no InvalidRequestError is raised
         smart_model = config.smart_llm_model
         check_smart_llm_model_access()  # should not change smart_llm_model
