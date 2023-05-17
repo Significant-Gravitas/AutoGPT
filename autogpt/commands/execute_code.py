@@ -106,6 +106,8 @@ def execute_python_file(filename: str) -> str:
             # Define the path to the Python interpreter within the virtual environment
             venv_python = f"{venv_dir}/Scripts/python.exe"
 
+            os.chdir(CFG.workspace_path)
+
             filepath = Path(filename)
 
             script_process = subprocess.Popen(
