@@ -9,7 +9,7 @@ import numpy as np
 import openai
 import tiktoken
 from colorama import Fore, Style
-from openai.error import APIError, InvalidRequestError, RateLimitError, Timeout
+from openai.error import APIError, RateLimitError, Timeout
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
@@ -293,24 +293,3 @@ def create_embedding(
     )  # normalize the length to one
     chunk_embeddings = chunk_embeddings.tolist()
     return chunk_embeddings
-
-
-def check_smart_llm_model_access() -> None:
-    """Check if smart model is available for use. If not, set to fast model."""
-    cfg = Config()
-
-    messages = [
-        {"role": "user", "content": ""},
-    ]
-    try:
-        create_chat_completion(
-            model=cfg.smart_llm_model, messages=messages, temperature=0
-        )
-    except InvalidRequestError:
-        logger.typewriter_log(
-            "WARNING: ",
-            Fore.YELLOW,
-            f"You do not have access to {cfg.smart_llm_model}. Setting default "
-            f"to {cfg.fast_llm_model}.",
-        )
-        cfg.smart_llm_model = cfg.fast_llm_model

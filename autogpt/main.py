@@ -9,7 +9,6 @@ from autogpt.agent.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
-from autogpt.llm.llm_utils import check_smart_llm_model_access
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.plugins import scan_plugins
@@ -62,8 +61,6 @@ def run_auto_gpt(
         allow_downloads,
         skip_news,
     )
-
-    check_smart_llm_model_access()
 
     if cfg.continuous_mode:
         for line in get_legal_warning().split("\n"):

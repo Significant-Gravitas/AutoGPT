@@ -1,9 +1,13 @@
 """Configurator module."""
+from __future__ import annotations
+
 import click
 from colorama import Back, Fore, Style
+from openai import InvalidRequestError
 
 from autogpt import utils
 from autogpt.config import Config
+from autogpt.llm import create_chat_completion
 from autogpt.logs import logger
 from autogpt.memory import get_supported_memory_backends
 
@@ -73,6 +77,9 @@ def create_config(
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_speak_mode(True)
 
+    if check_smart_llm_model_access():
+        gpt3only, gpt4only = True, False
+
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_smart_llm_model(CFG.fast_llm_model)
@@ -132,3 +139,25 @@ def create_config(
 
     if skip_news:
         CFG.skip_news = True
+
+
+def check_smart_llm_model_access() -> bool:
+    """Check if smart model is available for use."""
+    cfg = Config()
+
+    messages = [
+        {"role": "user", "content": ""},
+    ]
+    try:
+        create_chat_completion(
+            model=cfg.smart_llm_model, messages=messages, temperature=0
+        )
+        return True
+    except InvalidRequestError:
+        logger.typewriter_log(
+            "WARNING: ",
+            Fore.YELLOW,
+            f"You do not have access to {cfg.smart_llm_model}. Setting default "
+            f"to {cfg.fast_llm_model}.",
+        )
+        return False
