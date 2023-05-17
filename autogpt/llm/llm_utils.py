@@ -9,9 +9,10 @@ import numpy as np
 import openai
 import tiktoken
 from colorama import Fore, Style
-from openai.error import APIError, RateLimitError, Timeout
+from openai.error import APIError, AuthenticationError, RateLimitError, Timeout
 
 from autogpt.config import Config
+from autogpt.exceptions import CriticalException
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
 from autogpt.logs import logger
@@ -170,6 +171,10 @@ def create_chat_completion(
                     max_tokens=max_tokens,
                 )
             break
+        except AuthenticationError:
+            raise CriticalException(
+                f"{Fore.RED}Error: Unable to authenticate with your OpenAI API key. Please check your configuration.{Fore.RESET}",
+            )
         except RateLimitError:
             logger.debug(
                 f"{Fore.RED}Error: ", f"Reached rate limit, passing...{Fore.RESET}"

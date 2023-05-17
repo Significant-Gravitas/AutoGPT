@@ -7,6 +7,7 @@ from jinja2 import Template
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
+from autogpt.exceptions import CriticalException
 from autogpt.llm import create_chat_completion
 from autogpt.logs import logger
 from autogpt.prompts.default_prompts import (
@@ -62,6 +63,8 @@ def prompt_user() -> AIConfig:
     else:
         try:
             return generate_aiconfig_automatic(user_desire)
+        except CriticalException:
+            raise
         except Exception as e:
             logger.typewriter_log(
                 "Unable to automatically generate AI Config based on user desire.",
