@@ -296,7 +296,7 @@ def create_embedding(
 
 
 def check_smart_llm_model_access() -> None:
-    """Check if smart model is available for use."""
+    """Check if smart model is available for use. If not, set to fast model."""
     cfg = Config()
 
     messages = [
