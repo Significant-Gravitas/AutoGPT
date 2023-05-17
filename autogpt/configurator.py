@@ -77,7 +77,7 @@ def create_config(
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_speak_mode(True)
 
-    if check_smart_llm_model_access():
+    if not check_smart_llm_model_access():
         gpt3only, gpt4only = True, False
 
     if gpt3only:
