@@ -8,8 +8,8 @@ from colorama import Fore, Style
 from autogpt.agent.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config, check_openai_api_key
-from autogpt.llm.llm_utils import check_smart_llm_model_access
 from autogpt.configurator import create_config
+from autogpt.llm.llm_utils import check_smart_llm_model_access
 from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.plugins import scan_plugins

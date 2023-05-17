@@ -9,7 +9,7 @@ import numpy as np
 import openai
 import tiktoken
 from colorama import Fore, Style
-from openai.error import APIError, RateLimitError, Timeout, InvalidRequestError
+from openai.error import APIError, InvalidRequestError, RateLimitError, Timeout
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
