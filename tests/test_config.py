@@ -2,8 +2,10 @@
 Test cases for the Config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
+from unittest.mock import patch
 
 import pytest
+from openai import InvalidRequestError
 
 from autogpt.config import Config
 from autogpt.llm.llm_utils import check_smart_llm_model_access
@@ -121,16 +123,17 @@ def test_set_debug_mode(config):
 
 
 def test_check_smart_llm_model_access(config):
-    """
-    Test if config is updated correctly when the user doesn't have access to
-    the set smart model.
-    """
-    # Store model name to reset it after the test
-    smart_llm_model = config.smart_llm_model
+    with patch(
+        "openai.ChatCompletion.create"
+    ) as mock_create_chat_completion:
+        # Test when no InvalidRequestError is raised
+        smart_model = config.smart_llm_model
+        check_smart_llm_model_access()  # should not change smart_llm_model
+        assert config.smart_llm_model == smart_model
 
-    config.set_smart_llm_model("incorrect-model")
-    check_smart_llm_model_access()
-    assert config.smart_llm_model == config.fast_llm_model
-
-    # Reset model name
-    config.set_smart_llm_model(smart_llm_model)
+        # Test when InvalidRequestError is raised
+        mock_create_chat_completion.side_effect = InvalidRequestError(
+            "error message", "error param"
+        )
+        check_smart_llm_model_access()  # should set smart_llm_model to fast_llm_model
+        assert config.smart_llm_model == config.fast_llm_model
