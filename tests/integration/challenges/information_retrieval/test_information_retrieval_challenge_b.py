@@ -5,7 +5,7 @@ from typing import Generator
 import pytest
 
 from autogpt.commands.file_operations import read_file
-from tests.integration.challenges.utils import run_interaction_loop, run_multiple_times
+from tests.integration.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
 
 def input_generator(input_sequence: list) -> Generator[str, None, None]:
@@ -30,7 +30,6 @@ def test_information_retrieval_challenge_b(
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
     """
 
-    # input_sequence = ["y","y","y","y","y","y","EXIT"]
     input_sequence = ["y","y","y","EXIT"]
     gen = input_generator(input_sequence)
     monkeypatch.setattr("builtins.input", lambda _: next(gen))
