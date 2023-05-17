@@ -295,14 +295,22 @@ def create_embedding(
     return chunk_embeddings
 
 
-def check_gpt4_access() -> bool:
-    """Check if GPT-4 model is available for use."""
-    model = "gpt-4"
+def check_smart_llm_model_access() -> None:
+    """Check if smart model is available for use."""
+    cfg = Config()
+
     messages = [
-        {"role": "user", "content": "Who won the world series in 2020?"},
+        {"role": "user", "content": ""},
     ]
     try:
-        create_chat_completion(model=model, messages=messages, temperature=0)
-        return True
+        create_chat_completion(
+            model=cfg.smart_llm_model, messages=messages, temperature=0
+        )
     except InvalidRequestError:
-        return False
+        logger.typewriter_log(
+            "WARNING: ",
+            Fore.YELLOW,
+            f"You do not have access to {cfg.smart_llm_model}. Setting default "
+            f"to {cfg.fast_llm_model}.",
+        )
+        cfg.smart_llm_model = cfg.fast_llm_model

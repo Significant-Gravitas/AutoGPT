@@ -8,7 +8,7 @@ from colorama import Fore, Style
 from autogpt.agent.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config, check_openai_api_key
-from autogpt.llm.llm_utils import check_gpt4_access
+from autogpt.llm.llm_utils import check_smart_llm_model_access
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory import get_memory
@@ -22,10 +22,6 @@ from autogpt.utils import (
 )
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
-
-
-def check_openai_models():
-    pass
 
 
 def run_auto_gpt(
@@ -51,14 +47,7 @@ def run_auto_gpt(
     cfg = Config()
     # TODO: fill in llm values here
     check_openai_api_key()
-
-    if not check_gpt4_access():
-        logger.typewriter_log(
-            "WARNING: ",
-            Fore.YELLOW,
-            "You do not have access to GPT-4. Setting default to GPT-3.",
-        )
-        gpt3only, gpt4only = True, False
+    check_smart_llm_model_access()
 
     create_config(
         continuous,

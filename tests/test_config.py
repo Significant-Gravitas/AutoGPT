@@ -6,6 +6,7 @@ for the AI and ensures it behaves as a singleton.
 import pytest
 
 from autogpt.config import Config
+from autogpt.llm.llm_utils import check_smart_llm_model_access
 
 
 def test_initial_values(config):
@@ -117,3 +118,19 @@ def test_set_debug_mode(config):
 
     # Reset debug mode
     config.set_debug_mode(debug_mode)
+
+
+def test_check_smart_llm_model_access(config):
+    """
+    Test if config is updated correctly when the user doesn't have access to
+    the set smart model.
+    """
+    # Store model name to reset it after the test
+    smart_llm_model = config.smart_llm_model
+
+    config.set_smart_llm_model("incorrect-model")
+    check_smart_llm_model_access()
+    assert config.smart_llm_model == config.fast_llm_model
+
+    # Reset model name
+    config.set_smart_llm_model(smart_llm_model)
