@@ -94,14 +94,42 @@ jobs:
         uses: codecov/codecov-action@v3
 
       - name: Stage new files and commit
+        id: stage_files
         run: |
-          COMMIT_SHA=$(git rev-parse HEAD) # take the sha before committing the cassette
           git add tests
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git commit -m "Add new cassettes"
-          
-          git checkout -b cassette-diff-${COMMIT_SHA}
-          git remote add target https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.event.pull_request.base.repo.full_name }}
-          git push -f target cassette-diff-${COMMIT_SHA}
+          TIMESTAMP_COMMIT=$(date +%Y%m%d%H%M%S) # generate a timestamp
+          echo "TIMESTAMP_COMMIT=TIMESTAMP_COMMIT" >> $GITHUB_ENV
+      
+
+      - name: Create PR
+        id: create_pr
+        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: Update cassettes
+          branch: cassette-diff-PR-${{ github.event.pull_request.number }}-${{ env.TIMESTAMP_COMMIT }}
+          title: "Update cassette-diff-PR${{ github.event.pull_request.number }}-${{ env.TIMESTAMP_COMMIT }}"
+          body: "This PR updates the cassettes. Please merge it."
+
+
+      - name: Check PR
+        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+        run: |
+          echo "Pull Request Number - ${{ steps.create_pr.outputs.pull-request-number }}"
+          echo "Pull Request URL - ${{ steps.create_pr.outputs.pull-request-url }}"
+
+      - name: Comment PR URL in the current PR
+        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          message: |
+            Please click [HERE](${{ steps.create_pr.outputs.pull-request-url }}) and merge this PR to update the cassettes.
+
+      - name: Fail if new PR created
+        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+        run: exit 1
