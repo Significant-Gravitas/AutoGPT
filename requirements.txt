@@ -36,7 +36,7 @@ gitpython==3.1.31
 auto-gpt-plugin-template
 mkdocs
 pymdown-extensions
-
+mypy
 
 # OpenAI and Generic plugins import
 openapi-python-client==0.13.4
