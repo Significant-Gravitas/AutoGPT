@@ -13,7 +13,6 @@ from autogpt.core.configuration import (
     SystemConfiguration,
     UserConfigurable,
 )
-from autogpt.core.planning import ModelPrompt
 from autogpt.core.resource.model_providers.schema import (
     Embedding,
     EmbeddingModelProvider,
@@ -29,6 +28,7 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProviderService,
     ModelProviderSettings,
     ModelProviderUsage,
+    LanguageModelMessage,
 )
 
 OpenAIEmbeddingParser = Callable[[Embedding], Embedding]
@@ -174,7 +174,7 @@ class OpenAIProvider(
 
     async def create_language_completion(
         self,
-        model_prompt: ModelPrompt,
+        model_prompt: list[LanguageModelMessage],
         model_name: OpenAIModelName,
         completion_parser: Callable[[str], dict],
         **kwargs,
@@ -229,8 +229,6 @@ class OpenAIProvider(
             The kwargs for the chat API call.
 
         """
-        known_kwargs = {}
-
         completion_kwargs = {
             "model": model_name,
             **kwargs,
@@ -282,15 +280,15 @@ async def _create_embedding(text: str, *_, **kwargs) -> openai.Embedding:
     )
 
 
-async def _create_completion(messages: ModelPrompt, *_, **kwargs) -> openai.Completion:
+async def _create_completion(messages: list[LanguageModelMessage], *_, **kwargs) -> openai.Completion:
     """Create a chat completion using the OpenAI API.
 
     Args:
-        messages ModelPrompt: The prompt to use.
-        model_name str: The name of the model to use.
+        messages: The prompt to use.
 
     Returns:
-        str: The completion.
+        The completion.
+
     """
     messages = [message.dict() for message in messages]
     return await openai.ChatCompletion.acreate(

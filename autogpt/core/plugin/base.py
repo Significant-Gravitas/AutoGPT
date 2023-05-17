@@ -7,20 +7,23 @@ from pydantic import BaseModel
 from autogpt.core.command import Command, CommandRegistry
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.memory import Memory
-from autogpt.core.model import EmbeddingModel, LanguageModel
 from autogpt.core.planning import Planner
+from autogpt.core.resource.model_providers import (
+    EmbeddingModelProvider,
+    LanguageModelProvider,
+)
 
 # Expand to other types as needed
 PluginType = (
     Type[Command]  # Swappable now
     | Type[CommandRegistry]  # Swappable maybe never
-    | Type[EmbeddingModel]  # Swappable soon
-    | Type[LanguageModel]  # Swappable soon
+    | Type[LanguageModelProvider]  # Swappable soon
+    | Type[EmbeddingModelProvider]  # Swappable soon
     | Type[Memory]  # Swappable now
     | Type[Planner]  # Swappable soon
 )
 
-Plugin = Command | CommandRegistry | EmbeddingModel | LanguageModel | Memory | Planner
+Plugin = Command | CommandRegistry | EmbeddingModelProvider | LanguageModelProvider | Memory | Planner
 
 
 class PluginStorageFormat(str, enum.Enum):

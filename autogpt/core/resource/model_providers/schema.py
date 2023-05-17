@@ -5,7 +5,7 @@ from typing import Callable, ClassVar
 from pydantic import BaseModel, Field, SecretStr, validator
 
 from autogpt.core.configuration import UserConfigurable
-from autogpt.core.planning.base import ModelPrompt
+
 from autogpt.core.resource.schema import (
     ProviderBudget,
     ProviderCredentials,
@@ -24,6 +24,17 @@ class ModelProviderService(str, enum.Enum):
 
 class ModelProviderName(str, enum.Enum):
     OPENAI: str = "openai"
+
+
+class MessageRole(str, enum.Enum):
+    USER = "user"
+    SYSTEM = "system"
+    ASSISTANT = "assistant"
+
+
+class LanguageModelMessage(BaseModel):
+    role: MessageRole
+    content: str
 
 
 class ModelProviderModelInfo(BaseModel):
@@ -216,7 +227,7 @@ class LanguageModelProvider(ModelProvider):
     @abc.abstractmethod
     async def create_language_completion(
         self,
-        model_prompt: ModelPrompt,
+        model_prompt: list[LanguageModelMessage],
         model_name: str,
         completion_parser: Callable[[str], dict],
         **kwargs,

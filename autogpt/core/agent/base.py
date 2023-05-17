@@ -22,9 +22,5 @@ class Agent(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def run(self):
-        pass
-
-    @abc.abstractmethod
     def __repr__(self):
         ...

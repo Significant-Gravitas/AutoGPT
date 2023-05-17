@@ -1,39 +1,10 @@
 import abc
-import enum
-from typing import Any
 
-from pydantic import BaseModel
-
-
-class ModelRole(str, enum.Enum):
-    USER = "user"
-    SYSTEM = "system"
-    ASSISTANT = "assistant"
-
-
-class ModelMessage(BaseModel):
-    role: ModelRole
-    content: str
-
-
-class ModelPrompt(BaseModel):
-    messages: list[ModelMessage]
-    tokens_used: int
-
-
-class PlanningPromptContext(BaseModel):
-    progress: Any  # To be defined (maybe here, as this might be a good place for summarization)
-    last_command_result: Any  # To be defined in the command interface
-    memories: Any  # List[Memory] # To be defined in the memory interface
-    user_feedback: Any  # Probably just a raw string
-
-
-class SelfFeedbackPromptContext(BaseModel):
-    # Using existing args here
-    reasoning: str
-    plan: list[str]
-    thoughts: str
-    criticism: str
+from autogpt.core.planning.schema import (
+    PlanningContext,
+    ReflectionContext,
+    LanguageModelResponse,
+)
 
 
 class Planner(abc.ABC):
@@ -41,26 +12,24 @@ class Planner(abc.ABC):
 
     @staticmethod
     @abc.abstractmethod
-    def construct_objective_prompt_from_user_input(
+    async def decide_name_and_goals(
         user_objective: str,
-    ) -> ModelPrompt:
-        """Construct a prompt to have the Agent define its goals.
+    ) -> LanguageModelResponse:
+        """Decide the name and goals of an Agent from a user-defined objective.
 
         Args:
             user_objective: The user-defined objective for the agent.
 
         Returns:
-            A prompt to have the Agent define its goals based on the user's input.
+            The agent name and goals as a response from the language model.
 
         """
         ...
 
     @abc.abstractmethod
-    def construct_planning_prompt_from_context(
-        self,
-        context: PlanningPromptContext,
-    ) -> ModelPrompt:
-        """Construct a prompt to have the Agent plan its next action.
+    async def plan(self, context: PlanningContext) -> LanguageModelResponse:
+
+        """Plan the next action for the Agent.
 
         Args:
             context: A context object containing information about the agent's
@@ -68,27 +37,25 @@ class Planner(abc.ABC):
 
 
         Returns:
-            A prompt to have the Agent plan its next action based on the provided
-            context.
+            The next action the agent should take along with thoughts and reasoning.
 
         """
         ...
 
     @abc.abstractmethod
-    def get_self_feedback_prompt(
+    def reflect(
         self,
-        context: SelfFeedbackPromptContext,
-    ) -> ModelPrompt:
-        """
-        Generates a prompt to have the Agent reflect on its proposed next action.
+        context: ReflectionContext,
+    ) -> LanguageModelResponse:
+        """Reflect on a planned action and provide self-criticism.
+
 
         Args:
             context: A context object containing information about the agent's
                        reasoning, plan, thoughts, and criticism.
 
         Returns:
-            A self-feedback prompt for the language model based on the given context
-            and thoughts.
+            Self-criticism about the agent's plan.
 
         """
         ...

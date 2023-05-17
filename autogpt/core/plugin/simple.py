@@ -62,25 +62,10 @@ class SimplePluginService(PluginService):
     @staticmethod
     def load_from_workspace(plugin_route: PluginStorageRoute) -> PluginType:
         """Load a plugin from the workspace."""
-        try:
-            plugin = SimplePluginService.load_from_file_path(plugin_route)
-        except NotImplemented:
-            raise
-        except Exception as e:
-            raise NotImplemented(
-                "Could not load plugin from workspace as a file path and "
-                "no other loaders are implemented."
-            )
-
+        plugin = SimplePluginService.load_from_file_path(plugin_route)
         return plugin
 
     @staticmethod
     def load_from_installed_package(plugin_route: PluginStorageRoute) -> PluginType:
-        try:
-            plugin = SimplePluginService.load_from_import_path(plugin_route)
-        except Exception as e:
-            raise NotImplemented(
-                "Could not load plugin from installed package as an import path and "
-                "no other loaders are implemented."
-            )
+        plugin = SimplePluginService.load_from_import_path(plugin_route)
         return plugin

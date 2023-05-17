@@ -9,14 +9,15 @@ from autogpt.core.agent.base import Agent
 from autogpt.core.command import CommandRegistrySettings, SimpleCommandRegistry
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.memory import MemorySettings, SimpleMemory
-from autogpt.core.model import (
+from autogpt.core.embedding import (
     EmbeddingModelSettings,
-    LanguageModelResponse,
-    LanguageModelSettings,
     SimpleEmbeddingModel,
-    SimpleLanguageModel,
 )
-from autogpt.core.planning.simple import ModelPrompt, PlannerSettings, SimplePlanner
+from autogpt.core.planning import (
+    LanguageModelResponse,
+    PlannerSettings,
+    SimplePlanner,
+)
 from autogpt.core.plugin.simple import (
     PluginLocation,
     PluginStorageFormat,
@@ -30,7 +31,6 @@ class AgentSystems(SystemConfiguration):
     command_registry: PluginLocation
     memory: PluginLocation
     embedding_model: PluginLocation
-    language_model: PluginLocation
     openai_provider: PluginLocation
     planning: PluginLocation
     workspace: PluginLocation
@@ -51,7 +51,6 @@ class AgentSettings(BaseModel):
     command_registry: CommandRegistrySettings
     memory: MemorySettings
     embedding_model: EmbeddingModelSettings
-    language_model: LanguageModelSettings
     openai_provider: OpenAISettings
     planning: PlannerSettings
     workspace: WorkspaceSettings
@@ -80,11 +79,7 @@ class SimpleAgent(Agent, Configurable):
                 ),
                 embedding_model=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.model.SimpleEmbeddingModel",
-                ),
-                language_model=PluginLocation(
-                    storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.model.SimpleLanguageModel",
+                    storage_route="autogpt.core.embedding.SimpleEmbeddingModel",
                 ),
                 openai_provider=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
@@ -109,7 +104,6 @@ class SimpleAgent(Agent, Configurable):
         command_registry: SimpleCommandRegistry,
         memory: SimpleMemory,
         embedding_model: SimpleEmbeddingModel,
-        language_model: SimpleLanguageModel,
         openai_provider: OpenAIProvider,
         planning: SimplePlanner,
         workspace: SimpleWorkspace,
@@ -119,7 +113,6 @@ class SimpleAgent(Agent, Configurable):
         self._command_registry = command_registry
         self._memory = memory
         self._embedding_model = embedding_model
-        self._language_model = language_model
         # FIXME: Need some work to make this work as a dict of providers
         #  Getting the construction of the config to work is a bit tricky
         self._openai_provider = openai_provider
@@ -153,12 +146,13 @@ class SimpleAgent(Agent, Configurable):
             logger,
             model_providers={"openai": agent_args["openai_provider"]},
         )
-        agent_args["language_model"] = cls._get_system_instance(
-            "language_model",
+        agent_args["planning"] = cls._get_system_instance(
+            "planning",
             agent_settings,
             logger,
             model_providers={"openai": agent_args["openai_provider"]},
         )
+
         agent_args["command_registry"] = cls._get_system_instance(
             "command_registry",
             agent_settings,
@@ -169,11 +163,7 @@ class SimpleAgent(Agent, Configurable):
             agent_settings,
             logger,
         )
-        agent_args["planning"] = cls._get_system_instance(
-            "planning",
-            agent_settings,
-            logger,
-        )
+
         return cls(**agent_args)
 
     def step(self, *args, **kwargs):
@@ -226,45 +216,28 @@ class SimpleAgent(Agent, Configurable):
 
         return AgentSettings.parse_obj(configuration_dict)
 
-    @classmethod
-    def construct_objective_prompt_from_user_objective(
-        cls,
-        user_objective: str,
-        agent_settings: AgentSettings,
-        logger: logging.Logger,
-    ) -> ModelPrompt:
-        agent_planner: SimplePlanner = cls._get_system_instance(
-            "planning",
-            agent_settings,
-            logger=logger,
-        )
-        objective_prompt = agent_planner.construct_objective_prompt_from_user_input(
-            user_objective,
-        )
-        return objective_prompt
 
     @classmethod
     async def determine_agent_name_and_goals(
         cls,
-        objective_prompt: ModelPrompt,
+        user_objective: str,
         agent_settings: AgentSettings,
         logger: logging.Logger,
     ) -> LanguageModelResponse:
+
         provider: OpenAIProvider = cls._get_system_instance(
             "openai_provider",
             agent_settings,
             logger=logger,
         )
-
-        language_model: SimpleLanguageModel = cls._get_system_instance(
-            "language_model",
+        agent_planner: SimplePlanner = cls._get_system_instance(
+            "planning",
             agent_settings,
             logger=logger,
             model_providers={"openai": provider},
         )
-
-        model_response = await language_model.determine_agent_objective(
-            objective_prompt,
+        model_response = await agent_planner.decide_name_and_goals(
+            user_objective,
         )
 
         return model_response

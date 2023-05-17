@@ -22,6 +22,8 @@ from autogpt.core.resource.model_providers.schema import (
     ModelProviderService,
     ModelProviderSettings,
     ModelProviderUsage,
+    LanguageModelMessage,
+    MessageRole,
 )
 
 __all__ = [
@@ -32,6 +34,8 @@ __all__ = [
     "EmbeddingModelProviderModelResponse",
     "LanguageModelProvider",
     "LanguageModelProviderModelResponse",
+    "LanguageModelMessage",
+    "MessageRole",
     "OpenAIModelName",
     "OPEN_AI_MODELS",
     "OpenAIProvider",

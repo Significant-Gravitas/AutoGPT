@@ -1,10 +1,14 @@
 import logging
 
-from autogpt.core.configuration import Configurable, SystemSettings
-from autogpt.core.model.base import (
+from autogpt.core.configuration import (
+    Configurable,
+    SystemSettings,
+    SystemConfiguration,
+    UserConfigurable,
+)
+from autogpt.core.embedding.base import (
     EmbeddingModel,
     EmbeddingModelResponse,
-    ModelConfiguration,
 )
 from autogpt.core.resource.model_providers import (
     EmbeddingModelProvider,
@@ -13,15 +17,21 @@ from autogpt.core.resource.model_providers import (
 )
 
 
+class EmbeddingModelConfiguration(SystemConfiguration):
+    """Configuration for the embedding model"""
+    model_name: str = UserConfigurable()
+    provider_name: ModelProviderName = UserConfigurable()
+
+
 class EmbeddingModelSettings(SystemSettings):
-    configuration: ModelConfiguration
+    configuration: EmbeddingModelConfiguration
 
 
 class SimpleEmbeddingModel(EmbeddingModel, Configurable):
     defaults = EmbeddingModelSettings(
         name="simple_embedding_model",
         description="A simple embedding model.",
-        configuration=ModelConfiguration(
+        configuration=EmbeddingModelConfiguration(
             model_name=OpenAIModelName.ADA,
             provider_name=ModelProviderName.OPENAI,
         ),

@@ -1,8 +1,7 @@
 import click
 
 from autogpt.core.agent import AgentSettings, SimpleAgent
-from autogpt.core.model import LanguageModelResponse
-from autogpt.core.planning import ModelPrompt
+from autogpt.core.planning import LanguageModelResponse
 from autogpt.core.runner.client_lib.logging import get_client_logger
 
 
@@ -31,17 +30,9 @@ async def run_auto_gpt(user_configuration: dict):
         # We'll do this by asking the user for a prompt.
         user_objective = click.prompt("What do you want Auto-GPT to do?")
 
-        # Convert it into a prompt for the model.
-        agent_objective_prompt = (
-            SimpleAgent.construct_objective_prompt_from_user_objective(
-                user_objective, agent_settings, client_logger
-            )
-        )
-        click.echo(parse_objective_prompt(agent_objective_prompt))
-        # Then have the language model generate a name, a role, and goals
-        # for the agent from the prompt.
+        # Ask a language model to determine a name and goals for a suitable agent.
         name_and_goals = await SimpleAgent.determine_agent_name_and_goals(
-            agent_objective_prompt,
+            user_objective,
             agent_settings,
             client_logger,
         )
@@ -59,13 +50,6 @@ async def run_auto_gpt(user_configuration: dict):
         client_logger,
     )
     click.echo("agent is loaded")
-
-
-def parse_objective_prompt(agent_objective_prompt: ModelPrompt) -> str:
-    parsed_prompt = "Agent Objective:\n"
-    for prompt in agent_objective_prompt:
-        parsed_prompt += f"{prompt.role.value}: {prompt.content}"
-    return parsed_prompt
 
 
 def parse_agent_name_and_goals(name_and_goals: LanguageModelResponse) -> str:
