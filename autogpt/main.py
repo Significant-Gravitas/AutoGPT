@@ -47,7 +47,6 @@ def run_auto_gpt(
     cfg = Config()
     # TODO: fill in llm values here
     check_openai_api_key()
-    check_smart_llm_model_access()
 
     create_config(
         continuous,
@@ -63,6 +62,8 @@ def run_auto_gpt(
         allow_downloads,
         skip_news,
     )
+
+    check_smart_llm_model_access()
 
     if cfg.continuous_mode:
         for line in get_legal_warning().split("\n"):
