@@ -123,7 +123,7 @@ def test_set_debug_mode(config):
 def test_check_smart_llm_model_access(config):
     with patch("openai.ChatCompletion.create") as mock_create_chat_completion:
         # Test when no InvalidRequestError is raised
-        result = check_smart_llm_model_access()  # should not change
+        result = check_smart_llm_model_access()
         assert result == True
 
         # Test when InvalidRequestError is raised
