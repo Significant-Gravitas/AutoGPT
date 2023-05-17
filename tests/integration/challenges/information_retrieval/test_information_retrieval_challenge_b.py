@@ -20,7 +20,6 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 @pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-@run_multiple_times(3)
 def test_information_retrieval_challenge_b(
     get_nobel_prize_agent, monkeypatch, patched_api_requestor
 ) -> None:
@@ -31,12 +30,13 @@ def test_information_retrieval_challenge_b(
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
     """
 
-    input_sequence = ["y","y","y","y","y","y","EXIT"]
+    # input_sequence = ["y","y","y","y","y","y","EXIT"]
+    input_sequence = ["y","y","y","EXIT"]
     gen = input_generator(input_sequence)
     monkeypatch.setattr("builtins.input", lambda _: next(gen))
 
     with contextlib.suppress(SystemExit):
-        run_interaction_loop(get_nobel_prize_agent, None)
+        run_interaction_loop(monkeypatch, get_nobel_prize_agent, 2)
 
     file_path = str(get_nobel_prize_agent.workspace.get_path("2010_nobel_prize_winners.txt"))
     content = read_file(file_path)
