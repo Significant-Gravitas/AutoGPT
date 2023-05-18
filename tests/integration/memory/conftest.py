@@ -2,7 +2,7 @@ import numpy
 import pytest
 from pytest_mock import MockerFixture
 
-import autogpt.memory.vector.memory_item as memory_item
+import autogpt.memory.vector.memory_item as vector_memory_item
 import autogpt.memory.vector.providers.base as memory_provider_base
 from autogpt.config.config import Config
 from autogpt.llm.providers.openai import OPEN_AI_EMBEDDING_MODELS
@@ -18,7 +18,7 @@ def embedding_dimension(config: Config):
 @pytest.fixture
 def mock_get_embedding(mocker: MockerFixture, embedding_dimension: int):
     mocker.patch.object(
-        memory_item,
+        vector_memory_item,
         "get_embedding",
         return_value=[0.0255] * embedding_dimension,
     )
