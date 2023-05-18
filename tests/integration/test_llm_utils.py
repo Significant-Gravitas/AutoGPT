@@ -3,10 +3,12 @@ from unittest.mock import MagicMock
 
 import pytest
 from numpy.random import RandomState
+from openai.error import AuthenticationError
 from pytest_mock import MockerFixture
 
 from autogpt.config import Config
-from autogpt.llm import llm_utils
+from autogpt.exceptions import CriticalException
+from autogpt.llm import create_chat_completion, llm_utils
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.modelsinfo import COSTS
 from tests.utils import requires_api_key
@@ -63,3 +65,18 @@ def test_get_ada_embedding_large_context(random_large_string):
     # to hit the API to test the logic of the function (so not using vcr). This is a quick
     # regression test to document the issue.
     llm_utils.get_ada_embedding(random_large_string)
+
+
+def test_create_chat_completion_authentication_error(mocker):
+    mocker.patch(
+        "autogpt.llm.ApiManager.create_chat_completion", side_effect=AuthenticationError
+    )
+
+    messages = []
+    model = "some_model"
+    temperature = 0.5
+    max_tokens = None
+
+    # Verify that the function raises a CriticalException when an AuthenticationError is thrown
+    with pytest.raises(CriticalException):
+        create_chat_completion(messages, model, temperature, max_tokens)
