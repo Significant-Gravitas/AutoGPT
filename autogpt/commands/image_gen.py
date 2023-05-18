@@ -1,5 +1,7 @@
 """ Image Generation Module for AutoGPT."""
 import io
+import json
+import time
 import uuid
 from base64 import b64decode
 
@@ -9,6 +11,7 @@ from PIL import Image
 
 from autogpt.commands.command import command
 from autogpt.config import Config
+from autogpt.logs import logger
 
 CFG = Config()
 
@@ -60,20 +63,42 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
         "X-Use-Cache": "false",
     }
 
-    response = requests.post(
-        API_URL,
-        headers=headers,
-        json={
-            "inputs": prompt,
-        },
-    )
+    retry_count = 0
+    while retry_count < 10:
+        response = requests.post(
+            API_URL,
+            headers=headers,
+            json={
+                "inputs": prompt,
+            },
+        )
 
-    image = Image.open(io.BytesIO(response.content))
-    print(f"Image Generated for prompt:{prompt}")
+        if response.ok:
+            try:
+                image = Image.open(io.BytesIO(response.content))
+                logger.info(f"Image Generated for prompt:{prompt}")
+                image.save(filename)
+                return f"Saved to disk:{filename}"
+            except Exception as e:
+                logger.error(e)
+                break
+        else:
+            try:
+                error = json.loads(response.text)
+                if "estimated_time" in error:
+                    delay = error["estimated_time"]
+                    logger.debug(response.text)
+                    logger.info("Retrying in", delay)
+                    time.sleep(delay)
+                else:
+                    break
+            except Exception as e:
+                logger.error(e)
+                break
 
-    image.save(filename)
+        retry_count += 1
 
-    return f"Saved to disk:{filename}"
+    return f"Error creating image."
 
 
 def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
@@ -91,7 +116,7 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
     # Check for supported image sizes
     if size not in [256, 512, 1024]:
         closest = min([256, 512, 1024], key=lambda x: abs(x - size))
-        print(
+        logger.info(
             f"DALL-E only supports image sizes of 256x256, 512x512, or 1024x1024. Setting to {closest}, was {size}."
         )
         size = closest
@@ -104,7 +129,7 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
         api_key=CFG.openai_api_key,
     )
 
-    print(f"Image Generated for prompt:{prompt}")
+    logger.info(f"Image Generated for prompt:{prompt}")
 
     image_data = b64decode(response["data"][0]["b64_json"])
 
@@ -153,7 +178,7 @@ def generate_image_with_sd_webui(
         },
     )
 
-    print(f"Image Generated for prompt:{prompt}")
+    logger.info(f"Image Generated for prompt:{prompt}")
 
     # Save the image to disk
     response = response.json()

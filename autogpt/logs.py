@@ -1,18 +1,17 @@
 """Logging module for Auto-GPT."""
-import json
 import logging
 import os
 import random
 import re
 import time
-import traceback
 from logging import LogRecord
+from typing import Any
 
 from colorama import Fore, Style
 
+from autogpt.log_cycle.json_handler import JsonFileHandler, JsonFormatter
 from autogpt.singleton import Singleton
 from autogpt.speech import say_text
-from autogpt.utils import send_chat_message_to_user
 
 
 class Logger(metaclass=Singleton):
@@ -77,7 +76,13 @@ class Logger(metaclass=Singleton):
         self.logger.addHandler(error_handler)
         self.logger.setLevel(logging.DEBUG)
 
+        self.json_logger = logging.getLogger("JSON_LOGGER")
+        self.json_logger.addHandler(self.file_handler)
+        self.json_logger.addHandler(error_handler)
+        self.json_logger.setLevel(logging.DEBUG)
+
         self.speak_mode = False
+        self.chat_plugins = []
 
     def typewriter_log(
         self, title="", title_color="", content="", speak_text=False, level=logging.INFO
@@ -85,7 +90,8 @@ class Logger(metaclass=Singleton):
         if speak_text and self.speak_mode:
             say_text(f"{title}. {content}")
 
-        send_chat_message_to_user(f"{title}. {content}")
+        for plugin in self.chat_plugins:
+            plugin.report(f"{title}. {content}")
 
         if content:
             if isinstance(content, list):
@@ -105,6 +111,14 @@ class Logger(metaclass=Singleton):
     ):
         self._log(title, title_color, message, logging.DEBUG)
 
+    def info(
+        self,
+        message,
+        title="",
+        title_color="",
+    ):
+        self._log(title, title_color, message, logging.INFO)
+
     def warn(
         self,
         message,
@@ -116,11 +130,19 @@ class Logger(metaclass=Singleton):
     def error(self, title, message=""):
         self._log(title, Fore.RED, message, logging.ERROR)
 
-    def _log(self, title="", title_color="", message="", level=logging.INFO):
+    def _log(
+        self,
+        title: str = "",
+        title_color: str = "",
+        message: str = "",
+        level=logging.INFO,
+    ):
         if message:
             if isinstance(message, list):
                 message = " ".join(message)
-        self.logger.log(level, message, extra={"title": title, "color": title_color})
+        self.logger.log(
+            level, message, extra={"title": str(title), "color": str(title_color)}
+        )
 
     def set_level(self, level):
         self.logger.setLevel(level)
@@ -136,6 +158,26 @@ class Logger(metaclass=Singleton):
             )
 
         self.typewriter_log("DOUBLE CHECK CONFIGURATION", Fore.YELLOW, additionalText)
+
+    def log_json(self, data: Any, file_name: str) -> None:
+        # Define log directory
+        this_files_dir_path = os.path.dirname(__file__)
+        log_dir = os.path.join(this_files_dir_path, "../logs")
+
+        # Create a handler for JSON files
+        json_file_path = os.path.join(log_dir, file_name)
+        json_data_handler = JsonFileHandler(json_file_path)
+        json_data_handler.setFormatter(JsonFormatter())
+
+        # Log the JSON data using the custom file handler
+        self.json_logger.addHandler(json_data_handler)
+        self.json_logger.debug(data)
+        self.json_logger.removeHandler(json_data_handler)
+
+    def get_log_directory(self):
+        this_files_dir_path = os.path.dirname(__file__)
+        log_dir = os.path.join(this_files_dir_path, "../logs")
+        return os.path.abspath(log_dir)
 
 
 """
@@ -184,12 +226,16 @@ class AutoGptFormatter(logging.Formatter):
         if hasattr(record, "color"):
             record.title_color = (
                 getattr(record, "color")
-                + getattr(record, "title")
+                + getattr(record, "title", "")
                 + " "
                 + Style.RESET_ALL
             )
         else:
-            record.title_color = getattr(record, "title")
+            record.title_color = getattr(record, "title", "")
+
+        # Add this line to set 'title' to an empty string if it doesn't exist
+        record.title = getattr(record, "title", "")
+
         if hasattr(record, "msg"):
             record.message_no_color = remove_color_codes(getattr(record, "msg"))
         else:
@@ -241,5 +287,8 @@ def print_assistant_thoughts(
             logger.typewriter_log("- ", Fore.GREEN, line.strip())
     logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
     # Speak the assistant's thoughts
-    if speak_mode and assistant_thoughts_speak:
-        say_text(assistant_thoughts_speak)
+    if assistant_thoughts_speak:
+        if speak_mode:
+            say_text(assistant_thoughts_speak)
+        else:
+            logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")

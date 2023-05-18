@@ -11,8 +11,8 @@ premade voices that Auto-GPT can use for speech.
 
 1. Go to [ElevenLabs](https://beta.elevenlabs.io/) and make an account if you don't
     already have one.
-2. Choose and setup the `Starter` plan.
-3. Click the top right icon and find "Profile" to locate your API Key.
+2. Choose and setup the *Starter* plan.
+3. Click the top right icon and find *Profile* to locate your API Key.
 
 In the `.env` file set:
 
