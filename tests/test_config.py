@@ -168,6 +168,7 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_create, config):
     )
 
     assert config.fast_llm_model == "gpt-3.5-turbo"
+    assert config.smart_llm_model == "gpt-3.5-turbo"
 
     # Reset config
     config.set_fast_llm_model(fast_llm_model)
