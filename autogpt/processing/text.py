@@ -30,10 +30,10 @@ def split_text(
     Raises:
         ValueError: If the text is longer than the maximum length
     """
-    flatened_paragraphs = " ".join(text.split("\n"))
+    flattened_paragraphs = " ".join(text.split("\n"))
     nlp = spacy.load(CFG.browse_spacy_language_model)
     nlp.add_pipe("sentencizer")
-    doc = nlp(flatened_paragraphs)
+    doc = nlp(flattened_paragraphs)
     sentences = [sent.text.strip() for sent in doc.sents]
 
     current_chunk = []
