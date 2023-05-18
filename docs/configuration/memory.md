@@ -1,3 +1,9 @@
+!!! warning
+    The Pinecone, Milvus and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed in `master`.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+
 ## Setting Your Cache Type
 
 By default, Auto-GPT set up with Docker Compose will use Redis as its memory backend.

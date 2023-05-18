@@ -1,6 +1,8 @@
 """Agent manager for managing GPT agents"""
 from __future__ import annotations
 
+from typing import List
+
 from autogpt.config import Config
 from autogpt.llm import Message, create_chat_completion
 from autogpt.singleton import Singleton
@@ -30,7 +32,7 @@ class AgentManager(metaclass=Singleton):
         Returns:
             The key of the new agent
         """
-        messages: list[Message] = [
+        messages: List[Message] = [
             {"role": "user", "content": prompt},
         ]
         for plugin in self.cfg.plugins:
