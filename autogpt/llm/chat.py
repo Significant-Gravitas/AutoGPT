@@ -200,7 +200,7 @@ def chat_with_ai(
                 if not plugin.can_handle_on_planning():
                     continue
                 plugin_response = plugin.on_planning(
-                    agent.prompt_generator, current_context
+                    agent.config.prompt_generator, current_context
                 )
                 if not plugin_response or plugin_response == "":
                     continue
