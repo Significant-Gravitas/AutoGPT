@@ -121,6 +121,9 @@ def test_set_debug_mode(config):
 
 
 def test_check_model(config):
+    """
+    Test if the check_model return gpt-3.5-turbo if the model is invalid.
+    """
     with patch("openai.ChatCompletion.create") as mock_create_chat_completion:
         # Test when no InvalidRequestError is raised
         result = check_model("test-model")
@@ -135,6 +138,9 @@ def test_check_model(config):
 
 
 def test_smart_and_fast_llm_models_set_to_gpt4(config):
+    """
+    Test if fast model updates to gpt-3.5-turbo if both are set to gpt-4.
+    """
     with patch("openai.ChatCompletion.create") as mock_create_chat_completion:
         fast_llm_model = config.fast_llm_model
         smart_llm_model = config.smart_llm_model
@@ -158,8 +164,8 @@ def test_smart_and_fast_llm_models_set_to_gpt4(config):
             gpt4only=False,
             memory_type=config.memory_backend,
             browser_name=config.selenium_web_browser,
-            allow_downloads=False,
-            skip_news=False,
+            allow_downloads=config.allow_downloads,
+            skip_news=config.skip_news,
         )
 
         assert config.fast_llm_model == "gpt-3.5-turbo"
