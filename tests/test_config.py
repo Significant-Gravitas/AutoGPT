@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from openai import InvalidRequestError
 
-from autogpt.configurator import check_smart_llm_model_access
+from autogpt.configurator import check_model
 
 
 def test_initial_values(config):
@@ -120,15 +120,15 @@ def test_set_debug_mode(config):
     config.set_debug_mode(debug_mode)
 
 
-def test_check_smart_llm_model_access(config):
+def test_check_model(config):
     with patch("openai.ChatCompletion.create") as mock_create_chat_completion:
         # Test when no InvalidRequestError is raised
-        result = check_smart_llm_model_access()
-        assert result == True
+        result = check_model("test-model")
+        assert result == "test-model"
 
         # Test when InvalidRequestError is raised
         mock_create_chat_completion.side_effect = InvalidRequestError(
             "error message", "error param"
         )
-        result = check_smart_llm_model_access()
-        assert result == False
+        result = check_model("test-model")
+        assert result == "gpt-3.5-turbo"

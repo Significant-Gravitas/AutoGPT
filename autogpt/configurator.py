@@ -79,16 +79,15 @@ def create_config(
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_speak_mode(True)
 
-    if not check_smart_llm_model_access():
-        gpt3only, gpt4only = True, False
-
     if gpt3only:
+        fast_model = check_model(CFG.fast_llm_model)
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        CFG.set_smart_llm_model(CFG.fast_llm_model)
+        CFG.set_smart_llm_model(fast_model)
 
     if gpt4only:
+        smart_model = check_model(CFG.smart_llm_model)
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
-        CFG.set_fast_llm_model(CFG.smart_llm_model)
+        CFG.set_fast_llm_model(smart_model)
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
@@ -156,7 +155,7 @@ def create_config(
         CFG.skip_news = True
 
 
-def check_smart_llm_model_access() -> bool:
+def check_model(model: str) -> str:
     """Check if smart model is available for use."""
     cfg = Config()
 
@@ -164,15 +163,13 @@ def check_smart_llm_model_access() -> bool:
         {"role": "user", "content": ""},
     ]
     try:
-        create_chat_completion(
-            model=cfg.smart_llm_model, messages=messages, temperature=0
-        )
-        return True
+        create_chat_completion(model=model, messages=messages, temperature=0)
+        return model
     except InvalidRequestError:
         logger.typewriter_log(
             "WARNING: ",
             Fore.YELLOW,
             f"You do not have access to {cfg.smart_llm_model}. Setting default "
-            f"to {cfg.fast_llm_model}.",
+            f"to gpt-3.5-turbo.",
         )
-        return False
+        return "gpt-3.5-turbo"
