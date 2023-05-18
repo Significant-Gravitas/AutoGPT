@@ -129,6 +129,9 @@ def create_chat_completion(
     if temperature is None:
         temperature = cfg.temperature
 
+    if model is None:
+        model = cfg.smart_llm_model
+
     num_retries = 10
     warned_user = False
     logger.debug(
