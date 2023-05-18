@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from openai import InvalidRequestError
 
-from autogpt.configurator import check_model
+from autogpt.configurator import check_model, create_config
 
 
 def test_initial_values(config):
@@ -132,3 +132,38 @@ def test_check_model(config):
         )
         result = check_model("test-model")
         assert result == "gpt-3.5-turbo"
+
+
+def test_smart_and_fast_llm_models_set_to_gpt4(config):
+    with patch("openai.ChatCompletion.create") as mock_create_chat_completion:
+        fast_llm_model = config.fast_llm_model
+        smart_llm_model = config.smart_llm_model
+
+        config.fast_llm_model = "gpt-4"
+        config.smart_llm_model = "gpt-4"
+
+        mock_create_chat_completion.side_effect = InvalidRequestError(
+            "error message", "error param"
+        )
+
+        create_config(
+            continuous=config.continuous_mode,
+            continuous_limit=config.continuous_limit,
+            ai_settings_file=config.ai_settings_file,
+            prompt_settings_file=config.prompt_settings_file,
+            skip_reprompt=config.skip_reprompt,
+            speak=config.speak_mode,
+            debug=config.debug_mode,
+            gpt3only=True,
+            gpt4only=False,
+            memory_type=config.memory_backend,
+            browser_name=config.selenium_web_browser,
+            allow_downloads=False,
+            skip_news=False,
+        )
+
+        assert config.fast_llm_model == "gpt-3.5-turbo"
+
+        # Reset model names
+        config.set_fast_llm_model(fast_llm_model)
+        config.set_smart_llm_model(smart_llm_model)

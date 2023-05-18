@@ -81,11 +81,15 @@ def create_config(
 
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        CFG.set_smart_llm_model(check_model(CFG.fast_llm_model))
+        fast_model = check_model(CFG.fast_llm_model)
+        CFG.set_fast_llm_model(fast_model)
+        CFG.set_smart_llm_model(fast_model)
 
     if gpt4only:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
-        CFG.set_fast_llm_model(check_model(CFG.smart_llm_model))
+        smart_model = check_model(CFG.smart_llm_model)
+        CFG.set_fast_llm_model(smart_model)
+        CFG.set_smart_llm_model(smart_model)
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
@@ -167,7 +171,6 @@ def check_model(model: str) -> str:
         logger.typewriter_log(
             "WARNING: ",
             Fore.YELLOW,
-            f"You do not have access to {cfg.smart_llm_model}. Setting default "
-            f"to gpt-3.5-turbo.",
+            f"You do not have access to {model}. Setting default " f"to gpt-3.5-turbo.",
         )
         return "gpt-3.5-turbo"
