@@ -125,32 +125,32 @@ body:
       label: Describe your issue.
       description: Describe the problem you are experiencing. Try to describe only the issue and phrase it short but clear. ⚠️ Provide NO other data in this field  
 
-  #Following are optional file uploads with logs
+  #Following are optional file content uploads
   - type: markdown
     attributes:
       value: |
-        "The following is optional, please keep in mind that the log files may contain 
-        personal information such as credentials.
+        ⚠️The following is optional, please keep in mind that the log files may contain personal information such as credentials.⚠️
         
-        The log files are located in the folder 'logs' inside the main auto-gpt folder."
+        "The log files are located in the folder 'logs' inside the main auto-gpt folder."
         
-  - type: file
+  - type: input
     attributes:
-      label: Upload Activity Log
+      label: Upload Activity Log Content
       description: |
-        Upload the activity log, this can help us understand the issue better. 
+        Upload the activity log content, this can help us understand the issue better. 
+        To do this, go to the folder logs in your main auto-gpt folder, open activity.log and copy the contents to this field. 
         ⚠️ The activity log may contain personal data given to auto-gpt by you in prompt or input as well as 
         any personal information that auto-gpt collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
     validations:
       required: false
 
-  - type: file
+  - type: input
     attributes:
-      label: Upload Error Log
+      label: Upload Error Log Content
       description: |
-        Upload the error log, this will help us understand the issue better. 
+        Upload the error log content, this will help us understand the issue better. 
+        To do this, go to the folder logs in your main auto-gpt folder, open error.log and copy the contents to this field. 
         ⚠️ The error log may contain personal data given to auto-gpt by you in prompt or input as well as 
         any personal information that auto-gpt collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
     validations:
       required: false
-
