@@ -1,8 +1,10 @@
 import os
 from io import StringIO
 from unittest.mock import patch
+
 import pytest
-from autogpt.commands.execute_code import execute_python_file
+
+from autogpt.commands.execute import execute_python_file
 
 @pytest.fixture
 def temp_python_file(request):
