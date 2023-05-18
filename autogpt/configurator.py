@@ -154,7 +154,7 @@ def create_config(
 
 
 def check_model(model: str) -> str:
-    """Check if smart model is available for use."""
+    """Check if model is available for use. If not, return gpt-3.5-turbo."""
     cfg = Config()
 
     messages = [
