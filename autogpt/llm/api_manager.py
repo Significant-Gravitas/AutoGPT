@@ -59,10 +59,11 @@ class ApiManager(metaclass=Singleton):
                 max_tokens=max_tokens,
                 api_key=cfg.openai_api_key,
             )
-        logger.debug(f"Response: {response}")
-        prompt_tokens = response.usage.prompt_tokens
-        completion_tokens = response.usage.completion_tokens
-        self.update_cost(prompt_tokens, completion_tokens, model)
+        if not hasattr(response, "error"):
+            logger.debug(f"Response: {response}")
+            prompt_tokens = response.usage.prompt_tokens
+            completion_tokens = response.usage.completion_tokens
+            self.update_cost(prompt_tokens, completion_tokens, model)
         return response
 
     def update_cost(self, prompt_tokens, completion_tokens, model):
