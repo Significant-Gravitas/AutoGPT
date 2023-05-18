@@ -6,6 +6,7 @@ from pytest_mock import MockerFixture
 
 from autogpt.config.config import Config
 from autogpt.llm import ApiManager
+from autogpt.memory.vector import get_memory
 from autogpt.workspace import Workspace
 
 pytest_plugins = ["tests.integration.agent_factory"]
@@ -35,6 +36,16 @@ def config(mocker: MockerFixture, workspace: Workspace) -> Config:
         file_logger_path=workspace.get_path("file_logger.txt"),
     )
     yield config
+
+
+@pytest.fixture
+def memory_none(agent_test_config: Config):
+    was_memory_backend = agent_test_config.memory_backend
+
+    agent_test_config.set_memory_backend("no_memory")
+    yield get_memory(agent_test_config, init=True)
+
+    agent_test_config.set_memory_backend(was_memory_backend)
 
 
 @pytest.fixture()

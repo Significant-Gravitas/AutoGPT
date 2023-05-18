@@ -30,16 +30,6 @@ def memory_local_cache(agent_test_config: Config):
 
 
 @pytest.fixture
-def memory_none(agent_test_config: Config):
-    was_memory_backend = agent_test_config.memory_backend
-
-    agent_test_config.set_memory_backend("no_memory")
-    yield get_memory(agent_test_config, init=True)
-
-    agent_test_config.set_memory_backend(was_memory_backend)
-
-
-@pytest.fixture
 def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
