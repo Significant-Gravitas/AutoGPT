@@ -81,7 +81,7 @@ class Config(metaclass=Singleton):
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
 
-        self.silero_tts_voice = os.getenv("SILERO_TTS_VOICE", "en-0")
+        self.silero_tts_voice = os.getenv("SILERO_TTS_VOICE", "en_0")
         self.use_silero_tts = False
         self.use_silero_tts = os.getenv("USE_SILERO_TTS")
 

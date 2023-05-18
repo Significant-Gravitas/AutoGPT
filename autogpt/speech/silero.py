@@ -1,12 +1,14 @@
 """Silero speech module"""
 import os
+import time
+from pathlib import Path
 
-# V3
 import torch
 from playsound import playsound
 
 from autogpt.config import Config
 from autogpt.speech.base import VoiceBase
+
 
 class Silero(VoiceBase):
     """ElevenLabs speech class"""
@@ -45,13 +47,22 @@ class Silero(VoiceBase):
         sample_rate = 48000
         speaker = Config().silero_tts_voice
 
+        output_file = Path(f"autogpt/speech/temp/silero_{int(time.time())}.wav")
+
         audio = self.model.save_wav(
             text=text,
             speaker=speaker,
-            sample_rate=sample_rate
+            sample_rate=sample_rate,
+            audio_path=str(output_file),
         )
 
         playsound(audio, True)
-        os.remove(audio)
+        try:
+            os.remove(audio)
+        except:
+            print(
+                "Error while deleting Silero file, please delete it manually after autogpt is closed."
+            )
+            pass
 
         return True
