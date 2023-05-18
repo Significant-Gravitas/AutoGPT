@@ -15,7 +15,7 @@ from autogpt.json_utils.utilities import (
     is_string_valid_json,
 )
 from autogpt.llm.base import Message
-from autogpt.llm.llm_utils import create_chat_completion
+from autogpt.llm.utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
 from autogpt.logs import logger
 from autogpt.memory.vector import VectorMemory

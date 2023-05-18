@@ -10,8 +10,8 @@ from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
-from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
-from autogpt.llm.token_counter import count_string_tokens
+from autogpt.llm.chat import chat_with_ai, create_chat_completion, create_chat_message
+from autogpt.llm.utils import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,

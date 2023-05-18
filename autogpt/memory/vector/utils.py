@@ -5,7 +5,7 @@ import numpy.typing as npt
 import openai
 
 from autogpt.config import Config
-from autogpt.llm.llm_utils import metered, retry_openai_api
+from autogpt.llm.utils import metered, retry_openai_api
 from autogpt.logs import logger
 
 Embedding = list[np.float32] | np.ndarray[Any, np.dtype[np.float32]]

@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List
 
 from autogpt.config import Config
-from autogpt.llm import Message, create_chat_completion
+from autogpt.llm.chat import Message, create_chat_completion
 from autogpt.singleton import Singleton
 
 

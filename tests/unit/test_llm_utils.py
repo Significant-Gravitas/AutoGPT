@@ -1,7 +1,7 @@
 import pytest
 from openai.error import APIError, RateLimitError
 
-from autogpt.llm import llm_utils
+from autogpt.llm import utils as llm_utils
 
 
 @pytest.fixture(params=[RateLimitError, APIError])

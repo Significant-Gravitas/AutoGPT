@@ -6,7 +6,7 @@ from numpy.random import RandomState
 from pytest_mock import MockerFixture
 
 from autogpt.config import Config
-from autogpt.llm import llm_utils
+from autogpt.llm import utils as llm_utils
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.modelsinfo import COSTS
 from tests.utils import requires_api_key

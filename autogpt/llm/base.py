@@ -65,7 +65,7 @@ class ChatPrompt(List[Message]):
 
     @property
     def token_length(self):
-        from autogpt.llm.token_counter import count_message_tokens
+        from autogpt.llm.utils import count_message_tokens
 
         return count_message_tokens(self, self.model.name)
 

@@ -10,8 +10,7 @@ if TYPE_CHECKING:
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
-from autogpt.llm.llm_utils import create_chat_completion
-from autogpt.llm.token_counter import count_message_tokens
+from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory

@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autogpt.llm import COSTS, ApiManager
+from autogpt.llm.api_manager import COSTS, ApiManager
 
 api_manager = ApiManager()
 

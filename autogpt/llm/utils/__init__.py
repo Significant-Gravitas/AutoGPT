@@ -21,6 +21,8 @@ from autogpt.llm.base import Message
 from autogpt.llm.providers.openai import OPEN_AI_EMBEDDING_MODELS
 from autogpt.logs import logger
 
+from .token_counter import *
+
 
 def metered(func):
     """Adds ApiManager metering to functions which make OpenAI API calls"""

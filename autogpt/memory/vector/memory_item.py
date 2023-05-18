@@ -7,8 +7,8 @@ from typing import Literal
 import numpy as np
 
 from autogpt.config import Config
-from autogpt.llm.base import Message
-from autogpt.llm.token_counter import count_string_tokens
+from autogpt.llm import Message
+from autogpt.llm.utils import count_string_tokens
 from autogpt.logs import logger
 from autogpt.processing.text import chunk_content, split_text, summarize_text
 

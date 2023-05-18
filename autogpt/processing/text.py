@@ -7,9 +7,8 @@ import tiktoken
 
 from autogpt.config import Config
 from autogpt.llm.base import ChatPrompt
-from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.providers.openai import OPEN_AI_MODELS
-from autogpt.llm.token_counter import count_string_tokens
+from autogpt.llm.utils import count_string_tokens, create_chat_completion
 from autogpt.logs import logger
 from autogpt.utils import batch
 

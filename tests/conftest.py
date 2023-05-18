@@ -7,7 +7,7 @@ from pytest_mock import MockerFixture
 import autogpt.memory.vector.memory_item as vector_memory_item
 import autogpt.memory.vector.providers.base as memory_provider_base
 from autogpt.config.config import Config
-from autogpt.llm import ApiManager
+from autogpt.llm.api_manager import ApiManager
 from autogpt.memory.vector import get_memory
 from autogpt.workspace import Workspace
 
