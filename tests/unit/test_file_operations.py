@@ -159,7 +159,12 @@ def test_split_file():
     assert chunks == expected
 
 
-def test_read_file(memory_none, test_file_with_content_path: Path, file_content):
+def test_read_file(
+    memory_none,
+    mock_get_embedding,
+    test_file_with_content_path: Path,
+    file_content,
+):
     content = file_ops.read_file(test_file_with_content_path)
     assert content == file_content
 
