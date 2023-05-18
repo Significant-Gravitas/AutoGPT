@@ -137,39 +137,37 @@ def test_check_model(config):
         assert result == "gpt-3.5-turbo"
 
 
-def test_smart_and_fast_llm_models_set_to_gpt4(config):
+@patch("openai.ChatCompletion.create")
+def test_smart_and_fast_llm_models_set_to_gpt4(mock_create, config):
     """
     Test if fast model updates to gpt-3.5-turbo if both are set to gpt-4.
     """
-    with patch("openai.ChatCompletion.create") as mock_create_chat_completion:
-        fast_llm_model = config.fast_llm_model
-        smart_llm_model = config.smart_llm_model
+    fast_llm_model = config.fast_llm_model
+    smart_llm_model = config.smart_llm_model
 
-        config.fast_llm_model = "gpt-4"
-        config.smart_llm_model = "gpt-4"
+    config.fast_llm_model = "gpt-4"
+    config.smart_llm_model = "gpt-4"
 
-        mock_create_chat_completion.side_effect = InvalidRequestError(
-            "error message", "error param"
-        )
+    mock_create.side_effect = InvalidRequestError("error message", "error param")
 
-        create_config(
-            continuous=config.continuous_mode,
-            continuous_limit=config.continuous_limit,
-            ai_settings_file=config.ai_settings_file,
-            prompt_settings_file=config.prompt_settings_file,
-            skip_reprompt=config.skip_reprompt,
-            speak=config.speak_mode,
-            debug=config.debug_mode,
-            gpt3only=True,
-            gpt4only=False,
-            memory_type=config.memory_backend,
-            browser_name=config.selenium_web_browser,
-            allow_downloads=config.allow_downloads,
-            skip_news=config.skip_news,
-        )
+    create_config(
+        continuous=config.continuous_mode,
+        continuous_limit=config.continuous_limit,
+        ai_settings_file="",
+        prompt_settings_file="",
+        skip_reprompt=config.skip_reprompt,
+        speak=config.speak_mode,
+        debug=config.debug_mode,
+        gpt3only=True,
+        gpt4only=False,
+        memory_type=config.memory_backend,
+        browser_name=config.selenium_web_browser,
+        allow_downloads=config.allow_downloads,
+        skip_news=config.skip_news,
+    )
 
-        assert config.fast_llm_model == "gpt-3.5-turbo"
+    assert config.fast_llm_model == "gpt-3.5-turbo"
 
-        # Reset model names
-        config.set_fast_llm_model(fast_llm_model)
-        config.set_smart_llm_model(smart_llm_model)
+    # Reset model names
+    config.set_fast_llm_model(fast_llm_model)
+    config.set_smart_llm_model(smart_llm_model)
