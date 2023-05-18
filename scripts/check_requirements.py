@@ -11,15 +11,19 @@ def main():
             line.strip().split("#")[0].strip() for line in f.readlines()
         ]
 
-    installed_packages = [package.key for package in pkg_resources.working_set]
+    installed_packages = {pkg.key: pkg.version for pkg in pkg_resources.working_set}
 
     missing_packages = []
-    for package in required_packages:
-        if not package:  # Skip empty lines
+    for required_package in required_packages:
+        if not required_package:  # Skip empty lines
             continue
-        package_name = re.split("[<>=@ ]+", package.strip())[0]
-        if package_name.lower() not in installed_packages:
-            missing_packages.append(package_name)
+        pkg = pkg_resources.Requirement.parse(required_package)
+        if (
+            pkg.key not in installed_packages
+            or pkg_resources.parse_version(installed_packages[pkg.key])
+            not in pkg.specifier
+        ):
+            missing_packages.append(str(pkg))
 
     if missing_packages:
         print("Missing packages:")
