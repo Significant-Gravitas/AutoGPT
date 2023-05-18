@@ -109,7 +109,7 @@ def call_ai_function(
 # Overly simple abstraction until we create something better
 # simple retry mechanism when getting a rate error or a bad gateway
 def create_chat_completion(
-    messages: List[Message],  # type: ignore
+    messages: List[Message],
     model: Optional[str] = None,
     temperature: float = None,
     max_tokens: Optional[int] = None,
@@ -130,7 +130,7 @@ def create_chat_completion(
         temperature = cfg.temperature
 
     if model is None:
-        model = cfg.smart_llm_model
+        model = cfg.fast_llm_model
 
     num_retries = 10
     warned_user = False
