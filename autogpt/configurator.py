@@ -49,6 +49,8 @@ def create_config(
     CFG.set_debug_mode(False)
     CFG.set_continuous_mode(False)
     CFG.set_speak_mode(False)
+    CFG.set_fast_llm_model(check_model(CFG.fast_llm_model))
+    CFG.set_smart_llm_model(check_model(CFG.smart_llm_model))
 
     if debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
@@ -78,9 +80,6 @@ def create_config(
     if speak:
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_speak_mode(True)
-
-    CFG.fast_llm_model = check_model(CFG.fast_llm_model)
-    CFG.smart_llm_model = check_model(CFG.smart_llm_model)
 
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
