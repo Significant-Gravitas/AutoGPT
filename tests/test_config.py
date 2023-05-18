@@ -141,7 +141,7 @@ def test_check_model(config):
 @patch("openai.ChatCompletion.create")
 def test_smart_and_fast_llm_models_set_to_gpt4(mock_create, config):
     """
-    Test if fast_llm_model updates to gpt-3.5-turbo if both are set to gpt-4.
+    Test if models update to gpt-3.5-turbo if both are set to gpt-4.
     """
     fast_llm_model = config.fast_llm_model
     smart_llm_model = config.smart_llm_model
