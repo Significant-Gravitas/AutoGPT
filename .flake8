@@ -1,12 +1,12 @@
 [flake8]
 max-line-length = 88
-extend-ignore = E203
+select = "E303, W293, W291, W292, E305, E231, E302"
 exclude =
     .tox,
     __pycache__,
     *.pyc,
     .env
-    venv/*
-    .venv/*
-    reports/*
-    dist/*
+    venv*/*,
+    .venv/*,
+    reports/*,
+    dist/*,
