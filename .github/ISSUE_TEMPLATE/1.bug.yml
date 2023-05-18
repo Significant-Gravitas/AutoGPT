@@ -124,6 +124,8 @@ body:
     attributes:
       label: Describe your issue.
       description: Describe the problem you are experiencing. Try to describe only the issue and phrase it short but clear. ⚠️ Provide NO other data in this field  
+    validations:
+      required: true
 
   #Following are optional file content uploads
   - type: markdown
