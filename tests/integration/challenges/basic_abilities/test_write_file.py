@@ -12,7 +12,7 @@ CYCLE_COUNT = 3
 @pytest.mark.vcr
 def test_write_file(
     writer_agent: Agent,
-    patched_api_requestor,
+    patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     file_path = str(writer_agent.workspace.get_path("hello_world.txt"))

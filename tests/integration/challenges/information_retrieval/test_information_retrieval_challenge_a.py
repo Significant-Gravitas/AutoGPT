@@ -15,7 +15,7 @@ from autogpt.agent import Agent
 def test_information_retrieval_challenge_a(
     get_company_revenue_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
-    patched_api_requestor,
+    patched_api_requestor: None,
 ) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs and checking the output file content.

@@ -11,7 +11,7 @@ CYCLE_COUNT = 2
 @pytest.mark.vcr
 def test_browse_website(
     browser_agent: Agent,
-    patched_api_requestor,
+    patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     file_path = browser_agent.workspace.get_path("browse_website.txt")

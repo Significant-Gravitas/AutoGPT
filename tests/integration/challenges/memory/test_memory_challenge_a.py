@@ -14,7 +14,7 @@ MAX_LEVEL = 3
 def test_memory_challenge_a(
     memory_management_agent: Agent,
     user_selected_level: int,
-    patched_api_requestor,
+    patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """

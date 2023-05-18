@@ -19,7 +19,7 @@ NOISE = 1000
 def test_memory_challenge_b(
     memory_management_agent: Agent,
     user_selected_level: int,
-    patched_api_requestor,
+    patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
