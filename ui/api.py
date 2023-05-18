@@ -89,13 +89,14 @@ ai_role: {ai_role}
             ):
                 break
             if state["last_message_read_index"] >= len(state["messages"]) - 1:
-                time.sleep(1)
+                time.sleep(0.1)
             else:
                 state["last_message_read_index"] += 1
                 title, content = state["messages"][state["last_message_read_index"]]
+                print(title, content)
                 yield (f"**{title.strip()}** " if title else "") + utils.remove_color(
                     content
-                ).replace("\n", "<br />")
+                ).replace("\n", "<br/>")
                 set_state(self.state_file, state)
 
 

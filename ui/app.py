@@ -9,16 +9,20 @@ OUTPUT_DIR = os.path.join(os.path.dirname(FILE_DIR), "auto_gpt_workspace")
 if not os.path.exists(OUTPUT_DIR):
     os.mkdir(OUTPUT_DIR)
 
+print(FILE_DIR, OUTPUT_DIR)
+
 CSS = """
 #chatbot {font-family: monospace;}
 #files .generating {display: none;}
 #files .min {min-height: 0px;}
 """
 
-with gr.Blocks(css=CSS) as app:
-    with gr.Column() as setup_pane:
-        gr.Markdown(f"""# Auto-GPT
-        """)
+with gr.Blocks(theme=gr.themes.Soft(), css=CSS) as app:
+    with gr.Column(visible=True) as setup_pane:
+        gr.Markdown(f"""# Auto-GPT WebUI""")
+        gr.Markdown(
+            "* `OPENAI_API_KEY`를 입력해주세요. 또는 `.env` 파일에 `OPENAI_API_KEY`를 설정하면, 자동으로 불러옵니다."
+        )
         with gr.Row():
             open_ai_key = gr.Textbox(
                 value=get_openai_api_key(),
@@ -26,7 +30,7 @@ with gr.Blocks(css=CSS) as app:
                 type="password",
             )
         gr.Markdown(
-            "Fill the values below, then click 'Start'. There are example values you can load at the bottom of this page."
+            "* `AI Name`, `AI Role`, `AI Goals`를 채워주세요. 또는 `Examples`에서 선택해주세요. 이후 `Start` 버튼을 누르면 태스크를 수행합니다."
         )
         with gr.Row():
             ai_name = gr.Textbox(label="AI Name", placeholder="e.g. Entrepreneur-GPT")
@@ -41,30 +45,30 @@ with gr.Blocks(css=CSS) as app:
             type="array"
         )
         start_btn = gr.Button("Start", variant="primary")
-        with open(os.path.join(FILE_DIR, "examples.json"), "r") as f:
-            example_values = json.load(f)
-        gr.Examples(
-            example_values,
-            [ai_name, ai_role, top_5_goals],
-        )
+        with gr.Accordion("Open for examples"):
+            gr.Examples(
+                json.load(open(os.path.join(FILE_DIR, "examples.json"))),
+                [ai_name, ai_role, top_5_goals],
+            )
     with gr.Column(visible=False) as main_pane:
         with gr.Row():
             with gr.Column(scale=2):
-                chatbot = gr.Chatbot(elem_id="chatbot")
+                chatbot = gr.Chatbot(elem_id="chatbot").style(height=750)
+            with gr.Column(scale=1):
+                gr.Markdown("* Yes or Custom Response")
                 with gr.Row():
-                    yes_btn = gr.Button("Yes", variant="primary", interactive=False)
-                    consecutive_yes = gr.Slider(
-                        1, 10, 1, step=1, label="Consecutive Yes", interactive=False
-                    )
+                    yes_btn = gr.Button("yes", variant="primary", interactive=False)
+                    consecutive_yes = gr.Slider(1, 10, 1, step=1, label="몇번 yes?", interactive=False)
                 custom_response = gr.Textbox(
                     label="Custom Response",
                     placeholder="Press 'Enter' to Submit.",
                     interactive=False,
                 )
-            with gr.Column(scale=1):
+
+                gr.Markdown("* Download output files")
                 gr.HTML(
                     lambda: f"""
-                        Generated Files
+                        generated files
                         <pre><code style='overflow-x: auto'>{utils.format_directory(OUTPUT_DIR)}</pre></code>
                 """, every=3, elem_id="files"
                 )
@@ -80,10 +84,12 @@ with gr.Blocks(css=CSS) as app:
     def bot_response(chat, api):
         messages = []
         for message in api.get_chatbot_response():
-            messages.append(message)
-            chat[-1][1] = "\n".join(messages) + "..."
+            message = message.replace("    ", "&nbsp;&nbsp;&nbsp;&nbsp;")
+            # print(message, "end?")
+            messages.append(f"{message}")
+            chat[-1][1] = "\n\n".join(messages) + "<br/><br/>Thinking ... (it takes a few seconds)"
             yield chat
-        chat[-1][1] = "\n".join(messages)
+        chat[-1][1] = "\n\n".join(messages)
         yield chat
 
     def send_message(count, chat, api, message="Y"):
