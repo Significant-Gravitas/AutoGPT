@@ -71,6 +71,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
+          submodules: recursive
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
@@ -94,6 +95,7 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
+<<<<<<< HEAD
       - name: Stage Files and Check for New Cassettes
         id: stage_files_and_check
         run: |
@@ -114,6 +116,30 @@ jobs:
 
       - name: Commit, Config, and Push
         id: commit_and_push
+=======
+      - name: Update cassette submodule on merge into master
+        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.ref == 'refs/heads/master'
+        run: |
+          cd tests/cassettes
+          git checkout main
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git add .
+          git commit -am "Updated cassettes submodule"
+          git push origin main
+          cd ../..
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git add tests/cassettes
+          git commit -am "Updated main repo's submodules"
+          git push origin master
+        env:
+<<<<<<< HEAD
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Stage new files and commit
+        id: stage_files
+>>>>>>> 93a76d2e (feat: make sure we push the tests/cassettes submodule on merge into master)
         run: |
           git diff --cached --quiet tests && echo "No changes to commit" && exit 0
           find tests -type f -name '*.yaml' -print0 | xargs -0 git add
@@ -127,8 +153,29 @@ jobs:
           TIMESTAMP_COMMIT=$(date +%Y%m%d%H%M%S) # generate a timestamp
           echo "TIMESTAMP_COMMIT=$TIMESTAMP_COMMIT" >> $GITHUB_ENV
 
+<<<<<<< HEAD
       - name: Inform of auto commit.
         if: ${{ env.TIMESTAMP_COMMIT != null }}
+=======
+      - name: Create PR
+        id: create_pr
+        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: Update cassettes
+          branch: cassette-diff-PR-${{ github.event.pull_request.number }}-${{ env.TIMESTAMP_COMMIT }}
+          title: "Update cassette-diff-PR${{ github.event.pull_request.number }}-${{ env.TIMESTAMP_COMMIT }}"
+          body: "This PR updates the cassettes. Please merge it."
+
+      - name: Check PR
+        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+        run: |
+          echo "Pull Request Number - ${{ steps.create_pr.outputs.pull-request-number }}"
+          echo "Pull Request URL - ${{ steps.create_pr.outputs.pull-request-url }}"
+
+      - name: Comment PR URL in the current PR
+        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+>>>>>>> 5120b3eb (ci: update git submodules separately to ensure it gets called)
         uses: thollander/actions-comment-pull-request@v2
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -139,3 +186,6 @@ jobs:
             git rebase origin/${{ github.head_ref }}
             ```
             before pushing more changes to the remote.
+=======
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+>>>>>>> f6b47a6d (ci: remove unused code now that we are using git submodules to keep cassettes in sync)
