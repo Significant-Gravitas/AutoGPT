@@ -8,7 +8,7 @@ from autogpt.commands.execute_code import execute_python_file
 @mock.patch("subprocess.run")
 def test_execute_python_file_with_valid_file(mock_run):
     # Test executing a Python file with a valid file
-    filename = "scripts/example.py"
+    filename = "tests/scripts/example.py"
 
     mock_run.return_value.returncode = 0
     mock_run.return_value.stdout = "Hello, world!"
@@ -23,7 +23,7 @@ def test_execute_python_file_with_valid_file(mock_run):
 @mock.patch("subprocess.run")
 def test_execute_python_file_with_valid_file_and_args(mock_run):
     # Test executing a Python file with a valid file and args
-    filename = "scripts/exampleargs.py"
+    filename = "tests/scripts/exampleargs.py"
     args = "Hello world"
 
     mock_run.return_value.returncode = 0
@@ -38,7 +38,7 @@ def test_execute_python_file_with_valid_file_and_args(mock_run):
 
 def test_execute_python_file_with_invalid_file():
     # Test executing a Python file with an invalid file
-    filename = "scripts/invalid.txt"
+    filename = "tests/scripts/invalid.txt"
     
     result = execute_python_file(filename)
 
