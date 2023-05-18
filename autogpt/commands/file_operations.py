@@ -165,7 +165,7 @@ def read_file(filename: str) -> str:
 
         # TODO: invalidate/update memory when file is edited
         file_memory = MemoryItem.from_text_file(content, filename)
-        if len(file_memory.e_chunks) > 1:
+        if len(file_memory.chunks) > 1:
             return file_memory.summary
 
         return content

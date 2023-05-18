@@ -1,15 +1,8 @@
 import numpy
 import pytest
 
-from autogpt.config.config import Config
-from autogpt.llm.providers.openai import OPEN_AI_EMBEDDING_MODELS
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
-
-
-@pytest.fixture
-def embedding_dimension(config: Config):
-    return OPEN_AI_EMBEDDING_MODELS[config.embedding_model].embedding_dimensions
 
 
 @pytest.fixture
