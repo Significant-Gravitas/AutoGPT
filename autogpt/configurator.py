@@ -79,17 +79,16 @@ def create_config(
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_speak_mode(True)
 
+    CFG.fast_llm_model = check_model(CFG.fast_llm_model)
+    CFG.smart_llm_model = check_model(CFG.smart_llm_model)
+
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        fast_model = check_model(CFG.fast_llm_model)
-        CFG.set_fast_llm_model(fast_model)
-        CFG.set_smart_llm_model(fast_model)
+        CFG.set_smart_llm_model(CFG.fast_llm_model)
 
     if gpt4only:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
-        smart_model = check_model(CFG.smart_llm_model)
-        CFG.set_fast_llm_model(smart_model)
-        CFG.set_smart_llm_model(smart_model)
+        CFG.set_fast_llm_model(CFG.smart_llm_model)
 
     if memory_type:
         supported_memory = get_supported_memory_backends()

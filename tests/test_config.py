@@ -159,7 +159,7 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_create, config):
         skip_reprompt=False,
         speak=False,
         debug=False,
-        gpt3only=True,
+        gpt3only=False,
         gpt4only=False,
         memory_type="",
         browser_name="",
