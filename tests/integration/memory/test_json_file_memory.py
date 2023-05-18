@@ -1,50 +1,18 @@
 # sourcery skip: snake-case-functions
-"""Tests for LocalCache class"""
-import numpy
+"""Tests for JSONFileMemory class"""
 import orjson
 import pytest
-from pytest_mock import MockerFixture
 
-import autogpt.memory.context.providers.json_file as json_file_memory
 from autogpt.config import Config
 from autogpt.memory.context import JSONFileMemory, MemoryItem
-from autogpt.memory.context.utils import Embedding
 from autogpt.workspace import Workspace
 from tests.utils import requires_api_key
-
-EMBED_DIM = 1536
 
 
 @pytest.fixture(autouse=True)
 def cleanup_sut_singleton():
     if JSONFileMemory in JSONFileMemory._instances:
         del JSONFileMemory._instances[JSONFileMemory]
-
-
-@pytest.fixture
-def mock_get_embedding(mocker: MockerFixture):
-    mocker.patch.object(
-        json_file_memory,
-        "get_embedding",
-        return_value=[0.0255] * EMBED_DIM,
-    )
-
-
-@pytest.fixture
-def mock_embedding() -> Embedding:
-    return numpy.full((1, EMBED_DIM), 0.0255, numpy.float32)[0]
-
-
-@pytest.fixture
-def memory_item(mock_embedding: Embedding):
-    return MemoryItem(
-        raw_content="test content",
-        summary="test content summary",
-        e_summary=mock_embedding,
-        chunks=["test content"],
-        e_chunks=[mock_embedding],
-        metadata={},
-    )
 
 
 def test_json_memory_init_without_backing_file(config: Config, workspace: Workspace):
@@ -107,7 +75,7 @@ def test_json_memory_get(config: Config, memory_item: MemoryItem, mock_get_embed
     index.add(memory_item)
     retrieved = index.get("test")
     assert retrieved is not None
-    assert retrieved == memory_item
+    assert retrieved.memory_item == memory_item
 
 
 @pytest.mark.vcr
