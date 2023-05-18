@@ -122,7 +122,8 @@ def test_set_debug_mode(config):
 
 def test_check_model(config):
     """
-    Test if the check_model return gpt-3.5-turbo if the model is invalid.
+    Test if check_model returns original model when valid.
+    Test if check_model return gpt-3.5-turbo when model is invalid.
     """
     with patch("openai.ChatCompletion.create") as mock_create_chat_completion:
         # Test when no InvalidRequestError is raised
