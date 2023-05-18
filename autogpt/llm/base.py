@@ -1,11 +1,12 @@
 from dataclasses import dataclass, field
-from typing import List, TypedDict
+from math import ceil, floor
+from typing import List, Literal, TypedDict
 
 
 class Message(TypedDict):
     """OpenAI Message object containing a role and the message content"""
 
-    role: str
+    role: Literal["system", "user", "assistant"]
     content: str
 
 
@@ -43,6 +44,47 @@ class EmbeddingModelInfo(ModelInfo):
     """Struct for embedding model information."""
 
     embedding_dimensions: int
+
+
+@dataclass
+class ChatPrompt(List[Message]):
+    """Container for an OpenAI chat completion prompt"""
+
+    model: ChatModelInfo
+
+    @classmethod
+    def for_model(cls, model_name: str):
+        from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+
+        if not model_name in OPEN_AI_CHAT_MODELS:
+            raise ValueError(f"Unknown chat model '{model_name}'")
+        return ChatPrompt(model=OPEN_AI_CHAT_MODELS[model_name])
+
+    def add(self, message_role: Literal["system", "user", "assistant"], content: str):
+        self.append({"role": message_role, "content": content})
+
+    @property
+    def token_length(self):
+        from autogpt.llm.token_counter import count_message_tokens
+
+        return count_message_tokens(self, self.model.name)
+
+    def __str__(self):
+        SEPARATOR_LENGTH = 42
+
+        def separator(text: str):
+            half_sep_len = (SEPARATOR_LENGTH - 2 - len(text)) / 2
+            return f"{floor(half_sep_len)*'-'} {text.upper()} {ceil(half_sep_len)*'-'}"
+
+        formatted_messages = "\n".join(
+            [f"{separator(m['role'])}\n{m['content']}" for m in self]
+        )
+        return f"""
+=============== ChatPrompt ===============
+Length: {self.token_length} tokens; {len(self)} messages
+{formatted_messages}
+==========================================
+"""
 
 
 @dataclass

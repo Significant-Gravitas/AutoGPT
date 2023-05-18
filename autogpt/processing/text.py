@@ -6,7 +6,8 @@ import spacy
 import tiktoken
 
 from autogpt.config import Config
-from autogpt.llm.llm_utils import create_text_completion
+from autogpt.llm.base import ChatPrompt
+from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.providers.openai import OPEN_AI_MODELS
 from autogpt.llm.token_counter import count_string_tokens
 from autogpt.logs import logger
@@ -79,8 +80,7 @@ def summarize_text(
     if instruction and question:
         raise ValueError("Parameters 'question' and 'instructions' cannot both be set")
 
-    # model = CFG.fast_llm_model      # does not support text completion :(
-    model = "text-davinci-003"
+    model = CFG.fast_llm_model
 
     if question:
         instruction = (
@@ -88,22 +88,7 @@ def summarize_text(
             "Do not directly answer the question itself"
         )
 
-    summarization_prompt_template = (
-        (
-            f"Consisely summarize the following text; {instruction}. "
-            "If the text does not contain information, describe the type of text.\n"
-            '\nText: """{content}"""\n'
-            "\nSummary/description:"
-        )
-        if instruction is not None
-        else (
-            "Consisely summarize the following text, "
-            "covering the topics present in the text and nothing more. "
-            "If the text does not contain information, describe the type of text.\n"
-            '\nText: """{content}"""\n'
-            "\nSummary/description:"
-        )
-    )
+    summarization_prompt = ChatPrompt.for_model(model)
 
     token_length = count_string_tokens(text, model)
     logger.info(f"Text length: {token_length} tokens")
@@ -113,12 +98,24 @@ def summarize_text(
     logger.info(f"Max chunk length: {max_chunk_length} tokens")
 
     if not must_chunk_content(text, model, max_chunk_length):
-        prompt = summarization_prompt_template.format(content=text)
-        logger.debug(f"Summarizing with {model}:\n{'-'*32}\n{prompt}\n{'-'*32}\n")
-        summary = create_text_completion(
-            prompt, model, temperature=0, max_output_tokens=500
+        # summarization_prompt.add("user", text)
+        summarization_prompt.add(
+            "user",
+            "Write a concise summary of the following text"
+            f"{f'; {instruction}' if instruction is not None else ''}:"
+            "\n\n\n"
+            f'LITERAL TEXT: """{text}"""'
+            "\n\n\n"
+            "CONCISE SUMMARY: The text is best summarized as"
+            # "Only respond with a concise summary or description of the user message."
         )
-        logger.debug(f"Summary:\n{'-'*32}\n{summary}\n{'-'*32}\n")
+
+        logger.debug(f"Summarizing with {model}:\n{summarization_prompt}\n")
+        summary = create_chat_completion(
+            summarization_prompt, model, temperature=0, max_tokens=500
+        )
+
+        logger.debug(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
         return summary.strip(), None
 
     summaries: list[str] = []
