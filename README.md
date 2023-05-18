@@ -74,7 +74,7 @@ Your support is greatly appreciated. Development of this free, open-source proje
 </a>
 
 <a href="https://chatgpv.com/?ref=spni76459e4fa3f30a">
-<img src="https://github.com/Significant-Gravitas/Auto-GPT/assets/22963551/623a2dd6-eaeb-4941-b40f-c5a29ca6bebc" height="40px" alt="ChatGPV" />
+<img src="https://github-production-user-asset-6210df.s3.amazonaws.com/22963551/239132565-623a2dd6-eaeb-4941-b40f-c5a29ca6bebc.png" height="40px" alt="ChatGPV" />
 </a>
   
 </div>
