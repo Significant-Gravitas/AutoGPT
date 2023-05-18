@@ -13,10 +13,12 @@ def test_execute_python_file_with_valid_file(mock_run):
     with open(filename, "w") as file:
         file.write("print('Hello, world!')")
 
+    full_path = os.path.abspath(filename)
+
     mock_run.return_value.returncode = 0
     mock_run.return_value.stdout = "Hello, world!"
 
-    result = execute_python_file(filename)
+    result = execute_python_file(full_path)
 
     assert result == "Hello, world!"
 
@@ -32,10 +34,12 @@ def test_execute_python_file_with_valid_file_and_args(mock_run):
     with open(filename, "w") as file:
         file.write("import sys\nprint(sys.argv[1], sys.argv[2])")
 
+    full_path = os.path.abspath(filename)
+
     mock_run.return_value.returncode = 0
     mock_run.return_value.stdout = "Hello world"
 
-    result = execute_python_file(filename, args)
+    result = execute_python_file(full_path, args)
 
     assert result == "Hello world"
 
@@ -45,8 +49,9 @@ def test_execute_python_file_with_valid_file_and_args(mock_run):
 def test_execute_python_file_with_invalid_file():
     # Test executing a Python file with an invalid file
     filename = "invalid.txt"
+    full_path = os.path.abspath(filename)
 
-    result = execute_python_file(filename)
+    result = execute_python_file(full_path)
 
     assert result == "Error: Invalid file type. Only .py files are allowed."
 
@@ -54,7 +59,8 @@ def test_execute_python_file_with_invalid_file():
 def test_execute_python_file_with_nonexistent_file():
     # Test executing a Python file with a nonexistent file
     filename = "nonexistent.py"
+    full_path = os.path.abspath(filename)
 
-    result = execute_python_file(filename)
+    result = execute_python_file(full_path)
 
     assert result == f"Error: File '{filename}' does not exist."
