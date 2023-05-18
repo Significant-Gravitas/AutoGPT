@@ -7,6 +7,7 @@ import torch
 from playsound import playsound
 
 from autogpt.config import Config
+from autogpt.logs import logger
 from autogpt.speech.base import VoiceBase
 
 
@@ -60,7 +61,7 @@ class Silero(VoiceBase):
         try:
             os.remove(audio)
         except:
-            print(
+            logger.info(
                 "Error while deleting Silero file, please delete it manually after autogpt is closed."
             )
             pass
