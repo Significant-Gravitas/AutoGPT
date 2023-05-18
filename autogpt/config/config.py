@@ -27,7 +27,11 @@ class Config(metaclass=Singleton):
         self.skip_reprompt = False
         self.allow_downloads = False
         self.skip_news = False
-
+        # check if local LLM setting is enabled
+        self.local_llm_enable = os.getenv("LOCAL_LLM_ENABLED")
+        # change the llm api base if enabled
+        if self.local_llm_enable:
+            openai.api_base = os.getenv("LLM_URL")
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
 
