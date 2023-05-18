@@ -107,7 +107,7 @@ def get_memory(cfg: Config, init=False) -> VectorMemory:
             #     memory = MilvusMemory(cfg)
 
         case "no_memory":
-            memory = NoMemory(cfg)
+            memory = NoMemory()
 
         case _:
             raise ValueError(
