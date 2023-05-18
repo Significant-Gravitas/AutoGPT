@@ -26,7 +26,7 @@ def python_test_file(config: Config, random_string):
 @pytest.fixture
 def python_test_file_args(config: Config):
     temp_file = tempfile.NamedTemporaryFile(dir=config.workspace_path, suffix=".py")
-    temp_file.write(str.encode(f"import sys\nprint(sys.argv[1], sys.argv[2])"))
+    temp_file.write(str.encode(f"import sys\nprint(len(sys.argv))\nprint(str(sys.argv))\nprint(sys.argv[1], sys.argv[2])"))
     temp_file.flush()
 
     yield temp_file.name
