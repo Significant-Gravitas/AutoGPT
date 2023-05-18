@@ -9,10 +9,10 @@
 
 <hr/>
 
-### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
+### 🔴 USE `stable` not `master` 🔴
 
 **Download the latest `stable` release from here: https://github.com/Significant-Gravitas/Auto-GPT/releases/latest.**
-The `master` branch may often be in a **broken** state.
+The `master` branch is under heavy development and may often be in a **broken** state.
 
 <hr/>
 
@@ -44,6 +44,7 @@ Your support is greatly appreciated. Development of this free, open-source proje
 <a href="https://roost.ai">
 <img src="https://user-images.githubusercontent.com/22963551/234180283-b58cb03c-c95a-4196-93c1-28b52a388e9d.png" height="40px" alt="Roost.AI" />
 </a>
+  
 <a href="https://nuclei.ai/">
 <picture height="40px">
   <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/22963551/234153428-24a6f31d-c0c6-4c9b-b3f4-9110148f67b4.png">
@@ -72,6 +73,10 @@ Your support is greatly appreciated. Development of this free, open-source proje
 </picture>
 </a>
 
+<a href="https://chatgpv.com/?ref=spni76459e4fa3f30a">
+<img src="https://github-production-user-asset-6210df.s3.amazonaws.com/22963551/239132565-623a2dd6-eaeb-4941-b40f-c5a29ca6bebc.png" height="40px" alt="ChatGPV" />
+</a>
+  
 </div>
 </br>
 
