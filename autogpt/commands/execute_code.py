@@ -117,6 +117,8 @@ def validate_command(command: str) -> bool:
     for keyword in CFG.allow_commands:
         if keyword in tokens:
             return True
+    if CFG.allow_commands:
+        return False
 
     return True
 
