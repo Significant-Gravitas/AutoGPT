@@ -3,6 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from autogpt.config.ai_config import AIConfig
+from autogpt.exceptions import CriticalException
 from autogpt.setup import (
     generate_aiconfig_automatic,
     generate_aiconfig_manual,
@@ -76,3 +77,15 @@ def test_prompt_user_manual_mode(patched_api_requestor):
     assert ai_config.ai_name == "Chef-GPT"
     assert ai_config.ai_role == "an AI designed to browse bake a cake."
     assert ai_config.ai_goals == ["Purchase ingredients", "Bake a cake"]
+
+
+def test_prompt_user_critical_exception(mocker):
+    user_inputs = "User Input"
+    mocker.patch(
+        "autogpt.setup.generate_aiconfig_automatic",
+        side_effect=CriticalException("Critical Exception Message"),
+    )
+    with patch("builtins.input", side_effect=user_inputs), pytest.raises(
+        CriticalException
+    ):
+        prompt_user()
