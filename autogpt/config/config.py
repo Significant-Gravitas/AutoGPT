@@ -23,6 +23,7 @@ class Config(metaclass=Singleton):
         self.debug_mode = False
         self.continuous_mode = False
         self.continuous_limit = 0
+        self.error_threshold = int(os.getenv("ERROR_THRESHOLD", 2))
         self.speak_mode = False
         self.skip_reprompt = False
         self.allow_downloads = False
