@@ -59,25 +59,24 @@ OBJECTIVE_SYSTEM_PROMPT = (
     "remains on track."
 )
 
-# Decision Prompt
-# ---------------
+# Plan Prompt
+# -----------
 
-DECISION_PROMPT_HEADER = (
+PLAN_PROMPT_HEADER = (
     "You are {agent_name}, {agent_role}.\n"
     "Your decisions must always be made independently without "
     "seeking user assistance. Play to your strengths as an LLM and pursue "
     "simple strategies with no legal complications.\n\n"
-    "GOALS:\n\n"
-    "{numbered_goal_list}"
 )
 
-DECISION_PROMPT_INFO = [
+PLAN_PROMPT_INFO = [
     "The OS you are running on is: {os_name}",
-    "It takes money to let you run. Your API budget is ${self.api_budget:.3f}",
+    "It takes money to let you run. Your API budget is ${api_budget:.3f}",
+    "The current time and date is {current_time}",
 ]
 
 
-DECISION_PROMPT_CONSTRAINTS = (
+PLAN_PROMPT_CONSTRAINTS = (
     "~4000 word limit for short term memory. Your short term memory is short, so "
     "immediately save important information to files.",
     "If you are unsure how you previously did something or want to recall past "
@@ -86,13 +85,13 @@ DECISION_PROMPT_CONSTRAINTS = (
     "Exclusively use the commands listed below e.g. command_name",
 )
 
-DECISION_PROMPT_RESOURCES = (
+PLAN_PROMPT_RESOURCES = (
     "Internet access for searches and information gathering.",
     "Long-term memory management.",
     "GPT-3.5 powered Agents for delegation of simple tasks." "File output.",
 )
 
-DECISION_PROMPT_PERFORMANCE_EVALUATIONS = (
+PLAN_PROMPT_PERFORMANCE_EVALUATIONS = (
     "Continuously review and analyze your actions to ensure you are performing to"
     " the best of your abilities.",
     "Constructively self-criticize your big-picture behavior constantly.",
@@ -103,7 +102,7 @@ DECISION_PROMPT_PERFORMANCE_EVALUATIONS = (
 )
 
 
-DECISION_PROMPT_RESPONSE_DICT = {
+PLAN_PROMPT_RESPONSE_DICT = {
     "thoughts": {
         "text": "thought",
         "reasoning": "reasoning",
@@ -114,15 +113,20 @@ DECISION_PROMPT_RESPONSE_DICT = {
     "command": {"name": "command name", "args": {"arg name": "value"}},
 }
 
-DECISION_PROMPT_RESPONSE_FORMAT = (
+PLAN_PROMPT_RESPONSE_FORMAT = (
     "You should only respond in JSON format as described below\n"
     "Response Format:\n"
-    "{formatted_response_format}\n"
+    "{response_json_structure}\n"
     "Ensure the response can be parsed by Python json.loads"
 )
 
-DECISION_PROMPT_FORMAT = (
+PLAN_TRIGGERING_PROMPT = (
+    "Determine which next command to use, and respond using the format specified above:"
+)
+
+PLAN_PROMPT_MAIN = (
     "{prompt_header}\n\n"
+    "GOALS:\n\n{goals}\n\n"
     "Info:\n{prompt_info}\n\n"
     "Constraints:\n{prompt_constraints}\n\n"
     "Commands:\n{prompt_commands}\n\n"
@@ -131,10 +135,6 @@ DECISION_PROMPT_FORMAT = (
     "You should only respond in JSON format as described below\n"
     "Response Format:\n{formatted_response_format}\n"
     "Ensure the response can be parsed by Python json.loads"
-)
-
-DECISION_TRIGGERING_PROMPT = (
-    "Determine which next command to use, and respond using the format specified above:"
 )
 
 

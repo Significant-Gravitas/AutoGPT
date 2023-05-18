@@ -172,6 +172,14 @@ class OpenAIProvider(
         self._create_completion = retry_handler(_create_completion)
         self._create_embedding = retry_handler(_create_embedding)
 
+    def get_token_limit(self, model_name: str) -> int:
+        """Get the token limit for a given model."""
+        return OPEN_AI_MODELS[model_name].max_tokens
+
+    def get_remaining_budget(self) -> float:
+        """Get the remaining budget."""
+        return self._budget.remaining_budget
+
     async def create_language_completion(
         self,
         model_prompt: list[LanguageModelMessage],

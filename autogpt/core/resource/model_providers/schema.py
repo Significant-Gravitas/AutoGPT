@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, SecretStr, validator
 
 from autogpt.core.configuration import UserConfigurable
 from autogpt.core.resource.schema import (
+    Embedding,
     ProviderBudget,
     ProviderCredentials,
     ProviderSettings,
@@ -19,6 +20,7 @@ class ModelProviderService(str, enum.Enum):
 
     EMBEDDING: str = "embedding"
     LANGUAGE: str = "language"
+    TEXT: str = "text"
 
 
 class ModelProviderName(str, enum.Enum):
@@ -164,12 +166,18 @@ class ModelProvider(abc.ABC):
 
     defaults: ClassVar[ModelProviderSettings]
 
+    @abc.abstractmethod
+    def get_token_limit(self, model_name: str) -> int:
+        ...
+
+    @abc.abstractmethod
+    def get_remaining_budget(self) -> float:
+        ...
+
 
 ####################
 # Embedding Models #
 ####################
-
-Embedding = list[float]
 
 
 class EmbeddingModelProviderModelInfo(ModelProviderModelInfo):

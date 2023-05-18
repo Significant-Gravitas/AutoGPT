@@ -159,8 +159,9 @@ class SimpleAgent(Agent, Configurable):
 
         return cls(**agent_args)
 
-    def step(self, *args, **kwargs):
+    def step(self, user_feedback: str, *args, **kwargs):
         self._configuration.cycle_count += 1
+        self._planning.plan(user_feedback, self._memory)
         pass
 
     def __repr__(self):

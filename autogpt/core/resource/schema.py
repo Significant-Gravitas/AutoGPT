@@ -1,6 +1,8 @@
 import abc
 import enum
+from typing import Any
 
+import numpy as np
 from pydantic import SecretBytes, SecretField, SecretStr
 
 from autogpt.core.configuration import (
@@ -51,3 +53,7 @@ class ProviderSettings(SystemSettings):
     resource_type: ResourceType
     credentials: ProviderCredentials | None = None
     budget: ProviderBudget | None = None
+
+
+# Used both by model providers and memory providers
+Embedding = list[float] | np.ndarray[Any, np.dtype[float]]

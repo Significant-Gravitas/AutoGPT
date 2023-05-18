@@ -29,7 +29,6 @@ async def run_auto_gpt(user_configuration: dict):
         # First we need to figure out what the user wants to do with the agent.
         # We'll do this by asking the user for a prompt.
         user_objective = click.prompt("What do you want Auto-GPT to do?")
-
         # Ask a language model to determine a name and goals for a suitable agent.
         name_and_goals = await SimpleAgent.determine_agent_name_and_goals(
             user_objective,
@@ -50,6 +49,12 @@ async def run_auto_gpt(user_configuration: dict):
         client_logger,
     )
     click.echo("agent is loaded")
+
+    user_input = ""
+    while True:
+        agent_response = await agent.step(user_input)
+        click.echo(agent_response.content["text"])
+        user_input = click.prompt("What do you want to say to the agent?")
 
 
 def parse_agent_name_and_goals(name_and_goals: LanguageModelResponse) -> str:
