@@ -122,8 +122,8 @@ def test_set_debug_mode(config):
 
 def test_check_model(config):
     """
-    Test if check_model returns original model when valid.
-    Test if check_model return gpt-3.5-turbo when model is invalid.
+    Test if check_model() returns original model when valid.
+    Test if check_model() returns gpt-3.5-turbo when model is invalid.
     """
     with patch("openai.ChatCompletion.create") as mock_create_chat_completion:
         # Test when no InvalidRequestError is raised
@@ -141,10 +141,12 @@ def test_check_model(config):
 @patch("openai.ChatCompletion.create")
 def test_smart_and_fast_llm_models_set_to_gpt4(mock_create, config):
     """
-    Test if fast model updates to gpt-3.5-turbo if both are set to gpt-4.
+    Test if fast_llm_model updates to gpt-3.5-turbo if both are set to gpt-4.
     """
     fast_llm_model = config.fast_llm_model
     smart_llm_model = config.smart_llm_model
+    ai_settings_file = config.ai_settings_file
+    prompt_settings_file = config.prompt_settings_file
 
     config.fast_llm_model = "gpt-4"
     config.smart_llm_model = "gpt-4"
@@ -169,6 +171,8 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_create, config):
 
     assert config.fast_llm_model == "gpt-3.5-turbo"
 
-    # Reset model names
+    # Reset config
     config.set_fast_llm_model(fast_llm_model)
     config.set_smart_llm_model(smart_llm_model)
+    config.ai_settings_file = ai_settings_file
+    config.prompt_settings_file = prompt_settings_file
