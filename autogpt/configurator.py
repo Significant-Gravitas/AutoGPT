@@ -13,6 +13,7 @@ CFG = Config()
 def create_config(
     continuous: bool,
     continuous_limit: int,
+    error_threshold: int,
     ai_settings_file: str,
     skip_reprompt: bool,
     speak: bool,
@@ -29,6 +30,7 @@ def create_config(
     Args:
         continuous (bool): Whether to run in continuous mode
         continuous_limit (int): The number of times to run in continuous mode
+        error_threshold (int): The number of errors to allow before triggering get_self_feedback()
         ai_settings_file (str): The path to the ai_settings.yaml file
         skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
         speak (bool): Whether to enable speak mode
@@ -64,6 +66,10 @@ def create_config(
                 "Continuous Limit: ", Fore.GREEN, f"{continuous_limit}"
             )
             CFG.set_continuous_limit(continuous_limit)
+
+        if error_threshold:
+            logger.typewriter_log("Error Threshold: ", Fore.GREEN, f"{error_threshold}")
+            CFG.set_continuous_limit(error_threshold)
 
     # Check if continuous limit is used without continuous mode
     if continuous_limit and not continuous:

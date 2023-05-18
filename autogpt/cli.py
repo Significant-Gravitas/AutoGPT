@@ -21,6 +21,13 @@ import click
     type=int,
     help="Defines the number of times to run in continuous mode",
 )
+@click.option(
+    "-e",
+    "--error-threshold",
+    type=int,
+    help="Defines the number of repeated errors to allow in continuous mode "
+    "before running get_self_feedback()",
+)
 @click.option("--speak", is_flag=True, help="Enable Speak Mode")
 @click.option("--debug", is_flag=True, help="Enable Debug Mode")
 @click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")

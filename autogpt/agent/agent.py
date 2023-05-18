@@ -10,10 +10,10 @@ from autogpt.config import Config
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
 from autogpt.llm import (
+    Message,
     chat_with_ai,
     create_chat_completion,
     create_chat_message,
-    Message,
 )
 from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
@@ -243,7 +243,7 @@ class Agent:
                 elif user_input == "EXIT":
                     logger.info("Exiting...")
                     break
-            elif cfg.continuous_mode and self.error_count > cfg.error_threshold:
+            elif cfg.continuous_mode and self.error_count >= cfg.error_threshold:
                 self.error_count = 0
                 user_input, command_name = self._handle_self_feedback(
                     assistant_reply_json, cfg
@@ -285,7 +285,9 @@ class Agent:
                 elif is_command_result_an_error(str(command_result)):
                     self.error_count += 1
                     result = (
-                        f"Failure: command {command_name} returned: '{command_result}'"
+                        f"Failure: command {command_name} returned: '"
+                        f"{command_result}'. Do not execute this command "
+                        f"again with the same arguments."
                     )
                 else:
                     result = f"Command {command_name} returned: {command_result}"
@@ -372,7 +374,11 @@ class Agent:
         )
 
         commands = self.command_registry.command_prompt()
-        commands_prompt = f"If one of the following commands would help accomplish our goal, please include that in your response along with valid arguments: {commands}"
+        commands_prompt = (
+            f"If one of the following commands would help "
+            f"accomplish our goal, please include it in your "
+            f"response, along with valid arguments: {commands}"
+        )
 
         messages = {
             "role": "user",
