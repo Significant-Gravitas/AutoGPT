@@ -3,6 +3,8 @@ import importlib
 import inspect
 from typing import Any, Callable, Optional
 
+from autogpt.logs import logger
+
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 
@@ -59,6 +61,10 @@ class CommandRegistry:
         return importlib.reload(module)
 
     def register(self, cmd: Command) -> None:
+        if cmd.name in self.commands:
+            logger.warn(
+                f"Command '{cmd.name}' already registered and will be overwritten!"
+            )
         self.commands[cmd.name] = cmd
 
     def unregister(self, command_name: str):
@@ -132,6 +138,11 @@ def command(
     disabled_reason: Optional[str] = None,
 ) -> Callable[..., Any]:
     """The command decorator is used to create Command objects from ordinary functions."""
+
+    if not enabled:
+        if disabled_reason is not None:
+            logger.debug(f"Command '{name}' is disabled: {disabled_reason}")
+        return lambda func: func
 
     def decorator(func: Callable[..., Any]) -> Command:
         cmd = Command(
