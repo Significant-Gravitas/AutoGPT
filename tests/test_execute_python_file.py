@@ -1,39 +1,60 @@
 import os
-from io import StringIO
-from unittest.mock import patch
+from unittest import mock
 
 import pytest
 
 from autogpt.commands.execute_code import execute_python_file
 
-@pytest.fixture
-def temp_python_file(request):
-    # Create a temporary Python file for testing
-    filename = "test_file.py"
-    with open(filename, "w") as f:
-        f.write(request.param)
-    yield filename
-    # Clean up the temporary file
+@mock.patch("subprocess.run")
+def test_execute_python_file_with_valid_file(mock_run):
+    # Test executing a Python file with a valid file
+    filename = "example.py"
+
+    with open(filename, "w") as file:
+        file.write("print('Hello, world!')")
+
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stdout = "Hello, world!"
+
+    result = execute_python_file(filename)
+
+    assert result == "Hello, world!"
+
     os.remove(filename)
 
-@pytest.mark.parametrize(
-    "temp_python_file, args, expected_output",
-    [
-        pytest.param("import sys\nprint('Hello,', sys.argv[1])", "world!", "Hello, world!\n", id="valid_file_with_arguments"),
-        pytest.param("print('Hello, world!')", "", "Hello, world!\n", id="valid_file_without_arguments"),
-        pytest.param("", "", "Error: Invalid file type. Only .py files are allowed.", id="invalid_file"),
-        pytest.param("print('Hello, world!')", "", "Error: File 'nonexistent_file.py' does not exist.", id="file_not_exist")
-    ],
-    indirect=["temp_python_file"]
-)
-def test_execute_python_file(temp_python_file, args, expected_output):
-    # Patch the subprocess.run method to capture the output
-    with patch("subprocess.run") as mock_run:
-        mock_run.return_value.returncode = 0
-        mock_run.return_value.stdout = expected_output
 
-        # Execute the function with arguments
-        output = execute_python_file(temp_python_file, args)
+@mock.patch("subprocess.run")
+def test_execute_python_file_with_valid_file_and_args(mock_run):
+    # Test executing a Python file with a valid file and args
+    filename = "example.py"
+    args = "Hello world"
 
-        # Assert the output matches the expected output
-        assert output == expected_output
+    with open(filename, "w") as file:
+        file.write("import sys\nprint(sys.argv[1], sys.argv[2])")
+
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stdout = "Hello world"
+
+    result = execute_python_file(filename, args)
+
+    assert result == "Hello world"
+
+    os.remove(filename)
+
+
+def test_execute_python_file_with_invalid_file():
+    # Test executing a Python file with an invalid file
+    filename = "invalid.txt"
+
+    result = execute_python_file(filename)
+
+    assert result == "Error: Invalid file type. Only .py files are allowed."
+
+
+def test_execute_python_file_with_nonexistent_file():
+    # Test executing a Python file with a nonexistent file
+    filename = "nonexistent.py"
+
+    result = execute_python_file(filename)
+
+    assert result == f"Error: File '{filename}' does not exist."
