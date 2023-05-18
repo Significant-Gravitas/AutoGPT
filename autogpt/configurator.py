@@ -159,8 +159,6 @@ def create_config(
 
 def check_model(model: str) -> str:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
-    cfg = Config()
-
     messages = [
         {"role": "user", "content": ""},
     ]
@@ -171,6 +169,6 @@ def check_model(model: str) -> str:
         logger.typewriter_log(
             "WARNING: ",
             Fore.YELLOW,
-            f"You do not have access to {model}. Setting default " f"to gpt-3.5-turbo.",
+            f"You do not have access to {model}. Setting default to gpt-3.5-turbo.",
         )
         return "gpt-3.5-turbo"
