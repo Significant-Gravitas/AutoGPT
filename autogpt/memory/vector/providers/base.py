@@ -4,12 +4,13 @@ from typing import MutableSet, Sequence
 import numpy as np
 
 from autogpt.logs import logger
-from autogpt.memory.context import MemoryItem, MemoryItemRelevance
-from autogpt.memory.context.utils import Embedding, get_embedding
 from autogpt.singleton import AbstractSingleton
 
+from .. import MemoryItem, MemoryItemRelevance
+from ..utils import Embedding, get_embedding
 
-class ContextMemoryProvider(MutableSet[MemoryItem], AbstractSingleton):
+
+class VectorMemoryProvider(MutableSet[MemoryItem], AbstractSingleton):
     def get(self, query: str) -> MemoryItemRelevance | None:
         """
         Gets the data from the memory that is most relevant to the given query.

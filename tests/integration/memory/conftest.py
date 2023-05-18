@@ -2,9 +2,9 @@ import numpy
 import pytest
 from pytest_mock import MockerFixture
 
-import autogpt.memory.context.utils as memory_utils
-from autogpt.memory.context.memory_item import MemoryItem
-from autogpt.memory.context.utils import Embedding
+import autogpt.memory.vector.utils as memory_utils
+from autogpt.memory.vector.memory_item import MemoryItem
+from autogpt.memory.vector.utils import Embedding
 
 EMBED_DIM = 1536
 

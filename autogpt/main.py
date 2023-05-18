@@ -10,7 +10,7 @@ from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
-from autogpt.memory.context import get_memory
+from autogpt.memory.vector import get_memory
 from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
 from autogpt.utils import (

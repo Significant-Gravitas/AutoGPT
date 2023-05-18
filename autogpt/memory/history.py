@@ -4,7 +4,7 @@ import copy
 import json
 from typing import TYPE_CHECKING
 
-from autogpt.memory.context.memory_item import MemoryItem
+from autogpt.memory.vector.memory_item import MemoryItem
 
 if TYPE_CHECKING:
     from autogpt.agent import Agent
@@ -18,7 +18,7 @@ from autogpt.llm.base import Message
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
 from autogpt.logs import logger
-from autogpt.memory.context import ContextMemory
+from autogpt.memory.vector import VectorMemory
 
 
 class MessageHistory(list[Message]):
@@ -77,7 +77,7 @@ class MessageHistory(list[Message]):
     def archive(
         self,
         up_to_index: int,
-        permanent_memory: ContextMemory,
+        permanent_memory: VectorMemory,
     ):
         """Saves messages up to the given index to permanent memory"""
 

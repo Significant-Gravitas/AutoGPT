@@ -4,7 +4,7 @@ import orjson
 import pytest
 
 from autogpt.config import Config
-from autogpt.memory.context import JSONFileMemory, MemoryItem
+from autogpt.memory.vector import JSONFileMemory, MemoryItem
 from autogpt.workspace import Workspace
 from tests.utils import requires_api_key
 

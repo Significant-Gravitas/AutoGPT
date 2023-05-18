@@ -18,8 +18,8 @@ from autogpt.log_cycle.log_cycle import (
     LogCycleHandler,
 )
 from autogpt.logs import logger, print_assistant_thoughts
-from autogpt.memory.context import ContextMemory
 from autogpt.memory.history import MessageHistory
+from autogpt.memory.vector import VectorMemory
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
@@ -57,7 +57,7 @@ class Agent:
     def __init__(
         self,
         ai_name: str,
-        memory: ContextMemory,
+        memory: VectorMemory,
         next_action_count: int,
         command_registry: CommandRegistry,
         config: AIConfig,

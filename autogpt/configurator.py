@@ -5,7 +5,7 @@ from colorama import Back, Fore, Style
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.memory.context import get_supported_memory_backends
+from autogpt.memory.vector import get_supported_memory_backends
 
 CFG = Config()
 

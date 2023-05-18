@@ -3,7 +3,7 @@ import logging
 
 from autogpt.commands.file_operations import ingest_file, list_files
 from autogpt.config import Config
-from autogpt.memory.context import ContextMemory, get_memory
+from autogpt.memory.vector import VectorMemory, get_memory
 
 cfg = Config()
 
@@ -21,7 +21,7 @@ def configure_logging():
     return logging.getLogger("AutoGPT-Ingestion")
 
 
-def ingest_directory(directory: str, memory: ContextMemory, args):
+def ingest_directory(directory: str, memory: VectorMemory, args):
     """
     Ingest all files in a directory by calling the ingest_file function for each file.
 

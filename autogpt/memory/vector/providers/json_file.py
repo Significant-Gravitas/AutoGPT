@@ -7,13 +7,12 @@ import orjson
 
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.memory.context.memory_item import MemoryItem
 
 from ..memory_item import MemoryItem
-from .abstract import ContextMemoryProvider
+from .base import VectorMemoryProvider
 
 
-class JSONFileMemory(ContextMemoryProvider):
+class JSONFileMemory(VectorMemoryProvider):
     """Memory backend that stores memories in a JSON file"""
 
     SAVE_OPTIONS = orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_SERIALIZE_DATACLASS

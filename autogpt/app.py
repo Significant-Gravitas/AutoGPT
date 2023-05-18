@@ -7,7 +7,7 @@ from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.memory.context import get_memory
+from autogpt.memory.vector import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.speech import say_text
