@@ -1,6 +1,10 @@
 import sys
 
-from autogpt.exceptions import HandledException, register_exception_handler
+from autogpt.exceptions import (
+    CriticalException,
+    HandledException,
+    register_exception_handler,
+)
 from autogpt.exceptions.exception_handler import handle_exception
 
 
@@ -34,3 +38,19 @@ def test_register_exception_handler():
 
     # Check if sys.excepthook is set to handle_exception
     assert sys.excepthook == handle_exception
+
+
+def test_handled_exception():
+    # Create a HandledException
+    exception = HandledException("Handled Exception Message")
+
+    # Verify the exception message
+    assert exception.message == "Handled Exception Message"
+
+
+def test_critical_exception():
+    # Create a CriticalException
+    exception = CriticalException("Critical Exception Message")
+
+    # Verify the exception message
+    assert exception.message == "Critical Exception Message"
