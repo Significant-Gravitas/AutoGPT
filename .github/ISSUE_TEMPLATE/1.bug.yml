@@ -8,9 +8,8 @@ body:
         ### ⚠️ Before you continue
         * Check out our [backlog], [roadmap] and join our [discord] to discuss what's going on
         * If you need help, you can ask in the [discussions] section or in [#tech-support]
-        * **Throughly search the [existing issues] before creating a new one**
+        * **Thoroughly search the [existing issues] before creating a new one**
         * Read our [wiki page on Contributing]
-
         [backlog]: https://github.com/orgs/Significant-Gravitas/projects/1
         [roadmap]: https://github.com/orgs/Significant-Gravitas/projects/2  
         [discord]: https://discord.gg/autogpt
@@ -18,7 +17,7 @@ body:
         [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
         [existing issues]: https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue
         [wiki page on Contributing]: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing
-        
+
   - type: checkboxes
     attributes:
       label: ⚠️ Search for existing issues first ⚠️
@@ -28,26 +27,25 @@ body:
       options:
         - label: I have searched the existing issues, and there is no existing issue for my problem
           required: true
-          
+
   - type: markdown
     attributes:
       value: |
         Please provide a searchable summary of the issue in the title above ⬆️.
-
         ⚠️ SUPER-busy repo, please help the volunteer maintainers.
         The less time we spend here, the more time we spend building AutoGPT.
         
         Please help us help you:
- # obsolete?      - Does it work on `stable` branch (https://github.com/Torantulino/Auto-GPT/tree/stable)?
- # obsolute?      - Does it work on current `master` (https://github.com/Torantulino/Auto-GPT/tree/master)?
+        - Does it work on `stable` branch (https://github.com/Torantulino/Auto-GPT/tree/stable)?
+        - Does it work on current `master` (https://github.com/Torantulino/Auto-GPT/tree/master)?
         - Search for existing issues, "add comment" is tidier than "new issue" and newer issues will not be reviewed earlier, 
           this is dependent on the current priorities set by our wonderful team
         - Ask on our Discord (https://discord.gg/autogpt)
- # obsolete?        - Provide relevant info:
- # obsolete?         - Provide commit-hash (`git rev-parse HEAD` gets it)
- # obsolete?         - If it's a pip/packages issue, provide pip version, python version
- # obsolete?         - If it's a crash, provide traceback.
-          
+        - Provide relevant info:
+          - Provide commit-hash (`git rev-parse HEAD` gets it)
+          - If it's a pip/packages issue, provide pip version, python version
+          - If it's a crash, provide traceback.
+
   - type: dropdown
     attributes:
       label: Which Operating System are you using?
@@ -64,11 +62,11 @@ body:
     validations:
       required: true
       nested_fields:
-    - type: text
-      attributes:
-        label: Specify the system
-        description: Please specify the system you are working on.
-      
+        - type: text
+          attributes:
+            label: Specify the system
+            description: Please specify the system you are working on.
+
   - type: dropdown
     attributes:
       label: Which version of Auto-GPT are you using?
@@ -83,10 +81,10 @@ body:
         - Master (branch)
     validations:
       required: true
-      
+
   - type: dropdown
     attributes:
-      label: Do you use openAI GPT-3 or GPT-4?
+      label: Do you use OpenAI GPT-3 or GPT-4?
       description: >
         If you are using Auto-GPT with `--gpt3only`, your problems may be caused by
         the [limitations](https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue+label%3A%22AI+model+limitation%22) of GPT-3.5.
@@ -96,7 +94,7 @@ body:
         - GPT-4(32k)
     validations:
       required: true
-      
+
   - type: dropdown
     attributes:
       label: Which area covers your issue best?
@@ -117,15 +115,16 @@ body:
       required: true
       autolabels: true
       nested_fields:
-    - type: text
-      attributes:
-        label: Specify the area
-        description: Please specify the area you think is best related to the issue.
-  
+        - type: text
+          attributes:
+            label: Specify the area
+            description: Please specify the area you think is best related to the issue.
+
   - type: textarea
-    label: Describe your issue.
-    description: Describe the problem you are experiencing. Try to describe only the issue and phrase it short but clear. ⚠️ Provide NO other data in this field  
-  
+    attributes:
+      label: Describe your issue.
+      description: Describe the problem you are experiencing. Try to describe only the issue and phrase it short but clear. ⚠️ Provide NO other data in this field  
+
   #Following are optional file uploads with logs
   - type: markdown
     attributes:
@@ -144,7 +143,7 @@ body:
         any personal information that auto-gpt collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
     validations:
       required: false
-      
+
   - type: file
     attributes:
       label: Upload Error Log
