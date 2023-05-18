@@ -12,6 +12,9 @@ from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeDriverService
 from selenium.webdriver.chrome.webdriver import WebDriver as ChromeDriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.webdriver.edge.service import Service as EdgeDriverService
+from selenium.webdriver.edge.webdriver import WebDriver as EdgeDriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.firefox.service import Service as GeckoDriverService
 from selenium.webdriver.firefox.webdriver import WebDriver as FirefoxDriver
@@ -22,6 +25,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverManager
 
 from autogpt.commands.command import command
 from autogpt.config import Config
@@ -31,7 +35,7 @@ from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.processing.text import summarize_text
 from autogpt.url_utils.validators import validate_url
 
-BrowserOptions = ChromeOptions | FirefoxOptions | SafariOptions
+BrowserOptions = ChromeOptions | EdgeOptions | FirefoxOptions | SafariOptions
 
 FILE_DIR = Path(__file__).parent.parent
 CFG = Config()
@@ -85,8 +89,9 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
 
     options_available: dict[str, Type[BrowserOptions]] = {
         "chrome": ChromeOptions,
-        "safari": SafariOptions,
+        "edge": EdgeOptions,
         "firefox": FirefoxOptions,
+        "safari": SafariOptions,
     }
 
     options: BrowserOptions = options_available[CFG.selenium_web_browser]()
@@ -100,6 +105,10 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
             options.add_argument("--disable-gpu")
         driver = FirefoxDriver(
             service=GeckoDriverService(GeckoDriverManager().install()), options=options
+        )
+    elif CFG.selenium_web_browser == "edge":
+        driver = EdgeDriver(
+            service=EdgeDriverService(EdgeDriverManager().install()), options=options
         )
     elif CFG.selenium_web_browser == "safari":
         # Requires a bit more setup on the users end
