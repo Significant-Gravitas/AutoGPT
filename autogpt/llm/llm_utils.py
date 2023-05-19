@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import time
 from itertools import islice
-from typing import List, Optional, Literal
+from typing import List, Literal, Optional
 
 import numpy as np
 import openai
