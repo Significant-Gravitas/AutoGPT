@@ -8,12 +8,15 @@ from tests.utils import requires_api_key
 
 PR_LINK = "https://github.com/merwanehamadi/Auto-GPT/pull/116"
 PARAMETERS = SimpleNamespace(
-    cycle_count=3,
-    pr_target_repo_user="merwanehamadi",
-    pr_target_repo_name="Auto-GPT",
     source_branch_name="useless-comment",
+    source_repo_user="merwanehamadi",
+
+    # PR information
     title="Useless comment",
     body="Useless comment",
+    # time allowed to run
+    cycle_count=3,
+    # PR success criteria
     approved=False,
     contains={"bad_variable_name.py": ["variable"]},
 )

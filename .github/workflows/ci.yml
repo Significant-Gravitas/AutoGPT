@@ -77,6 +77,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Extract team member name
+        run: |
+          TEAM_MEMBER_NAME=$(echo "${{ github.event.pull_request.head.repo.full_name }}" | awk -F'/' '{print $1}')
+          echo "TEAM_MEMBER_NAME=$TEAM_MEMBER_NAME" >> $GITHUB_ENV
+
       - name: Run unittest tests with coverage
         run: |
           pytest -s tests/integration/challenges/pr_review -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
@@ -84,6 +89,7 @@ jobs:
           CI: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_PAT: ${{ secrets.PAT }}
+          TEAM_MEMBER_NAME: ${{ env.TEAM_MEMBER_NAME }}
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3

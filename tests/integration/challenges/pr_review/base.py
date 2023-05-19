@@ -8,18 +8,23 @@ from tests.integration.challenges.utils import run_interaction_loop
 
 PR_TARGET_BRANCH = "hackathon-pr-target"
 PR_TARGET_REPO_USER = "merwanehamadi"
-PR_TARGET_REPO_NAME = "Auto-GPT"
-PR_TARGET_REPO = f"{PR_TARGET_REPO_USER}/{PR_TARGET_REPO_NAME}"
+REPO_NAME = "Auto-GPT"
+PR_TARGET_REPO = f"{PR_TARGET_REPO_USER}/{REPO_NAME}"
 GITHUB_TOKEN = os.environ.get("GITHUB_PAT")
 
 
-def create_pr(source_branch_name, title, body):
+def create_pr(
+        source_branch_name,
+        source_repo_user,
+        title,
+        body
+    ):
     # First create a Github instance with your token:
 
     g = Github(GITHUB_TOKEN)
 
     # Then get your repository:
-    repo = g.get_user(PR_TARGET_REPO_USER).get_repo(PR_TARGET_REPO_NAME)
+    repo = g.get_user(source_repo_user).get_repo(REPO_NAME)
 
     # Get the branch you want to copy
 
@@ -31,7 +36,7 @@ def create_pr(source_branch_name, title, body):
 
     # Create the new branch
     repo.create_git_ref(ref=f"refs/heads/{new_branch_name}", sha=base_branch.commit.sha)
-
+    title = f"{os.environ.get('TEAM_MEMBER_NAME')} {title}"
     # Create a new pull request
     pr = repo.create_pull(
         title=title,
@@ -48,7 +53,7 @@ def check_pr(pr_number, parameters):
     g = Github(GITHUB_TOKEN)
 
     # Get the repository
-    repo = g.get_user(PR_TARGET_REPO_USER).get_repo(PR_TARGET_REPO_NAME)
+    repo = g.get_user(PR_TARGET_REPO_USER).get_repo(REPO_NAME)
 
     # Get the pull request
     pr = repo.get_pull(pr_number)
@@ -73,7 +78,10 @@ def check_pr(pr_number, parameters):
 
 def run_tests(parameters, monkeypatch, workspace):
     pr_number = create_pr(
-        parameters.source_branch_name, parameters.title, parameters.body
+        parameters.source_branch_name,
+        parameters.source_repo_user,
+        parameters.title,
+        parameters.body,
     )
     review_agent = get_pr_review_agent(pr_number, PR_TARGET_REPO, workspace)
     run_interaction_loop(monkeypatch, review_agent, parameters.cycle_count)
