@@ -13,7 +13,7 @@ from autogpt.llm.base import ChatPrompt, Message
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
-from autogpt.memory.vector import MemoryItem, VectorMemory
+from autogpt.memory.vector import MemoryItem, get_memory
 
 cfg = Config()
 
@@ -124,10 +124,16 @@ def chat_with_ai(
 
     # Update & add summary of trimmed messages
     if len(agent.history) > 0:
-        new_summary_message, newly_trimmed_messages = agent.history.trim_messages(
+        new_summary_message, trimmed_messages = agent.history.trim_messages(
             current_message_chain=list(message_chain),
         )
         message_chain.insert(insertion_index, new_summary_message)
+
+        memory_store = get_memory(cfg)
+        for ai_msg, result_msg in agent.history.filter_message_pairs(trimmed_messages):
+            memory_to_add = MemoryItem.from_ai_action(ai_msg, result_msg)
+            logger.debug(f"Storing the following memory:\n{memory_to_add.dump()}")
+            memory_store.add(memory_to_add)
 
     api_manager = ApiManager()
     # inform the AI about its remaining budget (if it has one)

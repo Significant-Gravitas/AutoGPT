@@ -145,7 +145,7 @@ class MemoryItem:
             question_for_summary=question,
         )
 
-    def __str__(self) -> str:
+    def dump(self) -> str:
         token_length = count_string_tokens(self.raw_content, Config().embedding_model)
         return f"""
 =============== MemoryItem ===============

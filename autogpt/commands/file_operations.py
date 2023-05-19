@@ -191,7 +191,7 @@ def ingest_file(
 
         # TODO: differentiate between different types of files
         file_memory = MemoryItem.from_text_file(content, filename)
-        logger.debug(f"Created memory: {file_memory}")
+        logger.debug(f"Created memory: {file_memory.dump()}")
         memory.add(file_memory)
 
         logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")

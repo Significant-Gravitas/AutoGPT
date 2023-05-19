@@ -5,8 +5,6 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from autogpt.memory.vector.memory_item import MemoryItem
-
 if TYPE_CHECKING:
     from autogpt.agent import Agent
 
@@ -87,22 +85,20 @@ class MessageHistory:
 
         return new_summary_message, new_messages_not_in_chain
 
-    def archive(
-        self,
-        up_to_index: int,
-        permanent_memory: VectorMemory,
-    ):
-        """Saves messages up to the given index to permanent memory"""
-
-        while up_to_index >= 0:
-            ai_message = self.messages[up_to_index]
+    @staticmethod
+    def filter_message_pairs(messages: list[Message]):
+        """
+        Yields:
+            Message: a message from the AI containing a proposed action
+            Message: the message containing the result of the AI's proposed action
+        """
+        i = 0
+        while i < len(messages):
+            ai_message = messages[i]
             if is_string_valid_json(ai_message["content"], LLM_DEFAULT_RESPONSE_FORMAT):
-                next_message = self.messages[up_to_index + 1]
-                memory_to_add = MemoryItem.from_ai_action(ai_message, next_message)
-                logger.debug(f"Storing the following memory: {memory_to_add}")
-                permanent_memory.add(memory_to_add)
-
-            up_to_index -= 1
+                result_message = messages[i + 1]
+                yield ai_message, result_message
+            i += 1
 
     def summary_message(self) -> Message:
         return {
