@@ -36,17 +36,30 @@ interactions:
   response:
     body:
       string: !!binary |
+<<<<<<< HEAD
         ISgHACBW6qz/prrZB5IdYHWP0AIptsLSaaxzwusO3H67yOffDr8eWxRggAmlWWJZ82OYO/R5kMPu
         yhzaYJxDIxsZyVyYJZ370bIc9PP2/OX53s3nvOq9f/qP24u3C3FQ4P7EZoKilFpgxuyhIFd+mc2h
         a+1us9lq9hpNBce5nUFjGCRppK1EyqLPSbVRrUGhjGZooTcIBbsgf8JT6yN0vVtVyNiF/pjrGi2F
         AwCEqNRaOwVBfROhvzbgaPyC3qDgmYWGiXEcxXiBgoHdSuPh2FHkolgpeiDfNiCezMh44lJCKfT4
         FbPswUNOYuI0pfeZNdFCYkGGBlyQsyRMQu2tpakPachmFr+j6A0VPLOJZj174yx823gypbBnx2Uk
         M7ReUuwUTOOKvwVdE9CIwgEKVwHQ0NXdz27PAAM=
+=======
+        IZAGACBW6rL/prrZAMlEKoPcsfGfT2OdE1534PbDt4vcD4dfvygs9JZGlDUPw0DdfJ6pRfDu0rnp
+        F9MGGvWklHppFk52uoyr/bF/cHC4qB8mxUyik+v9w4/ifv/xEgpczdpaTrFrLXBTXkGhXflhbQMd
+        pHkcZ34WJgpLbtoFNMZGnMhNHBn6ih0/8gMoDLYct9C/MD0vjbwJz9uVhQ5zX6HmpdHPa43CBwBg
+        NUR+/q/QUN9Z6KdfeDR+Qf+i50ULjdLaqZVyJVAA2K00zraWZLnvvxWdEbcNjCczKlfEg5hB6PH7
+        kvi5eY5EDHwKBLWnatGSlHbu0u2iLW2rUgiHQM2GEXXc07IlYbqO0DcP6uriXwEHV71Fb72AhhU2
+        UJj330L7/y//IwMD
+>>>>>>> c8d34be3 (tests: update latest fixtures with master)
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
+<<<<<<< HEAD
       - 7c981ba94d06d015-SJC
+=======
+      - 7c999d31dc5115c0-SJC
+>>>>>>> c8d34be3 (tests: update latest fixtures with master)
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -56,7 +69,11 @@ interactions:
       Content-Type:
       - application/json
       Date:
+<<<<<<< HEAD
       - Fri, 19 May 2023 00:08:57 GMT
+=======
+      - Fri, 19 May 2023 04:32:08 GMT
+>>>>>>> c8d34be3 (tests: update latest fixtures with master)
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -68,7 +85,11 @@ interactions:
       openai-organization:
       - user-38re46gevxtz9n69wynp7uzp
       openai-processing-ms:
+<<<<<<< HEAD
       - '3052'
+=======
+      - '3441'
+>>>>>>> c8d34be3 (tests: update latest fixtures with master)
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -86,7 +107,11 @@ interactions:
       x-ratelimit-reset-tokens:
       - 248ms
       x-request-id:
+<<<<<<< HEAD
       - c545b69faa99f10efc5176b905390de0
+=======
+      - e32011253a22d50143077eb353e453c5
+>>>>>>> c8d34be3 (tests: update latest fixtures with master)
     status:
       code: 200
       message: OK

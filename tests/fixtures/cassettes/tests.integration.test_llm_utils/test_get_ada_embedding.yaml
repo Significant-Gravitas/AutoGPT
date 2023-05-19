@@ -133,7 +133,11 @@ interactions:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
+<<<<<<< HEAD
       - 7c981abe3a591567-SJC
+=======
+      - 7c999c2e5874fa4e-SJC
+>>>>>>> c8d34be3 (tests: update latest fixtures with master)
       Connection:
       - keep-alive
       Content-Encoding:
@@ -141,7 +145,11 @@ interactions:
       Content-Type:
       - application/json
       Date:
+<<<<<<< HEAD
       - Fri, 19 May 2023 00:08:16 GMT
+=======
+      - Fri, 19 May 2023 04:31:24 GMT
+>>>>>>> c8d34be3 (tests: update latest fixtures with master)
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -151,7 +159,11 @@ interactions:
       openai-organization:
       - user-38re46gevxtz9n69wynp7uzp
       openai-processing-ms:
+<<<<<<< HEAD
       - '174'
+=======
+      - '296'
+>>>>>>> c8d34be3 (tests: update latest fixtures with master)
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -163,7 +175,11 @@ interactions:
       x-ratelimit-reset-requests:
       - 20ms
       x-request-id:
+<<<<<<< HEAD
       - fbd838fbae103d04a76d9fe8c891c8f8
+=======
+      - 14a6653e08e51687e2b15229f0caf6d2
+>>>>>>> c8d34be3 (tests: update latest fixtures with master)
     status:
       code: 200
       message: OK
