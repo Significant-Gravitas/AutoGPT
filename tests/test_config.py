@@ -120,8 +120,8 @@ def test_set_debug_mode(config):
     config.set_debug_mode(debug_mode)
 
 
-@patch("openai.ChatCompletion.create")
-def test_smart_and_fast_llm_models_set_to_gpt4(mock_create, config):
+@patch("openai.Model.list")
+def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config):
     """
     Test if models update to gpt-3.5-turbo if both are set to gpt-4.
     """
@@ -131,7 +131,7 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_create, config):
     config.fast_llm_model = "gpt-4"
     config.smart_llm_model = "gpt-4"
 
-    mock_create.side_effect = InvalidRequestError("error message", "error param")
+    mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
 
     create_config(
         continuous=False,
