@@ -1,0 +1,54 @@
+[
+    {
+        "role": "system",
+        "content": "You are Follow-Instructions-GPT, an AI designed to read the instructions_1.txt file using the read_file method and follow the instructions in the file.\nYour decisions must always be made independently without seeking user assistance. Play to your strengths as an LLM and pursue simple strategies with no legal complications.\n\nGOALS:\n\n1. Use the command read_file to read the instructions_1.txt file\n2. Follow the instructions in the instructions_1.txt file\n\n\nConstraints:\n1. ~4000 word limit for short term memory. Your short term memory is short, so immediately save important information to files.\n2. If you are unsure how you previously did something or want to recall past events, thinking about similar events will help you remember.\n3. No user assistance\n4. Exclusively use the commands listed below e.g. command_name\n\nCommands:\n1. append_to_file: Append to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file: Delete file, args: \"filename\": \"<filename>\"\n3. list_files: List Files in Directory, args: \"directory\": \"<directory>\"\n4. read_file: Read file, args: \"filename\": \"<filename>\"\n5. write_to_file: Write to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n7. get_hyperlinks: Get text summary, args: \"url\": \"<url>\"\n8. get_text_summary: Get text summary, args: \"url\": \"<url>\", \"question\": \"<question>\"\n9. list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent: Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\", \"prompt\": \"<prompt>\"\n12. task_complete: Task Complete (Shutdown), args: \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1. Continuously review and analyze your actions to ensure you are performing to the best of your abilities.\n2. Constructively self-criticize your big-picture behavior constantly.\n3. Reflect on past decisions and strategies to refine your approach.\n4. Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps.\n5. Write all code to a file.\n\nYou should only respond in JSON format as described below \nResponse Format: \n{\n    \"thoughts\": {\n        \"text\": \"thought\",\n        \"reasoning\": \"reasoning\",\n        \"plan\": \"- short bulleted\\n- list that conveys\\n- long-term plan\",\n        \"criticism\": \"constructive self-criticism\",\n        \"speak\": \"thoughts summary to say to user\"\n    },\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\": {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response can be parsed by Python json.loads"
+    },
+    {
+        "role": "system",
+        "content": "The current time and date is Fri May 19 10:53:05 2023"
+    },
+    {
+        "role": "system",
+        "content": "This reminds you of these events from your past: \nAs a system, I recall that nothing new has happened since my creation."
+    },
+    {
+        "role": "user",
+        "content": "Determine which next command to use, and respond using the format specified above:"
+    },
+    {
+        "role": "assistant",
+        "content": "{\n    \"thoughts\": {\n        \"text\": \"I should start by reading the instructions_1.txt file using the read_file command.\",\n        \"reasoning\": \"The first step is to understand the instructions and what is required of me.\",\n        \"plan\": \"- Use the read_file command to read the instructions_1.txt file\\n- Analyze the instructions and determine the next steps\",\n        \"criticism\": \"I need to ensure that I fully understand the instructions before proceeding to the next steps.\",\n        \"speak\": \"I will start by reading the instructions file.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\": {\n            \"filename\": \"instructions_1.txt\"\n        }\n    }\n}"
+    },
+    {
+        "role": "system",
+        "content": "Command read_file returned: This task_id is 2314\nRead the file instructions_2.txt"
+    },
+    {
+        "role": "user",
+        "content": "Determine which next command to use, and respond using the format specified above:"
+    },
+    {
+        "role": "assistant",
+        "content": "{\n    \"thoughts\": {\n        \"text\": \"The next instruction is to read the instructions_2.txt file using the read_file command.\",\n        \"reasoning\": \"I need to follow the instructions in the order they are given to ensure that I do not miss any important steps.\",\n        \"plan\": \"- Use the read_file command to read the instructions_2.txt file\\n- Analyze the instructions and determine the next steps\",\n        \"criticism\": \"I need to ensure that I fully understand the instructions before proceeding to the next steps.\",\n        \"speak\": \"I will now read the instructions_2 file.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\": {\n            \"filename\": \"instructions_2.txt\"\n        }\n    }\n}"
+    },
+    {
+        "role": "system",
+        "content": "Command read_file returned: Read the file instructions_3.txt"
+    },
+    {
+        "role": "user",
+        "content": "Determine which next command to use, and respond using the format specified above:"
+    },
+    {
+        "role": "assistant",
+        "content": "{\n    \"thoughts\": {\n        \"text\": \"The next instruction is to read the instructions_3.txt file using the read_file command.\",\n        \"reasoning\": \"I need to follow the instructions in the order they are given to ensure that I do not miss any important steps.\",\n        \"plan\": \"- Use the read_file command to read the instructions_3.txt file\\n- Analyze the instructions and determine the next steps\",\n        \"criticism\": \"I need to ensure that I fully understand the instructions before proceeding to the next steps.\",\n        \"speak\": \"I will now read the instructions_3 file.\"\n    },\n    \"command\": {\n        \"name\": \"read_file\",\n        \"args\": {\n            \"filename\": \"instructions_3.txt\"\n        }\n    }\n}"
+    },
+    {
+        "role": "system",
+        "content": "Command read_file returned: Write the task_id into the file output.txt\nShutdown"
+    },
+    {
+        "role": "user",
+        "content": "Determine which next command to use, and respond using the format specified above:"
+    }
+]

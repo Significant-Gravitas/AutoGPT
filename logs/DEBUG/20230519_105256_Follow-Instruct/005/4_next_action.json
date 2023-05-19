@@ -1,0 +1,15 @@
+{
+    "thoughts": {
+        "text": "There are no further instructions in the files. I should shut down using the task_complete command.",
+        "reasoning": "Since there are no further instructions, I should shut down to conserve resources.",
+        "plan": "- Use the task_complete command to shut down",
+        "criticism": "I need to ensure that I have completed all the tasks before shutting down.",
+        "speak": "I will now shut down."
+    },
+    "command": {
+        "name": "task_complete",
+        "args": {
+            "reason": "All tasks completed successfully."
+        }
+    }
+}
