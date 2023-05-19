@@ -1,10 +1,9 @@
 """Set up the AI and its goals"""
 import re
 
+import openai
 from colorama import Fore, Style
 from jinja2 import Template
-
-import openai
 
 from autogpt import utils
 from autogpt.config import Config
