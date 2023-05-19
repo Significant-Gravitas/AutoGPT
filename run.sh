@@ -15,11 +15,15 @@ function find_python_command() {
 
 PYTHON_CMD=$(find_python_command)
 
-$PYTHON_CMD scripts/check_requirements.py requirements.txt
-if [ $? -eq 1 ]
-then
-    echo Installing missing packages...
-    $PYTHON_CMD -m pip install -r requirements.txt
+if $PYTHON_CMD -c "import sys; sys.exit(sys.version_info < (3, 10))"; then
+    $PYTHON_CMD scripts/check_requirements.py requirements.txt
+    if [ $? -eq 1 ]
+    then
+        echo Installing missing packages...
+        $PYTHON_CMD -m pip install -r requirements.txt
+    fi
+    $PYTHON_CMD -m autogpt $@
+    read -p "Press any key to continue..."
+else
+    echo "Python 3.10 or higher is required to run Auto GPT."
 fi
-$PYTHON_CMD -m autogpt $@
-read -p "Press any key to continue..."
