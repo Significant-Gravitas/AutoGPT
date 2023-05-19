@@ -65,7 +65,7 @@ def prompt_user() -> AIConfig:
     else:
         try:
             return generate_aiconfig_automatic(user_desire)
-        except openai.error.AuthenticationError:
+        except CriticalException:
             raise
         except Exception as e:
             logger.typewriter_log(
