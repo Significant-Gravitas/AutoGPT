@@ -24,9 +24,7 @@ def execute_python_file(filename: str, args: str="") -> str:
     Returns:
         str: The output of the file
     """
-    logger.info(f"Executing file '{filename}'")
-    logger.info(f"Filename: {filename}, Args: {args}")
-
+    
     if not filename.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
@@ -37,7 +35,6 @@ def execute_python_file(filename: str, args: str="") -> str:
         result = subprocess.run(
             f"python {filename} {args}", capture_output=True, encoding="utf8", shell=True
         )
-        logger.info(f"python {filename} {args}")
         if result.returncode == 0:
             return result.stdout
         else:
