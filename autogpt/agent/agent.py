@@ -1,3 +1,5 @@
+import signal
+import sys
 from datetime import datetime
 
 from colorama import Fore, Style
@@ -11,6 +13,8 @@ from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
+    PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
+    SUPERVISOR_FEEDBACK_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
@@ -87,6 +91,20 @@ class Agent:
         command_name = None
         arguments = None
         user_input = ""
+
+        # Signal handler for interrupting y -N
+        def signal_handler(signum, frame):
+            if self.next_action_count == 0:
+                sys.exit()
+            else:
+                print(
+                    Fore.RED
+                    + "Interrupt signal received. Stopping continuous command execution."
+                    + Style.RESET_ALL
+                )
+                self.next_action_count = 0
+
+        signal.signal(signal.SIGINT, signal_handler)
 
         while True:
             # Discontinue if continuous limit is reached
@@ -324,7 +342,24 @@ class Agent:
         plan = thoughts.get("plan", "")
         thought = thoughts.get("thoughts", "")
         feedback_thoughts = thought + reasoning + plan
-        return create_chat_completion(
-            [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
-            llm_model,
+
+        messages = {"role": "user", "content": feedback_prompt + feedback_thoughts}
+
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            messages,
+            PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
         )
+
+        feedback = create_chat_completion(messages)
+
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            feedback,
+            SUPERVISOR_FEEDBACK_FILE_NAME,
+        )
+        return feedback
