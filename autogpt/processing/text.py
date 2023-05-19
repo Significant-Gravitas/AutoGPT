@@ -109,7 +109,7 @@ def summarize_text(
             # "Only respond with a concise summary or description of the user message."
         )
 
-        logger.debug(f"Summarizing with {model}:\n{summarization_prompt}\n")
+        logger.debug(f"Summarizing with {model}:\n{summarization_prompt.dump()}\n")
         summary = create_chat_completion(
             summarization_prompt, model, temperature=0, max_tokens=500
         )

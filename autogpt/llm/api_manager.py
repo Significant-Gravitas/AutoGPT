@@ -75,6 +75,7 @@ class ApiManager(metaclass=Singleton):
         completion_tokens (int): The number of tokens used in the completion.
         model (str): The model used for the API call.
         """
+        # the .model property in API responses can contain version suffixes like -v2
         model = model[:-3] if model.endswith("-v2") else model
 
         self.total_prompt_tokens += prompt_tokens

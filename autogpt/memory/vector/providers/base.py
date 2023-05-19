@@ -1,8 +1,10 @@
+import abc
 import functools
 from typing import MutableSet, Sequence
 
 import numpy as np
 
+from autogpt.config.config import Config
 from autogpt.logs import logger
 from autogpt.singleton import AbstractSingleton
 
@@ -11,6 +13,10 @@ from ..utils import Embedding, get_embedding
 
 
 class VectorMemoryProvider(MutableSet[MemoryItem], AbstractSingleton):
+    @abc.abstractmethod
+    def __init__(self, config: Config):
+        pass
+
     def get(self, query: str) -> MemoryItemRelevance | None:
         """
         Gets the data from the memory that is most relevant to the given query.

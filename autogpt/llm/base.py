@@ -69,7 +69,7 @@ class ChatPrompt(List[Message]):
 
         return count_message_tokens(self, self.model.name)
 
-    def __str__(self):
+    def dump(self) -> str:
         SEPARATOR_LENGTH = 42
 
         def separator(text: str):

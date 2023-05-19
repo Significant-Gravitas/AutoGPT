@@ -32,36 +32,6 @@ def create_chat_message(role: str, content: str) -> Message:
     return {"role": role, "content": content}
 
 
-def generate_context(
-    system_prompt: str,
-    relevant_memory: list[MemoryItem],
-    full_message_history: list[Message],
-    model: str,
-):
-    current_context = [
-        create_chat_message("system", system_prompt),
-        create_chat_message(
-            "system", f"The current time and date is {time.strftime('%c')}"
-        ),
-        # create_chat_message(
-        #     "system",
-        #     f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
-        # ),
-    ]
-
-    # Add messages from the full message history until we reach the token limit
-    next_message_to_add_index = len(full_message_history) - 1
-    insertion_index = len(current_context)
-    # Count the currently used tokens
-    current_tokens_used = count_message_tokens(current_context, model)
-    return (
-        next_message_to_add_index,
-        current_tokens_used,
-        insertion_index,
-        current_context,
-    )
-
-
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
     agent: Agent,
@@ -100,12 +70,22 @@ def chat_with_ai(
     # logger.debug(f"Memory Stats: {agent.memory.get_stats()}")
     relevant_memory = []
 
-    (
-        next_message_to_add_index,
-        current_tokens_used,
-        insertion_index,
-        message_chain,
-    ) = generate_context(system_prompt, relevant_memory, agent.history, model)
+    message_chain = [
+        create_chat_message("system", system_prompt),
+        create_chat_message(
+            "system", f"The current time and date is {time.strftime('%c')}"
+        ),
+        # create_chat_message(
+        #     "system",
+        #     f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
+        # ),
+    ]
+
+    # Add messages from the full message history until we reach the token limit
+    next_message_to_add_index = len(agent.history) - 1
+    insertion_index = len(message_chain)
+    # Count the currently used tokens
+    current_tokens_used = count_message_tokens(message_chain, model)
 
     # while current_tokens_used > 2500:
     #     # remove memories until we are under 2500 tokens
