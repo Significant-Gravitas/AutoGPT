@@ -7,6 +7,8 @@ from duckduckgo_search import ddg
 
 from autogpt.commands.command import command
 from autogpt.config import Config
+#import os
+import requests
 
 CFG = Config()
 from . import URL_MEMORY
@@ -78,12 +80,19 @@ def google_official_search(query: str, num_results: int = 10) -> str | list[str]
             .list(q=query, cx=custom_search_engine_id, num=num_results)
             .execute()
         )
-
+        search_results = []
         # Extract the search result items from the response
-        search_results = result.get("items", [])
+        results = result.get("items", [])
 
         # Create a list of only the URLs from the search results
-        search_results_links = [item["link"] for item in search_results]
+        #search_results_links = [item["link"] for item in search_results]
+        
+        for res in results:
+            url_alias = f'URL_{len(URL_MEMORY)}'
+            URL_MEMORY[url_alias] = res['link']
+            res['link'] = url_alias
+            res = {k:v for k,v in res.items() if k in ['title', 'link', 'snippet']}            
+            search_results.append(res)
 
     except HttpError as e:
         # Handle errors in the API call
@@ -101,7 +110,8 @@ def google_official_search(query: str, num_results: int = 10) -> str | list[str]
     # google_result can be a list or a string depending on the search results
 
     # Return the list of search result URLs
-    return safe_google_results(search_results_links)
+    results = json.dumps(search_results, ensure_ascii=False, indent=4)
+    return safe_google_results(results)
 
 
 def safe_google_results(results: str | list) -> str:
@@ -121,3 +131,57 @@ def safe_google_results(results: str | list) -> str:
     else:
         safe_message = results.encode("utf-8", "ignore").decode("utf-8")
     return safe_message
+
+@command(
+    "google_search_place",
+    "Google Search place",
+    '"place_name": "<place_name>"',
+    bool(CFG.google_api_key),
+)
+def google_search_place(place_name: str, num_results: int = 10) -> str:
+    api_key = CFG.google_api_key
+    url = f"https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={place_name}&inputtype=textquery&fields=place_id,name&key={api_key}"
+    result = requests.get(url)
+    json_obj = result.json()
+
+    candidates = []
+    for candidate in json_obj['candidates'][:num_results]:
+        place_id = candidate['place_id']  # Get the place ID of the first result
+        place_details = get_place_details(place_id)
+        place_details['address_components'] = [comp['short_name'] for comp in place_details['address_components'][1:-2]]
+        place_details['location'] = place_details['geometry']['location']
+        candidate.update(place_details)
+        del candidate['place_id'], candidate['geometry']
+        candidates.append(candidate)
+    return json.dumps(candidates, ensure_ascii=False)
+
+def get_place_details(place_id):
+    api_key = CFG.google_api_key
+    url = f"https://maps.googleapis.com/maps/api/place/details/json?place_id={place_id}&fields=geometry/location,rating,types,address_components&key={api_key}"
+    result = requests.get(url)
+    json_obj = result.json()
+    return json_obj['result']
+
+@command(
+    "google_search_nearby_places",
+    "Google Search nearby places. You must first obtain 'latitude' and 'longitude' before calling this command.",
+    '"latitude": "<latitude>", "longitude": "<longitude>", "radius":"1000"',
+    bool(CFG.google_api_key),
+)
+def google_search_nearby_places(latitude, longitude, radius: int=1000, num_results: int = 10) -> str:
+    api_key = CFG.google_api_key
+    url = f"https://maps.googleapis.com/maps/api/place/nearbysearch/json?location={latitude},{longitude}&radius={radius}&key={api_key}"
+    result = requests.get(url)
+    json_obj = result.json()
+    
+    candidates = []
+    for candidate in json_obj['results'][:num_results]:
+        place_id = candidate['place_id']  # Get the place ID of the first result
+        place_details = get_place_details(place_id)
+        candidate = {k:v for k, v in candidate.items() if k in ['name', 'place_id']}
+        place_details['address_components'] = [comp['short_name'] for comp in place_details['address_components'][1:-2]]
+        place_details['location'] = place_details['geometry']['location']
+        candidate.update(place_details)
+        del candidate['place_id'], candidate['geometry']
+        candidates.append(candidate)
+    return json.dumps(candidates, ensure_ascii=False)
