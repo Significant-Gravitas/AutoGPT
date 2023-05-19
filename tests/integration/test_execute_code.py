@@ -23,6 +23,7 @@ def python_test_file(config: Config, random_string):
     yield temp_file.name
     temp_file.close()
 
+
 @pytest.fixture
 def python_test_file_args(config: Config):
     temp_file = tempfile.NamedTemporaryFile(dir=config.workspace_path, suffix=".py")
@@ -41,6 +42,7 @@ def random_string():
 def test_execute_python_file(python_test_file: str, random_string: str):
     result = sut.execute_python_file(python_test_file)
     assert result == f"Hello {random_string}!\n"
+
 
 def test_execute_python_file_args(python_test_file_args: str, random_string: str):
     random_args = random_string + " " + random_string
