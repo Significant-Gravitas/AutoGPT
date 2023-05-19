@@ -91,7 +91,7 @@ def test_get(LocalCache, config, mock_embed_with_ada):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_get_relevant(LocalCache, config) -> None:
+def test_get_relevant(LocalCache, config, patched_api_requestor) -> None:
     cache = LocalCache(config)
     text1 = "Sample text 1"
     text2 = "Sample text 2"
