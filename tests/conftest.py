@@ -11,7 +11,8 @@ from autogpt.workspace import Workspace
 
 @pytest.fixture(scope="module")
 def vcr_cassette_dir(request):
-    return os.path.join("tests/fixtures/cassettes", request.module.__name__)
+    test_name = os.path.splitext(request.node.name)[0]
+    return os.path.join("tests/cassettes", test_name)
 
 
 pytest_plugins = ["tests.integration.agent_factory"]
