@@ -16,6 +16,8 @@ def vcr_cassette_dir(request):
 
 pytest_plugins = ["tests.integration.agent_factory"]
 
+PROXY = os.environ.get("PROXY")
+
 
 @pytest.fixture()
 def workspace_root(tmp_path: Path) -> Path:
