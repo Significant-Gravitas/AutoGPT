@@ -101,7 +101,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 ### Set up without Git/Docker
 
 !!! warning
-    We recommend to use Git or Docker, to make updating easier.
+    We recommend to use Git or Docker, to make updating easier. Also note that some features such as Python execution will only work inside docker for security reasons.
 
 1. Download `Source code (zip)` from the [latest stable release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
 2. Extract the zip-file into a folder
@@ -169,7 +169,7 @@ If you need to upgrade Docker Compose to a newer version, you can follow the ins
 
 Once you have a recent version of docker-compose, run the commands below in your Auto-GPT folder.
 
-1. Build the image. If you have pulled the image from Docker Hub, skip this step.
+1. Build the image. If you have pulled the image from Docker Hub, skip this step (NOTE: You *will* need to do this if you are modifying requirements.txt to add/remove depedencies like Python libs/frameworks) 
 
         :::shell
         docker-compose build auto-gpt
@@ -210,6 +210,9 @@ docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuou
 
 
 ### Run without Docker
+
+!!! warning
+    Due to security reasons, certain features (like Python execution) will by default be disabled when running without docker. So, even if you want to run the program outside a docker container, you currently still need docker to actually run scripts.
 
 Simply run the startup script in your terminal. This will install any necessary Python
 packages and launch Auto-GPT.
