@@ -66,7 +66,6 @@ import click
     help="Installs external dependencies for 3rd party plugins.",
 )
 @click.option("--aim-repo", type=str, help="Aim repository path")
-
 @click.pass_context
 def main(
     ctx: click.Context,

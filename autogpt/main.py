@@ -6,6 +6,7 @@ from pathlib import Path
 from colorama import Fore, Style
 
 from autogpt.agent.agent import Agent
+from autogpt.aim import AimCallback
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
@@ -20,7 +21,6 @@ from autogpt.utils import (
     markdown_to_ansi_style,
 )
 from autogpt.workspace import Workspace
-from autogpt.aim import AimCallback
 from scripts.install_plugin_deps import install_plugin_dependencies
 
 

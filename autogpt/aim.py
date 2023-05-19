@@ -1,6 +1,7 @@
-from typing import Optional
-import json
 import copy
+import json
+from typing import Optional
+
 from aim import Run, Text
 from aim.ext.resource.configs import DEFAULT_SYSTEM_TRACKING_INT
 

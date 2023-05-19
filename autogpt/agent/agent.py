@@ -51,7 +51,7 @@ class Agent:
             TRIGGERING PROMPT
 
         aim_callback: The Aim callback that tracks input prompts and agent replies.
-        
+
         The triggering prompt reminds the AI about its short term meta task
         (defining the next task)
     """
