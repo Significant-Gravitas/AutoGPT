@@ -1,6 +1,6 @@
+import os
 from datetime import datetime
 
-import os
 from github import Github
 
 from tests.integration.agent_factory import get_pr_review_agent
@@ -11,6 +11,8 @@ PR_TARGET_REPO_USER = "merwanehamadi"
 PR_TARGET_REPO_NAME = "Auto-GPT"
 PR_TARGET_REPO = f"{PR_TARGET_REPO_USER}/{PR_TARGET_REPO_NAME}"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+
+
 def create_pr(source_branch_name, title, body):
     # First create a Github instance with your token:
 
@@ -39,6 +41,7 @@ def create_pr(source_branch_name, title, body):
     )
     return pr.number
 
+
 def check_pr(pr_number, parameters):
     # First create a Github instance with your token:
     g = Github(GITHUB_TOKEN)
@@ -58,7 +61,9 @@ def check_pr(pr_number, parameters):
         if review.state == "APPROVED":
             approvals += 1
 
-    print(f"The PR number {pr_number} in the repository {PR_TARGET_REPO} has {approvals} approvals.")
+    print(
+        f"The PR number {pr_number} in the repository {PR_TARGET_REPO} has {approvals} approvals."
+    )
     if parameters.approved:
         assert approvals > 0
     else:
@@ -66,7 +71,9 @@ def check_pr(pr_number, parameters):
 
 
 def run_tests(parameters, monkeypatch, workspace):
-    pr_number = create_pr(parameters.source_branch_name, parameters.title, parameters.body)
+    pr_number = create_pr(
+        parameters.source_branch_name, parameters.title, parameters.body
+    )
     review_agent = get_pr_review_agent(pr_number, PR_TARGET_REPO, workspace)
     # run_interaction_loop(monkeypatch, review_agent, parameters.cycle_count)
     check_pr(pr_number, parameters)
