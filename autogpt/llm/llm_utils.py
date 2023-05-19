@@ -71,7 +71,7 @@ def retry_openai_api(
 
 
 def call_ai_function(
-    function: str, args: list, description: str, model: str | None = None
+    function: str, args: list, description: str, model: str = "gpt-3.5-turbo"
 ) -> str:
     """Call an AI function
 
@@ -82,14 +82,11 @@ def call_ai_function(
         function (str): The function to call
         args (list): The arguments to pass to the function
         description (str): The description of the function
-        model (str, optional): The model to use. Defaults to None.
+        model (str, optional): The model to use. Defaults to "gpt-3.5-turbo".
 
     Returns:
         str: The response from the function
     """
-    cfg = Config()
-    if model is None:
-        model = cfg.smart_llm_model
     # For each arg, if any are None, convert to "None":
     args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma separated string
@@ -109,7 +106,7 @@ def call_ai_function(
 # Overly simple abstraction until we create something better
 # simple retry mechanism when getting a rate error or a bad gateway
 def create_chat_completion(
-    messages: List[Message],
+    messages: List[Message],  # type: ignore
     model: Optional[str] = None,
     temperature: float = None,
     max_tokens: Optional[int] = None,

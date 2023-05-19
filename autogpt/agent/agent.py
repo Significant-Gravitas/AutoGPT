@@ -285,9 +285,9 @@ class Agent:
                 elif is_command_result_an_error(str(command_result)):
                     self.error_count += 1
                     result = (
-                        f"Failure: command {command_name} returned: '"
-                        f"{command_result}'. Do not execute this command "
-                        f"again with the same arguments."
+                        f"Failure: command {command_name} returned the "
+                        f"following error: '{command_result}'. Avoid this by not "
+                        f"executing this command again with the same arguments."
                     )
                 else:
                     result = f"Command {command_name} returned: {command_result}"
@@ -376,8 +376,8 @@ class Agent:
         commands = self.command_registry.command_prompt()
         commands_prompt = (
             f"If one of the following commands would help "
-            f"accomplish our goal, please include it in your "
-            f"response, along with valid arguments: {commands}"
+            f"accomplish our goal, please specifically include it in your "
+            f"response along with valid arguments: {commands}"
         )
 
         messages = {

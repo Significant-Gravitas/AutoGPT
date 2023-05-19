@@ -72,6 +72,7 @@ def main(
     ctx: click.Context,
     continuous: bool,
     continuous_limit: int,
+    error_threshold: int,
     ai_settings: str,
     skip_reprompt: bool,
     speak: bool,
@@ -97,6 +98,7 @@ def main(
         run_auto_gpt(
             continuous,
             continuous_limit,
+            error_threshold,
             ai_settings,
             skip_reprompt,
             speak,

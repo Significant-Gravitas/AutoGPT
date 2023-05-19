@@ -214,7 +214,7 @@ class Config(metaclass=Singleton):
 
     def set_error_threshold(self, value: int) -> None:
         """Set the continuous limit value."""
-        self.continuous_limit = max(1, value)
+        self.error_threshold = max(1, value)
 
     def set_speak_mode(self, value: bool) -> None:
         """Set the speak mode value."""

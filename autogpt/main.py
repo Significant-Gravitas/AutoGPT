@@ -26,6 +26,7 @@ from scripts.install_plugin_deps import install_plugin_dependencies
 def run_auto_gpt(
     continuous: bool,
     continuous_limit: int,
+    error_threshold: int,
     ai_settings: str,
     skip_reprompt: bool,
     speak: bool,
@@ -49,6 +50,7 @@ def run_auto_gpt(
     create_config(
         continuous,
         continuous_limit,
+        error_threshold,
         ai_settings,
         skip_reprompt,
         speak,
