@@ -262,10 +262,14 @@ def denylist_allowlist_check(plugin_name: str, cfg: Config) -> bool:
         True or False
     """
     logger.debug(f"Checking if plugin {plugin_name} should be loaded")
-    if plugin_name in cfg.plugins_denylist:
+    if (
+        plugin_name in cfg.plugins_denylist
+        or "all" in cfg.plugins_denylist
+        or "none" in cfg.plugins_allowlist
+    ):
         logger.debug(f"Not loading plugin {plugin_name} as it was in the denylist.")
         return False
-    if plugin_name in cfg.plugins_allowlist:
+    if plugin_name in cfg.plugins_allowlist or "all" in cfg.plugins_allowlist:
         logger.debug(f"Loading plugin {plugin_name} as it was in the allowlist.")
         return True
     ack = input(
