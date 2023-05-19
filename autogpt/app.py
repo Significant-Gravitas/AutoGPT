@@ -1,6 +1,6 @@
 """ Command and Control """
 import json
-from typing import Dict, List, NoReturn, Union
+from typing import Any, Dict, List, NoReturn, Tuple, Union
 
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.command import CommandRegistry, command
@@ -33,7 +33,7 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response_json: Dict):
+def get_command(response_json: Dict) -> Tuple[str, Union[str, Dict[str, Any]]]:
     """Parse the response and return the command name and arguments
 
     Args:

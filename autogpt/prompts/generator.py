@@ -1,6 +1,9 @@
 """ A module for generating custom prompt strings."""
 import json
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from autogpt.llm.command_error import CommandError
 
 
 class PromptGenerator:
@@ -149,6 +152,44 @@ class PromptGenerator:
             f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             "Performance Evaluation:\n"
             f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
+            "You should only respond in JSON format as described below \nResponse"
+            f" Format: \n{formatted_response_format} \nEnsure the response can be"
+            " parsed by Python json.loads"
+        )
+
+    def generate_self_feedback_prompt_string(
+        self, thoughts: dict, prev_error: "CommandError"
+    ) -> str:
+        """
+        Generate a prompt string based on the constraints, commands, resources,
+            and performance evaluations.
+
+        Returns:
+            str: The generated prompt string.
+        """
+        response_format = {
+            "improvements": "- short bulleted\n- list of potential\n- improvements",
+            "command": {
+                "name": "command name",
+                "args": {"arg name": "value"},
+            },
+        }
+        formatted_response_format = json.dumps(response_format, indent=4)
+
+        thought = thoughts.get("text", "")
+        reasoning = thoughts.get("reasoning", "")
+        plan = thoughts.get("plan", "")
+
+        return (
+            f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
+            "Commands:\n"
+            f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
+            f"Thought:\n{thought}\n"
+            f"Reasoning:\n{reasoning}\n"
+            f"Plan:\n{plan}\n"
+            f"Previous Command:\n{prev_error.command}\n"
+            f"Previous Arguments:\n{prev_error.arguments}\n"
+            f"Error Message:\n{prev_error.message}\n\n"
             "You should only respond in JSON format as described below \nResponse"
             f" Format: \n{formatted_response_format} \nEnsure the response can be"
             " parsed by Python json.loads"

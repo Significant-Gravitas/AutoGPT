@@ -7,12 +7,15 @@ from __future__ import annotations
 import os
 import platform
 from pathlib import Path
-from typing import Any, Optional, Type
+from typing import TYPE_CHECKING, Any, Optional, Type
 
 import distro
 import yaml
 
 from autogpt.prompts.generator import PromptGenerator
+
+if TYPE_CHECKING:
+    from autogpt.llm.command_error import CommandError
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
@@ -54,6 +57,7 @@ class AIConfig:
         self.ai_goals = ai_goals
         self.api_budget = api_budget
         self.prompt_generator = None
+        self.feedback_prompt_generator = None
         self.command_registry = None
 
     @staticmethod
@@ -86,7 +90,6 @@ class AIConfig:
             for goal in config_params.get("ai_goals", [])
         ]
         api_budget = config_params.get("api_budget", 0.0)
-        # type: Type[AIConfig]
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
@@ -165,4 +168,56 @@ class AIConfig:
             full_prompt += f"\nIt takes money to let you run. Your API budget is ${self.api_budget:.3f}"
         self.prompt_generator = prompt_generator
         full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
+        return full_prompt
+
+    def construct_self_feedback_prompt(
+        self,
+        thoughts: dict,
+        error: "CommandError",
+        prompt_generator: Optional[PromptGenerator] = None,
+    ) -> str:
+        """
+        Returns a prompt to the user with the class information in an organized fashion.
+
+        Parameters:
+            None
+
+        Returns:
+            full_prompt (str): A string containing the initial prompt for the user
+              including the ai_name, ai_role, ai_goals, and api_budget.
+        """
+
+        prompt_start = (
+            f"Below is a message from me, an AI Agent, assuming the role of "
+            f"{self.ai_role} Whilst keeping knowledge of my slight limitations "
+            f"as an AI Agent, please evaluate my overall goals, constraints, "
+            f"commands, "
+            f"thought process, reasoning, and plan. Also know that I am "
+            f"reaching out for feedback because the previous command and "
+            f"arguments failed to accomplish my latest task, resulting in an "
+            f"error message. This must also be taken into consideration in "
+            f"your response so that I do not repeat the same mistakes."
+        )
+
+        from autogpt.prompts.prompt import build_default_prompt_generator
+
+        if prompt_generator is None:
+            prompt_generator = build_default_prompt_generator()
+
+        prompt_generator.goals = self.ai_goals
+        prompt_generator.name = self.ai_name
+        prompt_generator.role = self.ai_role
+        prompt_generator.command_registry = self.command_registry
+
+        # Construct self feedback prompt
+        full_prompt = f"{prompt_start}\n\nGOALS:\n\n"
+
+        for i, goal in enumerate(self.ai_goals):
+            full_prompt += f"{i+1}. {goal}\n"
+
+        self.feedback_prompt_generator = prompt_generator
+        full_prompt += (
+            f"\n\n"
+            f"{prompt_generator.generate_self_feedback_prompt_string(thoughts, error)}"
+        )
         return full_prompt

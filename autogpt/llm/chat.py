@@ -1,11 +1,14 @@
+import json
 import time
 from random import shuffle
+from typing import Optional
 
 from openai.error import RateLimitError
 
-from autogpt.config import Config
+from autogpt.config import AIConfig, Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
+from autogpt.llm.command_error import CommandError
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.token_counter import count_message_tokens
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
@@ -258,3 +261,28 @@ def chat_with_ai(
             # TODO: When we switch to langchain, this is built in
             logger.warn("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)
+
+
+def get_self_feedback_from_ai(
+    ai_config: AIConfig,
+    thoughts: dict,
+    prev_error: CommandError,
+    full_message_history: list,
+) -> str:
+    full_prompt = ai_config.construct_self_feedback_prompt(thoughts, prev_error)
+
+    print(f"Full feedback prompt: {full_prompt}")
+
+    feedback_prompt = {"role": "user", "content": full_prompt}
+    messages = [Message(**feedback_prompt)]
+
+    model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
+    assistant_reply = create_chat_completion(
+        model=model,
+        messages=messages,
+    )
+
+    full_message_history.append(create_chat_message("user", full_prompt))
+    full_message_history.append(create_chat_message("assistant", assistant_reply))
+
+    return assistant_reply

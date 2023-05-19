@@ -23,7 +23,7 @@ class Config(metaclass=Singleton):
         self.debug_mode = False
         self.continuous_mode = False
         self.continuous_limit = 0
-        self.error_threshold = 3
+        self.error_threshold = 0
         self.speak_mode = False
         self.skip_reprompt = False
         self.allow_downloads = False
@@ -214,7 +214,7 @@ class Config(metaclass=Singleton):
 
     def set_error_threshold(self, value: int) -> None:
         """Set the continuous limit value."""
-        self.error_threshold = max(1, value)
+        self.error_threshold = max(0, value)
 
     def set_speak_mode(self, value: bool) -> None:
         """Set the speak mode value."""

@@ -1,7 +1,7 @@
 import signal
 import sys
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from colorama import Fore, Style
 
@@ -15,6 +15,8 @@ from autogpt.llm import (
     create_chat_completion,
     create_chat_message,
 )
+from autogpt.llm.chat import get_self_feedback_from_ai
+from autogpt.llm.command_error import CommandError
 from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
@@ -90,6 +92,7 @@ class Agent:
         self.log_cycle_handler = LogCycleHandler()
         self.cycle_count = 0
         self.error_count = 0
+        self.errors = []
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -130,6 +133,11 @@ class Agent:
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
                 break
+
+            # print(f"System prompt: {self.system_prompt}")
+            # print(f"Triggering prompt: {self.triggering_prompt}")
+            # print(f"Full message history: {self.full_message_history}")
+
             # Send message to AI, get response
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
@@ -142,9 +150,11 @@ class Agent:
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
+
             for plugin in cfg.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
+
                 assistant_reply_json = plugin.post_planning(assistant_reply_json)
 
             # Print Assistant thoughts
@@ -156,6 +166,7 @@ class Agent:
                         self.ai_name, assistant_reply_json, cfg.speak_mode
                     )
                     command_name, arguments = get_command(assistant_reply_json)
+
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
 
@@ -163,6 +174,7 @@ class Agent:
 
                 except Exception as e:
                     logger.error("Error: \n", str(e))
+
             self.log_cycle_handler.log_cycle(
                 self.config.ai_name,
                 self.created_at,
@@ -178,11 +190,13 @@ class Agent:
                 f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
             )
 
+            # TODO: Validate Command Name & Arguments
+            # TODO: If not valid, send error to GPT and try again
+
             if not cfg.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
-                self.user_input = ""
                 logger.info(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
                     "'n' to exit program, or enter feedback for "
@@ -200,7 +214,7 @@ class Agent:
                         break
                     elif console_input.lower().strip() == "s":
                         user_input, command_name = self._handle_self_feedback(
-                            assistant_reply_json, cfg
+                            assistant_reply_json
                         )
                         break
                     elif console_input.lower().strip() == "":
@@ -243,10 +257,9 @@ class Agent:
                 elif user_input == "EXIT":
                     logger.info("Exiting...")
                     break
-            elif cfg.continuous_mode and self.error_count >= cfg.error_threshold:
-                self.error_count = 0
+            elif cfg.continuous_mode and self._error_threshold_reached(cfg):
                 user_input, command_name = self._handle_self_feedback(
-                    assistant_reply_json, cfg
+                    assistant_reply_json
                 )
             else:
                 # Print authorized commands left value
@@ -256,7 +269,7 @@ class Agent:
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
-                self.error_count += 1
+                self._add_error(None, {}, command_name + " " + arguments)
                 result = (
                     f"Command {command_name} threw the following error: {arguments}"
                 )
@@ -279,11 +292,11 @@ class Agent:
                 )
 
                 if self._is_output_too_large(command_result, cfg):
-                    self.error_count += 1
+                    self._add_error(command_name, arguments, "Output too large.")
                     result = f"Failure: command {command_name} returned too much output. \
                         Do not execute this command again with the same arguments."
                 elif is_command_result_an_error(str(command_result)):
-                    self.error_count += 1
+                    self._add_error(command_name, arguments, command_result)
                     result = (
                         f"Failure: command {command_name} returned the "
                         f"following error: '{command_result}'. Avoid this by not "
@@ -312,6 +325,9 @@ class Agent:
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
 
+    def _error_threshold_reached(self, cfg: Config) -> bool:
+        return self.error_count >= cfg.error_threshold > 0
+
     def _is_output_too_large(self, command_result: Any, cfg: Config) -> bool:
         result_tlength = count_string_tokens(str(command_result), cfg.fast_llm_model)
         memory_tlength = count_string_tokens(
@@ -320,27 +336,61 @@ class Agent:
 
         return result_tlength + memory_tlength + 600 > cfg.fast_token_limit
 
+    def _add_error(self, command: Optional[str], arguments: dict, msg: str) -> None:
+        self.error_count += 1
+        self.errors.append(CommandError(command, arguments, msg))
+
     def _handle_self_feedback(
-        self, assistant_reply_json: Dict[Any, Any], cfg: Config
+        self, assistant_reply_json: Dict[Any, Any]
     ) -> tuple[str, str]:
+        self.error_count = 0
+
         logger.typewriter_log(
             "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
             Fore.GREEN,
             "",
         )
         thoughts = assistant_reply_json.get("thoughts", {})
-        self_feedback_resp = self.get_self_feedback(thoughts, cfg.fast_llm_model)
+
+        if not self.errors:
+            print("No errors, not doing self feedback...")
+
+        prev_error = self.errors[-1]
+
+        with Spinner("Getting self feedback... "):
+            feedback = get_self_feedback_from_ai(
+                self.config,
+                thoughts,
+                prev_error,
+                self.full_message_history,
+            )
+
+        # feedback_reply_json = fix_json_using_multiple_techniques(feedback)
+
+        # improvements = feedback_reply_json["improvements"]
+        # command = feedback_reply_json["command"]
+
+        # TODO: Parse self feedback response
+        # self.log_cycle_handler.log_cycle(
+        #     self.config.ai_name,
+        #     self.created_at,
+        #     self.cycle_count,
+        #     self_feedback_resp,
+        #     SUPERVISOR_FEEDBACK_FILE_NAME,
+        # )
+        # return feedback
+
         logger.typewriter_log(
-            f"SELF FEEDBACK: {self_feedback_resp}",
+            f"SELF FEEDBACK: {feedback}",
             Fore.YELLOW,
             "",
         )
-        user_input = self_feedback_resp
+        user_input = feedback
         command_name = "self_feedback"
 
         return user_input, command_name
 
-    def _resolve_pathlike_command_args(self, command_args):
+    def _resolve_pathlike_command_args(self, command_args) -> Dict[str, str]:
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
             command_args["directory"] = str(self.workspace.root)
         else:
@@ -351,7 +401,9 @@ class Agent:
                     )
         return command_args
 
-    def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
+    def get_self_feedback(
+        self, thoughts: dict, errors: list[CommandError], llm_model: str
+    ) -> str:
         """Generates a feedback response based on the provided thoughts dictionary.
         This method takes in a dictionary of thoughts containing keys such as 'reasoning',
         'plan', 'thoughts', and 'criticism'. It combines these elements into a single
@@ -365,6 +417,8 @@ class Agent:
         """
         ai_role = self.config.ai_role
         feedback_prompt = f"Below is a message from me, an AI Agent, assuming the role of {ai_role} Whilst keeping knowledge of my slight limitations as an AI Agent, please evaluate my thought process, reasoning, and plan, and provide a concise paragraph outlining potential improvements. Consider adding or removing ideas that do not align with my role and explaining why, prioritizing thoughts based on their significance, or simply refining my overall thought process."
+
+        latest_error = self.errors[-1]
 
         thought = thoughts.get("text", "")
         reasoning = thoughts.get("reasoning", "")
@@ -394,7 +448,9 @@ class Agent:
         )
 
         converted_messages = [Message(**messages)]
-        feedback = create_chat_completion(converted_messages)
+
+        with Spinner("Thinking... "):
+            feedback = create_chat_completion(converted_messages, llm_model)
 
         self.log_cycle_handler.log_cycle(
             self.config.ai_name,
