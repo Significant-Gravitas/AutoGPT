@@ -37,6 +37,7 @@ def execute_python_file(filename: str, args: str="") -> str:
         result = subprocess.run(
             f"python {filename} {args}", capture_output=True, encoding="utf8", shell=True
         )
+        logger.info(f"python {filename} {args}")
         if result.returncode == 0:
             return result.stdout
         else:
