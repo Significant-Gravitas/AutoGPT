@@ -1,4 +1,4 @@
-name: Python CI
+name: Challenges
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
         run: isort . --check
         if: success() || failure()
 
-  test:
+  pr_review:
     permissions:
       # Gives the action the necessary permissions for publishing new
       # comments in pull requests.
@@ -82,9 +82,8 @@ jobs:
           pytest tests/integration/challenges/pr_review -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
         env:
           CI: true
-          PROXY: ${{ secrets.PROXY }}
-          AGENT_MODE: ${{ vars.AGENT_MODE }}
-          AGENT_TYPE: ${{ vars.AGENT_TYPE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_PAT: ${{ vars.PAT }}
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
