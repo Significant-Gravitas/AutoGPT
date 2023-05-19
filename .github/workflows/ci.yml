@@ -79,7 +79,7 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-          pytest tests/integration/challenges/pr_review -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          pytest -s tests/integration/challenges/pr_review -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
         env:
           CI: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
