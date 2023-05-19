@@ -1,21 +1,29 @@
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from slack_sdk import WebClient
+from slack_sdk.signature import SignatureVerifier
+from slack_sdk.http_retry.builtin_handlers import RateLimitErrorRetryHandler
 import os
 import random
 import string
 import datetime
 from dotenv import load_dotenv
 import time
-import hmac
-import hashlib
 import re
 import json
 import subprocess
 load_dotenv('../.env')
 
+# This handler does retries when HTTP status 429 is returned
+rate_limit_handler = RateLimitErrorRetryHandler(max_retry_count=1)
+signature_verifier = SignatureVerifier(
+    signing_secret=os.environ["SLACK_SIGNING_SECRET"]
+)
+
 app = FastAPI()
 client = WebClient(token=os.getenv("SLACK_BOT_TOKEN"))
+# Enable rate limited error retries as well
+client.retry_handlers.append(rate_limit_handler)
 
 def prepare(content):
     content = re.sub(r'<@U[A-Z0-9]+>', '', content)
@@ -52,9 +60,7 @@ def format_output(bytes):
 
 def run_autogpt_slack(data):
     main_dir = os.path.dirname(os.getcwd())
-    print('main_dir', main_dir)
     folder = prepare(data['event']['text'])
-    print('folder', folder)
     process = subprocess.Popen(
         ["python", os.path.join(main_dir, 'slack', 'api.py'), os.path.join(main_dir, folder)],
         cwd=main_dir,
@@ -69,7 +75,7 @@ def run_autogpt_slack(data):
         if (not output) and process.poll() is not None:
             break
         if output:
-            print(output.decode())
+            print(output.decode().strip())
             output = format_output(output)
             if output is None:
                 continue
@@ -107,42 +113,26 @@ async def slack_events(request: Request, background_tasks: BackgroundTasks):
     print('BODY', body)
     print('HEADER', headers)
     # if body.challenge:
-    #     return JSONResponse(content=body.challenge)
-
-    # Get the timestamp and signature from the headers
-    timestamp = headers.get('X-Slack-Request-Timestamp')
-    slack_signature = headers.get('X-Slack-Signature')
+    #     return JSONResponse(content=body.challenge) 
 
     # Avoid replay attacks
-    if abs(time.time() - int(timestamp)) > 60 * 5:
-        # The request timestamp is more than five minutes from local time.
-        # It could be a replay attack, so let's ignore it.
+    if abs(time.time() - int(headers.get('X-Slack-Request-Timestamp'))) > 60 * 5:
         raise HTTPException(status_code=401, detail="Invalid timestamp")
 
-    # Create a basestring by concatenating the version, the request timestamp, and the request body
-    basestring = f"v0:{timestamp}:{body.decode('utf-8')}"
-
-    # Hash the basestring using your signing secret, take the hex digest, and prefix with the version number
-    my_signature = 'v0=' + hmac.new(
-        bytes(os.getenv('SLACK_SIGNING_SECRET'), 'utf-8'),
-        msg=bytes(basestring, 'utf-8'),
-        digestmod=hashlib.sha256
-    ).hexdigest()
-
-    if hmac.compare_digest(my_signature, slack_signature):
-        # The signatures match, so the request is from Slack
-        # Process the request here...
-        data = json.loads(body)
-        background_tasks.add_task(run_autogpt_slack, data)
-        client.chat_postMessage(
-            channel=data['event']['channel'],
-            text="AutoGPT가 실행됩니다.",
-            thread_ts=data['event']['ts']
-        )
-        return JSONResponse(content="Launched AutoGPT.")
-    else:
-        # The signatures don't match, so the request is not from Slack
+    if not signature_verifier.is_valid(
+            body=body,
+            timestamp=headers.get("X-Slack-Request-Timestamp"),
+            signature=headers.get("X-Slack-Signature")):
         raise HTTPException(status_code=401, detail="Invalid signature")
+
+    data = json.loads(body)
+    background_tasks.add_task(run_autogpt_slack, data)
+    client.chat_postMessage(
+        channel=data['event']['channel'],
+        text="AutoGPT가 실행됩니다.",
+        thread_ts=data['event']['ts']
+    )
+    return JSONResponse(content="Launched AutoGPT.")
 
 @app.get("/")
 async def index():
