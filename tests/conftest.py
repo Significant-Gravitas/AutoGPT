@@ -8,11 +8,14 @@ from autogpt.config import Config
 from autogpt.llm import ApiManager
 from autogpt.workspace import Workspace
 
-@pytest.fixture(scope='module')
+
+@pytest.fixture(scope="module")
 def vcr_cassette_dir(request):
-    return os.path.join('tests/fixtures/cassettes', request.module.__name__)
+    return os.path.join("tests/fixtures/cassettes", request.module.__name__)
+
 
 pytest_plugins = ["tests.integration.agent_factory"]
+
 
 @pytest.fixture()
 def workspace_root(tmp_path: Path) -> Path:
