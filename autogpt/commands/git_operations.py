@@ -26,6 +26,7 @@ def clone_repository(url: str, clone_path: str) -> str:
     Returns:
         str: The result of the clone operation.
     """
+    # useless comment
     split_url = url.split("//")
     auth_repo_url = f"//{CFG.github_username}:{CFG.github_api_key}@".join(split_url)
     try:
