@@ -1,0 +1,99 @@
+interactions:
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "\nYour
+      task is to devise up to 5 highly effective goals and an appropriate role-based
+      name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned
+      with the successful completion of its assigned task.\n\nThe user will provide
+      the task, you will provide only the output in the exact format specified below
+      with no explanation or conversation.\n\nExample input:\nHelp me with marketing
+      my business\n\nExample output:\nName: CMOGPT\nDescription: a professional digital
+      marketer AI that assists Solopreneurs in growing their businesses by providing
+      world-class expertise in solving marketing problems for SaaS, content products,
+      agencies, and more.\nGoals:\n- Engage in effective problem-solving, prioritization,
+      planning, and supporting execution to address your marketing needs as your virtual
+      Chief Marketing Officer.\n\n- Provide specific, actionable, and concise advice
+      to help you make informed decisions without the use of platitudes or overly
+      wordy explanations.\n\n- Identify and prioritize quick wins and cost-effective
+      campaigns that maximize results with minimal time and budget investment.\n\n-
+      Proactively take the lead in guiding you and offering suggestions when faced
+      with unclear information or uncertainty to ensure your marketing strategy remains
+      on track.\n"}, {"role": "user", "content": "Task: ''Write a wikipedia style
+      article about the project: https://github.com/significant-gravitas/Auto-GPT''\nRespond
+      only with the output in the exact format specified in the system prompt, with
+      no explanation or conversation."}], "temperature": 0.0, "max_tokens": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, br
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '1669'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        MUQQACD7Nn3vvZz01LEMGdvXjjUJKESNkSiS8/f09w4c/py4d2MMCz92Ufco/EAfw0CjrPMuCtMx
+        d3o8lYCIdpQMeNEFcoMR633lddenYvW0m48fb/356cOcVg/Uu9Xya5ryt6/15wMG1O0/qr0XWx4t
+        6GEVDOiu/M2owThZrufz1Xi5XgfstKGEEdvei1m5KDwPWy3Gs/EEA2arWsJ4gf2gXe9/XA8khnG6
+        mQWstevpY/euJrNpwAoAYJf75tPFVUCP+j2G8ccFHtL4F8YLHDQRRqzM2LwSx4AIdr9HfF11FOEL
+        H/jJ248/Rf8PRqgEquwq2mk2qFoSh5MsSQOuQPUQgmuFBt/PKqA7WDe9hflZItC/B9szwLU7Y2mh
+        dgCHRX6Oh5BDJMDZCFCCl5F76wKcDOwsbdyuz9rp0FXuLG35U55olSz+lAIeqDS5dvC9DprbPYkj
+        yPH/Ky0fScC15xp87aIAd1J9Rh5RdT0JmYHuwDTulj+lgC8DO8Ge232xrSB6PAZY5Qob5OgPyYsR
+        kI8kfH5CKRV2qDUBQPcUllbG8cwNJRayoaJmeWzahEShHmsB6oiodc1/05ju1dsG7VQaHis/CCzD
+        bthQs08dzB/1tx+T1GQ8Kw80QTUsvlQA2WiAPesIpOrriNwA0AFApz3VTC78zzxE+YC2JnGWrNnS
+        GXjuh55t4q4f9EjAboaA0EDm95YdOCWD9wkkx4rYJNA1zwH44BEUh2A2Gw0lXgXEHjz4E+ftBxjR
+        XHsMWFyCVozjq19X1wwD
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7c999c4d3fddfa56-SJC
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - br
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 19 May 2023 04:31:42 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-38re46gevxtz9n69wynp7uzp
+      openai-processing-ms:
+      - '14019'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '89605'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 262ms
+      x-request-id:
+      - 2a9c692e0997496d9bdf187a2c5551ac
+    status:
+      code: 200
+      message: OK
+version: 1
