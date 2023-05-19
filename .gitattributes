@@ -1,0 +1,5 @@
+# Exclude VCR cassettes from stats
+tests/**/cassettes/**.y*ml linguist-generated
+
+# Mark documentation as such
+docs/**.md linguist-documentation

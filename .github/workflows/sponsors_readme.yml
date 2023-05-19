@@ -1,14 +1,17 @@
 name: Generate Sponsors README
+
 on:
   workflow_dispatch:
   schedule:
     - cron: '0 */12 * * *'
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout 🛎️
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+
       - name: Generate Sponsors 💖
         uses: JamesIves/github-sponsors-readme-action@v1
         with:

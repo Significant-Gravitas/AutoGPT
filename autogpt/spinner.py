@@ -54,8 +54,8 @@ class Spinner:
     def update_message(self, new_message, delay=0.1):
         """Update the spinner message
         Args:
-            new_message (str): New message to display
-            delay: Delay in seconds before updating the message
+            new_message (str): New message to display.
+            delay (float): The delay in seconds between each spinner update.
         """
         time.sleep(delay)
         sys.stdout.write(

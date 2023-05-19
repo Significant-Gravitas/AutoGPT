@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from autogpt.commands.command import command
-from autogpt.llm_utils import call_ai_function
+from autogpt.llm import call_ai_function
 
 
 @command(

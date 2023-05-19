@@ -1,5 +1,7 @@
 """ Image Generation Module for AutoGPT."""
 import io
+import json
+import time
 import uuid
 from base64 import b64decode
 
@@ -9,7 +11,7 @@ from PIL import Image
 
 from autogpt.commands.command import command
 from autogpt.config import Config
-from autogpt.workspace import path_in_workspace
+from autogpt.logs import logger
 
 CFG = Config()
 
@@ -25,7 +27,7 @@ def generate_image(prompt: str, size: int = 256) -> str:
     Returns:
         str: The filename of the image
     """
-    filename = f"{str(uuid.uuid4())}.jpg"
+    filename = f"{CFG.workspace_path}/{str(uuid.uuid4())}.jpg"
 
     # DALL-E
     if CFG.image_provider == "dalle":
@@ -61,20 +63,42 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
         "X-Use-Cache": "false",
     }
 
-    response = requests.post(
-        API_URL,
-        headers=headers,
-        json={
-            "inputs": prompt,
-        },
-    )
+    retry_count = 0
+    while retry_count < 10:
+        response = requests.post(
+            API_URL,
+            headers=headers,
+            json={
+                "inputs": prompt,
+            },
+        )
 
-    image = Image.open(io.BytesIO(response.content))
-    print(f"Image Generated for prompt:{prompt}")
+        if response.ok:
+            try:
+                image = Image.open(io.BytesIO(response.content))
+                logger.info(f"Image Generated for prompt:{prompt}")
+                image.save(filename)
+                return f"Saved to disk:{filename}"
+            except Exception as e:
+                logger.error(e)
+                break
+        else:
+            try:
+                error = json.loads(response.text)
+                if "estimated_time" in error:
+                    delay = error["estimated_time"]
+                    logger.debug(response.text)
+                    logger.info("Retrying in", delay)
+                    time.sleep(delay)
+                else:
+                    break
+            except Exception as e:
+                logger.error(e)
+                break
 
-    image.save(path_in_workspace(filename))
+        retry_count += 1
 
-    return f"Saved to disk:{filename}"
+    return f"Error creating image."
 
 
 def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
@@ -88,12 +112,11 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
     Returns:
         str: The filename of the image
     """
-    openai.api_key = CFG.openai_api_key
 
     # Check for supported image sizes
     if size not in [256, 512, 1024]:
         closest = min([256, 512, 1024], key=lambda x: abs(x - size))
-        print(
+        logger.info(
             f"DALL-E only supports image sizes of 256x256, 512x512, or 1024x1024. Setting to {closest}, was {size}."
         )
         size = closest
@@ -103,13 +126,14 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
         n=1,
         size=f"{size}x{size}",
         response_format="b64_json",
+        api_key=CFG.openai_api_key,
     )
 
-    print(f"Image Generated for prompt:{prompt}")
+    logger.info(f"Image Generated for prompt:{prompt}")
 
     image_data = b64decode(response["data"][0]["b64_json"])
 
-    with open(path_in_workspace(filename), mode="wb") as png:
+    with open(filename, mode="wb") as png:
         png.write(image_data)
 
     return f"Saved to disk:{filename}"
@@ -154,12 +178,12 @@ def generate_image_with_sd_webui(
         },
     )
 
-    print(f"Image Generated for prompt:{prompt}")
+    logger.info(f"Image Generated for prompt:{prompt}")
 
     # Save the image to disk
     response = response.json()
     b64 = b64decode(response["images"][0].split(",", 1)[0])
     image = Image.open(io.BytesIO(b64))
-    image.save(path_in_workspace(filename))
+    image.save(filename)
 
     return f"Saved to disk:{filename}"

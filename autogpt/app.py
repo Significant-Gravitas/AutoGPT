@@ -6,10 +6,12 @@ from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.config import Config
+from autogpt.logs import logger
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.speech import say_text
+from autogpt.url_utils.validators import validate_url
 
 CFG = Config()
 AGENT_MANAGER = AgentManager()
@@ -118,14 +120,13 @@ def execute_command(
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
-        elif command_name == "do_nothing":
-            return "No action performed."
-        elif command_name == "task_complete":
-            shutdown()
         else:
             for command in prompt.commands:
-                if command_name == command["label"] or command_name == command["name"]:
-                    return command["function"](*arguments.values())
+                if (
+                    command_name == command["label"].lower()
+                    or command_name == command["name"].lower()
+                ):
+                    return command["function"](**arguments)
             return (
                 f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
                 " list for available commands and only respond in the specified JSON"
@@ -138,6 +139,7 @@ def execute_command(
 @command(
     "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
 )
+@validate_url
 def get_text_summary(url: str, question: str) -> str:
     """Return the results of a Google search
 
@@ -154,6 +156,7 @@ def get_text_summary(url: str, question: str) -> str:
 
 
 @command("get_hyperlinks", "Get text summary", '"url": "<url>"')
+@validate_url
 def get_hyperlinks(url: str) -> Union[str, List[str]]:
     """Return the results of a Google search
 
@@ -164,12 +167,6 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
         str or list: The hyperlinks on the page
     """
     return scrape_links(url)
-
-
-def shutdown() -> NoReturn:
-    """Shut down the program"""
-    print("Shutting down...")
-    quit()
 
 
 @command(

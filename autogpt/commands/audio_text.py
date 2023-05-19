@@ -5,7 +5,6 @@ import requests
 
 from autogpt.commands.command import command
 from autogpt.config import Config
-from autogpt.workspace import path_in_workspace
 
 CFG = Config()
 
@@ -22,13 +21,12 @@ def read_audio_from_file(filename: str) -> str:
     Convert audio to text.
 
     Args:
-        audio_path (str): The path to the audio file
+        filename (str): The path to the audio file
 
     Returns:
         str: The text from the audio
     """
-    audio_path = path_in_workspace(filename)
-    with open(audio_path, "rb") as audio_file:
+    with open(filename, "rb") as audio_file:
         audio = audio_file.read()
     return read_audio(audio)
 
