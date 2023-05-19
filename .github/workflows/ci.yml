@@ -83,7 +83,7 @@ jobs:
         env:
           CI: true
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GITHUB_PAT: ${{ vars.PAT }}
+          GITHUB_PAT: ${{ secrets.PAT }}
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
