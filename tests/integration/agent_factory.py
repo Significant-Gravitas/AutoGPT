@@ -33,9 +33,10 @@ def memory_none():
     was_memory_backend = config.memory_backend
 
     config.set_memory_backend("no_memory")
-    yield get_memory(config, init=True)
+    memory = get_memory(config, init=True)
 
     config.set_memory_backend(was_memory_backend)
+    return memory
 
 
 @pytest.fixture

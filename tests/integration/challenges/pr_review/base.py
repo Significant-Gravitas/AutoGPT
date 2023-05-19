@@ -76,5 +76,5 @@ def run_tests(parameters, monkeypatch, workspace):
         parameters.source_branch_name, parameters.title, parameters.body
     )
     review_agent = get_pr_review_agent(pr_number, PR_TARGET_REPO, workspace)
-    # run_interaction_loop(monkeypatch, review_agent, parameters.cycle_count)
+    run_interaction_loop(monkeypatch, review_agent, parameters.cycle_count)
     check_pr(pr_number, parameters)
