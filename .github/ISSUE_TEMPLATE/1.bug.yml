@@ -9,6 +9,7 @@ body:
         * Check out our [backlog], [roadmap] and join our [discord] to discuss what's going on
         * If you need help, you can ask in the [discussions] section or in [#tech-support]
         * **Throughly search the [existing issues] before creating a new one**
+        * Read our [wiki page on Contributing]
 
         [backlog]: https://github.com/orgs/Significant-Gravitas/projects/1
         [roadmap]: https://github.com/orgs/Significant-Gravitas/projects/2  
@@ -16,6 +17,7 @@ body:
         [discussions]: https://github.com/Significant-Gravitas/Auto-GPT/discussions
         [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
         [existing issues]: https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue
+        [wiki page on Contributing]: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing
   - type: checkboxes
     attributes:
       label: ⚠️ Search for existing issues first ⚠️
