@@ -68,7 +68,7 @@ def execute_python_file(filename: str, args: str="") -> str:
                     logger.info(status)
         container = client.containers.run(
             image_name,
-            f"python {Path(filename).relative_to(CFG.workspace_path)}",
+            f"python {Path(filename).relative_to(CFG.workspace_path)} {args}",
             volumes={
                 CFG.workspace_path: {
                     "bind": "/workspace",
