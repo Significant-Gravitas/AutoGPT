@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import click
 from colorama import Back, Fore, Style
-from openai import InvalidRequestError
 
 from autogpt import utils
 from autogpt.config import Config
-from autogpt.llm import create_chat_completion
+from autogpt.llm.llm_utils import check_model
 from autogpt.logs import logger
 from autogpt.memory import get_supported_memory_backends
 
@@ -49,8 +48,8 @@ def create_config(
     CFG.set_debug_mode(False)
     CFG.set_continuous_mode(False)
     CFG.set_speak_mode(False)
-    CFG.set_fast_llm_model(check_model(CFG.fast_llm_model))
-    CFG.set_smart_llm_model(check_model(CFG.smart_llm_model))
+    CFG.set_fast_llm_model(check_model(CFG.fast_llm_model, "fast_llm_model"))
+    CFG.set_smart_llm_model(check_model(CFG.smart_llm_model, "smart_llm_model"))
 
     if debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
@@ -153,20 +152,3 @@ def create_config(
 
     if skip_news:
         CFG.skip_news = True
-
-
-def check_model(model: str) -> str:
-    """Check if model is available for use. If not, return gpt-3.5-turbo."""
-    messages = [
-        {"role": "user", "content": ""},
-    ]
-    try:
-        create_chat_completion(model=model, messages=messages, temperature=0)
-        return model
-    except InvalidRequestError:
-        logger.typewriter_log(
-            "WARNING: ",
-            Fore.YELLOW,
-            f"You do not have access to {model}. Setting default to gpt-3.5-turbo.",
-        )
-        return "gpt-3.5-turbo"

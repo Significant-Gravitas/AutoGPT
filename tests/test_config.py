@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from openai import InvalidRequestError
 
-from autogpt.configurator import check_model, create_config
+from autogpt.configurator import create_config
 
 
 def test_initial_values(config):
@@ -118,24 +118,6 @@ def test_set_debug_mode(config):
 
     # Reset debug mode
     config.set_debug_mode(debug_mode)
-
-
-def test_check_model(config):
-    """
-    Test if check_model() returns original model when valid.
-    Test if check_model() returns gpt-3.5-turbo when model is invalid.
-    """
-    with patch("openai.ChatCompletion.create") as mock_create_chat_completion:
-        # Test when no InvalidRequestError is raised
-        result = check_model("test-model")
-        assert result == "test-model"
-
-        # Test when InvalidRequestError is raised
-        mock_create_chat_completion.side_effect = InvalidRequestError(
-            "error message", "error param"
-        )
-        result = check_model("test-model")
-        assert result == "gpt-3.5-turbo"
 
 
 @patch("openai.ChatCompletion.create")
