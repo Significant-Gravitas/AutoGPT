@@ -154,6 +154,8 @@ def test_huggingface_fail_request_with_delay(
                 mock_sleep.assert_called_with(delay)
             else:
                 mock_sleep.assert_not_called()
+
+
 def test_huggingface_fail_request_with_delay(mocker):
     config = Config()
     config.huggingface_api_token = "1"
