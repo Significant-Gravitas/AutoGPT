@@ -109,6 +109,10 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
             options.add_argument("--remote-debugging-port=9222")
 
         options.add_argument("--no-sandbox")
+
+        # ignore local proxy (e.g: os.environ["http"]), otherwise 502 is returned.
+        # driver opens a separate chrome app (with a default profile) that uses the system proxy
+        options.ignore_local_proxy_environment_variables()
         if CFG.selenium_headless:
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
