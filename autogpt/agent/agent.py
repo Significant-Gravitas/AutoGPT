@@ -292,7 +292,7 @@ class Agent:
                 )
 
                 if self._is_output_too_large(command_result, cfg):
-                    self._add_error(command_name, arguments, "Output too large.")
+                    self._add_error(command_name, arguments, "Too much output.")
                     result = f"Failure: command {command_name} returned too much output. \
                         Do not execute this command again with the same arguments."
                 elif is_command_result_an_error(str(command_result)):
@@ -400,11 +400,17 @@ class Agent:
 
 
 def is_command_result_an_error(result: str) -> bool:
-    err_strs = ["error", "unknown command", "traceback"]
+    err_strs = [
+        "error",
+        "unknown command",
+        "traceback",
+        "no such file or directory",
+        "can't open file",
+    ]
     result_lower = result.lower()
 
     for err_str in err_strs:
-        if result_lower.startswith(err_str):
+        if err_str in result_lower:
             return True
 
     return False

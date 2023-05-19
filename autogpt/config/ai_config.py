@@ -196,14 +196,14 @@ class AIConfig:
 
         if prev_error is not None:
             prompt_start += (
-                f"Also know that I am reaching out for feedback because the "
+                f" Also know that I am reaching out for feedback because the "
                 f"previous command and arguments failed to accomplish my "
                 f"latest task, resulting in an error message. This must also "
                 f"be taken into consideration in your response so that I do "
-                f"not repeat the same mistakes.\n"
+                f"not repeat the same mistakes.\n\n"
                 f"Previous Command: {prev_error.command}\n"
                 f"Previous Arguments: {prev_error.arguments}\n"
-                f"Error Message: {prev_error.message}"
+                f"Error Message: '{prev_error.message}'"
             )
 
         from autogpt.prompts.prompt import build_default_prompt_generator
@@ -225,6 +225,6 @@ class AIConfig:
         self.feedback_prompt_generator = prompt_generator
         full_prompt += (
             f"\n"
-            f"{prompt_generator.generate_self_feedback_prompt_string(thoughts)}"
+            f"{prompt_generator.generate_feedback_prompt_string(thoughts)}"
         )
         return full_prompt

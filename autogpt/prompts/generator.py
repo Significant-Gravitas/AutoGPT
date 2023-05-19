@@ -157,9 +157,7 @@ class PromptGenerator:
             " parsed by Python json.loads"
         )
 
-    def generate_self_feedback_prompt_string(
-        self, thoughts: dict[str, str]
-    ) -> str:
+    def generate_feedback_prompt_string(self, thoughts: dict[str, str]) -> str:
         """
         Generate a prompt string based on the constraints, commands, resources,
             and performance evaluations.
@@ -178,7 +176,11 @@ class PromptGenerator:
             f"Thoughts: {thought}\n"
             f"Reasoning: {reasoning}\n"
             f"Plan:\n{plan}\n\n"
-            "You should respond with a concise paragraph that "
-            "contains a list of possible improvements that will get us "
-            "closer to our goals."
+            "You should respond with a concise paragraph that contains any "
+            "improvements to my overall thoughts, reasoning, and plan. Based "
+            "on these improvements, include a list of possible actions "
+            "that will get us closer to our goals, while avoiding previous "
+            "errors and only using the commands provided with valid "
+            "arguments. Order these options from most likely to be effective "
+            "to least."
         )
