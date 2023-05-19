@@ -43,7 +43,7 @@ def test_execute_python_file(python_test_file: str, random_string: str):
     assert result == f"Hello {random_string}!\n"
 
 def test_execute_python_file_args(python_test_file_args: str, random_string: str):
-    random_args = "Hello world"
+    random_args = 'Hello world'
     result = sut.execute_python_file(python_test_file_args, random_args)
     assert result == f"{random_args}\n"
 
