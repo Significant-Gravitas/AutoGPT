@@ -172,8 +172,8 @@ class AIConfig:
 
     def construct_self_feedback_prompt(
         self,
-        thoughts: dict,
-        error: "CommandError",
+        thoughts: dict[str, str],
+        prev_error: Optional["CommandError"],
         prompt_generator: Optional[PromptGenerator] = None,
     ) -> str:
         """
@@ -191,13 +191,20 @@ class AIConfig:
             f"Below is a message from me, an AI Agent, assuming the role of "
             f"{self.ai_role} Whilst keeping knowledge of my slight limitations "
             f"as an AI Agent, please evaluate my overall goals, constraints, "
-            f"commands, "
-            f"thought process, reasoning, and plan. Also know that I am "
-            f"reaching out for feedback because the previous command and "
-            f"arguments failed to accomplish my latest task, resulting in an "
-            f"error message. This must also be taken into consideration in "
-            f"your response so that I do not repeat the same mistakes."
+            f"commands, thought process, reasoning, and plan."
         )
+
+        if prev_error is not None:
+            prompt_start += (
+                f"Also know that I am reaching out for feedback because the "
+                f"previous command and arguments failed to accomplish my "
+                f"latest task, resulting in an error message. This must also "
+                f"be taken into consideration in your response so that I do "
+                f"not repeat the same mistakes.\n"
+                f"Previous Command: {prev_error.command}\n"
+                f"Previous Arguments: {prev_error.arguments}\n"
+                f"Error Message: {prev_error.message}"
+            )
 
         from autogpt.prompts.prompt import build_default_prompt_generator
 
@@ -210,14 +217,14 @@ class AIConfig:
         prompt_generator.command_registry = self.command_registry
 
         # Construct self feedback prompt
-        full_prompt = f"{prompt_start}\n\nGOALS:\n\n"
+        full_prompt = f"{prompt_start}\n\nGOALS:\n"
 
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
         self.feedback_prompt_generator = prompt_generator
         full_prompt += (
-            f"\n\n"
-            f"{prompt_generator.generate_self_feedback_prompt_string(thoughts, error)}"
+            f"\n"
+            f"{prompt_generator.generate_self_feedback_prompt_string(thoughts)}"
         )
         return full_prompt

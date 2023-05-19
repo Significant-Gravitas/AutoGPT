@@ -1,7 +1,7 @@
 import json
 import time
 from random import shuffle
-from typing import Optional
+from typing import Optional, Tuple
 
 from openai.error import RateLimitError
 
@@ -266,9 +266,8 @@ def chat_with_ai(
 def get_self_feedback_from_ai(
     ai_config: AIConfig,
     thoughts: dict,
-    prev_error: CommandError,
-    full_message_history: list,
-) -> str:
+    prev_error: Optional[CommandError],
+) -> Tuple[dict[str, str], str]:
     full_prompt = ai_config.construct_self_feedback_prompt(thoughts, prev_error)
 
     print(f"Full feedback prompt: {full_prompt}")
@@ -282,7 +281,4 @@ def get_self_feedback_from_ai(
         messages=messages,
     )
 
-    full_message_history.append(create_chat_message("user", full_prompt))
-    full_message_history.append(create_chat_message("assistant", assistant_reply))
-
-    return assistant_reply
+    return feedback_prompt, assistant_reply

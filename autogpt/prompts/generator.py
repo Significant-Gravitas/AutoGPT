@@ -158,7 +158,7 @@ class PromptGenerator:
         )
 
     def generate_self_feedback_prompt_string(
-        self, thoughts: dict, prev_error: "CommandError"
+        self, thoughts: dict[str, str]
     ) -> str:
         """
         Generate a prompt string based on the constraints, commands, resources,
@@ -167,15 +167,6 @@ class PromptGenerator:
         Returns:
             str: The generated prompt string.
         """
-        response_format = {
-            "improvements": "- short bulleted\n- list of potential\n- improvements",
-            "command": {
-                "name": "command name",
-                "args": {"arg name": "value"},
-            },
-        }
-        formatted_response_format = json.dumps(response_format, indent=4)
-
         thought = thoughts.get("text", "")
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
@@ -184,13 +175,10 @@ class PromptGenerator:
             f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
             "Commands:\n"
             f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
-            f"Thought:\n{thought}\n"
-            f"Reasoning:\n{reasoning}\n"
-            f"Plan:\n{plan}\n"
-            f"Previous Command:\n{prev_error.command}\n"
-            f"Previous Arguments:\n{prev_error.arguments}\n"
-            f"Error Message:\n{prev_error.message}\n\n"
-            "You should only respond in JSON format as described below \nResponse"
-            f" Format: \n{formatted_response_format} \nEnsure the response can be"
-            " parsed by Python json.loads"
+            f"Thoughts: {thought}\n"
+            f"Reasoning: {reasoning}\n"
+            f"Plan:\n{plan}\n\n"
+            "You should respond with a concise paragraph that "
+            "contains a list of possible improvements that will get us "
+            "closer to our goals."
         )

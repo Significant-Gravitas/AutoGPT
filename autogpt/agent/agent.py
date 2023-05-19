@@ -269,7 +269,7 @@ class Agent:
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
-                self._add_error(None, {}, command_name + " " + arguments)
+                self._add_error(None, {}, command_name + " " + str(arguments))
                 result = (
                     f"Command {command_name} threw the following error: {arguments}"
                 )
@@ -352,33 +352,30 @@ class Agent:
         )
         thoughts = assistant_reply_json.get("thoughts", {})
 
-        if not self.errors:
-            print("No errors, not doing self feedback...")
-
-        prev_error = self.errors[-1]
+        prev_error = self.errors[-1] if self.errors else None
 
         with Spinner("Getting self feedback... "):
-            feedback = get_self_feedback_from_ai(
+            messages, feedback = get_self_feedback_from_ai(
                 self.config,
                 thoughts,
                 prev_error,
-                self.full_message_history,
             )
 
-        # feedback_reply_json = fix_json_using_multiple_techniques(feedback)
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            messages,
+            PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
+        )
 
-        # improvements = feedback_reply_json["improvements"]
-        # command = feedback_reply_json["command"]
-
-        # TODO: Parse self feedback response
-        # self.log_cycle_handler.log_cycle(
-        #     self.config.ai_name,
-        #     self.created_at,
-        #     self.cycle_count,
-        #     self_feedback_resp,
-        #     SUPERVISOR_FEEDBACK_FILE_NAME,
-        # )
-        # return feedback
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            feedback,
+            SUPERVISOR_FEEDBACK_FILE_NAME,
+        )
 
         logger.typewriter_log(
             f"SELF FEEDBACK: {feedback}",
@@ -401,74 +398,13 @@ class Agent:
                     )
         return command_args
 
-    def get_self_feedback(
-        self, thoughts: dict, errors: list[CommandError], llm_model: str
-    ) -> str:
-        """Generates a feedback response based on the provided thoughts dictionary.
-        This method takes in a dictionary of thoughts containing keys such as 'reasoning',
-        'plan', 'thoughts', and 'criticism'. It combines these elements into a single
-        feedback message and uses the create_chat_completion() function to generate a
-        response based on the input message.
-        Args:
-            thoughts (dict): A dictionary containing thought elements like reasoning,
-            plan, thoughts, and criticism.
-        Returns:
-            str: A feedback response generated using the provided thoughts dictionary.
-        """
-        ai_role = self.config.ai_role
-        feedback_prompt = f"Below is a message from me, an AI Agent, assuming the role of {ai_role} Whilst keeping knowledge of my slight limitations as an AI Agent, please evaluate my thought process, reasoning, and plan, and provide a concise paragraph outlining potential improvements. Consider adding or removing ideas that do not align with my role and explaining why, prioritizing thoughts based on their significance, or simply refining my overall thought process."
-
-        latest_error = self.errors[-1]
-
-        thought = thoughts.get("text", "")
-        reasoning = thoughts.get("reasoning", "")
-        plan = thoughts.get("plan", "")
-        feedback_thoughts = (
-            f"Thought Process: {thought}, Reasoning: {reasoning}, Plan: {plan}"
-        )
-
-        commands = self.command_registry.command_prompt()
-        commands_prompt = (
-            f"If one of the following commands would help "
-            f"accomplish our goal, please specifically include it in your "
-            f"response along with valid arguments: {commands}"
-        )
-
-        messages = {
-            "role": "user",
-            "content": feedback_prompt + feedback_thoughts + commands_prompt,
-        }
-
-        self.log_cycle_handler.log_cycle(
-            self.config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            messages,
-            PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
-        )
-
-        converted_messages = [Message(**messages)]
-
-        with Spinner("Thinking... "):
-            feedback = create_chat_completion(converted_messages, llm_model)
-
-        self.log_cycle_handler.log_cycle(
-            self.config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            feedback,
-            SUPERVISOR_FEEDBACK_FILE_NAME,
-        )
-        return feedback
-
 
 def is_command_result_an_error(result: str) -> bool:
+    err_strs = ["error", "unknown command", "traceback"]
     result_lower = result.lower()
 
-    if result_lower.startswith("error"):
-        return True
-
-    if result_lower.startswith("unknown command"):
-        return True
+    for err_str in err_strs:
+        if result_lower.startswith(err_str):
+            return True
 
     return False
