@@ -55,6 +55,9 @@ class ChatPrompt:
     model: ChatModelInfo
     messages: list[Message] = []
 
+    def __getitem__(self, i: int):
+        return self.messages[i]
+
     def __iter__(self):
         return iter(self.messages)
 

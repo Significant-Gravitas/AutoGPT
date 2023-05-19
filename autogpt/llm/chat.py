@@ -106,7 +106,7 @@ def chat_with_ai(
     user_input_msg = create_chat_message("user", user_input)
     current_tokens_used += count_message_tokens([user_input_msg], model)
 
-    current_tokens_used += 500  # Account for memory (appended later) TODO: The final memory may be less than 500 tokens
+    current_tokens_used += 500  # Reserve space for new_summary_message
 
     # Add Messages until the token limit is reached or there are no more messages to add.
     while next_message_to_add_index >= 0:
@@ -127,7 +127,9 @@ def chat_with_ai(
         new_summary_message, trimmed_messages = agent.history.trim_messages(
             current_message_chain=list(message_chain),
         )
+        tokens_to_add = count_message_tokens([new_summary_message], model)
         message_chain.insert(insertion_index, new_summary_message)
+        current_tokens_used += tokens_to_add - 500
 
         memory_store = get_memory(cfg)
         for ai_msg, result_msg in agent.history.filter_message_pairs(trimmed_messages):
@@ -152,6 +154,7 @@ def chat_with_ai(
         )
         logger.debug(budget_message)
         message_chain.add("system", budget_message)
+        current_tokens_used += count_message_tokens([message_chain[-1]], model)
 
     # Append user input, the length of this is accounted for above
     message_chain.append(user_input_msg)
