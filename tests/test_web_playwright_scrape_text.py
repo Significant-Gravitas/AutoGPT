@@ -5,9 +5,9 @@
 from unittest.mock import patch
 
 import pytest
-from unittest.mock import patch
 
 from autogpt.commands.web_playwright import scrape_text
+
 
 @pytest.fixture
 def mock_sync_playwright(mocker):
