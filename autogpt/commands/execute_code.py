@@ -24,7 +24,7 @@ def execute_python_file(filename: str, args: str="") -> str:
     Returns:
         str: The output of the file
     """
-    
+
     if not filename.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
