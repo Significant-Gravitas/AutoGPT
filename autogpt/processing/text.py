@@ -111,7 +111,7 @@ def summarize_text(
 
         logger.debug(f"Summarizing with {model}:\n{summarization_prompt.dump()}\n")
         summary = create_chat_completion(
-            summarization_prompt, model, temperature=0, max_tokens=500
+            list(summarization_prompt), model, temperature=0, max_tokens=500
         )
 
         logger.debug(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")

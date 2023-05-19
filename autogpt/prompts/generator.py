@@ -1,8 +1,9 @@
 """ A module for generating custom prompt strings."""
 import json
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from autogpt.commands.command import CommandRegistry
+if TYPE_CHECKING:
+    from autogpt.commands.command import CommandRegistry
 
 
 class PromptGenerator:

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal
 
 from autogpt.memory.vector.memory_item import MemoryItem
 
@@ -21,17 +22,29 @@ from autogpt.logs import logger
 from autogpt.memory.vector import VectorMemory
 
 
-class MessageHistory(list[Message]):
+@dataclass
+class MessageHistory:
     agent: Agent
 
-    summary: str
+    messages: list[Message] = []
+    summary: str = "I was created"
 
-    last_trimmed_index: int
+    last_trimmed_index: int = 0
 
-    def __init__(self, agent: Agent):
-        self.agent = agent
-        self.summary = "I was created."
-        self.last_trimmed_index = 0
+    def __getitem__(self, i: int):
+        return self.messages[i]
+
+    def __iter__(self):
+        return iter(self.messages)
+
+    def __len__(self):
+        return len(self.messages)
+
+    def add(self, role: Literal["system", "user", "assistant"], content: str):
+        return self.append({"role": role, "content": content})
+
+    def append(self, message: Message):
+        return self.messages.append(message)
 
     def trim_messages(
         self,
@@ -70,7 +83,7 @@ class MessageHistory(list[Message]):
         # Find the index of the last message processed
         if new_messages_not_in_chain:
             last_message = new_messages_not_in_chain[-1]
-            self.last_trimmed_index = self.index(last_message)
+            self.last_trimmed_index = self.messages.index(last_message)
 
         return new_summary_message, new_messages_not_in_chain
 
@@ -82,9 +95,9 @@ class MessageHistory(list[Message]):
         """Saves messages up to the given index to permanent memory"""
 
         while up_to_index >= 0:
-            ai_message = self[up_to_index]
+            ai_message = self.messages[up_to_index]
             if is_string_valid_json(ai_message["content"], LLM_DEFAULT_RESPONSE_FORMAT):
-                next_message = self[up_to_index + 1]
+                next_message = self.messages[up_to_index + 1]
                 memory_to_add = MemoryItem.from_ai_action(ai_message, next_message)
                 logger.debug(f"Storing the following memory: {memory_to_add}")
                 permanent_memory.add(memory_to_add)

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import Message
+from autogpt.llm.base import ChatPrompt, Message
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
@@ -70,22 +70,25 @@ def chat_with_ai(
     # logger.debug(f"Memory Stats: {agent.memory.get_stats()}")
     relevant_memory = []
 
-    message_chain = [
-        create_chat_message("system", system_prompt),
-        create_chat_message(
-            "system", f"The current time and date is {time.strftime('%c')}"
-        ),
-        # create_chat_message(
-        #     "system",
-        #     f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
-        # ),
-    ]
+    message_chain = ChatPrompt.for_model(
+        model,
+        [
+            create_chat_message("system", system_prompt),
+            create_chat_message(
+                "system", f"The current time and date is {time.strftime('%c')}"
+            ),
+            # create_chat_message(
+            #     "system",
+            #     f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
+            # ),
+        ],
+    )
 
     # Add messages from the full message history until we reach the token limit
     next_message_to_add_index = len(agent.history) - 1
     insertion_index = len(message_chain)
     # Count the currently used tokens
-    current_tokens_used = count_message_tokens(message_chain, model)
+    current_tokens_used = message_chain.token_length
 
     # while current_tokens_used > 2500:
     #     # remove memories until we are under 2500 tokens
@@ -122,7 +125,7 @@ def chat_with_ai(
     # Update & add summary of trimmed messages
     if len(agent.history) > 0:
         new_summary_message, newly_trimmed_messages = agent.history.trim_messages(
-            current_message_chain=message_chain,
+            current_message_chain=list(message_chain),
         )
         message_chain.insert(insertion_index, new_summary_message)
 
@@ -142,7 +145,7 @@ def chat_with_ai(
             else "\n\n"
         )
         logger.debug(budget_message)
-        message_chain.append(create_chat_message("system", budget_message))
+        message_chain.add("system", budget_message)
 
     # Append user input, the length of this is accounted for above
     message_chain.append(user_input_msg)
@@ -152,7 +155,7 @@ def chat_with_ai(
         if not plugin.can_handle_on_planning():
             continue
         plugin_response = plugin.on_planning(
-            agent.config.prompt_generator, message_chain
+            agent.config.prompt_generator, list(message_chain)
         )
         if not plugin_response or plugin_response == "":
             continue
@@ -163,7 +166,7 @@ def chat_with_ai(
             logger.debug(f"Plugin response too long, skipping: {plugin_response}")
             logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
             break
-        message_chain.append(create_chat_message("system", plugin_response))
+        message_chain.add("system", plugin_response)
 
     # Calculate remaining tokens
     tokens_remaining = token_limit - current_tokens_used
@@ -195,12 +198,12 @@ def chat_with_ai(
     # temperature and other settings we care about
     assistant_reply = create_chat_completion(
         model=model,
-        messages=message_chain,
+        messages=list(message_chain),
         max_tokens=tokens_remaining,
     )
 
     # Update full message history
     agent.history.append(user_input_msg)
-    agent.history.append(create_chat_message("assistant", assistant_reply))
+    agent.history.add("assistant", assistant_reply)
 
     return assistant_reply
