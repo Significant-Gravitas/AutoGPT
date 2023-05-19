@@ -54,7 +54,7 @@ class Config(metaclass=Singleton):
         model_info = OPEN_AI_CHAT_MODELS.get(self.smart_llm_model)
 
         if model_info is not None:
-            max_limit = model_info.max_tokens
+            max_limit = model_info.soft_token_limit
         else:
             max_limit = smart_token_limit
 
