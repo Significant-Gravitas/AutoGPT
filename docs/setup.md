@@ -195,12 +195,14 @@ docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuou
 ### Run without Docker
 
 #### Create a Virtual Environment
-Create a virtual environment to run in.  
-        :::shell
-        python -m venv venvAutoGPT
-        source venvAutoGPT/bin/activate
-        pip3 install --upgrade pip
 
+Create a virtual environment to run in.
+
+``` shell
+python -m venv venvAutoGPT
+source venvAutoGPT/bin/activate
+pip3 install --upgrade pip
+```
 
 Simply run the startup script in your terminal. This will install any necessary Python
 packages and launch Auto-GPT.
