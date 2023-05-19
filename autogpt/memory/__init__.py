@@ -64,8 +64,10 @@ def get_memory(cfg, init=False):
             memory = RedisMemory(cfg)
     elif cfg.memory_backend == "qdrant":
         if not QdrantMemory:
-            print("Error: Qdrant is not installed. Please install qdrant-client to"
-                  " use Qdrant as a memory backend.")
+            print(
+                "Error: Qdrant is not installed. Please install qdrant-client to"
+                " use Qdrant as a memory backend."
+            )
         else:
             memory = QdrantMemory(cfg)
     elif cfg.memory_backend == "weaviate":

@@ -87,6 +87,10 @@ class Config(metaclass=Singleton):
         self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
         self.pinecone_region = os.getenv("PINECONE_ENV")
 
+        self.qdrant_api_key = os.getenv("QDRANT_API_KEY")
+        self.qdrant_collection_name = os.getenv("QDRANT_COLLECTION_NAME")
+        self.qdrant_host = os.getenv("QDRANT_HOST")
+
         self.weaviate_host = os.getenv("WEAVIATE_HOST")
         self.weaviate_port = os.getenv("WEAVIATE_PORT")
         self.weaviate_protocol = os.getenv("WEAVIATE_PROTOCOL", "http")
@@ -278,6 +282,18 @@ class Config(metaclass=Singleton):
     def set_pinecone_region(self, value: str) -> None:
         """Set the Pinecone region value."""
         self.pinecone_region = value
+
+    def set_qdrant_api_key(self, value: str) -> None:
+        """Set the Qdrant API key value."""
+        self.qdrant_api_key = value
+
+    def set_qdrant_host(self, value: str) -> None:
+        """Set the Qdrant Host value."""
+        self.qdrant_host = value
+
+    def set_qdrant_collection_name(self, value: str) -> None:
+        """Set the Qdrant Collection name."""
+        self.qdrant_collection_name = value
 
     def set_debug_mode(self, value: bool) -> None:
         """Set the debug mode value."""
