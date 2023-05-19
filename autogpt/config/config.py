@@ -37,6 +37,18 @@ class Config(metaclass=Singleton):
         else:
             self.disabled_command_categories = []
 
+        deny_commands = os.getenv("DENY_COMMANDS")
+        if deny_commands:
+            self.deny_commands = deny_commands.split(",")
+        else:
+            self.deny_commands = []
+
+        allow_commands = os.getenv("ALLOW_COMMANDS")
+        if allow_commands:
+            self.allow_commands = allow_commands.split(",")
+        else:
+            self.allow_commands = []
+
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
         self.prompt_settings_file = os.getenv(
             "PROMPT_SETTINGS_FILE", "prompt_settings.yaml"
