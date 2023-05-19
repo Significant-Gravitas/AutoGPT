@@ -1,0 +1,2 @@
+slack-sdk==3.21.3
+fastapi==0.95.2
