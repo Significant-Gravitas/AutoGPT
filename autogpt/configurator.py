@@ -14,6 +14,7 @@ def create_config(
     continuous: bool,
     continuous_limit: int,
     ai_settings_file: str,
+    prompt_settings_file: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -30,6 +31,7 @@ def create_config(
         continuous (bool): Whether to run in continuous mode
         continuous_limit (int): The number of times to run in continuous mode
         ai_settings_file (str): The path to the ai_settings.yaml file
+        prompt_settings_file (str): The path to the prompt_settings.yaml file
         skip_reprompt (bool): Whether to skip the re-prompting messages at the beginning of the script
         speak (bool): Whether to enable speak mode
         debug (bool): Whether to enable debug mode
@@ -112,6 +114,22 @@ def create_config(
         CFG.ai_settings_file = file
         CFG.skip_reprompt = True
 
+    if prompt_settings_file:
+        file = prompt_settings_file
+
+        # Validate file
+        (validated, message) = utils.validate_yaml_file(file)
+        if not validated:
+            logger.typewriter_log("FAILED FILE VALIDATION", Fore.RED, message)
+            logger.double_check()
+            exit(1)
+
+        logger.typewriter_log("Using Prompt Settings File:", Fore.GREEN, file)
+        CFG.prompt_settings_file = file
+
+    if browser_name:
+        CFG.selenium_web_browser = browser_name
+
     if allow_downloads:
         logger.typewriter_log("Native Downloading:", Fore.GREEN, "ENABLED")
         logger.typewriter_log(
@@ -129,6 +147,3 @@ def create_config(
 
     if skip_news:
         CFG.skip_news = True
-
-    if browser_name:
-        CFG.selenium_web_browser = browser_name

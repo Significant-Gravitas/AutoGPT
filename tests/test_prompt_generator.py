@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from autogpt.promptgenerator import PromptGenerator
+from autogpt.prompts.generator import PromptGenerator
 
 
 class TestPromptGenerator(TestCase):
@@ -38,6 +38,7 @@ class TestPromptGenerator(TestCase):
             "label": command_label,
             "name": command_name,
             "args": args,
+            "function": None,
         }
         self.assertIn(command, self.generator.commands)
 

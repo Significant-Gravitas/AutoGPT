@@ -5,9 +5,17 @@ A module that contains the AIConfig class object that contains the configuration
 from __future__ import annotations
 
 import os
-from typing import Type
+import platform
+from pathlib import Path
+from typing import Any, Optional, Type
 
+import distro
 import yaml
+
+from autogpt.prompts.generator import PromptGenerator
+
+# Soon this will go in a folder where it remembers more stuff about the run(s)
+SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 
 
 class AIConfig:
@@ -18,10 +26,15 @@ class AIConfig:
         ai_name (str): The name of the AI.
         ai_role (str): The description of the AI's role.
         ai_goals (list): The list of objectives the AI is supposed to complete.
+        api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
     """
 
     def __init__(
-        self, ai_name: str = "", ai_role: str = "", ai_goals: list | None = None
+        self,
+        ai_name: str = "",
+        ai_role: str = "",
+        ai_goals: list | None = None,
+        api_budget: float = 0.0,
     ) -> None:
         """
         Initialize a class instance
@@ -30,6 +43,7 @@ class AIConfig:
             ai_name (str): The name of the AI.
             ai_role (str): The description of the AI's role.
             ai_goals (list): The list of objectives the AI is supposed to complete.
+            api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
         Returns:
             None
         """
@@ -38,14 +52,14 @@ class AIConfig:
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
-
-    # Soon this will go in a folder where it remembers more stuff about the run(s)
-    SAVE_FILE = os.path.join(os.path.dirname(__file__), "..", "ai_settings.yaml")
+        self.api_budget = api_budget
+        self.prompt_generator = None
+        self.command_registry = None
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals) loaded from
+        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
           yaml file if yaml file exists,
         else returns class with no parameters.
 
@@ -65,9 +79,15 @@ class AIConfig:
 
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
-        ai_goals = config_params.get("ai_goals", [])
+        ai_goals = [
+            str(goal).strip("{}").replace("'", "").replace('"', "")
+            if isinstance(goal, dict)
+            else str(goal)
+            for goal in config_params.get("ai_goals", [])
+        ]
+        api_budget = config_params.get("api_budget", 0.0)
         # type: Type[AIConfig]
-        return AIConfig(ai_name, ai_role, ai_goals)
+        return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
@@ -85,11 +105,14 @@ class AIConfig:
             "ai_name": self.ai_name,
             "ai_role": self.ai_role,
             "ai_goals": self.ai_goals,
+            "api_budget": self.api_budget,
         }
         with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
 
-    def construct_full_prompt(self) -> str:
+    def construct_full_prompt(
+        self, prompt_generator: Optional[PromptGenerator] = None
+    ) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
 
@@ -98,7 +121,7 @@ class AIConfig:
 
         Returns:
             full_prompt (str): A string containing the initial prompt for the user
-              including the ai_name, ai_role and ai_goals.
+              including the ai_name, ai_role, ai_goals, and api_budget.
         """
 
         prompt_start = (
@@ -108,14 +131,38 @@ class AIConfig:
             ""
         )
 
-        from autogpt.prompt import get_prompt
+        from autogpt.config import Config
+        from autogpt.prompts.prompt import build_default_prompt_generator
+
+        cfg = Config()
+        if prompt_generator is None:
+            prompt_generator = build_default_prompt_generator()
+        prompt_generator.goals = self.ai_goals
+        prompt_generator.name = self.ai_name
+        prompt_generator.role = self.ai_role
+        prompt_generator.command_registry = self.command_registry
+        for plugin in cfg.plugins:
+            if not plugin.can_handle_post_prompt():
+                continue
+            prompt_generator = plugin.post_prompt(prompt_generator)
+
+        if cfg.execute_local_commands:
+            # add OS info to prompt
+            os_name = platform.system()
+            os_info = (
+                platform.platform(terse=True)
+                if os_name != "Linux"
+                else distro.name(pretty=True)
+            )
+
+            prompt_start += f"\nThe OS you are running on is: {os_info}"
 
         # Construct full prompt
-        full_prompt = (
-            f"You are {self.ai_name}, {self.ai_role}\n{prompt_start}\n\nGOALS:\n\n"
-        )
+        full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
-
-        full_prompt += f"\n\n{get_prompt()}"
+        if self.api_budget > 0.0:
+            full_prompt += f"\nIt takes money to let you run. Your API budget is ${self.api_budget:.3f}"
+        self.prompt_generator = prompt_generator
+        full_prompt += f"\n\n{prompt_generator.generate_prompt_string()}"
         return full_prompt

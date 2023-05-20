@@ -11,7 +11,7 @@ from regex import regex
 
 from autogpt.config import Config
 from autogpt.json_utils.json_fix_general import correct_json
-from autogpt.llm_utils import call_ai_function
+from autogpt.llm import call_ai_function
 from autogpt.logs import logger
 from autogpt.speech import say_text
 
@@ -91,14 +91,33 @@ def fix_json_using_multiple_techniques(assistant_reply: str) -> Dict[Any, Any]:
     Returns:
         str: The fixed JSON string.
     """
+    assistant_reply = assistant_reply.strip()
+    if assistant_reply.startswith("```json"):
+        assistant_reply = assistant_reply[7:]
+    if assistant_reply.endswith("```"):
+        assistant_reply = assistant_reply[:-3]
+    try:
+        return json.loads(assistant_reply)  # just check the validity
+    except json.JSONDecodeError:  # noqa: E722
+        pass
+
+    if assistant_reply.startswith("json "):
+        assistant_reply = assistant_reply[5:]
+        assistant_reply = assistant_reply.strip()
+    try:
+        return json.loads(assistant_reply)  # just check the validity
+    except json.JSONDecodeError:  # noqa: E722
+        pass
 
     # Parse and print Assistant response
     assistant_reply_json = fix_and_parse_json(assistant_reply)
+    logger.debug("Assistant reply JSON: %s", str(assistant_reply_json))
     if assistant_reply_json == {}:
         assistant_reply_json = attempt_to_fix_json_by_finding_outermost_brackets(
             assistant_reply
         )
 
+    logger.debug("Assistant reply JSON 2: %s", str(assistant_reply_json))
     if assistant_reply_json != {}:
         return assistant_reply_json
 
