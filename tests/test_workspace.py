@@ -1,3 +1,4 @@
+import itertools
 from pathlib import Path
 
 import pytest
@@ -17,26 +18,38 @@ _ACCESSIBLE_PATHS = [
     Path("test_folder/../test_folder/test_file.txt"),
 ]
 
-_INACCESSIBLE_PATHS = [
-    # Takes us out of the workspace
-    Path(".."),
-    Path("../test_file.txt"),
-    Path("../not_auto_gpt_workspace"),
-    Path("../not_auto_gpt_workspace/test_file.txt"),
-    Path("test_folder/../.."),
-    Path("test_folder/../../test_file.txt"),
-    Path("test_folder/../../not_auto_gpt_workspace"),
-    Path("test_folder/../../not_auto_gpt_workspace/test_file.txt"),
-    # Contains null bytes
-    Path("\x00"),
-    Path("\x00test_file.txt"),
-    Path("test_folder/\x00"),
-    Path("test_folder/\x00test_file.txt"),
-    # Absolute paths
-    Path("/"),
-    Path("/test_file.txt"),
-    Path("/home"),
-]
+_INACCESSIBLE_PATHS = (
+    [
+        # Takes us out of the workspace
+        Path(".."),
+        Path("../test_file.txt"),
+        Path("../not_auto_gpt_workspace"),
+        Path("../not_auto_gpt_workspace/test_file.txt"),
+        Path("test_folder/../.."),
+        Path("test_folder/../../test_file.txt"),
+        Path("test_folder/../../not_auto_gpt_workspace"),
+        Path("test_folder/../../not_auto_gpt_workspace/test_file.txt"),
+    ]
+    + [
+        # Contains null bytes
+        Path(template.format(null_byte=null_byte))
+        for template, null_byte in itertools.product(
+            [
+                "{null_byte}",
+                "{null_byte}test_file.txt",
+                "test_folder/{null_byte}",
+                "test_folder/{null_byte}test_file.txt",
+            ],
+            Workspace.NULL_BYTES,
+        )
+    ]
+    + [
+        # Absolute paths
+        Path("/"),
+        Path("/test_file.txt"),
+        Path("/home"),
+    ]
+)
 
 
 @pytest.fixture()

@@ -20,6 +20,8 @@ log-ingestion.txt
 logs
 *.log
 *.mp3
+mem.sqlite3
+venvAutoGPT
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
