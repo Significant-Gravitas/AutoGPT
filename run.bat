@@ -1,8 +1,5 @@
 @echo off
-
-SET EnvCheckLock=env_check.lock
 setlocal enabledelayedexpansion
-
 
 :FindPythonCommand
 for %%A in (python python3) do (
@@ -18,14 +15,10 @@ pause
 exit /B 1
 
 :Found
-if not exist %EnvCheckLock% (
-  %PYTHON_CMD% scripts/check_requirements.py requirements.txt
-	if errorlevel 1 (
-    	echo Installing missing packages...
-    	 %PYTHON_CMD% -m pip install -r requirements.txt
-	)
-	echo lock > %EnvCheckLock%
+%PYTHON_CMD% scripts/check_requirements.py requirements.txt
+if errorlevel 1 (
+    echo Installing missing packages...
+    %PYTHON_CMD% -m pip install -r requirements.txt
 )
 %PYTHON_CMD% -m autogpt %*
-
 pause
