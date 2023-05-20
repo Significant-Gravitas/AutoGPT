@@ -330,6 +330,14 @@ def check_openai_api_key() -> None:
         if re.search(key_pattern, openai_api_key):
             os.environ["OPENAI_API_KEY"] = openai_api_key
             cfg.set_openai_api_key(openai_api_key)
+            print(
+                Fore.GREEN
+                + "OpenAI API key successfully set!\n"
+                + Fore.ORANGE
+                + "NOTE: The API key you've set is only temporary.\n"
+                + "For longer sessions, please set it in .env file"
+                + Fore.RESET
+            )
         else:
             print("Invalid OpenAI API key!")
             exit(1)
