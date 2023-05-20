@@ -1,11 +1,7 @@
 import pytest
 
 from autogpt.config import Config
-from autogpt.plugins import (
-    check_allowed,
-    inspect_zip_for_modules,
-    scan_plugins,
-)
+from autogpt.plugins import check_allowed, inspect_zip_for_modules, scan_plugins
 
 PLUGINS_TEST_DIR = "tests/unit/data/test_plugins"
 PLUGIN_TEST_ZIP_FILE = "Auto-GPT-Plugin-Test-master.zip"
@@ -31,55 +27,34 @@ def mock_config_check_allowed():
     return MockConfig()
 
 
-def test_check_allowed_when_denied(
-    mock_config_check_allowed, monkeypatch
-):
+def test_check_allowed_when_denied(mock_config_check_allowed, monkeypatch):
     # Test that the function returns False when the plugin is in the denylist
     monkeypatch.setattr("builtins.input", lambda _: "y")
-    assert not check_allowed(
-        "BadPlugin", mock_config_check_allowed
-    )
+    assert not check_allowed("BadPlugin", mock_config_check_allowed)
 
 
-def test_check_allowed_when_allowed(
-    mock_config_check_allowed, monkeypatch
-):
+def test_check_allowed_when_allowed(mock_config_check_allowed, monkeypatch):
     # Test that the function returns True when the plugin is in the allowlist
     monkeypatch.setattr("builtins.input", lambda _: "y")
     assert check_allowed("GoodPlugin", mock_config_check_allowed)
 
 
-def test_check_allowed_when_user_input_yes(
-    mock_config_check_allowed, monkeypatch
-):
+def test_check_allowed_when_user_input_yes(mock_config_check_allowed, monkeypatch):
     # Test that the function returns True when the user inputs "y"
     monkeypatch.setattr("builtins.input", lambda _: "y")
-    assert check_allowed(
-        "UnknownPlugin", mock_config_check_allowed
-
-    )
+    assert check_allowed("UnknownPlugin", mock_config_check_allowed)
 
 
-def test_check_allowed_when_user_input_no(
-    mock_config_check_allowed, monkeypatch
-):
+def test_check_allowed_when_user_input_no(mock_config_check_allowed, monkeypatch):
     # Test that the function returns False when the user inputs "n"
     monkeypatch.setattr("builtins.input", lambda _: "n")
-    assert not check_allowed(
-        "UnknownPlugin", mock_config_check_allowed
-
-    )
+    assert not check_allowed("UnknownPlugin", mock_config_check_allowed)
 
 
-def test_check_allowed_when_user_input_invalid(
-    mock_config_check_allowed, monkeypatch
-):
+def test_check_allowed_when_user_input_invalid(mock_config_check_allowed, monkeypatch):
     # Test that the function returns False when the user inputs an invalid value
     monkeypatch.setattr("builtins.input", lambda _: "invalid")
-    assert not check_allowed(
-        "UnknownPlugin", mock_config_check_allowed
-
-    )
+    assert not check_allowed("UnknownPlugin", mock_config_check_allowed)
 
 
 @pytest.fixture
