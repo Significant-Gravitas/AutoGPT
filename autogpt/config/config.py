@@ -1,6 +1,6 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
-from typing import TYPE_CHECKING, List
+from typing import List
 
 import openai
 import yaml
@@ -9,9 +9,6 @@ from colorama import Fore
 
 from autogpt.singleton import Singleton
 
-"""Don't load these constants during normal execution to avoid circular dependencies"""
-if TYPE_CHECKING:
-    from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 
 
 class Config(metaclass=Singleton):
@@ -20,6 +17,9 @@ class Config(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
+        """Load here to avoid circular imports."""
+        from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+
         """Initialize the Config class"""
         self.workspace_path = None
         self.file_logger_path = None
