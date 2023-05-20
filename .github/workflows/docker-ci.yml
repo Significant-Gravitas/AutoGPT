@@ -75,11 +75,16 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-    - name: Checkout repository and submodules
-      uses: actions/checkout@v3
-      with:
-        submodules: 'recursive'
-        submodule-mode: 'checkout'
+      - name: Check out repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      - name: Checkout correct branch and submodules
+        run: |
+          git checkout ${{ github.event.pull_request.head.ref }}
+          git submodule update --init --recursive
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
