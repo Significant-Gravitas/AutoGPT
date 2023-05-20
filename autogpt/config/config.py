@@ -17,9 +17,6 @@ class Config(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        """Load here to avoid circular imports."""
-        from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
-
         """Initialize the Config class"""
         self.workspace_path = None
         self.file_logger_path = None
@@ -31,6 +28,9 @@ class Config(metaclass=Singleton):
         self.skip_reprompt = False
         self.allow_downloads = False
         self.skip_news = False
+
+        """Load here to avoid circular imports."""
+        from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
