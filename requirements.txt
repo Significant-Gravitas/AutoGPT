@@ -37,6 +37,7 @@ auto-gpt-plugin-template
 mkdocs
 pymdown-extensions
 mypy
+sentry-sdk
 
 # OpenAI and Generic plugins import
 openapi-python-client==0.13.4
