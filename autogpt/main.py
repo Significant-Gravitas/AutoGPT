@@ -47,6 +47,7 @@ def run_auto_gpt(
     cfg = Config()
     # TODO: fill in llm values here
     check_openai_api_key()
+
     create_config(
         continuous,
         continuous_limit,
