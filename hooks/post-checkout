@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "Post-checkout hook running"
+git submodule update --init --recursive
