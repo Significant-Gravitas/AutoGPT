@@ -76,8 +76,11 @@ jobs:
     timeout-minutes: 30
     needs: build
     steps:
-    - name: Checkout repository
+    - name: Checkout repository and submodules
       uses: actions/checkout@v3
+      with:
+        submodules: 'recursive'
+        submodule-mode: 'checkout'
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
