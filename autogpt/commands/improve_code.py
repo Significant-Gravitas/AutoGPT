@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from autogpt.commands.command import command
-from autogpt.llm_utils import call_ai_function
+from autogpt.llm import call_ai_function
 
 
 @command(
@@ -17,14 +17,14 @@ def improve_code(suggestions: list[str], code: str) -> str:
       chat completion api call.
 
     Parameters:
-        suggestions (List): A list of suggestions around what needs to be improved.
+        suggestions (list): A list of suggestions around what needs to be improved.
         code (str): Code to be improved.
     Returns:
         A result string from create chat completion. Improved code in response.
     """
 
     function_string = (
-        "def generate_improved_code(suggestions: List[str], code: str) -> str:"
+        "def generate_improved_code(suggestions: list[str], code: str) -> str:"
     )
     args = [json.dumps(suggestions), code]
     description_string = (
