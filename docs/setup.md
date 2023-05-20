@@ -211,6 +211,16 @@ docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuou
 
 ### Run without Docker
 
+#### Create a Virtual Environment
+
+Create a virtual environment to run in.
+
+``` shell
+python -m venv venvAutoGPT
+source venvAutoGPT/bin/activate
+pip3 install --upgrade pip
+```
+
 !!! warning
     Due to security reasons, certain features (like Python execution) will by default be disabled when running without docker. So, even if you want to run the program outside a docker container, you currently still need docker to actually run scripts.
 
