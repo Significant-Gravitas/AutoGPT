@@ -135,6 +135,7 @@ jobs:
           git commit -am "Updated main repo's submodules"
           git push
         env:
+<<<<<<< HEAD
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Stage new files and commit
@@ -186,3 +187,6 @@ jobs:
             git rebase origin/${{ github.head_ref }}
             ```
             before pushing more changes to the remote.
+=======
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+>>>>>>> f6b47a6d (ci: remove unused code now that we are using git submodules to keep cassettes in sync)
