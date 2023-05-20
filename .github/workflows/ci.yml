@@ -65,14 +65,16 @@ jobs:
         python-version: ["3.10"]
 
     steps:
-      - name: Check out repository with submodules
+      - name: Check out repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: 'recursive'
-          submodule-mode: 'checkout'
+
+      - name: Checkout correct branch and submodules
+        run: |
+          git checkout ${{ github.event.pull_request.head.ref }}
+          git submodule update --init --recursive
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
@@ -129,8 +131,29 @@ jobs:
           TIMESTAMP_COMMIT=$(date +%Y%m%d%H%M%S) # generate a timestamp
           echo "TIMESTAMP_COMMIT=$TIMESTAMP_COMMIT" >> $GITHUB_ENV
 
+<<<<<<< HEAD
       - name: Inform of auto commit.
         if: ${{ env.TIMESTAMP_COMMIT != null }}
+=======
+      - name: Create PR
+        id: create_pr
+        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: Update cassettes
+          branch: cassette-diff-PR-${{ github.event.pull_request.number }}-${{ env.TIMESTAMP_COMMIT }}
+          title: "Update cassette-diff-PR${{ github.event.pull_request.number }}-${{ env.TIMESTAMP_COMMIT }}"
+          body: "This PR updates the cassettes. Please merge it."
+
+      - name: Check PR
+        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+        run: |
+          echo "Pull Request Number - ${{ steps.create_pr.outputs.pull-request-number }}"
+          echo "Pull Request URL - ${{ steps.create_pr.outputs.pull-request-url }}"
+
+      - name: Comment PR URL in the current PR
+        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+>>>>>>> 5120b3eb (ci: update git submodules separately to ensure it gets called)
         uses: thollander/actions-comment-pull-request@v2
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
