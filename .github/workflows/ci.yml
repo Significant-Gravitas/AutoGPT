@@ -64,12 +64,14 @@ jobs:
         python-version: ["3.10"]
 
     steps:
-      - name: Check out repository
+      - name: Check out repository with submodules
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
+          submodules: 'recursive'
+          submodule-mode: 'checkout'
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
