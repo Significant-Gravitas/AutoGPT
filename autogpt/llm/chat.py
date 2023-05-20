@@ -199,7 +199,7 @@ def chat_with_ai(
         agent.config.ai_name,
         agent.created_at,
         agent.cycle_count,
-        message_chain,
+        message_chain.messages,
         CURRENT_CONTEXT_FILE_NAME,
     )
 

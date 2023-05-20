@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -17,14 +17,13 @@ from autogpt.llm.base import Message
 from autogpt.llm.utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
 from autogpt.logs import logger
-from autogpt.memory.vector import VectorMemory
 
 
 @dataclass
 class MessageHistory:
     agent: Agent
 
-    messages: list[Message] = []
+    messages: list[Message] = field(default_factory=list)
     summary: str = "I was created"
 
     last_trimmed_index: int = 0

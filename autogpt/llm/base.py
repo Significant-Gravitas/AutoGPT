@@ -53,7 +53,7 @@ class ChatPrompt:
     """Container for an OpenAI chat completion prompt"""
 
     model: ChatModelInfo
-    messages: list[Message] = []
+    messages: list[Message] = field(default_factory=list)
 
     def __getitem__(self, i: int):
         return self.messages[i]

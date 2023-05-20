@@ -112,7 +112,7 @@ class Agent:
                 self.config.ai_name,
                 self.created_at,
                 self.cycle_count,
-                self.history,
+                self.history.messages,
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
             if (
