@@ -8,6 +8,7 @@ import pytest
 from autogpt.config import Config
 
 
+# import
 def test_initial_values(config):
     """
     Test if the initial values of the Config class attributes are set correctly.
@@ -17,8 +18,12 @@ def test_initial_values(config):
     assert config.speak_mode == False
     assert config.fast_llm_model == "gpt-3.5-turbo"
     assert config.smart_llm_model == "gpt-4"
-    assert config.fast_token_limit == 4000
-    assert config.smart_token_limit == 8000
+    assert config.fast_token_limit == config.get_max_token_limit(
+        config.fast_llm_model, 4000
+    )
+    assert config.smart_token_limit == config.get_max_token_limit(
+        config.smart_llm_model, 8000
+    )
 
 
 def test_set_continuous_mode(config):
