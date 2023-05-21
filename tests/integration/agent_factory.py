@@ -12,11 +12,14 @@ from autogpt.workspace import Workspace
 def agent_test_config(config: Config):
     was_continuous_mode = config.continuous_mode
     was_temperature = config.temperature
+    was_should_spin = config.should_spin
     config.set_continuous_mode(False)
     config.set_temperature(0)
+    config.should_spin = False
     yield config
     config.set_continuous_mode(was_continuous_mode)
     config.set_temperature(was_temperature)
+    config.should_spin = was_should_spin
 
 
 @pytest.fixture
