@@ -77,10 +77,10 @@ def mock_googleapiclient(mocker):
     ],
 )
 def test_google_official_search(
-    query, num_results, expected_output, search_results, mock_googleapiclient
+    query, num_results, expected_output, search_results, mock_googleapiclient, config
 ):
     mock_googleapiclient.return_value = search_results
-    actual_output = google_official_search(query, num_results=num_results)
+    actual_output = google_official_search(query, config, num_results=num_results)
     assert actual_output == safe_google_results(expected_output)
 
 
@@ -111,6 +111,7 @@ def test_google_official_search_errors(
     mock_googleapiclient,
     http_code,
     error_msg,
+    config,
 ):
     class resp:
         def __init__(self, _status, _reason):
@@ -127,5 +128,5 @@ def test_google_official_search_errors(
     )
 
     mock_googleapiclient.side_effect = error
-    actual_output = google_official_search(query, num_results=num_results)
+    actual_output = google_official_search(query, config, num_results=num_results)
     assert actual_output == safe_google_results(expected_output)
