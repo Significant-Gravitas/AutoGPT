@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     '"query": "<query>"',
     #  not CFG.google_api_key
 )
-def google_search(query: str, num_results: int = 8) -> str:
+def google_search(query: str, config: Config, num_results: int = 8) -> str:
     """Return the results of a Google search
 
     Args:
