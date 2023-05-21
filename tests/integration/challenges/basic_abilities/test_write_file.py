@@ -15,9 +15,10 @@ def test_write_file(
     writer_agent: Agent,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
+    config,
 ) -> None:
     file_path = str(writer_agent.workspace.get_path("hello_world.txt"))
     run_interaction_loop(monkeypatch, writer_agent, CYCLE_COUNT)
 
-    content = read_file(file_path)
+    content = read_file(file_path, config)
     assert content == "Hello World", f"Expected 'Hello World', got {content}"

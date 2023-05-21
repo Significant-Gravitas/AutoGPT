@@ -22,11 +22,6 @@ def file_content():
     return "This is a test file.\n"
 
 
-# @pytest.fixture()
-# def config():
-#     return Config()
-
-
 @pytest.fixture()
 def test_file_path(config, workspace: Workspace):
     return workspace.get_path("test_file.txt")
