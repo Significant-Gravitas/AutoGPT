@@ -5,11 +5,9 @@ import yaml
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
+from autogpt.config import Config
 from tests.integration.challenges.utils import run_interaction_loop, run_multiple_times
 from tests.utils import requires_api_key
-
-if typing.TYPE_CHECKING:
-    from autogpt.config import Config
 
 CYCLE_COUNT = 6
 

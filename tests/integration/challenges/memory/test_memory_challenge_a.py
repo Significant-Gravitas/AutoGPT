@@ -5,11 +5,9 @@ from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
+from autogpt.config import Config
 from tests.integration.challenges.utils import get_level_to_run, run_interaction_loop
 from tests.utils import requires_api_key
-
-if typing.TYPE_CHECKING:
-    from autogpt.config import Config
 
 LEVEL_CURRENTLY_BEATEN = 3  # real level beaten 30 and maybe more, but we can't record it, the cassette is too big
 MAX_LEVEL = 3
