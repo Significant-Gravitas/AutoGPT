@@ -1,3 +1,5 @@
+import typing
+
 import pytest
 from pytest_mock import MockerFixture
 
@@ -5,6 +7,9 @@ from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from tests.integration.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
+
+if typing.TYPE_CHECKING:
+    from autogpt.config import Config
 
 CYCLE_COUNT = 2
 
@@ -15,7 +20,7 @@ def test_browse_website(
     browser_agent: Agent,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
-    config,
+    config: Config,
 ) -> None:
     file_path = browser_agent.workspace.get_path("browse_website.txt")
     run_interaction_loop(monkeypatch, browser_agent, CYCLE_COUNT)

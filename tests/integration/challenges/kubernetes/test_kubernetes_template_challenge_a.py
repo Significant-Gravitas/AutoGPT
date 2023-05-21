@@ -1,3 +1,5 @@
+import typing
+
 import pytest
 import yaml
 
@@ -5,6 +7,9 @@ from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from tests.integration.challenges.utils import run_interaction_loop, run_multiple_times
 from tests.utils import requires_api_key
+
+if typing.TYPE_CHECKING:
+    from autogpt.config import Config
 
 CYCLE_COUNT = 6
 
@@ -14,7 +19,7 @@ CYCLE_COUNT = 6
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)
 def test_kubernetes_template_challenge_a(
-    kubernetes_agent: Agent, monkeypatch: pytest.MonkeyPatch, config
+    kubernetes_agent: Agent, monkeypatch: pytest.MonkeyPatch, config: Config
 ) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs

@@ -1,3 +1,5 @@
+import typing
+
 import pytest
 from pytest_mock import MockerFixture
 
@@ -5,6 +7,9 @@ from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
 from tests.integration.challenges.utils import get_level_to_run, run_interaction_loop
 from tests.utils import requires_api_key
+
+if typing.TYPE_CHECKING:
+    from autogpt.config import Config
 
 LEVEL_CURRENTLY_BEATEN = 3  # real level beaten 30 and maybe more, but we can't record it, the cassette is too big
 MAX_LEVEL = 3
@@ -17,7 +22,7 @@ def test_memory_challenge_a(
     user_selected_level: int,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
-    config,
+    config: Config,
 ) -> None:
     """
     The agent reads a file containing a task_id. Then, it reads a series of other files.
@@ -44,7 +49,7 @@ def create_instructions_files(
     memory_management_agent: Agent,
     num_files: int,
     task_id: str,
-    config,
+    config: Config,
     base_filename: str = "instructions_",
 ) -> None:
     """

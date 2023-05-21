@@ -1,3 +1,5 @@
+import typing
+
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from pytest_mock import MockerFixture
@@ -11,6 +13,9 @@ from tests.integration.challenges.utils import (
 )
 from tests.utils import requires_api_key
 
+if typing.TYPE_CHECKING:
+    from autogpt.config import Config
+
 LEVEL_CURRENTLY_BEATEN = -1
 MAX_LEVEL = 5
 NOISE = 1000
@@ -23,7 +28,7 @@ def test_memory_challenge_c(
     user_selected_level: int,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
-    config,
+    config: Config,
 ) -> None:
     """
     Instead of reading task Ids from files as with the previous challenges, the agent now must remember
@@ -67,7 +72,7 @@ def create_instructions_files(
     memory_management_agent: Agent,
     level: int,
     task_ids: list,
-    config,
+    config: Config,
     base_filename: str = "instructions_",
 ) -> None:
     """

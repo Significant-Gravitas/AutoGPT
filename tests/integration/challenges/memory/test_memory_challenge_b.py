@@ -1,3 +1,5 @@
+import typing
+
 import pytest
 from pytest_mock import MockerFixture
 
@@ -9,6 +11,9 @@ from tests.integration.challenges.utils import (
     run_interaction_loop,
 )
 from tests.utils import requires_api_key
+
+if typing.TYPE_CHECKING:
+    from autogpt.config import Config
 
 LEVEL_CURRENTLY_BEATEN = -1
 MAX_LEVEL = 5
@@ -22,7 +27,7 @@ def test_memory_challenge_b(
     user_selected_level: int,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
-    config,
+    config: Config,
 ) -> None:
     """
     The agent reads a series of files, each containing a task_id and noise. After reading 'n' files,
@@ -50,7 +55,7 @@ def create_instructions_files(
     memory_management_agent: Agent,
     level: int,
     task_ids: list,
-    config,
+    config: Config,
     base_filename: str = "instructions_",
 ) -> None:
     """

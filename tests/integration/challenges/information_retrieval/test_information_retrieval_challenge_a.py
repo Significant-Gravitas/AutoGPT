@@ -1,9 +1,14 @@
+import typing
+
 import pytest
 from pytest_mock import MockerFixture
 
 from autogpt.commands.file_operations import read_file, write_to_file
 from tests.integration.challenges.utils import run_interaction_loop, run_multiple_times
 from tests.utils import requires_api_key
+
+if typing.TYPE_CHECKING:
+    from autogpt.config import Config
 
 CYCLE_COUNT = 3
 from autogpt.agent import Agent
@@ -17,7 +22,7 @@ def test_information_retrieval_challenge_a(
     get_company_revenue_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: MockerFixture,
-    config,
+    config: Config,
 ) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs and checking the output file content.
