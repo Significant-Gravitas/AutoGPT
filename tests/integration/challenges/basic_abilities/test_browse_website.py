@@ -15,9 +15,10 @@ def test_browse_website(
     browser_agent: Agent,
     patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
+    config,
 ) -> None:
     file_path = browser_agent.workspace.get_path("browse_website.txt")
     run_interaction_loop(monkeypatch, browser_agent, CYCLE_COUNT)
 
-    content = read_file(file_path)
+    content = read_file(file_path, config)
     assert "£25.89" in content, f"Expected £25.89, got {content}"

@@ -141,7 +141,7 @@ def execute_command(
     "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
 )
 @validate_url
-def get_text_summary(url: str, question: str) -> str:
+def get_text_summary(url: str, question: str, config: Config) -> str:
     """Return the results of a Google search
 
     Args:
@@ -151,14 +151,14 @@ def get_text_summary(url: str, question: str) -> str:
     Returns:
         str: The summary of the text
     """
-    text = scrape_text(url)
+    text = scrape_text(url, config)
     summary = summarize_text(url, text, question)
     return f""" "Result" : {summary}"""
 
 
 @command("get_hyperlinks", "Get hyperlinks", '"url": "<url>"')
 @validate_url
-def get_hyperlinks(url: str) -> Union[str, List[str]]:
+def get_hyperlinks(url: str, config: Config) -> Union[str, List[str]]:
     """Return the results of a Google search
 
     Args:
@@ -167,7 +167,7 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
     Returns:
         str or list: The hyperlinks on the page
     """
-    return scrape_links(url)
+    return scrape_links(url, config)
 
 
 @command(

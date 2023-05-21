@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from sys import platform
+from typing import TYPE_CHECKING
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -22,12 +23,14 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 import autogpt.processing.text as summary
 from autogpt.commands.command import command
-from autogpt.config import Config
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
 
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
+
 FILE_DIR = Path(__file__).parent.parent
-CFG = Config()
 
 
 @command(
@@ -36,7 +39,7 @@ CFG = Config()
     '"url": "<url>", "question": "<what_you_want_to_find_on_website>"',
 )
 @validate_url
-def browse_website(url: str, question: str) -> str:
+def browse_website(url: str, question: str, config: Config) -> str:
     """Browse a website and return the answer and links to the user
 
     Args:
@@ -47,7 +50,7 @@ def browse_website(url: str, question: str) -> str:
         Tuple[str, WebDriver]: The answer and links to the user and the webdriver
     """
     try:
-        driver, text = scrape_text_with_selenium(url)
+        driver, text = scrape_text_with_selenium(url, config)
     except WebDriverException as e:
         # These errors are often quite long and include lots of context.
         # Just grab the first line.
@@ -65,7 +68,7 @@ def browse_website(url: str, question: str) -> str:
     return f"Answer gathered from website: {summary_text} \n \n Links: {links}"
 
 
-def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
+def scrape_text_with_selenium(url: str, config: Config) -> tuple[WebDriver, str]:
     """Scrape text from a website using selenium
 
     Args:
@@ -83,23 +86,23 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
         "edge": EdgeOptions,
     }
 
-    options = options_available[CFG.selenium_web_browser]()
+    options = options_available[config.selenium_web_browser]()
     options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.5615.49 Safari/537.36"
     )
 
-    if CFG.selenium_web_browser == "firefox":
-        if CFG.selenium_headless:
+    if config.selenium_web_browser == "firefox":
+        if config.selenium_headless:
             options.headless = True
             options.add_argument("--disable-gpu")
         driver = webdriver.Firefox(
             executable_path=GeckoDriverManager().install(), options=options
         )
-    elif CFG.selenium_web_browser == "safari":
+    elif config.selenium_web_browser == "safari":
         # Requires a bit more setup on the users end
         # See https://developer.apple.com/documentation/webkit/testing_with_webdriver_in_safari
         driver = webdriver.Safari(options=options)
-    elif CFG.selenium_web_browser == "edge":
+    elif config.selenium_web_browser == "edge":
         driver = webdriver.Edge(
             executable_path=EdgeChromiumDriverManager().install(), options=options
         )
@@ -109,7 +112,7 @@ def scrape_text_with_selenium(url: str) -> tuple[WebDriver, str]:
             options.add_argument("--remote-debugging-port=9222")
 
         options.add_argument("--no-sandbox")
-        if CFG.selenium_headless:
+        if config.selenium_headless:
             options.add_argument("--headless=new")
             options.add_argument("--disable-gpu")
 
