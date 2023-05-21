@@ -22,7 +22,7 @@ interactions:
       list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT
       Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent:
       Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
-      \"prompt\": \"<prompt>\"\n12. task_complete: Task Complete (Shutdown), args:
+      \"prompt\": \"<prompt>\"\n13. task_complete: Task Complete (Shutdown), args:
       \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
       information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
       Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
@@ -108,7 +108,7 @@ interactions:
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 2.337s
+      - 2.336s
       x-request-id:
       - 7cc7737a077abeb1f4e9117975dfb9c1
     status:
@@ -215,7 +215,7 @@ interactions:
       list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT
       Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent:
       Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
-      \"prompt\": \"<prompt>\"\n12. task_complete: Task Complete (Shutdown), args:
+      \"prompt\": \"<prompt>\"\n13. task_complete: Task Complete (Shutdown), args:
       \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
       information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
       Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
@@ -500,7 +500,7 @@ interactions:
       list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT
       Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent:
       Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
-      \"prompt\": \"<prompt>\"\n12. task_complete: Task Complete (Shutdown), args:
+      \"prompt\": \"<prompt>\"\n13. task_complete: Task Complete (Shutdown), args:
       \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
       information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
       Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
@@ -722,7 +722,7 @@ interactions:
       list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT
       Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent:
       Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
-      \"prompt\": \"<prompt>\"\n12. task_complete: Task Complete (Shutdown), args:
+      \"prompt\": \"<prompt>\"\n13. task_complete: Task Complete (Shutdown), args:
       \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
       information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
       Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
@@ -956,7 +956,7 @@ interactions:
       list_agents: List GPT Agents, args: () -> str\n10. message_agent: Message GPT
       Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11. start_agent:
       Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
-      \"prompt\": \"<prompt>\"\n12. task_complete: Task Complete (Shutdown), args:
+      \"prompt\": \"<prompt>\"\n13. task_complete: Task Complete (Shutdown), args:
       \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
       information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
       Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
