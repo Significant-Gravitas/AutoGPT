@@ -3,7 +3,11 @@ import os
 import time
 from pathlib import Path
 
-import torch
+try:
+    import torch
+except:
+    pass
+
 from playsound import playsound
 
 from autogpt.config import Config
@@ -19,7 +23,10 @@ class Silero(VoiceBase):
         Returns:
             None: None
         """
-
+        try:
+            import torch
+        except:
+            pass
         device = torch.device("cpu")
         torch.set_num_threads(4)
         local_file = "model.pt"
@@ -44,6 +51,11 @@ class Silero(VoiceBase):
         Returns:
             bool: True if the request was successful, False otherwise
         """
+        try :
+            import torch
+        except:
+            print("Silero needs torch to be installed. Please install torch (pip install torch) and try again.")
+            pass
         sample_rate = 48000
         speaker = Config().silero_tts_voice
 
