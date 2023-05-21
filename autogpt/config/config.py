@@ -29,9 +29,6 @@ class Config(metaclass=Singleton):
         self.allow_downloads = False
         self.skip_news = False
 
-        """Load here to avoid circular imports."""
-        from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
-
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
 
@@ -59,24 +56,18 @@ class Config(metaclass=Singleton):
         )
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
-        self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
 
-        # It's better to set max limits and be explicit for better user experience IMO
-        smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
-        model_info = OPEN_AI_CHAT_MODELS.get(self.smart_llm_model)
+        """ Load here to avoid circular imports. """
+        from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+        self.OPEN_AI_CHAT_MODELS = OPEN_AI_CHAT_MODELS
 
-        if model_info is not None:
-            max_limit = model_info.soft_token_limit
-        else:
-            max_limit = smart_token_limit
+        self.fast_token_limit = self.get_max_token_limit(
+            self.fast_llm_model, int(os.getenv("FAST_TOKEN_LIMIT", 4000))
+        )
 
-        if smart_token_limit > max_limit:
-            print(
-                f"Smart LLM model is {self.smart_llm_model}, setting max smart_token_limit to {max_limit}"
-            )
-            smart_token_limit = max_limit
-
-        self.smart_token_limit = smart_token_limit
+        self.smart_token_limit = self.get_max_token_limit(
+            self.smart_llm_model, int(os.getenv("SMART_TOKEN_LIMIT", 8000))
+        )
 
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
         self.embedding_tokenizer = os.getenv("EMBEDDING_TOKENIZER", "cl100k_base")
@@ -191,6 +182,23 @@ class Config(metaclass=Singleton):
             self.plugins_denylist = plugins_denylist.split(",")
         else:
             self.plugins_denylist = []
+
+    def get_max_token_limit(self, llm_model, token_limit):
+        """ Returns the max token limit for the specified model. """
+        model_info = self.OPEN_AI_CHAT_MODELS.get(llm_model)
+
+        if model_info is not None:
+            max_model_token_limit = model_info.soft_token_limit
+        else:
+            max_model_token_limit = token_limit
+
+        if token_limit > max_model_token_limit:
+            print(
+                f"Smart LLM model is {llm_model}, setting max token limit to {max_model_token_limit}"
+            )
+            token_limit = max_model_token_limit
+
+        return token_limit
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
