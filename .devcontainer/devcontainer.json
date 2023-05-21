@@ -29,7 +29,17 @@
         "python.defaultInterpreterPath": "/usr/local/bin/python",
         "python.testing.pytestEnabled": true,
         "python.testing.unittestEnabled": false
-      }
+      },
+      "extensions": [
+        "ms-python.python",
+        "VisualStudioExptTeam.vscodeintellicode",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "GitHub.vscode-pull-request-github",
+        "GitHub.copilot",
+        "github.vscode-github-actions"
+      ]
     }
   },
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
