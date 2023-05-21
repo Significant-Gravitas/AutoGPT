@@ -7,7 +7,6 @@ from unittest.mock import mock_open, patch
 import pytest
 
 from autogpt.commands.audio_text import read_audio_from_file
-
 from autogpt.config import Config
 
 

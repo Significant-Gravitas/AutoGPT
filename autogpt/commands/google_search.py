@@ -7,9 +7,13 @@ from itertools import islice
 =======
 from typing import TYPE_CHECKING
 
+<<<<<<< HEAD
 >>>>>>> aa81cc3e (feat: google search)
 
 from duckduckgo_search import DDGS
+=======
+from duckduckgo_search import ddg
+>>>>>>> 3ca1c0e1 (fix: linting)
 
 from autogpt.commands.command import command
 

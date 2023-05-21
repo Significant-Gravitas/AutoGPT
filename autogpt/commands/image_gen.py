@@ -6,7 +6,6 @@ import uuid
 from base64 import b64decode
 from typing import TYPE_CHECKING
 
-
 import openai
 import requests
 from PIL import Image

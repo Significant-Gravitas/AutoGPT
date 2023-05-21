@@ -1,8 +1,6 @@
 """Commands for converting audio to text."""
 import json
-
 from typing import TYPE_CHECKING
-
 
 import requests
 

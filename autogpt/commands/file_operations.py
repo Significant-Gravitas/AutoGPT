@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import os.path
-from typing import Dict, Generator, Literal, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Generator, Literal, Tuple
 
 import charset_normalizer
 import requests
@@ -13,11 +13,14 @@ from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.commands.command import command
 <<<<<<< HEAD
+<<<<<<< HEAD
 from autogpt.commands.file_operations_utils import read_textual_file
 from autogpt.config import Config
 =======
 
 >>>>>>> a3c02522 (feat: file operations cfg)
+=======
+>>>>>>> 3ca1c0e1 (fix: linting)
 from autogpt.logs import logger
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size

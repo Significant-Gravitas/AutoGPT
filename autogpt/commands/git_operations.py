@@ -1,6 +1,7 @@
 """Git operations for autogpt"""
-from git.repo import Repo
 from typing import TYPE_CHECKING
+
+from git.repo import Repo
 
 from autogpt.commands.command import command
 from autogpt.config import Config

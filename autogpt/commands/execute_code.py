@@ -4,14 +4,12 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-
 import docker
 from docker.errors import ImageNotFound
 
 from autogpt.commands.command import command
-from autogpt.logs import logger
-
 from autogpt.config import Config
+from autogpt.logs import logger
 
 
 @command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
