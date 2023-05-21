@@ -10,7 +10,6 @@ from colorama import Fore
 from autogpt.singleton import Singleton
 
 
-
 class Config(metaclass=Singleton):
     """
     Configuration class to store the state of bools for different scripts access.
@@ -59,6 +58,7 @@ class Config(metaclass=Singleton):
 
         """ Load here to avoid circular imports. """
         from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+
         self.OPEN_AI_CHAT_MODELS = OPEN_AI_CHAT_MODELS
 
         self.fast_token_limit = self.get_max_token_limit(
@@ -184,7 +184,7 @@ class Config(metaclass=Singleton):
             self.plugins_denylist = []
 
     def get_max_token_limit(self, llm_model, token_limit):
-        """ Returns the max token limit for the specified model. """
+        """Returns the max token limit for the specified model."""
         model_info = self.OPEN_AI_CHAT_MODELS.get(llm_model)
 
         if model_info is not None:
