@@ -27,6 +27,7 @@ def run_auto_gpt(
     continuous: bool,
     continuous_limit: int,
     ai_settings: str,
+    prompt_settings: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -46,10 +47,12 @@ def run_auto_gpt(
     cfg = Config()
     # TODO: fill in llm values here
     check_openai_api_key()
+
     create_config(
         continuous,
         continuous_limit,
         ai_settings,
+        prompt_settings,
         skip_reprompt,
         speak,
         debug,

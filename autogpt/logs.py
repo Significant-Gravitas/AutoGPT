@@ -287,5 +287,8 @@ def print_assistant_thoughts(
             logger.typewriter_log("- ", Fore.GREEN, line.strip())
     logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
     # Speak the assistant's thoughts
-    if speak_mode and assistant_thoughts_speak:
-        say_text(assistant_thoughts_speak)
+    if assistant_thoughts_speak:
+        if speak_mode:
+            say_text(assistant_thoughts_speak)
+        else:
+            logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
