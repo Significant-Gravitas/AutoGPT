@@ -41,8 +41,8 @@ def google_search(query: str, num_results: int = 8) -> str:
     "google",
     "Google Search",
     '"query": "<query>"',
-    bool(CFG.google_api_key),
-    "Configure google_api_key.",
+    bool(CFG.google_api_key) and bool(CFG.custom_search_engine_id),
+    "Configure google_api_key and custom_search_engine_id.",
 )
 def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
     """Return the results of a Google search using the official Google API
