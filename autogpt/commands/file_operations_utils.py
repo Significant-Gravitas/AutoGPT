@@ -1,9 +1,9 @@
 import json
 import os
 
+import charset_normalizer
 import docx
 import markdown
-import charset_normalizer
 import PyPDF2
 import yaml
 from bs4 import BeautifulSoup

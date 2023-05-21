@@ -160,6 +160,7 @@ def read_file(filename: str) -> str:
     except Exception as e:
         return f"Error: {str(e)}"
 
+
 def ingest_file(
     filename: str, memory, max_length: int = 4000, overlap: int = 200
 ) -> None:
