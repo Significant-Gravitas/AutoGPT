@@ -53,5 +53,5 @@ class TestReadAudio:
 
     def test_edge_read_audio_empty_audio(self, config):
         # Edge Test
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError):
             read_audio(b"", config)
