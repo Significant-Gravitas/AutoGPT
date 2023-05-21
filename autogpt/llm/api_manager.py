@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import List, Optional
+
 import openai
+from openai import Model
 
 from autogpt.config import Config
 from autogpt.llm.modelsinfo import COSTS
@@ -14,12 +17,14 @@ class ApiManager(metaclass=Singleton):
         self.total_completion_tokens = 0
         self.total_cost = 0
         self.total_budget = 0
+        self.models: Optional[list[Model]] = None
 
     def reset(self):
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
         self.total_cost = 0
         self.total_budget = 0.0
+        self.models = None
 
     def create_chat_completion(
         self,
@@ -127,3 +132,17 @@ class ApiManager(metaclass=Singleton):
         float: The total budget for API calls.
         """
         return self.total_budget
+
+    def get_models(self) -> List[Model]:
+        """
+        Get list of available GPT models.
+
+        Returns:
+        list: List of available GPT models.
+
+        """
+        if self.models is None:
+            all_models = openai.Model.list()["data"]
+            self.models = [model for model in all_models if "gpt" in model["id"]]
+
+        return self.models
