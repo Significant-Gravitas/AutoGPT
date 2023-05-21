@@ -94,6 +94,7 @@ def execute_command(
     command_name: str,
     arguments,
     prompt: PromptGenerator,
+    config: Config,
 ):
     """Execute the command and return the result
 
@@ -109,13 +110,13 @@ def execute_command(
 
         # If the command is found, call it with the provided arguments
         if cmd:
-            return cmd(**arguments)
+            return cmd(**arguments, config=config)
 
         # TODO: Remove commands below after they are moved to the command registry.
         command_name = map_command_synonyms(command_name.lower())
 
         if command_name == "memory_add":
-            return get_memory(CFG).add(arguments["string"])
+            return get_memory(config).add(arguments["string"])
 
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python

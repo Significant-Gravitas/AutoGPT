@@ -1,8 +1,9 @@
 import functools
 import importlib
 import inspect
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
+from autogpt.config import Config
 from autogpt.logs import logger
 
 # Unique identifier for auto-gpt commands
@@ -26,6 +27,7 @@ class Command:
         signature: str = "",
         enabled: bool = True,
         disabled_reason: Optional[str] = None,
+        config: Config = None,
     ):
         self.name = name
         self.description = description
@@ -33,6 +35,7 @@ class Command:
         self.signature = signature if signature else str(inspect.signature(self.method))
         self.enabled = enabled
         self.disabled_reason = disabled_reason
+        self.config = config
 
     def __call__(self, *args, **kwargs) -> Any:
         if not self.enabled:
@@ -136,6 +139,7 @@ def command(
     signature: str = "",
     enabled: bool = True,
     disabled_reason: Optional[str] = None,
+    config: Config = None,
 ) -> Callable[..., Any]:
     """The command decorator is used to create Command objects from ordinary functions."""
 
@@ -152,6 +156,7 @@ def command(
             signature=signature,
             enabled=enabled,
             disabled_reason=disabled_reason,
+            config=config,
         )
 
         @functools.wraps(func)
