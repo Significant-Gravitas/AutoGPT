@@ -31,20 +31,24 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please provide a searchable summary of the issue in the title above ⬆️.
-        ⚠️ SUPER-busy repo, please help the volunteer maintainers.
-        The less time we spend here, the more time we spend building AutoGPT.
+        Please confirm that the issue you have is described well and precise in the title above ⬆️.
+        A good rule of thumb: What would you type if you were searching for the issue?
         
-        Please help us help you:
-        - Does it work on `stable` branch (https://github.com/Torantulino/Auto-GPT/tree/stable)?
-        - Does it work on current `master` (https://github.com/Torantulino/Auto-GPT/tree/master)?
-        - Search for existing issues, "add comment" is tidier than "new issue" and newer issues will not be reviewed earlier, 
-          this is dependent on the current priorities set by our wonderful team
-        - Ask on our Discord (https://discord.gg/autogpt)
+        For example:
+        BAD - my auto-gpt keeps looping
+        GOOD - After performing execute_python_file, auto-gpt goes into a loop where it keeps trying to execute the file.
+        
+        ⚠️ SUPER-busy repo, please help the volunteer maintainers.
+        The less time we spend here, the more time we can spend building AutoGPT.
+        
+        Please help us help you by following these steps:
+        - Search for existing issues, adding a comment when you have the same or similar issue is tidier than "new issue" and 
+          newer issues will not be reviewed earlier, this is dependent on the current priorities set by our wonderful team
+        - Ask on our Discord if your issue is known when you are unsure (https://discord.gg/autogpt)
         - Provide relevant info:
-          - Provide commit-hash (`git rev-parse HEAD` gets it)
-          - If it's a pip/packages issue, provide pip version, python version
-          - If it's a crash, provide traceback.
+          - Provide commit-hash (`git rev-parse HEAD` gets it) if possible
+          - If it's a pip/packages issue, mention this in the title and provide pip version, python version
+          - If it's a crash, provide traceback and describe the error you got as precise as possible in the title.
 
   - type: dropdown
     attributes:
@@ -101,8 +105,7 @@ body:
       description: >
         Select the area related to the issue you are reporting.
       options:
-        - Installation
-        - Setup
+        - Installation and setup
         - Memory
         - Performance
         - Prompt
@@ -110,6 +113,9 @@ body:
         - Plugins
         - AI Model Limitations
         - Challenges
+        - Documentation
+        - Logging
+        - Agents
         - Other
     validations:
       required: true
@@ -131,7 +137,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        ⚠️The following is optional, please keep in mind that the log files may contain personal information such as credentials.⚠️
+        ⚠️The following is OPTIONAL, please keep in mind that the log files may contain personal information such as credentials.⚠️
         
         "The log files are located in the folder 'logs' inside the main auto-gpt folder."
         
@@ -140,7 +146,7 @@ body:
       label: Upload Activity Log Content
       description: |
         Upload the activity log content, this can help us understand the issue better. 
-        To do this, go to the folder logs in your main auto-gpt folder, open activity.log and copy the contents to this field. 
+        To do this, go to the folder logs in your main auto-gpt folder, open activity.log and copy/paste the contents to this field. 
         ⚠️ The activity log may contain personal data given to auto-gpt by you in prompt or input as well as 
         any personal information that auto-gpt collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
     validations:
@@ -151,7 +157,7 @@ body:
       label: Upload Error Log Content
       description: |
         Upload the error log content, this will help us understand the issue better. 
-        To do this, go to the folder logs in your main auto-gpt folder, open error.log and copy the contents to this field. 
+        To do this, go to the folder logs in your main auto-gpt folder, open error.log and copy/paste the contents to this field. 
         ⚠️ The error log may contain personal data given to auto-gpt by you in prompt or input as well as 
         any personal information that auto-gpt collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
     validations:
