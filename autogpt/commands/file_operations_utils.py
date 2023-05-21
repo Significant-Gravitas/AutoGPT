@@ -3,23 +3,25 @@ import os
 
 import docx
 import markdown
+import charset_normalizer
 import PyPDF2
 import yaml
 from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
 
+from autogpt import logs
+
 
 class ParserStrategy:
-    def read(self, file_path):
+    def read(self, file_path: str):
         raise NotImplementedError
 
 
 # Basic text file reading
 class TXTParser(ParserStrategy):
     def read(self, file_path):
-        with open(file_path, "r") as f:
-            text = f.read()
-        return text
+        charset_match = charset_normalizer.from_path(file_path).best()
+        return str(charset_match)
 
 
 # Reading text from binary file using pdf parser
@@ -93,13 +95,16 @@ class LaTeXParser(ParserStrategy):
 
 
 class FileContext:
-    def __init__(self, parser):
+    def __init__(self, parser: ParserStrategy, logger: logs.Logger):
         self.parser = parser
+        self.logger = logger
 
-    def set_parser(self, parser):
+    def set_parser(self, parser: ParserStrategy):
+        self.logger.debug(f"Setting Context Parser to {parser}")
         self.parser = parser
 
     def read_file(self, file_path):
+        self.logger.debug(f"Reading file {file_path} with parser {self.parser}")
         return self.parser.read(file_path)
 
 
@@ -121,7 +126,7 @@ extension_to_parser = {
 }
 
 
-def is_file_binary_fn(file_path):
+def is_file_binary_fn(file_path: str):
     """Given a file path load all its content and checks if the null bytes is present
 
     Args:
@@ -137,7 +142,7 @@ def is_file_binary_fn(file_path):
     return False
 
 
-def read_textual_file(file_path):
+def read_textual_file(file_path: str, logger: logs.Logger):
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"{file_path} not found!")
     is_binary = is_file_binary_fn(file_path)
@@ -150,5 +155,5 @@ def read_textual_file(file_path):
             )
         # fallback to txt file parser (to support script and code files loading)
         parser = TXTParser()
-    file_context = FileContext(parser)
+    file_context = FileContext(parser, logger)
     return file_context.read_file(file_path)

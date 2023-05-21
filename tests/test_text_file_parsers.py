@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from PyPDF2 import PdfWriter
 
 from autogpt.commands.file_operations_utils import is_file_binary_fn, read_textual_file
+from autogpt.logs import logger
 
 plain_text_str = "Hello, world!"
 
@@ -145,7 +146,7 @@ class TestConfig(TestCase):
             c_file_creator,
         ) in respective_file_creation_functions.items():
             created_filepath = c_file_creator()
-            loaded_text = read_textual_file(created_filepath)
+            loaded_text = read_textual_file(created_filepath, logger)
             self.assertIn(plain_text_str, loaded_text)
             should_be_binary = file_extension in binary_files_extensions
             self.assertEqual(should_be_binary, is_file_binary_fn(created_filepath))

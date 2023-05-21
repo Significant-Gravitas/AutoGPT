@@ -144,25 +144,8 @@ def split_file(
         start += max_length - overlap
 
 
-@command("read_file", "Read text from file", '"filename": "<filename>"')
+@command("read_file", "Read a file", '"filename": "<filename>"')
 def read_file(filename: str) -> str:
-    """Read a text from a file and return the contents
-
-    Args:
-        filename (str): The name of the file to read
-
-    Returns:
-        str: The contents of the file
-    """
-    try:
-        content = read_textual_file(filename)
-        return content
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-
-@command("read_raw_file", "Read file", '"filename": "<filename>"')
-def read_raw_file(filename: str) -> str:
     """Read a file and return the contents
 
     Args:
@@ -172,13 +155,10 @@ def read_raw_file(filename: str) -> str:
         str: The contents of the file
     """
     try:
-        charset_match = charset_normalizer.from_path(filename).best()
-        encoding = charset_match.encoding
-        logger.debug(f"Read file '{filename}' with encoding '{encoding}'")
-        return str(charset_match)
-    except Exception as err:
-        return f"Error: {err}"
-
+        content = read_textual_file(filename, logger)
+        return content
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 def ingest_file(
     filename: str, memory, max_length: int = 4000, overlap: int = 200
