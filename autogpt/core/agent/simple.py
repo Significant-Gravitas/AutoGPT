@@ -167,9 +167,9 @@ class SimpleAgent(Agent, Configurable):
     def __repr__(self):
         return "SimpleAgent()"
 
-    ###############################################################
-    # Factory interface for agent boostrapping and initialization #
-    ###############################################################
+    ################################################################
+    # Factory interface for agent bootstrapping and initialization #
+    ################################################################
 
     @classmethod
     def build_user_configuration(cls) -> dict[str, Any]:

@@ -180,6 +180,7 @@ class SimpleWorkspace(Configurable, Workspace):
         log_path.mkdir(parents=True, exist_ok=True)
         (log_path / "debug.log").touch()
         (log_path / "cycle.log").touch()
+        (log_path / "file_operations.log").touch()
 
         return workspace_root
 
