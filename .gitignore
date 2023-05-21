@@ -22,6 +22,7 @@ logs
 *.mp3
 *.wav
 mem.sqlite3
+venvAutoGPT
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
