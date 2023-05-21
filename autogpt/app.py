@@ -13,7 +13,6 @@ from autogpt.prompts.generator import PromptGenerator
 from autogpt.speech import say_text
 from autogpt.url_utils.validators import validate_url
 
-CFG = Config()
 AGENT_MANAGER = AgentManager()
 
 
@@ -175,7 +174,7 @@ def get_hyperlinks(url: str, config: Config) -> Union[str, List[str]]:
     "Start GPT Agent",
     '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"',
 )
-def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
+def start_agent(name: str, task: str, prompt: str, config: Config, model=None) -> str:
     """Start an agent with a given name, task, and prompt
 
     Args:
@@ -187,6 +186,8 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     Returns:
         str: The response of the agent
     """
+    if model is None:
+        model = config.fast_llm_model
     # Remove underscores from name
     voice_name = name.replace("_", " ")
 
@@ -194,11 +195,11 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     agent_intro = f"{voice_name} here, Reporting for duty!"
 
     # Create agent
-    if CFG.speak_mode:
+    if config.speak_mode:
         say_text(agent_intro, 1)
     key, ack = AGENT_MANAGER.create_agent(task, first_message, model)
 
-    if CFG.speak_mode:
+    if config.speak_mode:
         say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
     # Assign task (prompt), get response
@@ -208,7 +209,7 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
 
 
 @command("message_agent", "Message GPT Agent", '"key": "<key>", "message": "<message>"')
-def message_agent(key: str, message: str) -> str:
+def message_agent(key: str, message: str, config: Config) -> str:
     """Message an agent with a given key and message"""
     # Check if the key is a valid integer
     if is_valid_int(key):
@@ -217,13 +218,13 @@ def message_agent(key: str, message: str) -> str:
         return "Invalid key, must be an integer."
 
     # Speak response
-    if CFG.speak_mode:
+    if config.speak_mode:
         say_text(agent_response, 1)
     return agent_response
 
 
 @command("list_agents", "List GPT Agents", "")
-def list_agents() -> str:
+def list_agents(config: Config) -> str:
     """List all agents
 
     Returns:
@@ -235,7 +236,7 @@ def list_agents() -> str:
 
 
 @command("delete_agent", "Delete GPT Agent", '"key": "<key>"')
-def delete_agent(key: str) -> str:
+def delete_agent(key: str, config: Config) -> str:
     """Delete an agent with a given key
 
     Args:
