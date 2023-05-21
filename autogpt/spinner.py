@@ -8,13 +8,16 @@ import time
 class Spinner:
     """A simple spinner class"""
 
-    def __init__(self, message: str = "Loading...", delay: float = 0.1) -> None:
+    def __init__(
+        self, message: str = "Loading...", delay: float = 0.1, should_spin: bool = True
+    ) -> None:
         """Initialize the spinner class
 
         Args:
             message (str): The message to display.
             delay (float): The delay between each spinner update.
         """
+        self.should_spin = should_spin
         self.spinner = itertools.cycle(["-", "/", "|", "\\"])
         self.delay = delay
         self.message = message
@@ -23,11 +26,17 @@ class Spinner:
 
     def spin(self) -> None:
         """Spin the spinner"""
+        if not self.should_spin:
+            self.print_message()
+            return
         while self.running:
-            sys.stdout.write(f"{next(self.spinner)} {self.message}\r")
-            sys.stdout.flush()
+            self.print_message()
             time.sleep(self.delay)
-            sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
+
+    def print_message(self):
+        sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")
+        sys.stdout.write(f"{next(self.spinner)} {self.message}\r")
+        sys.stdout.flush()
 
     def __enter__(self):
         """Start the spinner"""
@@ -57,9 +66,7 @@ class Spinner:
             new_message (str): New message to display.
             delay (float): The delay in seconds between each spinner update.
         """
-        time.sleep(delay)
-        sys.stdout.write(
-            f"\r{' ' * (len(self.message) + 2)}\r"
-        )  # Clear the current message
-        sys.stdout.flush()
+        self.delay = delay
         self.message = new_message
+        if not self.should_spin:
+            self.print_message()
