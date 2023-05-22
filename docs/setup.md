@@ -60,9 +60,14 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
               - ./data:/app/data
               ## allow auto-gpt to write logs to disk
               - ./logs:/app/logs
-              ## uncomment following lines if you have / want to make use of these files
-              #- ./azure.yaml:/app/azure.yaml
-              #- ./ai_settings.yaml:/app/ai_settings.yaml
+              ## uncomment following lines if you want to make use of these files
+              ## you must have them existing in the same folder as this docker-compose.yml
+              #- type: bind
+              #  source: ./azure.yaml
+              #  target: /app/azure.yaml
+              #- type: bind
+              #  source: ./ai_settings.yaml
+              #  target: /app/ai_settings.yaml
           redis:
             image: "redis/redis-stack-server:latest"
 
@@ -210,6 +215,16 @@ docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuou
 
 
 ### Run without Docker
+
+#### Create a Virtual Environment
+
+Create a virtual environment to run in.
+
+``` shell
+python -m venv venvAutoGPT
+source venvAutoGPT/bin/activate
+pip3 install --upgrade pip
+```
 
 !!! warning
     Due to security reasons, certain features (like Python execution) will by default be disabled when running without docker. So, even if you want to run the program outside a docker container, you currently still need docker to actually run scripts.
