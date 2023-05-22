@@ -337,7 +337,7 @@ class Agent:
         thought = thoughts.get("thoughts", "")
         feedback_thoughts = thought + reasoning + plan
 
-        messages = {"role": "user", "content": feedback_prompt + feedback_thoughts}
+        messages = [{"role": "user", "content": feedback_prompt + feedback_thoughts}]
 
         self.log_cycle_handler.log_cycle(
             self.config.ai_name,
@@ -347,7 +347,7 @@ class Agent:
             PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
         )
 
-        feedback = create_chat_completion(messages)
+        feedback = create_chat_completion(messages, model=llm_model)
 
         self.log_cycle_handler.log_cycle(
             self.config.ai_name,

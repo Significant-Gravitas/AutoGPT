@@ -12,6 +12,7 @@ from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.commands.command import command
+from autogpt.commands.file_operations_utils import read_textual_file
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
@@ -135,7 +136,7 @@ def split_file(
     while start < content_length:
         end = start + max_length
         if end + overlap < content_length:
-            chunk = content[start : end + overlap - 1]
+            chunk = content[start : end + max(overlap - 1, 0)]
         else:
             chunk = content[start:content_length]
 
@@ -147,7 +148,7 @@ def split_file(
         start += max_length - overlap
 
 
-@command("read_file", "Read file", '"filename": "<filename>"')
+@command("read_file", "Read a file", '"filename": "<filename>"')
 def read_file(filename: str) -> str:
     """Read a file and return the contents
 
@@ -158,10 +159,7 @@ def read_file(filename: str) -> str:
         str: The contents of the file
     """
     try:
-        charset_match = charset_normalizer.from_path(filename).best()
-        encoding = charset_match.encoding
-        logger.debug(f"Read file '{filename}' with encoding '{encoding}'")
-        content = str(charset_match)
+        content = read_textual_file(filename, logger)
 
         # TODO: invalidate/update memory when file is edited
         file_memory = MemoryItem.from_text_file(content, filename)
@@ -169,8 +167,8 @@ def read_file(filename: str) -> str:
             return file_memory.summary
 
         return content
-    except Exception as err:
-        return f"Error: {err}"
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 def ingest_file(

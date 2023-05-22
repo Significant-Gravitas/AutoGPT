@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import functools
 import time
-from itertools import islice
-from typing import List, Optional
+from typing import List, Literal, Optional
 from unittest.mock import patch
 
-import numpy as np
 import openai
 import openai.api_resources.abstract.engine_api_resource as engine_api_resource
 import openai.util
-import tiktoken
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError
 from openai.openai_object import OpenAIObject
@@ -18,7 +15,6 @@ from openai.openai_object import OpenAIObject
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
-from autogpt.llm.providers.openai import OPEN_AI_EMBEDDING_MODELS
 from autogpt.logs import logger
 
 from .token_counter import *
@@ -241,3 +237,22 @@ def create_chat_completion(
             continue
         resp = plugin.on_response(resp)
     return resp
+
+
+def check_model(
+    model_name: str, model_type: Literal["smart_llm_model", "fast_llm_model"]
+) -> str:
+    """Check if model is available for use. If not, return gpt-3.5-turbo."""
+    api_manager = ApiManager()
+    models = api_manager.get_models()
+
+    if any(model_name in m["id"] for m in models):
+        return model_name
+
+    logger.typewriter_log(
+        "WARNING: ",
+        Fore.YELLOW,
+        f"You do not have access to {model_name}. Setting {model_type} to "
+        f"gpt-3.5-turbo.",
+    )
+    return "gpt-3.5-turbo"
