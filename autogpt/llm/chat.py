@@ -225,6 +225,9 @@ def chat_with_ai(
             logger.debug(f"Tokens remaining for response: {tokens_remaining}")
             logger.debug("------------ CONTEXT SENT TO AI ---------------")
             for message in current_context:
+                # Skipping when message object is None
+                if message is None:
+                    continue
                 # Skip printing the prompt
                 if message["role"] == "system" and message["content"] == prompt:
                     continue
