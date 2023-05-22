@@ -53,9 +53,3 @@ def patched_api_requestor(mocker):
         )
 
     return mocker
-
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--save-score", action="store_true", help="Enable the cleanup fixture"
-    )
