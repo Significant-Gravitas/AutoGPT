@@ -12,7 +12,6 @@ from tests.utils import requires_api_key
 CYCLE_COUNT = 6
 
 
-@pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @run_multiple_times(3)

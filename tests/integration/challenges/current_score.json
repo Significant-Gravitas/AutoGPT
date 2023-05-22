@@ -9,6 +9,18 @@
             "max_level": 1
         }
     },
+    "information_retrieval": {
+        "information_retrieval_challenge_a": {
+            "current_level_beaten": null,
+            "max_level": null
+        }
+    },
+    "kubernetes": {
+        "kubernetes_template_challenge_a": {
+            "current_level_beaten": null,
+            "max_level": null
+        }
+    },
     "memory": {
         "memory_challenge_a": {
             "current_level_beaten": 3,
