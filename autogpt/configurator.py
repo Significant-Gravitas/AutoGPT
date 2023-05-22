@@ -79,14 +79,20 @@ def create_config(
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_smart_token_limit(CFG.fast_token_limit)
         if CFG.use_azure:
-            CFG.set_azure_deployment_id_for_model(CFG.smart_llm_model, CFG.get_azure_deployment_id_for_model(CFG.fast_llm_model))
+            CFG.set_azure_deployment_id_for_model(
+                CFG.smart_llm_model,
+                CFG.get_azure_deployment_id_for_model(CFG.fast_llm_model),
+            )
         CFG.set_smart_llm_model(CFG.fast_llm_model)
 
     if gpt4only:
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_fast_token_limit(CFG.smart_token_limit)
         if CFG.use_azure:
-            CFG.set_azure_deployment_id_for_model(CFG.fast_llm_model, CFG.get_azure_deployment_id_for_model(CFG.smart_llm_model))
+            CFG.set_azure_deployment_id_for_model(
+                CFG.fast_llm_model,
+                CFG.get_azure_deployment_id_for_model(CFG.smart_llm_model),
+            )
         CFG.set_fast_llm_model(CFG.smart_llm_model)
 
     if memory_type:

@@ -169,7 +169,7 @@ class Config(metaclass=Singleton):
         Returns:
             The matching deployment id if found, otherwise an empty string.
         """
-        if hasattr(self, 'azure_model_to_deployment_id_map') == False:
+        if hasattr(self, "azure_model_to_deployment_id_map") == False:
             return ""
 
         if model == self.fast_llm_model:
@@ -226,7 +226,6 @@ class Config(metaclass=Singleton):
             self.azure_model_to_deployment_id_map[
                 "embedding_model_deployment_id"
             ] = deployment_id
-
 
     def set_continuous_mode(self, value: bool) -> None:
         """Set the continuous mode value."""
