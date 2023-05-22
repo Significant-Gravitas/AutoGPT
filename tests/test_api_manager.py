@@ -118,3 +118,13 @@ class TestApiManager:
         assert api_manager.get_total_prompt_tokens() == 50
         assert api_manager.get_total_completion_tokens() == 100
         assert api_manager.get_total_cost() == (50 * 0.002 + 100 * 0.002) / 1000
+
+    @staticmethod
+    def test_get_models():
+        """Test if getting models works correctly."""
+        with patch("openai.Model.list") as mock_list_models:
+            mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
+            result = api_manager.get_models()
+
+            assert result[0]["id"] == "gpt-3.5-turbo"
+            assert api_manager.models[0]["id"] == "gpt-3.5-turbo"
