@@ -37,7 +37,22 @@ class Config(metaclass=Singleton):
         else:
             self.disabled_command_categories = []
 
+        deny_commands = os.getenv("DENY_COMMANDS")
+        if deny_commands:
+            self.deny_commands = deny_commands.split(",")
+        else:
+            self.deny_commands = []
+
+        allow_commands = os.getenv("ALLOW_COMMANDS")
+        if allow_commands:
+            self.allow_commands = allow_commands.split(",")
+        else:
+            self.allow_commands = []
+
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
+        self.prompt_settings_file = os.getenv(
+            "PROMPT_SETTINGS_FILE", "prompt_settings.yaml"
+        )
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
@@ -195,7 +210,7 @@ class Config(metaclass=Singleton):
             None
         """
         with open(config_file) as file:
-            config_params = yaml.load(file, Loader=yaml.FullLoader)
+            config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
         self.openai_api_version = (
