@@ -843,6 +843,7 @@ interactions:
       Exclusively use the commands listed below e.g. command_name\n\nCommands:\n1.
       append_to_file: Append to file, args: \"filename\": \"<filename>\", \"text\":
       \"<text>\"\n2. delete_file: Delete file, args: \"filename\": \"<filename>\"\n3.
+<<<<<<< HEAD
       list_files: List Files in Directory, args: \"directory\": \"<directory>\"\n4.
       read_file: Read a file, args: \"filename\": \"<filename>\"\n5. write_to_file:
       Write to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n6.
@@ -2281,6 +2282,8 @@ interactions:
       Exclusively use the commands listed below e.g. command_name\n\nCommands:\n1.
       append_to_file: Append to file, args: \"filename\": \"<filename>\", \"text\":
       \"<text>\"\n2. delete_file: Delete file, args: \"filename\": \"<filename>\"\n3.
+=======
+>>>>>>> f909c633 (feat: cassettes)
       download_file: Download File, args: \"url\": \"<url>\", \"filename\": \"<filename>\"\n4.
       list_files: List Files in Directory, args: \"directory\": \"<directory>\"\n5.
       read_file: Read file, args: \"filename\": \"<filename>\"\n6. write_to_file:
@@ -2326,6 +2329,7 @@ interactions:
   response:
     body:
       string: !!binary |
+<<<<<<< HEAD
         H4sIAAAAAAAAA9RUS4/TMBC+8ytGc+klrVoKaTc3OCCK4LawEgRVrjONTR072BPaVdX/jvLqI2gl
         BOLAdebzfI9J5og6wwSlEiyL0owXq8/l8vD+QS/U/lP5Lovv3rw+bGT8oci2jxih23wjyd2LiXRF
         aYi1sxih9CSYMkxm8fJFHM/u4jjCwmVkMMG85PF88nLMld+48XQ+nWGEVRA5YXLE0rui5DW7HdmA
@@ -2337,11 +2341,26 @@ interactions:
         mOAgc9XG0FgqkrsbkirU/FdMwudVQZZDt9kn3A6NhZLE7n/5m1rhp6g/ER38lwtRK2g93ZgYWBc+
         Hx6XtlFjLyMGPm6GDA/SVSa92kZxJzy1JzxFuNVWB7VuzwEmGNiVGKG2GR0wmZ6+np79BAAA//8D
         AGltxjsBBgAA
+=======
+        H4sIAAAAAAAAA7STT2/TQBDF73yK0VxycSKbhCb41gsQCSqEQFWFkbVdT+Jt7B2zO1YtRf7uyH+S
+        NEacUK/z3r75ze7sEU2GMepciS6rYr7eOpt/vYv4S27XH++e7h+a5vPtt9sPdrUiDJAfn0jLeGKh
+        uawKEsMWA9SOlFCGcXSzWa2XUXjzPsCSMyowxn0l8+Xi3Vxq98jzcBlGGGDt1Z4wPmLluKwkFT6Q
+        9RivN5sAL9nn+ttoGaCwqOJcisIwagPUORtNHuOfRyzJn3IdF4QxKu+NF2Wlo2QrZLsJjokFAEhQ
+        cq73ufgEYxiLo0CNdMUEt2CJMhCG2hNITvDsjFAqnO5MQaC5LJXtDb0As09UFAz37IpsBsYKg4Le
+        alVJGczyTk+fO30hjcwWCQYveztSnq2x+wHge04gyh/A0e/aOPJQ0n90C6Cn/eccxvdiyV5AVZXj
+        yhklBDt2IHmnKn+YIleFsgPtHH682jUl9pLeUaTjolyln2sn15RVOyNGG19O35esr113Tglsz6+t
+        2TnSckEb7o8aucwi3Fs7y7Sbr0gdTp2eTVG85hoNjdvgtN5j6F/b3SUMTFcQE3Tl9tOPMQid9xIx
+        4bgKmX6mFzOdaHviETyxLbYB7ow1Pk+Hf4AxeuEKAzQ2owbjsP3VvvkDAAD//wMAH81wqL0EAAA=
+>>>>>>> f909c633 (feat: cassettes)
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
+<<<<<<< HEAD
       - 7cabda267b884690-DFW
+=======
+      - 7cb27140be03e7db-DFW
+>>>>>>> f909c633 (feat: cassettes)
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -2351,7 +2370,11 @@ interactions:
       Content-Type:
       - application/json
       Date:
+<<<<<<< HEAD
       - Sun, 21 May 2023 09:39:54 GMT
+=======
+      - Mon, 22 May 2023 04:51:29 GMT
+>>>>>>> f909c633 (feat: cassettes)
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -2363,7 +2386,11 @@ interactions:
       openai-organization:
       - significant-gravitas
       openai-processing-ms:
+<<<<<<< HEAD
       - '28651'
+=======
+      - '20148'
+>>>>>>> f909c633 (feat: cassettes)
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -2375,13 +2402,21 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
+<<<<<<< HEAD
       - '86497'
+=======
+      - '86498'
+>>>>>>> f909c633 (feat: cassettes)
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
       - 2.334s
       x-request-id:
+<<<<<<< HEAD
       - cf2654f4c40bd30dba166f9ec54090f0
+=======
+      - ddac618305edbf95bc74a24bda1dc46b
+>>>>>>> f909c633 (feat: cassettes)
     status:
       code: 200
       message: OK
@@ -2431,6 +2466,7 @@ interactions:
       reminds you of these events from your past: \nI was created and nothing new
       has happened."}, {"role": "user", "content": "Determine which next command to
       use, and respond using the format specified above:"}, {"role": "assistant",
+<<<<<<< HEAD
       "content": "{\n    \"thoughts\": {\n        \"text\": \"I will use the write_to_file
       command to write ''Hello World'' into a file named ''hello_world.txt''. Then
       I will use the task_complete command to complete the task.\",\n        \"reasoning\":
@@ -2444,6 +2480,17 @@ interactions:
       for the task_complete command.\",\n        \"speak\": \"I will use the write_to_file
       command to write ''Hello World'' into a file named ''hello_world.txt''. Then
       I will use the task_complete command to complete the task.\"\n    },\n    \"command\":
+=======
+      "content": "{\n    \"thoughts\": {\n        \"text\": \"I need to use the write_to_file
+      command to write ''Hello World'' into a file named ''hello_world.txt''.\",\n        \"reasoning\":
+      \"The task requires me to write ''Hello World'' into a file named ''hello_world.txt'',
+      and the write_to_file command is the most appropriate for this task.\",\n        \"plan\":
+      \"- Use the write_to_file command to write ''Hello World'' into a file named
+      ''hello_world.txt''.\\n- Use the task_complete command to complete the task.\",\n        \"criticism\":
+      \"I need to ensure that I use the correct file name and text to write to the
+      file.\",\n        \"speak\": \"I will use the write_to_file command to write
+      ''Hello World'' into a file named ''hello_world.txt''.\"\n    },\n    \"command\":
+>>>>>>> f909c633 (feat: cassettes)
       {\n        \"name\": \"write_to_file\",\n        \"args\": {\n            \"filename\":
       \"hello_world.txt\",\n            \"text\": \"Hello World\"\n        }\n    }\n}"},
       {"role": "system", "content": "Command write_to_file returned: File written
@@ -2458,7 +2505,11 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
+<<<<<<< HEAD
       - '5142'
+=======
+      - '4818'
+>>>>>>> f909c633 (feat: cassettes)
       Content-Type:
       - application/json
     method: POST
@@ -2466,6 +2517,7 @@ interactions:
   response:
     body:
       string: !!binary |
+<<<<<<< HEAD
         H4sIAAAAAAAAA8STT4/TMBDF73yK0Vx6SauG7rbd3BAHCBIrkFh2BUWR60wTU8cOngntqup3R2nS
         drcICYkD1/nz/Hv28w5NjgnqUomuajucpV/q/NXV5PHj/bzcpnevTfr+3ZuH7cP4Q/wZI/TL76Sl
         3xhpX9WWxHiHEepASijHJJ7Or6bT+OZmFmHlc7KYYFHLcDK6HkoTln44noxjjLBhVRAmO6yDr2rJ
@@ -2476,11 +2528,27 @@ interactions:
         sz2Eu3++SR2MGG246iRTcNT5IsdNoA4rhVL9pN5y2R4QAmkBFYqmIicMKx/+DHJ5Jtek1v8hQh3D
         PjpGvB//LeFtLDq8Z/IXLlQoLj/H03D2yWwf8yiQP/NyAjpA9WwLt8d9hCvjDJdZp4QJsvgaIzQu
         py0m4/23/YtfAAAA//8DAM/Do8ClBAAA
+=======
+        H4sIAAAAAAAAA7RTwW7bMAy97ysIXnJRAidpU8+3bVixoMe1KLB5CFSZsbXIkifRSYbA/z44tpss
+        3Q7bsJtAPj6+R1IH1BkmqArJqqzM+Gbp3VX07vH9m+u3M393+3Bnd+vbm3gb4k8xCnRPX0lxXzFR
+        rqwMsXYWBSpPkinDZLqIr27m0+j1TGDpMjKYYF7xeD65HnPtn9w4mkdTFFgHmRMmB6y8KytesduQ
+        DZhMo0Us8ET+nJhFkUB2LM0JO1vEjUBVOK0oYPL5gCWFgdg7Q5igDEEHlpZbmc4y2dbCIbUAACly
+        4eq84JBiAn2wT9Ce22CKSyjkliDUSlEI69qY77DzmpksjD6QMQ4enTfZCLRlBxLW2hBYWVIGo6LN
+        r3ZtfsJ7Hk3gviCwtGcITBXoAOygDgRcELAMm1VvnkC5spQ2awHPsQE1SVGcy/Ukg7Pa5p3m+x4G
+        nr7V2lOAklqeVjf9uWo4yijI/kIIfNRWEfRTksaTzE4DYndEtuTi+Lq0/oIQ6qBt/vtxXDqvjLSd
+        6TE8/PMcldeslQ7lsHtLdKwkG2rf1kmGJVTebXVGIGErjc6gGz+snR9anHu4bBIqkpuhwU4b83cH
+        0FE2YrjlHv7ilNuldt1+or8QJX1++QvOT+t//IXBwtFG7ya1DTYC19rqUKy63phgYFehQG0z2mMS
+        NV+aVz8AAAD//wMAM1BBRMAEAAA=
+>>>>>>> f909c633 (feat: cassettes)
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
+<<<<<<< HEAD
       - 7cabdaeddd914690-DFW
+=======
+      - 7cb271d1094be7db-DFW
+>>>>>>> f909c633 (feat: cassettes)
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -2490,7 +2558,11 @@ interactions:
       Content-Type:
       - application/json
       Date:
+<<<<<<< HEAD
       - Sun, 21 May 2023 09:40:15 GMT
+=======
+      - Mon, 22 May 2023 04:51:55 GMT
+>>>>>>> f909c633 (feat: cassettes)
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -2502,7 +2574,11 @@ interactions:
       openai-organization:
       - significant-gravitas
       openai-processing-ms:
+<<<<<<< HEAD
       - '17960'
+=======
+      - '22974'
+>>>>>>> f909c633 (feat: cassettes)
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -2514,6 +2590,7 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
+<<<<<<< HEAD
       - '86461'
       x-ratelimit-reset-requests:
       - 17ms
@@ -2521,6 +2598,95 @@ interactions:
       - 2.359s
       x-request-id:
       - 95a083fe669704417242d0f1c75561c9
+=======
+      - '86482'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.345s
+      x-request-id:
+      - 85b067e2ea6d55b96f8f5de082c37294
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Your
+      task is to create a concise running summary of actions and information results
+      in the provided text, focusing on key and potentially important information
+      to remember.\n\nYou will receive the current summary and the your latest actions.
+      Combine them, adding relevant key information from the latest development in
+      1st person past tense and keeping the summary concise.\n\nSummary So Far:\n\"\"\"\n{''role'':
+      ''system'', ''content'': ''This reminds you of these events from your past:
+      \\nI was created and nothing new has happened.''}\n\"\"\"\n\nLatest Development:\n\"\"\"\nNothing
+      new happened.\n\"\"\"\n"}], "temperature": 0, "max_tokens": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '713'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA0SQwUoDQRBE735F0+fZsGsSY+YmiLB49iAiYXa2zU6cnR6mO4ka9t8lEM21qHpU
+        1QlDjxb94NSPOVartvDL00+3i9vQH9fL19Ujdyl36+d2n9EgdzvyeknMPI85kgZOaNAXcko92ubu
+        frGaN01zb3DkniJa3Gat5rNlpfvScVXP6wYN7sVtCe0Jc+Ex60b5k5KgbW5rg1f2v36WldXFq3NR
+        Twb9wMGToH074UjyRy0cCS06kSDqkp47clJK5/4PAg7kW5RGAy0U8i5G0MEptHB0Apc54FIPOlAh
+        GNyBoCNKkBgSHaGnA0XOIyUVUIZCmYvOcDL4EVKQYVPICSe0KMrn+0Lq6QttPb1PN78AAAD//wMA
+        tx6LM3sBAAA=
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7cb27272f831e7db-DFW
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Mon, 22 May 2023 04:52:00 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - significant-gravitas
+      openai-processing-ms:
+      - '2097'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '87787'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 1.474s
+      x-request-id:
+      - f4dfc685804d8fb27be9b1ce8b69e4e0
+>>>>>>> f909c633 (feat: cassettes)
     status:
       code: 200
       message: OK
@@ -2571,6 +2737,7 @@ interactions:
       created and there have been no new developments to report."}, {"role": "user",
       "content": "Determine which next command to use, and respond using the format
       specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+<<<<<<< HEAD
       \"I will use the write_to_file command to write ''Hello World'' into a file
       named ''hello_world.txt''. Then I will use the task_complete command to complete
       the task.\",\n        \"reasoning\": \"The task requires me to write ''Hello
@@ -2584,11 +2751,23 @@ interactions:
       for the task_complete command.\",\n        \"speak\": \"I will use the write_to_file
       command to write ''Hello World'' into a file named ''hello_world.txt''. Then
       I will use the task_complete command to complete the task.\"\n    },\n    \"command\":
+=======
+      \"I need to use the write_to_file command to write ''Hello World'' into a file
+      named ''hello_world.txt''.\",\n        \"reasoning\": \"The task requires me
+      to write ''Hello World'' into a file named ''hello_world.txt'', and the write_to_file
+      command is the most appropriate for this task.\",\n        \"plan\": \"- Use
+      the write_to_file command to write ''Hello World'' into a file named ''hello_world.txt''.\\n-
+      Use the task_complete command to complete the task.\",\n        \"criticism\":
+      \"I need to ensure that I use the correct file name and text to write to the
+      file.\",\n        \"speak\": \"I will use the write_to_file command to write
+      ''Hello World'' into a file named ''hello_world.txt''.\"\n    },\n    \"command\":
+>>>>>>> f909c633 (feat: cassettes)
       {\n        \"name\": \"write_to_file\",\n        \"args\": {\n            \"filename\":
       \"hello_world.txt\",\n            \"text\": \"Hello World\"\n        }\n    }\n}"},
       {"role": "system", "content": "Command write_to_file returned: File written
       to successfully."}, {"role": "user", "content": "Determine which next command
       to use, and respond using the format specified above:"}, {"role": "assistant",
+<<<<<<< HEAD
       "content": "{\n    \"thoughts\": {\n        \"text\": \"Now that the file has
       been written successfully, I will use the task_complete command to complete
       the task.\",\n        \"reasoning\": \"The task requires me to write ''Hello
@@ -2605,6 +2784,23 @@ interactions:
       ''config''"}, {"role": "user", "content": "Determine which next command to use,
       and respond using the format specified above:"}], "temperature": 0, "max_tokens":
       0}'
+=======
+      "content": "{\n    \"thoughts\": {\n        \"text\": \"I have successfully
+      written ''Hello World'' into a file named ''hello_world.txt''. The next step
+      is to use the task_complete command to complete the task.\",\n        \"reasoning\":
+      \"The task requires me to write ''Hello World'' into a file named ''hello_world.txt''
+      and then complete the task. Since I have already written to the file, the next
+      step is to complete the task using the task_complete command.\",\n        \"plan\":
+      \"- Use the task_complete command to complete the task.\",\n        \"criticism\":
+      \"I need to ensure that I provide a valid reason for completing the task.\",\n        \"speak\":
+      \"I will use the task_complete command to complete the task.\"\n    },\n    \"command\":
+      {\n        \"name\": \"task_complete\",\n        \"args\": {\n            \"reason\":
+      \"I have successfully written ''Hello World'' into a file named ''hello_world.txt''.\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command task_complete returned: Error: task_complete()
+      got an unexpected keyword argument ''config''"}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}], "temperature": 0, "max_tokens": 0}'
+>>>>>>> f909c633 (feat: cassettes)
     headers:
       Accept:
       - '*/*'
@@ -2613,7 +2809,11 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
+<<<<<<< HEAD
       - '6374'
+=======
+      - '6077'
+>>>>>>> f909c633 (feat: cassettes)
       Content-Type:
       - application/json
     method: POST
@@ -2621,6 +2821,7 @@ interactions:
   response:
     body:
       string: !!binary |
+<<<<<<< HEAD
         H4sIAAAAAAAAA9STTYvbQAyG7/0VQmcn5GPz5VsLSwm9tLCl0LqEia21p7E1ZiQ3G4L/e4ntxNmE
         Qttbr69ead5HjI5oEwwxzozGRZkPFuuv5WG3yqajTy5/m9jH6eMqndDiy+HD8h0G6LY/KNauYxi7
         osxJrWMMMPZklBIMx/Plw3w+GY2XARYuoRxDTEsdTIezgVZ+6waj6WiMAVZiUsLwiKV3RakbdTti
@@ -2631,11 +2832,27 @@ interactions:
         mgD3Tf+24dhbtbGVovsuwETNOGKpfLe2NWTmZzsjdt5TrGB8WhXEKvDs/D3MZVGvc8rt81KS2f2n
         P7XlqIPzNXbT746RTUEt4nWYm0UYn96ecVvY0aFtfv/xqe3cNFLvq7sgEddYB/hs2Uq2aU8HQxR1
         JQZoOaEXDEf19/rNLwAAAP//AwDTGCt/PQUAAA==
+=======
+        H4sIAAAAAAAAA5SSTW/aQBCG7/0Vo7lwMQhC0yBfk36gXpp+KIe6QpP14N2w3rV2xoEU8d8rBwgp
+        JWp7887X+7zjWaMrMUdjSU3d+P7FNMWbt1fX04Y+f7E/7/zHq8t31+9l8ulufI0Zxts7NrrrGJhY
+        N57VxYAZmsSkXGI+ejN5fTEejc6GGdaxZI85Vo32x4PzvrbpNvaH4+EIM2yFKsZ8jU2KdaMzjQsO
+        gvlofDbJ8DD8kJhcZKhRyR9C56PzTYbGRmdYMP++xpplPzhFz5gjiThRCtphxqAcOgvrIgAAFKg2
+        tpVVKTCHXXCX4JV2wQK/WgYlWcx2VAwm1jWFEhJrmwKXQAE4pZgGMIXAXIJGMJbNAtQeyuUhKK2g
+        +9T0AFSRC4MCs+eyiUlicKH6b+0MltYZCzVTkE43MdSusgq33BU5kZZh6dSegDoN/i/AjaewZe3D
+        5XFnnD++TjoYFEXowzfhl0seafaxfdUxgElOnXFSbykOPjhIm7o+UphCk+K9KxkI7sm7bn/domEe
+        017ChepFEWmYFk+/JDEsSZ42f1jqaaMwhaXz/u+L3Spusv1x7gb8cZuBat7C/CZ4xEypOj7r5ze2
+        X5elewZpjWGReev9AyyTU+UAvQ/sfYSbmHzZAxc0AsHceYYOoISe7fKzZZcf6Ep7TxYebezcFGGD
+        mwznLjixs6025igaG8zQhZJXmA83PzavfgEAAP//AwAYPNQKkQQAAA==
+>>>>>>> f909c633 (feat: cassettes)
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
+<<<<<<< HEAD
       - 7cabdb6ffe3a4690-DFW
+=======
+      - 7cb27280ccfae7db-DFW
+>>>>>>> f909c633 (feat: cassettes)
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -2645,7 +2862,11 @@ interactions:
       Content-Type:
       - application/json
       Date:
+<<<<<<< HEAD
       - Sun, 21 May 2023 09:40:40 GMT
+=======
+      - Mon, 22 May 2023 04:52:19 GMT
+>>>>>>> f909c633 (feat: cassettes)
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -2657,7 +2878,11 @@ interactions:
       openai-organization:
       - significant-gravitas
       openai-processing-ms:
+<<<<<<< HEAD
       - '22317'
+=======
+      - '18372'
+>>>>>>> f909c633 (feat: cassettes)
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -2669,6 +2894,7 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
+<<<<<<< HEAD
       - '86433'
       x-ratelimit-reset-requests:
       - 17ms
@@ -2676,6 +2902,95 @@ interactions:
       - 2.378s
       x-request-id:
       - a0765ca94148861f4484132679042a8f
+=======
+      - '86460'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.36s
+      x-request-id:
+      - 865524654e5bc75dd129c24b00824150
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Your
+      task is to create a concise running summary of actions and information results
+      in the provided text, focusing on key and potentially important information
+      to remember.\n\nYou will receive the current summary and the your latest actions.
+      Combine them, adding relevant key information from the latest development in
+      1st person past tense and keeping the summary concise.\n\nSummary So Far:\n\"\"\"\n{''role'':
+      ''system'', ''content'': ''This reminds you of these events from your past:
+      \\nAs a system, I recall that I was created and there have been no new developments
+      to report.''}\n\"\"\"\n\nLatest Development:\n\"\"\"\nNothing new happened.\n\"\"\"\n"}],
+      "temperature": 0, "max_tokens": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '761'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA0SPTUvDQBRF9/6K4a4nJTFpK7MTFNuVC92JlOnk2Ywm84a8V+wH+e9SUbo9cA/n
+        nhFbOITOaxhyXyzXI0uZaV1vDw9Pp+aUVi/x1fMqPj8KLHj7SUH/FrPAQ+5JIydYhJG8UgtXLe6a
+        ZV1Vza3FwC31cNhlLerZvND9uOWirMsKFnvxO4I7I488ZN0of1ESuKquLK7uK59bKKvvr6RZTBah
+        4xhI4N7OGEj+rSP3BAcvEkV90ksjJ6V06b8X440cRWmwZm1GCr7vjXZeTWLtYtqZRN+m82I6nzMl
+        ao3EFMgMR/N7NXKaYbL4iClKtxnJCyc4iHKGRUwtHeDK6X26+QEAAP//AwDtS1ZIZgEAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7cb27307ac97e7db-DFW
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Mon, 22 May 2023 04:52:24 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - significant-gravitas
+      openai-processing-ms:
+      - '1724'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '89826'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 115ms
+      x-request-id:
+      - 033d21cfb54afa086529f6672afcc80c
+>>>>>>> f909c633 (feat: cassettes)
     status:
       code: 200
       message: OK
@@ -2726,6 +3041,7 @@ interactions:
       new has happened since my creation."}, {"role": "user", "content": "Determine
       which next command to use, and respond using the format specified above:"},
       {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+<<<<<<< HEAD
       \"I will use the write_to_file command to write ''Hello World'' into a file
       named ''hello_world.txt''. Then I will use the task_complete command to complete
       the task.\",\n        \"reasoning\": \"The task requires me to write ''Hello
@@ -2739,11 +3055,23 @@ interactions:
       for the task_complete command.\",\n        \"speak\": \"I will use the write_to_file
       command to write ''Hello World'' into a file named ''hello_world.txt''. Then
       I will use the task_complete command to complete the task.\"\n    },\n    \"command\":
+=======
+      \"I need to use the write_to_file command to write ''Hello World'' into a file
+      named ''hello_world.txt''.\",\n        \"reasoning\": \"The task requires me
+      to write ''Hello World'' into a file named ''hello_world.txt'', and the write_to_file
+      command is the most appropriate for this task.\",\n        \"plan\": \"- Use
+      the write_to_file command to write ''Hello World'' into a file named ''hello_world.txt''.\\n-
+      Use the task_complete command to complete the task.\",\n        \"criticism\":
+      \"I need to ensure that I use the correct file name and text to write to the
+      file.\",\n        \"speak\": \"I will use the write_to_file command to write
+      ''Hello World'' into a file named ''hello_world.txt''.\"\n    },\n    \"command\":
+>>>>>>> f909c633 (feat: cassettes)
       {\n        \"name\": \"write_to_file\",\n        \"args\": {\n            \"filename\":
       \"hello_world.txt\",\n            \"text\": \"Hello World\"\n        }\n    }\n}"},
       {"role": "system", "content": "Command write_to_file returned: File written
       to successfully."}, {"role": "user", "content": "Determine which next command
       to use, and respond using the format specified above:"}, {"role": "assistant",
+<<<<<<< HEAD
       "content": "{\n    \"thoughts\": {\n        \"text\": \"Now that the file has
       been written successfully, I will use the task_complete command to complete
       the task.\",\n        \"reasoning\": \"The task requires me to write ''Hello
@@ -2776,6 +3104,37 @@ interactions:
       with base 10: ''GPT_agent_key''"}, {"role": "user", "content": "Determine which
       next command to use, and respond using the format specified above:"}], "temperature":
       0, "max_tokens": 0}'
+=======
+      "content": "{\n    \"thoughts\": {\n        \"text\": \"I have successfully
+      written ''Hello World'' into a file named ''hello_world.txt''. The next step
+      is to use the task_complete command to complete the task.\",\n        \"reasoning\":
+      \"The task requires me to write ''Hello World'' into a file named ''hello_world.txt''
+      and then complete the task. Since I have already written to the file, the next
+      step is to complete the task using the task_complete command.\",\n        \"plan\":
+      \"- Use the task_complete command to complete the task.\",\n        \"criticism\":
+      \"I need to ensure that I provide a valid reason for completing the task.\",\n        \"speak\":
+      \"I will use the task_complete command to complete the task.\"\n    },\n    \"command\":
+      {\n        \"name\": \"task_complete\",\n        \"args\": {\n            \"reason\":
+      \"I have successfully written ''Hello World'' into a file named ''hello_world.txt''.\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command task_complete returned: Error: task_complete()
+      got an unexpected keyword argument ''config''"}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      \"The task_complete command returned an error. I need to check the command syntax
+      and try again.\",\n        \"reasoning\": \"The task_complete command returned
+      an error, which means there might be an issue with the command syntax. I need
+      to check the syntax and try again.\",\n        \"plan\": \"- Check the syntax
+      of the task_complete command.\\n- Use the task_complete command to complete
+      the task.\",\n        \"criticism\": \"I need to ensure that I provide a valid
+      reason for completing the task.\",\n        \"speak\": \"There was an error
+      with the task_complete command. I will check the syntax and try again.\"\n    },\n    \"command\":
+      {\n        \"name\": \"task_complete\",\n        \"args\": {\n            \"reason\":
+      \"I have successfully written ''Hello World'' into a file named ''hello_world.txt''.\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command task_complete returned: Error: task_complete()
+      got an unexpected keyword argument ''config''"}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}], "temperature": 0, "max_tokens": 0}'
+>>>>>>> f909c633 (feat: cassettes)
     headers:
       Accept:
       - '*/*'
@@ -2784,7 +3143,11 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
+<<<<<<< HEAD
       - '7684'
+=======
+      - '7220'
+>>>>>>> f909c633 (feat: cassettes)
       Content-Type:
       - application/json
     method: POST
@@ -2792,6 +3155,7 @@ interactions:
   response:
     body:
       string: !!binary |
+<<<<<<< HEAD
         H4sIAAAAAAAAA9RUwY7aQAy99yssnwOChaUox/ZSLt2q6q6qNhUaEpPMknjSsQOLUP69CkmAUvbS
         Q6WeMvK85/eeNc4BbYIhxpnRuCjzwdvFt58PDx/M13cfE93un7aP7O4p+Zw/faqeMUC3eqZYO8Yw
         dkWZk1rHGGDsySglGI5n8+lsdjeaTgMsXEI5hpiWOpgM7wda+ZUbjCajMQZYiUkJwwOW3hWlLtVt
@@ -2802,11 +3166,26 @@ interactions:
         2Fu1sZWie0fAREcisVS+m+YCMrNtm3TTA+PTqjh67U1d+m/EbzmSa3kpyWz+3yfcRqmDflO7+z8W
         lU1BbcoLQ1ejMD693vC+Ka9ttxemUpeWzZ+tqfWf9x3izKw7ZxHXWAe4tmwlW7ZLhiGKuhIDtJzQ
         C4aj+kf95hcAAAD//wMAoORDkWoFAAA=
+=======
+        H4sIAAAAAAAAA6SS34vTQBDH3/0rhnlOSkPbq+ZNBKE+eKcoCuYoe5tpdm2yG3cm15aS/13SpNda
+        eyjc2+78/HyH7x5tjilqo0RXdRnPF8E36nZRyN3b8v1Hvv0+vvv1+YPw7FvyCSP0Dz9Jy9Ax0r6q
+        SxLrHUaoAymhHNPk5vV0PkmS6TTCyudUYopFLfFkNIulCQ8+Hk/GCUbYsCoI0z3WwVe1LMWvyTGm
+        yWz2JsLT8FNiPo9QvKjyLDS5aSPUxltNjOmPPVbEx8HBl4QpKmbLopx0mN4JuU7CPnMAABmK8U1h
+        hDNMYQgOCdpKF8zwiyEQxevlQEWgfVUpl4NlYLFlCYGkCc66ApQDCsGHESzAEeUgHrQhvQYxp0be
+        OVFb6J4SdqAKZd0ow+gcIJBi3818AUUEG2O1gYqU444gEFS2MAIP1BVZ5oZgY8Vcwbsu4X/Q61K5
+        njqGd5edfnX4XdUyyjIXw1em50sONMfYseoSQAcrVluueoqTDnLchK5PCSygDv7R5gQKHlVpc+hP
+        Disfjiu6Yz63hGtS6xdaZNOl/nncfmsbHU07DP/Ls05V1AP9AXPBrUJxafdzxw2KFK+f7pwDN1oT
+        86opy90T0AFqYMtci22EK+ssm2U/CVNk8TVGaF1OW0zH7X376jcAAAD//wMAQyZ9yHcEAAA=
+>>>>>>> f909c633 (feat: cassettes)
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
+<<<<<<< HEAD
       - 7cabdc1169be4690-DFW
+=======
+      - 7cb273130f0ce7db-DFW
+>>>>>>> f909c633 (feat: cassettes)
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -2816,7 +3195,11 @@ interactions:
       Content-Type:
       - application/json
       Date:
+<<<<<<< HEAD
       - Sun, 21 May 2023 09:41:07 GMT
+=======
+      - Mon, 22 May 2023 04:52:40 GMT
+>>>>>>> f909c633 (feat: cassettes)
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -2828,7 +3211,11 @@ interactions:
       openai-organization:
       - significant-gravitas
       openai-processing-ms:
+<<<<<<< HEAD
       - '23356'
+=======
+      - '16568'
+>>>>>>> f909c633 (feat: cassettes)
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -2840,6 +3227,7 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
+<<<<<<< HEAD
       - '86428'
       x-ratelimit-reset-requests:
       - 17ms
@@ -2847,6 +3235,15 @@ interactions:
       - 2.381s
       x-request-id:
       - cd13f4bc51b92799a901c1884ecf1da1
+=======
+      - '83055'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 4.629s
+      x-request-id:
+      - b0fd5ea5193b29c44f6f0c9eed45338c
+>>>>>>> f909c633 (feat: cassettes)
     status:
       code: 200
       message: OK
