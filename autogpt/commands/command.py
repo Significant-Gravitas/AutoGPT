@@ -36,7 +36,7 @@ class Command:
         self.disabled_reason = disabled_reason
 
     def __call__(self, *args, **kwargs) -> Any:
-        if kwargs["config"] and callable(self.enabled):
+        if hasattr(kwargs, "config") and callable(self.enabled):
             self.enabled = self.enabled(kwargs["config"])
         if not self.enabled:
             if self.disabled_reason:
