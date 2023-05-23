@@ -115,7 +115,7 @@ jobs:
         id: commit_and_push
         run: |
           git diff --cached --quiet tests && echo "No changes to commit" && exit 0
-          git add tests
+          find tests -type f -name '*.yaml' -print0 | xargs -0 git add
           echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
           gh pr checkout ${{ github.event.pull_request.number }}
           git config --global user.name "Auto-GPT-Bot"
