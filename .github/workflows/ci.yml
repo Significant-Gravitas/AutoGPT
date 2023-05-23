@@ -103,9 +103,9 @@ jobs:
           unset GITHUB_TOKEN
           echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
           gh repo set-default Significant-Gravitas/cassettes
-          git checkout -b $new_branch
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
+          git checkout -b $new_branch
           git add .
           git commit -m "Auto-update cassettes after merging PR #$pr_number"
           git push origin $new_branch
