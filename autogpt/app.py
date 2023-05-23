@@ -155,7 +155,7 @@ def get_text_summary(url: str, question: str) -> str:
     return f""" "Result" : {summary}"""
 
 
-@command("get_hyperlinks", "Get text summary", '"url": "<url>"')
+@command("get_hyperlinks", "Get hyperlinks", '"url": "<url>"')
 @validate_url
 def get_hyperlinks(url: str) -> Union[str, List[str]]:
     """Return the results of a Google search
