@@ -95,7 +95,6 @@ jobs:
 
       - name: Stage Files and Check for New Cassettes
         id: stage_files_and_check
-<<<<<<< HEAD
         run: |
           find tests -type f -name '*.yaml' -print0 | xargs -0 git add
           # Check for new cassettes added in PR after the commit
@@ -116,34 +115,8 @@ jobs:
         id: commit_and_push
         run: |
           git diff --cached --quiet tests && echo "No changes to commit" && exit 0
-          find tests -type f -name '*.yaml' -print0 | xargs -0 git add
-=======
-        run: |
-          find tests -type f -name '*.yaml' -print0 | xargs -0 git add
-          # Check for new cassettes added in PR after the commit
-          NEW_CASSETTES_ADDED_IN_PR=$(git diff --name-only $(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)..HEAD -- 'tests/**/cassettes/**/*.yaml' | wc -l)
-          if [[ "$NEW_CASSETTES_ADDED_IN_PR" -gt 0 ]]
-          then 
-            echo "NEW_CASSETTES_ADDED_IN_PR=true" >> $GITHUB_ENV
-          else 
-            echo "NEW_CASSETTES_ADDED_IN_PR=false" >> $GITHUB_ENV
-          fi      
-
-      - name: Beat new challenges
-        if: ${{ env.NEW_CASSETTES_ADDED_IN_PR}}
-        run: |
-          echo "This step will run the challenges soon."
-
-      - name: Commit, Config, and Push
-        id: commit_and_push
-        run: |
-          git diff --cached --quiet tests && echo "No changes to commit" && exit 0
-<<<<<<< HEAD
->>>>>>> b4be28fe (fix ci)
-=======
           find tests -type f -name '*.yaml' -print0 | xargs -0 git add
           git add tests/integration/challenges/current_score.json
->>>>>>> b5a2675d (add cassettes to ci)
           echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
           gh pr checkout ${{ github.event.pull_request.number }}
           git config --global user.name "Auto-GPT-Bot"
