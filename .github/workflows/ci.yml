@@ -93,43 +93,47 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
-      - name: Stage new files and commit
-        id: stage_files
+      - name: Stage Files and Check for New Cassettes
+        id: stage_files_and_check
         run: |
-          git add tests
+          find tests -type f -name '*.yaml' -print0 | xargs -0 git add
+          # Check for new cassettes added in PR after the commit
+          NEW_CASSETTES_ADDED_IN_PR=$(git diff --name-only $(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)..HEAD -- 'tests/**/cassettes/**/*.yaml' | wc -l)
+          if [[ "$NEW_CASSETTES_ADDED_IN_PR" -gt 0 ]]
+          then 
+            echo "NEW_CASSETTES_ADDED_IN_PR=true" >> $GITHUB_ENV
+          else 
+            echo "NEW_CASSETTES_ADDED_IN_PR=false" >> $GITHUB_ENV
+          fi      
+
+      - name: Beat new challenges
+        if: ${{ env.NEW_CASSETTES_ADDED_IN_PR}}
+        run: |
+          echo "This step will run the challenges soon."
+
+      - name: Commit, Config, and Push
+        id: commit_and_push
+        run: |
           git diff --cached --quiet tests && echo "No changes to commit" && exit 0
-          git config user.email "github-actions@github.com"
-          git config user.name "GitHub Actions"
+          find tests -type f -name '*.yaml' -print0 | xargs -0 git add
+          echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
+          gh pr checkout ${{ github.event.pull_request.number }}
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
           git commit -m "Add new cassettes"
+          git push origin ${{ github.head_ref }}
           TIMESTAMP_COMMIT=$(date +%Y%m%d%H%M%S) # generate a timestamp
           echo "TIMESTAMP_COMMIT=$TIMESTAMP_COMMIT" >> $GITHUB_ENV
-      
 
-      - name: Create PR
-        id: create_pr
-        if:  ${{ env.TIMESTAMP_COMMIT != null }}
-        uses: peter-evans/create-pull-request@v5
-        with:
-          commit-message: Update cassettes
-          branch: cassette-diff-PR-${{ github.event.pull_request.number }}-${{ env.TIMESTAMP_COMMIT }}
-          title: "Update cassette-diff-PR${{ github.event.pull_request.number }}-${{ env.TIMESTAMP_COMMIT }}"
-          body: "This PR updates the cassettes. Please merge it."
-
-
-      - name: Check PR
-        if:  ${{ env.TIMESTAMP_COMMIT != null }}
-        run: |
-          echo "Pull Request Number - ${{ steps.create_pr.outputs.pull-request-number }}"
-          echo "Pull Request URL - ${{ steps.create_pr.outputs.pull-request-url }}"
-
-      - name: Comment PR URL in the current PR
-        if:  ${{ env.TIMESTAMP_COMMIT != null }}
+      - name: Inform of auto commit.
+        if: ${{ env.TIMESTAMP_COMMIT != null }}
         uses: thollander/actions-comment-pull-request@v2
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           message: |
-            Please click [HERE](${{ steps.create_pr.outputs.pull-request-url }}) and merge this PR to update the cassettes.
-
-      - name: Fail if new PR created
-        if:  ${{ env.TIMESTAMP_COMMIT != null }}
-        run: exit 1
+            We committed some changes to this branch, please run 
+            ```
+            git fetch
+            git rebase origin/${{ github.head_ref }}
+            ```
+            before pushing more changes to the remote.
