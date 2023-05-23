@@ -270,8 +270,20 @@ def delete_file(filename: str) -> str:
         return f"Error: {err}"
 
 
-@command("list_files", "List Files in Directory", '"directory": "<directory>", "extension": "<extension>", "filename": "<filename>", "query": "<query>", "filename_query": "<filename_query>", "filename_substring": "<filename_substring>", "keywords": ["<keyword1>", "<keyword2>", ...]')
-def list_files(directory: str, extension: str = None, filename: str = None, query: str = None, filename_query: str = None, filename_substring: str = None, keywords: list[str] = None) -> list[str]:
+@command(
+    "list_files",
+    "List Files in Directory",
+    '"directory": "<directory>", "extension": "<extension>", "filename": "<filename>", "query": "<query>", "filename_query": "<filename_query>", "filename_substring": "<filename_substring>", "keywords": ["<keyword1>", "<keyword2>", ...]',
+)
+def list_files(
+    directory: str,
+    extension: str = None,
+    filename: str = None,
+    query: str = None,
+    filename_query: str = None,
+    filename_substring: str = None,
+    keywords: list[str] = None,
+) -> list[str]:
     """Search for files in a directory
 
     Args:
@@ -320,14 +332,19 @@ def list_files(directory: str, extension: str = None, filename: str = None, quer
             # Apply filters
             if filter_type == "extension" and not file_name.endswith(filter_value):
                 continue
-            elif filter_type in ["filename", "query", "filename_query", "filename_substring"] and filter_value not in file_name:
+            elif (
+                filter_type
+                in ["filename", "query", "filename_query", "filename_substring"]
+                and filter_value not in file_name
+            ):
                 continue
-            elif filter_type == "keywords" and not any((keyword + ('.' + extension if extension else '')) in file_name for keyword in filter_value):
+            elif filter_type == "keywords" and not any(
+                (keyword + ("." + extension if extension else "")) in file_name
+                for keyword in filter_value
+            ):
                 continue
 
-            relative_path = os.path.relpath(
-                os.path.join(root, file), directory
-            )
+            relative_path = os.path.relpath(os.path.join(root, file), directory)
             found_files.append(relative_path)
 
     return found_files

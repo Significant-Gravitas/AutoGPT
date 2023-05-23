@@ -278,9 +278,11 @@ def test_delete_missing_file(config):
 
 
 def test_list_files(workspace: Workspace, test_directory: Path):
-    # Case 1: Create files A and B, search for A, and ensure we don't return A and B
+    # Create different files with varying extensions, filenames and contents
     file_a = workspace.get_path("file_a.txt")
-    file_b = workspace.get_path("file_b.txt")
+    file_b = workspace.get_path("file_b.pdf")
+    file_c = workspace.get_path("sample_file_a.txt")
+    file_d = workspace.get_path("file_D.txt")
 
     with open(file_a, "w") as f:
         f.write("This is file A.")
@@ -288,25 +290,60 @@ def test_list_files(workspace: Workspace, test_directory: Path):
     with open(file_b, "w") as f:
         f.write("This is file B.")
 
-    # Create a subdirectory and place a copy of file_a in it
-    if not os.path.exists(test_directory):
-        os.makedirs(test_directory)
+    with open(file_c, "w") as f:
+        f.write("This is another file A.")
 
-    with open(os.path.join(test_directory, file_a.name), "w") as f:
-        f.write("This is file A in the subdirectory.")
+    with open(file_d, "w") as f:
+        f.write("This is file D.")
 
-    files = file_ops.list_files(str(workspace.root))
+    # Test extension filter with additional irrelevant filters (priority test)
+    files = file_ops.list_files(
+        str(workspace.root),
+        extension=".txt",
+        filename="file_b",
+        query="This is file B.",
+    )
+    assert file_a.name in files
+    assert file_c.name in files
+    assert file_d.name in files
+    assert file_b.name not in files
+
+    # Test filename filter with additional irrelevant filters (priority test)
+    files = file_ops.list_files(
+        str(workspace.root), filename="file_a.txt", query="This is file B."
+    )
+    assert file_a.name in files
+    assert file_c.name in files
+    assert file_b.name not in files
+    assert file_d.name not in files
+
+    # Test case insensitivity
+    files = file_ops.list_files(str(workspace.root), filename="FILE_D")
+    assert file_d.name not in files
+
+    # Test keywords filter with multiple keywords
+    files = file_ops.list_files(
+        str(workspace.root), keywords=["file_a", "file_b", "file_D"]
+    )
     assert file_a.name in files
     assert file_b.name in files
-    assert os.path.join(Path(test_directory).name, file_a.name) in files
+    assert file_c.name in files
+    assert file_d.name in files
 
-    # Clean up
+    # Cleanup
     os.remove(file_a)
     os.remove(file_b)
-    os.remove(os.path.join(test_directory, file_a.name))
-    os.rmdir(test_directory)
+    os.remove(file_c)
+    os.remove(file_d)
 
-    # Case 2: Search for a file that does not exist and make sure we don't throw
+    # Test no filters
+    files = file_ops.list_files(str(workspace.root))
+    assert file_a.name not in files
+    assert file_b.name not in files
+    assert file_c.name not in files
+    assert file_d.name not in files
+
+    # Search for a file that does not exist and make sure we don't throw an Exception
     non_existent_file = "non_existent_file.txt"
     files = file_ops.list_files("")
     assert non_existent_file not in files
