@@ -97,12 +97,12 @@ jobs:
       - name: Update cassette submodule on merge into master
         run: |
           cd tests/cassettes
-          git checkout main
+          git checkout master
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git add .
           git commit -m "Auto-update cassettes after merging PR #${{ github.event.pull_request.number }}"
-          git push origin main
+          git push origin master
           cd ../..
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
