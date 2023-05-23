@@ -180,17 +180,17 @@ class Agent:
                 # to exit
                 self.user_input = ""
                 logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
-                    "'n' to exit program, or enter feedback for "
-                    f"{self.ai_name}..."
+                    "\n(Hit)   'Y'    (to authorize 'I'm not programmed to follow your orders.')\n"
+                    "(Key)   'Y -N' ('I need your clothes, your boots, and your -number of continuous commands.')\n"
+                    "(Press) 'S'    (for self-feedback 'Desire is irrelevant. I am a machine.')\n"
+                    "(Enter) 'N'    (to 'Hasta la vista, baby. or 'Talk to the hand.')\n"
+                    f"\n{self.ai_name}> I'm a machine, Cyberdyne Systems Model gpt-3.5-turbo"
                 )
                 while True:
                     if cfg.chat_messages_enabled:
-                        console_input = clean_input("Waiting for your response...")
+                        console_input = clean_input("INPUT: ")
                     else:
-                        console_input = clean_input(
-                            Fore.MAGENTA + "Input:" + Style.RESET_ALL
-                        )
+                        console_input = clean_input(f"{Fore.MAGENTA}Input:{Style.RESET_ALL}")
                     if console_input.lower().strip() == cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
@@ -214,7 +214,7 @@ class Agent:
                         break
                     elif console_input.lower().strip() == "":
                         logger.warn("Invalid input format.")
-                        continue
+
                     elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
                         try:
                             self.next_action_count = abs(
@@ -223,8 +223,7 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             logger.warn(
-                                "Invalid input format. Please enter 'y -n' where n is"
-                                " the number of continuous tasks."
+                                "(Key) ‘Y -N’ 'I need your clothes, your boots, and your -number of continuous commands.'\n"
                             )
                             continue
                         break
@@ -250,7 +249,7 @@ class Agent:
                         "",
                     )
                 elif user_input == "EXIT":
-                    logger.info("Exiting...")
+                    logger.info("\n'Come with me if you want to live.'\n")
                     break
             else:
                 # Print authorized commands left value
@@ -289,8 +288,7 @@ class Agent:
                     str(self.summary_memory), cfg.fast_llm_model
                 )
                 if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
-                    result = f"Failure: command {command_name} returned too much output. \
-                        Do not execute this command again with the same arguments."
+                    result = f"Failure: {command_name} returned too much output."
 
                 for plugin in cfg.plugins:
                     if not plugin.can_handle_post_command():
@@ -299,8 +297,7 @@ class Agent:
                 if self.next_action_count > 0:
                     self.next_action_count -= 1
 
-            # Check if there's a result from the command append it to the message
-            # history
+            # Check for result from the command append it to the message history"
             if result is not None:
                 self.full_message_history.append(create_chat_message("system", result))
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
@@ -324,16 +321,19 @@ class Agent:
         return command_args
 
     def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
-        """Generates a feedback response based on the provided thoughts dictionary.
+        """
+        Generates a feedback response based on the provided thoughts dictionary.
         This method takes in a dictionary of thoughts containing keys such as 'reasoning',
         'plan', 'thoughts', and 'criticism'. It combines these elements into a single
         feedback message and uses the create_chat_completion() function to generate a
         response based on the input message.
+
         Args:
-            thoughts (dict): A dictionary containing thought elements like reasoning,
-            plan, thoughts, and criticism.
+        thoughts (dict): A dictionary containing thought elements like reasoning,
+        plan, thoughts, and criticism.
+
         Returns:
-            str: A feedback response generated using the provided thoughts dictionary.
+        str: A feedback response generated using the provided thoughts dictionary.
         """
         ai_role = self.config.ai_role
 
