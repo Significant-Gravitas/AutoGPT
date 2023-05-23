@@ -68,12 +68,9 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          submodules: 'recursive'
-
-      - name: Checkout correct branch and submodules
-        run: |
-          git checkout ${{ github.event.pull_request.head.ref }}
-          git submodule update --init --recursive
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          submodules: recursive
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
@@ -101,15 +98,17 @@ jobs:
         if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.ref == 'refs/heads/master'
         run: |
           cd tests/cassettes
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git checkout main
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
           git add .
           git commit -am "Updated cassettes submodule"
-          git push
+          git push origin main
           cd ../..
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git add tests/cassettes
           git commit -am "Updated main repo's submodules"
-          git push
+          git push origin master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
