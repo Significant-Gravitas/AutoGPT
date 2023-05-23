@@ -43,3 +43,32 @@ ai_role: A hungry AI
 api_budget: 0.0
 """
     assert config_file.read_text() == yaml_content2
+
+
+def test_ai_config_file_not_exists(workspace):
+    """Test if file does not exist."""
+
+    config_file = workspace.get_path("ai_settings.yaml")
+
+    ai_config = AIConfig.load(str(config_file))
+    assert ai_config.ai_name == ""
+    assert ai_config.ai_role == ""
+    assert ai_config.ai_goals == []
+    assert ai_config.api_budget == 0.0
+    assert ai_config.prompt_generator is None
+    assert ai_config.command_registry is None
+
+
+def test_ai_config_file_is_empty(workspace):
+    """Test if file does not exist."""
+
+    config_file = workspace.get_path("ai_settings.yaml")
+    config_file.write_text("")
+
+    ai_config = AIConfig.load(str(config_file))
+    assert ai_config.ai_name == ""
+    assert ai_config.ai_role == ""
+    assert ai_config.ai_goals == []
+    assert ai_config.api_budget == 0.0
+    assert ai_config.prompt_generator is None
+    assert ai_config.command_registry is None
