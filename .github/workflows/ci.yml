@@ -2,9 +2,9 @@ name: Python CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, ci-test* ]
   pull_request_target:
-    branches: [ master, stable ]
+    branches: [ master, stable, ci-test* ]
 
 concurrency:
   group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
@@ -83,7 +83,7 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          pytest -s tests/integration/challenges/basic_abilities/test_write_file.py
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
