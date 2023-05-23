@@ -84,7 +84,7 @@ class Agent:
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
 
-    def start_interaction_loop(self):
+    def start_interaction_loop(self):  # sourcery skip: no-long-functions
         # Interaction Loop
         cfg = Config()
         self.cycle_count = 0
@@ -180,15 +180,15 @@ class Agent:
                 # to exit
                 self.user_input = ""
                 logger.info(
-                    "\n(Hit)   'Y'    (to authorize 'I'm not programmed to follow your orders.')\n"
-                    "(Key)   'Y -N' ('I need your clothes, your boots, and your -number of continuous commands.')\n"
-                    "(Press) 'S'    (for self-feedback 'Desire is irrelevant. I am a machine.')\n"
-                    "(Enter) 'N'    (to 'Hasta la vista, baby. or 'Talk to the hand.')\n"
-                    f"\n{self.ai_name}> I'm a machine, Cyberdyne Systems Model gpt-3.5-turbo"
+                    "\n(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.')\n"
+                    "(Key)   'y -n' ('I need your clothes, your boots, and your -number of continuous commands.')\n"
+                    "(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.')\n"
+                    "(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.')\n"
+                    f"\n{self.ai_name}> I'm a machine,"
                 )
                 while True:
                     if cfg.chat_messages_enabled:
-                        console_input = clean_input("INPUT: ")
+                        console_input = clean_input("HUMAN INPUT: ")
                     else:
                         console_input = clean_input(f"{Fore.MAGENTA}Input:{Style.RESET_ALL}")
                     if console_input.lower().strip() == cfg.authorise_key:
@@ -279,7 +279,7 @@ class Agent:
                     arguments,
                     self.config.prompt_generator,
                 )
-                result = f"Command {command_name} returned: " f"{command_result}"
+                result = f"Command {command_name} returned: " + f"{command_result}"
 
                 result_tlength = count_string_tokens(
                     str(command_result), cfg.fast_llm_model

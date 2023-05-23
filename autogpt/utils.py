@@ -1,3 +1,4 @@
+import contextlib
 import os
 import re
 
@@ -48,10 +49,11 @@ def clean_input(prompt: str = "", talk=False):
                     return cfg.exit_key
                 return plugin_response
 
-        # ask for input, default when just pressing Enter is y
-        logger.info("Asking user via keyboard...")
-        answer = input(prompt)
-        return answer
+        # Ask for input, default when just pressing Enter is y
+        logger.info(
+            ">>> Cyberdyne Systems Model GPT-3.5-Turbo"
+        )
+        return input(prompt)
     except KeyboardInterrupt:
         logger.info("You interrupted Auto-GPT")
         logger.info("Quitting...")
@@ -87,15 +89,12 @@ def readable_file_size(size, decimal_places=2):
 
 
 def get_bulletin_from_web():
-    try:
+    with contextlib.suppress(requests.exceptions.RequestException):
         response = requests.get(
             "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md"
         )
         if response.status_code == 200:
             return response.text
-    except requests.exceptions.RequestException:
-        pass
-
     return ""
 
 
@@ -106,6 +105,7 @@ def get_current_git_branch() -> str:
         return branch.name
     except:
         return ""
+        raise
 
 
 def get_latest_bulletin() -> tuple[str, bool]:
@@ -116,7 +116,7 @@ def get_latest_bulletin() -> tuple[str, bool]:
             "data/CURRENT_BULLETIN.md", "r", encoding="utf-8"
         ).read()
     new_bulletin = get_bulletin_from_web()
-    is_new_news = new_bulletin != "" and new_bulletin != current_bulletin
+    is_new_news = new_bulletin not in ["", current_bulletin]
 
     news_header = Fore.YELLOW + "Welcome to Auto-GPT!\n"
     if new_bulletin or current_bulletin:
@@ -156,7 +156,7 @@ def markdown_to_ansi_style(markdown: str):
 
 
 def get_legal_warning() -> str:
-    legal_text = """
+    return """
 ## DISCLAIMER AND INDEMNIFICATION AGREEMENT
 ### PLEASE READ THIS DISCLAIMER AND INDEMNIFICATION AGREEMENT CAREFULLY BEFORE USING THE AUTOGPT SYSTEM. BY USING THE AUTOGPT SYSTEM, YOU AGREE TO BE BOUND BY THIS AGREEMENT.
 
@@ -173,4 +173,3 @@ behalf. You acknowledge that using the System could expose you to potential liab
 ## Indemnification
 By using the System, you agree to indemnify, defend, and hold harmless the Project Parties from and against any and all claims, liabilities, damages, losses, or expenses (including reasonable attorneys' fees and costs) arising out of or in connection with your use of the System, including, without limitation, any actions taken by the System on your behalf, any failure to properly supervise or monitor the System, and any resulting harm or unintended consequences.
             """
-    return legal_text
