@@ -283,18 +283,18 @@ def test_list_files(workspace: Workspace, test_directory: Path):
     file_b = workspace.get_path("file_b.pdf")
     file_c = workspace.get_path("sample_file_a.txt")
     file_d = workspace.get_path("file_D.txt")
+    dot_file = workspace.get_path(".dotfile.txt")
 
     with open(file_a, "w") as f:
         f.write("This is file A.")
-
     with open(file_b, "w") as f:
         f.write("This is file B.")
-
     with open(file_c, "w") as f:
         f.write("This is another file A.")
-
     with open(file_d, "w") as f:
         f.write("This is file D.")
+    with open(dot_file, "w") as f:
+        f.write("This is a dotfile.")
 
     # Test extension filter with additional irrelevant filters (priority test)
     files = file_ops.list_files(
@@ -313,7 +313,7 @@ def test_list_files(workspace: Workspace, test_directory: Path):
         str(workspace.root), filename="file_a.txt", query="This is file B."
     )
     assert file_a.name in files
-    assert file_c.name in files
+    assert file_c.name not in files
     assert file_b.name not in files
     assert file_d.name not in files
 
@@ -330,11 +330,45 @@ def test_list_files(workspace: Workspace, test_directory: Path):
     assert file_c.name in files
     assert file_d.name in files
 
+    # Test query filter
+    with open(file_a, "w") as f:
+        f.write("QueryTest")
+    files = file_ops.list_files(
+        str(workspace.root), query="QueryTest"
+    )
+    assert file_a.name in files
+    assert file_b.name not in files
+    assert file_c.name not in files
+    assert file_d.name not in files
+
+    # Test filename_query filter
+    files = file_ops.list_files(
+        str(workspace.root), filename_query="file_a"
+    )
+    assert file_a.name in files
+    assert file_b.name not in files
+    assert file_c.name not in files
+    assert file_d.name not in files
+
+    # Test filename_substring filter
+    files = file_ops.list_files(
+        str(workspace.root), filename_substring="file_"
+    )
+    assert file_a.name in files
+    assert file_b.name in files
+    assert file_c.name in files
+    assert file_d.name in files
+
+    # Test ignore files starting with "."
+    files = file_ops.list_files(str(workspace.root))
+    assert dot_file.name not in files
+
     # Cleanup
     os.remove(file_a)
     os.remove(file_b)
     os.remove(file_c)
     os.remove(file_d)
+    os.remove(dot_file)
 
     # Test no filters
     files = file_ops.list_files(str(workspace.root))
@@ -342,10 +376,11 @@ def test_list_files(workspace: Workspace, test_directory: Path):
     assert file_b.name not in files
     assert file_c.name not in files
     assert file_d.name not in files
+    assert dot_file.name not in files
 
     # Search for a file that does not exist and make sure we don't throw an Exception
     non_existent_file = "non_existent_file.txt"
-    files = file_ops.list_files("")
+    files = file_ops.list_files(str(workspace.root))
     assert non_existent_file not in files
 
 
