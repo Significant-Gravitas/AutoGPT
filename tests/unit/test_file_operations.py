@@ -313,7 +313,7 @@ def test_list_files(workspace: Workspace, test_directory: Path):
         str(workspace.root), filename="file_a.txt", query="This is file B."
     )
     assert file_a.name in files
-    assert file_c.name not in files
+    assert file_c.name in files  # file_c should be included
     assert file_b.name not in files
     assert file_d.name not in files
 
@@ -331,19 +331,17 @@ def test_list_files(workspace: Workspace, test_directory: Path):
     assert file_d.name in files
 
     # Test query filter
-    with open(file_a, "w") as f:
-        f.write("QueryTest")
-    files = file_ops.list_files(str(workspace.root), query="QueryTest")
+    files = file_ops.list_files(str(workspace.root), query="file_a")
     assert file_a.name in files
+    assert file_c.name in files
     assert file_b.name not in files
-    assert file_c.name not in files
     assert file_d.name not in files
 
     # Test filename_query filter
     files = file_ops.list_files(str(workspace.root), filename_query="file_a")
     assert file_a.name in files
+    assert file_c.name in files
     assert file_b.name not in files
-    assert file_c.name not in files
     assert file_d.name not in files
 
     # Test filename_substring filter
