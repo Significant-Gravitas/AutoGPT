@@ -51,8 +51,6 @@ def create_config(
     CFG.set_debug_mode(False)
     CFG.set_continuous_mode(False)
     CFG.set_speak_mode(False)
-    CFG.set_fast_llm_model(check_model(CFG.fast_llm_model, "fast_llm_model"))
-    CFG.set_smart_llm_model(check_model(CFG.smart_llm_model, "smart_llm_model"))
 
     if debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
@@ -83,17 +81,24 @@ def create_config(
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         CFG.set_speak_mode(True)
 
+    # Set the default LLM models
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        # --gpt3only should always use gpt-3.4-turbo, despite user's FAST_LLM_MODEL config
+        # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM_MODEL config
         CFG.set_fast_llm_model(GPT_3_MODEL)
         CFG.set_smart_llm_model(GPT_3_MODEL)
 
-    if gpt4only:
+    elif (
+        gpt4only
+        and check_model(GPT_4_MODEL, model_type="smart_llm_model") == GPT_4_MODEL
+    ):
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
         # --gpt4only should always use gpt-4, despite user's SMART_LLM_MODEL config
         CFG.set_fast_llm_model(GPT_4_MODEL)
         CFG.set_smart_llm_model(GPT_4_MODEL)
+    else:
+        CFG.set_fast_llm_model(check_model(CFG.fast_llm_model, "fast_llm_model"))
+        CFG.set_smart_llm_model(check_model(CFG.smart_llm_model, "smart_llm_model"))
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
