@@ -114,5 +114,3 @@ jobs:
           git add tests/cassettes
           git commit -m "Auto-update cassettes submodule after merging PR #${{ github.event.pull_request.number }}"
           git push origin master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
