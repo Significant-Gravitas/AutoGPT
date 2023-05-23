@@ -143,9 +143,9 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
         :::yaml
         # Please specify all of these values as double-quoted strings
-        # Replace string in angled brackets (<>) to your own ID
+        # Replace string in angled brackets (<>) to your own deployment Name
         azure_model_map:
-            fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
+            fast_llm_model_deployment_id: "<auto-gpt-deployment>"
                 ...
 
     Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.
