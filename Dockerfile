@@ -38,5 +38,6 @@ WORKDIR /app
 ONBUILD COPY autogpt/ ./autogpt
 ONBUILD COPY scripts/ ./scripts
 ONBUILD COPY plugins/ ./plugins
+ONBUILD RUN mkdir ./data
 
 FROM autogpt-${BUILD_TYPE} AS auto-gpt
