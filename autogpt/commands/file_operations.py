@@ -316,8 +316,8 @@ def list_files(directory: str, config: Config) -> list[str]:
     "download_file",
     "Download File",
     '"url": "<url>", "filename": "<filename>"',
-    # CFG.allow_downloads,
-    # "Error: You do not have user authorization to download files locally.",
+    lambda config: config.allow_downloads,
+    "Error: You do not have user authorization to download files locally.",
 )
 def download_file(url, filename, config: Config):
     """Downloads a file

@@ -22,7 +22,8 @@ if TYPE_CHECKING:
     "generate_image",
     "Generate Image",
     '"prompt": "<prompt>"',
-    #  CFG.image_provider
+    lambda config: config.image_provider,
+    "Requires a image provider to be set.",
 )
 def generate_image(prompt: str, config: Config, size: int = 256) -> str:
     """Generate an image from a prompt.

@@ -25,9 +25,8 @@ class Command:
         description: str,
         method: Callable[..., Any],
         signature: str = "",
-        enabled: bool = True,
+        enabled: bool | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
-        config: Config = None,
     ):
         self.name = name
         self.description = description
@@ -35,11 +34,14 @@ class Command:
         self.signature = signature if signature else str(inspect.signature(self.method))
         self.enabled = enabled
         self.disabled_reason = disabled_reason
-        self.config = config
 
     def __call__(self, *args, **kwargs) -> Any:
+        if kwargs["config"] and callable(self.enabled):
+            self.enabled = self.enabled(kwargs["config"])
         if not self.enabled:
-            return f"Command '{self.name}' is disabled: {self.disabled_reason}"
+            if self.disabled_reason:
+                return f"Command '{self.name}' is disabled: {self.disabled_reason}"
+            return f"Command '{self.name}' is disabled"
         return self.method(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -137,9 +139,8 @@ def command(
     name: str,
     description: str,
     signature: str = "",
-    enabled: bool = True,
+    enabled: bool | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
-    config: Config = None,
 ) -> Callable[..., Any]:
     """The command decorator is used to create Command objects from ordinary functions."""
 
@@ -156,7 +157,6 @@ def command(
             signature=signature,
             enabled=enabled,
             disabled_reason=disabled_reason,
-            config=config,
         )
 
         @functools.wraps(func)

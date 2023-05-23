@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     "google",
     "Google Search",
     '"query": "<query>"',
-    #  not CFG.google_api_key
+    lambda config: not config.google_api_key,
 )
 def google_search(query: str, config: Config, num_results: int = 8) -> str:
     """Return the results of a Google search
@@ -56,10 +56,8 @@ def google_search(query: str, config: Config, num_results: int = 8) -> str:
     "google",
     "Google Search",
     '"query": "<query>"',
-    False,
-    "Disabled due to nick not being sure how to handle logic in config init"
-    # bool(CFG.google_api_key) and bool(CFG.custom_search_engine_id),
-    # "Configure google_api_key and custom_search_engine_id.",
+    lambda config: bool(config.google_api_key) and bool(config.custom_search_engine_id),
+    "Configure google_api_key and custom_search_engine_id.",
 )
 def google_official_search(
     query: str, config: Config, num_results: int = 8

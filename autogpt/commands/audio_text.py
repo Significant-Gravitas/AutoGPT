@@ -15,7 +15,8 @@ if TYPE_CHECKING:
     "read_audio_from_file",
     "Convert Audio to text",
     '"filename": "<filename>"',
-    "Configure huggingface_audio_to_text_model.",
+    lambda config: config.huggingface_api_token and config.huggingface_api_token,
+    "Configure huggingface_audio_to_text_model and Hugging Face api token.",
 )
 def read_audio_from_file(filename: str, config: Config) -> str:
     """
