@@ -1,7 +1,11 @@
+from unittest.mock import patch
+
 import pytest
+from openai import InvalidRequestError
 from openai.error import APIError, RateLimitError
 
 from autogpt.llm import llm_utils
+from autogpt.llm.llm_utils import check_model
 
 
 @pytest.fixture(params=[RateLimitError, APIError])
@@ -131,3 +135,26 @@ def test_chunked_tokens():
     ]
     output = list(llm_utils.chunked_tokens(text, "cl100k_base", 8191))
     assert output == expected_output
+
+
+def test_check_model(api_manager):
+    """
+    Test if check_model() returns original model when valid.
+    Test if check_model() returns gpt-3.5-turbo when model is invalid.
+    """
+    with patch("openai.Model.list") as mock_list_models:
+        # Test when correct model is returned
+        mock_list_models.return_value = {"data": [{"id": "gpt-4"}]}
+        result = check_model("gpt-4", "smart_llm_model")
+        assert result == "gpt-4"
+
+        # Reset api manager models
+        api_manager.models = None
+
+        # Test when incorrect model is returned
+        mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
+        result = check_model("gpt-4", "fast_llm_model")
+        assert result == "gpt-3.5-turbo"
+
+        # Reset api manager models
+        api_manager.models = None
