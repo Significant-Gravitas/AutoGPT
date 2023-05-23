@@ -5,12 +5,16 @@ openai==0.27.2
 playsound==1.2.2
 python-dotenv==1.0.0
 pyyaml==6.0
+PyPDF2
+python-docx
+markdown
+pylatexenc
 readability-lxml==0.8.1
 requests
 tiktoken==0.3.3
 gTTS==2.3.1
 docker
-duckduckgo-search
+duckduckgo-search>=2.9.5
 google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
 pinecone-client==2.2.1
 redis
@@ -36,7 +40,7 @@ gitpython==3.1.31
 auto-gpt-plugin-template
 mkdocs
 pymdown-extensions
-
+mypy
 
 # OpenAI and Generic plugins import
 openapi-python-client==0.13.4
@@ -53,3 +57,4 @@ pytest-integration
 pytest-mock
 vcrpy
 pytest-recording
+pytest-xdist

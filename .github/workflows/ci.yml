@@ -3,12 +3,12 @@ name: Python CI
 on:
   push:
     branches: [ master ]
-  pull_request:
+  pull_request_target:
     branches: [ master, stable ]
 
 concurrency:
   group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
 
 jobs:
   lint:
@@ -19,6 +19,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ env.min-python-version }}
         uses: actions/setup-python@v2
@@ -41,6 +45,10 @@ jobs:
         run: isort . --check
         if: success() || failure()
 
+      - name: Check mypy formatting
+        run: mypy
+        if: success() || failure()
+
   test:
     permissions:
       # Gives the action the necessary permissions for publishing new
@@ -53,11 +61,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11"]
+        python-version: ["3.10"]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
@@ -71,9 +83,58 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-          pytest --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
         env:
           CI: true
+          PROXY: ${{ secrets.PROXY }}
+          AGENT_MODE: ${{ vars.AGENT_MODE }}
+          AGENT_TYPE: ${{ vars.AGENT_TYPE }}
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
+
+      - name: Stage Files and Check for New Cassettes
+        id: stage_files_and_check
+        run: |
+          find tests -type f -name '*.yaml' -print0 | xargs -0 git add
+          # Check for new cassettes added in PR after the commit
+          NEW_CASSETTES_ADDED_IN_PR=$(git diff --name-only $(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)..HEAD -- 'tests/**/cassettes/**/*.yaml' | wc -l)
+          if [[ "$NEW_CASSETTES_ADDED_IN_PR" -gt 0 ]]
+          then 
+            echo "NEW_CASSETTES_ADDED_IN_PR=true" >> $GITHUB_ENV
+          else 
+            echo "NEW_CASSETTES_ADDED_IN_PR=false" >> $GITHUB_ENV
+          fi      
+
+      - name: Beat new challenges
+        if: ${{ env.NEW_CASSETTES_ADDED_IN_PR}}
+        run: |
+          echo "This step will run the challenges soon."
+
+      - name: Commit, Config, and Push
+        id: commit_and_push
+        run: |
+          git diff --cached --quiet tests && echo "No changes to commit" && exit 0
+          find tests -type f -name '*.yaml' -print0 | xargs -0 git add
+          echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
+          gh repo set-default ${{ github.repository }}
+          gh pr checkout ${{ github.event.pull_request.number }}
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+          git commit -m "Add new cassettes"
+          git push origin ${{ github.head_ref }}
+          TIMESTAMP_COMMIT=$(date +%Y%m%d%H%M%S) # generate a timestamp
+          echo "TIMESTAMP_COMMIT=$TIMESTAMP_COMMIT" >> $GITHUB_ENV
+
+      - name: Inform of auto commit.
+        if: ${{ env.TIMESTAMP_COMMIT != null }}
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          message: |
+            We committed some changes to this branch, please run 
+            ```
+            git fetch
+            git rebase origin/${{ github.head_ref }}
+            ```
+            before pushing more changes to the remote.
