@@ -77,6 +77,21 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Sync submodule with branch and check conflicts
+        run: |
+          cd tests/cassettes
+          git fetch
+          { git checkout example-1 && git pull origin example-1; } || echo "Branch example-1 does not exist. Proceeding to the next step."
+          
+          # Check for conflicts with the master branch
+          git merge --no-commit --no-ff origin/master
+          if [[ $? -ne 0 ]]; then
+              echo "Merge conflict detected. Checking out master and proceeding to the next step."
+              git merge --abort
+              git checkout master
+          else
+              echo "No merge conflict detected."
+          fi
 
       - name: Run unittest tests with coverage
         run: |
@@ -103,6 +118,4 @@ jobs:
           git add .
           git commit -m "Auto-update cassettes after merging PR #$pr_number"
           git checkout -b $new_branch
-          git push https://${{ secrets.PAT_REVIEW }}@github.com/Significant-Gravitas/cassettes.git $new_branch
-      
-      
+          git push -f https://${{ secrets.PAT_REVIEW }}@github.com/Significant-Gravitas/cassettes.git $new_branch
