@@ -102,5 +102,6 @@ jobs:
           git add .
           git commit -m "Auto-update cassettes after merging PR #$pr_number"
           git checkout -b $new_branch
-          git push https://${{ secrets.PAT_REVIEW }}@github.com/Auto-GPT-Bot/Significant-Gravitas/cassettes.git $new_branch
+          git push https://${{ secrets.PAT_REVIEW }}@github.com/Significant-Gravitas/cassettes.git $new_branch
+      
       
