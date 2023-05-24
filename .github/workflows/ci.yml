@@ -100,9 +100,10 @@ jobs:
           echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
-          git remote add upstream https://github.com/Significant-Gravitas/cassettes.git
+          git remote add upstream https://github-bot@agpt.co:${{ secrets.PAT_REVIEW }}@github.com/Significant-Gravitas/cassettes.git
           git add .
           git commit -m "Auto-update cassettes after merging PR #$pr_number"
           git checkout -b $new_branch
           git push upstream $new_branch
+      
       
