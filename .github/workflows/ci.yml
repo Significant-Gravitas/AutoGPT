@@ -98,13 +98,9 @@ jobs:
           cd tests/cassettes
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
-          git remote add upstream https://Auto-GPT-Bot:${{ secrets.PAT_REVIEW }}@github.com/Significant-Gravitas/cassettes.git
+          git remote add upstream https://github.com/Significant-Gravitas/cassettes.git
           git add .
           git commit -m "Auto-update cassettes after merging PR #$pr_number"
           git checkout -b $new_branch
-          git push upstream $new_branch
-      
-      
-      
-      
+          git push https://${{ secrets.PAT_REVIEW }}@github.com/Auto-GPT-Bot/Significant-Gravitas/cassettes.git $new_branch
       
