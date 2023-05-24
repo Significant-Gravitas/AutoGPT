@@ -132,13 +132,11 @@ jobs:
           pr_number=${{ github.event.pull_request.number }}
           new_branch="${current_branch}-${pr_number}"
           cd tests/cassettes
-          git config --unset-all http.https://github.com/.extraheader
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
-          git remote add upstream https://github.com/Significant-Gravitas/cassettes.git
           git add .
 
           # Check if there are any changes
           git diff-index --quiet HEAD || git commit -m "Auto-update cassettes after merging PR #$pr_number"
 
-          git push -f https://${{ secrets.PAT_REVIEW }}@github.com/Significant-Gravitas/cassettes.git HEAD:refs/heads/$new_branch
+          git push -f origin HEAD:refs/heads/$new_branch
