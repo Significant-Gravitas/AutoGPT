@@ -91,12 +91,12 @@ jobs:
           { git checkout $new_branch && git pull origin $new_branch; } || echo "Branch $new_branch does not exist. Proceeding to the next step."
           
           
-          # Check for conflicts with the master branch
-          git merge --no-commit --no-ff origin/master
+          # Check for conflicts with the target branch
+          git merge --no-commit --no-ff origin/${{ github.event.pull_request.base.ref }}
           if [[ $? -ne 0 ]]; then
-              echo "Merge conflict detected. Checking out master and proceeding to the next step."
+              echo "Merge conflict detected. Checking out target branch and proceeding to the next step."
               git merge --abort
-              git checkout master
+              git checkout ${{ github.event.pull_request.base.ref }}
           else
               echo "No merge conflict detected."
           fi
@@ -113,7 +113,7 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
-      - name: Update cassette submodule on merge into master
+      - name: Update cassette submodule on merge into target branch
         run: |
           current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
           pr_number=${{ github.event.pull_request.number }}

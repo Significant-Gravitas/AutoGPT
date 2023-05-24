@@ -28,10 +28,10 @@ jobs:
           git config --global user.email "github-bot@agpt.co"
           if git ls-remote --exit-code --heads origin $new_branch ; then
             git fetch origin $new_branch:$new_branch
-            git checkout master
+            git checkout ${{ github.event.pull_request.base.ref }}
             
             git merge --no-ff $new_branch
-            git push origin master
+            git push origin ${{ github.event.pull_request.base.ref }}
           else
             echo "Branch $new_branch does not exist. Exiting gracefully."
             exit 0
