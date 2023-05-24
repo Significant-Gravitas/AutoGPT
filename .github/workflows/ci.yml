@@ -90,9 +90,9 @@ jobs:
 
           if git ls-remote --exit-code --heads origin $new_branch ; then
             git fetch origin $new_branch:$new_branch
-            git checkout ${{ github.event.pull_request.base.ref }}
+            git checkout $new_branch
 
-            git merge --no-commit --no-ff $new_branch
+            git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }}
 
             if [[ $? -ne 0 ]]; then
               echo "Merge conflict detected. Checking out target branch and proceeding to the next step."
@@ -101,8 +101,6 @@ jobs:
             else
               echo "No merge conflict detected."
             fi
-
-            git push origin ${{ github.event.pull_request.base.ref }}
           else
             echo "Branch $new_branch does not exist. Exiting gracefully."
             exit 0
