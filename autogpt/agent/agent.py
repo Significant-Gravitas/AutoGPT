@@ -257,7 +257,7 @@ class Agent:
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
                 result = (
-                    f"Command {command_name} threw the following error: {arguments}"
+                    f"Could not execute command: {arguments}"
                 )
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"

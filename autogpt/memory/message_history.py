@@ -68,11 +68,6 @@ class MessageHistory:
             msg for msg in new_messages if msg not in current_message_chain
         ]
 
-        # agent.history.archive(
-        #     new_messages_not_in_chain,
-        #     agent.memory,
-        # )
-
         new_summary_message = self.update_running_summary(
             new_events=new_messages_not_in_chain
         )
