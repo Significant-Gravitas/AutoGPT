@@ -103,7 +103,7 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-              echo "some content1" > tests/cassettes/file1.yaml
+              echo "some content2" > tests/cassettes/file1.yaml
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
