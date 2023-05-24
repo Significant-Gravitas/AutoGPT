@@ -87,8 +87,8 @@ jobs:
           git config --global user.email "github-actions@github.com"
           
           cd tests/cassettes
-          git fetch
-          { git checkout $new_branch && git pull origin $new_branch; } || echo "Branch $new_branch does not exist. Proceeding to the next step."
+          git fetch git fetch origin $new_branch:$new_branch
+          git checkout $new_branch || echo "Branch $new_branch does not exist. Proceeding to the next step."
           
           
           # Check for conflicts with the target branch
