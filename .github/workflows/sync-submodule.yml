@@ -1,7 +1,7 @@
 name: Update Submodule After PR Merged
 
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
     branches: [master, stable, ci-test*]
 
