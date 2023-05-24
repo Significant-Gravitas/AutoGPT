@@ -97,7 +97,7 @@ jobs:
             if git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }}; then
               echo "No merge conflict detected."
             else
-              echo "Merge conflict detected. Checking out target branch and proceeding to the next step."
+              echo "Merge conflict detected. This means we cannot use the cassettes previously sent, so we will take the cassettes of master."
               git merge --abort
               git checkout ${{ github.event.pull_request.base.ref }}
             fi
@@ -109,7 +109,7 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-              echo "some content2" > tests/cassettes/file1.yaml
+              pytest -s tests/integration/challenges/basic_abilities/test_write_file.py
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
