@@ -22,7 +22,7 @@ ENV PATH="$PATH:/root/.local/bin"
 COPY requirements.txt .
 
 # Set the entrypoint
-ENTRYPOINT ["python", "-m", "autogpt"]
+ENTRYPOINT ["python", "-m", "autogpt", "--install-plugin-deps"]
 
 # dev build -> include everything
 FROM autogpt-base as autogpt-dev
@@ -37,6 +37,7 @@ RUN sed -i '/Items below this point will not be included in the Docker Image/,$d
 WORKDIR /app
 ONBUILD COPY autogpt/ ./autogpt
 ONBUILD COPY scripts/ ./scripts
-
+ONBUILD COPY plugins/ ./plugins
+ONBUILD RUN mkdir ./data
 
 FROM autogpt-${BUILD_TYPE} AS auto-gpt

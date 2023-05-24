@@ -30,7 +30,29 @@ class Config(metaclass=Singleton):
 
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
+
+        disabled_command_categories = os.getenv("DISABLED_COMMAND_CATEGORIES")
+        if disabled_command_categories:
+            self.disabled_command_categories = disabled_command_categories.split(",")
+        else:
+            self.disabled_command_categories = []
+
+        deny_commands = os.getenv("DENY_COMMANDS")
+        if deny_commands:
+            self.deny_commands = deny_commands.split(",")
+        else:
+            self.deny_commands = []
+
+        allow_commands = os.getenv("ALLOW_COMMANDS")
+        if allow_commands:
+            self.allow_commands = allow_commands.split(",")
+        else:
+            self.allow_commands = []
+
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
+        self.prompt_settings_file = os.getenv(
+            "PROMPT_SETTINGS_FILE", "prompt_settings.yaml"
+        )
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
@@ -142,7 +164,12 @@ class Config(metaclass=Singleton):
             self.plugins_allowlist = plugins_allowlist.split(",")
         else:
             self.plugins_allowlist = []
-        self.plugins_denylist = []
+
+        plugins_denylist = os.getenv("DENYLISTED_PLUGINS")
+        if plugins_denylist:
+            self.plugins_denylist = plugins_denylist.split(",")
+        else:
+            self.plugins_denylist = []
 
     def get_azure_deployment_id_for_model(self, model: str) -> str:
         """
@@ -183,7 +210,7 @@ class Config(metaclass=Singleton):
             None
         """
         with open(config_file) as file:
-            config_params = yaml.load(file, Loader=yaml.FullLoader)
+            config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
         self.openai_api_version = (

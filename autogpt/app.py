@@ -120,8 +120,6 @@ def execute_command(
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
-        elif command_name == "task_complete":
-            shutdown()
         else:
             for command in prompt.commands:
                 if (
@@ -157,7 +155,7 @@ def get_text_summary(url: str, question: str) -> str:
     return f""" "Result" : {summary}"""
 
 
-@command("get_hyperlinks", "Get text summary", '"url": "<url>"')
+@command("get_hyperlinks", "Get hyperlinks", '"url": "<url>"')
 @validate_url
 def get_hyperlinks(url: str) -> Union[str, List[str]]:
     """Return the results of a Google search
@@ -169,12 +167,6 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
         str or list: The hyperlinks on the page
     """
     return scrape_links(url)
-
-
-def shutdown() -> NoReturn:
-    """Shut down the program"""
-    logger.info("Shutting down...")
-    quit()
 
 
 @command(
