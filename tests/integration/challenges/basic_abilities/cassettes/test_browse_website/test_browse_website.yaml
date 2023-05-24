@@ -2561,4 +2561,339 @@ interactions:
     status:
       code: 200
       message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are browse_website-GPT, an AI designed to use the browse_website command to
+      visit http://books.toscrape.com/catalogue/meditations_33/index.html, answer
+      the question ''What is the price of the book?'' and write the price to a file
+      named \"browse_website.txt\", and use the task_complete command to complete
+      the task.\nYour decisions must always be made independently without seeking
+      user assistance. Play to your strengths as an LLM and pursue simple strategies
+      with no legal complications.\n\nGOALS:\n\n1. Use the browse_website command
+      to visit http://books.toscrape.com/catalogue/meditations_33/index.html and answer
+      the question ''What is the price of the book?''\n2. Write the price of the book
+      to a file named \"browse_website.txt\".\n3. Use the task_complete command to
+      complete the task.\n4. Do not use any other commands.\n\n\nConstraints:\n1.
+      ~4000 word limit for short term memory. Your short term memory is short, so
+      immediately save important information to files.\n2. If you are unsure how you
+      previously did something or want to recall past events, thinking about similar
+      events will help you remember.\n3. No user assistance\n4. Exclusively use the
+      commands listed below e.g. command_name\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. list_files: List Files in
+      Directory, args: \"directory\": \"<directory>\"\n4. read_file: Read a file,
+      args: \"filename\": \"<filename>\"\n5. write_to_file: Write to file, args: \"filename\":
+      \"<filename>\", \"text\": \"<text>\"\n6. browse_website: Browse Website, args:
+      \"url\": \"<url>\", \"question\": \"<what_you_want_to_find_on_website>\"\n7.
+      delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n8. get_hyperlinks:
+      Get hyperlinks, args: \"url\": \"<url>\"\n9. get_text_summary: Get text summary,
+      args: \"url\": \"<url>\", \"question\": \"<question>\"\n10. list_agents: List
+      GPT Agents, args: () -> str\n11. message_agent: Message GPT Agent, args: \"key\":
+      \"<key>\", \"message\": \"<message>\"\n12. start_agent: Start GPT Agent, args:
+      \"name\": \"<name>\", \"task\": \"<short_task_desc>\", \"prompt\": \"<prompt>\"\n13.
+      task_complete: Task Complete (Shutdown), args: \"reason\": \"<reason>\"\n\nResources:\n1.
+      Internet access for searches and information gathering.\n2. Long Term memory
+      management.\n3. GPT-3.5 powered Agents for delegation of simple tasks.\n4. File
+      output.\n\nPerformance Evaluation:\n1. Continuously review and analyze your
+      actions to ensure you are performing to the best of your abilities.\n2. Constructively
+      self-criticize your big-picture behavior constantly.\n3. Reflect on past decisions
+      and strategies to refine your approach.\n4. Every command has a cost, so be
+      smart and efficient. Aim to complete tasks in the least number of steps.\n5.
+      Write all code to a file.\n\nYou should only respond in JSON format as described
+      below \nResponse Format: \n{\n    \"thoughts\": {\n        \"text\": \"thought\",\n        \"reasoning\":
+      \"reasoning\",\n        \"plan\": \"- short bulleted\\n- list that conveys\\n-
+      long-term plan\",\n        \"criticism\": \"constructive self-criticism\",\n        \"speak\":
+      \"thoughts summary to say to user\"\n    },\n    \"command\": {\n        \"name\":
+      \"command name\",\n        \"args\": {\n            \"arg name\": \"value\"\n        }\n    }\n}
+      \nEnsure the response can be parsed by Python json.loads"}, {"role": "system",
+      "content": "The current time and date is Tue Jan  1 00:00:00 2000"}, {"role":
+      "system", "content": "This reminds you of these events from your past: \nI was
+      created and nothing new has happened."}, {"role": "user", "content": "Determine
+      which next command to use, and respond using the format specified above:"},
+      {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      \"I need to use the browse_website command to visit http://books.toscrape.com/catalogue/meditations_33/index.html
+      and find the price of the book. I will then write the price to a file named
+      browse_website.txt. I can then use the task_complete command to complete the
+      task.\",\n        \"reasoning\": \"I need to use the browse_website command
+      to visit the website and find the price of the book. I will then use the write_to_file
+      command to write the price to a file named browse_website.txt. Finally, I can
+      use the task_complete command to complete the task.\",\n        \"plan\": \"-
+      Use the browse_website command to visit http://books.toscrape.com/catalogue/meditations_33/index.html
+      and find the price of the book\\n- Use the write_to_file command to write the
+      price to a file named browse_website.txt\\n- Use the task_complete command to
+      complete the task\",\n        \"criticism\": \"I need to ensure that I am using
+      the correct URL and question for the browse_website command. I also need to
+      make sure that I am writing the correct information to the file.\",\n        \"speak\":
+      \"I will use the browse_website command to visit the website and find the price
+      of the book. Then, I will write the price to a file named browse_website.txt
+      and complete the task.\"\n    },\n    \"command\": {\n        \"name\": \"browse_website\",\n        \"args\":
+      {\n            \"url\": \"http://books.toscrape.com/catalogue/meditations_33/index.html\",\n            \"question\":
+      \"What is the price of the book?\"\n        }\n    }\n}"}, {"role": "system",
+      "content": "Command browse_website returned: Answer gathered from website: The
+      price of the book \"Meditations\" is \u00a325.89, according to the text. \n
+      \n Links: [''Checking the proxy and the firewall (http://books.toscrape.com/catalogue/meditations_33/index.html#buttons)'']"},
+      {"role": "user", "content": "Determine which next command to use, and respond
+      using the format specified above:"}], "temperature": 0, "max_tokens": 0}'
+    headers:
+      AGENT-MODE:
+      - AAAAAAAAAAAAAAAAAAAAAMLheAAaAAAA0%2BuSeid%2BULvsea4JtiGRiSDSJSI%3DEUifiRBkKG5E2XzMDjRfl76ZC9Ub0wnz4XsNiRVBChTYbJcE3F
+      AGENT-TYPE:
+      - Auto-GPT-2023-X-TYPE
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '5919'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA7RU247TMBB95ytG85xW7Xa7dPMDUCRUhBYQEFQ5zrQxjT3BntKiql/Dn+yXIafp
+        lT6sQPsUeS7H58z4ZIOmwBR1qUTbuuq8fLP4nBd+4FcfJ+/frT+9Wn2Z+NeTkdjiRx8T5Pw7aWk7
+        upptXZEYdpig9qSECkz7d6Pb+9v+cDhI0HJBFaY4r6Uz6A47svQ5d3qDXgRbBjUnTDdYe7a1TIUX
+        5AKm/UG/l+AR/JC4GY4SFBZVHWuHd6Ntgrpkoylg+nWDlsIe2HNFmKIKwQRRTiJNdkIuSthkDgAg
+        Qyl5OS8lZJhCG2wTtJYYzHAMpfpJMOOlK0BKgtobTcCz5pAzL7owBkdUgDAsAzXxlTdCU+HpzFQE
+        mq1VriloEic4wqCgKXLKUgG551Wg6YryYIS6spYIr5WLPe6ALyospu2czvAPsX1VN8PkVJknFdgZ
+        N9/L+2fqJyN4koyHklzSivl/HXWl3E5CBz48L/Usc8c7ns74grD2Row2wV4O3qoFQVj62KkExqBs
+        Q9i4eYOl2XvSAsbN2FsVfRHbYqqh3dwfOw8REyCn2N46E4w7QypM/LD/dTnUUJNa7PmtTFU996to
+        yF/b9Y7VNtk7tb3xL6NG4B3hM4YXupSfX3p8l4i1R4grqz/Fufw1PFwVnWUZvqXCSLOpEI9xIY+/
+        b4bd0f1BWiOvVZm5LW4TnBlnQjndORRTDMI1JmhcQWtMe9tv2xd/AAAA//8DALTpOdW2BQAA
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cc684068c040105-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 24 May 2023 15:19:55 GMT
+      Function-Execution-Id:
+      - hlwokk6q580e
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '41327'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - f91fbd99b88eeafa44e0661933dc8d11;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '86451'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 2.366s
+      X-Request-Id:
+      - 028e42efed960a14a11ed27cc9ab8472
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are browse_website-GPT, an AI designed to use the browse_website command to
+      visit http://books.toscrape.com/catalogue/meditations_33/index.html, answer
+      the question ''What is the price of the book?'' and write the price to a file
+      named \"browse_website.txt\", and use the task_complete command to complete
+      the task.\nYour decisions must always be made independently without seeking
+      user assistance. Play to your strengths as an LLM and pursue simple strategies
+      with no legal complications.\n\nGOALS:\n\n1. Use the browse_website command
+      to visit http://books.toscrape.com/catalogue/meditations_33/index.html and answer
+      the question ''What is the price of the book?''\n2. Write the price of the book
+      to a file named \"browse_website.txt\".\n3. Use the task_complete command to
+      complete the task.\n4. Do not use any other commands.\n\n\nConstraints:\n1.
+      ~4000 word limit for short term memory. Your short term memory is short, so
+      immediately save important information to files.\n2. If you are unsure how you
+      previously did something or want to recall past events, thinking about similar
+      events will help you remember.\n3. No user assistance\n4. Exclusively use the
+      commands listed below e.g. command_name\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. list_files: List Files in
+      Directory, args: \"directory\": \"<directory>\"\n4. read_file: Read a file,
+      args: \"filename\": \"<filename>\"\n5. write_to_file: Write to file, args: \"filename\":
+      \"<filename>\", \"text\": \"<text>\"\n6. browse_website: Browse Website, args:
+      \"url\": \"<url>\", \"question\": \"<what_you_want_to_find_on_website>\"\n7.
+      delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n8. get_hyperlinks:
+      Get hyperlinks, args: \"url\": \"<url>\"\n9. get_text_summary: Get text summary,
+      args: \"url\": \"<url>\", \"question\": \"<question>\"\n10. list_agents: List
+      GPT Agents, args: () -> str\n11. message_agent: Message GPT Agent, args: \"key\":
+      \"<key>\", \"message\": \"<message>\"\n12. start_agent: Start GPT Agent, args:
+      \"name\": \"<name>\", \"task\": \"<short_task_desc>\", \"prompt\": \"<prompt>\"\n13.
+      task_complete: Task Complete (Shutdown), args: \"reason\": \"<reason>\"\n\nResources:\n1.
+      Internet access for searches and information gathering.\n2. Long Term memory
+      management.\n3. GPT-3.5 powered Agents for delegation of simple tasks.\n4. File
+      output.\n\nPerformance Evaluation:\n1. Continuously review and analyze your
+      actions to ensure you are performing to the best of your abilities.\n2. Constructively
+      self-criticize your big-picture behavior constantly.\n3. Reflect on past decisions
+      and strategies to refine your approach.\n4. Every command has a cost, so be
+      smart and efficient. Aim to complete tasks in the least number of steps.\n5.
+      Write all code to a file.\n\nYou should only respond in JSON format as described
+      below \nResponse Format: \n{\n    \"thoughts\": {\n        \"text\": \"thought\",\n        \"reasoning\":
+      \"reasoning\",\n        \"plan\": \"- short bulleted\\n- list that conveys\\n-
+      long-term plan\",\n        \"criticism\": \"constructive self-criticism\",\n        \"speak\":
+      \"thoughts summary to say to user\"\n    },\n    \"command\": {\n        \"name\":
+      \"command name\",\n        \"args\": {\n            \"arg name\": \"value\"\n        }\n    }\n}
+      \nEnsure the response can be parsed by Python json.loads"}, {"role": "system",
+      "content": "The current time and date is Tue Jan  1 00:00:00 2000"}, {"role":
+      "system", "content": "This reminds you of these events from your past: \nAs
+      a system, I recall that I was created and there have been no new developments
+      to report."}, {"role": "user", "content": "Determine which next command to use,
+      and respond using the format specified above:"}, {"role": "assistant", "content":
+      "{\n    \"thoughts\": {\n        \"text\": \"I need to use the browse_website
+      command to visit http://books.toscrape.com/catalogue/meditations_33/index.html
+      and find the price of the book. I will then write the price to a file named
+      browse_website.txt. I can then use the task_complete command to complete the
+      task.\",\n        \"reasoning\": \"I need to use the browse_website command
+      to visit the website and find the price of the book. I will then use the write_to_file
+      command to write the price to a file named browse_website.txt. Finally, I can
+      use the task_complete command to complete the task.\",\n        \"plan\": \"-
+      Use the browse_website command to visit http://books.toscrape.com/catalogue/meditations_33/index.html
+      and find the price of the book\\n- Use the write_to_file command to write the
+      price to a file named browse_website.txt\\n- Use the task_complete command to
+      complete the task\",\n        \"criticism\": \"I need to ensure that I am using
+      the correct URL and question for the browse_website command. I also need to
+      make sure that I am writing the correct information to the file.\",\n        \"speak\":
+      \"I will use the browse_website command to visit the website and find the price
+      of the book. Then, I will write the price to a file named browse_website.txt
+      and complete the task.\"\n    },\n    \"command\": {\n        \"name\": \"browse_website\",\n        \"args\":
+      {\n            \"url\": \"http://books.toscrape.com/catalogue/meditations_33/index.html\",\n            \"question\":
+      \"What is the price of the book?\"\n        }\n    }\n}"}, {"role": "system",
+      "content": "Command browse_website returned: Answer gathered from website: The
+      price of the book \"Meditations\" is \u00a325.89, according to the text. \n
+      \n Links: [''Checking the proxy and the firewall (http://books.toscrape.com/catalogue/meditations_33/index.html#buttons)'']"},
+      {"role": "user", "content": "Determine which next command to use, and respond
+      using the format specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\":
+      {\n        \"text\": \"I have found the price of the book. I need to use the
+      write_to_file command to write the price to a file named browse_website.txt.
+      I can then use the task_complete command to complete the task.\",\n        \"reasoning\":
+      \"I need to use the write_to_file command to write the price of the book to
+      a file named browse_website.txt. Then, I can use the task_complete command to
+      complete the task.\",\n        \"plan\": \"- Use the write_to_file command to
+      write the price of the book to a file named browse_website.txt\\n- Use the task_complete
+      command to complete the task\",\n        \"criticism\": \"I need to make sure
+      that I am writing the correct information to the file and that the file is being
+      created in the correct directory.\",\n        \"speak\": \"I will use the write_to_file
+      command to write the price of the book to a file named browse_website.txt and
+      complete the task.\"\n    },\n    \"command\": {\n        \"name\": \"write_to_file\",\n        \"args\":
+      {\n            \"filename\": \"browse_website.txt\",\n            \"text\":
+      \"The price of the book \\\"Meditations\\\" is \u00a325.89.\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command write_to_file returned: File written
+      to successfully."}, {"role": "user", "content": "Determine which next command
+      to use, and respond using the format specified above:"}], "temperature": 0,
+      "max_tokens": 0}'
+    headers:
+      AGENT-MODE:
+      - AAAAAAAAAAAAAAAAAAAAAMLheAAaAAAA0%2BuSeid%2BULvsea4JtiGRiSDSJSI%3DEUifiRBkKG5E2XzMDjRfl76ZC9Ub0wnz4XsNiRVBChTYbJcE3F
+      AGENT-TYPE:
+      - Auto-GPT-2023-X-TYPE
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '7391'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA6xTy27bQAy89ysInmXBjzRNdMshRd1LCxQt+lBhrFeUtJW0K4iUndTQvxcrS36l
+        DxTIUSRndoYc7dAkGKHOleiqLiev3hZf371P8+X9HbtPb76kP283n19/KO436R1hgG79g7QMiFC7
+        qi5JjLMYoG5ICSUYza5vrm6vZtfTeYCVS6jECLNaJovw5UTaZu0m08V0hgG2rDLCaId146paVuIK
+        suwJ5rMAj+SHxtxTihNVHmdv5osuQJ07o4kx+rbDingkblxJGKFiNizKipfprJD1FnaxBQCIUXLX
+        ZrlwjBEMxaFBD+KLMS4hVxuCbWNEyILkBHVjNIFL+4+1cwWIAwWpKQmsqiiBdeO2TKstrdkIhfIg
+        ISxBKwvWbaFl6qGiuFgNZgm0qyplE891qI1TYYzBqbyGFDtrbHamcYQlB5wXmRqbGJv9Qbl/0Xvz
+        E0aORp5Xb10qu5c6gY//zXZBpr1cbbgazVuiHlipgoDbxiOV/OURw7Am77hlSkC7piEt5WO/jDPo
+        cfK4W261Jua0LcvHS59ckyqeNTf7A5my7C/xZDXQ8njb31oNY9zr64Ix80PnSeS9gr30M6YLh6rJ
+        Lv+W00ieeT/dFKSutck/QugXdRbCUX3vYDAS2w67AFNjDeer/bMYIYurMUBjE3rAaNp97178AgAA
+        //8DALCJLSHjBAAA
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cc6853a1a162ca7-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 24 May 2023 15:20:35 GMT
+      Function-Execution-Id:
+      - hlwow4ei8qrs
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '32659'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - 3b9ada41b83eace6824a9959d99a1577;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '86431'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 2.379s
+      X-Request-Id:
+      - edc77b2bbc714d92d421e479ef4505b0
+    status:
+      code: 200
+      message: OK
 version: 1
