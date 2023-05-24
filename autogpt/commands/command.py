@@ -31,7 +31,7 @@ class Command:
         self.name = name
         self.description = description
         self.method = method
-        self.signature = signature if signature else str(inspect.signature(self.method))
+        self.signature = signature if signature else "() -> str"
         self.enabled = enabled
         self.disabled_reason = disabled_reason
 

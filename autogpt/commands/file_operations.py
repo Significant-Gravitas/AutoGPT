@@ -12,15 +12,8 @@ from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.commands.command import command
-<<<<<<< HEAD
-<<<<<<< HEAD
 from autogpt.commands.file_operations_utils import read_textual_file
 from autogpt.config import Config
-=======
-
->>>>>>> a3c02522 (feat: file operations cfg)
-=======
->>>>>>> 3ca1c0e1 (fix: linting)
 from autogpt.logs import logger
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
@@ -155,13 +148,8 @@ def split_file(
         start += max_length - overlap
 
 
-<<<<<<< HEAD
 @command("read_file", "Read a file", '"filename": "<filename>"')
-def read_file(filename: str) -> str:
-=======
-@command("read_file", "Read file", '"filename": "<filename>"')
 def read_file(filename: str, config: Config) -> str:
->>>>>>> a3c02522 (feat: file operations cfg)
     """Read a file and return the contents
 
     Args:

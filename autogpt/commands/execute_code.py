@@ -64,11 +64,7 @@ def execute_python_file(filename: str, config: Config) -> str:
                     logger.info(status)
         container = client.containers.run(
             image_name,
-<<<<<<< HEAD
-            ["python", str(Path(filename).relative_to(CFG.workspace_path))],
-=======
-            f"python {Path(filename).relative_to(config.workspace_path)}",
->>>>>>> 1ccbbafe (feat: remove cfg from execute code commands)
+            ["python", str(Path(filename).relative_to(config.workspace_path))],
             volumes={
                 config.workspace_path: {
                     "bind": "/workspace",
