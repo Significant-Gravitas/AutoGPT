@@ -132,7 +132,7 @@ jobs:
           fi
           git fetch origin $new_branch:$new_branch
           git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }}
-          differences=$(git diff origin/$new_branch origin/${{ github.event.pull_request.number }})
+          differences=$(git diff origin/$new_branch origin/${{ github.event.pull_request.base.ref }})
     
           if [ -n "$differences" ]; then
             echo "DIFF_EXISTS=true" >> $GITHUB_ENV
