@@ -179,12 +179,34 @@ def typewriter_first_9(mocker):
 
 
 @pytest.fixture
+def typewriter_first_9_with_speak(mocker, typewriter_first_9):
+    typewriter_first_9.insert(
+        8,
+        mocker.call(
+            "SPEAK:",
+            "\x1b[33m",
+            "I will start by browsing the website www.steinhaug.no to gather information and save it to a file.",
+        ),
+    )
+    return typewriter_first_9
+
+
+@pytest.fixture
 def typewriter_command_returned(mocker):
     return [
         mocker.call(
             "SYSTEM: ",
             "\x1b[33m",
             "Command browse_website returned: command return value",
+        ),
+    ]
+
+
+@pytest.fixture
+def typewriter_commands_left(mocker):
+    return [
+        mocker.call(
+            "\x1b[36mAUTHORISED COMMANDS LEFT: \x1b[0m0",
         ),
     ]
 
@@ -205,6 +227,7 @@ def test_execute_command_continuous_mode(
     mock_say_text_in_logs,
     typewriter_first_9,
     typewriter_command_returned,
+    typewriter_commands_left
 ):
     # Test with browse_website expected outcome in continuous mode with limit = 1
     agent.start_interaction_loop()
@@ -223,6 +246,7 @@ def test_execute_command_continuous_mode(
 
     expected_typewriter_log = (
         typewriter_first_9
+        + typewriter_commands_left
         + typewriter_command_returned
         + [
             mocker.call("Continuous Limit Reached: ", "\x1b[33m", "1"),
@@ -268,7 +292,7 @@ def test_command_error(
     mock_chat_with_ai,
     mock_input,
     mock_logger_typewriter_log,
-    typewriter_first_9,
+    typewriter_first_9_with_speak,
     typewriter_command_auth_by_user,
 ):
     mock_get_command = mocker.patch("autogpt.agent.agent.get_command")
@@ -277,7 +301,7 @@ def test_command_error(
 
     agent.start_interaction_loop()
 
-    typewriter_first_8 = typewriter_first_9[:-1]
+    typewriter_first_8 = typewriter_first_9_with_speak[:-1]
 
     expected_typewriter_log = (
         typewriter_first_8
@@ -403,7 +427,7 @@ def test_execute_command_normal_mode(
     mock_logger_error,
     mock_say_text,
     mock_get_self_feedback,
-    typewriter_first_9,
+    typewriter_first_9_with_speak,
     typewriter_command_auth_by_user,
     typewriter_command_returned,
     typewriter_verify_by_agent,
@@ -417,24 +441,24 @@ def test_execute_command_normal_mode(
     agent.start_interaction_loop()
 
     expected_typewriter_log = (
-        typewriter_first_9
+        typewriter_first_9_with_speak
         + typewriter_command_auth_by_user
         + typewriter_command_returned
-        + typewriter_first_9
+        + typewriter_first_9_with_speak
         + typewriter_verify_by_agent
         + typewriter_self_feedback
         + typewriter_command_auth_by_user
         + typewriter_command_returned
-        + typewriter_first_9
+        + typewriter_first_9_with_speak
         + typewriter_human_feedback
-        + typewriter_first_9
+        + typewriter_first_9_with_speak
         + typewriter_command_auth_by_user
         + typewriter_command_returned
-        + typewriter_first_9
+        + typewriter_first_9_with_speak
         + typewriter_command_returned
-        + typewriter_first_9
+        + typewriter_first_9_with_speak
         + typewriter_command_returned
-        + typewriter_first_9
+        + typewriter_first_9_with_speak
     )
 
     actual_logger_typewriter_log_calls = mock_logger_typewriter_log.call_args_list
@@ -486,7 +510,7 @@ def test_execute_command_no_next_command_self_feedback(
     mock_logger_error,
     mock_say_text,
     mock_get_self_feedback,
-    typewriter_first_9,
+    typewriter_first_9_with_speak,
     typewriter_command_auth_by_user,
     typewriter_command_returned,
     typewriter_verify_by_agent,
@@ -502,7 +526,7 @@ def test_execute_command_no_next_command_self_feedback(
     agent.start_interaction_loop()
 
     expected_typewriter_log = (
-        typewriter_first_9
+        typewriter_first_9_with_speak
         + typewriter_verify_by_agent
         + [
             mocker.call(
@@ -512,7 +536,7 @@ def test_execute_command_no_next_command_self_feedback(
             )
         ]
         + typewriter_command_returned
-        + typewriter_first_9
+        + typewriter_first_9_with_speak
     )
 
     actual_logger_typewriter_log_calls = mock_logger_typewriter_log.call_args_list
