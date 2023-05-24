@@ -105,7 +105,9 @@ jobs:
           gh repo set-default Significant-Gravitas/cassettes
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
-          git checkout -b $new_branch
+          git config --global http.extraheader "AUTHORIZATION: token ${{ secrets.PAT_REVIEW }}"
+          
           git add .
           git commit -m "Auto-update cassettes after merging PR #$pr_number"
+          git checkout -b $new_branch
           git push origin $new_branch
