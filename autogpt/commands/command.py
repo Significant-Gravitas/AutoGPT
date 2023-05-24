@@ -9,7 +9,6 @@ from autogpt.logs import logger
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 
-
 class Command:
     """A class representing a command.
 
@@ -31,7 +30,7 @@ class Command:
         self.name = name
         self.description = description
         self.method = method
-        self.signature = signature if signature else "() -> str"
+        self.signature = signature
         self.enabled = enabled
         self.disabled_reason = disabled_reason
 
@@ -138,7 +137,7 @@ class CommandRegistry:
 def command(
     name: str,
     description: str,
-    signature: str = "",
+    signature: str,
     enabled: bool | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
 ) -> Callable[..., Any]:

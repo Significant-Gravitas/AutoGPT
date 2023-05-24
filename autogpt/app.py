@@ -223,7 +223,7 @@ def message_agent(key: str, message: str, config: Config) -> str:
     return agent_response
 
 
-@command("list_agents", "List GPT Agents", "")
+@command("list_agents", "List GPT Agents", "() -> str")
 def list_agents(config: Config) -> str:
     """List all agents
 
