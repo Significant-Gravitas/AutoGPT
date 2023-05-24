@@ -138,11 +138,13 @@ jobs:
           else
             echo "DIFF_EXISTS=false" >> $GITHUB_ENV
           fi
-          
 
       - name: Apply label and comment based on environment variable
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
+          echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
+          gh repo set-default ${{ github.repository }}
+
           if [[ "${{ env.DIFF_EXISTS }}" == "true" ]]; then
             echo "Adding label and comment..."
             gh pr edit $PR_NUMBER --add-label "PROMPT CHANGE"
@@ -151,6 +153,5 @@ jobs:
             echo "Removing label..."
             gh pr edit $PR_NUMBER --remove-label "PROMPT CHANGE"
           fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
 
