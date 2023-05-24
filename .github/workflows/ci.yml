@@ -82,24 +82,32 @@ jobs:
           current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
           pr_number=${{ github.event.pull_request.number }}
           new_branch="${current_branch}-${pr_number}"
-          
+
           git config --global user.name "Github Actions"
           git config --global user.email "github-actions@github.com"
-          
+
           cd tests/cassettes
-          git fetch origin $new_branch:$new_branch
-          git checkout $new_branch || echo "Branch $new_branch does not exist. Proceeding to the next step."
-          
-          
-          # Check for conflicts with the target branch
-          git merge --no-commit --no-ff origin/${{ github.event.pull_request.base.ref }}
-          if [[ $? -ne 0 ]]; then
+
+          if git ls-remote --exit-code --heads origin $new_branch ; then
+            git fetch origin $new_branch:$new_branch
+            git checkout ${{ github.event.pull_request.base.ref }}
+
+            git merge --no-commit --no-ff $new_branch
+
+            if [[ $? -ne 0 ]]; then
               echo "Merge conflict detected. Checking out target branch and proceeding to the next step."
               git merge --abort
               git checkout ${{ github.event.pull_request.base.ref }}
-          else
+            else
               echo "No merge conflict detected."
+            fi
+
+            git push origin ${{ github.event.pull_request.base.ref }}
+          else
+            echo "Branch $new_branch does not exist. Exiting gracefully."
+            exit 0
           fi
+      
 
       - name: Run unittest tests with coverage
         run: |
