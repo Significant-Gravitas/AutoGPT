@@ -26,7 +26,11 @@ class TestAnalyzeCode:
             config=config,
         )
 
-    def test_negative_analyze_code(self, mock_call_ai_function, config: Config,):
+    def test_negative_analyze_code(
+        self,
+        mock_call_ai_function,
+        config: Config,
+    ):
         # Negative Test
         mock_call_ai_function.return_value = []
         code = "def example_function():\n    pass"
@@ -52,7 +56,11 @@ class TestAnalyzeCode:
             config=config,
         )
 
-    def test_edge_analyze_code_empty_code(self, mock_call_ai_function, config: Config,):
+    def test_edge_analyze_code_empty_code(
+        self,
+        mock_call_ai_function,
+        config: Config,
+    ):
         # Edge Test
         mock_call_ai_function.return_value = ["Suggestion 1", "Suggestion 2"]
         code = ""

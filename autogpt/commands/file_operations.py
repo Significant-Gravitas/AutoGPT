@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 Operation = Literal["write", "append", "delete"]
 CFG = Config()
 
+
 def text_checksum(text: str) -> str:
     """Get the hex checksum for the given text."""
     return hashlib.md5(text.encode("utf-8")).hexdigest()
@@ -304,7 +305,7 @@ def list_files(directory: str, config: Config) -> list[str]:
     "download_file",
     "Download File",
     '"url": "<url>", "filename": "<filename>"',
-    CFG.allow_downloads, # TODO find a way to get rid of this
+    CFG.allow_downloads,  # TODO find a way to get rid of this
     "Error: You do not have user authorization to download files locally.",
 )
 def download_file(url, filename, config: Config):
