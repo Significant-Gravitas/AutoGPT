@@ -142,6 +142,7 @@ jobs:
 
       - name: Apply label and comment based on environment variable
         run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
           if [[ "${{ env.DIFF_EXISTS }}" == "true" ]]; then
             echo "Adding label and comment..."
             gh pr edit $PR_NUMBER --add-label "PROMPT CHANGE"
@@ -152,5 +153,4 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DIFF_EXISTS: ${{ env.DIFF_EXISTS }}
-          PR_NUMBER: $(echo ${{ github.ref }} | awk 'BEGIN { FS = "/" } ; { print $3 }')
+
