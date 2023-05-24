@@ -151,12 +151,41 @@ def test_log_operation_with_checksum(config: Config):
     assert f"log_test: path/to/test #ABCDEF\n" in content
 
 
+@pytest.mark.parametrize(
+    "max_length, overlap, content, expected",
+    [
+        (
+            4,
+            1,
+            "abcdefghij",
+            ["abcd", "defg", "ghij"],
+        ),
+        (
+            4,
+            0,
+            "abcdefghijkl",
+            ["abcd", "efgh", "ijkl"],
+        ),
+        (
+            4,
+            0,
+            "abcdefghijklm",
+            ["abcd", "efgh", "ijkl", "m"],
+        ),
+        (
+            4,
+            0,
+            "abcdefghijk",
+            ["abcd", "efgh", "ijk"],
+        ),
+    ],
+)
 # Test splitting a file into chunks
-def test_split_file():
-    content = "abcdefghij"
-    chunks = list(file_ops.split_file(content, max_length=4, overlap=1))
-    expected = ["abcd", "defg", "ghij"]
-    assert chunks == expected
+def test_split_file(max_length, overlap, content, expected):
+    assert (
+        list(file_ops.split_file(content, max_length=max_length, overlap=overlap))
+        == expected
+    )
 
 
 def test_read_file(test_file_with_content_path: Path, file_content):

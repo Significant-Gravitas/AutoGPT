@@ -16,6 +16,7 @@ from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_
 from autogpt.utils import (
     get_current_git_branch,
     get_latest_bulletin,
+    get_legal_warning,
     markdown_to_ansi_style,
 )
 from autogpt.workspace import Workspace
@@ -26,6 +27,7 @@ def run_auto_gpt(
     continuous: bool,
     continuous_limit: int,
     ai_settings: str,
+    prompt_settings: str,
     skip_reprompt: bool,
     speak: bool,
     debug: bool,
@@ -45,10 +47,12 @@ def run_auto_gpt(
     cfg = Config()
     # TODO: fill in llm values here
     check_openai_api_key()
+
     create_config(
         continuous,
         continuous_limit,
         ai_settings,
+        prompt_settings,
         skip_reprompt,
         speak,
         debug,
@@ -59,6 +63,10 @@ def run_auto_gpt(
         allow_downloads,
         skip_news,
     )
+
+    if cfg.continuous_mode:
+        for line in get_legal_warning().split("\n"):
+            logger.warn(markdown_to_ansi_style(line), "LEGAL:", Fore.RED)
 
     if not cfg.skip_news:
         motd, is_new_motd = get_latest_bulletin()
@@ -149,6 +157,8 @@ def run_auto_gpt(
     ai_name = ""
     ai_config = construct_main_ai_config()
     ai_config.command_registry = command_registry
+    if ai_config.ai_name:
+        ai_name = ai_config.ai_name
     # print(prompt)
     # Initialize variables
     full_message_history = []
