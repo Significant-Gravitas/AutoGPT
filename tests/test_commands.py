@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 
 from autogpt.commands.command import Command, CommandRegistry
+
 SIGNATURE = "(arg1: int, arg2: str) -> str"
+
 
 class TestCommand:
     """Test cases for the Command class."""

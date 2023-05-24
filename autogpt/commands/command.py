@@ -9,6 +9,7 @@ from autogpt.logs import logger
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 
+
 class Command:
     """A class representing a command.
 
