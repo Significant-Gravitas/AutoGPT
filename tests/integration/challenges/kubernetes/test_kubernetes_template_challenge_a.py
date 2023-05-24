@@ -1,5 +1,3 @@
-import typing
-
 import pytest
 import yaml
 

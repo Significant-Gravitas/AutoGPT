@@ -1,5 +1,3 @@
-import typing
-
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from pytest_mock import MockerFixture
