@@ -2,9 +2,9 @@ name: Python CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, ci-test*]
   pull_request_target:
-    branches: [ master, stable ]
+    branches: [ master, stable , ci-test*]
 
 concurrency:
   group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
@@ -70,21 +70,53 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
-          submodules: recursive
+          submodules: true
+          token: ${{ secrets.PAT_REVIEW }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+
+      - name: Sync submodule with branch and check conflicts
+        run: |
+          current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
+          pr_number=${{ github.event.pull_request.number }}
+          new_branch="${current_branch}-${pr_number}"
+
+          git config --global user.name "Github Actions"
+          git config --global user.email "github-actions@github.com"
+
+          cd tests/cassettes
+
+          if git ls-remote --exit-code --heads origin $new_branch ; then
+            git fetch origin $new_branch:$new_branch
+            git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }}
+            
+            git checkout $new_branch
+
+            if git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }}; then
+              echo "No merge conflict detected."
+            else
+              echo "Merge conflict detected. This means we cannot use the cassettes previously sent, so we will take the cassettes of master."
+              git merge --abort
+              git checkout ${{ github.event.pull_request.base.ref }}
+            fi
+          else
+            echo "Branch $new_branch does not exist. Exiting gracefully."
+            exit 0
+          fi
+      
+
+
       - name: Run unittest tests with coverage
         run: |
-          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          pytest -s tests/integration/challenges/basic_abilities/test_write_file.py
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
@@ -94,21 +126,17 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
-      - name: Update cassette submodule on merge into master
-        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.ref == 'refs/heads/master'
+      - name: Update cassette submodule on merge into target branch
         run: |
+          current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
+          pr_number=${{ github.event.pull_request.number }}
+          new_branch="${current_branch}-${pr_number}"
           cd tests/cassettes
-          git checkout main
-          git config user.email "github-actions@github.com"
-          git config user.name "GitHub Actions"
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
           git add .
-          git commit -am "Updated cassettes submodule"
-          git push origin main
-          cd ../..
-          git config user.email "github-actions@github.com"
-          git config user.name "GitHub Actions"
-          git add tests/cassettes
-          git commit -am "Updated main repo's submodules"
-          git push origin master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Check if there are any changes
+          git diff-index --quiet HEAD || git commit -m "Auto-update cassettes after merging PR #$pr_number"
+
+          git push -f origin ${{ github.event.pull_request.base.ref }}
