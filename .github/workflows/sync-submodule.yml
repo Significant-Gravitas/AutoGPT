@@ -24,7 +24,7 @@ jobs:
           pr_number=${{ github.event.pull_request.number }}
           new_branch="${current_branch}-${pr_number}"
           cd tests/cassettes
-          git fetch origin
+          git fetch origin $new_branch
           git checkout master
           git merge --no-ff $new_branch
           git push origin master
