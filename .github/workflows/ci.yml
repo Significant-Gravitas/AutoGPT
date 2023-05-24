@@ -117,6 +117,7 @@ jobs:
           git diff --cached --quiet tests && echo "No changes to commit" && exit 0
           find tests -type f -name '*.yaml' -print0 | xargs -0 git add
           echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
+          gh repo set-default ${{ github.repository }}
           gh pr checkout ${{ github.event.pull_request.number }}
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
