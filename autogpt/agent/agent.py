@@ -127,7 +127,7 @@ class Agent:
                 )
                 break
             # Send message to AI, get response
-            with Spinner("Thinking... "):
+            with Spinner("Thinking ... "):
                 assistant_reply = chat_with_ai(
                     self,
                     self.system_prompt,
@@ -178,17 +178,18 @@ class Agent:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
-                self.user_input = ""
+                self.config.ai_name = "yes"
+
                 logger.info(
                     "\n(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.')\n"
-                    "(Key)   'y -n' ('I need your clothes, your boots, and your -number of continuous commands.')\n"
+                    "(Key)   'y -n' ('I need your clothes, your boots, and your continuous cms.')\n"
                     "(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.')\n"
                     "(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.')\n"
-                    f"\n{self.ai_name}> I'm a machine,"
+                    f"\n{Fore.MAGENTA}{self.ai_name}> I'm a machine,"
                 )
                 while True:
                     if cfg.chat_messages_enabled:
-                        console_input = clean_input("HUMAN INPUT: ")
+                        console_input = clean_input(" INPUT: ")
                     else:
                         console_input = clean_input(f"{Fore.MAGENTA}Input:{Style.RESET_ALL}")
                     if console_input.lower().strip() == cfg.authorise_key:
@@ -196,9 +197,8 @@ class Agent:
                         break
                     elif console_input.lower().strip() == "s":
                         logger.typewriter_log(
-                            "-=-=-=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM WILL NOW BE VERIFIED BY AGENT -=-=-=-=-=-=-=",
-                            Fore.GREEN,
-                            "",
+                            "=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM ",
+                            "WILL NOW BE VERIFIED BY AGENT =-=-=-=-=", Fore.LIGHTRED_EX
                         )
                         thoughts = assistant_reply_json.get("thoughts", {})
                         self_feedback_resp = self.get_self_feedback(
@@ -223,7 +223,8 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             logger.warn(
-                                "(Key) ‘Y -N’ 'I need your clothes, your boots, and your -number of continuous commands.'\n"
+                                "(Key) 'Y -N' 'I need your clothes, your boots,"
+                                "and your -number of continuous commands.'\n"
                             )
                             continue
                         break
@@ -254,7 +255,7 @@ class Agent:
             else:
                 # Print authorized commands left value
                 logger.typewriter_log(
-                    f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
+                    f"{Fore.CYAN}AUTHORISED COMMANDS LEFT:{Style.RESET_ALL}{self.next_action_count}"
                 )
 
             # Execute command
@@ -306,7 +307,7 @@ class Agent:
                     create_chat_message("system", "Unable to execute command")
                 )
                 logger.typewriter_log(
-                    "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
+                    "SYSTEM: ", Fore.RED, "Unable to execute command"
                 )
 
     def _resolve_pathlike_command_args(self, command_args):

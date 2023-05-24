@@ -1,4 +1,11 @@
 ## Original ignores
+*.log
+*.mp3
+*.mpeg
+*.pyc
+.idea/*
+.vscode
+ai_settings.yaml
 auto-gpt.json
 auto_gpt_workspace/*
 autogpt/*json
@@ -6,25 +13,15 @@ autogpt/__pycache__/keys.cpython-310.pyc
 autogpt/auto_gpt_workspace
 autogpt/keys.py
 autogpt/node_modules/
-cookies.json
-package-lock.json
-*.log
-*.mp3
-*.mpeg
-*.pyc
-.env
-.idea/*
-.vscode
-FeedMeData*.
-ai_settings.yaml
-ai_settings.yaml.bak
-last_run_ai_settings.yaml
 azure.yaml
+cookies.json
 data_ingestion.py
+last_run_ai_settings.yaml
 log-ingestion.txt
 log.txt
 logs
 mem.sqlite3
+package-lock.json
 venvAutoGPT
 
 # Byte-compiled / optimized / DLL files
@@ -36,26 +33,26 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+*.egg
+*.egg-info/
 .Python
+.eggs/
+.installed.cfg
+MANIFEST
 build/
 develop-eggs/
 dist/
-plugins/
 downloads/
 eggs/
-.eggs/
 lib/
 lib64/
 parts/
+pip-wheel-metadata/
+plugins/
 sdist/
+share/python-wheels/
 var/
 wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -68,17 +65,17 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
 *.cover
 *.py,cover
+.cache
+.coverage
+.coverage.*
 .hypothesis/
+.nox/
+.tox/
+coverage.xml
+htmlcov/
+nosetests.xml
 .pytest_cache/
 
 # Translations
@@ -168,3 +165,8 @@ openai/
 
 # news
 CURRENT_BULLETIN.md
+
+# user custom
+Desktop.ini
+FeedMeData*.
+ai_settings.yaml.bak

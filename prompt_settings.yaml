@@ -5,6 +5,7 @@ constraints: [
   'Exclusively use the commands listed below e.g. command_name'
 ]
 resources: [
+  'ask_genius_bing for precise information gathering.',
   'Internet access for searches and information gathering.',
   'Long Term memory management.',
   'GPT-3.5 powered Agents for delegation of simple tasks.',

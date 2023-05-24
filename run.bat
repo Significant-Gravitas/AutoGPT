@@ -21,4 +21,5 @@ if errorlevel 1 (
     %PYTHON_CMD% -m pip install -r requirements.txt
 )
 %PYTHON_CMD% -m autogpt --debug %*
+::%PYTHON_CMD% -m autogpt %*
 pause
