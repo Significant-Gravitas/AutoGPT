@@ -96,8 +96,6 @@ jobs:
           new_branch="${current_branch}-${pr_number}"
           cd tests/cassettes
           unset GITHUB_TOKEN
-#          echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
-#          gh repo set-default Significant-Gravitas/cassettes
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
 
