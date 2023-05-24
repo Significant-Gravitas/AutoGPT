@@ -1,7 +1,11 @@
+"""
+ The Agent class is used for interacting with Auto-GPT and executing
+ commands based on user input and AI responses.
+"""
 import signal
 import sys
-from datetime import datetime
 
+from datetime import datetime
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
@@ -26,32 +30,35 @@ from autogpt.workspace import Workspace
 
 
 class Agent:
-    """Agent class for interacting with Auto-GPT.
+    """for interacting with Auto-GPT.
 
     Attributes:
-        ai_name: The name of the agent.
-        memory: The memory object to use.
-        full_message_history: The full message history.
-        next_action_count: The number of actions to execute.
-        system_prompt: The system prompt is the initial prompt that defines everything
-          the AI needs to know to achieve its task successfully.
-        Currently, the dynamic and customizable information in the system prompt are
-          ai_name, description and goals.
 
-        triggering_prompt: The last sentence the AI will see before answering.
-            For Auto-GPT, this prompt is:
-            Determine which next command to use, and respond using the format specified
-              above:
-            The triggering prompt is not part of the system prompt because between the
-              system prompt and the triggering
-            prompt we have contextual information that can distract the AI and make it
-              forget that its goal is to find the next task to achieve.
-            SYSTEM PROMPT
-            CONTEXTUAL INFORMATION (memory, previous conversations, anything relevant)
-            TRIGGERING PROMPT
+    ai_name:                The name of the agent.
+    memory:                 The memory object to use.
+    FULL_MESSAGE_HISTORY:   The full message history.
+    NEXT_ACTION_count:      The number of actions to execute.
 
-        The triggering prompt reminds the AI about its short term meta task
-        (defining the next task)
+	SYSTEM_PROMPT:
+	The system prompt is the initial prompt that defines everything
+    the AI needs to know to achieve its task successfully.
+    Currently, the dynamic and customizable information
+    in the system prompt are ai_name, description and ai_goals.
+
+    TRIGGERING_PROMPT:
+	The last sentence the AI will see before answering is:
+
+    "Determine which next command to use, and respond using the format specified
+    above"
+
+    The TRIGGERING_PROMPT is not part of the SYSTEM_PROMPT because between the
+    SYSTEM_PROMPT and the TRIGGERING_PROMPT
+    we have contextual information that can distract the AI and make it forget
+	that its goal is to find the next task to achieve.
+
+    1. SYSTEM_PROMPT
+    2. Contextual information (memory, previous conversations, anything relevant)
+    3. TRIGGERING_PROMPT (reminds the AI about its short term meta task defining the next task)
     """
 
     def __init__(
@@ -84,8 +91,9 @@ class Agent:
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
 
+    # Interaction Loop
     def start_interaction_loop(self):  # sourcery skip: no-long-functions
-        # Interaction Loop
+
         cfg = Config()
         self.cycle_count = 0
         command_name = None
@@ -157,9 +165,9 @@ class Agent:
 
                     arguments = self._resolve_pathlike_command_args(arguments)
 
-                except Exception as e:
-                    logger.error("Error: \n", str(e))
-            self.log_cycle_handler.log_cycle(
+                except ZeroDivisionError as e:
+                    logger.error(f"Error: {e}")
+                self.log_cycle_handler.log_cycle(
                 self.config.ai_name,
                 self.created_at,
                 self.cycle_count,
@@ -338,7 +346,12 @@ class Agent:
         """
         ai_role = self.config.ai_role
 
-        feedback_prompt = f"Below is a message from me, an AI Agent, assuming the role of {ai_role}. whilst keeping knowledge of my slight limitations as an AI Agent Please evaluate my thought process, reasoning, and plan, and provide a concise paragraph outlining potential improvements. Consider adding or removing ideas that do not align with my role and explaining why, prioritizing thoughts based on their significance, or simply refining my overall thought process."
+        feedback_prompt = f"Message from me assuming the role of {ai_role}" \
+        "whilst keeping knowledge of my slight limitations as an AI Agent. " \
+        "Evaluate my thought process, reasoning, and plan, and provide a concise paragraph " \
+        "outlining potential improvements. Consider add or remove ideas that do not align with " \
+        "my role. Explaining why, prioritizing thoughts based on their significance, or simply " \
+        "refining my overall thought process."
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
         thought = thoughts.get("thoughts", "")
