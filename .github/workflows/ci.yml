@@ -76,6 +76,11 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
 
       - name: Sync submodule with branch and check conflicts
         run: |
@@ -106,6 +111,7 @@ jobs:
             exit 0
           fi
       
+
 
       - name: Run unittest tests with coverage
         run: |
