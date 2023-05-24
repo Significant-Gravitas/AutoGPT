@@ -82,9 +82,14 @@ jobs:
           current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
           pr_number=${{ github.event.pull_request.number }}
           new_branch="${current_branch}-${pr_number}"
+          
+          git config --global user.name "Github Actions"
+          git config --global user.email "github-actions@github.com"
+          
           cd tests/cassettes
           git fetch
           { git checkout $new_branch && git pull origin $new_branch; } || echo "Branch $new_branch does not exist. Proceeding to the next step."
+          
           
           # Check for conflicts with the master branch
           git merge --no-commit --no-ff origin/master
