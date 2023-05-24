@@ -24,12 +24,13 @@ jobs:
           pr_number=${{ github.event.pull_request.number }}
           new_branch="${current_branch}-${pr_number}"
           cd tests/cassettes
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
           if git ls-remote --exit-code --heads origin $new_branch ; then
             git fetch origin $new_branch:$new_branch
             git checkout master
+            
             git merge --no-ff $new_branch
-            git config --global user.name "Auto-GPT-Bot"
-            git config --global user.email "github-bot@agpt.co"
             git push origin master
           else
             echo "Branch $new_branch does not exist. Exiting gracefully."
