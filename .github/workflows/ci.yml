@@ -123,6 +123,6 @@ jobs:
           # Check if there are any changes
           git diff-index --quiet HEAD || git commit -m "Auto-update cassettes after merging PR #$pr_number"
 
-          git checkout -b $new_branch
-          git push -f https://${{ secrets.PAT_REVIEW }}@github.com/Significant-Gravitas/cassettes.git $new_branch
+          git push -f https://${{ secrets.PAT_REVIEW }}@github.com/Significant-Gravitas/cassettes.git HEAD:$new_branch
+      
       
