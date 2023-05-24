@@ -94,14 +94,12 @@ jobs:
             
             git checkout $new_branch
 
-            git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }}
-
-            if [[ $? -ne 0 ]]; then
+            if git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }}; then
+              echo "No merge conflict detected."
+            else
               echo "Merge conflict detected. Checking out target branch and proceeding to the next step."
               git merge --abort
               git checkout ${{ github.event.pull_request.base.ref }}
-            else
-              echo "No merge conflict detected."
             fi
           else
             echo "Branch $new_branch does not exist. Exiting gracefully."
