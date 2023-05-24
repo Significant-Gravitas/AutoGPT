@@ -2,12 +2,18 @@
 import re
 
 from colorama import Fore, Style
+from jinja2 import Template
 
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.llm import create_chat_completion
 from autogpt.logs import logger
+from autogpt.prompts.default_prompts import (
+    DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
+    DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC,
+    DEFAULT_USER_DESIRE_PROMPT,
+)
 
 CFG = Config()
 
@@ -42,7 +48,7 @@ def prompt_user() -> AIConfig:
     )
 
     if user_desire == "":
-        user_desire = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt
+        user_desire = DEFAULT_USER_DESIRE_PROMPT  # Default prompt
 
     # If user desire contains "--manual"
     if "--manual" in user_desire:
@@ -164,27 +170,10 @@ def generate_aiconfig_automatic(user_prompt) -> AIConfig:
     AIConfig: The AIConfig object tailored to the user's input
     """
 
-    system_prompt = """
-Your task is to devise up to 5 highly effective goals and an appropriate role-based name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned with the successful completion of its assigned task.
-
-The user will provide the task, you will provide only the output in the exact format specified below with no explanation or conversation.
-
-Example input:
-Help me with marketing my business
-
-Example output:
-Name: CMOGPT
-Description: a professional digital marketer AI that assists Solopreneurs in growing their businesses by providing world-class expertise in solving marketing problems for SaaS, content products, agencies, and more.
-Goals:
-- Engage in effective problem-solving, prioritization, planning, and supporting execution to address your marketing needs as your virtual Chief Marketing Officer.
-
-- Provide specific, actionable, and concise advice to help you make informed decisions without the use of platitudes or overly wordy explanations.
-
-- Identify and prioritize quick wins and cost-effective campaigns that maximize results with minimal time and budget investment.
-
-- Proactively take the lead in guiding you and offering suggestions when faced with unclear information or uncertainty to ensure your marketing strategy remains on track.
-"""
-
+    system_prompt = DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC
+    prompt_ai_config_automatic = Template(
+        DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC
+    ).render(user_prompt=user_prompt)
     # Call LLM with the string as user input
     messages = [
         {
@@ -193,7 +182,7 @@ Goals:
         },
         {
             "role": "user",
-            "content": f"Task: '{user_prompt}'\nRespond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n",
+            "content": prompt_ai_config_automatic,
         },
     ]
     output = create_chat_completion(messages, CFG.fast_llm_model)
