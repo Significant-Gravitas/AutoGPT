@@ -227,7 +227,7 @@ def test_execute_command_continuous_mode(
     mock_say_text_in_logs,
     typewriter_first_9,
     typewriter_command_returned,
-    typewriter_commands_left
+    typewriter_commands_left,
 ):
     # Test with browse_website expected outcome in continuous mode with limit = 1
     agent.start_interaction_loop()
