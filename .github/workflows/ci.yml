@@ -147,11 +147,11 @@ jobs:
 
           if [[ "${{ env.DIFF_EXISTS }}" == "true" ]]; then
             echo "Adding label and comment..."
-            gh pr edit $PR_NUMBER --add-label "PROMPT CHANGE"
+            gh pr edit $PR_NUMBER --add-label "prompt change"
             echo "you changed the prompt" | gh pr comment $PR_NUMBER -
           else
             echo "Removing label..."
-            gh pr edit $PR_NUMBER --remove-label "PROMPT CHANGE"
+            gh pr edit $PR_NUMBER --remove-label "prompt change"
           fi
     
 
