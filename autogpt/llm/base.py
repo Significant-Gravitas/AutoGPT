@@ -4,12 +4,19 @@ from dataclasses import dataclass, field
 from math import ceil, floor
 from typing import List, Literal, TypedDict
 
+MessageRole = Literal["system", "user", "assistant"]
+MessageType = Literal["ai_response", "action_result"]
 
-class Message(TypedDict):
+
+class _MessageBase(TypedDict):
+    role: MessageRole
+    content: str
+
+
+class Message(_MessageBase, total=False):
     """OpenAI Message object containing a role and the message content"""
 
-    role: Literal["system", "user", "assistant"]
-    content: str
+    type: MessageType
 
 
 @dataclass
@@ -70,8 +77,9 @@ class ChatPrompt:
     def extend(self, messages: list[Message] | ChatPrompt):
         return self.messages.extend(messages)
 
-    def insert(self, index: int, message: Message):
-        return self.messages.insert(index, message)
+    def insert(self, index: int, *messages: Message):
+        for message in reversed(messages):
+            self.messages.insert(index, message)
 
     @classmethod
     def for_model(cls, model_name: str, messages: list[Message] | ChatPrompt = []):

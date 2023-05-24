@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import ChatPrompt, Message
+from autogpt.llm.base import ChatPrompt, Message, MessageRole
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
@@ -18,7 +18,7 @@ from autogpt.memory.vector import MemoryItem, get_memory
 cfg = Config()
 
 
-def create_chat_message(role: str, content: str) -> Message:
+def create_chat_message(role: MessageRole, content: str) -> Message:
     """
     Create a chat message with the given role and content.
 
@@ -109,18 +109,16 @@ def chat_with_ai(
     current_tokens_used += 500  # Reserve space for new_summary_message
 
     # Add Messages until the token limit is reached or there are no more messages to add.
-    while next_message_to_add_index >= 0:
-        message_to_add = agent.history[next_message_to_add_index]
-
-        tokens_to_add = count_message_tokens([message_to_add], model)
+    for cycle in reversed(list(agent.history.per_cycle())):
+        messages_to_add = [msg for msg in cycle if msg is not None]
+        tokens_to_add = count_message_tokens(messages_to_add, model)
         if current_tokens_used + tokens_to_add > send_token_limit:
             break
 
         # Add the most recent message to the start of the chain,
         #  after the system prompts.
-        message_chain.insert(insertion_index, agent.history[next_message_to_add_index])
+        message_chain.insert(insertion_index, *messages_to_add)
         current_tokens_used += tokens_to_add
-        next_message_to_add_index -= 1
 
     # Update & add summary of trimmed messages
     if len(agent.history) > 0:
@@ -132,7 +130,7 @@ def chat_with_ai(
         current_tokens_used += tokens_to_add - 500
 
         memory_store = get_memory(cfg)
-        for ai_msg, result_msg in agent.history.filter_message_pairs(trimmed_messages):
+        for _, ai_msg, result_msg in agent.history.per_cycle(trimmed_messages):
             memory_to_add = MemoryItem.from_ai_action(ai_msg, result_msg)
             logger.debug(f"Storing the following memory:\n{memory_to_add.dump()}")
             memory_store.add(memory_to_add)
@@ -213,6 +211,6 @@ def chat_with_ai(
 
     # Update full message history
     agent.history.append(user_input_msg)
-    agent.history.add("assistant", assistant_reply)
+    agent.history.add("assistant", assistant_reply, "ai_response")
 
     return assistant_reply

@@ -256,9 +256,7 @@ class Agent:
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
-                result = (
-                    f"Could not execute command: {arguments}"
-                )
+                result = f"Could not execute command: {arguments}"
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
             elif command_name == "self_feedback":
@@ -298,10 +296,10 @@ class Agent:
             # Check if there's a result from the command append it to the message
             # history
             if result is not None:
-                self.history.add("system", result)
+                self.history.add("system", result, "action_result")
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
             else:
-                self.history.add("system", "Unable to execute command")
+                self.history.add("system", "Unable to execute command", "action_result")
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )

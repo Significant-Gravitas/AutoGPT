@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import json
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from autogpt.agent import Agent
@@ -13,7 +13,7 @@ from autogpt.json_utils.utilities import (
     LLM_DEFAULT_RESPONSE_FORMAT,
     is_string_valid_json,
 )
-from autogpt.llm.base import Message
+from autogpt.llm.base import Message, MessageRole, MessageType
 from autogpt.llm.utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
 from autogpt.logs import logger
@@ -37,8 +37,16 @@ class MessageHistory:
     def __len__(self):
         return len(self.messages)
 
-    def add(self, role: Literal["system", "user", "assistant"], content: str):
-        return self.append({"role": role, "content": content})
+    def add(
+        self,
+        role: MessageRole,
+        content: str,
+        type: MessageType | None = None,
+    ):
+        message: Message = {"role": role, "content": content}
+        if type:
+            message["type"] = type
+        return self.append(message)
 
     def append(self, message: Message):
         return self.messages.append(message)
@@ -68,31 +76,46 @@ class MessageHistory:
             msg for msg in new_messages if msg not in current_message_chain
         ]
 
+        if not new_messages_not_in_chain:
+            return self.summary_message(), []
+
         new_summary_message = self.update_running_summary(
             new_events=new_messages_not_in_chain
         )
 
         # Find the index of the last message processed
-        if new_messages_not_in_chain:
-            last_message = new_messages_not_in_chain[-1]
-            self.last_trimmed_index = self.messages.index(last_message)
+        last_message = new_messages_not_in_chain[-1]
+        self.last_trimmed_index = self.messages.index(last_message)
 
         return new_summary_message, new_messages_not_in_chain
 
-    @staticmethod
-    def filter_message_pairs(messages: list[Message]):
+    def per_cycle(self, messages: list[Message] | None = None):
         """
         Yields:
+            Message: a message containing user input
             Message: a message from the AI containing a proposed action
             Message: the message containing the result of the AI's proposed action
         """
-        i = 0
-        while i < len(messages):
+        messages = messages or self.messages
+        for i in range(0, len(messages) - 1):
             ai_message = messages[i]
-            if is_string_valid_json(ai_message["content"], LLM_DEFAULT_RESPONSE_FORMAT):
-                result_message = messages[i + 1]
-                yield ai_message, result_message
-            i += 1
+            if "type" not in ai_message or not ai_message["type"] == "ai_response":
+                continue
+            user_message = (
+                messages[i - 1] if i > 0 and messages[i - 1]["role"] == "user" else None
+            )
+            result_message = messages[i + 1]
+            try:
+                assert is_string_valid_json(
+                    ai_message["content"], LLM_DEFAULT_RESPONSE_FORMAT
+                ), "AI response is not a valid JSON object"
+                assert result_message["type"] == "action_result"
+
+                yield user_message, ai_message, result_message
+            except AssertionError as err:
+                logger.debug(
+                    f"Invalid item in message history: {err}; Messages: {messages[i-1:i+2]}"
+                )
 
     def summary_message(self) -> Message:
         return {
