@@ -64,9 +64,6 @@ jobs:
         python-version: ["3.10"]
 
     steps:
-      - name: Wait for 15 seconds
-        if: ${{ github.event_name == 'push' }}
-        run: sleep 15
       - name: Check out repository
         uses: actions/checkout@v3
         with:
@@ -123,6 +120,27 @@ jobs:
           AGENT_MODE: ${{ vars.AGENT_MODE }}
           AGENT_TYPE: ${{ vars.AGENT_TYPE }}
 
+      - name: Update cassette submodule if push event
+        if: ${{ github.event_name == 'pull_request_target' }}
+        run: |
+          cd tests/cassettes
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+          git add .
+
+          # Check if there are any changes
+          if ! git diff-index --quiet HEAD; then
+              git commit -m "Auto-update cassettes after Push event"
+              git push origin head
+              cd ../..
+              git add tests/cassettes
+              git commit -m "Update submodule reference"
+              git push origin head
+          else
+              echo "No changes to commit"
+              exit 0
+          fi
+
       - name: Update cassette submodule
         if: ${{ github.event_name == 'pull_request_target' }}
         run: |
@@ -138,6 +156,7 @@ jobs:
           if ! git diff-index --quiet HEAD; then
               git commit -m "Auto-update cassettes after merging PR #$pr_number"
               git push -f origin HEAD:refs/heads/$new_branch
+              
           else
               echo "No changes to commit"
               exit 0

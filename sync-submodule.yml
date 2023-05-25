@@ -28,7 +28,7 @@ jobs:
           if git ls-remote --exit-code --heads origin $new_branch ; then
             git fetch origin $new_branch:$new_branch
             git checkout ${{ github.event.pull_request.base.ref }}
-            
+
             git merge --no-ff $new_branch
             git push origin ${{ github.event.pull_request.base.ref }}
           else
