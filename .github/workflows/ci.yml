@@ -153,6 +153,7 @@ jobs:
             https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels \
             -d '{"labels":["prompt change"]}'
 
+            echo $TOKEN | gh auth login --with-token
             gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="you changed the prompt"
           else
             echo "Removing label..."
@@ -161,6 +162,7 @@ jobs:
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels/prompt%20change
           fi
+      
       
       
     
