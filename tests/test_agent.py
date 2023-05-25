@@ -39,7 +39,7 @@ def test_agent_initialization(agent):
     assert agent.full_message_history == []
     assert agent.next_action_count == 0
     assert agent.command_registry == agent.command_registry
-    assert agent.config == agent.config
+    assert agent.ai_config == agent.ai_config
     assert agent.system_prompt == "System prompt"
     assert agent.triggering_prompt == "Triggering prompt"
 

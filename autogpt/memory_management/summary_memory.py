@@ -118,7 +118,7 @@ Latest Development:
         }
     ]
     agent.log_cycle_handler.log_cycle(
-        agent.config.ai_name,
+        agent.ai_config.ai_name,
         agent.created_at,
         agent.cycle_count,
         messages,
@@ -128,7 +128,7 @@ Latest Development:
     current_memory = create_chat_completion(messages, cfg.fast_llm_model)
 
     agent.log_cycle_handler.log_cycle(
-        agent.config.ai_name,
+        agent.ai_config.ai_name,
         agent.created_at,
         agent.cycle_count,
         current_memory,

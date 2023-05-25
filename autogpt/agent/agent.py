@@ -1,7 +1,7 @@
 import signal
 import sys
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from colorama import Fore, Style
 
@@ -15,7 +15,6 @@ from autogpt.llm import (
     create_chat_completion,
     create_chat_message,
 )
-from autogpt.llm.chat import get_self_feedback_from_ai
 from autogpt.llm.command_error import CommandError
 from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
@@ -73,8 +72,8 @@ class Agent:
         system_prompt,
         triggering_prompt,
         workspace_directory,
-    ):
-        cfg = Config()
+    ) -> None:
+        self.cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
         self.summary_memory = (
@@ -84,19 +83,18 @@ class Agent:
         self.full_message_history = full_message_history
         self.next_action_count = next_action_count
         self.command_registry = command_registry
-        self.config = config
+        self.ai_config = config
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
-        self.workspace = Workspace(workspace_directory, cfg.restrict_to_workspace)
+        self.workspace = Workspace(workspace_directory, self.cfg.restrict_to_workspace)
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.log_cycle_handler = LogCycleHandler()
         self.cycle_count = 0
         self.error_count = 0
         self.errors = []
 
-    def start_interaction_loop(self):
+    def start_interaction_loop(self) -> None:
         # Interaction Loop
-        cfg = Config()
         self.cycle_count = 0
         self.error_count = 0
         command_name = None
@@ -122,15 +120,20 @@ class Agent:
             self.cycle_count += 1
             self.log_cycle_handler.log_count_within_cycle = 0
             self.log_cycle_handler.log_cycle(
-                self.config.ai_name,
+                self.ai_config.ai_name,
                 self.created_at,
                 self.cycle_count,
                 self.full_message_history,
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
-            if cfg.continuous_mode and 0 < cfg.continuous_limit < self.cycle_count:
+            if (
+                self.cfg.continuous_mode
+                and 0 < self.cfg.continuous_limit < self.cycle_count
+            ):
                 logger.typewriter_log(
-                    "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
+                    "Continuous Limit Reached: ",
+                    Fore.YELLOW,
+                    f"{self.cfg.continuous_limit}",
                 )
                 break
 
@@ -146,12 +149,12 @@ class Agent:
                     self.triggering_prompt,
                     self.full_message_history,
                     self.memory,
-                    cfg.fast_token_limit,
+                    self.cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
 
-            for plugin in cfg.plugins:
+            for plugin in self.cfg.plugins:
                 if not plugin.can_handle_post_planning():
                     continue
 
@@ -163,11 +166,11 @@ class Agent:
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, cfg.speak_mode
+                        self.ai_name, assistant_reply_json, self.cfg.speak_mode
                     )
                     command_name, arguments = get_command(assistant_reply_json)
 
-                    if cfg.speak_mode:
+                    if self.cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
 
                     arguments = self._resolve_pathlike_command_args(arguments)
@@ -176,7 +179,7 @@ class Agent:
                     logger.error("Error: \n", str(e))
 
             self.log_cycle_handler.log_cycle(
-                self.config.ai_name,
+                self.ai_config.ai_name,
                 self.created_at,
                 self.cycle_count,
                 assistant_reply_json,
@@ -193,7 +196,7 @@ class Agent:
             # TODO: Validate Command Name & Arguments
             # TODO: If not valid, send error to GPT and try again
 
-            if not cfg.continuous_mode and self.next_action_count == 0:
+            if not self.cfg.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
@@ -203,13 +206,13 @@ class Agent:
                     f"{self.ai_name}..."
                 )
                 while True:
-                    if cfg.chat_messages_enabled:
+                    if self.cfg.chat_messages_enabled:
                         console_input = clean_input("Waiting for your response...")
                     else:
                         console_input = clean_input(
                             Fore.MAGENTA + "Input:" + Style.RESET_ALL
                         )
-                    if console_input.lower().strip() == cfg.authorise_key:
+                    if console_input.lower().strip() == self.cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().strip() == "s":
@@ -220,7 +223,9 @@ class Agent:
                     elif console_input.lower().strip() == "":
                         logger.warn("Invalid input format.")
                         continue
-                    elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
+                    elif console_input.lower().startswith(
+                        f"{self.cfg.authorise_key} -"
+                    ):
                         try:
                             self.next_action_count = abs(
                                 int(console_input.split(" ")[1])
@@ -233,14 +238,14 @@ class Agent:
                             )
                             continue
                         break
-                    elif console_input.lower() == cfg.exit_key:
+                    elif console_input.lower() == self.cfg.exit_key:
                         user_input = "EXIT"
                         break
                     else:
                         user_input = console_input
                         command_name = "human_feedback"
                         self.log_cycle_handler.log_cycle(
-                            self.config.ai_name,
+                            self.ai_config.ai_name,
                             self.created_at,
                             self.cycle_count,
                             user_input,
@@ -257,7 +262,7 @@ class Agent:
                 elif user_input == "EXIT":
                     logger.info("Exiting...")
                     break
-            elif cfg.continuous_mode and self._error_threshold_reached(cfg):
+            elif self.cfg.continuous_mode and self._error_threshold_reached():
                 user_input, command_name = self._handle_self_feedback(
                     assistant_reply_json
                 )
@@ -278,7 +283,7 @@ class Agent:
             elif command_name == "self_feedback":
                 result = f"Self feedback: {user_input}"
             else:
-                for plugin in cfg.plugins:
+                for plugin in self.cfg.plugins:
                     if not plugin.can_handle_pre_command():
                         continue
                     command_name, arguments = plugin.pre_command(
@@ -288,10 +293,10 @@ class Agent:
                     self.command_registry,
                     command_name,
                     arguments,
-                    self.config.prompt_generator,
+                    self.ai_config.prompt_generator,
                 )
 
-                if self._is_output_too_large(command_result, cfg):
+                if self._is_output_too_large(command_result):
                     self._add_error(command_name, arguments, "Too much output.")
                     result = f"Failure: command {command_name} returned too much output. \
                         Do not execute this command again with the same arguments."
@@ -305,7 +310,7 @@ class Agent:
                 else:
                     result = f"Command {command_name} returned: {command_result}"
 
-                for plugin in cfg.plugins:
+                for plugin in self.cfg.plugins:
                     if not plugin.can_handle_post_command():
                         continue
                     result = plugin.post_command(command_name, result)
@@ -325,16 +330,18 @@ class Agent:
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
 
-    def _error_threshold_reached(self, cfg: Config) -> bool:
-        return self.error_count >= cfg.error_threshold > 0
+    def _error_threshold_reached(self) -> bool:
+        return self.error_count >= self.cfg.error_threshold > 0
 
-    def _is_output_too_large(self, command_result: Any, cfg: Config) -> bool:
-        result_tlength = count_string_tokens(str(command_result), cfg.fast_llm_model)
+    def _is_output_too_large(self, command_result: Any) -> bool:
+        result_tlength = count_string_tokens(
+            str(command_result), self.cfg.fast_llm_model
+        )
         memory_tlength = count_string_tokens(
-            str(self.summary_memory), cfg.fast_llm_model
+            str(self.summary_memory), self.cfg.fast_llm_model
         )
 
-        return result_tlength + memory_tlength + 600 > cfg.fast_token_limit
+        return result_tlength + memory_tlength + 600 > self.cfg.fast_token_limit
 
     def _add_error(self, command: Optional[str], arguments: dict, msg: str) -> None:
         self.error_count += 1
@@ -355,14 +362,13 @@ class Agent:
         prev_error = self.errors[-1] if self.errors else None
 
         with Spinner("Getting self feedback... "):
-            messages, feedback = get_self_feedback_from_ai(
-                self.config,
+            messages, feedback = self._get_self_feedback_from_ai(
                 thoughts,
                 prev_error,
             )
 
         self.log_cycle_handler.log_cycle(
-            self.config.ai_name,
+            self.ai_config.ai_name,
             self.created_at,
             self.cycle_count,
             messages,
@@ -370,7 +376,7 @@ class Agent:
         )
 
         self.log_cycle_handler.log_cycle(
-            self.config.ai_name,
+            self.ai_config.ai_name,
             self.created_at,
             self.cycle_count,
             feedback,
@@ -397,6 +403,102 @@ class Agent:
                         self.workspace.get_path(command_args[pathlike])
                     )
         return command_args
+
+    def _get_self_feedback_from_ai(
+        self,
+        thoughts: dict,
+        prev_error: Optional[CommandError],
+    ) -> Tuple[dict[str, str], str]:
+        full_prompt = self.construct_self_feedback_prompt(thoughts, prev_error)
+
+        print(f"Full feedback prompt: {full_prompt}")
+
+        feedback_prompt = {"role": "user", "content": full_prompt}
+        messages = [Message(**feedback_prompt)]
+
+        model = self.cfg.fast_llm_model  # TODO: Change model from hardcode to
+        # argument
+        assistant_reply = create_chat_completion(
+            model=model,
+            messages=messages,
+        )
+
+        return feedback_prompt, assistant_reply
+
+    def construct_self_feedback_prompt(
+        self,
+        thoughts: dict[str, str],
+        prev_error: Optional["CommandError"],
+    ) -> str:
+        """
+        Returns a prompt to the user with the class information in an organized fashion.
+
+        Parameters:
+            None
+
+        Returns:
+            full_prompt (str): A string containing the initial prompt for the user
+              including the ai_name, ai_role, ai_goals, and api_budget.
+        """
+
+        prompt_start = (
+            f"Below is a message from me, an AI Agent, assuming the role of "
+            f"{self.ai_config.ai_role} Whilst keeping knowledge of my slight "
+            f"limitations "
+            f"as an AI Agent, please evaluate my overall goals, constraints, "
+            f"commands, thought process, reasoning, and plan."
+        )
+
+        if prev_error is not None:
+            prompt_start += (
+                f" Also know that I am reaching out for feedback because the "
+                f"previous command and arguments failed to accomplish my "
+                f"latest task, resulting in an error message. This must also "
+                f"be taken into consideration in your response so that I do "
+                f"not repeat the same mistakes.\n\n"
+                f"Previous Command: {prev_error.command}\n"
+                f"Previous Arguments: {prev_error.arguments}\n"
+                f"Error Message: '{prev_error.message}'"
+            )
+
+        # Construct self feedback prompt
+        full_prompt = f"{prompt_start}\n\nGOALS:\n"
+
+        for i, goal in enumerate(self.ai_config.ai_goals):
+            full_prompt += f"{i+1}. {goal}\n"
+
+        full_prompt += f"{self.generate_feedback_prompt_string(thoughts)}"
+        return full_prompt
+
+    def generate_feedback_prompt_string(self, thoughts: dict[str, str]) -> str:
+        """
+        Generate a prompt string based on the constraints, commands, resources,
+            and performance evaluations.
+
+        Returns:
+            str: The generated prompt string.
+        """
+        prompt_generator = self.ai_config.prompt_generator
+        thought = thoughts.get("text", "")
+        reasoning = thoughts.get("reasoning", "")
+        plan = thoughts.get("plan", "")
+
+        return (
+            f"Constraints:\n"
+            f"{prompt_generator.generate_numbered_list(prompt_generator.constraints)}\n\n"
+            "Commands:\n"
+            f"{prompt_generator.generate_numbered_list(prompt_generator.commands, item_type='command')}\n\n"
+            f"Thoughts: {thought}\n"
+            f"Reasoning: {reasoning}\n"
+            f"Plan:\n{plan}\n\n"
+            "You should respond with a concise paragraph that contains any "
+            "improvements to my overall thoughts, reasoning, and plan. Based "
+            "on these improvements, include a list of possible actions "
+            "that will get us closer to our goals, while avoiding previous "
+            "errors and only using the commands provided with valid "
+            "arguments. Order these options from most likely to be effective "
+            "to least."
+        )
 
 
 def is_command_result_an_error(result: str) -> bool:

@@ -1,14 +1,10 @@
-import json
 import time
-from random import shuffle
-from typing import Optional, Tuple
 
 from openai.error import RateLimitError
 
-from autogpt.config import AIConfig, Config
+from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.llm.base import Message
-from autogpt.llm.command_error import CommandError
 from autogpt.llm.llm_utils import create_chat_completion
 from autogpt.llm.token_counter import count_message_tokens
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
@@ -203,7 +199,7 @@ def chat_with_ai(
                 if not plugin.can_handle_on_planning():
                     continue
                 plugin_response = plugin.on_planning(
-                    agent.config.prompt_generator, current_context
+                    agent.ai_config.prompt_generator, current_context
                 )
                 if not plugin_response or plugin_response == "":
                     continue
@@ -235,7 +231,7 @@ def chat_with_ai(
                 logger.debug("")
             logger.debug("----------- END OF CONTEXT ----------------")
             agent.log_cycle_handler.log_cycle(
-                agent.config.ai_name,
+                agent.ai_config.ai_name,
                 agent.created_at,
                 agent.cycle_count,
                 current_context,
@@ -261,24 +257,3 @@ def chat_with_ai(
             # TODO: When we switch to langchain, this is built in
             logger.warn("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
             time.sleep(10)
-
-
-def get_self_feedback_from_ai(
-    ai_config: AIConfig,
-    thoughts: dict,
-    prev_error: Optional[CommandError],
-) -> Tuple[dict[str, str], str]:
-    full_prompt = ai_config.construct_self_feedback_prompt(thoughts, prev_error)
-
-    print(f"Full feedback prompt: {full_prompt}")
-
-    feedback_prompt = {"role": "user", "content": full_prompt}
-    messages = [Message(**feedback_prompt)]
-
-    model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
-    assistant_reply = create_chat_completion(
-        model=model,
-        messages=messages,
-    )
-
-    return feedback_prompt, assistant_reply
