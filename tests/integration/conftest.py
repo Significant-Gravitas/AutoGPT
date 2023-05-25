@@ -1,7 +1,8 @@
 import os
 
-import openai
+import openai.api_requestor
 import pytest
+from pytest_mock import MockerFixture
 
 from tests.conftest import PROXY
 from tests.vcr.vcr_filter import before_record_request, before_record_response
@@ -30,7 +31,7 @@ def patch_api_base(requestor):
 
 
 @pytest.fixture
-def patched_api_requestor(mocker):
+def patched_api_requestor(mocker: MockerFixture):
     original_init = openai.api_requestor.APIRequestor.__init__
     original_validate_headers = openai.api_requestor.APIRequestor._validate_headers
 
@@ -51,5 +52,3 @@ def patched_api_requestor(mocker):
             "_validate_headers",
             new=patched_validate_headers,
         )
-
-    return mocker
