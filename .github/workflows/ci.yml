@@ -129,8 +129,9 @@ jobs:
               git push -f origin HEAD:refs/heads/$new_branch
           else
               echo "No changes to commit"
+              exit 0
           fi
-          git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }}
+          git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }} || echo "DIFF_EXISTS=false" >> $GITHUB_ENV
           differences=$(git diff origin/$new_branch origin/${{ github.event.pull_request.base.ref }})
     
           if [ -n "$differences" ]; then
