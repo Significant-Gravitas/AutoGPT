@@ -39,15 +39,15 @@ class TestApiManager:
     #         {"role": "user", "content": "Who won the world series in 2020?"},
     #     ]
     #     model = "gpt-3.5-turbo"
-    #
     #     with patch("openai.ChatCompletion.create") as mock_create:
     #         mock_response = MagicMock()
+    #         del mock_response.error
     #         mock_response.usage.prompt_tokens = 10
     #         mock_response.usage.completion_tokens = 20
     #         mock_create.return_value = mock_response
-    #
+
     #         api_manager_debug.create_chat_completion(messages, model=model)
-    #
+
     #         assert "Response" in caplog.text
 
     # @staticmethod
@@ -55,19 +55,20 @@ class TestApiManager:
     #     """Test if empty messages result in zero tokens and cost."""
     #     messages = []
     #     model = "gpt-3.5-turbo"
-    #
+
     #     with patch("openai.ChatCompletion.create") as mock_create:
     #         mock_response = MagicMock()
+    #         del mock_response.error
     #         mock_response.usage.prompt_tokens = 0
     #         mock_response.usage.completion_tokens = 0
     #         mock_create.return_value = mock_response
-    #
+
     #         api_manager.create_chat_completion(messages, model=model)
-    #
+
     #         assert api_manager.get_total_prompt_tokens() == 0
     #         assert api_manager.get_total_completion_tokens() == 0
     #         assert api_manager.get_total_cost() == 0
-    #
+
     # @staticmethod
     # def test_create_chat_completion_valid_inputs():
     #     """Test if valid inputs result in correct tokens and cost."""
@@ -76,15 +77,16 @@ class TestApiManager:
     #         {"role": "user", "content": "Who won the world series in 2020?"},
     #     ]
     #     model = "gpt-3.5-turbo"
-    #
+
     #     with patch("openai.ChatCompletion.create") as mock_create:
     #         mock_response = MagicMock()
+    #         del mock_response.error
     #         mock_response.usage.prompt_tokens = 10
     #         mock_response.usage.completion_tokens = 20
     #         mock_create.return_value = mock_response
-    #
+
     #         api_manager.create_chat_completion(messages, model=model)
-    #
+
     #         assert api_manager.get_total_prompt_tokens() == 10
     #         assert api_manager.get_total_completion_tokens() == 20
     #         assert api_manager.get_total_cost() == (10 * 0.002 + 20 * 0.002) / 1000
@@ -118,3 +120,13 @@ class TestApiManager:
         assert api_manager.get_total_prompt_tokens() == 50
         assert api_manager.get_total_completion_tokens() == 100
         assert api_manager.get_total_cost() == (50 * 0.002 + 100 * 0.002) / 1000
+
+    @staticmethod
+    def test_get_models():
+        """Test if getting models works correctly."""
+        with patch("openai.Model.list") as mock_list_models:
+            mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
+            result = api_manager.get_models()
+
+            assert result[0]["id"] == "gpt-3.5-turbo"
+            assert api_manager.models[0]["id"] == "gpt-3.5-turbo"

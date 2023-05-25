@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import islice
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import numpy as np
 import tiktoken
@@ -201,3 +201,22 @@ def create_embedding(
     )  # normalize the length to one
     chunk_embeddings = chunk_embeddings.tolist()
     return chunk_embeddings
+
+
+def check_model(
+    model_name: str, model_type: Literal["smart_llm_model", "fast_llm_model"]
+) -> str:
+    """Check if model is available for use. If not, return gpt-3.5-turbo."""
+    api_manager = ApiManager()
+    models = api_manager.get_models()
+
+    if any(model_name in m["id"] for m in models):
+        return model_name
+
+    logger.typewriter_log(
+        "WARNING: ",
+        Fore.YELLOW,
+        f"You do not have access to {model_name}. Setting {model_type} to "
+        f"gpt-3.5-turbo.",
+    )
+    return "gpt-3.5-turbo"
