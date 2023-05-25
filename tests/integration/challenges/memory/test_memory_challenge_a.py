@@ -1,5 +1,4 @@
 import pytest
-from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
@@ -15,7 +14,7 @@ MAX_LEVEL = 3
 def test_memory_challenge_a(
     memory_management_agent: Agent,
     user_selected_level: int,
-    patched_api_requestor: MockerFixture,
+    patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
