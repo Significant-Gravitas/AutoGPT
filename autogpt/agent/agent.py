@@ -265,6 +265,10 @@ class Agent:
                     )
                 elif user_input == "EXIT":
                     logger.info("Exiting...")
+                    for plugin in cfg.plugins:
+                        method = getattr(plugin, 'can_handle_exit', None)
+                        if method and plugin.can_handle_exit():
+                            plugin.exit()
                     break
             else:
                 # Print authorized commands left value
