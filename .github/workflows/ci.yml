@@ -79,7 +79,7 @@ jobs:
         if: ${{ github.event_name == 'pull_request_target' }}
         run: |
           current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
-          new_branch="${{ github.event.pull_request.user.login || github.actor }}-${current_branch}"
+          new_branch="${{github.event.pull_request.user.login}}-${current_branch}"
 
           git config --global user.name "Github Actions"
           git config --global user.email "github-actions@github.com"
@@ -150,8 +150,8 @@ jobs:
       - name: Update cassette submodule
         if: ${{ github.event_name == 'pull_request_target' }}
         run: |
-          current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
-          new_branch="${{ github.event.pull_request.user.login || github.actor }}-${current_branch}"
+          current_branch= 
+          new_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
 
           cd tests/cassettes
           git config --global user.name "Auto-GPT-Bot"
