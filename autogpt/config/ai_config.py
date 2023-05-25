@@ -73,7 +73,7 @@ class AIConfig:
 
         try:
             with open(config_file, encoding="utf-8") as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
+                config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
         except FileNotFoundError:
             config_params = {}
 

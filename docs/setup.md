@@ -60,9 +60,14 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
               - ./data:/app/data
               ## allow auto-gpt to write logs to disk
               - ./logs:/app/logs
-              ## uncomment following lines if you have / want to make use of these files
-              #- ./azure.yaml:/app/azure.yaml
-              #- ./ai_settings.yaml:/app/ai_settings.yaml
+              ## uncomment following lines if you want to make use of these files
+              ## you must have them existing in the same folder as this docker-compose.yml
+              #- type: bind
+              #  source: ./azure.yaml
+              #  target: /app/azure.yaml
+              #- type: bind
+              #  source: ./ai_settings.yaml
+              #  target: /app/ai_settings.yaml
           redis:
             image: "redis/redis-stack-server:latest"
 
@@ -101,7 +106,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 ### Set up without Git/Docker
 
 !!! warning
-    We recommend to use Git or Docker, to make updating easier.
+    We recommend to use Git or Docker, to make updating easier. Also note that some features such as Python execution will only work inside docker for security reasons.
 
 1. Download `Source code (zip)` from the [latest stable release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
 2. Extract the zip-file into a folder
@@ -138,9 +143,9 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
         :::yaml
         # Please specify all of these values as double-quoted strings
-        # Replace string in angled brackets (<>) to your own ID
+        # Replace string in angled brackets (<>) to your own deployment Name
         azure_model_map:
-            fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
+            fast_llm_model_deployment_id: "<auto-gpt-deployment>"
                 ...
 
     Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.
@@ -169,7 +174,7 @@ If you need to upgrade Docker Compose to a newer version, you can follow the ins
 
 Once you have a recent version of docker-compose, run the commands below in your Auto-GPT folder.
 
-1. Build the image. If you have pulled the image from Docker Hub, skip this step.
+1. Build the image. If you have pulled the image from Docker Hub, skip this step (NOTE: You *will* need to do this if you are modifying requirements.txt to add/remove depedencies like Python libs/frameworks) 
 
         :::shell
         docker-compose build auto-gpt
@@ -210,6 +215,19 @@ docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuou
 
 
 ### Run without Docker
+
+#### Create a Virtual Environment
+
+Create a virtual environment to run in.
+
+``` shell
+python -m venv venvAutoGPT
+source venvAutoGPT/bin/activate
+pip3 install --upgrade pip
+```
+
+!!! warning
+    Due to security reasons, certain features (like Python execution) will by default be disabled when running without docker. So, even if you want to run the program outside a docker container, you currently still need docker to actually run scripts.
 
 Simply run the startup script in your terminal. This will install any necessary Python
 packages and launch Auto-GPT.

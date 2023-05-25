@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import json
+from itertools import islice
 
-from duckduckgo_search import ddg
+from duckduckgo_search import DDGS
 
 from autogpt.commands.command import command
 from autogpt.config import Config
@@ -26,12 +27,12 @@ def google_search(query: str, num_results: int = 8) -> str:
     if not query:
         return json.dumps(search_results)
 
-    results = ddg(query, max_results=num_results)
+    results = DDGS().text(query)
     if not results:
         return json.dumps(search_results)
 
-    for j in results:
-        search_results.append(j)
+    for item in islice(results, num_results):
+        search_results.append(item)
 
     results = json.dumps(search_results, ensure_ascii=False, indent=4)
     return safe_google_results(results)
@@ -41,8 +42,8 @@ def google_search(query: str, num_results: int = 8) -> str:
     "google",
     "Google Search",
     '"query": "<query>"',
-    bool(CFG.google_api_key),
-    "Configure google_api_key.",
+    bool(CFG.google_api_key) and bool(CFG.custom_search_engine_id),
+    "Configure google_api_key and custom_search_engine_id.",
 )
 def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
     """Return the results of a Google search using the official Google API
@@ -110,7 +111,7 @@ def safe_google_results(results: str | list) -> str:
     """
     if isinstance(results, list):
         safe_message = json.dumps(
-            [result.encode("utf-8", "ignore") for result in results]
+            [result.encode("utf-8", "ignore").decode("utf-8") for result in results]
         )
     else:
         safe_message = results.encode("utf-8", "ignore").decode("utf-8")

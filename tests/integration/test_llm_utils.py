@@ -41,7 +41,10 @@ def spy_create_embedding(mocker: MockerFixture):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_get_ada_embedding(
-    config: Config, api_manager: ApiManager, spy_create_embedding: MagicMock
+    config: Config,
+    api_manager: ApiManager,
+    spy_create_embedding: MagicMock,
+    patched_api_requestor,
 ):
     token_cost = COSTS[config.embedding_model]["prompt"]
     llm_utils.get_ada_embedding("test")
