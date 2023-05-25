@@ -23,7 +23,6 @@ Pillow
 selenium==4.1.4
 webdriver-manager
 jsonschema
-tweepy
 click
 charset-normalizer>=3.1.0
 spacy>=3.0.0,<4.0.0
