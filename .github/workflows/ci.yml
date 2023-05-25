@@ -59,6 +59,7 @@ jobs:
       # comments (to avoid publishing multiple comments in the same PR)
       contents: write
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         python-version: ["3.10"]
