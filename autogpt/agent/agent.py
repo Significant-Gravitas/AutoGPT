@@ -30,7 +30,8 @@ from autogpt.workspace import Workspace
 
 
 class Agent:
-    """for interacting with Auto-GPT.
+    """
+    for interacting with Auto-GPT.
 
     Attributes:
 
@@ -91,9 +92,9 @@ class Agent:
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
 
-    # Interaction Loop
-    def start_interaction_loop(self):  # sourcery skip: no-long-functions
 
+    def start_interaction_loop(self):  # sourcery skip: no-long-functions
+        # Interaction Loop
         cfg = Config()
         self.cycle_count = 0
         command_name = None
