@@ -20,7 +20,7 @@ jobs:
 
       - name: Update submodule
         run: |
-          pr_number=${{ github.event.pull_request.number }}
+          current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
           new_branch="${{ github.event.pull_request.user.login || github.actor }}-${current_branch}"
           cd tests/cassettes
           git config --global user.name "Auto-GPT-Bot"
