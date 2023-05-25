@@ -12,7 +12,7 @@ def mock_call_ai_function(mocker):
 
 class TestAnalyzeCode:
     def test_positive_analyze_code(self, mock_call_ai_function):
-        # Positive Test
+        # Positive Tests
         mock_call_ai_function.return_value = ["Suggestion 1", "Suggestion 2"]
         code = "def example_function():\n    pass"
         result = analyze_code(code)
