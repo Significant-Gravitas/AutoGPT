@@ -13,10 +13,10 @@ from openai.error import APIError, RateLimitError
 from openai.openai_object import OpenAIObject
 
 from autogpt.config import Config
-from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import Message
 from autogpt.logs import logger
 
+from ..api_manager import ApiManager
+from ..base import ChatSequence, Message
 from .token_counter import *
 
 
@@ -131,17 +131,20 @@ def call_ai_function(
     # For each arg, if any are None, convert to "None":
     args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma separated string
-    args: str = ", ".join(args)
-    messages: List[Message] = [
-        {
-            "role": "system",
-            "content": f"You are now the following python function: ```# {description}"
-            f"\n{function}```\n\nOnly respond with your `return` value.",
-        },
-        {"role": "user", "content": args},
-    ]
+    arg_str: str = ", ".join(args)
 
-    return create_chat_completion(model=model, messages=messages, temperature=0)
+    prompt = ChatSequence.for_model(
+        model,
+        [
+            Message(
+                "system",
+                f"You are now the following python function: ```# {description}"
+                f"\n{function}```\n\nOnly respond with your `return` value.",
+            ),
+            Message("user", arg_str),
+        ],
+    )
+    return create_chat_completion(prompt=prompt, temperature=0)
 
 
 @metered
@@ -178,7 +181,7 @@ def create_text_completion(
 @metered
 @retry_openai_api()
 def create_chat_completion(
-    messages: list[Message],  # type: ignore
+    prompt: ChatSequence,
     model: Optional[str] = None,
     temperature: float = None,
     max_tokens: Optional[int] = None,
@@ -195,6 +198,8 @@ def create_chat_completion(
         str: The response from the chat completion
     """
     cfg = Config()
+    if model is None:
+        model = prompt.model.name
     if temperature is None:
         temperature = cfg.temperature
 
@@ -203,13 +208,13 @@ def create_chat_completion(
     )
     for plugin in cfg.plugins:
         if plugin.can_handle_chat_completion(
-            messages=messages,
+            messages=prompt.raw(),
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
         ):
             message = plugin.handle_chat_completion(
-                messages=messages,
+                messages=prompt.raw(),
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -226,7 +231,7 @@ def create_chat_completion(
 
     response = api_manager.create_chat_completion(
         **kwargs,
-        messages=messages,
+        messages=prompt.raw(),
         temperature=temperature,
         max_tokens=max_tokens,
     )

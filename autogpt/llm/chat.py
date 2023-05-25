@@ -9,27 +9,13 @@ if TYPE_CHECKING:
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import ChatPrompt, Message, MessageRole
+from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, get_memory
 
 cfg = Config()
-
-
-def create_chat_message(role: MessageRole, content: str) -> Message:
-    """
-    Create a chat message with the given role and content.
-
-    Args:
-    role (str): The role of the message sender, e.g., "system", "user", or "assistant".
-    content (str): The content of the message.
-
-    Returns:
-    dict: A dictionary containing the role and content of the message.
-    """
-    return {"role": role, "content": content}
 
 
 # TODO: Change debug from hardcode to argument
@@ -70,14 +56,14 @@ def chat_with_ai(
     # logger.debug(f"Memory Stats: {agent.memory.get_stats()}")
     relevant_memory = []
 
-    message_chain = ChatPrompt.for_model(
+    message_sequence = ChatSequence.for_model(
         model,
         [
-            create_chat_message("system", system_prompt),
-            create_chat_message(
+            Message("system", system_prompt),
+            Message(
                 "system", f"The current time and date is {time.strftime('%c')}"
             ),
-            # create_chat_message(
+            # Message(
             #     "system",
             #     f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
             # ),
@@ -86,9 +72,9 @@ def chat_with_ai(
 
     # Add messages from the full message history until we reach the token limit
     next_message_to_add_index = len(agent.history) - 1
-    insertion_index = len(message_chain)
+    insertion_index = len(message_sequence)
     # Count the currently used tokens
-    current_tokens_used = message_chain.token_length
+    current_tokens_used = message_sequence.token_length
 
     # while current_tokens_used > 2500:
     #     # remove memories until we are under 2500 tokens
@@ -103,7 +89,7 @@ def chat_with_ai(
     #     )
 
     # Account for user input (appended later)
-    user_input_msg = create_chat_message("user", user_input)
+    user_input_msg = Message("user", user_input)
     current_tokens_used += count_message_tokens([user_input_msg], model)
 
     current_tokens_used += 500  # Reserve space for new_summary_message
@@ -117,16 +103,16 @@ def chat_with_ai(
 
         # Add the most recent message to the start of the chain,
         #  after the system prompts.
-        message_chain.insert(insertion_index, *messages_to_add)
+        message_sequence.insert(insertion_index, *messages_to_add)
         current_tokens_used += tokens_to_add
 
     # Update & add summary of trimmed messages
     if len(agent.history) > 0:
         new_summary_message, trimmed_messages = agent.history.trim_messages(
-            current_message_chain=list(message_chain),
+            current_message_chain=list(message_sequence),
         )
         tokens_to_add = count_message_tokens([new_summary_message], model)
-        message_chain.insert(insertion_index, new_summary_message)
+        message_sequence.insert(insertion_index, new_summary_message)
         current_tokens_used += tokens_to_add - 500
 
         # FIXME: uncomment when memory is back in use
@@ -152,29 +138,29 @@ def chat_with_ai(
             else "\n\n"
         )
         logger.debug(budget_message)
-        message_chain.add("system", budget_message)
-        current_tokens_used += count_message_tokens([message_chain[-1]], model)
+        message_sequence.add("system", budget_message)
+        current_tokens_used += count_message_tokens([message_sequence[-1]], model)
 
     # Append user input, the length of this is accounted for above
-    message_chain.append(user_input_msg)
+    message_sequence.append(user_input_msg)
 
     plugin_count = len(cfg.plugins)
     for i, plugin in enumerate(cfg.plugins):
         if not plugin.can_handle_on_planning():
             continue
         plugin_response = plugin.on_planning(
-            agent.config.prompt_generator, list(message_chain)
+            agent.config.prompt_generator, message_sequence.raw()
         )
         if not plugin_response or plugin_response == "":
             continue
         tokens_to_add = count_message_tokens(
-            [create_chat_message("system", plugin_response)], model
+            [Message("system", plugin_response)], model
         )
         if current_tokens_used + tokens_to_add > send_token_limit:
             logger.debug(f"Plugin response too long, skipping: {plugin_response}")
             logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
             break
-        message_chain.add("system", plugin_response)
+        message_sequence.add("system", plugin_response)
 
     # Calculate remaining tokens
     tokens_remaining = token_limit - current_tokens_used
@@ -187,26 +173,25 @@ def chat_with_ai(
     logger.debug(f"Send Token Count: {current_tokens_used}")
     logger.debug(f"Tokens remaining for response: {tokens_remaining}")
     logger.debug("------------ CONTEXT SENT TO AI ---------------")
-    for message in message_chain:
+    for message in message_sequence:
         # Skip printing the prompt
-        if message["role"] == "system" and message["content"] == system_prompt:
+        if message.role == "system" and message.content == system_prompt:
             continue
-        logger.debug(f"{message['role'].capitalize()}: {message['content']}")
+        logger.debug(f"{message.role.capitalize()}: {message.content}")
         logger.debug("")
     logger.debug("----------- END OF CONTEXT ----------------")
     agent.log_cycle_handler.log_cycle(
         agent.config.ai_name,
         agent.created_at,
         agent.cycle_count,
-        message_chain.messages,
+        message_sequence.raw(),
         CURRENT_CONTEXT_FILE_NAME,
     )
 
     # TODO: use a model defined elsewhere, so that model can contain
     # temperature and other settings we care about
     assistant_reply = create_chat_completion(
-        model=model,
-        messages=list(message_chain),
+        prompt=message_sequence,
         max_tokens=tokens_remaining,
     )
 

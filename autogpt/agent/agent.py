@@ -10,6 +10,7 @@ from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
+from autogpt.llm.base import ChatSequence
 from autogpt.llm.chat import chat_with_ai, create_chat_completion
 from autogpt.llm.utils import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
@@ -112,7 +113,7 @@ class Agent:
                 self.config.ai_name,
                 self.created_at,
                 self.cycle_count,
-                self.history.messages,
+                [m.raw() for m in self.history],
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
             if (
@@ -335,17 +336,18 @@ class Agent:
         thought = thoughts.get("thoughts", "")
         feedback_thoughts = thought + reasoning + plan
 
-        messages = [{"role": "user", "content": feedback_prompt + feedback_thoughts}]
+        prompt = ChatSequence.for_model(llm_model)
+        prompt.add("user", feedback_prompt + feedback_thoughts)
 
         self.log_cycle_handler.log_cycle(
             self.config.ai_name,
             self.created_at,
             self.cycle_count,
-            messages,
+            prompt.raw(),
             PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
         )
 
-        feedback = create_chat_completion(messages, model=llm_model)
+        feedback = create_chat_completion(prompt)
 
         self.log_cycle_handler.log_cycle(
             self.config.ai_name,

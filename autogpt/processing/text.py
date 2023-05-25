@@ -6,7 +6,7 @@ import spacy
 import tiktoken
 
 from autogpt.config import Config
-from autogpt.llm.base import ChatPrompt
+from autogpt.llm.base import ChatSequence
 from autogpt.llm.providers.openai import OPEN_AI_MODELS
 from autogpt.llm.utils import count_string_tokens, create_chat_completion
 from autogpt.logs import logger
@@ -87,7 +87,7 @@ def summarize_text(
             "Do not directly answer the question itself"
         )
 
-    summarization_prompt = ChatPrompt.for_model(model)
+    summarization_prompt = ChatSequence.for_model(model)
 
     token_length = count_string_tokens(text, model)
     logger.info(f"Text length: {token_length} tokens")
@@ -111,7 +111,7 @@ def summarize_text(
 
         logger.debug(f"Summarizing with {model}:\n{summarization_prompt.dump()}\n")
         summary = create_chat_completion(
-            list(summarization_prompt), model, temperature=0, max_tokens=500
+            summarization_prompt, temperature=0, max_tokens=500
         )
 
         logger.debug(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")

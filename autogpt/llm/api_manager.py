@@ -6,6 +6,7 @@ import openai
 from openai import Model
 
 from autogpt.config import Config
+from autogpt.llm.base import MessageDict
 from autogpt.llm.modelsinfo import COSTS
 from autogpt.logs import logger
 from autogpt.singleton import Singleton
@@ -28,7 +29,7 @@ class ApiManager(metaclass=Singleton):
 
     def create_chat_completion(
         self,
-        messages: list,  # type: ignore
+        messages: list[MessageDict],
         model: str | None = None,
         temperature: float = None,
         max_tokens: int | None = None,

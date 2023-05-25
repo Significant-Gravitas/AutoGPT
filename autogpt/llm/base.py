@@ -8,15 +8,22 @@ MessageRole = Literal["system", "user", "assistant"]
 MessageType = Literal["ai_response", "action_result"]
 
 
-class _MessageBase(TypedDict):
+class MessageDict(TypedDict):
     role: MessageRole
     content: str
 
 
-class Message(_MessageBase, total=False):
+@dataclass
+class Message:
     """OpenAI Message object containing a role and the message content"""
 
-    type: MessageType
+    role: MessageRole
+    content: str
+    type: MessageType | None = None
+
+
+    def raw(self) -> MessageDict:
+        return {"role": self.role, "content": self.content}
 
 
 @dataclass
@@ -56,8 +63,8 @@ class EmbeddingModelInfo(ModelInfo):
 
 
 @dataclass
-class ChatPrompt:
-    """Container for an OpenAI chat completion prompt"""
+class ChatSequence:
+    """Utility container for a chat sequence"""
 
     model: ChatModelInfo
     messages: list[Message] = field(default_factory=list)
@@ -74,7 +81,7 @@ class ChatPrompt:
     def append(self, message: Message):
         return self.messages.append(message)
 
-    def extend(self, messages: list[Message] | ChatPrompt):
+    def extend(self, messages: list[Message] | ChatSequence):
         return self.messages.extend(messages)
 
     def insert(self, index: int, *messages: Message):
@@ -82,24 +89,27 @@ class ChatPrompt:
             self.messages.insert(index, message)
 
     @classmethod
-    def for_model(cls, model_name: str, messages: list[Message] | ChatPrompt = []):
+    def for_model(cls, model_name: str, messages: list[Message] | ChatSequence = []):
         from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 
         if not model_name in OPEN_AI_CHAT_MODELS:
             raise ValueError(f"Unknown chat model '{model_name}'")
 
-        return ChatPrompt(
+        return ChatSequence(
             model=OPEN_AI_CHAT_MODELS[model_name], messages=list(messages)
         )
 
-    def add(self, message_role: Literal["system", "user", "assistant"], content: str):
-        self.messages.append({"role": message_role, "content": content})
+    def add(self, message_role: MessageRole, content: str):
+        self.messages.append(Message(message_role, content))
 
     @property
     def token_length(self):
         from autogpt.llm.utils import count_message_tokens
 
         return count_message_tokens(self.messages, self.model.name)
+
+    def raw(self) -> list[MessageDict]:
+        return [m.raw() for m in self.messages]
 
     def dump(self) -> str:
         SEPARATOR_LENGTH = 42
@@ -109,10 +119,10 @@ class ChatPrompt:
             return f"{floor(half_sep_len)*'-'} {text.upper()} {ceil(half_sep_len)*'-'}"
 
         formatted_messages = "\n".join(
-            [f"{separator(m['role'])}\n{m['content']}" for m in self.messages]
+            [f"{separator(m.role)}\n{m.content}" for m in self.messages]
         )
         return f"""
-=============== ChatPrompt ===============
+============== ChatSequence ==============
 Length: {self.token_length} tokens; {len(self.messages)} messages
 {formatted_messages}
 ==========================================

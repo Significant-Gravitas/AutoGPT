@@ -13,7 +13,7 @@ from autogpt.json_utils.utilities import (
     LLM_DEFAULT_RESPONSE_FORMAT,
     is_string_valid_json,
 )
-from autogpt.llm.base import Message, MessageRole, MessageType
+from autogpt.llm.base import ChatSequence, Message, MessageRole, MessageType
 from autogpt.llm.utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
 from autogpt.logs import logger
@@ -43,10 +43,7 @@ class MessageHistory:
         content: str,
         type: MessageType | None = None,
     ):
-        message: Message = {"role": role, "content": content}
-        if type:
-            message["type"] = type
-        return self.append(message)
+        return self.append(Message(role, content, type))
 
     def append(self, message: Message):
         return self.messages.append(message)
@@ -99,17 +96,17 @@ class MessageHistory:
         messages = messages or self.messages
         for i in range(0, len(messages) - 1):
             ai_message = messages[i]
-            if "type" not in ai_message or not ai_message["type"] == "ai_response":
+            if ai_message.type != "ai_response":
                 continue
             user_message = (
-                messages[i - 1] if i > 0 and messages[i - 1]["role"] == "user" else None
+                messages[i - 1] if i > 0 and messages[i - 1].role == "user" else None
             )
             result_message = messages[i + 1]
             try:
                 assert is_string_valid_json(
-                    ai_message["content"], LLM_DEFAULT_RESPONSE_FORMAT
+                    ai_message.content, LLM_DEFAULT_RESPONSE_FORMAT
                 ), "AI response is not a valid JSON object"
-                assert result_message["type"] == "action_result"
+                assert result_message.type == "action_result"
 
                 yield user_message, ai_message, result_message
             except AssertionError as err:
@@ -118,10 +115,10 @@ class MessageHistory:
                 )
 
     def summary_message(self) -> Message:
-        return {
-            "role": "system",
-            "content": f"This reminds you of these events from your past: \n{self.summary}",
-        }
+        return Message(
+            "system",
+            f"This reminds you of these events from your past: \n{self.summary}",
+        )
 
     def update_running_summary(self, new_events: list[Message]) -> Message:
         """
@@ -150,24 +147,24 @@ class MessageHistory:
 
         # Replace "assistant" with "you". This produces much better first person past tense results.
         for event in new_events:
-            if event["role"].lower() == "assistant":
-                event["role"] = "you"
+            if event.role.lower() == "assistant":
+                event.role = "you"
 
                 # Remove "thoughts" dictionary from "content"
                 try:
-                    content_dict = json.loads(event["content"])
+                    content_dict = json.loads(event.content)
                     if "thoughts" in content_dict:
                         del content_dict["thoughts"]
-                    event["content"] = json.dumps(content_dict)
+                    event.content = json.dumps(content_dict)
                 except json.decoder.JSONDecodeError:
                     if cfg.debug_mode:
-                        logger.error(f"Error: Invalid JSON: {event['content']}\n")
+                        logger.error(f"Error: Invalid JSON: {event.content}\n")
 
-            elif event["role"].lower() == "system":
-                event["role"] = "your computer"
+            elif event.role.lower() == "system":
+                event.role = "your computer"
 
             # Delete all user messages
-            elif event["role"] == "user":
+            elif event.role == "user":
                 new_events.remove(event)
 
         prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
@@ -185,21 +182,18 @@ Latest Development:
 """
 '''
 
-        messages: list[Message] = [
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ]
+        prompt = ChatSequence.for_model(
+            cfg.fast_llm_model, [Message("user", prompt)]
+        )
         self.agent.log_cycle_handler.log_cycle(
             self.agent.config.ai_name,
             self.agent.created_at,
             self.agent.cycle_count,
-            messages,
+            prompt.raw(),
             PROMPT_SUMMARY_FILE_NAME,
         )
 
-        self.summary = create_chat_completion(messages, cfg.fast_llm_model)
+        self.summary = create_chat_completion(prompt)
 
         self.agent.log_cycle_handler.log_cycle(
             self.agent.config.ai_name,
