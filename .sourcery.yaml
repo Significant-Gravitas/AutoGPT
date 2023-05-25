@@ -1,12 +1,12 @@
 ignore:
-    - .git
-    - venv
-    - .venv
-    - env
-    - .env
-    - .tox
-    - node_modules
-    - vendor
+  - .git
+  - venv
+  - .venv
+  - env
+  - .env
+  - .tox
+  - node_modules
+  - vendor
 
 rule_settings:
   enable:
@@ -21,7 +21,7 @@ rule_settings:
     - refactoring
     - suggestion
     - comment
-  python_version: '3.11'
+  python_version: "3.11"
 
 rules:
   - id: raise-not-implemented

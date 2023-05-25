@@ -166,5 +166,7 @@
     "Zilliz"
   ],
   "import": [],
-  "enableFiletypes": ["xml"]
+  "enableFiletypes": [
+    "xml"
+  ]
 }
