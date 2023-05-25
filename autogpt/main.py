@@ -136,7 +136,6 @@ def run_auto_gpt(
         "autogpt.commands.google_search",
         "autogpt.commands.image_gen",
         "autogpt.commands.improve_code",
-        "autogpt.commands.twitter",
         "autogpt.commands.web_selenium",
         "autogpt.commands.write_tests",
         "autogpt.app",
