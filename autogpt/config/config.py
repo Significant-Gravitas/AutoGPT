@@ -96,28 +96,6 @@ class Config(metaclass=Singleton):
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
 
-        self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
-        self.pinecone_region = os.getenv("PINECONE_ENV")
-
-        self.weaviate_host = os.getenv("WEAVIATE_HOST")
-        self.weaviate_port = os.getenv("WEAVIATE_PORT")
-        self.weaviate_protocol = os.getenv("WEAVIATE_PROTOCOL", "http")
-        self.weaviate_username = os.getenv("WEAVIATE_USERNAME", None)
-        self.weaviate_password = os.getenv("WEAVIATE_PASSWORD", None)
-        self.weaviate_scopes = os.getenv("WEAVIATE_SCOPES", None)
-        self.weaviate_embedded_path = os.getenv("WEAVIATE_EMBEDDED_PATH")
-        self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
-        self.use_weaviate_embedded = (
-            os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
-        )
-
-        # milvus or zilliz cloud configuration.
-        self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
-        self.milvus_username = os.getenv("MILVUS_USERNAME")
-        self.milvus_password = os.getenv("MILVUS_PASSWORD")
-        self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
-        self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
-
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
@@ -143,14 +121,13 @@ class Config(metaclass=Singleton):
             " (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
         )
 
+        self.memory_backend = os.getenv("MEMORY_BACKEND", "json_file")
+        self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt-memory")
+
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
         self.redis_port = int(os.getenv("REDIS_PORT", "6379"))
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
         self.wipe_redis_on_start = os.getenv("WIPE_REDIS_ON_START", "True") == "True"
-        self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
-        # Note that indexes must be created on db 0 in redis, this is not configurable.
-
-        self.memory_backend = os.getenv("MEMORY_BACKEND", "json_file")
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
@@ -270,14 +247,6 @@ class Config(metaclass=Singleton):
     def set_custom_search_engine_id(self, value: str) -> None:
         """Set the custom search engine id value."""
         self.custom_search_engine_id = value
-
-    def set_pinecone_api_key(self, value: str) -> None:
-        """Set the Pinecone API key value."""
-        self.pinecone_api_key = value
-
-    def set_pinecone_region(self, value: str) -> None:
-        """Set the Pinecone region value."""
-        self.pinecone_region = value
 
     def set_debug_mode(self, value: bool) -> None:
         """Set the debug mode value."""
