@@ -60,9 +60,7 @@ def chat_with_ai(
         model,
         [
             Message("system", system_prompt),
-            Message(
-                "system", f"The current time and date is {time.strftime('%c')}"
-            ),
+            Message("system", f"The current time and date is {time.strftime('%c')}"),
             # Message(
             #     "system",
             #     f"This reminds you of these events from your past:\n{relevant_memory}\n\n",

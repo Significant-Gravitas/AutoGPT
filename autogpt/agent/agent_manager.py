@@ -20,7 +20,9 @@ class AgentManager(metaclass=Singleton):
     # Create new GPT agent
     # TODO: Centralise use of create_chat_completion() to globally enforce token limit
 
-    def create_agent(self, task: str, creation_prompt: str, model: str) -> tuple[int, str]:
+    def create_agent(
+        self, task: str, creation_prompt: str, model: str
+    ) -> tuple[int, str]:
         """Create a new agent and return its key
 
         Args:

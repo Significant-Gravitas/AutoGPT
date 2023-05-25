@@ -21,7 +21,6 @@ class Message:
     content: str
     type: MessageType | None = None
 
-
     def raw(self) -> MessageDict:
         return {"role": self.role, "content": self.content}
 
