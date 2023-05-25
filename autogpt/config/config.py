@@ -61,7 +61,6 @@ class Config(metaclass=Singleton):
         self.browse_spacy_language_model = os.getenv(
             "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
         )
-        self.embed_dim = int(os.getenv("EMBED_DIM", 1536))
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
