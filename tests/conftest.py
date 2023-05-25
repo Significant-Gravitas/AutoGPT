@@ -4,11 +4,11 @@ from pathlib import Path
 import pytest
 from pytest_mock import MockerFixture
 
-from autogpt.config import Config
-from autogpt.llm import ApiManager
+from autogpt.config.config import Config
+from autogpt.llm.api_manager import ApiManager
 from autogpt.workspace import Workspace
 
-pytest_plugins = ["tests.integration.agent_factory"]
+pytest_plugins = ["tests.integration.agent_factory", "tests.integration.memory.utils"]
 
 PROXY = os.environ.get("PROXY")
 
