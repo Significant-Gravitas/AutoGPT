@@ -124,13 +124,16 @@ class Agent:
                 logger.json_report(
                     "system", f"Continuous Limit Reached: {cfg.continuous_limit}"
                 )
+                logger.json_report(
+                    "system", f"Continuous Limit Reached: {cfg.continuous_limit}"
+                )
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
                 break
             # Send message to AI, get response
             logger.json_report("system", "Thinking...")
-            with Spinner("Thinking... ", plain_output=cfg.plain_output):
+            with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
                     cfg,
                     self,
@@ -324,11 +327,13 @@ class Agent:
             # Check if there's a result from the command append it to the message
             # history
             if result is not None:
-                self.history.add("system", result, "action_result")
+                self.full_message_history.append(create_chat_message("system", result))
                 logger.json_report("system", result)
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
             else:
-                self.history.add("system", "Unable to execute command", "action_result")
+                self.full_message_history.append(
+                    create_chat_message("system", "Unable to execute command")
+                )
                 logger.json_report("system", "Unable to execute command")
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
