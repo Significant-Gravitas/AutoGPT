@@ -71,7 +71,11 @@ def retry_openai_api(
 
 
 def call_ai_function(
-    function: str, args: list, description: str, model: str | None = None, config=None
+    function: str,
+    args: list,
+    description: str,
+    model: str | None = None,
+    config: Config = None,
 ) -> str:
     """Call an AI function
 
