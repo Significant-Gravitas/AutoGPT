@@ -201,8 +201,8 @@ def test_split_file(max_length, overlap, content, expected):
 
 
 def test_read_file(test_file_with_content_path: Path, file_content, config):
-    content = file_ops.read_file(test_file_with_content_path, config)
-    assert content == file_content
+    content: str = file_ops.read_file(test_file_with_content_path, config)
+    assert content.replace("\r", "") == file_content
 
 
 def test_write_to_file(test_file_path: Path, config):

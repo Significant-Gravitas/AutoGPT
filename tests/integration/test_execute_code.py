@@ -30,8 +30,8 @@ def random_string():
 
 
 def test_execute_python_file(python_test_file: str, random_string: str, config):
-    result = sut.execute_python_file(python_test_file, config)
-    assert result == f"Hello {random_string}!\n"
+    result: str = sut.execute_python_file(python_test_file, config)
+    assert result.replace("\r", "") == f"Hello {random_string}!\n"
 
 
 def test_execute_python_file_invalid(config):
