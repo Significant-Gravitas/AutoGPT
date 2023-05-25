@@ -142,17 +142,26 @@ jobs:
       - name: Apply label and comment based on environment variable
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
-          echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
-          gh repo set-default ${{ github.repository }}
+          TOKEN=${{ secrets.PAT_REVIEW }}
+          REPO=${{ github.repository }}
 
           if [[ "${{ env.DIFF_EXISTS }}" == "true" ]]; then
             echo "Adding label and comment..."
-            gh api repos/${{ github.repository }}/issues/$PR_NUMBER/labels -X POST -F labels='["prompt change"]'
+            curl -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels \
+            -d '{"labels":["prompt change"]}'
+
             echo "you changed the prompt" | gh pr comment $PR_NUMBER -
           else
             echo "Removing label..."
-            gh api repos/${{ github.repository }}/issues/$PR_NUMBER/labels/prompt%20change -X DELETE
+            curl -X DELETE \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels/prompt%20change
           fi
+      
       
     
 
