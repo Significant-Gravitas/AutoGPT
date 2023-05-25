@@ -8,16 +8,16 @@ body:
         ### ⚠️ Before you continue
         * Check out our [backlog], [roadmap] and join our [discord] to discuss what's going on
         * If you need help, you can ask in the [discussions] section or in [#tech-support]
-        * **Throughly search the [existing issues] before creating a new one**
+        * **Thoroughly search the [existing issues] before creating a new one**
         * Read our [wiki page on Contributing]
-
         [backlog]: https://github.com/orgs/Significant-Gravitas/projects/1
         [roadmap]: https://github.com/orgs/Significant-Gravitas/projects/2  
         [discord]: https://discord.gg/autogpt
         [discussions]: https://github.com/Significant-Gravitas/Auto-GPT/discussions
         [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
         [existing issues]: https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue
-        [wiki page on Contributing]: https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing
+        [wiki page on Contributing]: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
+
   - type: checkboxes
     attributes:
       label: ⚠️ Search for existing issues first ⚠️
@@ -27,23 +27,29 @@ body:
       options:
         - label: I have searched the existing issues, and there is no existing issue for my problem
           required: true
+
   - type: markdown
     attributes:
       value: |
-        Please provide a searchable summary of the issue in the title above ⬆️.
-
-        ⚠️ SUPER-busy repo, please help the volunteer maintainers.
-        The less time we spend here, the more time we spend building AutoGPT.
+        Please confirm that the issue you have is described well and precise in the title above ⬆️.
+        A good rule of thumb: What would you type if you were searching for the issue?
         
-        Please help us help you:
-        - Does it work on `stable` branch (https://github.com/Torantulino/Auto-GPT/tree/stable)?
-        - Does it work on current `master` (https://github.com/Torantulino/Auto-GPT/tree/master)?
-        - Search for existing issues, "add comment" is tidier than "new issue"
-        - Ask on our Discord (https://discord.gg/autogpt)
+        For example:
+        BAD - my auto-gpt keeps looping
+        GOOD - After performing execute_python_file, auto-gpt goes into a loop where it keeps trying to execute the file.
+        
+        ⚠️ SUPER-busy repo, please help the volunteer maintainers.
+        The less time we spend here, the more time we can spend building AutoGPT.
+        
+        Please help us help you by following these steps:
+        - Search for existing issues, adding a comment when you have the same or similar issue is tidier than "new issue" and 
+          newer issues will not be reviewed earlier, this is dependent on the current priorities set by our wonderful team
+        - Ask on our Discord if your issue is known when you are unsure (https://discord.gg/autogpt)
         - Provide relevant info:
-          - Provide commit-hash (`git rev-parse HEAD` gets it)
-          - If it's a pip/packages issue, provide pip version, python version
-          - If it's a crash, provide traceback.
+          - Provide commit-hash (`git rev-parse HEAD` gets it) if possible
+          - If it's a pip/packages issue, mention this in the title and provide pip version, python version
+          - If it's a crash, provide traceback and describe the error you got as precise as possible in the title.
+
   - type: dropdown
     attributes:
       label: Which Operating System are you using?
@@ -56,9 +62,15 @@ body:
         - Docker
         - Devcontainer / Codespace
         - Windows Subsystem for Linux (WSL)
-        - Other (Please specify in your problem)
+        - Other
     validations:
       required: true
+      nested_fields:
+        - type: text
+          attributes:
+            label: Specify the system
+            description: Please specify the system you are working on.
+
   - type: dropdown
     attributes:
       label: Which version of Auto-GPT are you using?
@@ -73,61 +85,80 @@ body:
         - Master (branch)
     validations:
       required: true
+
   - type: dropdown
     attributes:
-      label: GPT-3 or GPT-4?
+      label: Do you use OpenAI GPT-3 or GPT-4?
       description: >
         If you are using Auto-GPT with `--gpt3only`, your problems may be caused by
         the [limitations](https://github.com/Significant-Gravitas/Auto-GPT/issues?q=is%3Aissue+label%3A%22AI+model+limitation%22) of GPT-3.5.
       options:
         - GPT-3.5
         - GPT-4
+        - GPT-4(32k)
     validations:
       required: true
-  - type: textarea
+
+  - type: dropdown
     attributes:
-      label: Steps to reproduce 🕹
-      description: |
-        **⚠️ Issues that we can't reproduce will be closed.**
-  - type: textarea
-    attributes:
-      label: Current behavior 😯
-      description: Describe what happens instead of the expected behavior.
-  - type: textarea
-    attributes:
-      label: Expected behavior 🤔
-      description: Describe what should happen.
-  - type: textarea
-    attributes:
-      label: Your prompt 📝
+      label: Which area covers your issue best?
       description: >
-        If applicable please provide the prompt you are using. Your prompt is stored in your `ai_settings.yaml` file.
-      value: |
-        ```yaml
-        # Paste your prompt here
-        ```
+        Select the area related to the issue you are reporting.
+      options:
+        - Installation and setup
+        - Memory
+        - Performance
+        - Prompt
+        - Commands
+        - Plugins
+        - AI Model Limitations
+        - Challenges
+        - Documentation
+        - Logging
+        - Agents
+        - Other
+    validations:
+      required: true
+      autolabels: true
+      nested_fields:
+        - type: text
+          attributes:
+            label: Specify the area
+            description: Please specify the area you think is best related to the issue.
+
   - type: textarea
     attributes:
-      label: Your Logs 📒
-      description: |
-        Please include the log showing your error and the command that caused it, if applicable.
-        You can copy it from your terminal or from `logs/activity.log`.
-        This will help us understand your issue better!
-        
-        <details>
-        <summary><i>Example</i></summary>
-        ```log
-        INFO NEXT ACTION:  COMMAND = execute_shell  ARGUMENTS = {'command_line': 'some_command'}
-        INFO -=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=
-        Traceback (most recent call last):
-        File "/home/anaconda3/lib/python3.9/site-packages/openai/api_requestor.py", line 619, in _interpret_response
-        self._interpret_response_line(
-        File "/home/anaconda3/lib/python3.9/site-packages/openai/api_requestor.py", line 682, in _interpret_response_line
-        raise self.handle_error_response(
-        openai.error.InvalidRequestError: This model's maximum context length is 8191 tokens, however you requested 10982 tokens (10982 in your prompt; 0 for the completion). Please reduce your prompt; or completion length.
-        ```
-        </details>
+      label: Describe your issue.
+      description: Describe the problem you are experiencing. Try to describe only the issue and phrase it short but clear. ⚠️ Provide NO other data in this field  
+    validations:
+      required: true
+
+  #Following are optional file content uploads
+  - type: markdown
+    attributes:
       value: |
-        ```log
-        <insert your logs here>
-        ```
+        ⚠️The following is OPTIONAL, please keep in mind that the log files may contain personal information such as credentials.⚠️
+        
+        "The log files are located in the folder 'logs' inside the main auto-gpt folder."
+        
+  - type: input
+    attributes:
+      label: Upload Activity Log Content
+      description: |
+        Upload the activity log content, this can help us understand the issue better. 
+        To do this, go to the folder logs in your main auto-gpt folder, open activity.log and copy/paste the contents to this field. 
+        ⚠️ The activity log may contain personal data given to auto-gpt by you in prompt or input as well as 
+        any personal information that auto-gpt collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
+    validations:
+      required: false
+
+  - type: input
+    attributes:
+      label: Upload Error Log Content
+      description: |
+        Upload the error log content, this will help us understand the issue better. 
+        To do this, go to the folder logs in your main auto-gpt folder, open error.log and copy/paste the contents to this field. 
+        ⚠️ The error log may contain personal data given to auto-gpt by you in prompt or input as well as 
+        any personal information that auto-gpt collected out of files during last run. Do not add the activity log if you are not comfortable with sharing it. ⚠️
+    validations:
+      required: false

@@ -17,6 +17,15 @@ except ImportError:
 from autogpt.config import Config
 
 
+def batch(iterable, max_batch_length: int, overlap: int = 0):
+    """Batch data from iterable into slices of length N. The last batch may be shorter."""
+    # batched('ABCDEFG', 3) --> ABC DEF G
+    if max_batch_length < 1:
+        raise ValueError("n must be at least one")
+    for i in range(0, len(iterable), max_batch_length - overlap):
+        yield iterable[i : i + max_batch_length]
+
+
 def clean_input(prompt: str = "", talk=False):
     try:
         cfg = Config()
@@ -153,3 +162,24 @@ def markdown_to_ansi_style(markdown: str):
 
         ansi_lines.append(f"{line_style}{line}{Style.RESET_ALL}")
     return "\n".join(ansi_lines)
+
+
+def get_legal_warning() -> str:
+    legal_text = """
+## DISCLAIMER AND INDEMNIFICATION AGREEMENT
+### PLEASE READ THIS DISCLAIMER AND INDEMNIFICATION AGREEMENT CAREFULLY BEFORE USING THE AUTOGPT SYSTEM. BY USING THE AUTOGPT SYSTEM, YOU AGREE TO BE BOUND BY THIS AGREEMENT.
+
+## Introduction
+AutoGPT (the "System") is a project that connects a GPT-like artificial intelligence system to the internet and allows it to automate tasks. While the System is designed to be useful and efficient, there may be instances where the System could perform actions that may cause harm or have unintended consequences.
+
+## No Liability for Actions of the System
+The developers, contributors, and maintainers of the AutoGPT project (collectively, the "Project Parties") make no warranties or representations, express or implied, about the System's performance, accuracy, reliability, or safety. By using the System, you understand and agree that the Project Parties shall not be liable for any actions taken by the System or any consequences resulting from such actions.
+
+## User Responsibility and Respondeat Superior Liability
+As a user of the System, you are responsible for supervising and monitoring the actions of the System while it is operating on your
+behalf. You acknowledge that using the System could expose you to potential liability including but not limited to respondeat superior and you agree to assume all risks and liabilities associated with such potential liability.
+
+## Indemnification
+By using the System, you agree to indemnify, defend, and hold harmless the Project Parties from and against any and all claims, liabilities, damages, losses, or expenses (including reasonable attorneys' fees and costs) arising out of or in connection with your use of the System, including, without limitation, any actions taken by the System on your behalf, any failure to properly supervise or monitor the System, and any resulting harm or unintended consequences.
+            """
+    return legal_text
