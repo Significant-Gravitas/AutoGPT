@@ -1,0 +1,37 @@
+name: Update Submodule After PR Merged
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [master, stable, ci-test*]
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.base.ref }}
+          submodules: true
+          token: ${{ secrets.PAT_REVIEW }}
+
+      - name: Update submodule
+        run: |
+          current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
+          new_branch="${{ github.event.pull_request.user.login || github.actor }}-${current_branch}"
+          cd tests/cassettes
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+          if git ls-remote --exit-code --heads origin $new_branch ; then
+            git fetch origin $new_branch:$new_branch
+            git checkout ${{ github.event.pull_request.base.ref }}
+            
+            git merge --no-ff $new_branch
+            git push origin ${{ github.event.pull_request.base.ref }}
+          else
+            echo "Branch $new_branch does not exist. Exiting gracefully."
+            exit 0
+          fi
