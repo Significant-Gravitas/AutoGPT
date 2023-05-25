@@ -1,0 +1,39 @@
+$schema: https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json
+version: "0.2"
+dictionaryDefinitions:
+  - name: project-words
+    path: ./project-words.txt
+  - name: ignore-words
+    path: ./ignore-words.txt
+    addWords: true
+dictionaries:
+  - project-words
+  - ignore-words
+ignorePaths:
+  - node_modules
+  - /project-words.txt
+  - /ignore-words.txt
+ignoreWords:
+  - /ignore-words.txt
+enableFiletypes:
+  - "!asciidoc"
+  - "!cpp"
+  - "!csharp"
+  - "!erlang"
+  - "!go"
+  - "!handlebars"
+  - "!haskell"
+  - "!jade"
+  - "!jupyter"
+  - "!pug"
+  - "!scala"
+  - "!scminput"
+  - "!scss"
+  - "!swift"
+  - bat
+  - dockercompose
+  - dockerfile
+  - ini
+  - properties
+  - xml
+language: en,en-US,en-GB
