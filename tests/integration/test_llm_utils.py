@@ -58,7 +58,9 @@ def test_get_ada_embedding(
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_get_ada_embedding_large_context(random_large_string: str, patched_api_requestor: MockerFixture):
+def test_get_ada_embedding_large_context(
+    random_large_string: str, patched_api_requestor: MockerFixture
+):
     # This test should be able to mock the openai call after we have a fix.  We don't need
     # to hit the API to test the logic of the function (so not using vcr). This is a quick
     # regression test to document the issue.
