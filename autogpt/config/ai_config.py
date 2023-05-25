@@ -14,9 +14,6 @@ import yaml
 
 from autogpt.prompts.generator import PromptGenerator
 
-if TYPE_CHECKING:
-    from autogpt.llm.command_error import CommandError
-
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 

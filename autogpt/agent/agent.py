@@ -428,7 +428,7 @@ class Agent:
     def construct_self_feedback_prompt(
         self,
         thoughts: dict[str, str],
-        prev_error: Optional["CommandError"],
+        prev_error: Optional[CommandError],
     ) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
@@ -493,11 +493,9 @@ class Agent:
             f"Plan:\n{plan}\n\n"
             "You should respond with a concise paragraph that contains any "
             "improvements to my overall thoughts, reasoning, and plan. Based "
-            "on these improvements, include a list of possible actions "
+            "on these improvements, provide the most likely course of action "
             "that will get us closer to our goals, while avoiding previous "
-            "errors and only using the commands provided with valid "
-            "arguments. Order these options from most likely to be effective "
-            "to least."
+            "errors and only using the commands provided with valid arguments."
         )
 
 
