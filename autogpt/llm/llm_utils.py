@@ -105,13 +105,13 @@ def create_chat_completion(
         messages=messages,
         **chat_completion_kwargs,
     )
+    if not hasattr(response, "error"):
+        logger.debug(f"Response: {response}")
+        prompt_tokens = response.usage.prompt_tokens
+        completion_tokens = response.usage.completion_tokens
+        api_manager.update_cost(prompt_tokens, completion_tokens, model)
 
-    logger.debug(f"Response: {response}")
-    prompt_tokens = response.usage.prompt_tokens
-    completion_tokens = response.usage.completion_tokens
-    api_manager.update_cost(prompt_tokens, completion_tokens, model)
-
-    resp = response.choices[0].message["content"]
+        resp = response.choices[0].message["content"]
     for plugin in cfg.plugins:
         if not plugin.can_handle_on_response():
             continue
