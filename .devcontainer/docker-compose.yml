@@ -1,19 +1,27 @@
-# To boot the app run the following:
-# docker-compose run auto-gpt
-version: '3.9'
-
+version: "3.9"
 services:
   auto-gpt:
+    image: diegofaco/auto-gpt
     depends_on:
       - redis
-    build:
-      dockerfile: .devcontainer/Dockerfile
-      context: ../
-    tty: true
+    env_file:
+      - .env
     environment:
       MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
       REDIS_HOST: ${REDIS_HOST:-redis}
+    profiles: ["exclude-from-up"]
     volumes:
-      - ../:/workspace/Auto-GPT
+      - ./auto_gpt_workspace:/app/autogpt/auto_gpt_workspace
+      - ./data:/app/data
+      ## allow auto-gpt to write logs to disk
+      - ./logs:/app/logs
+      ## uncomment following lines if you want to make use of these files
+      ## you must have them existing in the same folder as this docker-compose.yml
+      #- type: bind
+      #  source: ./azure.yaml
+      #  target: /app/azure.yaml
+      #- type: bind
+      #  source: ./ai_settings.yaml
+      #  target: /app/ai_settings.yaml
   redis:
-    image: 'redis/redis-stack-server:latest'
+    image: "redis/redis-stack-server:latest"
