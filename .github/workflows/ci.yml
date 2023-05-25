@@ -147,11 +147,12 @@ jobs:
 
           if [[ "${{ env.DIFF_EXISTS }}" == "true" ]]; then
             echo "Adding label and comment..."
-            gh pr edit $PR_NUMBER --add-label "prompt change"
+            gh api repos/${{ github.repository }}/issues/$PR_NUMBER/labels -X POST -F labels='["prompt change"]'
             echo "you changed the prompt" | gh pr comment $PR_NUMBER -
           else
             echo "Removing label..."
-            gh pr edit $PR_NUMBER --remove-label "prompt change"
+            gh api repos/${{ github.repository }}/issues/$PR_NUMBER/labels/prompt%20change -X DELETE
           fi
+      
     
 
