@@ -4,18 +4,39 @@
 version: "3.9"
 
 services:
-  auto-gpt:
+  base: &base
+    build:
+      context: ./
+      dockerfile: Dockerfile
     depends_on:
       - redis
-    build: ./
     env_file:
       - .env
     environment:
       MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
       REDIS_HOST: ${REDIS_HOST:-redis}
     volumes:
-      - ./:/app
+      - ./auto_gpt_workspace:/app/autogpt/auto_gpt_workspace
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./autogpt:/app/autogpt
     profiles: ["exclude-from-up"]
+  
+  auto-gpt:
+    <<: *base
+    image: "auto-gpt:latest"
+    container_name: auto-gpt
+
+  auto-gpt-as-a-service:
+    <<: *base
+    image: "auto-gpt-as-a-service:latest"
+    container_name: auto-gpt-as-a-service
+    entrypoint: ''
+    command: python /app/autogpt/api.py
+    ports:
+      - "4999:5000" # Expose the API on port 4999 on the host machine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   redis:
     image: "redis/redis-stack-server:latest"
