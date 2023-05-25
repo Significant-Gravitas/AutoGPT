@@ -35,7 +35,7 @@ Highlights and notable changes since v0.2.2:
  * Edge browser is now supported by the `browse_website` command.
  * Sets of commands can now be disabled using DISABLED_COMMAND_CATEGORIES in .env.
 
-# ⚠️ Command `send_tweet` is DEPRECATED, and will be removed in v0.4.0 ⚠️
+# ⚠️ Command `send_tweet` is REMOVED
 Twitter functionality (and more) is now covered by plugins, see [Plugin support 🔌]
 
 ## Plugin support 🔌
