@@ -153,7 +153,7 @@ jobs:
             https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels \
             -d '{"labels":["prompt change"]}'
 
-            echo "you changed the prompt" | gh pr comment $PR_NUMBER -
+            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="you changed the prompt"
           else
             echo "Removing label..."
             curl -X DELETE \
