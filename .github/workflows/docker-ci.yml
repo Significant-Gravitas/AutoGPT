@@ -73,6 +73,7 @@ jobs:
   # Docker setup needs fixing before this is going to work: #1843
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: build
     steps:
     - name: Checkout repository
