@@ -103,7 +103,7 @@ jobs:
 
       - name: Run unittest tests with coverage
         run: |
-          echo "content2" > tests/cassettes/file1.yaml
+          echo "content3" > tests/cassettes/file1.yaml
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
@@ -155,7 +155,7 @@ jobs:
             -d '{"labels":["prompt change"]}'
 
             echo $TOKEN | gh auth login --with-token
-            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's prompt. The cassettes have been updated and will be merged when this Pull Request gets merged."
+            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's prompt. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           else
             echo "Removing label..."
             curl -X DELETE \
