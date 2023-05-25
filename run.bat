@@ -20,6 +20,6 @@ if errorlevel 1 (
     echo Installing missing packages...
     %PYTHON_CMD% -m pip install -r requirements.txt
 )
-%PYTHON_CMD% -m autogpt --debug %*
-::%PYTHON_CMD% -m autogpt %*
+::%PYTHON_CMD% -m autogpt --debug %*
+%PYTHON_CMD% -m autogpt %*
 pause
