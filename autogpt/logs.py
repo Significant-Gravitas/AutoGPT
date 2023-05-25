@@ -4,6 +4,7 @@ import os
 import random
 import re
 import time
+import json
 from logging import LogRecord
 from typing import Any
 
@@ -90,9 +91,6 @@ class Logger(metaclass=Singleton):
         if speak_text and self.speak_mode:
             say_text(f"{title}. {content}")
 
-        for plugin in self.chat_plugins:
-            plugin.report(f"{title}. {content}")
-
         if content:
             if isinstance(content, list):
                 content = " ".join(content)
@@ -102,6 +100,21 @@ class Logger(metaclass=Singleton):
         self.typing_logger.log(
             level, content, extra={"title": title, "color": title_color}
         )
+
+    def json_report(self, type="", content=""):
+        if not content:
+            content = ""
+
+        if isinstance(content, set):
+            content = list(content)
+
+        payload = {
+            "type": type,
+            "content": content,
+        }
+
+        for plugin in self.chat_plugins:
+            plugin.report(json.dumps(payload))
 
     def debug(
         self,
@@ -271,7 +284,11 @@ def print_assistant_thoughts(
     logger.typewriter_log(
         f"{ai_name.upper()} THOUGHTS:", Fore.YELLOW, f"{assistant_thoughts_text}"
     )
+    logger.json_report("thoughts", f"{assistant_thoughts_text}")
+
     logger.typewriter_log("REASONING:", Fore.YELLOW, f"{assistant_thoughts_reasoning}")
+    logger.json_report("reasoning:", f"{assistant_thoughts_reasoning}")
+
     if assistant_thoughts_plan:
         logger.typewriter_log("PLAN:", Fore.YELLOW, "")
         # If it's a list, join it into a string
@@ -279,6 +296,7 @@ def print_assistant_thoughts(
             assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
         elif isinstance(assistant_thoughts_plan, dict):
             assistant_thoughts_plan = str(assistant_thoughts_plan)
+        logger.json_report("plan", f"{assistant_thoughts_plan}")
 
         # Split the input_string using the newline character and dashes
         lines = assistant_thoughts_plan.split("\n")
@@ -286,6 +304,7 @@ def print_assistant_thoughts(
             line = line.lstrip("- ")
             logger.typewriter_log("- ", Fore.GREEN, line.strip())
     logger.typewriter_log("CRITICISM:", Fore.YELLOW, f"{assistant_thoughts_criticism}")
+    logger.json_report("criticism", f"{assistant_thoughts_criticism}")
     # Speak the assistant's thoughts
     if assistant_thoughts_speak:
         if speak_mode:

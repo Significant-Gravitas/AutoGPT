@@ -122,11 +122,15 @@ class Agent:
                 and cfg.continuous_limit > 0
                 and self.cycle_count > cfg.continuous_limit
             ):
+                logger.json_report(
+                    "system", f"Continuous Limit Reached: {cfg.continuous_limit}"
+                )
                 logger.typewriter_log(
                     "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
                 )
                 break
             # Send message to AI, get response
+            logger.json_report("system", "Thinking...")
             with Spinner("Thinking... "):
                 assistant_reply = chat_with_ai(
                     self,
@@ -167,6 +171,10 @@ class Agent:
                 NEXT_ACTION_FILE_NAME,
             )
 
+            logger.json_report(
+                "next_action",
+                {"command": command_name, "arguments": arguments},
+            )
             logger.typewriter_log(
                 "NEXT ACTION: ",
                 Fore.CYAN,
@@ -203,6 +211,10 @@ class Agent:
                         thoughts = assistant_reply_json.get("thoughts", {})
                         self_feedback_resp = self.get_self_feedback(
                             thoughts, cfg.fast_llm_model
+                        )
+                        logger.json_report(
+                            "self_feedback",
+                            "{self_feedback_resp}",
                         )
                         logger.typewriter_log(
                             f"SELF FEEDBACK: {self_feedback_resp}",
@@ -244,6 +256,9 @@ class Agent:
                         break
 
                 if user_input == "GENERATE NEXT COMMAND JSON":
+                    logger.json_report(
+                        "authorisation", f"User authorised command execution"
+                    )
                     logger.typewriter_log(
                         "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
                         Fore.MAGENTA,
@@ -254,6 +269,10 @@ class Agent:
                     break
             else:
                 # Print authorized commands left value
+                logger.json_report(
+                    "authorisation",
+                    f"Authorised commands left: {self.next_action_count}",
+                )
                 logger.typewriter_log(
                     f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
                 )
@@ -303,11 +322,13 @@ class Agent:
             # history
             if result is not None:
                 self.full_message_history.append(create_chat_message("system", result))
+                logger.json_report("system", result)
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
             else:
                 self.full_message_history.append(
                     create_chat_message("system", "Unable to execute command")
                 )
+                logger.json_report("system", "Unable to execute command")
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
