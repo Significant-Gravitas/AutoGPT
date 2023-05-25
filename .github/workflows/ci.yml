@@ -154,7 +154,7 @@ jobs:
             -d '{"labels":["prompt change"]}'
 
             echo $TOKEN | gh auth login --with-token
-            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="you changed the prompt"
+            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's prompt. The cassettes have been updated and will be merged when this Pull Request gets merged."
           else
             echo "Removing label..."
             curl -X DELETE \
