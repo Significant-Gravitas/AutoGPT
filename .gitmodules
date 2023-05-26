@@ -1,3 +1,4 @@
 [submodule "tests/cassettes"]
 	path = tests/cassettes
-	url = https://github.com/BaseInfinity/cassettes
+	url = https://github.com/Significant-Gravitas/cassettes
+	branch = master
