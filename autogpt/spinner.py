@@ -9,7 +9,10 @@ class Spinner:
     """A simple spinner class"""
 
     def __init__(
-        self, message: str = "Loading...", delay: float = 0.1, plain_output: bool = False
+        self,
+        message: str = "Loading...",
+        delay: float = 0.1,
+        plain_output: bool = False,
     ) -> None:
         """Initialize the spinner class
 
