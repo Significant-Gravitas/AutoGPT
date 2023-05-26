@@ -8,6 +8,7 @@ from autogpt.commands.file_operations import read_file
 from tests.integration.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
 
+
 def input_generator(input_sequence: list) -> Generator[str, None, None]:
     """
     Creates a generator that yields input strings from the given sequence.
@@ -28,6 +29,7 @@ def test_information_retrieval_challenge_b(
 
     :param get_nobel_prize_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
+    :param patched_api_requestor: APIRequestor Patch to override the openai.api_requestor module for testing.
     """
 
     input_sequence = ["y","y","EXIT"]
