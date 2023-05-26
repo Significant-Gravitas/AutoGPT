@@ -14,7 +14,6 @@ from tests.utils import requires_api_key
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_automatic_default(patched_api_requestor):
-    # useless change
     user_inputs = [""]
     with patch("builtins.input", side_effect=user_inputs):
         ai_config = prompt_user()
