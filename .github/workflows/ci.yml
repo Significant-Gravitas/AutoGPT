@@ -123,11 +123,6 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
-      - name: Beat new challenges
-        if: ${{ env.NEW_CASSETTES_ADDED_IN_PR}}
-        run: |
-          echo "This step will run the challenges soon."
-
       - name: Update cassette submodule if push event
         if: ${{ github.event_name == 'push' }}
         run: |
