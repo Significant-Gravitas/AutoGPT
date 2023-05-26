@@ -45,14 +45,14 @@ class Agent:
     FULL_MESSAGE_HISTORY:   The full message history.
     NEXT_ACTION_count:      The number of actions to execute.
 
-	SYSTEM_PROMPT:
-	The system prompt is the initial prompt that defines everything
+        SYSTEM_PROMPT:
+        The system prompt is the initial prompt that defines everything
     the AI needs to know to achieve its task successfully.
     Currently, the dynamic and customizable information
     in the system prompt are ai_name, description and ai_goals.
 
     TRIGGERING_PROMPT:
-	The last sentence the AI will see before answering is:
+        The last sentence the AI will see before answering is:
 
     "Determine which next command to use, and respond using the format specified
     above"
@@ -60,7 +60,7 @@ class Agent:
     The TRIGGERING_PROMPT is not part of the SYSTEM_PROMPT because between the
     SYSTEM_PROMPT and the TRIGGERING_PROMPT
     we have contextual information that can distract the AI and make it forget
-	that its goal is to find the next task to achieve.
+        that its goal is to find the next task to achieve.
 
     1. SYSTEM_PROMPT
     2. Contextual information (memory, previous conversations, anything relevant)
@@ -92,7 +92,6 @@ class Agent:
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
 
-
     def start_interaction_loop(self):  # sourcery skip: no-long-functions
         # Interaction Loop
         cfg = Config()
@@ -106,11 +105,7 @@ class Agent:
             if self.next_action_count == 0:
                 sys.exit()
             else:
-                print(
-                    Fore.RED
-                    + "Interrupt signal received. Stopping continuous command execution."
-                    + Style.RESET_ALL
-                )
+                print(Fore.RED + "Interrupt signal received. Stopping continuous command execution." + Style.RESET_ALL)
                 self.next_action_count = 0
 
         signal.signal(signal.SIGINT, signal_handler)
@@ -126,17 +121,11 @@ class Agent:
                 [m.raw() for m in self.history],
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
-            if (
-                cfg.continuous_mode
-                and cfg.continuous_limit > 0
-                and self.cycle_count > cfg.continuous_limit
-            ):
-                logger.typewriter_log(
-                    "Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}"
-                )
+            if cfg.continuous_mode and cfg.continuous_limit > 0 and self.cycle_count > cfg.continuous_limit:
+                logger.typewriter_log("Continuous Limit Reached: ", Fore.YELLOW, f"{cfg.continuous_limit}")
                 break
             # Send message to AI, get response
-            with Spinner("Thinking ... "):
+            with Spinner("Processing ... "):
                 assistant_reply = chat_with_ai(
                     self,
                     self.system_prompt,
@@ -155,9 +144,7 @@ class Agent:
                 validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
                 # Get command name and arguments
                 try:
-                    print_assistant_thoughts(
-                        self.ai_name, assistant_reply_json, cfg.speak_mode
-                    )
+                    print_assistant_thoughts(self.ai_name, assistant_reply_json, cfg.speak_mode)
                     command_name, arguments = get_command(assistant_reply_json)
                     if cfg.speak_mode:
                         say_text(f"I want to execute {command_name}")
@@ -167,12 +154,12 @@ class Agent:
                 except ZeroDivisionError as e:
                     logger.error(f"Error: {e}")
                 self.log_cycle_handler.log_cycle(
-                self.config.ai_name,
-                self.created_at,
-                self.cycle_count,
-                assistant_reply_json,
-                NEXT_ACTION_FILE_NAME,
-            )
+                    self.config.ai_name,
+                    self.created_at,
+                    self.cycle_count,
+                    assistant_reply_json,
+                    NEXT_ACTION_FILE_NAME,
+                )
 
             logger.typewriter_log(
                 "NEXT ACTION: ",
@@ -205,12 +192,11 @@ class Agent:
                     elif console_input.lower().strip() == "s":
                         logger.typewriter_log(
                             "=-=-=-=-= THOUGHTS, REASONING, PLAN AND CRITICISM ",
-                            "WILL NOW BE VERIFIED BY AGENT =-=-=-=-=", Fore.LIGHTRED_EX
+                            "WILL NOW BE VERIFIED BY AGENT =-=-=-=-=",
+                            Fore.LIGHTRED_EX,
                         )
                         thoughts = assistant_reply_json.get("thoughts", {})
-                        self_feedback_resp = self.get_self_feedback(
-                            thoughts, cfg.fast_llm_model
-                        )
+                        self_feedback_resp = self.get_self_feedback(thoughts, cfg.fast_llm_model)
                         logger.typewriter_log(
                             f"SELF FEEDBACK: {self_feedback_resp}",
                             Fore.YELLOW,
@@ -224,9 +210,7 @@ class Agent:
 
                     elif console_input.lower().startswith(f"{cfg.authorise_key} -"):
                         try:
-                            self.next_action_count = abs(
-                                int(console_input.split(" ")[1])
-                            )
+                            self.next_action_count = abs(int(console_input.split(" ")[1]))
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             logger.warn(
@@ -261,9 +245,7 @@ class Agent:
                     break
             else:
                 # Print authorized commands left value
-                logger.typewriter_log(
-                    f"{Fore.CYAN}AUTHORISED COMMANDS LEFT:{Style.RESET_ALL}{self.next_action_count}"
-                )
+                logger.typewriter_log(f"{Fore.CYAN}AUTHORISED COMMANDS LEFT:{Style.RESET_ALL}{self.next_action_count}")
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
@@ -276,9 +258,7 @@ class Agent:
                 for plugin in cfg.plugins:
                     if not plugin.can_handle_pre_command():
                         continue
-                    command_name, arguments = plugin.pre_command(
-                        command_name, arguments
-                    )
+                    command_name, arguments = plugin.pre_command(command_name, arguments)
                 command_result = execute_command(
                     self.command_registry,
                     command_name,
@@ -287,12 +267,8 @@ class Agent:
                 )
                 result = f"Command {command_name} returned: " + f"{command_result}"
 
-                result_tlength = count_string_tokens(
-                    str(command_result), cfg.fast_llm_model
-                )
-                memory_tlength = count_string_tokens(
-                    str(self.history.summary_message()), cfg.fast_llm_model
-                )
+                result_tlength = count_string_tokens(str(command_result), cfg.fast_llm_model)
+                memory_tlength = count_string_tokens(str(self.history.summary_message()), cfg.fast_llm_model)
                 if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
                     result = f"Failure: {command_name} returned too much output."
 
@@ -309,9 +285,7 @@ class Agent:
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
             else:
                 self.history.add("system", "Unable to execute command", "action_result")
-                logger.typewriter_log(
-                    "SYSTEM: ", Fore.RED, "Unable to execute command"
-                )
+                logger.typewriter_log("SYSTEM: ", Fore.RED, "Unable to execute command")
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
@@ -319,9 +293,7 @@ class Agent:
         else:
             for pathlike in ["filename", "directory", "clone_path"]:
                 if pathlike in command_args:
-                    command_args[pathlike] = str(
-                        self.workspace.get_path(command_args[pathlike])
-                    )
+                    command_args[pathlike] = str(self.workspace.get_path(command_args[pathlike]))
         return command_args
 
     def get_self_feedback(self, thoughts: dict, llm_model: str) -> str:
@@ -341,12 +313,14 @@ class Agent:
         """
         ai_role = self.config.ai_role
 
-        feedback_prompt = f"Message from me assuming the role of {ai_role}" \
-        "whilst keeping knowledge of my slight limitations as an AI Agent. " \
-        "Evaluate my thought process, reasoning, and plan, and provide a concise paragraph " \
-        "outlining potential improvements. Consider add or remove ideas that do not align with " \
-        "my role. Explaining why, prioritizing thoughts based on their significance, or simply " \
-        "refining my overall thought process."
+        feedback_prompt = (
+            f"Message from me assuming the role of {ai_role}"
+            "whilst keeping knowledge of my slight limitations as an AI Agent. "
+            "Evaluate my thought process, reasoning, and plan, and provide a concise paragraph "
+            "outlining potential improvements. Consider add or remove ideas that do not align with "
+            "my role. Explaining why, prioritizing thoughts based on their significance, or simply "
+            "refining my overall thought process."
+        )
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
         thought = thoughts.get("thoughts", "")
