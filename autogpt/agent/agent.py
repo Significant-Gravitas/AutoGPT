@@ -28,6 +28,7 @@ from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
+from autogpt.aim import AimCallback
 
 
 class Agent:
@@ -70,7 +71,7 @@ class Agent:
         system_prompt: str,
         triggering_prompt: str,
         workspace_directory: str,
-        aim_callback,
+        aim_callback: AimCallback = None,
     ):
         cfg = Config()
         self.ai_name = ai_name
@@ -95,8 +96,9 @@ class Agent:
         arguments = None
         user_input = ""
 
-        self.aim_callback.track_text(self.system_prompt, name="system_prompt")
-        self.aim_callback.track_text(self.triggering_prompt, name="triggering_prompt")
+        if self.aim_callback:
+            self.aim_callback.track_text(self.system_prompt, name="system_prompt")
+            self.aim_callback.track_text(self.triggering_prompt, name="triggering_prompt")
 
         # Signal handler for interrupting y -N
         def signal_handler(signum, frame):
@@ -141,11 +143,12 @@ class Agent:
                     cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
-            self.aim_callback.track_text(
-                assistant_reply,
-                name="assistant_reply",
-                context={"cycle_count": self.cycle_count},
-            )
+            if self.aim_callback:
+                self.aim_callback.track_text(
+                    assistant_reply,
+                    name="assistant_reply",
+                    context={"cycle_count": self.cycle_count},
+                )
 
             assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
             for plugin in cfg.plugins:
