@@ -33,7 +33,7 @@ Create your agent fixture.
 
 ```python
 def kubernetes_agent(
-    agent_test_config, memory_local_cache, workspace: Workspace
+    agent_test_config, memory_json_file, workspace: Workspace
 ):
     # Please choose the commands your agent will need to beat the challenges, the full list is available in the main.py
     # (we 're working on a better way to design this, for now you have to look at main.py)
@@ -56,7 +56,7 @@ def kubernetes_agent(
     agent = Agent(
         # We also give the AI a name 
         ai_name="Kubernetes-Demo",
-        memory=memory_local_cache,
+        memory=memory_json_file,
         full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
@@ -131,5 +131,3 @@ def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> Non
 
 
 ```
-
-

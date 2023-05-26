@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from pylatexenc.latex2text import LatexNodes2Text
 
 from autogpt import logs
+from autogpt.logs import logger
 
 
 class ParserStrategy:
@@ -21,6 +22,7 @@ class ParserStrategy:
 class TXTParser(ParserStrategy):
     def read(self, file_path):
         charset_match = charset_normalizer.from_path(file_path).best()
+        logger.debug(f"Reading '{file_path}' with encoding '{charset_match.encoding}'")
         return str(charset_match)
 
 
@@ -150,9 +152,7 @@ def read_textual_file(file_path: str, logger: logs.Logger):
     parser = extension_to_parser.get(file_extension)
     if not parser:
         if is_binary:
-            raise ValueError(
-                "Unsupported binary file format: {}".format(file_extension)
-            )
+            raise ValueError(f"Unsupported binary file format: {file_extension}")
         # fallback to txt file parser (to support script and code files loading)
         parser = TXTParser()
     file_context = FileContext(parser, logger)

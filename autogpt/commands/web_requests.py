@@ -100,13 +100,3 @@ def scrape_links(url: str) -> str | list[str]:
     hyperlinks = extract_hyperlinks(soup, url)
 
     return format_hyperlinks(hyperlinks)
-
-
-def create_message(chunk, question):
-    """Create a message for the user to summarize a chunk of text"""
-    return {
-        "role": "user",
-        "content": f'"""{chunk}""" Using the above text, answer the following'
-        f' question: "{question}" -- if the question cannot be answered using the'
-        " text, summarize the text.",
-    }
