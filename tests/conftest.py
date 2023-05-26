@@ -13,7 +13,7 @@ pytest_plugins = ["tests.integration.agent_factory", "tests.integration.memory.u
 PROXY = os.environ.get("PROXY")
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def vcr_cassette_dir(request):
     test_name = os.path.splitext(request.node.name)[0]
     return os.path.join("tests/cassettes", test_name)
