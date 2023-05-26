@@ -11,7 +11,7 @@ from autogpt.logs import logger
 
 # Use readline if available (for clean_input)
 try:
-    import readline
+    import readline  # noqa: F401
 except ImportError:
     pass
 
@@ -59,7 +59,8 @@ def clean_input(prompt: str = "", talk=False):
                 return plugin_response
 
         # Ask for input, default when just pressing Enter is y
-        logger.info(f"{Fore.RED} >>> Cyberdyne Systems Model GPT-3.5-Turbo{Fore.RESET}\n")
+        logger.info(
+            f"{Fore.RED}>>> Cyberdyne Systems Model GPT-3.5-Turbo{Fore.RESET}\n")
         return input(prompt)
     except KeyboardInterrupt:
         logger.info("You interrupted Auto-GPT")
