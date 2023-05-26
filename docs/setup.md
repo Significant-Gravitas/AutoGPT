@@ -20,7 +20,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
     You can set up a paid account at [Manage account > Billing > Overview](https://platform.openai.com/account/billing/overview).
 
-[openai/api limits]: https://platform.openai.com/docs/guides/rate-limits/overview#:~:text=Free%20trial%20users,RPM%0A40%2C000%20TPM
+[openai/api limits]: https://platform.openai.com/docs/guides/rate-limits/overview#:~:text=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
 
 !!! important
     It's highly recommended that you keep track of your API costs on [the Usage page](https://platform.openai.com/account/usage).
