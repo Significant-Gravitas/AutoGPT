@@ -18,6 +18,7 @@ def vcr_cassette_dir(request):
     test_name = os.path.splitext(request.node.name)[0]
     return os.path.join("tests/cassettes", test_name)
 
+
 @pytest.fixture()
 def workspace_root(tmp_path: Path) -> Path:
     return tmp_path / "home/users/monty/auto_gpt_workspace"
