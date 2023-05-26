@@ -318,7 +318,7 @@ def download_file(url, filename, config: Config):
         directory = os.path.dirname(filename)
         os.makedirs(directory, exist_ok=True)
         message = f"{Fore.YELLOW}Downloading file from {Back.LIGHTBLUE_EX}{url}{Back.RESET}{Fore.RESET}"
-        with Spinner(message) as spinner:
+        with Spinner(message, plain_output=config.plain_output) as spinner:
             session = requests.Session()
             retry = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
             adapter = HTTPAdapter(max_retries=retry)
