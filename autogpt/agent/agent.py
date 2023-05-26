@@ -189,7 +189,7 @@ class Agent:
 
                 logger.info(
                     "\n(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.')\n"
-                    "(Key)   'y -n' ('I need your clothes, your boots, and your continuous cms.')\n"
+                    "(Key)   'y -n' ('I need your clothes, your boots, and your continuous cmds.')\n"
                     "(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.')\n"
                     "(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.')\n"
                     f"\n{Fore.MAGENTA}{self.ai_name}> I'm a machine,"

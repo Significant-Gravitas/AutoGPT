@@ -1,11 +1,11 @@
 import pytest
 
-from autogpt.commands.file_operations import read_file, write_to_file
+from autogpt.commands.file_operations import read_file
 from tests.integration.challenges.utils import run_interaction_loop, run_multiple_times
 from tests.utils import requires_api_key
 
 CYCLE_COUNT = 3
-from autogpt.agent import Agent
+from autogpt.agent import Agent  # noqa: E402
 
 
 @pytest.mark.skip("This challenge hasn't been beaten yet.")
