@@ -96,7 +96,7 @@ def retry_openai_api(
                         user_warned = True
 
                 except APIError as e:
-                    if (e.http_status != 502) or (attempt == num_attempts):
+                    if (e.http_status not in [502, 429]) or (attempt == num_attempts):
                         raise
 
                 backoff = backoff_base ** (attempt + 2)

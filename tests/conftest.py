@@ -8,26 +8,15 @@ from autogpt.config.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.workspace import Workspace
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 pytest_plugins = ["tests.integration.agent_factory", "tests.integration.memory.utils"]
 
 PROXY = os.environ.get("PROXY")
-=======
-@pytest.fixture(scope='module')
-def vcr_cassette_dir(request):
-    return os.path.join('tests/fixtures/cassettes', request.module.__name__)
->>>>>>> 3cf64b3f (feat: specify directory of cassettes and automatically load them depending on module)
-=======
 
-@pytest.fixture(scope="module")
+
+@pytest.fixture()
 def vcr_cassette_dir(request):
     test_name = os.path.splitext(request.node.name)[0]
-    return os.path.join("tests/cassettes", test_name)
-
->>>>>>> 5dbec017 (fix: formatting for linter)
-
-pytest_plugins = ["tests.integration.agent_factory"]
+    return os.path.join("tests/Auto-GPT-test-cassettes", test_name)
 
 
 @pytest.fixture()
