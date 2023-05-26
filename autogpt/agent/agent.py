@@ -93,7 +93,6 @@ class Agent:
         self.cycle_count = 0
         self.error_count = 0
         self.errors: Dict[str, list[CommandError]] = defaultdict(list)
-        self.latest_error: Optional[CommandError] = None
 
         # Signal handler for interrupting y -N
 
@@ -105,10 +104,6 @@ class Agent:
                 continue
 
             assistant_reply_json = plugin.post_planning(assistant_reply_json)
-
-        # Print Assistant thoughts
-        if not assistant_reply_json:
-            raise TypeError
 
         validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
 
@@ -226,11 +221,18 @@ class Agent:
             self.ai_config.prompt_generator,
         )
 
+        if self.next_action_count > 0:
+            self.next_action_count -= 1
+
+        return self._validate_command_result(command_name, arguments, command_result)
+
+    def _validate_command_result(
+        self, command_name: str, arguments: str | dict[str, Any], command_result: str
+    ) -> str:
         if self._is_output_too_large(command_result):
             self._add_error(command_name, arguments, "Too much output.")
-            result = f"Failure: command {command_name} returned too much output. \
-                    Do not execute this command again with the same arguments."
-        elif is_command_result_an_error(str(command_result)):
+            result = f"Failure: command {command_name} returned too much output. Do not execute this command again with the same arguments."
+        elif is_command_result_an_error(command_result):
             self._add_error(command_name, arguments, command_result)
             result = (
                 f"Failure: command {command_name} returned the "
@@ -243,10 +245,8 @@ class Agent:
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_post_command():
                 continue
-            result = plugin.post_command(command_name, result)
 
-        if self.next_action_count > 0:
-            self.next_action_count -= 1
+            result = plugin.post_command(command_name, result)
 
         return result
 
@@ -270,7 +270,7 @@ class Agent:
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
 
-            if self.continuous_limit_reached():
+            if self._continuous_limit_reached():
                 logger.typewriter_log(
                     "Continuous Limit Reached: ",
                     Fore.YELLOW,
@@ -350,11 +350,8 @@ class Agent:
 
         return result_tlength + memory_tlength + 600 > self.cfg.fast_token_limit
 
-    def _add_error(
-        self, command: str, arguments: str | dict[str, Any], msg: str
-    ) -> None:
+    def _add_error(self, command: str, arguments: dict[str, Any], msg: str) -> None:
         error = CommandError(command, arguments, msg)
-        self.latest_error = error
         self.errors[command].append(error)
         self.error_count += 1
 
@@ -373,7 +370,6 @@ class Agent:
         with Spinner("Getting self feedback... "):
             messages, feedback = self._get_self_feedback_from_ai(
                 thoughts,
-                self.latest_error,
             )
 
         self.log_cycle_handler.log_cycle(
@@ -416,9 +412,8 @@ class Agent:
     def _get_self_feedback_from_ai(
         self,
         thoughts: dict,
-        prev_error: Optional[CommandError],
     ) -> Tuple[Dict[str, str], str]:
-        full_prompt = self.construct_self_feedback_prompt(thoughts, prev_error)
+        full_prompt = self.construct_self_feedback_prompt(thoughts)
 
         feedback_prompt = {"role": "user", "content": full_prompt}
         messages = [Message(**feedback_prompt)]
@@ -435,7 +430,6 @@ class Agent:
     def construct_self_feedback_prompt(
         self,
         thoughts: Dict[str, str],
-        prev_error: Optional[CommandError],
     ) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
@@ -455,25 +449,13 @@ class Agent:
             f"constraints, commands, thought process, reasoning, and plan."
         )
 
-        if prev_error is not None:
-            prompt_start += (
-                f" Also know that I am reaching out for feedback because the "
-                f"following command and arguments failed to accomplish my "
-                f"latest task, resulting in an error message. This must also "
-                f"be taken into consideration in your response so that I do "
-                f"not repeat the same mistakes:\n\n"
-                f"Previous Command: {prev_error.command}\n"
-                f"Previous Arguments: {prev_error.arguments}\n"
-                f"Error Message: '{prev_error.message}'"
-            )
-
         # Construct self feedback prompt
-        full_prompt = f"{prompt_start}\n\nGOALS:\n"
+        full_prompt = f"{prompt_start}\n\nGoals:\n"
 
         for i, goal in enumerate(self.ai_config.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
-        full_prompt += f"{self.generate_feedback_prompt_string(thoughts)}"
+        full_prompt += f"\n{self.generate_feedback_prompt_string(thoughts)}"
 
         return full_prompt
 
@@ -490,7 +472,7 @@ class Agent:
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
 
-        return (
+        full_prompt = (
             f"Constraints:\n"
             f"{prompt_generator.generate_numbered_list(prompt_generator.constraints)}\n\n"
             "Commands:\n"
@@ -501,11 +483,43 @@ class Agent:
             "You should respond with a concise paragraph that contains any "
             "improvements to my overall thoughts, reasoning, and plan. Based "
             "on these improvements, provide the most likely course of action "
-            "that will get us closer to our goals, while avoiding previous "
-            "errors and only using the commands provided with valid arguments."
+            "that will get us closer to our goals."
         )
 
-    def continuous_limit_reached(self) -> bool:
+        if self.errors is not None:
+            full_prompt += (
+                f"\nThe course of action provided must also not repeat the "
+                f"errors below by using these combinations of commands and "
+                f"arguments:\n"
+                f"{self._generate_error_list()}"
+            )
+
+        return full_prompt
+
+    def _generate_error_list(self) -> str:
+        errors = []
+
+        for command, error_list in self.errors.items():
+            if command == "missing_command":
+                continue
+
+            for error in error_list:
+                errors.append(error)
+
+        error_strings = []
+
+        for command_error in errors:
+            args_string = ", ".join(
+                f'"{key}": "{value}"' for key, value in command_error.arguments.items()
+            )
+            error_strings.append(
+                f"{command_error.command}, arguments: {args_string}, "
+                f"error message: {command_error.message}"
+            )
+
+        return "\n".join(f"{i+1}. {item}" for i, item in enumerate(error_strings))
+
+    def _continuous_limit_reached(self) -> bool:
         return (
             self.cfg.continuous_mode
             and 0 < self.cfg.continuous_limit < self.cycle_count

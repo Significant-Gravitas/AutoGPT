@@ -92,7 +92,7 @@ def map_command_synonyms(command_name: str):
 def execute_command(
     command_registry: CommandRegistry,
     command_name: str,
-    arguments,
+    arguments: str | dict[str, Any],
     prompt: PromptGenerator,
 ):
     """Execute the command and return the result
