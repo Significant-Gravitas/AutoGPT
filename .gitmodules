@@ -1,4 +1,4 @@
 [submodule "tests/cassettes"]
 	path = tests/cassettes
 	url = https://github.com/Significant-Gravitas/cassettes
-	branch = master
+	branch = ci-test-1
