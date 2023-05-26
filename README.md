@@ -1,4 +1,5 @@
 # Auto-GPT: An Autonomous GPT-4 Experiment
+[![Official Website](https://img.shields.io/badge/Official%20Website-agpt.co-blue?style=flat&logo=world&logoColor=white)](https://agpt.co)
 [![Unit Tests](https://img.shields.io/github/actions/workflow/status/Significant-Gravitas/Auto-GPT/ci.yml?label=unit%20tests)](https://github.com/Significant-Gravitas/Auto-GPT/actions/workflows/ci.yml)
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt)
 [![GitHub Repo stars](https://img.shields.io/github/stars/Significant-Gravitas/auto-gpt?style=social)](https://github.com/Significant-Gravitas/Auto-GPT/stargazers)
@@ -8,10 +9,10 @@
 
 <hr/>
 
-### 🔴 🔴 🔴  Urgent: USE `stable` not `master`  🔴 🔴 🔴
+### 🔴 USE `stable` not `master` 🔴
 
 **Download the latest `stable` release from here: https://github.com/Significant-Gravitas/Auto-GPT/releases/latest.**
-The `master` branch may often be in a **broken** state.
+The `master` branch is under heavy development and may often be in a **broken** state.
 
 <hr/>
 
@@ -43,6 +44,7 @@ Your support is greatly appreciated. Development of this free, open-source proje
 <a href="https://roost.ai">
 <img src="https://user-images.githubusercontent.com/22963551/234180283-b58cb03c-c95a-4196-93c1-28b52a388e9d.png" height="40px" alt="Roost.AI" />
 </a>
+  
 <a href="https://nuclei.ai/">
 <picture height="40px">
   <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/22963551/234153428-24a6f31d-c0c6-4c9b-b3f4-9110148f67b4.png">
@@ -71,6 +73,10 @@ Your support is greatly appreciated. Development of this free, open-source proje
 </picture>
 </a>
 
+<a href="https://chatgpv.com/?ref=spni76459e4fa3f30a">
+<img src="https://github-production-user-asset-6210df.s3.amazonaws.com/22963551/239132565-623a2dd6-eaeb-4941-b40f-c5a29ca6bebc.png" height="40px" alt="ChatGPV" />
+</a>
+  
 </div>
 </br>
 
@@ -89,39 +95,32 @@ Your support is greatly appreciated. Development of this free, open-source proje
 - 🗃️ File storage and summarization with GPT-3.5
 - 🔌 Extensibility with Plugins
 
-## 📋 Requirements
-
-Choose an environment to run Auto-GPT in (pick one):
-
-  - [Docker](https://docs.docker.com/get-docker/) (*recommended*)
-  - Python 3.10 or later (instructions: [for Windows](https://www.tutorialspoint.com/how-to-install-python-in-windows))
-  - [VSCode + devcontainer](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
-
 ## Quickstart
 
-1. Set up your OpenAI [API Keys](https://platform.openai.com/account/api-keys)
+0. Check out the [wiki](https://github.com/Significant-Gravitas/Nexus/wiki)
+1. Get an OpenAI [API Key](https://platform.openai.com/account/api-keys)
 2. Download the [latest release](https://github.com/Significant-Gravitas/Auto-GPT/releases/latest)
-3. Follow the [installation instructions][docs/install]
+3. Follow the [installation instructions][docs/setup]
 4. Configure any additional features you want, or install some [plugins][docs/plugins]
 5. [Run][docs/usage] the app
 
-Please see the [documentation][docs] linked below for full setup instructions and configuration options.
+Please see the [documentation][docs] for full setup instructions and configuration options.
 
-[docs]: https://significant-gravitas.github.io/Auto-GPT/
+[docs]: https://docs.agpt.co/
 
 ## 📖 Documentation
-* [⚙️ Installation][docs/install]
+* [⚙️ Setup][docs/setup]
 * [💻 Usage][docs/usage]
 * [🔌 Plugins][docs/plugins]
 * Configuration
-  * [🔍 Web Search](https://significant-gravitas.github.io/Auto-GPT/configuration/search/)
-  * [🧠 Memory](https://significant-gravitas.github.io/Auto-GPT/configuration/memory/)
-  * [🗣️ Voice (TTS)](https://significant-gravitas.github.io/Auto-GPT/configuration/voice/)
-  * [🖼️ Image Generation](https://significant-gravitas.github.io/Auto-GPT/configuration/imagegen/)
+  * [🔍 Web Search](https://docs.agpt.co/configuration/search/)
+  * [🧠 Memory](https://docs.agpt.co/configuration/memory/)
+  * [🗣️ Voice (TTS)](https://docs.agpt.co/configuration/voice/)
+  * [🖼️ Image Generation](https://docs.agpt.co/configuration/imagegen/)
 
-[docs/install]: https://significant-gravitas.github.io/Auto-GPT/installation/
-[docs/usage]: https://significant-gravitas.github.io/Auto-GPT/usage/
-[docs/plugins]: https://significant-gravitas.github.io/Auto-GPT/plugins/
+[docs/setup]: https://docs.agpt.co/setup/
+[docs/usage]: https://docs.agpt.co/usage/
+[docs/plugins]: https://docs.agpt.co/plugins/
 
 ## ⚠️ Limitations
 
@@ -133,7 +132,6 @@ This experiment aims to showcase the potential of GPT-4 but comes with some limi
 
 ## 🛡 Disclaimer
 
-Disclaimer
 This project, Auto-GPT, is an experimental application and is provided "as-is" without any warranty, express or implied. By using this software, you agree to assume all risks associated with its use, including but not limited to data loss, system failure, or any other issues that may arise.
 
 The developers and contributors of this project do not accept any responsibility or liability for any losses, damages, or other consequences that may occur as a result of using this software. You are solely responsible for any decisions and actions taken based on the information provided by Auto-GPT.

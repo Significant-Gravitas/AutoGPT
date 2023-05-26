@@ -4,7 +4,7 @@ on:
   push:
     branches: [ master ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, stable ]
 
 concurrency:
   group: ${{ format('docker-ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
@@ -73,6 +73,7 @@ jobs:
   # Docker setup needs fixing before this is going to work: #1843
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: build
     steps:
     - name: Checkout repository
@@ -101,7 +102,7 @@ jobs:
         set +e
         test_output=$(
           docker run --env CI --env OPENAI_API_KEY --entrypoint python ${{ env.IMAGE_NAME }} -m \
-          pytest --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term 2>&1
+          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term 2>&1
         )
         test_failure=$?
 

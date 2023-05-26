@@ -1,15 +1,20 @@
+import os
 from pathlib import Path
 
 import pytest
+from pytest_mock import MockerFixture
 
-from autogpt.api_manager import ApiManager
-from autogpt.api_manager import api_manager as api_manager_
-from autogpt.config import Config
+from autogpt.config.config import Config
+from autogpt.llm.api_manager import ApiManager
 from autogpt.workspace import Workspace
+
+pytest_plugins = ["tests.integration.agent_factory", "tests.integration.memory.utils"]
+
+PROXY = os.environ.get("PROXY")
 
 
 @pytest.fixture()
-def workspace_root(tmp_path) -> Path:
+def workspace_root(tmp_path: Path) -> Path:
     return tmp_path / "home/users/monty/auto_gpt_workspace"
 
 
@@ -20,19 +25,20 @@ def workspace(workspace_root: Path) -> Workspace:
 
 
 @pytest.fixture()
-def config(workspace: Workspace) -> Config:
+def config(mocker: MockerFixture, workspace: Workspace) -> Config:
     config = Config()
 
     # Do a little setup and teardown since the config object is a singleton
-    old_ws_path = config.workspace_path
-    config.workspace_path = workspace.root
+    mocker.patch.multiple(
+        config,
+        workspace_path=workspace.root,
+        file_logger_path=workspace.get_path("file_logger.txt"),
+    )
     yield config
-    config.workspace_path = old_ws_path
 
 
 @pytest.fixture()
 def api_manager() -> ApiManager:
-    old_attrs = api_manager_.__dict__.copy()
-    api_manager_.reset()
-    yield api_manager_
-    api_manager_.__dict__.update(old_attrs)
+    if ApiManager in ApiManager._instances:
+        del ApiManager._instances[ApiManager]
+    return ApiManager()
