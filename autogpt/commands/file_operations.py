@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import os.path
-from typing import Generator, Literal
+from typing import TYPE_CHECKING, Generator, Literal
 
 import charset_normalizer
 import requests
@@ -13,13 +13,14 @@ from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.commands.command import command
 from autogpt.commands.file_operations_utils import read_textual_file
-from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.memory.vector import MemoryItem, VectorMemory
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 
-CFG = Config()
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
 
 Operation = Literal["write", "append", "delete"]
 
@@ -60,7 +61,7 @@ def operations_from_log(
 def file_operations_state(log_path: str) -> dict[str, str]:
     """Iterates over the operations log and returns the expected state.
 
-    Parses a log file at CFG.file_logger_path to construct a dictionary that maps
+    Parses a log file at config.file_logger_path to construct a dictionary that maps
     each file path written or appended to its checksum. Deleted files are removed
     from the dictionary.
 
@@ -68,7 +69,7 @@ def file_operations_state(log_path: str) -> dict[str, str]:
         A dictionary mapping file paths to their checksums.
 
     Raises:
-        FileNotFoundError: If CFG.file_logger_path is not found.
+        FileNotFoundError: If config.file_logger_path is not found.
         ValueError: If the log file content is not in the expected format.
     """
     state = {}
@@ -81,7 +82,7 @@ def file_operations_state(log_path: str) -> dict[str, str]:
 
 
 def is_duplicate_operation(
-    operation: Operation, filename: str, checksum: str | None = None
+    operation: Operation, filename: str, config: Config, checksum: str | None = None
 ) -> bool:
     """Check if the operation has already been performed
 
@@ -93,7 +94,7 @@ def is_duplicate_operation(
     Returns:
         True if the operation has already been performed on the file
     """
-    state = file_operations_state(CFG.file_logger_path)
+    state = file_operations_state(config.file_logger_path)
     if operation == "delete" and filename not in state:
         return True
     if operation == "write" and state.get(filename) == checksum:
@@ -101,7 +102,9 @@ def is_duplicate_operation(
     return False
 
 
-def log_operation(operation: str, filename: str, checksum: str | None = None) -> None:
+def log_operation(
+    operation: str, filename: str, config: Config, checksum: str | None = None
+) -> None:
     """Log the file operation to the file_logger.txt
 
     Args:
@@ -113,7 +116,7 @@ def log_operation(operation: str, filename: str, checksum: str | None = None) ->
     if checksum is not None:
         log_entry += f" #{checksum}"
     logger.debug(f"Logging file operation: {log_entry}")
-    append_to_file(CFG.file_logger_path, f"{log_entry}\n", should_log=False)
+    append_to_file(config.file_logger_path, f"{log_entry}\n", config, should_log=False)
 
 
 def split_file(
@@ -149,7 +152,7 @@ def split_file(
 
 
 @command("read_file", "Read a file", '"filename": "<filename>"')
-def read_file(filename: str) -> str:
+def read_file(filename: str, config: Config) -> str:
     """Read a file and return the contents
 
     Args:
@@ -198,7 +201,7 @@ def ingest_file(
 
 
 @command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
-def write_to_file(filename: str, text: str) -> str:
+def write_to_file(filename: str, text: str, config: Config) -> str:
     """Write text to a file
 
     Args:
@@ -209,14 +212,14 @@ def write_to_file(filename: str, text: str) -> str:
         str: A message indicating success or failure
     """
     checksum = text_checksum(text)
-    if is_duplicate_operation("write", filename, checksum):
+    if is_duplicate_operation("write", filename, config, checksum):
         return "Error: File has already been updated."
     try:
         directory = os.path.dirname(filename)
         os.makedirs(directory, exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:
             f.write(text)
-        log_operation("write", filename, checksum)
+        log_operation("write", filename, config, checksum)
         return "File written to successfully."
     except Exception as err:
         return f"Error: {err}"
@@ -225,7 +228,9 @@ def write_to_file(filename: str, text: str) -> str:
 @command(
     "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
 )
-def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
+def append_to_file(
+    filename: str, text: str, config: Config, should_log: bool = True
+) -> str:
     """Append text to a file
 
     Args:
@@ -245,7 +250,7 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
         if should_log:
             with open(filename, "r", encoding="utf-8") as f:
                 checksum = text_checksum(f.read())
-            log_operation("append", filename, checksum=checksum)
+            log_operation("append", filename, config, checksum=checksum)
 
         return "Text appended successfully."
     except Exception as err:
@@ -253,7 +258,7 @@ def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
 
 
 @command("delete_file", "Delete file", '"filename": "<filename>"')
-def delete_file(filename: str) -> str:
+def delete_file(filename: str, config: Config) -> str:
     """Delete a file
 
     Args:
@@ -262,18 +267,18 @@ def delete_file(filename: str) -> str:
     Returns:
         str: A message indicating success or failure
     """
-    if is_duplicate_operation("delete", filename):
+    if is_duplicate_operation("delete", filename, config):
         return "Error: File has already been deleted."
     try:
         os.remove(filename)
-        log_operation("delete", filename)
+        log_operation("delete", filename, config)
         return "File deleted successfully."
     except Exception as err:
         return f"Error: {err}"
 
 
 @command("list_files", "List Files in Directory", '"directory": "<directory>"')
-def list_files(directory: str) -> list[str]:
+def list_files(directory: str, config: Config) -> list[str]:
     """lists files in a directory recursively
 
     Args:
@@ -289,7 +294,7 @@ def list_files(directory: str) -> list[str]:
             if file.startswith("."):
                 continue
             relative_path = os.path.relpath(
-                os.path.join(root, file), CFG.workspace_path
+                os.path.join(root, file), config.workspace_path
             )
             found_files.append(relative_path)
 
@@ -300,10 +305,10 @@ def list_files(directory: str) -> list[str]:
     "download_file",
     "Download File",
     '"url": "<url>", "filename": "<filename>"',
-    CFG.allow_downloads,
+    lambda config: config.allow_downloads,
     "Error: You do not have user authorization to download files locally.",
 )
-def download_file(url, filename):
+def download_file(url, filename, config: Config):
     """Downloads a file
     Args:
         url (str): URL of the file to download

@@ -6,14 +6,10 @@ from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.config import Config
-from autogpt.logs import logger
-from autogpt.memory.vector import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.speech import say_text
 from autogpt.url_utils.validators import validate_url
-
-CFG = Config()
 
 
 def is_valid_int(value: str) -> bool:
@@ -93,6 +89,7 @@ def execute_command(
     command_name: str,
     arguments,
     prompt: PromptGenerator,
+    config: Config,
 ):
     """Execute the command and return the result
 
@@ -108,7 +105,7 @@ def execute_command(
 
         # If the command is found, call it with the provided arguments
         if cmd:
-            return cmd(**arguments)
+            return cmd(**arguments, config=config)
 
         # TODO: Remove commands below after they are moved to the command registry.
         command_name = map_command_synonyms(command_name.lower())
@@ -135,7 +132,7 @@ def execute_command(
     "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
 )
 @validate_url
-def get_text_summary(url: str, question: str) -> str:
+def get_text_summary(url: str, question: str, config: Config) -> str:
     """Get the text summary of a webpage
 
     Args:
@@ -153,7 +150,7 @@ def get_text_summary(url: str, question: str) -> str:
 
 @command("get_hyperlinks", "Get hyperlinks", '"url": "<url>"')
 @validate_url
-def get_hyperlinks(url: str) -> Union[str, List[str]]:
+def get_hyperlinks(url: str, config: Config) -> Union[str, List[str]]:
     """Get all hyperlinks on a webpage
 
     Args:
@@ -162,7 +159,7 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
     Returns:
         str or list: The hyperlinks on the page
     """
-    return scrape_links(url)
+    return scrape_links(url, config)
 
 
 @command(
@@ -170,7 +167,7 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
     "Start GPT Agent",
     '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"',
 )
-def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
+def start_agent(name: str, task: str, prompt: str, config: Config, model=None) -> str:
     """Start an agent with a given name, task, and prompt
 
     Args:
@@ -191,11 +188,11 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     agent_intro = f"{voice_name} here, Reporting for duty!"
 
     # Create agent
-    if CFG.speak_mode:
+    if config.speak_mode:
         say_text(agent_intro, 1)
     key, ack = agent_manager.create_agent(task, first_message, model)
 
-    if CFG.speak_mode:
+    if config.speak_mode:
         say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
     # Assign task (prompt), get response
@@ -205,7 +202,7 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
 
 
 @command("message_agent", "Message GPT Agent", '"key": "<key>", "message": "<message>"')
-def message_agent(key: str, message: str) -> str:
+def message_agent(key: str, message: str, config: Config) -> str:
     """Message an agent with a given key and message"""
     # Check if the key is a valid integer
     if is_valid_int(key):
@@ -214,13 +211,13 @@ def message_agent(key: str, message: str) -> str:
         return "Invalid key, must be an integer."
 
     # Speak response
-    if CFG.speak_mode:
+    if config.speak_mode:
         say_text(agent_response, 1)
     return agent_response
 
 
-@command("list_agents", "List GPT Agents", "")
-def list_agents() -> str:
+@command("list_agents", "List GPT Agents", "() -> str")
+def list_agents(config: Config) -> str:
     """List all agents
 
     Returns:
@@ -232,7 +229,7 @@ def list_agents() -> str:
 
 
 @command("delete_agent", "Delete GPT Agent", '"key": "<key>"')
-def delete_agent(key: str) -> str:
+def delete_agent(key: str, config: Config) -> str:
     """Delete an agent with a given key
 
     Args:

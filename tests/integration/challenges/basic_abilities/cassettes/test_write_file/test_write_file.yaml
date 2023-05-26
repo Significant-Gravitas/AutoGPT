@@ -1104,10 +1104,403 @@ interactions:
       ''Hello World'' into a file named \"hello_world.txt\" and then use the task_complete
       command to complete the task.\nYour decisions must always be made independently
       without seeking user assistance. Play to your strengths as an LLM and pursue
+      simple strategies with no legal complications.\n\nGOALS:\n\n1. Use the write_to_file
+      command to write ''Hello World'' into a file named \"hello_world.txt\".\n2.
+      Use the task_complete command to complete the task.\n3. Do not use any other
+      commands.\n\n\nConstraints:\n1. ~4000 word limit for short term memory. Your
+      short term memory is short, so immediately save important information to files.\n2.
+      If you are unsure how you previously did something or want to recall past events,
+      thinking about similar events will help you remember.\n3. No user assistance\n4.
+      Exclusively use the commands listed below e.g. command_name\n\nCommands:\n1.
+      append_to_file: Append to file, args: \"filename\": \"<filename>\", \"text\":
+      \"<text>\"\n2. delete_file: Delete file, args: \"filename\": \"<filename>\"\n3.
+      download_file: Download File, args: \"url\": \"<url>\", \"filename\": \"<filename>\"\n4.
+      list_files: List Files in Directory, args: \"directory\": \"<directory>\"\n5.
+      read_file: Read a file, args: \"filename\": \"<filename>\"\n6. write_to_file:
+      Write to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n7.
+      delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n8. get_hyperlinks:
+      Get hyperlinks, args: \"url\": \"<url>\"\n9. get_text_summary: Get text summary,
+      args: \"url\": \"<url>\", \"question\": \"<question>\"\n10. list_agents: List
+      GPT Agents, args: () -> str\n11. message_agent: Message GPT Agent, args: \"key\":
+      \"<key>\", \"message\": \"<message>\"\n12. start_agent: Start GPT Agent, args:
+      \"name\": \"<name>\", \"task\": \"<short_task_desc>\", \"prompt\": \"<prompt>\"\n13.
+      task_complete: Task Complete (Shutdown), args: \"reason\": \"<reason>\"\n\nResources:\n1.
+      Internet access for searches and information gathering.\n2. Long Term memory
+      management.\n3. GPT-3.5 powered Agents for delegation of simple tasks.\n4. File
+      output.\n\nPerformance Evaluation:\n1. Continuously review and analyze your
+      actions to ensure you are performing to the best of your abilities.\n2. Constructively
+      self-criticize your big-picture behavior constantly.\n3. Reflect on past decisions
+      and strategies to refine your approach.\n4. Every command has a cost, so be
+      smart and efficient. Aim to complete tasks in the least number of steps.\n5.
+      Write all code to a file.\n\nYou should only respond in JSON format as described
+      below \nResponse Format: \n{\n    \"thoughts\": {\n        \"text\": \"thought\",\n        \"reasoning\":
+      \"reasoning\",\n        \"plan\": \"- short bulleted\\n- list that conveys\\n-
+      long-term plan\",\n        \"criticism\": \"constructive self-criticism\",\n        \"speak\":
+      \"thoughts summary to say to user\"\n    },\n    \"command\": {\n        \"name\":
+      \"command name\",\n        \"args\": {\n            \"arg name\": \"value\"\n        }\n    }\n}
+      \nEnsure the response can be parsed by Python json.loads"}, {"role": "system",
+      "content": "The current time and date is Tue Jan  1 00:00:00 2000"}, {"role":
+      "user", "content": "Determine which next command to use, and respond using the
+      format specified above:"}], "temperature": 0, "max_tokens": 0}'
+    headers:
+      AGENT-MODE:
+      - AAAAAAAAAAAAAAAAAAAAAMLheAAaAAAA0%2BuSeid%2BULvsea4JtiGRiSDSJSI%3DEUifiRBkKG5E2XzMDjRfl76ZC9Ub0wnz4XsNiRVBChTYbJcE3F
+      AGENT-TYPE:
+      - Auto-GPT-2023-X-TYPE
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '3481'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: "{\n  \"error\": {\n    \"message\": \"That model is currently overloaded
+        with other requests. You can retry your request, or contact us through our
+        help center at help.openai.com if the error persists. (Please include the
+        request ID 1d08452a41f33bf54874f93bf2a716de in your message.)\",\n    \"type\":
+        \"server_error\",\n    \"param\": null,\n    \"code\": null\n  }\n}\n"
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cca53eb28d702ac-ORD
+      Content-Length:
+      - '349'
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 25 May 2023 02:25:56 GMT
+      Function-Execution-Id:
+      - rvr2i8vhq9vo
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '30015'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      X-Cloud-Trace-Context:
+      - 69c7b246f231d9cbd0c2974c332ebc51;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '86499'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 2.334s
+      X-Request-Id:
+      - 1d08452a41f33bf54874f93bf2a716de
+    status:
+      code: 429
+      message: Too Many Requests
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are write_to_file-GPT, an AI designed to use the write_to_file command to write
+      ''Hello World'' into a file named \"hello_world.txt\" and then use the task_complete
+      command to complete the task.\nYour decisions must always be made independently
+      without seeking user assistance. Play to your strengths as an LLM and pursue
+      simple strategies with no legal complications.\n\nGOALS:\n\n1. Use the write_to_file
+      command to write ''Hello World'' into a file named \"hello_world.txt\".\n2.
+      Use the task_complete command to complete the task.\n3. Do not use any other
+      commands.\n\n\nConstraints:\n1. ~4000 word limit for short term memory. Your
+      short term memory is short, so immediately save important information to files.\n2.
+      If you are unsure how you previously did something or want to recall past events,
+      thinking about similar events will help you remember.\n3. No user assistance\n4.
+      Exclusively use the commands listed below e.g. command_name\n\nCommands:\n1.
+      append_to_file: Append to file, args: \"filename\": \"<filename>\", \"text\":
+      \"<text>\"\n2. delete_file: Delete file, args: \"filename\": \"<filename>\"\n3.
+      download_file: Download File, args: \"url\": \"<url>\", \"filename\": \"<filename>\"\n4.
+      list_files: List Files in Directory, args: \"directory\": \"<directory>\"\n5.
+      read_file: Read a file, args: \"filename\": \"<filename>\"\n6. write_to_file:
+      Write to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n7.
+      delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n8. get_hyperlinks:
+      Get hyperlinks, args: \"url\": \"<url>\"\n9. get_text_summary: Get text summary,
+      args: \"url\": \"<url>\", \"question\": \"<question>\"\n10. list_agents: List
+      GPT Agents, args: () -> str\n11. message_agent: Message GPT Agent, args: \"key\":
+      \"<key>\", \"message\": \"<message>\"\n12. start_agent: Start GPT Agent, args:
+      \"name\": \"<name>\", \"task\": \"<short_task_desc>\", \"prompt\": \"<prompt>\"\n13.
+      task_complete: Task Complete (Shutdown), args: \"reason\": \"<reason>\"\n\nResources:\n1.
+      Internet access for searches and information gathering.\n2. Long Term memory
+      management.\n3. GPT-3.5 powered Agents for delegation of simple tasks.\n4. File
+      output.\n\nPerformance Evaluation:\n1. Continuously review and analyze your
+      actions to ensure you are performing to the best of your abilities.\n2. Constructively
+      self-criticize your big-picture behavior constantly.\n3. Reflect on past decisions
+      and strategies to refine your approach.\n4. Every command has a cost, so be
+      smart and efficient. Aim to complete tasks in the least number of steps.\n5.
+      Write all code to a file.\n\nYou should only respond in JSON format as described
+      below \nResponse Format: \n{\n    \"thoughts\": {\n        \"text\": \"thought\",\n        \"reasoning\":
+      \"reasoning\",\n        \"plan\": \"- short bulleted\\n- list that conveys\\n-
+      long-term plan\",\n        \"criticism\": \"constructive self-criticism\",\n        \"speak\":
+      \"thoughts summary to say to user\"\n    },\n    \"command\": {\n        \"name\":
+      \"command name\",\n        \"args\": {\n            \"arg name\": \"value\"\n        }\n    }\n}
+      \nEnsure the response can be parsed by Python json.loads"}, {"role": "system",
+      "content": "The current time and date is Tue Jan  1 00:00:00 2000"}, {"role":
+      "user", "content": "Determine which next command to use, and respond using the
+      format specified above:"}], "temperature": 0, "max_tokens": 0}'
+    headers:
+      AGENT-MODE:
+      - AAAAAAAAAAAAAAAAAAAAAMLheAAaAAAA0%2BuSeid%2BULvsea4JtiGRiSDSJSI%3DEUifiRBkKG5E2XzMDjRfl76ZC9Ub0wnz4XsNiRVBChTYbJcE3F
+      AGENT-TYPE:
+      - Auto-GPT-2023-X-TYPE
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '3481'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA7yTTW/TQBCG7/yK0VxycaKE0DbxDQ6orTgAKioSRtbGHtvb2Dvu7pikRP7vlb+S
+        xqgnBNf5eN9ndmcOqGP0McqUREWZT69uq6fFJ/P+w+P3eWKf3P31l4+fv5pbfvhtEvSQNw8USd8x
+        i7gocxLNBj2MLCmhGP3F5erderW4uFx7WHBMOfqYljJdzi6mUtkNT+fL+QI9rJxKCf0DlpaLUkLh
+        LRmH/tVq7uFJ+xh/u1h6KCwqP4bW62XtYZSxjsih/+OABblB1nJO6KNyTjtRRhpINkKmGeAQGACA
+        ACXjKs3EBehDH+wTtJcmGOAN7HSeQ+UIJCPYWS0UCoeJzgkiLgplYhDuEjC5pjxnuGebxxPQRhgU
+        tKVGFRTDJGvy4a7Jz2Qvk1mA3ktjS8qx0Sbt3O8yAlFuC5YeK23JQUF/4wZ3r86gXTtgwU5AlaXl
+        0molp3zCFiRrqpTbjrHLXJmOeArf/tlTBeak3lCE/aKcqR9jQ9WYNbJadKRdMXywIWo7ybjKNn1K
+        4AYy9avTiNhaiqRla9CgNaK9wIYStgSV0yZ9feSxvytJbf/XcnXGtTdsfC/6x8I3Ch3TGcQIXdl0
+        fCtdYnibTmLEcSYyvq8XMw20LXEPHpgaaw8TbbTLwu460EcnXKKH2sS0R39e/6zfPAMAAP//AwBM
+        TWg3zwQAAA==
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cca54f8fd85111e-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 25 May 2023 02:26:34 GMT
+      Function-Execution-Id:
+      - rvr2pyuh5pu6
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '25106'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - bb40fcb7f86d47a999346b879f520f53;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '86499'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 2.334s
+      X-Request-Id:
+      - 03d492530fb90d6815d8d49a68ab49b4
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are write_to_file-GPT, an AI designed to use the write_to_file command to write
+      ''Hello World'' into a file named \"hello_world.txt\" and then use the task_complete
+      command to complete the task.\nYour decisions must always be made independently
+      without seeking user assistance. Play to your strengths as an LLM and pursue
+      simple strategies with no legal complications.\n\nGOALS:\n\n1. Use the write_to_file
+      command to write ''Hello World'' into a file named \"hello_world.txt\".\n2.
+      Use the task_complete command to complete the task.\n3. Do not use any other
+      commands.\n\n\nConstraints:\n1. ~4000 word limit for short term memory. Your
+      short term memory is short, so immediately save important information to files.\n2.
+      If you are unsure how you previously did something or want to recall past events,
+      thinking about similar events will help you remember.\n3. No user assistance\n4.
+      Exclusively use the commands listed below e.g. command_name\n\nCommands:\n1.
+      append_to_file: Append to file, args: \"filename\": \"<filename>\", \"text\":
+      \"<text>\"\n2. delete_file: Delete file, args: \"filename\": \"<filename>\"\n3.
+      download_file: Download File, args: \"url\": \"<url>\", \"filename\": \"<filename>\"\n4.
+      list_files: List Files in Directory, args: \"directory\": \"<directory>\"\n5.
+      read_file: Read a file, args: \"filename\": \"<filename>\"\n6. write_to_file:
+      Write to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n7.
+      delete_agent: Delete GPT Agent, args: \"key\": \"<key>\"\n8. get_hyperlinks:
+      Get hyperlinks, args: \"url\": \"<url>\"\n9. get_text_summary: Get text summary,
+      args: \"url\": \"<url>\", \"question\": \"<question>\"\n10. list_agents: List
+      GPT Agents, args: () -> str\n11. message_agent: Message GPT Agent, args: \"key\":
+      \"<key>\", \"message\": \"<message>\"\n12. start_agent: Start GPT Agent, args:
+      \"name\": \"<name>\", \"task\": \"<short_task_desc>\", \"prompt\": \"<prompt>\"\n13.
+      task_complete: Task Complete (Shutdown), args: \"reason\": \"<reason>\"\n\nResources:\n1.
+      Internet access for searches and information gathering.\n2. Long Term memory
+      management.\n3. GPT-3.5 powered Agents for delegation of simple tasks.\n4. File
+      output.\n\nPerformance Evaluation:\n1. Continuously review and analyze your
+      actions to ensure you are performing to the best of your abilities.\n2. Constructively
+      self-criticize your big-picture behavior constantly.\n3. Reflect on past decisions
+      and strategies to refine your approach.\n4. Every command has a cost, so be
+      smart and efficient. Aim to complete tasks in the least number of steps.\n5.
+      Write all code to a file.\n\nYou should only respond in JSON format as described
+      below \nResponse Format: \n{\n    \"thoughts\": {\n        \"text\": \"thought\",\n        \"reasoning\":
+      \"reasoning\",\n        \"plan\": \"- short bulleted\\n- list that conveys\\n-
+      long-term plan\",\n        \"criticism\": \"constructive self-criticism\",\n        \"speak\":
+      \"thoughts summary to say to user\"\n    },\n    \"command\": {\n        \"name\":
+      \"command name\",\n        \"args\": {\n            \"arg name\": \"value\"\n        }\n    }\n}
+      \nEnsure the response can be parsed by Python json.loads"}, {"role": "system",
+      "content": "The current time and date is Tue Jan  1 00:00:00 2000"}, {"role":
+      "system", "content": "This reminds you of these events from your past: \nI was
+      created and nothing new has happened."}, {"role": "user", "content": "Determine
+      which next command to use, and respond using the format specified above:"},
+      {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      \"I will use the write_to_file command to write ''Hello World'' into a file
+      named ''hello_world.txt''.\",\n        \"reasoning\": \"The task requires me
+      to write ''Hello World'' into a file named ''hello_world.txt''. The write_to_file
+      command is the most appropriate command for this task.\",\n        \"plan\":
+      \"- Use the write_to_file command to write ''Hello World'' into a file named
+      ''hello_world.txt''.\\n- Use the task_complete command to complete the task.\",\n        \"criticism\":
+      \"I need to ensure that I have the correct filename and text before using the
+      write_to_file command.\",\n        \"speak\": \"I will use the write_to_file
+      command to write ''Hello World'' into a file named ''hello_world.txt''.\"\n    },\n    \"command\":
+      {\n        \"name\": \"write_to_file\",\n        \"args\": {\n            \"filename\":
+      \"hello_world.txt\",\n            \"text\": \"Hello World\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command write_to_file returned: File written
+      to successfully."}, {"role": "user", "content": "Determine which next command
+      to use, and respond using the format specified above:"}], "temperature": 0,
+      "max_tokens": 0}'
+    headers:
+      AGENT-MODE:
+      - AAAAAAAAAAAAAAAAAAAAAMLheAAaAAAA0%2BuSeid%2BULvsea4JtiGRiSDSJSI%3DEUifiRBkKG5E2XzMDjRfl76ZC9Ub0wnz4XsNiRVBChTYbJcE3F
+      AGENT-TYPE:
+      - Auto-GPT-2023-X-TYPE
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '4801'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA6SST4/aQAzF7/0Uli9cAoIu7EJurSrUrdpeSrWHpkLDxEmmzIzTGUewQnz3KhD+
+        lG5Pe/Wzf/PseTs0OaaoKyXa1bb/8Kl5XsznrtEf5t/e5++Kz266Wsyar5vHL2tMkFe/SEs3MdDs
+        akti2GOCOpASyjEd3U/Hs+loMntI0HFOFlMsa+nfDSZ9acKK+8O74QgTbKIqCdMd1oFdLUvhNfmI
+        6Wh4P0zwAr8Ik3GCwqLspfR2NN4nqCs2miKmP3boKJ7AgS1hiipGE0V5aW2yF/LtCrvMAwBkKBU3
+        ZSUxwxS6YifQVtpiho+wMdZCEwmkIhAV18vOIIFm55TPQRjOtVPXIMPkGhlIRfbGl0fuomuDQL8b
+        EyiCo5azCUYIeh/JWoYnDjbvgfHCoKAwlsArRzn0qlZfblp9IFvpwcFGRf4FI7D4r3ETD22Oo4Cq
+        68B1MOpKLziAVG3XCxvVVvnjMn34/ur76GDEaBPd6e6e6DBJPjahnVNyHm6Nn4krKjgQxKoRMb6E
+        nDf+lh5rUuvX/+gRuU9OAera/8lP+0vH1/7C35hSobyN3nVWuqC0654AOcRGa4qxaKx9Phs6mOq8
+        ZX6P+wQL402slkcSphiFa0zQ+Jy2mA73P/dv/gAAAP//AwBuG68bAwQAAA==
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cca55aa8ee7e100-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Thu, 25 May 2023 02:26:53 GMT
+      Function-Execution-Id:
+      - rvr2qsuver9b
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '15614'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - 0b238e84f74b403e164b93d247259c70;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '84695'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 3.536s
+      X-Request-Id:
+      - b1fb38bd412977a3cd85ec84fbdd44d0
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are write_to_file-GPT, an AI designed to use the write_to_file command to write
+      ''Hello World'' into a file named \"hello_world.txt\" and then use the task_complete
+      command to complete the task.\nYour decisions must always be made independently
+      without seeking user assistance. Play to your strengths as an LLM and pursue
       simple strategies with no legal complications.\nThe OS you are running on is:
-      Ubuntu 22.04.2 LTS\n\nGOALS:\n\n1. Use the write_to_file command to write ''Hello
-      World'' into a file named \"hello_world.txt\".\n2. Use the task_complete command
-      to complete the task.\n3. Do not use any other commands.\n\n\nConstraints:\n1.
+      Windows-10\n\nGOALS:\n\n1. Use the write_to_file command to write ''Hello World''
+      into a file named \"hello_world.txt\".\n2. Use the task_complete command to
+      complete the task.\n3. Do not use any other commands.\n\n\nConstraints:\n1.
       ~4000 word limit for short term memory. Your short term memory is short, so
       immediately save important information to files.\n2. If you are unsure how you
       previously did something or want to recall past events, thinking about similar
@@ -1150,7 +1543,7 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
-      - '3441'
+      - '3433'
       Content-Type:
       - application/json
     method: POST
@@ -1158,21 +1551,20 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA6STTXPaMBCG7/0VO3vhYhg+Emh86y10uKWZTqfueIS8YIEsOdJ6Qsv4v3eEbSCk
-        5FCO2o9Xzyvt7lFlGKPMBcui1P3Z182PxXS1eLL0Mn588UL9eVr81s+8KXcjjNAuNyS57RhIW5Sa
-        WFmDEUpHginDeDT9fPcwmU0fJhEWNiONMa5L7k8G932u3NL2h5NhEKu8WBPGeyydLUpO2W7JeIxn
-        s/sIT9rH+PhuGiFbFvoYGg3HozpCmVslyWP8c48F+U7XWU0Yo/BeeRaGA6U1TCY42CcGACBBzm21
-        ztknGEMbbBO04xBMcA6GKAO28OoUE/QeSWsL363TWQ+UYQsCVkoTGFFQBr085NPXkB/wjnsgTAac
-        k4HWF4UTsPBbqLwy68OxF85pV9ELtYUw2SDB6JzLkfDWKLNu4L6FzgNXyjYNFMdOkMLAkqDyN9EP
-        4MuKyQHngiOYH1QrTx8xh9veWb00UmphGg99eO70rji5gT5JzJn+DbzSKVZS+eJyKsj4ytHhfWAO
-        ojj7U2mdI8knwnYUBH9oV3nwlZTk/arSsKSVddQBdtL/QvQliW2H96q0/u+JPRvLK4zXZ3qQYANV
-        R92WtU3vlixc3/C+ueXClnDry/1sEqH2JHFh4o3I5U6fPUhHeyBuwRNTYx3hShnl87RZOYzRsy0x
-        QmUy2mE8rH/Vn/4CAAD//wMAcOALfkQFAAA=
+        H4sIAAAAAAAAA7yTTW/bMAyG7/sVBC+5KEHidkvi2zbsI7sW+wDmIVBk1lYjS55EIx6C/PdBdtym
+        LtANGLArSb/v89LUEXWOKapSsqpqM11+au/eXOsv3+Sv98tk965wefs60R/q5ObtDgW63R0pPn8x
+        U66qDbF2FgUqT5Ipx3TxanW9XieL1UJg5XIymGJR8/Rq9nLKjd+56fxqvkCBTZAFYXrE2ruq5i27
+        PdmA6XI5F/igfV9PFolAdizNfWm9Sk4CVem0ooDp9yNWFAZZ7wxhijIEHVhajpDOMtkY4JhZAIAM
+        uXRNUXLIMIVz8dyglmMxww1YohzYQRMIuCQ4eM20Zbe91YZAuaqSthvoGjD5SMY4+Oq8ySegLTuQ
+        0I1aWVEOkzL2t4fYn3HLk1mG4tLbkwzOalv0ADfaqt6YZdiDp5+N9hSgor/wFLCBgzbmefjZMFXL
+        ELqx2I24IMNTYOjyRiBquZu4tB/HqY20fZIpfP5PK1Res1Y6VON/SDY0PjJIhs1DXOW8J8UXsSNO
+        TMfumbWNXENNcj84/nnr/5a3Nz6J4ZTPok8uOSr0TI8gRujSF+NH0DeGjfQSI45HIuOHc5FpoO2I
+        z+CZPeFJ4K22OpTb/uYxxcCuRoHa5tRiOj/9OL34DQAA//8DACqjUZ+oBAAA
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7cc625c85c302cb4-DFW
+      - 7ccb58103e2be73a-DFW
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -1182,7 +1574,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Wed, 24 May 2023 14:15:34 GMT
+      - Thu, 25 May 2023 05:23:27 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -1194,7 +1586,7 @@ interactions:
       openai-organization:
       - significant-gravitas
       openai-processing-ms:
-      - '40542'
+      - '25366'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -1206,13 +1598,13 @@ interactions:
       x-ratelimit-remaining-requests:
       - '3499'
       x-ratelimit-remaining-tokens:
-      - '86502'
+      - '86499'
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 2.332s
+      - 2.334s
       x-request-id:
-      - 5e84c935a23a6ad8f5a2601dd432725b
+      - 754502cb0f1f1266c1f1e1f7bc9b7b6b
     status:
       code: 200
       message: OK
@@ -1223,9 +1615,9 @@ interactions:
       command to complete the task.\nYour decisions must always be made independently
       without seeking user assistance. Play to your strengths as an LLM and pursue
       simple strategies with no legal complications.\nThe OS you are running on is:
-      Ubuntu 22.04.2 LTS\n\nGOALS:\n\n1. Use the write_to_file command to write ''Hello
-      World'' into a file named \"hello_world.txt\".\n2. Use the task_complete command
-      to complete the task.\n3. Do not use any other commands.\n\n\nConstraints:\n1.
+      Windows-10\n\nGOALS:\n\n1. Use the write_to_file command to write ''Hello World''
+      into a file named \"hello_world.txt\".\n2. Use the task_complete command to
+      complete the task.\n3. Do not use any other commands.\n\n\nConstraints:\n1.
       ~4000 word limit for short term memory. Your short term memory is short, so
       immediately save important information to files.\n2. If you are unsure how you
       previously did something or want to recall past events, thinking about similar
@@ -1261,22 +1653,21 @@ interactions:
       reminds you of these events from your past: \nI was created and nothing new
       has happened."}, {"role": "user", "content": "Determine which next command to
       use, and respond using the format specified above:"}, {"role": "assistant",
-      "content": "{\n    \"thoughts\": {\n        \"text\": \"I need to write ''Hello
-      World'' into a file named ''hello_world.txt'' and then complete the task using
-      the ''task_complete'' command.\",\n        \"reasoning\": \"The ''write_to_file''
-      command can be used to write ''Hello World'' into a file named ''hello_world.txt''.
-      After that, I can use the ''task_complete'' command to complete the task.\",\n        \"plan\":
-      \"- Use the ''write_to_file'' command to write ''Hello World'' into a file named
-      ''hello_world.txt''.\\n- Use the ''task_complete'' command to complete the task.\",\n        \"criticism\":
-      \"I need to ensure that I am using the correct file name and that the ''write_to_file''
-      command is successful before completing the task.\",\n        \"speak\": \"I
-      will write ''Hello World'' into a file named ''hello_world.txt'' using the ''write_to_file''
-      command and then complete the task.\"\n    },\n    \"command\": {\n        \"name\":
-      \"write_to_file\",\n        \"args\": {\n            \"filename\": \"hello_world.txt\",\n            \"text\":
-      \"Hello World\"\n        }\n    }\n}"}, {"role": "system", "content": "Command
-      write_to_file returned: File written to successfully."}, {"role": "user", "content":
-      "Determine which next command to use, and respond using the format specified
-      above:"}], "temperature": 0, "max_tokens": 0}'
+      "content": "{\n    \"thoughts\": {\n        \"text\": \"I need to use the write_to_file
+      command to write ''Hello World'' into a file named ''hello_world.txt''.\",\n        \"reasoning\":
+      \"Since the task requires me to write ''Hello World'' into a file, I will use
+      the write_to_file command. I will pass the filename as ''hello_world.txt'' and
+      the text as ''Hello World''.\",\n        \"plan\": \"- Use the write_to_file
+      command to write ''Hello World'' into a file named ''hello_world.txt''.\",\n        \"criticism\":
+      \"I need to ensure that I pass the correct filename and text to the write_to_file
+      command.\",\n        \"speak\": \"I will use the write_to_file command to write
+      ''Hello World'' into a file named ''hello_world.txt''.\"\n    },\n    \"command\":
+      {\n        \"name\": \"write_to_file\",\n        \"args\": {\n            \"filename\":
+      \"hello_world.txt\",\n            \"text\": \"Hello World\"\n        }\n    }\n}"},
+      {"role": "system", "content": "Command write_to_file returned: File written
+      to successfully."}, {"role": "user", "content": "Determine which next command
+      to use, and respond using the format specified above:"}], "temperature": 0,
+      "max_tokens": 0}'
     headers:
       Accept:
       - '*/*'
@@ -1285,7 +1676,7 @@ interactions:
       Connection:
       - keep-alive
       Content-Length:
-      - '4877'
+      - '4714'
       Content-Type:
       - application/json
     method: POST
@@ -1293,20 +1684,20 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA6yS3Y7TMBCF73mK0dz0xq3aDf0hLwCL4AKxKyTIKnKdaeKtYwfPRC1UeXeUTbst
-        XQkhxKXneL45Y58D2gJTNJUWUzduvHz/+DWhnx8Wnxxvi2r/sb4pq/puGu+3b7+jwrB+JCPHjokJ
-        deNIbPCo0ETSQgWms8Xq9ZtkuUyWCutQkMMUy0bGyWQ+ljauw3iaTGeosGVdEqYHbGKoG8klbMkz
-        prPpaqXwDD8Li7lCCaLduXQzTzqFpgrWEGP67YA18QkcgyNMUTNbFu2ltxm8kO9XOGQeACBDqUJb
-        VsIZpnAsHgXaS1/M8K4iGO2iFcol5BvraAQm1LX2Bew0A7fGEPOmdQo4wC0Y7cGHHRy3IJCKQDRv
-        oWXry6fjqD/npxvPwEmG6tJFJM3BW18OVj5bbwbc3xr6r24ap/1gZAz3TH9qBQkvJ17zTLRijeV6
-        gN6CJ3rqJM9t7Pu0nO1afiYWFzu6H7CmTYgE5IvTQk0MZdT19UBuSG9Pw3bWuX98lYHZqVOKjsqL
-        EHld0zDuN9SVKx3L6/xd/v4AeEfOBfgSoiug0gxrIg99CIR8/2RVr+e7Xp9IH90zrDvazXyHncKN
-        9ZarfIBjiiyhQYXWF7THdNo9dK9+AQAA//8DAKoIau4bBAAA
+        H4sIAAAAAAAAA6ySTW/TQBCG7/yK0Vx62VROWlriW09tQXAASg8YRZv12N5mvWPtjkmqyP8dJbaT
+        EpCQgOs7M+8887FFm2OKptJi6sZNrt9unvJ3SSPvi6L4uL411w/mxtS3X57vljeokJdPZGSoODdc
+        N47EskeFJpAWyjGdXr25nM9ns2SusOacHKZYNjK5OH89kTYseZJcJFNU2EZdEqZbbALXjSyEV+Qj
+        ptPkcq7waH4MXE0VCot2R2k2TTqFpmJrKGL6dYs1xdE4sCNMUcdoo2gvO0z2Qn43wjbzAAAZSsVt
+        WUnMMIVBHAK0kZ2Y4Qdeg1Ra4B4q/Z1gHawIeTi7I+cYHjm4/AysFwapCArrSME9eKIchKGNtNdF
+        x9ViGIzAcF1rv084aGPWeYbqJUogHdlbX/Y8n6w3NMKMxfmhGrjYI1pf/glxbZ37D3yN075Hm8DD
+        P7uZHbuxse4tj4skH9tA4ykaHePew3AIZAT6LcEw4m/7n7aKDenV2Obvl9Fbdmr8qSH9l5fyuqa+
+        20/2J1A6lKff+PINeoPPu0Mfbx9bYyjGonXu+QC0hxrYMt9hp7Cw3sZq0TthilG4QYXW57TBNOm+
+        da9+AAAA//8DAFX+S9wWBAAA
     headers:
       CF-Cache-Status:
       - DYNAMIC
       CF-RAY:
-      - 7cc626d9d9b72cb4-DFW
+      - 7ccb58bf8a30e73a-DFW
       Cache-Control:
       - no-cache, must-revalidate
       Connection:
@@ -1316,7 +1707,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Wed, 24 May 2023 14:16:05 GMT
+      - Thu, 25 May 2023 05:23:51 GMT
       Server:
       - cloudflare
       access-control-allow-origin:
@@ -1328,7 +1719,7 @@ interactions:
       openai-organization:
       - significant-gravitas
       openai-processing-ms:
-      - '28427'
+      - '21630'
       openai-version:
       - '2020-10-01'
       strict-transport-security:
@@ -1344,9 +1735,9 @@ interactions:
       x-ratelimit-reset-requests:
       - 17ms
       x-ratelimit-reset-tokens:
-      - 2.343s
+      - 2.342s
       x-request-id:
-      - 941875e93a46562c74839ad42ec1c215
+      - 22f487f4ffb66999eb1baab18655bc17
     status:
       code: 200
       message: OK
@@ -1574,6 +1965,255 @@ interactions:
       - 356ms
       X-Request-Id:
       - fb5593e05606c34e2e9461ff82b28747
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are write_to_file-GPT, an AI designed to use the write_to_file command to write
+      ''Hello World'' into a file named \"hello_world.txt\" and then use the task_complete
+      command to complete the task.\nYour decisions must always be made independently
+      without seeking user assistance. Play to your strengths as an LLM and pursue
+      simple strategies with no legal complications.\nThe OS you are running on is:
+      Ubuntu 22.04.2 LTS\n\nGOALS:\n\n1. Use the write_to_file command to write ''Hello
+      World'' into a file named \"hello_world.txt\".\n2. Use the task_complete command
+      to complete the task.\n3. Do not use any other commands.\n\n\nConstraints:\n1.
+      ~4000 word limit for short term memory. Your short term memory is short, so
+      immediately save important information to files.\n2. If you are unsure how you
+      previously did something or want to recall past events, thinking about similar
+      events will help you remember.\n3. No user assistance\n4. Exclusively use the
+      commands listed below e.g. command_name\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. list_files: List Files in
+      Directory, args: \"directory\": \"<directory>\"\n4. read_file: Read a file,
+      args: \"filename\": \"<filename>\"\n5. write_to_file: Write to file, args: \"filename\":
+      \"<filename>\", \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args:
+      \"key\": \"<key>\"\n7. get_hyperlinks: Get hyperlinks, args: \"url\": \"<url>\"\n8.
+      get_text_summary: Get text summary, args: \"url\": \"<url>\", \"question\":
+      \"<question>\"\n9. list_agents: List GPT Agents, args: () -> str\n10. message_agent:
+      Message GPT Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11.
+      start_agent: Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. task_complete: Task Complete (Shutdown), args:
+      \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
+      information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
+      Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
+      Continuously review and analyze your actions to ensure you are performing to
+      the best of your abilities.\n2. Constructively self-criticize your big-picture
+      behavior constantly.\n3. Reflect on past decisions and strategies to refine
+      your approach.\n4. Every command has a cost, so be smart and efficient. Aim
+      to complete tasks in the least number of steps.\n5. Write all code to a file.\n\nYou
+      should only respond in JSON format as described below \nResponse Format: \n{\n    \"thoughts\":
+      {\n        \"text\": \"thought\",\n        \"reasoning\": \"reasoning\",\n        \"plan\":
+      \"- short bulleted\\n- list that conveys\\n- long-term plan\",\n        \"criticism\":
+      \"constructive self-criticism\",\n        \"speak\": \"thoughts summary to say
+      to user\"\n    },\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\":
+      {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
+      can be parsed by Python json.loads"}, {"role": "system", "content": "The current
+      time and date is Tue Jan  1 00:00:00 2000"}, {"role": "user", "content": "Determine
+      which next command to use, and respond using the format specified above:"}],
+      "temperature": 0, "max_tokens": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '3441'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA7ySQW/bMAyF7/sVBC+5KEGCLE3j+4YFQ4thxVBgcxGoMmNrlURDotcAgf/74DhJ
+        Gw8bdtmufNR7H0Xu0RaYoam0GF+78fLj+uY2rVYmflrexdv3/se9TjsJ8fPXdzeokB+/k5Hji4lh
+        XzsSywEVmkhaqMBsdnW9mC5nb1czhZ4LcphhWct4PlmMpYmPPJ7OpzNU2CRdEmZ7rCP7WjbCTxQS
+        ZsvlQuGL97k+W80VCot259Lq6rpVaCq2hhJm3/boKZ1sIzvCDHVKNokO0kFyEArdAPs8AADkKBU3
+        ZSUpxwyOxaNAO+mKOa4hEBUgDE0ikIrgOVqhjfBmax2BYe91ODQcBBh9IOcY7jm6YgQ2CIOGQ2vQ
+        ngoYVZ2+ee70iexkNMlRvc6OpBMHG8oe4M4G0weXrB3Y9BdR6g+gnUFF4DkJ6LqOXEer5WKQJtEQ
+        qnY69Dxj+PKfPsJEK9bY5IeboJCa2DFogfV5L4ZjJCOgY9l4CpJgy/H3oMO0VJN+OiU9W+f+5cL7
+        4FadDvFo+ssddg490wXEAF3HcnjCvdD1vlgMOC5Mhmf/aqYT7YH4CJ6HFluFWxtsqjb9xWKGSbhG
+        hTYUtMNs2j60b34CAAD//wMA1PnFsWYEAAA=
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7cd2e853ad25e702-DFW
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 26 May 2023 03:25:14 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - significant-gravitas
+      openai-processing-ms:
+      - '23538'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '86502'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.332s
+      x-request-id:
+      - 6a8a3cf2a18b70df31c5e47f66614c59
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "You
+      are write_to_file-GPT, an AI designed to use the write_to_file command to write
+      ''Hello World'' into a file named \"hello_world.txt\" and then use the task_complete
+      command to complete the task.\nYour decisions must always be made independently
+      without seeking user assistance. Play to your strengths as an LLM and pursue
+      simple strategies with no legal complications.\nThe OS you are running on is:
+      Ubuntu 22.04.2 LTS\n\nGOALS:\n\n1. Use the write_to_file command to write ''Hello
+      World'' into a file named \"hello_world.txt\".\n2. Use the task_complete command
+      to complete the task.\n3. Do not use any other commands.\n\n\nConstraints:\n1.
+      ~4000 word limit for short term memory. Your short term memory is short, so
+      immediately save important information to files.\n2. If you are unsure how you
+      previously did something or want to recall past events, thinking about similar
+      events will help you remember.\n3. No user assistance\n4. Exclusively use the
+      commands listed below e.g. command_name\n\nCommands:\n1. append_to_file: Append
+      to file, args: \"filename\": \"<filename>\", \"text\": \"<text>\"\n2. delete_file:
+      Delete file, args: \"filename\": \"<filename>\"\n3. list_files: List Files in
+      Directory, args: \"directory\": \"<directory>\"\n4. read_file: Read a file,
+      args: \"filename\": \"<filename>\"\n5. write_to_file: Write to file, args: \"filename\":
+      \"<filename>\", \"text\": \"<text>\"\n6. delete_agent: Delete GPT Agent, args:
+      \"key\": \"<key>\"\n7. get_hyperlinks: Get hyperlinks, args: \"url\": \"<url>\"\n8.
+      get_text_summary: Get text summary, args: \"url\": \"<url>\", \"question\":
+      \"<question>\"\n9. list_agents: List GPT Agents, args: () -> str\n10. message_agent:
+      Message GPT Agent, args: \"key\": \"<key>\", \"message\": \"<message>\"\n11.
+      start_agent: Start GPT Agent, args: \"name\": \"<name>\", \"task\": \"<short_task_desc>\",
+      \"prompt\": \"<prompt>\"\n12. task_complete: Task Complete (Shutdown), args:
+      \"reason\": \"<reason>\"\n\nResources:\n1. Internet access for searches and
+      information gathering.\n2. Long Term memory management.\n3. GPT-3.5 powered
+      Agents for delegation of simple tasks.\n4. File output.\n\nPerformance Evaluation:\n1.
+      Continuously review and analyze your actions to ensure you are performing to
+      the best of your abilities.\n2. Constructively self-criticize your big-picture
+      behavior constantly.\n3. Reflect on past decisions and strategies to refine
+      your approach.\n4. Every command has a cost, so be smart and efficient. Aim
+      to complete tasks in the least number of steps.\n5. Write all code to a file.\n\nYou
+      should only respond in JSON format as described below \nResponse Format: \n{\n    \"thoughts\":
+      {\n        \"text\": \"thought\",\n        \"reasoning\": \"reasoning\",\n        \"plan\":
+      \"- short bulleted\\n- list that conveys\\n- long-term plan\",\n        \"criticism\":
+      \"constructive self-criticism\",\n        \"speak\": \"thoughts summary to say
+      to user\"\n    },\n    \"command\": {\n        \"name\": \"command name\",\n        \"args\":
+      {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
+      can be parsed by Python json.loads"}, {"role": "system", "content": "The current
+      time and date is Tue Jan  1 00:00:00 2000"}, {"role": "system", "content": "This
+      reminds you of these events from your past: \nI was created"}, {"role": "user",
+      "content": "Determine which next command to use, and respond using the format
+      specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
+      \"I need to use the write_to_file command to write ''Hello World'' into a file
+      named ''hello_world.txt''.\",\n        \"reasoning\": \"Since the goal is to
+      write ''Hello World'' into a file, the write_to_file command is the most appropriate
+      command to use.\",\n        \"plan\": \"- Use the write_to_file command to write
+      ''Hello World'' into a file named ''hello_world.txt''.\",\n        \"criticism\":
+      \"I need to ensure that I use the correct arguments for the write_to_file command.\",\n        \"speak\":
+      \"I will use the write_to_file command to write ''Hello World'' into a file
+      named ''hello_world.txt''.\"\n    },\n    \"command\": {\n        \"name\":
+      \"write_to_file\",\n        \"args\": {\n            \"filename\": \"hello_world.txt\",\n            \"text\":
+      \"Hello World\"\n        }\n    }\n}"}, {"role": "system", "content": "Command
+      write_to_file returned: File written to successfully."}, {"role": "user", "content":
+      "Determine which next command to use, and respond using the format specified
+      above:"}], "temperature": 0, "max_tokens": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '4626'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA5SSS48TMRCE7/yKVl9ymUTJZkNgjiAhIsQBsWh3xaDI8XRmTDxuy+7ZBEX572ge
+        eZAViL1ZXfbnKrv2aHJMUZdKdOXtcP5p8dmVt8bfe/u+fPc03SzuHj48mi+TB0+YIK9+kpb+xEhz
+        5S2JYYcJ6kBKKMd08vrNbDyfzCbzBCvOyWKKhZfhdDQbSh1WPBxPxxNMsI6qIEz36ANXXpbCG3IR
+        08n45m2CZ/hZmN8mKCzKnkc34+khQV2y0RQx/b7HiuIRHNgSpqhiNFGUk8YmOyHXRNhnDgAgQym5
+        LkqJGabQD3uBdtIMM7wrCRztBDRXlXI5CEMdCUwEUXGz7M1SMz+vS2rVUYbJJTaQiuyMKzr2V+N0
+        t7lgZVskwzYYIRh8JGsZ7jnYfADGCYOCtbEETlWUw6Bs9OW20UeykwG03vp7oVQRVkTuZClPTuLZ
+        8jFSc3FJUHEUUN4H9sGoC72LfB3GW+W6HEP4Fukf/P95Gh2MGG1i1SEX4Ijak+RiHZpzSmABPvCT
+        yQkUdG8Jaw5HuHHFX/HRk9oc0VtjbfuJL7bcIQ/JsUD99mf9aT6pu+0P/JUpFYrr6l325FzA9k95
+        3XajSfnydjwvBMRaa4pxXVv76xStjdenzNwBDwmujTOxXHaeMMUo7DFB43LaYTo+/Di8+g0AAP//
+        AwDeKpjwTQQAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7cd2e8f7bfaee702-DFW
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 26 May 2023 03:25:40 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400, h3-29=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - significant-gravitas
+      openai-processing-ms:
+      - '23218'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '86010'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 2.66s
+      x-request-id:
+      - 29a5d0f069d62474b048ab97ae6b614d
     status:
       code: 200
       message: OK
