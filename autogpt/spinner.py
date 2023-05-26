@@ -9,15 +9,16 @@ class Spinner:
     """A simple spinner class"""
 
     def __init__(
-        self, message: str = "Loading...", delay: float = 0.1, should_spin: bool = True
+        self, message: str = "Loading...", delay: float = 0.1, plain_output: bool = False
     ) -> None:
         """Initialize the spinner class
 
         Args:
             message (str): The message to display.
             delay (float): The delay between each spinner update.
+            plain_output (bool): Whether to display the spinner or not.
         """
-        self.should_spin = should_spin
+        self.plain_output = plain_output
         self.spinner = itertools.cycle(["-", "/", "|", "\\"])
         self.delay = delay
         self.message = message
@@ -26,7 +27,7 @@ class Spinner:
 
     def spin(self) -> None:
         """Spin the spinner"""
-        if not self.should_spin:
+        if self.plain_output:
             self.print_message()
             return
         while self.running:
@@ -68,5 +69,5 @@ class Spinner:
         """
         self.delay = delay
         self.message = new_message
-        if not self.should_spin:
+        if self.plain_output:
             self.print_message()
