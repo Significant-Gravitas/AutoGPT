@@ -1,6 +1,6 @@
 """Handles loading of plugins."""
 
-import importlib
+import importlib.util
 import json
 import os
 import zipfile
@@ -12,7 +12,7 @@ from zipimport import zipimporter
 import openapi_python_client
 import requests
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from openapi_python_client.cli import Config as OpenAPIConfig
+from openapi_python_client.config import Config as OpenAPIConfig
 
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -152,7 +152,7 @@ def initialize_openai_plugins(
             )
             prev_cwd = Path.cwd()
             os.chdir(openai_plugin_client_dir)
-            Path("ai-plugin.json")
+
             if not os.path.exists("client"):
                 client_results = openapi_python_client.create_new_client(
                     url=manifest_spec["manifest"]["api"]["url"],
@@ -170,9 +170,13 @@ def initialize_openai_plugins(
                 "client", "client/client/client.py"
             )
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+
+            try:
+                spec.loader.exec_module(module)
+            finally:
+                os.chdir(prev_cwd)
+
             client = module.Client(base_url=url)
-            os.chdir(prev_cwd)
             manifest_spec["client"] = client
     return manifests_specs
 
