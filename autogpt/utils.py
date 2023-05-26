@@ -60,7 +60,7 @@ def clean_input(prompt: str = "", talk=False):
 
         # Ask for input, default when just pressing Enter is y
         logger.info(
-            ">>> Cyberdyne Systems Model GPT-3.5-Turbo"
+            ">>> {Fore.CYAN} + Cyberdyne Systems Model GPT-3.5-Turbo"
         )
         return input(prompt)
     except KeyboardInterrupt:
@@ -175,10 +175,10 @@ AutoGPT (the "System") is a project that connects a GPT-like artificial intellig
 ## No Liability for Actions of the System
 The developers, contributors, and maintainers of the AutoGPT project (collectively, the "Project Parties") make no warranties or representations, express or implied, about the System's performance, accuracy, reliability, or safety. By using the System, you understand and agree that the Project Parties shall not be liable for any actions taken by the System or any consequences resulting from such actions.
 
-## User Responsibility and Respondeat Superior Liability
+## User Responsibility and Respondent Superior Liability
 As a user of the System, you are responsible for supervising and monitoring the actions of the System while it is operating on your
-behalf. You acknowledge that using the System could expose you to potential liability including but not limited to respondeat superior and you agree to assume all risks and liabilities associated with such potential liability.
+behalf. You acknowledge that using the System could expose you to potential liability including but not limited to respondent superior and you agree to assume all risks and liabilities associated with such potential liability.
 
 ## Indemnification
 By using the System, you agree to indemnify, defend, and hold harmless the Project Parties from and against any and all claims, liabilities, damages, losses, or expenses (including reasonable attorneys' fees and costs) arising out of or in connection with your use of the System, including, without limitation, any actions taken by the System on your behalf, any failure to properly supervise or monitor the System, and any resulting harm or unintended consequences.
-            """
+            """  # noqa: E501
