@@ -43,14 +43,14 @@ class TestScrapeLinks:
     provided with a valid url that returns a webpage with hyperlinks.
     """
 
-    def test_valid_url_with_hyperlinks(self):
+    def test_valid_url_with_hyperlinks(self, config):
         url = "https://www.google.com"
-        result = scrape_links(url)
+        result = scrape_links(url, config=config)
         assert len(result) > 0
         assert isinstance(result, list)
         assert isinstance(result[0], str)
 
-    def test_valid_url(self, mocker):
+    def test_valid_url(self, mocker, config):
         """Test that the function returns correctly formatted hyperlinks when given a valid url."""
         # Mock the requests.get() function to return a response with sample HTML containing hyperlinks
         mock_response = mocker.Mock()
@@ -61,12 +61,12 @@ class TestScrapeLinks:
         mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function with a valid URL
-        result = scrape_links("https://www.example.com")
+        result = scrape_links("https://www.example.com", config)
 
         # Assert that the function returns correctly formatted hyperlinks
         assert result == ["Google (https://www.google.com)"]
 
-    def test_invalid_url(self, mocker):
+    def test_invalid_url(self, mocker, config):
         """Test that the function returns "error" when given an invalid url."""
         # Mock the requests.get() function to return an HTTP error response
         mock_response = mocker.Mock()
@@ -74,12 +74,12 @@ class TestScrapeLinks:
         mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function with an invalid URL
-        result = scrape_links("https://www.invalidurl.com")
+        result = scrape_links("https://www.invalidurl.com", config)
 
         # Assert that the function returns "error"
         assert "Error:" in result
 
-    def test_no_hyperlinks(self, mocker):
+    def test_no_hyperlinks(self, mocker, config):
         """Test that the function returns an empty list when the html contains no hyperlinks."""
         # Mock the requests.get() function to return a response with sample HTML containing no hyperlinks
         mock_response = mocker.Mock()
@@ -88,12 +88,12 @@ class TestScrapeLinks:
         mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function with a URL containing no hyperlinks
-        result = scrape_links("https://www.example.com")
+        result = scrape_links("https://www.example.com", config)
 
         # Assert that the function returns an empty list
         assert result == []
 
-    def test_scrape_links_with_few_hyperlinks(self, mocker):
+    def test_scrape_links_with_few_hyperlinks(self, mocker, config):
         """Test that scrape_links() correctly extracts and formats hyperlinks from a sample HTML containing a few hyperlinks."""
         mock_response = mocker.Mock()
         mock_response.status_code = 200
@@ -109,7 +109,7 @@ class TestScrapeLinks:
         mocker.patch("requests.Session.get", return_value=mock_response)
 
         # Call the function being tested
-        result = scrape_links("https://www.example.com")
+        result = scrape_links("https://www.example.com", config)
 
         # Assert that the function returns a list of formatted hyperlinks
         assert isinstance(result, list)

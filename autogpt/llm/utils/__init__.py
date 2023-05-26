@@ -109,7 +109,11 @@ def retry_openai_api(
 
 
 def call_ai_function(
-    function: str, args: list, description: str, model: str | None = None
+    function: str,
+    args: list,
+    description: str,
+    model: str | None = None,
+    config: Config = None,
 ) -> str:
     """Call an AI function
 
@@ -125,9 +129,8 @@ def call_ai_function(
     Returns:
         str: The response from the function
     """
-    cfg = Config()
     if model is None:
-        model = cfg.smart_llm_model
+        model = config.smart_llm_model
     # For each arg, if any are None, convert to "None":
     args = [str(arg) if arg is not None else "None" for arg in args]
     # parse args to comma separated string

@@ -292,6 +292,7 @@ class Agent:
                     command_name,
                     arguments,
                     self.config.prompt_generator,
+                    config=cfg,
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
 
