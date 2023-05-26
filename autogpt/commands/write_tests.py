@@ -5,7 +5,7 @@ import json
 from typing import TYPE_CHECKING
 
 from autogpt.commands.command import command
-from autogpt.llm import call_ai_function
+from autogpt.llm.utils import call_ai_function
 
 if TYPE_CHECKING:
     from autogpt.config import Config

@@ -1,5 +1,4 @@
 import pytest
-from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
@@ -14,7 +13,7 @@ CYCLE_COUNT = 3
 @pytest.mark.vcr
 def test_write_file(
     writer_agent: Agent,
-    patched_api_requestor: MockerFixture,
+    patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
     config: Config,
 ) -> None:

@@ -135,6 +135,7 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config):
     mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
 
     create_config(
+        config=config,
         continuous=False,
         continuous_limit=False,
         ai_settings_file="",

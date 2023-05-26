@@ -5,12 +5,12 @@ from pathlib import Path
 
 from colorama import Fore, Style
 
-from autogpt.agent.agent import Agent
+from autogpt.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
-from autogpt.memory import get_memory
+from autogpt.memory.vector import get_memory
 from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
 from autogpt.utils import (
@@ -49,6 +49,7 @@ def run_auto_gpt(
     check_openai_api_key()
 
     create_config(
+        cfg,
         continuous,
         continuous_limit,
         ai_settings,
@@ -160,7 +161,6 @@ def run_auto_gpt(
         ai_name = ai_config.ai_name
     # print(prompt)
     # Initialize variables
-    full_message_history = []
     next_action_count = 0
 
     # add chat plugins capable of report to logger
@@ -184,7 +184,6 @@ def run_auto_gpt(
     agent = Agent(
         ai_name=ai_name,
         memory=memory,
-        full_message_history=full_message_history,
         next_action_count=next_action_count,
         command_registry=command_registry,
         config=ai_config,
