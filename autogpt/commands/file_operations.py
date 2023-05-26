@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import os.path
-from typing import Dict, Generator, Literal, Tuple
+from typing import Generator, Literal
 
 import charset_normalizer
 import requests
@@ -12,8 +12,10 @@ from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
 
 from autogpt.commands.command import command
+from autogpt.commands.file_operations_utils import read_textual_file
 from autogpt.config import Config
 from autogpt.logs import logger
+from autogpt.memory.vector import MemoryItem, VectorMemory
 from autogpt.spinner import Spinner
 from autogpt.utils import readable_file_size
 
@@ -27,7 +29,9 @@ def text_checksum(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
-def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | None]]:
+def operations_from_log(
+    log_path: str,
+) -> Generator[tuple[Operation, str, str | None], None, None]:
     """Parse the file operations log and return a tuple containing the log entries"""
     try:
         log = open(log_path, "r", encoding="utf-8")
@@ -44,6 +48,7 @@ def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | 
             try:
                 path, checksum = (x.strip() for x in tail.rsplit(" #", maxsplit=1))
             except ValueError:
+                logger.warn(f"File log entry lacks checksum: '{line}'")
                 path, checksum = tail.strip(), None
             yield (operation, path, checksum)
         elif operation == "delete":
@@ -52,7 +57,7 @@ def operations_from_log(log_path: str) -> Generator[Tuple[Operation, str, str | 
     log.close()
 
 
-def file_operations_state(log_path: str) -> Dict:
+def file_operations_state(log_path: str) -> dict[str, str]:
     """Iterates over the operations log and returns the expected state.
 
     Parses a log file at CFG.file_logger_path to construct a dictionary that maps
@@ -131,7 +136,7 @@ def split_file(
     while start < content_length:
         end = start + max_length
         if end + overlap < content_length:
-            chunk = content[start : end + overlap - 1]
+            chunk = content[start : end + max(overlap - 1, 0)]
         else:
             chunk = content[start:content_length]
 
@@ -143,7 +148,7 @@ def split_file(
         start += max_length - overlap
 
 
-@command("read_file", "Read file", '"filename": "<filename>"')
+@command("read_file", "Read a file", '"filename": "<filename>"')
 def read_file(filename: str) -> str:
     """Read a file and return the contents
 
@@ -154,46 +159,42 @@ def read_file(filename: str) -> str:
         str: The contents of the file
     """
     try:
-        charset_match = charset_normalizer.from_path(filename).best()
-        encoding = charset_match.encoding
-        logger.debug(f"Read file '{filename}' with encoding '{encoding}'")
-        return str(charset_match)
-    except Exception as err:
-        return f"Error: {err}"
+        content = read_textual_file(filename, logger)
+
+        # TODO: invalidate/update memory when file is edited
+        file_memory = MemoryItem.from_text_file(content, filename)
+        if len(file_memory.chunks) > 1:
+            return file_memory.summary
+
+        return content
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 def ingest_file(
-    filename: str, memory, max_length: int = 4000, overlap: int = 200
+    filename: str,
+    memory: VectorMemory,
 ) -> None:
     """
     Ingest a file by reading its content, splitting it into chunks with a specified
     maximum length and overlap, and adding the chunks to the memory storage.
 
-    :param filename: The name of the file to ingest
-    :param memory: An object with an add() method to store the chunks in memory
-    :param max_length: The maximum length of each chunk, default is 4000
-    :param overlap: The number of overlapping characters between chunks, default is 200
+    Args:
+        filename: The name of the file to ingest
+        memory: An object with an add() method to store the chunks in memory
     """
     try:
-        logger.info(f"Working with file {filename}")
+        logger.info(f"Ingesting file {filename}")
         content = read_file(filename)
-        content_length = len(content)
-        logger.info(f"File length: {content_length} characters")
 
-        chunks = list(split_file(content, max_length=max_length, overlap=overlap))
+        # TODO: differentiate between different types of files
+        file_memory = MemoryItem.from_text_file(content, filename)
+        logger.debug(f"Created memory: {file_memory.dump()}")
+        memory.add(file_memory)
 
-        num_chunks = len(chunks)
-        for i, chunk in enumerate(chunks):
-            logger.info(f"Ingesting chunk {i + 1} / {num_chunks} into memory")
-            memory_to_add = (
-                f"Filename: {filename}\n" f"Content part#{i + 1}/{num_chunks}: {chunk}"
-            )
-
-            memory.add(memory_to_add)
-
-        logger.info(f"Done ingesting {num_chunks} chunks from {filename}.")
+        logger.info(f"Ingested {len(file_memory.e_chunks)} chunks from {filename}")
     except Exception as err:
-        logger.info(f"Error while ingesting file '{filename}': {err}")
+        logger.warn(f"Error while ingesting file '{filename}': {err}")
 
 
 @command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')

@@ -5,13 +5,13 @@ from pathlib import Path
 
 from colorama import Fore, Style
 
-from autogpt.agent.agent import Agent
+from autogpt.agent import Agent
 from autogpt.aim import AimCallback
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
-from autogpt.memory import get_memory
+from autogpt.memory.vector import get_memory
 from autogpt.plugins import scan_plugins
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
 from autogpt.utils import (
@@ -49,6 +49,7 @@ def run_auto_gpt(
     cfg = Config()
     # TODO: fill in llm values here
     check_openai_api_key()
+
     create_config(
         continuous,
         continuous_limit,
@@ -140,7 +141,6 @@ def run_auto_gpt(
         "autogpt.commands.google_search",
         "autogpt.commands.image_gen",
         "autogpt.commands.improve_code",
-        "autogpt.commands.twitter",
         "autogpt.commands.web_selenium",
         "autogpt.commands.write_tests",
         "autogpt.app",
@@ -165,7 +165,6 @@ def run_auto_gpt(
         ai_name = ai_config.ai_name
     # print(prompt)
     # Initialize variables
-    full_message_history = []
     next_action_count = 0
 
     # add chat plugins capable of report to logger
@@ -189,7 +188,6 @@ def run_auto_gpt(
     agent = Agent(
         ai_name=ai_name,
         memory=memory,
-        full_message_history=full_message_history,
         next_action_count=next_action_count,
         command_registry=command_registry,
         config=ai_config,
