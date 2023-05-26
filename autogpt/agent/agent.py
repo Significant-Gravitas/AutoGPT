@@ -339,7 +339,7 @@ class Agent:
 
         prompt = ChatSequence.for_model(llm_model)
         prompt.add("user", feedback_prompt + feedback_thoughts)
-
+        # useless comment
         self.log_cycle_handler.log_cycle(
             self.config.ai_name,
             self.created_at,
