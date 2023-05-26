@@ -101,7 +101,7 @@ class Logger(metaclass=Singleton):
             level, content, extra={"title": title, "color": title_color}
         )
 
-    def json_report(self, type="", content=""):
+    def json_report(self, type="", content="", enable_plugins=True) -> str:
         if not content:
             content = ""
 
@@ -112,9 +112,13 @@ class Logger(metaclass=Singleton):
             "type": type,
             "content": content,
         }
+        resp = json.dumps(payload)
 
-        for plugin in self.chat_plugins:
-            plugin.report(json.dumps(payload))
+        if enable_plugins:
+            for plugin in self.chat_plugins:
+                plugin.report(resp)
+        
+        return resp
 
     def debug(
         self,
@@ -311,3 +315,4 @@ def print_assistant_thoughts(
             say_text(assistant_thoughts_speak)
         else:
             logger.typewriter_log("SPEAK:", Fore.YELLOW, f"{assistant_thoughts_speak}")
+            logger.json_report("speech", f"{assistant_thoughts_speak}")

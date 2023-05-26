@@ -193,7 +193,7 @@ class Agent:
                 )
                 while True:
                     if cfg.chat_messages_enabled:
-                        console_input = clean_input("Waiting for your response...")
+                        console_input = clean_input(logger.json_report("system", "Waiting for your response...", False))
                     else:
                         console_input = clean_input(
                             Fore.MAGENTA + "Input:" + Style.RESET_ALL
