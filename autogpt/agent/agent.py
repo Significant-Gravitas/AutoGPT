@@ -168,7 +168,13 @@ class Agent:
                 "NEXT ACTION: ",
                 Fore.CYAN,
                 f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                "ARGUMENTS = "+''.join([f"{Fore.CYAN}{key}:{Style.RESET_ALL} {value}," for key, value in arguments.items()]),
+                "ARGUMENTS = "
+                + "".join(
+                    [
+                        f"{Fore.CYAN}{key}:{Style.RESET_ALL} {value},"
+                        for key, value in arguments.items()
+                    ]
+                ),
             )
 
             if not cfg.continuous_mode and self.next_action_count == 0:
