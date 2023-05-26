@@ -40,6 +40,10 @@ auto-gpt-plugin-template @ git+https://github.com/Significant-Gravitas/Auto-GPT-
 mkdocs
 pymdown-extensions
 mypy
+types-Markdown
+types-beautifulsoup4
+types-colorama
+types-Pillow
 
 # OpenAI and Generic plugins import
 openapi-python-client==0.13.4
