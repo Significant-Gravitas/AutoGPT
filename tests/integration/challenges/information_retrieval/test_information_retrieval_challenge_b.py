@@ -1,9 +1,9 @@
 import contextlib
-from functools import wraps
 from typing import Generator
 
 import pytest
 
+from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from tests.integration.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
@@ -22,7 +22,9 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_information_retrieval_challenge_b(
-    get_nobel_prize_agent, monkeypatch, patched_api_requestor
+    get_nobel_prize_agent: Agent,
+    monkeypatch: pytest.MonkeyPatch,
+    patched_api_requestor: None
 ) -> None:
     """
     Test the challenge_b function in a given agent by mocking user inputs and checking the output file content.
