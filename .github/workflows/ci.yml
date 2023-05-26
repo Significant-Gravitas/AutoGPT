@@ -141,9 +141,6 @@ jobs:
         run: |
           echo "This step will run the challenges soon."
 
-      - name: Commit, Config, and Push
-        id: commit_and_push
-
       - name: Update cassette submodule if push event
         if: ${{ github.event_name == 'push' }}
         run: |
