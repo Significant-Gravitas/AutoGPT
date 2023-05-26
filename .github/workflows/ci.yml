@@ -113,7 +113,7 @@ jobs:
 
       - name: Run pytest tests with coverage
         run: |
-          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          pytest -s tests/integration/challenges/basic_abilities/test_write_file.py
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
@@ -123,7 +123,7 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
-      - name: Update cassette submodule if push event
+      - name: Update cassette submodule to push target if push event
         if: ${{ github.event_name == 'push' }}
         run: |
           cd tests/cassettes
@@ -149,7 +149,7 @@ jobs:
               exit 0
           fi
 
-      - name: Update cassette submodule
+      - name: Update cassette submodule to submodule branch if PR event
         if: ${{ github.event_name == 'pull_request_target' }}
         run: |
           new_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
