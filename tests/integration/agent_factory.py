@@ -161,7 +161,6 @@ def get_company_revenue_agent(
     agent = Agent(
         ai_name="Get-CompanyRevenue",
         memory=memory_json_file,
-        full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,
@@ -194,7 +193,6 @@ def kubernetes_agent(memory_json_file, workspace: Workspace):
     agent = Agent(
         ai_name="Kubernetes-Demo",
         memory=memory_json_file,
-        full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,
