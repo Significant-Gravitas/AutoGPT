@@ -59,9 +59,7 @@ def clean_input(prompt: str = "", talk=False):
                 return plugin_response
 
         # Ask for input, default when just pressing Enter is y
-        logger.info(
-            ">>> {Fore.CYAN} + Cyberdyne Systems Model GPT-3.5-Turbo"
-        )
+        logger.info(f"{Fore.RED} >>> Cyberdyne Systems Model GPT-3.5-Turbo{Fore.RESET}\n")
         return input(prompt)
     except KeyboardInterrupt:
         logger.info("You interrupted Auto-GPT")
@@ -99,9 +97,7 @@ def readable_file_size(size, decimal_places=2):
 
 def get_bulletin_from_web():
     with contextlib.suppress(requests.exceptions.RequestException):
-        response = requests.get(
-            "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md"
-        )
+        response = requests.get("https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md")
         if response.status_code == 200:
             return response.text
     return ""
@@ -121,9 +117,7 @@ def get_latest_bulletin() -> tuple[str, bool]:
     exists = os.path.exists("data/CURRENT_BULLETIN.md")
     current_bulletin = ""
     if exists:
-        current_bulletin = open(
-            "data/CURRENT_BULLETIN.md", "r", encoding="utf-8"
-        ).read()
+        current_bulletin = open("data/CURRENT_BULLETIN.md", "r", encoding="utf-8").read()
     new_bulletin = get_bulletin_from_web()
     is_new_news = new_bulletin not in ["", current_bulletin]
 
