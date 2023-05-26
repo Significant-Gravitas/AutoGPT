@@ -1,57 +1,21 @@
+from __future__ import annotations
+
 import time
 from random import shuffle
+from typing import TYPE_CHECKING
 
-from openai.error import RateLimitError
+if TYPE_CHECKING:
+    from autogpt.agent.agent import Agent
 
 from autogpt.config import Config
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import Message
-from autogpt.llm.llm_utils import create_chat_completion
-from autogpt.llm.token_counter import count_message_tokens
+from autogpt.llm.base import ChatSequence, Message
+from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
+from autogpt.memory.vector import MemoryItem, get_memory
 
 cfg = Config()
-
-
-def create_chat_message(role, content) -> Message:
-    """
-    Create a chat message with the given role and content.
-
-    Args:
-    role (str): The role of the message sender, e.g., "system", "user", or "assistant".
-    content (str): The content of the message.
-
-    Returns:
-    dict: A dictionary containing the role and content of the message.
-    """
-    return {"role": role, "content": content}
-
-
-def generate_context(prompt, relevant_memory, full_message_history, model):
-    current_context = [
-        create_chat_message("system", prompt),
-        create_chat_message(
-            "system", f"The current time and date is {time.strftime('%c')}"
-        ),
-        # create_chat_message(
-        #     "system",
-        #     f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
-        # ),
-    ]
-
-    # Add messages from the full message history until we reach the token limit
-    next_message_to_add_index = len(full_message_history) - 1
-    insertion_index = len(current_context)
-    # Count the currently used tokens
-    current_tokens_used = count_message_tokens(current_context, model)
-    return (
-        next_message_to_add_index,
-        current_tokens_used,
-        insertion_index,
-        current_context,
-    )
-
 
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
@@ -257,8 +221,9 @@ def chat_with_ai(
                 create_chat_message("assistant", assistant_reply)
             )
 
-            return assistant_reply
-        except RateLimitError:
-            # TODO: When we switch to langchain, this is built in
-            logger.warn("Error: ", "API Rate Limit Reached. Waiting 10 seconds...")
-            time.sleep(10)
+    # Update full message history
+    agent.history.append(user_input_msg)
+    agent.history.add("assistant", assistant_reply, "ai_response")
+
+
+    return assistant_reply
