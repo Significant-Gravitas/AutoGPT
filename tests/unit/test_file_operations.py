@@ -12,13 +12,11 @@ import pytest
 from pytest_mock import MockerFixture
 
 import autogpt.commands.file_operations as file_ops
+from autogpt.config import Config
 from autogpt.memory.vector.memory_item import MemoryItem
 from autogpt.memory.vector.utils import Embedding
 from autogpt.utils import readable_file_size
 from autogpt.workspace import Workspace
-
-
-from autogpt.config import Config
 
 
 @pytest.fixture()

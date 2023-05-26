@@ -3,10 +3,9 @@ import typing
 import pytest
 
 from autogpt.commands.file_operations import read_file, write_to_file
+from autogpt.config import Config
 from tests.integration.challenges.utils import run_interaction_loop, run_multiple_times
 from tests.utils import requires_api_key
-
-from autogpt.config import Config
 
 CYCLE_COUNT = 3
 from autogpt.agent import Agent
