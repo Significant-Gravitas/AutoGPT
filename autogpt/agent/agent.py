@@ -4,6 +4,7 @@ from datetime import datetime
 
 from colorama import Fore, Style
 
+from autogpt.aim import AimCallback
 from autogpt.app import execute_command, get_command
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config
@@ -28,7 +29,6 @@ from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
-from autogpt.aim import AimCallback
 
 
 class Agent:
@@ -98,7 +98,9 @@ class Agent:
 
         if self.aim_callback:
             self.aim_callback.track_text(self.system_prompt, name="system_prompt")
-            self.aim_callback.track_text(self.triggering_prompt, name="triggering_prompt")
+            self.aim_callback.track_text(
+                self.triggering_prompt, name="triggering_prompt"
+            )
 
         # Signal handler for interrupting y -N
         def signal_handler(signum, frame):

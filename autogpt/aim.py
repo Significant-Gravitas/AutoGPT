@@ -1,9 +1,18 @@
 import copy
 import json
-from typing import Optional
+from typing import Any, Optional
 
-from aim import Run, Text
-from aim.ext.resource.configs import DEFAULT_SYSTEM_TRACKING_INT
+
+def import_aim() -> Any:
+    try:
+        import aim
+    except ImportError:
+        raise ImportError(
+            "To use the Aim callback manager you need to have the"
+            " `aim` python package installed."
+            "Please install it with `pip install aim`"
+        )
+    return aim
 
 
 class AimCallback:
@@ -27,7 +36,7 @@ class AimCallback:
         self,
         repo: Optional[str] = None,
         experiment_name: Optional[str] = None,
-        system_tracking_interval: Optional[int] = DEFAULT_SYSTEM_TRACKING_INT,
+        system_tracking_interval: Optional[int] = 10,
         log_system_params: Optional[bool] = True,
         capture_terminal_logs: Optional[bool] = True,
         log_keys: Optional[bool] = False,
@@ -51,7 +60,8 @@ class AimCallback:
             self._run.track(v, k, step=step, context=context, epoch=self.epoch)
 
     def track_text(self, text, name, context=None):
-        self._run.track(Text(text), name=name, context=context)
+        aim = import_aim()
+        self._run.track(aim.Text(text), name=name, context=context)
 
     @property
     def experiment(self):
@@ -60,9 +70,10 @@ class AimCallback:
         return self._run
 
     def setup(self, args=None):
+        aim = import_aim()
         if not self._run:
             if self._run_hash:
-                self._run = Run(
+                self._run = aim.Run(
                     self._run_hash,
                     repo=self.repo,
                     system_tracking_interval=self.system_tracking_interval,
@@ -70,7 +81,7 @@ class AimCallback:
                     capture_terminal_logs=self.capture_terminal_logs,
                 )
             else:
-                self._run = Run(
+                self._run = aim.Run(
                     repo=self.repo,
                     experiment=self.experiment_name,
                     system_tracking_interval=self.system_tracking_interval,
