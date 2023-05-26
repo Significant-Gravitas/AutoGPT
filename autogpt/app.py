@@ -54,6 +54,7 @@ def get_command(response_json: Dict) -> Tuple[str, Union[str, Dict[str, Any]]]:
             return "Error:", f"'response_json' object is not dictionary {response_json}"
 
         command = response_json["command"]
+
         if not isinstance(command, dict):
             return "Error:", "'command' object is not a dictionary"
 

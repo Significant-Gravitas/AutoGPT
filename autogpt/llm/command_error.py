@@ -4,6 +4,6 @@ from typing import Any, Optional
 
 @dataclass(repr=True)
 class CommandError:
-    command: Optional[str]
+    command: str
     arguments: dict[str, Any]
     message: str
