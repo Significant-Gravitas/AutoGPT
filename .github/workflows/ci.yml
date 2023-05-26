@@ -113,8 +113,7 @@ jobs:
 
       - name: Run pytest tests with coverage
         run: |
-          pytest -s tests/integration/challenges/basic_abilities/test_write_file.py
-          pytest -s tests/integration/challenges/basic_abilities/test_browse_website.py
+          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term --ignore=tests/unit/test_file_operations.py --ignore=tests/integration/challenges/memory/test_memory_challenge_a.py
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
