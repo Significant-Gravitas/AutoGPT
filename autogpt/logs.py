@@ -1,3 +1,4 @@
+# sourcery skip: snake-case-arguments
 """Logging module for Auto-GPT."""
 import logging
 import os
