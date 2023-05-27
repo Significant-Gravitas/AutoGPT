@@ -81,7 +81,7 @@ def get_command_message(response_json: Dict) -> CommandMessage | CommandError:
         # Use an empty dictionary if 'args' field is not present in 'command' object
         arguments = command.get("args", {})
 
-        return CommandMessage(command_name, arguments)
+        return CommandMessage(command_name, arguments, "")
     except json.decoder.JSONDecodeError:
         return CommandError("invalid_command", {}, "Invalid JSON")
     # All other errors, return "Error: + error message"

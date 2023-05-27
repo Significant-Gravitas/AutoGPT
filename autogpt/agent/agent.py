@@ -97,6 +97,83 @@ class Agent:
 
         # Signal handler for interrupting y -N
 
+    def start_interaction_loop(self) -> None:
+        # Interaction Loop
+        self.cycle_count = 0
+        self.error_count = 0
+
+        signal.signal(signal.SIGINT, self._signal_handler)
+
+        while True:
+            # Discontinue if continuous limit is reached
+            self.cycle_count += 1
+            self.log_cycle_handler.log_count_within_cycle = 0
+            self.log_cycle_handler.log_cycle(
+                self.ai_config.ai_name,
+                self.created_at,
+                self.cycle_count,
+                self.full_message_history,
+                FULL_MESSAGE_HISTORY_FILE_NAME,
+            )
+
+            if self._continuous_limit_reached():
+                logger.typewriter_log(
+                    "Continuous Limit Reached: ",
+                    Fore.YELLOW,
+                    f"{self.cfg.continuous_limit}",
+                )
+                break
+
+            # Send message to AI, get response
+            with Spinner("Thinking... "):
+                assistant_reply = chat_with_ai(
+                    self,
+                    self.system_prompt,
+                    self.triggering_prompt,
+                    self.full_message_history,
+                    self.memory,
+                    self.cfg.fast_token_limit,
+                )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+
+            assistant_reply_json = self._convert_assistant_reply_to_json(
+                assistant_reply
+            )
+
+            command_msg = self._parse_command_and_arguments(assistant_reply_json)
+
+            if isinstance(command_msg, CommandMessage):
+                logger.typewriter_log(
+                    "NEXT ACTION: ",
+                    Fore.CYAN,
+                    f"COMMAND = {Fore.CYAN}{command_msg.name}{Style.RESET_ALL}  "
+                    f"ARGUMENTS = {Fore.CYAN}{command_msg.args}{Style.RESET_ALL}",
+                )
+            else:
+                self._add_error(command_msg)
+                logger.typewriter_log(
+                    "COULD NOT PARSE COMMAND: ",
+                    Fore.RED,
+                    f"{command_msg.msg}",
+                )
+
+            if not self.cfg.continuous_mode and self.next_action_count == 0:
+                command_msg = self._get_user_input(command_msg, assistant_reply_json)
+
+            if self.cfg.continuous_mode and self._error_threshold_reached():
+                command_msg = self._handle_self_feedback(assistant_reply_json)
+
+            if self.next_action_count > 0:
+                logger.typewriter_log(
+                    f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
+                )
+
+            if isinstance(command_msg, CommandMessage):
+                result = self._handle_command_message(command_msg)
+            else:
+                result = self._handle_command_error(command_msg)
+
+            self._append_result_to_full_message_history(result)
+
     def _convert_assistant_reply_to_json(self, assistant_reply: str) -> Dict:
         assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
 
@@ -286,83 +363,6 @@ class Agent:
             result = plugin.post_command(command_name, result)
 
         return result
-
-    def start_interaction_loop(self) -> None:
-        # Interaction Loop
-        self.cycle_count = 0
-        self.error_count = 0
-
-        signal.signal(signal.SIGINT, self._signal_handler)
-
-        while True:
-            # Discontinue if continuous limit is reached
-            self.cycle_count += 1
-            self.log_cycle_handler.log_count_within_cycle = 0
-            self.log_cycle_handler.log_cycle(
-                self.ai_config.ai_name,
-                self.created_at,
-                self.cycle_count,
-                self.full_message_history,
-                FULL_MESSAGE_HISTORY_FILE_NAME,
-            )
-
-            if self._continuous_limit_reached():
-                logger.typewriter_log(
-                    "Continuous Limit Reached: ",
-                    Fore.YELLOW,
-                    f"{self.cfg.continuous_limit}",
-                )
-                break
-
-            # Send message to AI, get response
-            with Spinner("Thinking... "):
-                assistant_reply = chat_with_ai(
-                    self,
-                    self.system_prompt,
-                    self.triggering_prompt,
-                    self.full_message_history,
-                    self.memory,
-                    self.cfg.fast_token_limit,
-                )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
-
-            assistant_reply_json = self._convert_assistant_reply_to_json(
-                assistant_reply
-            )
-
-            command_msg = self._parse_command_and_arguments(assistant_reply_json)
-
-            if isinstance(command_msg, CommandMessage):
-                logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_msg.name}{Style.RESET_ALL}  "
-                    f"ARGUMENTS = {Fore.CYAN}{command_msg.args}{Style.RESET_ALL}",
-                )
-            else:
-                self._add_error(command_msg)
-                logger.typewriter_log(
-                    "COULD NOT PARSE COMMAND: ",
-                    Fore.RED,
-                    f"{command_msg.msg}",
-                )
-
-            if not self.cfg.continuous_mode and self.next_action_count == 0:
-                command_msg = self._get_user_input(command_msg, assistant_reply_json)
-
-            if self.cfg.continuous_mode and self._error_threshold_reached():
-                command_msg = self._handle_self_feedback(assistant_reply_json)
-
-            if self.next_action_count > 0:
-                logger.typewriter_log(
-                    f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
-                )
-
-            if isinstance(command_msg, CommandMessage):
-                result = self._handle_command_message(command_msg)
-            else:
-                result = self._handle_command_error(command_msg)
-
-            self._append_result_to_full_message_history(result)
 
     def _handle_command_error(self, command_err: CommandError) -> str:
         self._add_error(command_err)
