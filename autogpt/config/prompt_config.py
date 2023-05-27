@@ -14,7 +14,7 @@ CFG = Config()
 
 class PromptConfig:
     """
-    A class object that contains the configuration information for the prompt, which will be used by the prompt generator
+    A class object that contains the configuration information for the prompt, which is used by the prompt generator
 
     Attributes:
         constraints (list): Constraints list for the prompt generator.
