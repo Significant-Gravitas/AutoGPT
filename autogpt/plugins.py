@@ -1,22 +1,21 @@
 """Handles loading of plugins."""
 
-import importlib.util
-import json
-import os
-import zipfile
-from pathlib import Path
-from typing import List, Optional, Tuple
-from urllib.parse import urlparse
-from zipimport import zipimporter
 
-import openapi_python_client
-import requests
 from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from openapi_python_client.config import Config as OpenAPIConfig
-
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
+from openapi_python_client.config import Config as OpenAPIConfig
+from pathlib import Path
+from typing import List
+from urllib.parse import urlparse
+from zipimport import zipimporter
+import importlib.util
+import json
+import openapi_python_client
+import os
+import requests
+import zipfile
 
 
 def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
@@ -36,7 +35,7 @@ def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
             if name.endswith("__init__.py") and not name.startswith("__MACOSX"):
                 logger.debug(f"Found module '{name}' in the zipfile at: {name}")
                 result.append(name)
-    if len(result) == 0:
+    if not result:
         logger.debug(f"Module '__init__.py' not found in the zipfile @ {zip_path}.")
     return result
 
@@ -71,34 +70,22 @@ def fetch_openai_plugins_manifest_and_spec(cfg: Config) -> dict:
                 if response.status_code == 200:
                     manifest = response.json()
                     if manifest["schema_version"] != "v1":
-                        logger.warn(
-                            f"Unsupported manifest version: {manifest['schem_version']} for {url}"
-                        )
+                        logger.warn(f"Unsupported manifest version: {manifest['schem_version']} for {url}")
                         continue
                     if manifest["api"]["type"] != "openapi":
-                        logger.warn(
-                            f"Unsupported API type: {manifest['api']['type']} for {url}"
-                        )
+                        logger.warn(f"Unsupported API type: {manifest['api']['type']} for {url}")
                         continue
-                    write_dict_to_json_file(
-                        manifest, f"{openai_plugin_client_dir}/ai-plugin.json"
-                    )
+                    write_dict_to_json_file(manifest, f"{openai_plugin_client_dir}/ai-plugin.json")
                 else:
-                    logger.warn(
-                        f"Failed to fetch manifest for {url}: {response.status_code}"
-                    )
+                    logger.warn(f"Failed to fetch manifest for {url}: {response.status_code}")
             except requests.exceptions.RequestException as e:
                 logger.warn(f"Error while requesting manifest from {url}: {e}")
         else:
             logger.info(f"Manifest for {url} already exists")
             manifest = json.load(open(f"{openai_plugin_client_dir}/ai-plugin.json"))
         if not os.path.exists(f"{openai_plugin_client_dir}/openapi.json"):
-            openapi_spec = openapi_python_client._get_document(
-                url=manifest["api"]["url"], path=None, timeout=5
-            )
-            write_dict_to_json_file(
-                openapi_spec, f"{openai_plugin_client_dir}/openapi.json"
-            )
+            openapi_spec = openapi_python_client._get_document(url=manifest["api"]["url"], path=None, timeout=5)
+            write_dict_to_json_file(openapi_spec, f"{openai_plugin_client_dir}/openapi.json")
         else:
             logger.info(f"OpenAPI spec for {url} already exists")
             openapi_spec = json.load(open(f"{openai_plugin_client_dir}/openapi.json"))
@@ -127,9 +114,7 @@ def create_directory_if_not_exists(directory_path: str) -> bool:
         return True
 
 
-def initialize_openai_plugins(
-    manifests_specs: dict, cfg: Config, debug: bool = False
-) -> dict:
+def initialize_openai_plugins(manifests_specs: dict, cfg: Config, debug: bool = False) -> dict:
     """
     Initialize OpenAI plugins.
     Args:
@@ -154,21 +139,18 @@ def initialize_openai_plugins(
             os.chdir(openai_plugin_client_dir)
 
             if not os.path.exists("client"):
-                client_results = openapi_python_client.create_new_client(
+                if client_results := openapi_python_client.create_new_client(
                     url=manifest_spec["manifest"]["api"]["url"],
                     path=None,
                     meta=_meta_option,
                     config=_config,
-                )
-                if client_results:
+                ):
                     logger.warn(
                         f"Error creating OpenAPI client: {client_results[0].header} \n"
                         f" details: {client_results[0].detail}"
                     )
                     continue
-            spec = importlib.util.spec_from_file_location(
-                "client", "client/client/client.py"
-            )
+            spec = importlib.util.spec_from_file_location("client", "client/client/client.py")
             module = importlib.util.module_from_spec(spec)
 
             try:
@@ -181,9 +163,7 @@ def initialize_openai_plugins(
     return manifests_specs
 
 
-def instantiate_openai_plugin_clients(
-    manifests_specs_clients: dict, cfg: Config, debug: bool = False
-) -> dict:
+def instantiate_openai_plugin_clients(manifests_specs_clients: dict, cfg: Config, debug: bool = False) -> dict:
     """
     Instantiates BaseOpenAIPlugin instances for each OpenAI plugin.
     Args:
@@ -194,10 +174,9 @@ def instantiate_openai_plugin_clients(
           plugins (dict): per url dictionary of BaseOpenAIPlugin instances.
 
     """
-    plugins = {}
-    for url, manifest_spec_client in manifests_specs_clients.items():
-        plugins[url] = BaseOpenAIPlugin(manifest_spec_client)
-    return plugins
+    return {
+        url: BaseOpenAIPlugin(manifest_spec_client) for url, manifest_spec_client in manifests_specs_clients.items()
+    }
 
 
 def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate]:
@@ -240,9 +219,7 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
     if cfg.plugins_openai:
         manifests_specs = fetch_openai_plugins_manifest_and_spec(cfg)
         if manifests_specs.keys():
-            manifests_specs_clients = initialize_openai_plugins(
-                manifests_specs, cfg, debug
-            )
+            manifests_specs_clients = initialize_openai_plugins(manifests_specs, cfg, debug)
             for url, openai_plugin_meta in manifests_specs_clients.items():
                 if denylist_allowlist_check(url, cfg):
                     plugin = BaseOpenAIPlugin(openai_plugin_meta)
@@ -266,11 +243,7 @@ def denylist_allowlist_check(plugin_name: str, cfg: Config) -> bool:
         True or False
     """
     logger.debug(f"Checking if plugin {plugin_name} should be loaded")
-    if (
-        plugin_name in cfg.plugins_denylist
-        or "all" in cfg.plugins_denylist
-        or "none" in cfg.plugins_allowlist
-    ):
+    if plugin_name in cfg.plugins_denylist or "all" in cfg.plugins_denylist or "none" in cfg.plugins_allowlist:
         logger.debug(f"Not loading plugin {plugin_name} as it was in the denylist.")
         return False
     if plugin_name in cfg.plugins_allowlist or "all" in cfg.plugins_allowlist:
