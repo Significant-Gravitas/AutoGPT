@@ -1,5 +1,7 @@
+# sourcery skip: no-relative-imports
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from typing import Iterator
 
@@ -52,10 +54,8 @@ class JSONFileMemory(VectorMemoryProvider):
         return len(self.memories)
 
     def discard(self, item: MemoryItem):
-        try:
+        with contextlib.suppress(Exception):
             self.remove(item)
-        except:
-            pass
 
     def clear(self):
         """Clears the data in memory."""
