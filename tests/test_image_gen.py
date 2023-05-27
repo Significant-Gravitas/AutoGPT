@@ -125,7 +125,6 @@ def test_huggingface_fail_request_with_delay(config, workspace, image_size, imag
     return_text = return_text.replace("[model]", image_model).replace("[delay]", str(delay))
 
     with patch("requests.post") as mock_post:
-        # sourcery skip: no-conditionals-in-tests
         if return_text == "":
             # Test bad image
             mock_post.return_value.status_code = 200

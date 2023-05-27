@@ -1,13 +1,11 @@
 import json
 import tempfile
-from functools import partial
 from unittest import TestCase
 from xml.etree import ElementTree
 
 import docx
 import yaml
 from bs4 import BeautifulSoup
-from PyPDF2 import PdfWriter
 
 from autogpt.commands.file_operations_utils import is_file_binary_fn, read_textual_file
 from autogpt.logs import logger
@@ -39,7 +37,7 @@ def mock_pdf_file():
         # Write the page object
         f.write(b"2 0 obj\n")
         f.write(
-            b"<< /Type /Page /Parent 1 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 4 0 R >>\n"
+            b"<< /Type /Page /Parent 1 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 4 0 R >>\n"  # noqa: E501
         )
         f.write(b"endobj\n")
         # Write the font object
@@ -141,6 +139,7 @@ respective_file_creation_functions = {
 class TestConfig(TestCase):
     def test_parsers(self):
         binary_files_extensions = [".pdf", ".docx"]
+# sourcery skip: no-loop-in-tests
         for (
             file_extension,
             c_file_creator,

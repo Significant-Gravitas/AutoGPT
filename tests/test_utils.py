@@ -1,13 +1,10 @@
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 import requests
-from colorama import Fore
-from git import Repo
 
 from autogpt.utils import (
-    clean_input,
     get_bulletin_from_web,
     get_current_git_branch,
     get_latest_bulletin,
@@ -23,27 +20,27 @@ def test_validate_yaml_file_valid():
     result, message = validate_yaml_file("valid_test_file.yaml")
     os.remove("valid_test_file.yaml")
 
-    assert result == True
+    assert result is True
     assert "Successfully validated" in message
 
 
 def test_validate_yaml_file_not_found():
     result, message = validate_yaml_file("non_existent_file.yaml")
 
-    assert result == False
+    assert result is False
     assert "wasn't found" in message
 
 
 def test_validate_yaml_file_invalid():
     with open("invalid_test_file.yaml", "w") as f:
         f.write(
-            "settings:\n  first_setting: value\n  second_setting: value\n    nested_setting: value\n  third_setting: value\nunindented_setting: value"
+            "settings:\n  first_setting: value\n  second_setting: value\n    nested_setting: value\n  third_setting: value\nunindented_setting: value"  # noqa: E501
         )
     result, message = validate_yaml_file("invalid_test_file.yaml")
     os.remove("invalid_test_file.yaml")
     print(result)
     print(message)
-    assert result == False
+    assert result is False
     assert "There was an issue while trying to read" in message
 
 
@@ -63,9 +60,7 @@ def test_get_bulletin_from_web_success(mock_get):
     bulletin = get_bulletin_from_web()
 
     assert expected_content in bulletin
-    mock_get.assert_called_with(
-        "https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md"
-    )
+    mock_get.assert_called_with("https://raw.githubusercontent.com/Significant-Gravitas/Auto-GPT/master/BULLETIN.md")
 
 
 @patch("requests.get")
@@ -85,6 +80,7 @@ def test_get_bulletin_from_web_exception(mock_get):
 
 
 def test_get_latest_bulletin_no_file():
+    # sourcery skip: no-conditionals-in-tests
     if os.path.exists("data/CURRENT_BULLETIN.md"):
         os.remove("data/CURRENT_BULLETIN.md")
 
@@ -100,7 +96,7 @@ def test_get_latest_bulletin_with_file():
     with patch("autogpt.utils.get_bulletin_from_web", return_value=""):
         bulletin, is_new = get_latest_bulletin()
         assert expected_content in bulletin
-        assert is_new == False
+        assert is_new is False
 
     os.remove("data/CURRENT_BULLETIN.md")
 
@@ -127,7 +123,7 @@ def test_get_latest_bulletin_new_bulletin_same_as_old_bulletin():
     with patch("autogpt.utils.get_bulletin_from_web", return_value=expected_content):
         bulletin, is_new = get_latest_bulletin()
         assert expected_content in bulletin
-        assert is_new == False
+        assert is_new is False
 
     os.remove("data/CURRENT_BULLETIN.md")
 
