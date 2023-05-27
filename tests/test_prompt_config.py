@@ -38,11 +38,5 @@ performance_evaluations:
     assert prompt_config.resources[2] == "A third test resource"
     assert len(prompt_config.performance_evaluations) == 3
     assert prompt_config.performance_evaluations[0] == "A test performance evaluation"
-    assert (
-        prompt_config.performance_evaluations[1]
-        == "Another test performance evaluation"
-    )
-    assert (
-        prompt_config.performance_evaluations[2]
-        == "A third test performance evaluation"
-    )
+    assert prompt_config.performance_evaluations[1] == "Another test performance evaluation"
+    assert prompt_config.performance_evaluations[2] == "A third test performance evaluation"
