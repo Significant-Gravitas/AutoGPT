@@ -22,12 +22,8 @@ def _max_chunk_length(model: str, max: Optional[int] = None) -> int:
     return model_max_input_tokens
 
 
-def must_chunk_content(
-    text: str, for_model: str, max_chunk_length: Optional[int] = None
-) -> bool:
-    return count_string_tokens(text, for_model) > _max_chunk_length(
-        for_model, max_chunk_length
-    )
+def must_chunk_content(text: str, for_model: str, max_chunk_length: Optional[int] = None) -> bool:
+    return count_string_tokens(text, for_model) > _max_chunk_length(for_model, max_chunk_length)
 
 
 def chunk_content(
@@ -72,7 +68,7 @@ def summarize_text(
         str: The summary of the text
         list[(summary, chunk)]: Text chunks and their summary, if the text was chunked.
             None otherwise.
-    """
+    """  # noqa: E501
     if not text:
         raise ValueError("No text to summarize")
 
@@ -110,9 +106,7 @@ def summarize_text(
         )
 
         logger.debug(f"Summarizing with {model}:\n{summarization_prompt.dump()}\n")
-        summary = create_chat_completion(
-            summarization_prompt, temperature=0, max_tokens=500
-        )
+        summary = create_chat_completion(summarization_prompt, temperature=0, max_tokens=500)
 
         logger.debug(f"\n{'-'*16} SUMMARY {'-'*17}\n{summary}\n{'-'*42}\n")
         return summary.strip(), None
@@ -121,9 +115,7 @@ def summarize_text(
     chunks = list(split_text(text, for_model=model, max_chunk_length=max_chunk_length))
 
     for i, (chunk, chunk_length) in enumerate(chunks):
-        logger.info(
-            f"Summarizing chunk {i + 1} / {len(chunks)} of length {chunk_length} tokens"
-        )
+        logger.info(f"Summarizing chunk {i + 1} / {len(chunks)} of length {chunk_length} tokens")
         summary, _ = summarize_text(chunk, instruction)
         summaries.append(summary)
 
@@ -131,9 +123,7 @@ def summarize_text(
 
     summary, _ = summarize_text("\n\n".join(summaries))
 
-    return summary.strip(), [
-        (summaries[i], chunks[i][0]) for i in range(0, len(chunks))
-    ]
+    return summary.strip(), [(summaries[i], chunks[i][0]) for i in range(len(chunks))]
 
 
 def split_text(
@@ -141,7 +131,7 @@ def split_text(
     for_model: str = CFG.fast_llm_model,
     with_overlap=True,
     max_chunk_length: Optional[int] = None,
-):
+):  # sourcery skip: low-code-quality, no-long-functions
     """Split text into chunks of sentences, with each chunk not exceeding the maximum length
 
     Args:
@@ -220,10 +210,7 @@ def split_text(
             current_chunk_length += sentence_length
 
         else:  # sentence longer than maximum length -> chop up and try again
-            sentences[i : i + 1] = [
-                chunk
-                for chunk, _ in chunk_content(sentence, for_model, target_chunk_length)
-            ]
+            sentences[i : i + 1] = [chunk for chunk, _ in chunk_content(sentence, for_model, target_chunk_length)]
             continue
 
         i += 1
