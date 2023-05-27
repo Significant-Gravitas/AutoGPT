@@ -66,7 +66,7 @@ class PromptGenerator:
         if args is None:
             args = {}
 
-        command_args = Dict(args.items())
+        command_args = dict(args.items())
 
         command = {
             "label": command_label,
