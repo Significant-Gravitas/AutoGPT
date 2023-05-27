@@ -66,7 +66,7 @@ class PromptGenerator:
         if args is None:
             args = {}
 
-        command_args = {arg_key: arg_value for arg_key, arg_value in args.items()}
+        command_args = Dict(args.items())
 
         command = {
             "label": command_label,
@@ -87,9 +87,7 @@ class PromptGenerator:
         Returns:
             str: The formatted command string.
         """
-        args_string = ", ".join(
-            f'"{key}": "{value}"' for key, value in command["args"].items()
-        )
+        args_string = ", ".join(f'"{key}": "{value}"' for key, value in command["args"].items())
         return f'{command["label"]}: "{command["name"]}", args: {args_string}'
 
     def add_resource(self, resource: str) -> None:
@@ -125,11 +123,7 @@ class PromptGenerator:
         if item_type == "command":
             command_strings = []
             if self.command_registry:
-                command_strings += [
-                    str(item)
-                    for item in self.command_registry.commands.values()
-                    if item.enabled
-                ]
+                command_strings += [str(item) for item in self.command_registry.commands.values() if item.enabled]
             # terminate command is added manually
             command_strings += [self._generate_command_string(item) for item in items]
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(command_strings))
