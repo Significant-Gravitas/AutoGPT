@@ -11,7 +11,7 @@ en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_
 google-api-python-client #(https://developers.google.com/custom-search/v1/)
 gTTS==2.3.1
 jsonschema
-markdown
+markdown==3.3.7
 openai==0.27.2
 orjson==3.8.10
 Pillow
@@ -28,7 +28,8 @@ requests
 selenium==4.1.4
 setuptools
 spacy>=3.0.0,<4.0.0
-tiktoken==0.3.3
+typer==0.7.0
+tiktoken
 twine
 webdriver-manager
 ##Dev
@@ -46,7 +47,7 @@ pylint
 pymdown-extensions
 
 # OpenAI and Generic plugins import
-openapi-python-client==0.13.4
+openapi-python-client
 
 # Items below this point will not be included in the Docker Image
 
