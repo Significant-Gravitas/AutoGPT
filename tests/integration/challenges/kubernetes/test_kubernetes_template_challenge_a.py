@@ -4,7 +4,7 @@ import yaml
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
 from autogpt.config import Config
-from tests.integration.challenges.utils import run_interaction_loop, run_multiple_times
+from tests.integration.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
 
 CYCLE_COUNT = 6
@@ -13,7 +13,6 @@ CYCLE_COUNT = 6
 @pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-@run_multiple_times(3)
 def test_kubernetes_template_challenge_a(
     kubernetes_agent: Agent, monkeypatch: pytest.MonkeyPatch, config: Config
 ) -> None:
