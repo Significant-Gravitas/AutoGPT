@@ -47,19 +47,19 @@ def test_agent_initialization(agent):
 def test_is_command_result_an_error():
     input_1 = "error"
     result_1 = is_command_result_an_error(input_1)
-    assert result_1 == True
+    assert result_1 is True
 
     input_2 = "unknown command"
     result_2 = is_command_result_an_error(input_2)
-    assert result_2 == True
+    assert result_2 is True
 
     input_3 = "traceback"
-    result_3 = is_command_result_an_error(input_2)
-    assert result_3 == True
-
-    input_3 = "test"
     result_3 = is_command_result_an_error(input_3)
-    assert result_3 == False
+    assert result_3 is True
+
+    input_4 = "test"
+    result_4 = is_command_result_an_error(input_4)
+    assert result_4 is False
 
 
 # More test methods can be added for specific agent interactions
