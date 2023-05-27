@@ -6,7 +6,7 @@ from typing import NoReturn
 from autogpt.commands.command import command
 from autogpt.logs import logger
 
-
+ 
 @command(
     "task_complete",
     "Task Complete (Shutdown)",
