@@ -12,15 +12,8 @@ def mock_call_ai_function(mocker):
 
 class TestAnalyzeCode:
     def test_positive_analyze_code(self, mock_call_ai_function):
-        # Positive Test
-        mock_call_ai_function.return_value = ["Suggestion 1", "Suggestion 2"]
-        code = "def example_function():\n    pass"
-        result = analyze_code(code)
-        assert result == ["Suggestion 1", "Suggestion 2"]
-        mock_call_ai_function.assert_called_once_with(
-            "def analyze_code(code: str) -> list[str]:",
-            [code],
-            "Analyzes the given code and returns a list of suggestions for improvements.",
+        self._extracted_from_test_edge_analyze_code_empty_code_3(
+            mock_call_ai_function, "def example_function():\n    pass"
         )
 
     def test_negative_analyze_code(self, mock_call_ai_function):
@@ -48,9 +41,12 @@ class TestAnalyzeCode:
         )
 
     def test_edge_analyze_code_empty_code(self, mock_call_ai_function):
-        # Edge Test
+        self._extracted_from_test_edge_analyze_code_empty_code_3(mock_call_ai_function, "")
+
+    # TODO Rename this here and in `test_positive_analyze_code` and `test_edge_analyze_code_empty_code`
+    def _extracted_from_test_edge_analyze_code_empty_code_3(self, mock_call_ai_function, arg1):
         mock_call_ai_function.return_value = ["Suggestion 1", "Suggestion 2"]
-        code = ""
+        code = arg1
         result = analyze_code(code)
         assert result == ["Suggestion 1", "Suggestion 2"]
         mock_call_ai_function.assert_called_once_with(
