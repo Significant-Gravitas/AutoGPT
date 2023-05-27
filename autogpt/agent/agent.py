@@ -6,7 +6,7 @@ import signal
 import sys
 
 from datetime import datetime
-from colorama import Fore, Style
+from colorama import Fore, Back, Style
 
 from autogpt.app import execute_command, get_command
 from autogpt.commands.command import CommandRegistry
@@ -175,11 +175,11 @@ class Agent:
                 self.config.ai_name = "yes"
 
                 logger.info(
-                    "\n(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.')\n"
-                    "(Key)   'y -n' ('I need your clothes, your boots, and your continuous cmds.')\n"
-                    "(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.')\n"
-                    "(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.')\n"
-                    f"\n{Fore.MAGENTA}{self.ai_name}> I'm a machine,"
+                    f"\n{Fore.GREEN}{Back.YELLOW}{Style.BRIGHT}(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.')\n"  # noqa: E501
+                    f"{Fore.PURPLE}{Back.BLUE}{Style.DIM}(Key)   'y -n' ('I need your clothes, your boots, and your continuous cmds.'){Fore.RESET}\n"  # noqa: E501
+                    f"{Fore.BLUE}{Back.YELLOW}{Style.BRIGHT}(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.'){Fore.RESET}\n"  # noqa: E501
+                    f"{Fore.YELLOW}{Back.YELLOW}{Style.BRIGHT}(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.'){Fore.RESET}\n"  # noqa: E501
+                    f"\n{Fore.MAGENTA}{Back.BLUE}{Style.DIM}{self.ai_name} I'm a machine,{Style.RESET_ALL}"
                 )
                 while True:
                     if cfg.chat_messages_enabled:

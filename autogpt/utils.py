@@ -1,10 +1,11 @@
+from ast import For
 import contextlib
 import os
 import re
 
 import requests
 import yaml
-from colorama import Fore, Style
+from colorama import Fore, Back, Style
 from git.repo import Repo
 
 from autogpt.logs import logger
@@ -60,14 +61,14 @@ def clean_input(prompt: str = "", talk=False):
 
         # Ask for input, default when just pressing Enter is y
         logger.info(
-            f"{Fore.RED}> Cyberdyne Systems Model GPT-3.5-turbo{Fore.RESET}"
-            f"{Fore.ORANGE}>>[TEXT-EMBEDDING 3,500 RPM, 90,000 TPM]{Fore.RESET}"
-            f"{Fore.YELLOW}>>>[CHAT 3,500 RPM, 350,000 TPM]{Fore.RESET}\n"
+            f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}[Cyberdyne Systems Model GPT-3.5-turbo] > "
+            f"{Fore.LIGHTGREEN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}[TEXT-EMBEDDING 3,500 RPM, 90,000 TPM] > "
+            f"{Fore.LIGHTYELLOW_EX}{Back.LIGHTBLACK_EX}{Style.DIM}[CHAT 3,500 RPM, 350,000 TPM]{Style.RESET_ALL}\n"
         )
         return input(prompt)
     except KeyboardInterrupt:
         logger.info("Auto-GPT interrupted")
-        logger.info("Executing self-destruct ...")
+        logger.info("  >>> executing self-destruct")
         exit(0)
 
 
