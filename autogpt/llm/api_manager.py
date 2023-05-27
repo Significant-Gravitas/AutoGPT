@@ -87,8 +87,7 @@ class ApiManager(metaclass=Singleton):
         self.total_prompt_tokens += prompt_tokens
         self.total_completion_tokens += completion_tokens
         self.total_cost += (
-            prompt_tokens * COSTS[model]["prompt"]
-            + completion_tokens * COSTS[model]["completion"]
+            prompt_tokens * COSTS[model]["prompt"] + completion_tokens * COSTS[model]["completion"]
         ) / 1000
         logger.debug(f"Total running cost: ${self.total_cost:.3f}")
 
