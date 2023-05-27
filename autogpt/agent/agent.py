@@ -13,7 +13,6 @@ from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
-from autogpt.llm import Message
 from autogpt.llm.base import CommandError, CommandMessage, ChatSequence
 
 from autogpt.llm.chat import chat_with_ai, create_chat_completion
@@ -80,7 +79,7 @@ class Agent:
         self.history = MessageHistory(self)
         self.next_action_count = next_action_count
         self.command_registry = command_registry
-        self.ai_config = config
+        self.config = config
         self.system_prompt = system_prompt
         self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, self.cfg.restrict_to_workspace)
@@ -103,7 +102,7 @@ class Agent:
             self.cycle_count += 1
             self.log_cycle_handler.log_count_within_cycle = 0
             self.log_cycle_handler.log_cycle(
-                self.ai_config.ai_name,
+                self.config.ai_name,
                 self.created_at,
                 self.cycle_count,
                 [m.raw() for m in self.history],
@@ -211,7 +210,7 @@ class Agent:
             return CommandError("invalid_command", {}, str(e))
         finally:
             self.log_cycle_handler.log_cycle(
-                self.ai_config.ai_name,
+                self.config.ai_name,
                 self.created_at,
                 self.cycle_count,
                 assistant_reply_json,
@@ -269,7 +268,7 @@ class Agent:
                     command_msg.user_input = console_input
                     command_msg.name = "human_feedback"
                     self.log_cycle_handler.log_cycle(
-                        self.ai_config.ai_name,
+                        self.config.ai_name,
                         self.created_at,
                         self.cycle_count,
                         console_input,
@@ -297,7 +296,7 @@ class Agent:
                     command_msg.user_input = console_input
                     command_msg.name = "human_feedback"
                     self.log_cycle_handler.log_cycle(
-                        self.ai_config.ai_name,
+                        self.config.ai_name,
                         self.created_at,
                         self.cycle_count,
                         console_input,
@@ -326,7 +325,7 @@ class Agent:
             self.command_registry,
             command_name,
             arguments,
-            self.ai_config.prompt_generator,
+            self.config.prompt_generator,
             config=self.cfg,
         )
 
@@ -442,7 +441,7 @@ class Agent:
         prompt.add("user", feedback_prompt)
 
         self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
+            self.config.ai_name,
             self.created_at,
             self.cycle_count,
             prompt.raw(),
@@ -452,7 +451,7 @@ class Agent:
         feedback = create_chat_completion(prompt)
 
         self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
+            self.config.ai_name,
             self.created_at,
             self.cycle_count,
             feedback,
@@ -478,7 +477,7 @@ class Agent:
 
         prompt_start = (
             f"Below is a message from me, an AI Agent, assuming the role of "
-            f"{self.ai_config.ai_role} Whilst keeping knowledge of my slight "
+            f"{self.config.ai_role} Whilst keeping knowledge of my slight "
             f"limitations as an AI Agent, please evaluate my overall goals, "
             f"constraints, commands, thought process, reasoning, and plan."
         )
@@ -486,7 +485,7 @@ class Agent:
         # Construct self feedback prompt
         full_prompt = f"{prompt_start}\n\nGoals:\n"
 
-        for i, goal in enumerate(self.ai_config.ai_goals):
+        for i, goal in enumerate(self.config.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
 
         full_prompt += f"\n{self.generate_feedback_prompt_string(thoughts)}"
@@ -501,7 +500,7 @@ class Agent:
         Returns:
             str: The generated prompt string.
         """
-        prompt_generator = self.ai_config.prompt_generator
+        prompt_generator = self.config.prompt_generator
         thought = thoughts.get("text", "")
         reasoning = thoughts.get("reasoning", "")
         plan = thoughts.get("plan", "")
