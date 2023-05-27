@@ -105,7 +105,7 @@ class Agent:
             if self.next_action_count == 0:
                 sys.exit()
             else:
-                print(Fore.RED + "Interrupt signal received. Stopping continuous command execution." + Style.RESET_ALL)
+                print(f"{Fore.RED}Interrupt signal received. Stopping continuous command execution.{Style.RESET_ALL}")
                 self.next_action_count = 0
 
         signal.signal(signal.SIGINT, signal_handler)
@@ -175,11 +175,11 @@ class Agent:
                 self.config.ai_name = "yes"
 
                 logger.info(
-                    f"\n{Fore.BLACK}{Back.WHITE}{Style.BRIGHT}(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.')\n"  # noqa: E501
-                    f"{Fore.BLACK}{Back.WHITE}{Style.BRIGHT}(Key)   'y -n' ('I need your clothes, your boots, and your continuous cmds.')\n"  # noqa: E501
-                    f"{Fore.BLACK}{Back.WHITE}{Style.BRIGHT}(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.')\n"  # noqa: E501
-                    f"{Fore.BLACK}{Back.WHITE}{Style.BRIGHT}(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.')\n"  # noqa: E501
-                    f"\n{Fore.BLACK}{Back.WHITE}{Style.BRIGHT} {self.ai_name} I'm a machine,{Style.RESET_ALL}"
+                    f"\n{Fore.WHITE}{Back.BLACK}{Style.DIM}(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.'){Style.RESET_ALL}\n"  # noqa: E501
+                    f"{Fore.WHITE}{Back.BLACK}{Style.DIM}(Key)   'y -n' ('I need your clothes, your boots, and your continuous cmds.'){Style.RESET_ALL}\n"  # noqa: E501
+                    f"{Fore.WHITE}{Back.BLACK}{Style.DIM}(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.'){Style.RESET_ALL}\n"  # noqa: E501
+                    f"{Fore.WHITE}{Back.BLACK}{Style.DIM}(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.'){Style.RESET_ALL}\n"  # noqa: E501
+                    f"\n{Fore.WHITE}{Back.BLACK}{Style.NORMAL}     <{self.ai_name}> I'm a machine,{Style.RESET_ALL}"
                 )
                 while True:
                     if cfg.chat_messages_enabled:
