@@ -64,21 +64,15 @@ class MessageHistory:
             list[Message]: A list of messages that are in full_message_history with an index higher than last_trimmed_index and absent from current_message_chain.
         """
         # Select messages in full_message_history with an index higher than last_trimmed_index
-        new_messages = [
-            msg for i, msg in enumerate(self) if i > self.last_trimmed_index
-        ]
+        new_messages = [msg for i, msg in enumerate(self) if i > self.last_trimmed_index]
 
         # Remove messages that are already present in current_message_chain
-        new_messages_not_in_chain = [
-            msg for msg in new_messages if msg not in current_message_chain
-        ]
+        new_messages_not_in_chain = [msg for msg in new_messages if msg not in current_message_chain]
 
         if not new_messages_not_in_chain:
             return self.summary_message(), []
 
-        new_summary_message = self.update_running_summary(
-            new_events=new_messages_not_in_chain
-        )
+        new_summary_message = self.update_running_summary(new_events=new_messages_not_in_chain)
 
         # Find the index of the last message processed
         last_message = new_messages_not_in_chain[-1]
@@ -94,13 +88,11 @@ class MessageHistory:
             Message: the message containing the result of the AI's proposed action
         """
         messages = messages or self.messages
-        for i in range(0, len(messages) - 1):
+        for i in range(len(messages) - 1):
             ai_message = messages[i]
             if ai_message.type != "ai_response":
                 continue
-            user_message = (
-                messages[i - 1] if i > 0 and messages[i - 1].role == "user" else None
-            )
+            user_message = messages[i - 1] if i > 0 and messages[i - 1].role == "user" else None
             result_message = messages[i + 1]
             try:
                 assert is_string_valid_json(
@@ -110,9 +102,7 @@ class MessageHistory:
 
                 yield user_message, ai_message, result_message
             except AssertionError as err:
-                logger.debug(
-                    f"Invalid item in message history: {err}; Messages: {messages[i-1:i+2]}"
-                )
+                logger.debug(f"Invalid item in message history: {err}; Messages: {messages[i-1:i+2]}")
 
     def summary_message(self) -> Message:
         return Message(

@@ -51,7 +51,7 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
 
     system_prompt = ai_config.construct_full_prompt()
 
-    agent = Agent(
+    return Agent(
         ai_name="",
         memory=memory_none,
         command_registry=command_registry,
@@ -61,8 +61,6 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
     )
-
-    return agent
 
 
 @pytest.fixture
@@ -89,7 +87,7 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
     )
     system_prompt = ai_config.construct_full_prompt()
 
-    agent = Agent(
+    return Agent(
         ai_name="",
         memory=memory_none,
         command_registry=command_registry,
@@ -99,8 +97,6 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
         triggering_prompt=triggering_prompt,
         workspace_directory=workspace.root,
     )
-
-    return agent
 
 
 @pytest.fixture
@@ -122,7 +118,7 @@ def memory_management_agent(agent_test_config, memory_json_file, workspace: Work
 
     system_prompt = ai_config.construct_full_prompt()
 
-    agent = Agent(
+    return Agent(
         ai_name="",
         memory=memory_json_file,
         command_registry=command_registry,
@@ -132,8 +128,6 @@ def memory_management_agent(agent_test_config, memory_json_file, workspace: Work
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
     )
-
-    return agent
 
 
 @pytest.fixture
@@ -155,7 +149,7 @@ def get_company_revenue_agent(
 
     system_prompt = ai_config.construct_full_prompt()
     Config().set_continuous_mode(False)
-    agent = Agent(
+    return Agent(
         ai_name="Get-CompanyRevenue",
         memory=memory_json_file,
         command_registry=command_registry,
@@ -165,8 +159,6 @@ def get_company_revenue_agent(
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
     )
-
-    return agent
 
 
 @pytest.fixture
@@ -187,7 +179,7 @@ def kubernetes_agent(memory_json_file, workspace: Workspace):
 
     system_prompt = ai_config.construct_full_prompt()
     Config().set_continuous_mode(False)
-    agent = Agent(
+    return Agent(
         ai_name="Kubernetes-Demo",
         memory=memory_json_file,
         command_registry=command_registry,
@@ -197,5 +189,3 @@ def kubernetes_agent(memory_json_file, workspace: Workspace):
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
     )
-
-    return agent

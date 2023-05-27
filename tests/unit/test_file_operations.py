@@ -1,3 +1,4 @@
+# sourcery skip: snake-case-functions
 """
 This set of unit tests is designed to test the file operations that autoGPT has access to.
 """
@@ -50,6 +51,7 @@ def test_file_path(config, workspace: Workspace):
 def test_file(test_file_path: Path):
     file = open(test_file_path, "w")
     yield file
+    # sourcery skip: no-conditionals-in-tests
     if not file.closed:
         file.close()
 
@@ -58,9 +60,7 @@ def test_file(test_file_path: Path):
 def test_file_with_content_path(test_file: TextIOWrapper, file_content):
     test_file.write(file_content)
     test_file.close()
-    file_ops.log_operation(
-        "write", test_file.name, file_ops.text_checksum(file_content)
-    )
+    file_ops.log_operation("write", test_file.name, file_ops.text_checksum(file_content))
     return Path(test_file.name)
 
 
@@ -126,23 +126,11 @@ def test_is_duplicate_operation(config, mocker: MockerFixture):
     mocker.patch.object(file_ops, "file_operations_state", lambda _: state)
 
     # Test cases with write operations
-    assert (
-        file_ops.is_duplicate_operation("write", "path/to/file1.txt", "checksum1")
-        is True
-    )
-    assert (
-        file_ops.is_duplicate_operation("write", "path/to/file1.txt", "checksum2")
-        is False
-    )
-    assert (
-        file_ops.is_duplicate_operation("write", "path/to/file3.txt", "checksum3")
-        is False
-    )
+    assert file_ops.is_duplicate_operation("write", "path/to/file1.txt", "checksum1") is True
+    assert file_ops.is_duplicate_operation("write", "path/to/file1.txt", "checksum2") is False
+    assert file_ops.is_duplicate_operation("write", "path/to/file3.txt", "checksum3") is False
     # Test cases with append operations
-    assert (
-        file_ops.is_duplicate_operation("append", "path/to/file1.txt", "checksum1")
-        is False
-    )
+    assert file_ops.is_duplicate_operation("append", "path/to/file1.txt", "checksum1") is False
     # Test cases with delete operations
     assert file_ops.is_duplicate_operation("delete", "path/to/file1.txt") is False
     assert file_ops.is_duplicate_operation("delete", "path/to/file3.txt") is True
@@ -153,7 +141,7 @@ def test_log_operation(config: Config):
     file_ops.log_operation("log_test", "path/to/test")
     with open(config.file_logger_path, "r", encoding="utf-8") as f:
         content = f.read()
-    assert f"log_test: path/to/test\n" in content
+    assert "log_test: path/to/test\n" in content
 
 
 def test_text_checksum(file_content: str):
@@ -167,7 +155,7 @@ def test_log_operation_with_checksum(config: Config):
     file_ops.log_operation("log_test", "path/to/test", checksum="ABCDEF")
     with open(config.file_logger_path, "r", encoding="utf-8") as f:
         content = f.read()
-    assert f"log_test: path/to/test #ABCDEF\n" in content
+    assert "log_test: path/to/test #ABCDEF\n" in content
 
 
 @pytest.mark.parametrize(
@@ -201,10 +189,7 @@ def test_log_operation_with_checksum(config: Config):
 )
 # Test splitting a file into chunks
 def test_split_file(max_length, overlap, content, expected):
-    assert (
-        list(file_ops.split_file(content, max_length=max_length, overlap=overlap))
-        == expected
-    )
+    assert list(file_ops.split_file(content, max_length=max_length, overlap=overlap)) == expected
 
 
 def test_read_file(
@@ -262,9 +247,7 @@ def test_append_to_file(test_nested_file: Path):
     assert content_after == append_text + append_text
 
 
-def test_append_to_file_uses_checksum_from_appended_file(
-    config: Config, test_file_path: Path
-):
+def test_append_to_file_uses_checksum_from_appended_file(config: Config, test_file_path: Path):
     append_text = "This is appended text.\n"
     file_ops.append_to_file(test_file_path, append_text)
     file_ops.append_to_file(test_file_path, append_text)
@@ -276,10 +259,7 @@ def test_append_to_file_uses_checksum_from_appended_file(
     checksum1 = digest.hexdigest()
     digest.update(append_text.encode("utf-8"))
     checksum2 = digest.hexdigest()
-    assert log_contents == (
-        f"append: {test_file_path} #{checksum1}\n"
-        f"append: {test_file_path} #{checksum2}\n"
-    )
+    assert log_contents == (f"append: {test_file_path} #{checksum1}\n" f"append: {test_file_path} #{checksum2}\n")
 
 
 def test_delete_file(test_file_with_content_path: Path):
@@ -348,11 +328,7 @@ def test_download_file(config, workspace: Workspace):
     assert os.path.getsize(local_name) == size
 
     url = "https://github.com/Significant-Gravitas/Auto-GPT/archive/refs/tags/v0.0.0.tar.gz"
-    assert "Got an HTTP Error whilst trying to download file" in file_ops.download_file(
-        url, local_name
-    )
+    assert "Got an HTTP Error whilst trying to download file" in file_ops.download_file(url, local_name)
 
     url = "https://thiswebsiteiswrong.hmm/v0.0.0.tar.gz"
-    assert "Failed to establish a new connection:" in file_ops.download_file(
-        url, local_name
-    )
+    assert "Failed to establish a new connection:" in file_ops.download_file(url, local_name)

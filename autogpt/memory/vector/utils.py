@@ -1,7 +1,6 @@
 from typing import Any, overload
 
 import numpy as np
-import numpy.typing as npt
 import openai
 
 from autogpt.config import Config
@@ -28,7 +27,7 @@ def get_embedding(input: list[str] | list[TText]) -> list[Embedding]:
 @retry_openai_api()
 def get_embedding(
     input: str | TText | list[str] | list[TText],
-) -> Embedding | list[Embedding]:
+) -> Embedding | list[Embedding]:  # sourcery skip: avoid-builtin-shadow
     """Get an embedding from the ada model.
 
     Args:
@@ -54,8 +53,7 @@ def get_embedding(
 
     logger.debug(
         f"Getting embedding{f's for {len(input)} inputs' if multiple else ''}"
-        f" with model '{model}'"
-        + (f" via Azure deployment '{kwargs['engine']}'" if cfg.use_azure else "")
+        f" with model '{model}'" + (f" via Azure deployment '{kwargs['engine']}'" if cfg.use_azure else "")
     )
 
     embeddings = openai.Embedding.create(

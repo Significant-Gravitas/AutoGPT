@@ -39,7 +39,7 @@ def run_auto_gpt(
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
-):
+):  # sourcery skip: low-code-quality, no-long-functions
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
     logger.speak_mode = speak
@@ -87,8 +87,7 @@ def run_auto_gpt(
             logger.typewriter_log(
                 "WARNING: ",
                 Fore.RED,
-                f"You are running on `{git_branch}` branch "
-                "- this is not a supported branch.",
+                f"You are running on `{git_branch}` branch " "- this is not a supported branch.",
             )
         if sys.version_info < (3, 10):
             logger.typewriter_log(
@@ -114,7 +113,7 @@ def run_auto_gpt(
     #   the workspace directory so we can bind them to the agent.
     workspace_directory = Workspace.make_workspace(workspace_directory)
     cfg.workspace_path = str(workspace_directory)
-
+    # TODO: Make better use of this file
     # HACK: doing this here to collect some globals that depend on the workspace.
     file_logger_path = workspace_directory / "file_logger.txt"
     if not file_logger_path.exists():
@@ -128,6 +127,7 @@ def run_auto_gpt(
     command_registry = CommandRegistry()
 
     command_categories = [
+        "autogpt.app",
         "autogpt.commands.analyze_code",
         "autogpt.commands.audio_text",
         "autogpt.commands.execute_code",
@@ -136,28 +136,21 @@ def run_auto_gpt(
         "autogpt.commands.google_search",
         "autogpt.commands.image_gen",
         "autogpt.commands.improve_code",
+        "autogpt.commands.task_statuses",
         "autogpt.commands.web_selenium",
         "autogpt.commands.write_tests",
-        "autogpt.app",
-        "autogpt.commands.task_statuses",
     ]
-    logger.debug(
-        f"The following command categories are disabled: {cfg.disabled_command_categories}"
-    )
-    command_categories = [
-        x for x in command_categories if x not in cfg.disabled_command_categories
-    ]
+    logger.debug(f"The following command categories are disabled: {cfg.disabled_command_categories}")
+    command_categories = [x for x in command_categories if x not in cfg.disabled_command_categories]
 
     logger.debug(f"The following command categories are enabled: {command_categories}")
 
     for command_category in command_categories:
         command_registry.import_commands(command_category)
 
-    ai_name = ""
     ai_config = construct_main_ai_config()
     ai_config.command_registry = command_registry
-    if ai_config.ai_name:
-        ai_name = ai_config.ai_name
+    ai_name = ai_config.ai_name or ""
     # print(prompt)
     # Initialize variables
     next_action_count = 0
@@ -172,9 +165,7 @@ def run_auto_gpt(
     # Initialize memory and make sure it is empty.
     # this is particularly important for indexing and referencing pinecone memory
     memory = get_memory(cfg, init=True)
-    logger.typewriter_log(
-        "Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}"
-    )
+    logger.typewriter_log("Using memory of type:", Fore.GREEN, f"{memory.__class__.__name__}")
     logger.typewriter_log("Using Browser:", Fore.GREEN, cfg.selenium_web_browser)
     system_prompt = ai_config.construct_full_prompt()
     if cfg.debug_mode:

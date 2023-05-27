@@ -122,17 +122,13 @@ class Workspace:
 
         # Allow exception for absolute paths if they are contained in your workspace directory.
         if relative_path.is_absolute() and not relative_path.is_relative_to(root):
-            raise ValueError(
-                f"Attempted to access absolute path '{relative_path}' in workspace '{root}'."
-            )
+            raise ValueError(f"Attempted to access absolute path '{relative_path}' in workspace '{root}'.")
 
         full_path = root.joinpath(relative_path).resolve()
 
         logger.debug(f"Joined paths as '{full_path}'")
 
         if restrict_to_root and not full_path.is_relative_to(root):
-            raise ValueError(
-                f"Attempted to access path '{full_path}' outside of workspace '{root}'."
-            )
+            raise ValueError(f"Attempted to access path '{full_path}' outside of workspace '{root}'.")
 
         return full_path

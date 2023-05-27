@@ -1,5 +1,5 @@
+# sourcery skip: no-relative-imports
 from autogpt.config import Config
-from autogpt.logs import logger
 
 from .memory_item import MemoryItem, MemoryItemRelevance
 from .providers.base import VectorMemoryProvider as VectorMemory
@@ -110,9 +110,7 @@ def get_memory(cfg: Config, init=False) -> VectorMemory:
             memory = NoMemory()
 
         case _:
-            raise ValueError(
-                f"Unknown memory backend '{cfg.memory_backend}'. Please check your config."
-            )
+            raise ValueError(f"Unknown memory backend '{cfg.memory_backend}'. Please check your config.")
 
     if memory is None:
         memory = JSONFileMemory(cfg)

@@ -81,9 +81,7 @@ class AIConfig:
         ai_name = config_params.get("ai_name", "")
         ai_role = config_params.get("ai_role", "")
         ai_goals = [
-            str(goal).strip("{}").replace("'", "").replace('"', "")
-            if isinstance(goal, dict)
-            else str(goal)
+            str(goal).strip("{}").replace("'", "").replace('"', "") if isinstance(goal, dict) else str(goal)
             for goal in config_params.get("ai_goals", [])
         ]
         api_budget = config_params.get("api_budget", 0.0)
@@ -111,9 +109,7 @@ class AIConfig:
         with open(config_file, "w", encoding="utf-8") as file:
             yaml.dump(config, file, allow_unicode=True)
 
-    def construct_full_prompt(
-        self, prompt_generator: Optional[PromptGenerator] = None
-    ) -> str:
+    def construct_full_prompt(self, prompt_generator: Optional[PromptGenerator] = None) -> str:
         """
         Returns a prompt to the user with the class information in an organized fashion.
 
@@ -126,7 +122,7 @@ class AIConfig:
         """
 
         prompt_start = (
-            "Your decisions must always be made independently without"
+            "Your decisions should be made independently without"
             " seeking user assistance. Play to your strengths as an LLM and pursue"
             " simple strategies with no legal complications."
             ""
@@ -150,11 +146,7 @@ class AIConfig:
         if cfg.execute_local_commands:
             # add OS info to prompt
             os_name = platform.system()
-            os_info = (
-                platform.platform(terse=True)
-                if os_name != "Linux"
-                else distro.name(pretty=True)
-            )
+            os_info = platform.platform(terse=True) if os_name != "Linux" else distro.name(pretty=True)
 
             prompt_start += f"\nThe OS you are running on is: {os_info}"
 

@@ -12,17 +12,13 @@ class AgentManager(metaclass=Singleton):
 
     def __init__(self):
         self.next_key = 0
-        self.agents: dict[
-            int, tuple[str, list[Message], str]
-        ] = {}  # key, (task, full_message_history, model)
+        self.agents: dict[int, tuple[str, list[Message], str]] = {}  # key, (task, full_message_history, model)
         self.cfg = Config()
 
     # Create new GPT agent
     # TODO: Centralize use of create_chat_completion() to globally enforce token limit
 
-    def create_agent(
-        self, task: str, creation_prompt: str, model: str
-    ) -> tuple[int, str]:
+    def create_agent(self, task: str, creation_prompt: str, model: str) -> tuple[int, str]:
         """Create a new agent and return its key
 
         Args:

@@ -4,7 +4,7 @@ import re
 
 import requests
 import yaml
-from colorama import Fore, Back, Style
+from colorama import Back, Fore, Style
 from git.repo import Repo
 
 from autogpt.logs import logger

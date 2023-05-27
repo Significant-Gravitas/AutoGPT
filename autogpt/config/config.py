@@ -15,7 +15,7 @@ class Config(metaclass=Singleton):
     Configuration class to store the state of bools for different scripts access.
     """
 
-    def __init__(self) -> None:
+    def __init__(self) -> None:  # sourcery skip: no-long-functions
         """Initialize the Config class"""
         self.workspace_path: str = None
         self.file_logger_path: str = None
@@ -31,46 +31,35 @@ class Config(metaclass=Singleton):
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
 
-        disabled_command_categories = os.getenv("DISABLED_COMMAND_CATEGORIES")
-        if disabled_command_categories:
+        if disabled_command_categories := os.getenv("DISABLED_COMMAND_CATEGORIES"):
             self.disabled_command_categories = disabled_command_categories.split(",")
         else:
             self.disabled_command_categories = []
 
-        deny_commands = os.getenv("DENY_COMMANDS")
-        if deny_commands:
+        if deny_commands := os.getenv("DENY_COMMANDS"):
             self.deny_commands = deny_commands.split(",")
         else:
             self.deny_commands = []
 
-        allow_commands = os.getenv("ALLOW_COMMANDS")
-        if allow_commands:
+        if allow_commands := os.getenv("ALLOW_COMMANDS"):
             self.allow_commands = allow_commands.split(",")
         else:
             self.allow_commands = []
 
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
-        self.prompt_settings_file = os.getenv(
-            "PROMPT_SETTINGS_FILE", "prompt_settings.yaml"
-        )
+        self.prompt_settings_file = os.getenv("PROMPT_SETTINGS_FILE", "prompt_settings.yaml")
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
-        self.browse_spacy_language_model = os.getenv(
-            "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
-        )
+        self.browse_spacy_language_model = os.getenv("BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm")
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
-        self.execute_local_commands = (
-            os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
-        )
-        self.restrict_to_workspace = (
-            os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True"
-        )
+        self.execute_local_commands = os.getenv("EXECUTE_LOCAL_COMMANDS", "False") == "True"
+        self.restrict_to_workspace = os.getenv("RESTRICT_TO_WORKSPACE", "True") == "True"
 
         if self.use_azure:
             self.load_azure_config()
@@ -99,12 +88,8 @@ class Config(metaclass=Singleton):
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
         self.huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
-        self.huggingface_image_model = os.getenv(
-            "HUGGINGFACE_IMAGE_MODEL", "CompVis/stable-diffusion-v1-4"
-        )
-        self.huggingface_audio_to_text_model = os.getenv(
-            "HUGGINGFACE_AUDIO_TO_TEXT_MODEL"
-        )
+        self.huggingface_image_model = os.getenv("HUGGINGFACE_IMAGE_MODEL", "CompVis/stable-diffusion-v1-4")
+        self.huggingface_audio_to_text_model = os.getenv("HUGGINGFACE_AUDIO_TO_TEXT_MODEL")
         self.sd_webui_url = os.getenv("SD_WEBUI_URL", "http://localhost:7860")
         self.sd_webui_auth = os.getenv("SD_WEBUI_AUTH")
 
@@ -133,14 +118,12 @@ class Config(metaclass=Singleton):
         self.plugins: List[AutoGPTPluginTemplate] = []
         self.plugins_openai = []
 
-        plugins_allowlist = os.getenv("ALLOWLISTED_PLUGINS")
-        if plugins_allowlist:
+        if plugins_allowlist := os.getenv("ALLOWLISTED_PLUGINS"):
             self.plugins_allowlist = plugins_allowlist.split(",")
         else:
             self.plugins_allowlist = []
 
-        plugins_denylist = os.getenv("DENYLISTED_PLUGINS")
-        if plugins_denylist:
+        if plugins_denylist := os.getenv("DENYLISTED_PLUGINS"):
             self.plugins_denylist = plugins_denylist.split(",")
         else:
             self.plugins_denylist = []
@@ -156,17 +139,11 @@ class Config(metaclass=Singleton):
             The matching deployment id if found, otherwise an empty string.
         """
         if model == self.fast_llm_model:
-            return self.azure_model_to_deployment_id_map[
-                "fast_llm_model_deployment_id"
-            ]  # type: ignore
+            return self.azure_model_to_deployment_id_map["fast_llm_model_deployment_id"]  # type: ignore
         elif model == self.smart_llm_model:
-            return self.azure_model_to_deployment_id_map[
-                "smart_llm_model_deployment_id"
-            ]  # type: ignore
+            return self.azure_model_to_deployment_id_map["smart_llm_model_deployment_id"]  # type: ignore
         elif model == "text-embedding-ada-002":
-            return self.azure_model_to_deployment_id_map[
-                "embedding_model_deployment_id"
-            ]  # type: ignore
+            return self.azure_model_to_deployment_id_map["embedding_model_deployment_id"]  # type: ignore
         else:
             return ""
 
@@ -187,9 +164,7 @@ class Config(metaclass=Singleton):
             config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
-        self.openai_api_version = (
-            config_params.get("azure_api_version") or "2023-03-15-preview"
-        )
+        self.openai_api_version = config_params.get("azure_api_version") or "2023-03-15-preview"
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", {})
 
     def set_continuous_mode(self, value: bool) -> None:
@@ -270,9 +245,7 @@ def check_openai_api_key() -> None:
     cfg = Config()
     if not cfg.openai_api_key:
         print(
-            Fore.RED
-            + "Please set your OpenAI API key in .env or as an environment variable."
-            + Fore.RESET
+            f"{Fore.RED}Please set your OpenAI API key in .env or as an environment variable.{Fore.RESET}"
         )
         print("You can get your key from https://platform.openai.com/account/api-keys")
         exit(1)

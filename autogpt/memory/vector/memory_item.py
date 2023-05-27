@@ -1,3 +1,4 @@
+# sourcery skip: no-relative-imports
 from __future__ import annotations
 
 import dataclasses
@@ -36,10 +37,12 @@ class MemoryItem:
     def from_text(
         text: str,
         source_type: MemoryDocType,
-        metadata: dict = {},
+        metadata: dict = None,
         how_to_summarize: str | None = None,
         question_for_summary: str | None = None,
-    ):
+    ):  # noqa: E501
+        if metadata is None:
+            metadata = {}
         cfg = Config()
         logger.debug(f"Memorizing text:\n{'-'*32}\n{text}\n{'-'*32}\n")
 
@@ -51,7 +54,7 @@ class MemoryItem:
                 else chunk_content(text, cfg.embedding_model)
             )
         ]
-        logger.debug("Chunks: " + str(chunks))
+        logger.debug(f"Chunks: {chunks}")
 
         chunk_summaries = [
             summary
@@ -64,7 +67,7 @@ class MemoryItem:
                 for text_chunk in chunks
             ]
         ]
-        logger.debug("Chunk summaries: " + str(chunk_summaries))
+        logger.debug(f"Chunk summaries: {chunk_summaries}")
 
         e_chunks = get_embedding(chunks)
 
@@ -77,7 +80,7 @@ class MemoryItem:
                 question=question_for_summary,
             )[0]
         )
-        logger.debug("Total summary: " + summary)
+        logger.debug(f"Total summary: {summary}")
 
         # TODO: investigate search performance of weighted average vs summary
         # e_average = np.average(e_chunks, axis=0, weights=[len(c) for c in chunks])
@@ -112,16 +115,8 @@ class MemoryItem:
         if ai_message["role"] != "assistant":
             raise ValueError(f"Invalid role on 'ai_message': {ai_message['role']}")
 
-        result = (
-            result_message["content"]
-            if result_message["content"].startswith("Command")
-            else "None"
-        )
-        user_input = (
-            result_message["content"]
-            if result_message["content"].startswith("Human feedback")
-            else "None"
-        )
+        result = result_message["content"] if result_message["content"].startswith("Command") else "None"
+        user_input = result_message["content"] if result_message["content"].startswith("Human feedback") else "None"
         memory_content = (
             f"Assistant Reply: {ai_message['content']}"
             "\n\n"
@@ -133,7 +128,7 @@ class MemoryItem:
         return MemoryItem.from_text(
             text=memory_content,
             source_type="agent_history",
-            how_to_summarize="if possible, also make clear the link between the command in the assistant's response and the command result. Do not mention the human feedback if there is none",
+            how_to_summarize="if possible, also make clear the link between the command in the assistant's response and the command result. Do not mention the human feedback if there is none",  # noqa: E501
         )
 
     @staticmethod
@@ -172,9 +167,7 @@ class MemoryItemRelevance:
     chunk_relevance_scores: list[float]
 
     @staticmethod
-    def of(
-        memory_item: MemoryItem, for_query: str, e_query: Embedding | None = None
-    ) -> MemoryItemRelevance:
+    def of(memory_item: MemoryItem, for_query: str, e_query: Embedding | None = None) -> MemoryItemRelevance:
         e_query = e_query or get_embedding(for_query)
         _, srs, crs = MemoryItemRelevance.calculate_scores(memory_item, e_query)
         return MemoryItemRelevance(
@@ -185,9 +178,7 @@ class MemoryItemRelevance:
         )
 
     @staticmethod
-    def calculate_scores(
-        memory: MemoryItem, compare_to: Embedding
-    ) -> tuple[float, float, list[float]]:
+    def calculate_scores(memory: MemoryItem, compare_to: Embedding) -> tuple[float, float, list[float]]:
         """
         Calculates similarity between given embedding and all embeddings of the memory
 
@@ -217,7 +208,4 @@ class MemoryItemRelevance:
         return self.memory_item.chunks[i_relmax], self.chunk_relevance_scores[i_relmax]
 
     def __str__(self):
-        return (
-            f"{self.memory_item.summary} ({self.summary_relevance_score}) "
-            f"{self.chunk_relevance_scores}"
-        )
+        return f"{self.memory_item.summary} ({self.summary_relevance_score}) " f"{self.chunk_relevance_scores}"
