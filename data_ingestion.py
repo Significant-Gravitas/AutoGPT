@@ -46,9 +46,7 @@ def main() -> None:
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--file", type=str, help="The file to ingest.")
-    group.add_argument(
-        "--dir", type=str, help="The directory containing the files to ingest."
-    )
+    group.add_argument("--dir", type=str, help="The directory containing the files to ingest.")
     parser.add_argument(
         "--init",
         action="store_true",
@@ -71,7 +69,7 @@ def main() -> None:
 
     # Initialize memory
     memory = get_memory(cfg, init=args.init)
-    logger.debug("Using memory of type: " + memory.__class__.__name__)
+    logger.debug(f"Using memory of type: {memory.__class__.__name__}")
 
     if args.file:
         try:
