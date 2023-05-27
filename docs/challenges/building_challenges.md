@@ -1,4 +1,4 @@
-# Creating Challenges for AutoGPT
+# Creating Challenges for Auto-GPT
 
 🏹 We're on the hunt for talented Challenge Creators! 🎯
 
@@ -14,7 +14,7 @@ Are you ready to play a pivotal role in Auto-GPT's journey? Apply now to become 
 
 
 # Getting Started
-Clone the original AutoGPT repo and checkout to master branch
+Clone the original Auto-GPT repo and checkout to master branch
 
 
 The challenges are not written using a specific framework. They try to be very agnostic
