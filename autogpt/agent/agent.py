@@ -341,7 +341,7 @@ class Agent:
         if self.next_action_count > 0:
             self.next_action_count -= 1
 
-        return self._validate_command_result(command_msg, command_result)
+        return self._validate_command_result(command_msg, str(command_result))
 
     def _validate_command_result(
         self, command_msg: CommandMessage, command_result: str
@@ -388,7 +388,7 @@ class Agent:
     def _error_threshold_reached(self) -> bool:
         return self.error_count >= self.cfg.error_threshold > 0
 
-    def _is_output_too_large(self, command_result: Any) -> bool:
+    def _is_output_too_large(self, command_result: str) -> bool:
         result_tlength = count_string_tokens(
             str(command_result), self.cfg.fast_llm_model
         )
