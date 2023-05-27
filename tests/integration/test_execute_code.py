@@ -35,14 +35,8 @@ def test_execute_python_file(python_test_file: str, random_string: str):
 
 
 def test_execute_python_file_invalid():
-    assert all(
-        s in sut.execute_python_file("not_python").lower()
-        for s in ["error:", "invalid", ".py"]
-    )
-    assert all(
-        s in sut.execute_python_file("notexist.py").lower()
-        for s in ["error:", "does not exist"]
-    )
+    assert all(s in sut.execute_python_file("not_python").lower() for s in ["error:", "invalid", ".py"])
+    assert all(s in sut.execute_python_file("notexist.py").lower() for s in ["error:", "does not exist"])
 
 
 def test_execute_shell(config_allow_execute, random_string):
