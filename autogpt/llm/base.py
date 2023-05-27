@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, TypedDict
+from typing import List, TypedDict, Any, Optional
 
 
 class Message(TypedDict):
@@ -63,3 +63,17 @@ class ChatModelResponse(LLMResponse):
     """Standard response struct for a response from an LLM model."""
 
     content: str = None
+
+
+@dataclass(repr=True)
+class CommandMessage:
+    name: str
+    args: dict[str, Any]
+    user_input: str
+
+
+@dataclass(repr=True)
+class CommandError:
+    name: str
+    args: dict[str, Any]
+    msg: str

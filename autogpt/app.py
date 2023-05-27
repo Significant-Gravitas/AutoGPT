@@ -6,6 +6,7 @@ from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.config import Config
+from autogpt.llm.base import CommandMessage, CommandError
 from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.generator import PromptGenerator
@@ -32,7 +33,7 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response_json: Dict) -> Tuple[str, Union[str, Dict[str, Any]]]:
+def get_command_message(response_json: Dict) -> CommandMessage | CommandError:
     """Parse the response and return the command name and arguments
 
     Args:
@@ -48,30 +49,44 @@ def get_command(response_json: Dict) -> Tuple[str, Union[str, Dict[str, Any]]]:
     """
     try:
         if "command" not in response_json:
-            return "Error:", "Missing 'command' object in JSON"
+            return CommandError(
+                "invalid_command", {}, "Missing 'command' object in JSON"
+            )
 
         if not isinstance(response_json, dict):
-            return "Error:", f"'response_json' object is not dictionary {response_json}"
+            return CommandError(
+                "invalid_command",
+                {},
+                f"'response_json' object is not dictionary {response_json}",
+            )
 
         command = response_json["command"]
 
         if not isinstance(command, dict):
-            return "Error:", "'command' object is not a dictionary"
+            return CommandError(
+                "invalid_command",
+                {},
+                "'command' object is not a dictionary",
+            )
 
         if "name" not in command:
-            return "Error:", "Missing 'name' field in 'command' object"
+            return CommandError(
+                "invalid_command",
+                {},
+                "Missing 'name' field in 'command' object",
+            )
 
         command_name = command["name"]
 
         # Use an empty dictionary if 'args' field is not present in 'command' object
         arguments = command.get("args", {})
 
-        return command_name, arguments
+        return CommandMessage(command_name, arguments)
     except json.decoder.JSONDecodeError:
-        return "Error:", "Invalid JSON"
+        return CommandError("invalid_command", {}, "Invalid JSON")
     # All other errors, return "Error: + error message"
     except Exception as e:
-        return "Error:", str(e)
+        return CommandError("invalid_command", {}, str(e))
 
 
 def map_command_synonyms(command_name: str):

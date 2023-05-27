@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from colorama import Fore, Style
 
-from autogpt.app import execute_command, get_command
+from autogpt.app import execute_command, get_command_message
 from autogpt.config import Config
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
@@ -16,7 +16,8 @@ from autogpt.llm import (
     create_chat_completion,
     create_chat_message,
 )
-from autogpt.llm.command_error import CommandError
+
+from autogpt.llm.base import CommandMessage, CommandError
 from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
@@ -109,25 +110,25 @@ class Agent:
 
         return assistant_reply_json
 
-    def _get_command_and_arguments(
+    def _parse_command_and_arguments(
         self, assistant_reply_json: Dict
-    ) -> tuple[str, str | Dict[str, Any]]:
+    ) -> CommandMessage | CommandError:
         # Get command name and arguments
         try:
             print_assistant_thoughts(
                 self.ai_name, assistant_reply_json, self.cfg.speak_mode
             )
-            command_name, arguments = get_command(assistant_reply_json)
+            command_msg = get_command_message(assistant_reply_json)
 
             if self.cfg.speak_mode:
-                say_text(f"I want to execute {command_name}")
+                say_text(f"I want to execute {command_msg.name}")
 
-            arguments = self._resolve_pathlike_command_args(arguments)
+            command_msg.args = self._resolve_pathlike_command_args(command_msg.args)
 
-            return command_name, arguments
+            return command_msg
         except Exception as e:
             logger.error("Error: \n", str(e))
-            return "Error:", str(e)
+            return CommandError("invalid_command", {}, str(e))
         finally:
             self.log_cycle_handler.log_cycle(
                 self.ai_config.ai_name,
@@ -137,70 +138,98 @@ class Agent:
                 NEXT_ACTION_FILE_NAME,
             )
 
-    def _get_user_input(self, assistant_reply_json: Dict) -> tuple[str, Optional[str]]:
+    def _get_console_input(self) -> str:
+        if self.cfg.chat_messages_enabled:
+            return clean_input("Waiting for your response...")
+
+        return clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
+
+    def _get_user_input(
+        self, command_msg: CommandMessage | CommandError, assistant_reply_json: Dict
+    ) -> CommandMessage | CommandError:
         # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
         # Get key press: Prompt the user to press enter to continue or escape
         # to exit
-        logger.info(
-            "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
-            "'n' to exit program, or enter feedback for "
-            f"{self.ai_name}..."
-        )
 
-        user_input = ""
-        updated_command_name = None
+        if isinstance(command_msg, CommandMessage):
+            logger.info(
+                "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
+                "'n' to exit program, or enter feedback for "
+                f"{self.ai_name}..."
+            )
 
-        while True:
-            if self.cfg.chat_messages_enabled:
-                console_input = clean_input("Waiting for your response...")
-            else:
-                console_input = clean_input(Fore.MAGENTA + "Input:" + Style.RESET_ALL)
-            if console_input.lower().strip() == self.cfg.authorise_key:
-                user_input = "GENERATE NEXT COMMAND JSON"
-                break
-            elif console_input.lower().strip() == "s":
-                user_input, updated_command_name = self._handle_self_feedback(
-                    assistant_reply_json
-                )
-                break
-            elif console_input.lower().strip() == "":
-                logger.warn("Invalid input format.")
-                continue
-            elif console_input.lower().startswith(f"{self.cfg.authorise_key} -"):
-                try:
-                    self.next_action_count = abs(int(console_input.split(" ")[1]))
-                    user_input = "GENERATE NEXT COMMAND JSON"
-                except ValueError:
-                    logger.warn(
-                        "Invalid input format. Please enter 'y -n' where n is"
-                        " the number of continuous tasks."
-                    )
+            while True:
+                console_input = self._get_console_input()
+
+                if console_input.lower().strip() == self.cfg.authorise_key:
+                    command_msg.user_input = "GENERATE NEXT COMMAND JSON"
+                    return command_msg
+                elif console_input.lower().strip() == "s":
+                    return self._handle_self_feedback(assistant_reply_json)
+                elif console_input.lower().strip() == "":
+                    logger.warn("Invalid input format.")
                     continue
-                break
-            elif console_input.lower() == self.cfg.exit_key:
-                user_input = "EXIT"
-                break
-            else:
-                user_input = console_input
-                updated_command_name = "human_feedback"
-                self.log_cycle_handler.log_cycle(
-                    self.ai_config.ai_name,
-                    self.created_at,
-                    self.cycle_count,
-                    user_input,
-                    USER_INPUT_FILE_NAME,
-                )
-                break
+                elif console_input.lower().startswith(f"{self.cfg.authorise_key} -"):
+                    try:
+                        self.next_action_count = abs(int(console_input.split(" ")[1]))
+                        command_msg.user_input = "GENERATE NEXT COMMAND JSON"
+                    except ValueError:
+                        logger.warn(
+                            "Invalid input format. Please enter 'y -n' where n is"
+                            " the number of continuous tasks."
+                        )
+                        continue
 
-        return user_input, updated_command_name
+                    return command_msg
+                elif console_input.lower() == self.cfg.exit_key:
+                    command_msg.name = "exit"
+                    command_msg.user_input = "EXIT"
+                    return command_msg
+                else:
+                    command_msg.user_input = console_input
+                    command_msg.name = "human_feedback"
+                    self.log_cycle_handler.log_cycle(
+                        self.ai_config.ai_name,
+                        self.created_at,
+                        self.cycle_count,
+                        console_input,
+                        USER_INPUT_FILE_NAME,
+                    )
+                    return command_msg
+        else:
+            logger.info(
+                "Command is invalid. Enter 's' to run self-feedback commands, "
+                "'n' to exit program, or enter feedback for "
+                f"{self.ai_name}..."
+            )
 
-    def _execute_command(
-        self, command_name: str, arguments: str | Dict[str, Any], user_input: str
-    ) -> str:
-        if command_name.lower().startswith("error"):
-            result = f"{command_name} {str(arguments)}"
-            self._add_error("unknown_command", {}, result)
-            return result
+            while True:
+                console_input = self._get_console_input()
+
+                if console_input.lower().strip() == "s":
+                    return self._handle_self_feedback(assistant_reply_json)
+                elif console_input.lower().strip() == "":
+                    logger.warn("Invalid input format.")
+                    continue
+                elif console_input.lower() == self.cfg.exit_key:
+                    return CommandMessage("exit", {}, "EXIT")
+                else:
+                    command_msg = CommandMessage("human_feedback", {}, console_input)
+                    command_msg.user_input = console_input
+                    command_msg.name = "human_feedback"
+                    self.log_cycle_handler.log_cycle(
+                        self.ai_config.ai_name,
+                        self.created_at,
+                        self.cycle_count,
+                        console_input,
+                        USER_INPUT_FILE_NAME,
+                    )
+                    return command_msg
+
+    def _handle_command_message(self, command_msg: CommandMessage) -> str:
+        command_name = command_msg.name
+        arguments = command_msg.args
+        user_input = command_msg.user_input
 
         if command_name == "human_feedback":
             return f"Human feedback: {user_input}"
@@ -224,20 +253,28 @@ class Agent:
         if self.next_action_count > 0:
             self.next_action_count -= 1
 
-        return self._validate_command_result(command_name, arguments, command_result)
+        return self._validate_command_result(command_msg, command_result)
 
     def _validate_command_result(
-        self, command_name: str, arguments: str | dict[str, Any], command_result: str
+        self, command_msg: CommandMessage, command_result: str
     ) -> str:
+        command_name = command_msg.name
+        arguments = command_msg.args
+
         if self._is_output_too_large(command_result):
-            self._add_error(command_name, arguments, "Too much output.")
-            result = f"Failure: command {command_name} returned too much output. Do not execute this command again with the same arguments."
-        elif is_command_result_an_error(command_result):
-            self._add_error(command_name, arguments, command_result)
+            self._add_error(
+                CommandError(command_name, arguments, "Too much " "output.")
+            )
             result = (
-                f"Failure: command {command_name} returned the "
-                f"following error: '{command_result}'. Avoid this by not "
-                f"executing this command again with the same arguments."
+                f"Failure: command {command_name} returned too much "
+                f"output. Do not execute this command again with the same arguments."
+            )
+        elif is_command_result_an_error(command_result):
+            self._add_error(CommandError(command_name, arguments, command_result))
+            result = (
+                f"Failure: command {command_name} returned the following "
+                f"error: '{command_result}'. Do not executing this command "
+                f"again with the same arguments."
             )
         else:
             result = f"Command {command_name} returned: {command_result}"
@@ -254,7 +291,6 @@ class Agent:
         # Interaction Loop
         self.cycle_count = 0
         self.error_count = 0
-        user_input = ""
 
         signal.signal(signal.SIGINT, self._signal_handler)
 
@@ -292,40 +328,50 @@ class Agent:
             assistant_reply_json = self._convert_assistant_reply_to_json(
                 assistant_reply
             )
-            command_name, arguments = self._get_command_and_arguments(
-                assistant_reply_json
-            )
 
-            # TODO: Validate Command Name & Arguments
-            # TODO: If not valid, send error to GPT and try again
+            command_msg = self._parse_command_and_arguments(assistant_reply_json)
 
-            logger.typewriter_log(
-                "NEXT ACTION: ",
-                Fore.CYAN,
-                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-            )
+            if isinstance(command_msg, CommandMessage):
+                logger.typewriter_log(
+                    "NEXT ACTION: ",
+                    Fore.CYAN,
+                    f"COMMAND = {Fore.CYAN}{command_msg.name}{Style.RESET_ALL}  "
+                    f"ARGUMENTS = {Fore.CYAN}{command_msg.args}{Style.RESET_ALL}",
+                )
+            else:
+                self._add_error(command_msg)
+                logger.typewriter_log(
+                    "COULD NOT PARSE COMMAND: ",
+                    Fore.RED,
+                    f"{command_msg.msg}",
+                )
 
             if not self.cfg.continuous_mode and self.next_action_count == 0:
-                user_input, updated_command_name = self._get_user_input(
-                    assistant_reply_json
-                )
-                if updated_command_name:
-                    command_name = updated_command_name
+                command_msg = self._get_user_input(command_msg, assistant_reply_json)
 
             if self.cfg.continuous_mode and self._error_threshold_reached():
-                user_input, command_name = self._handle_self_feedback(
-                    assistant_reply_json
-                )
+                command_msg = self._handle_self_feedback(assistant_reply_json)
 
             if self.next_action_count > 0:
                 logger.typewriter_log(
                     f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
                 )
 
-            result = self._execute_command(command_name, arguments, user_input)
+            if isinstance(command_msg, CommandMessage):
+                result = self._handle_command_message(command_msg)
+            else:
+                result = self._handle_command_error(command_msg)
 
             self._append_result_to_full_message_history(result)
+
+    def _handle_command_error(self, command_err: CommandError) -> str:
+        self._add_error(command_err)
+        logger.typewriter_log(
+            "COULD NOT RESOLVE ERROR: ",
+            Fore.RED,
+            f"{command_err.msg}",
+        )
+        return f"Failure: {command_err.msg}"
 
     def _append_result_to_full_message_history(self, result: Optional[str]) -> None:
         if result is not None:
@@ -350,14 +396,14 @@ class Agent:
 
         return result_tlength + memory_tlength + 600 > self.cfg.fast_token_limit
 
-    def _add_error(self, command: str, arguments: dict[str, Any], msg: str) -> None:
-        error = CommandError(command, arguments, msg)
-        self.errors[command].append(error)
+    def _add_error(self, command_err: CommandError) -> None:
+        self.errors[command_err.name].append(command_err)
         self.error_count += 1
 
     def _handle_self_feedback(
-        self, assistant_reply_json: Dict[Any, Any]
-    ) -> tuple[str, str]:
+        self,
+        assistant_reply_json: Dict[Any, Any],
+    ) -> CommandMessage:
         self.error_count = 0
 
         logger.typewriter_log(
@@ -396,7 +442,7 @@ class Agent:
         user_input = feedback
         command_name = "self_feedback"
 
-        return user_input, command_name
+        return CommandMessage(command_name, {}, user_input)
 
     def _resolve_pathlike_command_args(self, command_args) -> Dict[str, str]:
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
@@ -500,7 +546,7 @@ class Agent:
         errors = []
 
         for command, error_list in self.errors.items():
-            if command == "unknown_command":
+            if command == "invalid_command":
                 continue
 
             for error in error_list:
@@ -510,11 +556,11 @@ class Agent:
 
         for command_error in errors:
             args_string = ", ".join(
-                f'"{key}": "{value}"' for key, value in command_error.arguments.items()
+                f'"{key}": "{value}"' for key, value in command_error.args.items()
             )
             error_strings.append(
                 f"{command_error.command}, arguments: {args_string}, "
-                f"error message: {command_error.message}"
+                f"error message: {command_error.msg}"
             )
 
         return "\n".join(f"{i+1}. {item}" for i, item in enumerate(error_strings))
