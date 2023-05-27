@@ -58,8 +58,6 @@ class Spinner:
             delay (float): The delay in seconds between each spinner update.
         """
         time.sleep(delay)
-        sys.stdout.write(
-            f"\r{' ' * (len(self.message) + 2)}\r"
-        )  # Clear the current message
+        sys.stdout.write(f"\r{' ' * (len(self.message) + 2)}\r")  # Clear the current message
         sys.stdout.flush()
         self.message = new_message
