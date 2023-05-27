@@ -7,6 +7,7 @@ If required package is missing or is incompatible, it adds it to a list of missi
 Prints either "Missing packages:" "All packages are installed."
 """  # noqa: E501
 import sys
+
 import pkg_resources
 
 
@@ -19,7 +20,7 @@ def main():
         required_packages = []
         for line in f:
             # Ignore comments
-            if line.startswith('#'):
+            if line.startswith("#"):
                 continue
             # Extract package name
             if package_name := line.split("#")[0].strip():
@@ -33,10 +34,9 @@ def main():
     for required_package in required_packages:  # Parse requirement string into a Requirement object  # noqa: E501
         pkg = pkg_resources.Requirement.parse(required_package)
         # Check if this requirement is satisfied by any installed package
-        if (
-            pkg.key not in installed_packages  # Package not found
-            or not pkg.specifier.contains(installed_packages[pkg.key])  # Incompatible version  # noqa: E501
-        ):
+        if pkg.key not in installed_packages or not pkg.specifier.contains(  # Package not found
+            installed_packages[pkg.key]
+        ):  # Incompatible version  # noqa: E501
             missing_packages.append(pkg)
 
     # Print results
