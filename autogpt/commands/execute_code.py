@@ -32,14 +32,8 @@ def execute_python_file(filename: str) -> str:
         return f"Error: File '{filename}' does not exist."
 
     if we_are_running_in_a_docker_container():
-        result = subprocess.run(
-            ["python", filename], capture_output=True, encoding="utf8"
-        )
-        if result.returncode == 0:
-            return result.stdout
-        else:
-            return f"Error: {result.stderr}"
-
+        result = subprocess.run(["python", filename], capture_output=True, encoding="utf8")
+        return result.stdout if result.returncode == 0 else f"Error: {result.stderr}"
     try:
         client = docker.from_env()
         # You can replace this with the desired Python image/version
@@ -50,9 +44,7 @@ def execute_python_file(filename: str) -> str:
             client.images.get(image_name)
             logger.warn(f"Image '{image_name}' found locally")
         except ImageNotFound:
-            logger.info(
-                f"Image '{image_name}' not found locally, pulling from Docker Hub"
-            )
+            logger.info(f"Image '{image_name}' not found locally, pulling from Docker Hub")
             # Use the low-level API to stream the pull response
             low_level_client = docker.APIClient()
             for line in low_level_client.pull(image_name, stream=True, decode=True):
@@ -117,10 +109,7 @@ def validate_command(command: str) -> bool:
     for keyword in CFG.allow_commands:
         if keyword in tokens:
             return True
-    if CFG.allow_commands:
-        return False
-
-    return True
+    return not CFG.allow_commands
 
 
 @command(
@@ -150,9 +139,7 @@ def execute_shell(command_line: str) -> str:
     if not current_dir.is_relative_to(CFG.workspace_path):
         os.chdir(CFG.workspace_path)
 
-    logger.info(
-        f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
-    )
+    logger.info(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
     result = subprocess.run(command_line, capture_output=True, shell=True)
     output = f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
@@ -191,14 +178,10 @@ def execute_shell_popen(command_line) -> str:
     if CFG.workspace_path not in current_dir:
         os.chdir(CFG.workspace_path)
 
-    logger.info(
-        f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
-    )
+    logger.info(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
     do_not_show_output = subprocess.DEVNULL
-    process = subprocess.Popen(
-        command_line, shell=True, stdout=do_not_show_output, stderr=do_not_show_output
-    )
+    process = subprocess.Popen(command_line, shell=True, stdout=do_not_show_output, stderr=do_not_show_output)
 
     # Change back to whatever the prior working dir was
 
