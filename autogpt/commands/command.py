@@ -30,7 +30,7 @@ class Command:
         self.name = name
         self.description = description
         self.method = method
-        self.signature = signature if signature else str(inspect.signature(self.method))
+        self.signature = signature or str(inspect.signature(self.method))
         self.enabled = enabled
         self.disabled_reason = disabled_reason
 
@@ -62,9 +62,7 @@ class CommandRegistry:
 
     def register(self, cmd: Command) -> None:
         if cmd.name in self.commands:
-            logger.warn(
-                f"Command '{cmd.name}' already registered and will be overwritten!"
-            )
+            logger.warn(f"Command '{cmd.name}' already registered and will be overwritten!")
         self.commands[cmd.name] = cmd
 
     def unregister(self, command_name: str):
@@ -95,9 +93,7 @@ class CommandRegistry:
         """
         Returns a string representation of all registered `Command` objects for use in a prompt
         """
-        commands_list = [
-            f"{idx + 1}. {str(cmd)}" for idx, cmd in enumerate(self.commands.values())
-        ]
+        commands_list = [f"{idx + 1}. {str(cmd)}" for idx, cmd in enumerate(self.commands.values())]
         return "\n".join(commands_list)
 
     def import_commands(self, module_name: str) -> None:
@@ -118,14 +114,10 @@ class CommandRegistry:
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
             # Register decorated functions
-            if hasattr(attr, AUTO_GPT_COMMAND_IDENTIFIER) and getattr(
-                attr, AUTO_GPT_COMMAND_IDENTIFIER
-            ):
+            if hasattr(attr, AUTO_GPT_COMMAND_IDENTIFIER) and getattr(attr, AUTO_GPT_COMMAND_IDENTIFIER):
                 self.register(attr.command)
             # Register command classes
-            elif (
-                inspect.isclass(attr) and issubclass(attr, Command) and attr != Command
-            ):
+            elif inspect.isclass(attr) and issubclass(attr, Command) and attr != Command:
                 cmd_instance = attr()
                 self.register(cmd_instance)
 
