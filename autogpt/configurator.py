@@ -27,7 +27,7 @@ def create_config(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
-) -> None:
+) -> None:  # sourcery skip: low-code-quality, no-long-functions
     """Updates the config object with the given arguments.
 
     Args:
@@ -67,9 +67,7 @@ def create_config(
         CFG.set_continuous_mode(True)
 
         if continuous_limit:
-            logger.typewriter_log(
-                "Continuous Limit: ", Fore.GREEN, f"{continuous_limit}"
-            )
+            logger.typewriter_log("Continuous Limit: ", Fore.GREEN, f"{continuous_limit}")
             CFG.set_continuous_limit(continuous_limit)
 
     # Check if continuous limit is used without continuous mode
@@ -106,32 +104,13 @@ def create_config(
         CFG.skip_reprompt = True
 
     if ai_settings_file:
-        file = ai_settings_file
-
-        # Validate file
-        (validated, message) = utils.validate_yaml_file(file)
-        if not validated:
-            logger.typewriter_log("FAILED FILE VALIDATION", Fore.RED, message)
-            logger.double_check()
-            exit(1)
-
-        logger.typewriter_log("Using AI Settings File:", Fore.GREEN, file)
-        CFG.ai_settings_file = file
+        CFG.ai_settings_file = _extracted_from_create_config_94(ai_settings_file, "Using AI Settings File:", CFG)
         CFG.skip_reprompt = True
 
     if prompt_settings_file:
-        file = prompt_settings_file
-
-        # Validate file
-        (validated, message) = utils.validate_yaml_file(file)
-        if not validated:
-            logger.typewriter_log("FAILED FILE VALIDATION", Fore.RED, message)
-            logger.double_check()
-            exit(1)
-
-        logger.typewriter_log("Using Prompt Settings File:", Fore.GREEN, file)
-        CFG.prompt_settings_file = file
-
+        CFG.prompt_settings_file = _extracted_from_create_config_94(
+            prompt_settings_file, "Using Prompt Settings File:", CFG
+        )
     if browser_name:
         CFG.selenium_web_browser = browser_name
 
@@ -152,3 +131,18 @@ def create_config(
 
     if skip_news:
         CFG.skip_news = True
+
+
+# TODO Rename this here and in `create_config`
+def _extracted_from_create_config_94(arg0, arg1, CFG):
+    file = arg0
+
+    # Validate file
+    (validated, message) = utils.validate_yaml_file(file)
+    if not validated:
+        logger.typewriter_log("FAILED FILE VALIDATION", Fore.RED, message)
+        logger.double_check()
+        exit(1)
+
+    logger.typewriter_log(arg1, Fore.GREEN, file)
+    return file
