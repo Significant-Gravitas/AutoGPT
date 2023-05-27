@@ -47,9 +47,7 @@ def read_audio(audio: bytes) -> str:
     headers = {"Authorization": f"Bearer {api_token}"}
 
     if api_token is None:
-        raise ValueError(
-            "You need to set your Hugging Face API token in the config file."
-        )
+        raise ValueError("You need to set your Hugging Face API token in the config file.")
 
     response = requests.post(
         api_url,
