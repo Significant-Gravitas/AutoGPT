@@ -199,7 +199,7 @@ class Agent:
     ) -> str:
         if command_name.lower().startswith("error"):
             result = f"{command_name} {str(arguments)}"
-            self._add_error("command_missing", {}, result)
+            self._add_error("unknown_command", {}, result)
             return result
 
         if command_name == "human_feedback":
@@ -256,7 +256,7 @@ class Agent:
         self.error_count = 0
         user_input = ""
 
-        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
 
         while True:
             # Discontinue if continuous limit is reached
@@ -500,7 +500,7 @@ class Agent:
         errors = []
 
         for command, error_list in self.errors.items():
-            if command == "missing_command":
+            if command == "unknown_command":
                 continue
 
             for error in error_list:
@@ -525,7 +525,7 @@ class Agent:
             and 0 < self.cfg.continuous_limit < self.cycle_count
         )
 
-    def signal_handler(self, signum, frame) -> None:
+    def _signal_handler(self, signum, frame) -> None:
         if self.next_action_count == 0:
             sys.exit()
         else:
