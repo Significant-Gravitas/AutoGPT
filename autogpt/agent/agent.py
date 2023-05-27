@@ -455,7 +455,9 @@ class Agent:
 
         return CommandMessage(command_name, {}, user_input)
 
-    def _resolve_pathlike_command_args(self, command_args) -> Dict[str, str]:
+    def _resolve_pathlike_command_args(
+        self, command_args: Dict[str, Any]
+    ) -> Dict[str, str]:
         if "directory" in command_args and command_args["directory"] in {"", "/"}:
             command_args["directory"] = str(self.workspace.root)
         else:
@@ -570,7 +572,7 @@ class Agent:
                 f'"{key}": "{value}"' for key, value in command_error.args.items()
             )
             error_strings.append(
-                f"{command_error.command}, arguments: {args_string}, "
+                f"{command_error.name}, arguments: {args_string}, "
                 f"error message: {command_error.msg}"
             )
 
@@ -594,7 +596,7 @@ class Agent:
             self.next_action_count = 0
 
 
-COMMAND_RESULT_ERRORS = [
+COMMAND_RESULT_ERRORS_STRINGS = [
     "error",
     "unknown command",
     "traceback",
@@ -606,8 +608,8 @@ COMMAND_RESULT_ERRORS = [
 def is_command_result_an_error(result: str) -> bool:
     result_lower = result.lower()
 
-    for command_result_error in COMMAND_RESULT_ERRORS:
-        if command_result_error in result_lower:
+    for error_string in COMMAND_RESULT_ERRORS_STRINGS:
+        if error_string in result_lower:
             return True
 
     return False
