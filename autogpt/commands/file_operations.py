@@ -188,7 +188,7 @@ def ingest_file(
     """
     try:
         logger.info(f"Ingesting file {filename}")
-        content = read_file(filename)
+        content = read_textual_file(filename, logger)
 
         # TODO: differentiate between different types of files
         file_memory = MemoryItem.from_text_file(content, filename)
