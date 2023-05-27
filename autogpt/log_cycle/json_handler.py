@@ -12,9 +12,6 @@ class JsonFileHandler(logging.FileHandler):
             json.dump(json_data, f, ensure_ascii=False, indent=4)
 
 
-import logging
-
-
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         return record.msg
