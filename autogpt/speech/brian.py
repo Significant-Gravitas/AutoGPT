@@ -23,9 +23,7 @@ class BrianSpeech(VoiceBase):
         Returns:
             bool: True if the request was successful, False otherwise
         """
-        tts_url = (
-            f"https://api.streamelements.com/kappa/v2/speech?voice=Brian&text={text}"
-        )
+        tts_url = f"https://api.streamelements.com/kappa/v2/speech?voice=Brian&text={text}"
         response = requests.get(tts_url)
 
         if response.status_code == 200:
