@@ -42,9 +42,7 @@ def mock_pdf_file():
         f.write(b"endobj\n")
         # Write the font object
         f.write(b"3 0 obj\n")
-        f.write(
-            b"<< /Type /Font /Subtype /Type1 /Name /F1 /BaseFont /Helvetica-Bold >>\n"
-        )
+        f.write(b"<< /Type /Font /Subtype /Type1 /Name /F1 /BaseFont /Helvetica-Bold >>\n")
         f.write(b"endobj\n")
         # Write the page contents object
         f.write(b"4 0 obj\n")
@@ -139,7 +137,7 @@ respective_file_creation_functions = {
 class TestConfig(TestCase):
     def test_parsers(self):
         binary_files_extensions = [".pdf", ".docx"]
-# sourcery skip: no-loop-in-tests
+        # sourcery skip: no-loop-in-tests
         for (
             file_extension,
             c_file_creator,
