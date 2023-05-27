@@ -181,7 +181,7 @@ class Agent:
 
                 result = self._handle_command_message(command_msg)
             else:
-                result = self._handle_command_error(command_msg)
+                result = None
 
             self._append_result_to_full_message_history(result)
 
@@ -374,15 +374,6 @@ class Agent:
             result = plugin.post_command(command_name, result)
 
         return result
-
-    def _handle_command_error(self, command_err: CommandError) -> str:
-        self._add_error(command_err)
-        logger.typewriter_log(
-            "COULD NOT RESOLVE ERROR: ",
-            Fore.RED,
-            f"{command_err.msg}",
-        )
-        return f"Failure: {command_err.msg}"
 
     def _append_result_to_full_message_history(self, result: Optional[str]) -> None:
         if result is not None:
@@ -596,10 +587,13 @@ class Agent:
             self.next_action_count = 0
 
 
-COMMAND_RESULT_ERRORS_STRINGS = [
+STARTS_WITH_ERROR_STRING = [
     "error",
     "unknown command",
     "traceback",
+]
+
+CONTAINS_ERROR_STRING = [
     "no such file or directory",
     "can't open file",
 ]
@@ -608,7 +602,11 @@ COMMAND_RESULT_ERRORS_STRINGS = [
 def is_command_result_an_error(result: str) -> bool:
     result_lower = result.lower()
 
-    for error_string in COMMAND_RESULT_ERRORS_STRINGS:
+    for error_string in STARTS_WITH_ERROR_STRING:
+        if result_lower.startswith(error_string):
+            return True
+
+    for error_string in CONTAINS_ERROR_STRING:
         if error_string in result_lower:
             return True
 
