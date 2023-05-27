@@ -7,13 +7,14 @@ from __future__ import annotations
 import os
 import platform
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import distro
 import yaml
 
-from autogpt.commands.command import CommandRegistry
-from autogpt.prompts.generator import PromptGenerator
+if TYPE_CHECKING:
+    from autogpt.commands.command import CommandRegistry
+    from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
