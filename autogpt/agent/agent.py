@@ -16,8 +16,7 @@ from autogpt.llm import (
     create_chat_completion,
     create_chat_message,
 )
-
-from autogpt.llm.base import CommandMessage, CommandError
+from autogpt.llm.base import CommandError, CommandMessage
 from autogpt.llm.token_counter import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
@@ -354,14 +353,14 @@ class Agent:
                 CommandError(command_name, arguments, "Too much " "output.")
             )
             result = (
-                f"Failure: command {command_name} returned too much "
+                f"Failure: command '{command_name}' returned too much "
                 f"output. Do not execute this command again with the same arguments."
             )
         elif is_command_result_an_error(command_result):
             self._add_error(CommandError(command_name, arguments, command_result))
             result = (
-                f"Failure: command {command_name} returned the following "
-                f"error: '{command_result}'. Do not executing this command "
+                f"Failure: command '{command_name}' returned the following "
+                f"error: '{command_result}'. Do not execute this command "
                 f"again with the same arguments."
             )
         else:
