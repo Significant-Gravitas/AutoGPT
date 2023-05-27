@@ -50,7 +50,7 @@ def validate_json(json_object: object, schema_name: str) -> dict | None:
             logger.error("The following issues were found:")
 
             for error in errors:
-                logger.error(f"Error: {error.error_msg}")
+                logger.error(f"Error: {error.message}")
     else:
         logger.debug("The JSON object is valid.")
 
