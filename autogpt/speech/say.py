@@ -9,9 +9,7 @@ from autogpt.speech.eleven_labs import ElevenLabsSpeech
 from autogpt.speech.gtts import GTTSVoice
 from autogpt.speech.macos_tts import MacOSTTS
 
-_QUEUE_SEMAPHORE = Semaphore(
-    1
-)  # The amount of sounds to queue before blocking the main thread
+_QUEUE_SEMAPHORE = Semaphore(1)  # The amount of sounds to queue before blocking the main thread
 
 
 def say_text(text: str, voice_index: int = 0) -> None:
