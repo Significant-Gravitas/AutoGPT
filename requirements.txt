@@ -59,6 +59,11 @@ types-Pillow
 
 # OpenAI and Generic plugins import
 openapi-python-client==0.13.4
+zenpy
+sunshine-conversations-client
+websockets
+requests
+PyJWT
 
 # Items below this point will not be included in the Docker Image
 

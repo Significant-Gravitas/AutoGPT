@@ -9,6 +9,16 @@ services:
     build: ./
     env_file:
       - .env
+    ports:
+      - "8765:8765"
+      SUNCO_APP_ID: ${SUNCO_APP_ID}
+      SUNCO_API_KEY: ${SUNCO_API_KEY}
+      SUNCO_API_SECRET: ${SUNCO_API_SECRET}
+      ZENDESK_API_TOKEN: ${ZENDESK_API_TOKEN}
+      ZENDESK_SUBDOMAIN: ${ZENDESK_SUBDOMAIN}
+      ZENDESK_EMAIL: ${ZENDESK_EMAIL}
+      AUTO_GPT_WEBSOCKET_SERVER_HOST: ${AUTO_GPT_WEBSOCKET_SERVER_HOST:-0.0.0.0}
+      AUTO_GPT_WEBSOCKET_SERVER_PORT: ${AUTO_GPT_WEBSOCKET_SERVER_PORT:-8765}
     volumes:
       - ./:/app
       - ./docker-compose.yml:/app/docker-compose.yml:ro

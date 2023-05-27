@@ -44,3 +44,5 @@ ONBUILD COPY prompt_settings.yaml ./prompt_settings.yaml
 ONBUILD RUN mkdir ./data
 
 FROM autogpt-${BUILD_TYPE} AS auto-gpt
+
+EXPOSE 8765
