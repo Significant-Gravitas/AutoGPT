@@ -81,10 +81,7 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
     )
     ai_config.command_registry = command_registry
 
-    triggering_prompt = (
-        "Determine which next command to use, and respond using the"
-        " format specified above:"
-    )
+    triggering_prompt = "Determine which next command to use, and respond using the" " format specified above:"
     system_prompt = ai_config.construct_full_prompt()
 
     return Agent(
@@ -131,9 +128,7 @@ def memory_management_agent(agent_test_config, memory_json_file, workspace: Work
 
 
 @pytest.fixture
-def get_company_revenue_agent(
-    agent_test_config, memory_json_file, workspace: Workspace
-):
+def get_company_revenue_agent(agent_test_config, memory_json_file, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
