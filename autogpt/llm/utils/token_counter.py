@@ -9,9 +9,7 @@ from autogpt.llm.base import Message
 from autogpt.logs import logger
 
 
-def count_message_tokens(
-    messages: List[Message], model: str = "gpt-3.5-turbo-0301"
-) -> int:
+def count_message_tokens(messages: List[Message], model: str = "gpt-3.5-turbo-0301") -> int:
     """
     Returns the number of tokens used by a list of messages.
 
@@ -37,9 +35,7 @@ def count_message_tokens(
         # !Note: gpt-4 may change over time. Returning num tokens assuming gpt-4-0314.")
         return count_message_tokens(messages, model="gpt-4-0314")
     elif model == "gpt-3.5-turbo-0301":
-        tokens_per_message = (
-            4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
-        )
+        tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
         tokens_per_name = -1  # if there's a name, the role is omitted
     elif model == "gpt-4-0314":
         tokens_per_message = 3
