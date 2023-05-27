@@ -51,13 +51,9 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
     Returns:
         str: The filename of the image
     """
-    API_URL = (
-        f"https://api-inference.huggingface.co/models/{CFG.huggingface_image_model}"
-    )
+    API_URL = f"https://api-inference.huggingface.co/models/{CFG.huggingface_image_model}"
     if CFG.huggingface_api_token is None:
-        raise ValueError(
-            "You need to set your Hugging Face API token in the config file."
-        )
+        raise ValueError("You need to set your Hugging Face API token in the config file.")
     headers = {
         "Authorization": f"Bearer {CFG.huggingface_api_token}",
         "X-Use-Cache": "false",
@@ -98,7 +94,7 @@ def generate_image_with_hf(prompt: str, filename: str) -> str:
 
         retry_count += 1
 
-    return f"Error creating image."
+    return "Error creating image."
 
 
 def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
@@ -140,12 +136,8 @@ def generate_image_with_dalle(prompt: str, filename: str, size: int) -> str:
 
 
 def generate_image_with_sd_webui(
-    prompt: str,
-    filename: str,
-    size: int = 512,
-    negative_prompt: str = "",
-    extra: dict = {},
-) -> str:
+    prompt: str, filename: str, size: int = 512, negative_prompt: str = "", extra: dict = None
+) -> str:  # noqa: E501
     """Generate an image with Stable Diffusion webui.
     Args:
         prompt (str): The prompt to use
@@ -156,6 +148,8 @@ def generate_image_with_sd_webui(
     Returns:
         str: The filename of the image
     """
+    if extra is None:
+        extra = {}
     # Create a session and set the basic auth if needed
     s = requests.Session()
     if CFG.sd_webui_auth:
