@@ -162,7 +162,7 @@ class TestValidateUrl:
         url = "https://example.com/path%20with%20spaces"
         assert dummy_method(url) == url
 
-    # Tests that the function can handle very long URLs.
+    # Tests that the function raises a ValueError if the URL is over 2000 characters.
     def test_extremely_long_url(self):
         url = "http://example.com/" + "a" * 2000
         with raises(ValueError, match="URL is too long"):
