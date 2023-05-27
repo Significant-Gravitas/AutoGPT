@@ -33,9 +33,7 @@ def test_clone_repository_error(workspace, mock_clone_from):
     url = "https://github.com/this-repository/does-not-exist.git"
     clone_path = str(workspace.get_path("does-not-exist"))
 
-    mock_clone_from.side_effect = GitCommandError(
-        "clone", "fatal: repository not found", ""
-    )
+    mock_clone_from.side_effect = GitCommandError("clone", "fatal: repository not found", "")
 
     result = clone_repository(url=url, clone_path=clone_path)
 
