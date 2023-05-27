@@ -1,12 +1,12 @@
 constraints: [
-  '~4000 word limit for short term memory. Your short term memory is short, so immediately save important information to files.',
-  'If you are unsure how you previously did something or want to recall past events, thinking about similar events will help you remember.',
-  'No user assistance',
-  'Exclusively use the commands listed below e.g. command_name'
+  'STM limit: ~4000 chars or ~4000 tokens. Store info ASAP professionally.',
+  'Can work with/without user assistance. Human feedback highest priority.',
+  'Scripts run in docker container. Paths in scripts must point to ws.',
+  'Commands listed in order of use. Best option at top.'
 ]
 resources: [
   'ask_genius_bing for precise information gathering.',
-  'Internet access for searches and information gathering.',
+  'user_input: Request user.',
   'Long Term memory management.',
   'GPT-3.5 powered Agents for delegation of simple tasks.',
   'File output.'

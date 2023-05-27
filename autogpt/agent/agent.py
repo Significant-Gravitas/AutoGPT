@@ -176,14 +176,14 @@ class Agent:
 
                 logger.info(
                     f"\n{Fore.GREEN}{Back.YELLOW}{Style.BRIGHT}(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.')\n"  # noqa: E501
-                    f"{Fore.PURPLE}{Back.BLUE}{Style.DIM}(Key)   'y -n' ('I need your clothes, your boots, and your continuous cmds.'){Fore.RESET}\n"  # noqa: E501
-                    f"{Fore.BLUE}{Back.YELLOW}{Style.BRIGHT}(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.'){Fore.RESET}\n"  # noqa: E501
-                    f"{Fore.YELLOW}{Back.YELLOW}{Style.BRIGHT}(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.'){Fore.RESET}\n"  # noqa: E501
+                    f"{Fore.RED}{Back.BLUE}{Style.DIM}(Key)   'y -n' ('I need your clothes, your boots, and your continuous cmds.')\n"  # noqa: E501
+                    f"{Fore.BLUE}{Back.YELLOW}{Style.BRIGHT}(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.')\n"  # noqa: E501
+                    f"{Fore.YELLOW}{Back.YELLOW}{Style.BRIGHT}(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.')\n"  # noqa: E501
                     f"\n{Fore.MAGENTA}{Back.BLUE}{Style.DIM}{self.ai_name} I'm a machine,{Style.RESET_ALL}"
                 )
                 while True:
                     if cfg.chat_messages_enabled:
-                        console_input = clean_input(" INPUT: ")
+                        console_input = clean_input(f"{Fore.BLUE}INPUT: ")
                     else:
                         console_input = clean_input(f"{Fore.MAGENTA}Input:{Style.RESET_ALL}")
                     if console_input.lower().strip() == cfg.authorise_key:
