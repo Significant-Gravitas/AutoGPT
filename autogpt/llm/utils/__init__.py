@@ -1,8 +1,9 @@
+# sourcery skip: no-relative-imports, no-wildcard-imports
 from __future__ import annotations
 
 import functools
 import time
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 from unittest.mock import patch
 
 import openai
@@ -17,7 +18,7 @@ from autogpt.logs import logger
 
 from ..api_manager import ApiManager
 from ..base import ChatSequence, Message
-from .token_counter import *
+from .token_counter import *  # noqa: F403
 
 
 def metered(func):
@@ -73,9 +74,7 @@ def retry_openai_api(
         f"{Fore.CYAN + Style.BRIGHT}PAID{Style.RESET_ALL} OpenAI API Account. You can "
         f"read more here: {Fore.CYAN}https://docs.agpt.co/setup/#getting-an-api-key{Fore.RESET}"
     )
-    backoff_msg = (
-        f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
-    )
+    backoff_msg = f"{Fore.RED}Error: API Bad gateway. Waiting {{backoff}} seconds...{Fore.RESET}"
 
     def _wrapper(func):
         @functools.wraps(func)
@@ -108,9 +107,7 @@ def retry_openai_api(
     return _wrapper
 
 
-def call_ai_function(
-    function: str, args: list, description: str, model: str | None = None
-) -> str:
+def call_ai_function(function: str, args: list, description: str, model: str | None = None) -> str:
     """Call an AI function
 
     This is a magic function that can do anything with no-code. See
@@ -204,7 +201,7 @@ def create_chat_completion(
         temperature = cfg.temperature
 
     logger.debug(
-        f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"
+        f"{Fore.GREEN}Creating chat completion with model {model}, temperature {temperature}, max_tokens {max_tokens}{Fore.RESET}"  # noqa: E501
     )
     for plugin in cfg.plugins:
         if plugin.can_handle_chat_completion(
@@ -244,9 +241,7 @@ def create_chat_completion(
     return resp
 
 
-def check_model(
-    model_name: str, model_type: Literal["smart_llm_model", "fast_llm_model"]
-) -> str:
+def check_model(model_name: str, model_type: Literal["smart_llm_model", "fast_llm_model"]) -> str:
     """Check if model is available for use. If not, return gpt-3.5-turbo."""
     api_manager = ApiManager()
     models = api_manager.get_models()
@@ -257,7 +252,6 @@ def check_model(
     logger.typewriter_log(
         "WARNING: ",
         Fore.YELLOW,
-        f"You do not have access to {model_name}. Setting {model_type} to "
-        f"gpt-3.5-turbo.",
+        f"You do not have access to {model_name}. Setting {model_type} to " f"gpt-3.5-turbo.",
     )
     return "gpt-3.5-turbo"
