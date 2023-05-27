@@ -1,3 +1,4 @@
+# sourcery skip: no-relative-imports
 import abc
 import functools
 from typing import MutableSet, Sequence
@@ -43,10 +44,7 @@ class VectorMemoryProvider(MutableSet[MemoryItem], AbstractSingleton):
         if len(self) < 1:
             return []
 
-        logger.debug(
-            f"Searching for {k} relevant memories for query '{query}'; "
-            f"{len(self)} memories in index"
-        )
+        logger.debug(f"Searching for {k} relevant memories for query '{query}'; " f"{len(self)} memories in index")
 
         relevances = self.score_memories_for_relevance(query)
         logger.debug(f"Memory relevance scores: {[str(r) for r in relevances]}")
@@ -56,9 +54,7 @@ class VectorMemoryProvider(MutableSet[MemoryItem], AbstractSingleton):
 
         return [relevances[i] for i in top_k_indices]
 
-    def score_memories_for_relevance(
-        self, for_query: str
-    ) -> Sequence[MemoryItemRelevance]:
+    def score_memories_for_relevance(self, for_query: str) -> Sequence[MemoryItemRelevance]:
         """
         Returns MemoryItemRelevance for every memory in the index.
         Implementations may override this function for performance purposes.
