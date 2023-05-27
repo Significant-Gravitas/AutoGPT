@@ -121,14 +121,11 @@ def generate_and_validate(
     ["CompVis/stable-diffusion-v1-4", "stabilityai/stable-diffusion-2-1"],
 )
 @pytest.mark.parametrize("delay", [10, 0])
-def test_huggingface_fail_request_with_delay(
-    config, workspace, image_size, image_model, return_text, delay
-):
-    return_text = return_text.replace("[model]", image_model).replace(
-        "[delay]", str(delay)
-    )
+def test_huggingface_fail_request_with_delay(config, workspace, image_size, image_model, return_text, delay):
+    return_text = return_text.replace("[model]", image_model).replace("[delay]", str(delay))
 
     with patch("requests.post") as mock_post:
+        # sourcery skip: no-conditionals-in-tests
         if return_text == "":
             # Test bad image
             mock_post.return_value.status_code = 200
@@ -150,13 +147,14 @@ def test_huggingface_fail_request_with_delay(
             assert result == "Error creating image."
 
             # Verify retry was called with delay if delay is in return_text
+            # sourcery skip: no-conditionals-in-tests
             if "estimated_time" in return_text:
                 mock_sleep.assert_called_with(delay)
             else:
                 mock_sleep.assert_not_called()
 
 
-def test_huggingface_fail_request_with_delay(mocker):
+def test_huggingface_fail_request_with_delay(mocker):  # noqa: F811
     config = Config()
     config.huggingface_api_token = "1"
 
@@ -164,7 +162,9 @@ def test_huggingface_fail_request_with_delay(mocker):
     mock_post = mocker.patch("requests.post")
     mock_post.return_value.status_code = 500
     mock_post.return_value.ok = False
-    mock_post.return_value.text = '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading","estimated_time":0}'
+    mock_post.return_value.text = (
+        '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading","estimated_time":0}'
+    )
 
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
@@ -188,9 +188,7 @@ def test_huggingface_fail_request_no_delay(mocker):
     mock_post = mocker.patch("requests.post")
     mock_post.return_value.status_code = 500
     mock_post.return_value.ok = False
-    mock_post.return_value.text = (
-        '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading"}'
-    )
+    mock_post.return_value.text = '{"error":"Model CompVis/stable-diffusion-v1-4 is currently loading"}'
 
     # Mock time.sleep
     mock_sleep = mocker.patch("time.sleep")
@@ -252,7 +250,7 @@ def test_huggingface_fail_missing_api_token(mocker):
     config.huggingface_image_model = "CompVis/stable-diffusion-v1-4"
 
     # Mock requests.post to raise ValueError
-    mock_post = mocker.patch("requests.post", side_effect=ValueError)
+    mocker.patch("requests.post", side_effect=ValueError)
 
     # Verify request raises an error.
     with pytest.raises(ValueError):
