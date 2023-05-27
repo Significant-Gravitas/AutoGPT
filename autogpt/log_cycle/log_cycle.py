@@ -49,13 +49,9 @@ class LogCycleHandler:
 
         return nested_folder_path
 
-    def create_nested_directory(
-        self, ai_name: str, created_at: str, cycle_count: int
-    ) -> str:
+    def create_nested_directory(self, ai_name: str, created_at: str, cycle_count: int) -> str:
         outer_folder_path = self.create_outer_directory(ai_name, created_at)
-        nested_folder_path = self.create_inner_directory(outer_folder_path, cycle_count)
-
-        return nested_folder_path
+        return self.create_inner_directory(outer_folder_path, cycle_count)
 
     def log_cycle(
         self,
@@ -72,14 +68,10 @@ class LogCycleHandler:
             data (Any): The data to be logged.
             file_name (str): The name of the file to save the logged data.
         """
-        nested_folder_path = self.create_nested_directory(
-            ai_name, created_at, cycle_count
-        )
+        nested_folder_path = self.create_nested_directory(ai_name, created_at, cycle_count)
 
         json_data = json.dumps(data, ensure_ascii=False, indent=4)
-        log_file_path = os.path.join(
-            nested_folder_path, f"{self.log_count_within_cycle}_{file_name}"
-        )
+        log_file_path = os.path.join(nested_folder_path, f"{self.log_count_within_cycle}_{file_name}")
 
         logger.log_json(json_data, log_file_path)
         self.log_count_within_cycle += 1
