@@ -16,9 +16,7 @@ session.headers.update({"User-Agent": CFG.user_agent})
 
 
 @validate_url
-def get_response(
-    url: str, timeout: int = 10
-) -> tuple[None, str] | tuple[Response, None]:
+def get_response(url: str, timeout: int = 10) -> tuple[None, str] | tuple[Response, None]:
     """Get the response from a URL
 
     Args:
