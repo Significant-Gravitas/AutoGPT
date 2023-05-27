@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from random import shuffle
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,7 +12,6 @@ from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
-from autogpt.memory.vector import MemoryItem, get_memory
 
 cfg = Config()
 
@@ -24,7 +22,7 @@ def chat_with_ai(
     system_prompt: str,
     user_input: str,
     token_limit: int,
-):
+):  # sourcery skip: low-code-quality, no-long-functions
     """
     Interact with the OpenAI API, sending the prompt, user input,
         message history, and permanent memory.
@@ -54,7 +52,6 @@ def chat_with_ai(
     #         shuffle(relevant_memories)
     #     relevant_memory = str(relevant_memories)
     # logger.debug(f"Memory Stats: {agent.memory.get_stats()}")
-    relevant_memory = []
 
     message_sequence = ChatSequence.for_model(
         model,
@@ -69,7 +66,7 @@ def chat_with_ai(
     )
 
     # Add messages from the full message history until we reach the token limit
-    next_message_to_add_index = len(agent.history) - 1
+    len(agent.history) - 1
     insertion_index = len(message_sequence)
     # Count the currently used tokens
     current_tokens_used = message_sequence.token_length
@@ -124,8 +121,7 @@ def chat_with_ai(
     # inform the AI about its remaining budget (if it has one)
     if api_manager.get_total_budget() > 0.0:
         remaining_budget = api_manager.get_total_budget() - api_manager.get_total_cost()
-        if remaining_budget < 0:
-            remaining_budget = 0
+        remaining_budget = max(remaining_budget, 0)
         budget_message = f"Your remaining API budget is ${remaining_budget:.3f}" + (
             " BUDGET EXCEEDED! SHUT DOWN!\n\n"
             if remaining_budget == 0
@@ -146,14 +142,10 @@ def chat_with_ai(
     for i, plugin in enumerate(cfg.plugins):
         if not plugin.can_handle_on_planning():
             continue
-        plugin_response = plugin.on_planning(
-            agent.config.prompt_generator, message_sequence.raw()
-        )
+        plugin_response = plugin.on_planning(agent.config.prompt_generator, message_sequence.raw())
         if not plugin_response or plugin_response == "":
             continue
-        tokens_to_add = count_message_tokens(
-            [Message("system", plugin_response)], model
-        )
+        tokens_to_add = count_message_tokens([Message("system", plugin_response)], model)
         if current_tokens_used + tokens_to_add > send_token_limit:
             logger.debug(f"Plugin response too long, skipping: {plugin_response}")
             logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
