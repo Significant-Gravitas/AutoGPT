@@ -22,9 +22,7 @@ def install_plugin_dependencies():
                 basedir = zfile.namelist()[0]
                 basereqs = os.path.join(basedir, "requirements.txt")
                 extracted = zfile.extract(basereqs, path=plugins_dir)
-                subprocess.check_call(
-                    [sys.executable, "-m", "pip", "install", "-r", extracted]
-                )
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", extracted])
                 os.remove(extracted)
                 os.rmdir(os.path.join(plugins_dir, basedir))
             except KeyError:
