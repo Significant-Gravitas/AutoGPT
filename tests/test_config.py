@@ -5,7 +5,6 @@ for the AI and ensures it behaves as a singleton.
 from unittest.mock import patch
 
 import pytest
-from openai import InvalidRequestError
 
 from autogpt.configurator import create_config
 
@@ -14,9 +13,9 @@ def test_initial_values(config):
     """
     Test if the initial values of the Config class attributes are set correctly.
     """
-    assert config.debug_mode == False
-    assert config.continuous_mode == False
-    assert config.speak_mode == False
+    assert config.debug_mode is False
+    assert config.continuous_mode is False
+    assert config.speak_mode is False
     assert config.fast_llm_model == "gpt-3.5-turbo"
     assert config.smart_llm_model == "gpt-4"
     assert config.fast_token_limit == 4000
@@ -31,7 +30,7 @@ def test_set_continuous_mode(config):
     continuous_mode = config.continuous_mode
 
     config.set_continuous_mode(True)
-    assert config.continuous_mode == True
+    assert config.continuous_mode is True
 
     # Reset continuous mode
     config.set_continuous_mode(continuous_mode)
@@ -45,7 +44,7 @@ def test_set_speak_mode(config):
     speak_mode = config.speak_mode
 
     config.set_speak_mode(True)
-    assert config.speak_mode == True
+    assert config.speak_mode is True
 
     # Reset speak mode
     config.set_speak_mode(speak_mode)
@@ -115,7 +114,7 @@ def test_set_debug_mode(config):
     debug_mode = config.debug_mode
 
     config.set_debug_mode(True)
-    assert config.debug_mode == True
+    assert config.debug_mode is True
 
     # Reset debug mode
     config.set_debug_mode(debug_mode)
