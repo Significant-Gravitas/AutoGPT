@@ -168,6 +168,17 @@ class Agent:
                 )
 
             if isinstance(command_msg, CommandMessage):
+                if command_msg.user_input == "GENERATE NEXT COMMAND JSON":
+                    logger.typewriter_log(
+                        "-=-=-=-=-=-=-= COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=",
+                        Fore.MAGENTA,
+                        "",
+                    )
+
+                if command_msg.user_input == "EXIT":
+                    logger.info("Exiting...")
+                    break
+
                 result = self._handle_command_message(command_msg)
             else:
                 result = self._handle_command_error(command_msg)
