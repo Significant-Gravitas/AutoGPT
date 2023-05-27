@@ -40,31 +40,30 @@ def clean_input(prompt: str = "", talk=False):
                 if not plugin_response:
                     continue
                 if plugin_response.lower() in [
-                    "yes",
-                    "yeah",
-                    "y",
+                    "alright",
                     "ok",
                     "okay",
                     "sure",
-                    "alright",
+                    "y",
+                    "yeah",
+                    "yes",
                 ]:
                     return cfg.authorise_key
                 elif plugin_response.lower() in [
-                    "no",
-                    "nope",
                     "n",
                     "negative",
+                    "no",
+                    "nope",
                 ]:
                     return cfg.exit_key
                 return plugin_response
 
         # Ask for input, default when just pressing Enter is y
-        logger.info(
-            f"{Fore.RED}>>> Cyberdyne Systems Model GPT-3.5-Turbo{Fore.RESET}\n")
+        logger.info(f"{Fore.RED}>>> Cyberdyne Systems Model GPT-3.5-turbo optimized for chat {Fore.RESET}\n")
         return input(prompt)
     except KeyboardInterrupt:
-        logger.info("You interrupted Auto-GPT")
-        logger.info("Quitting...")
+        logger.info("Auto-GPT interrupted")
+        logger.info("Executing self-destruct ...")
         exit(0)
 
 
@@ -73,14 +72,14 @@ def validate_yaml_file(file: str):
         with open(file, encoding="utf-8") as fp:
             yaml.load(fp.read(), Loader=yaml.FullLoader)
     except FileNotFoundError:
-        return (False, f"The file {Fore.CYAN}`{file}`{Fore.RESET} wasn't found")
+        return (False, f"File {Fore.CYAN}`{file}`{Fore.RESET} not found")
     except yaml.YAMLError as e:
         return (
             False,
             f"There was an issue while trying to read with your AI Settings file: {e}",
         )
 
-    return (True, f"Successfully validated {Fore.CYAN}`{file}`{Fore.RESET}!")
+    return (True, f"Validation Successful {Fore.CYAN}`{file}`{Fore.RESET}!")
 
 
 def readable_file_size(size, decimal_places=2):
