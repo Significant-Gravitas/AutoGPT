@@ -82,7 +82,7 @@ class TestPromptGenerator(TestCase):
         evaluations = ["Evaluation1", "Evaluation2"]
 
         # Add test data to the generator
-# sourcery skip: no-loop-in-tests
+        # sourcery skip: no-loop-in-tests
         for constraint in constraints:
             self.generator.add_constraint(constraint)
         for command in commands:
