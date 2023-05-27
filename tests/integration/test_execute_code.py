@@ -29,22 +29,22 @@ def random_string():
     return "".join(random.choice(string.ascii_lowercase) for _ in range(10))
 
 
-def test_execute_python_file(python_test_file: str, random_string: str):
-    result = sut.execute_python_file(python_test_file)
-    assert result == f"Hello {random_string}!\n"
+def test_execute_python_file(python_test_file: str, random_string: str, config):
+    result: str = sut.execute_python_file(python_test_file, config)
+    assert result.replace("\r", "") == f"Hello {random_string}!\n"
 
 
-def test_execute_python_file_invalid():
+def test_execute_python_file_invalid(config):
     assert all(
-        s in sut.execute_python_file("not_python").lower()
+        s in sut.execute_python_file("not_python", config).lower()
         for s in ["error:", "invalid", ".py"]
     )
     assert all(
-        s in sut.execute_python_file("notexist.py").lower()
+        s in sut.execute_python_file("notexist.py", config).lower()
         for s in ["error:", "does not exist"]
     )
 
 
-def test_execute_shell(config_allow_execute, random_string):
-    result = sut.execute_shell(f"echo 'Hello {random_string}!'")
+def test_execute_shell(config_allow_execute, random_string, config):
+    result = sut.execute_shell(f"echo 'Hello {random_string}!'", config)
     assert f"Hello {random_string}!" in result

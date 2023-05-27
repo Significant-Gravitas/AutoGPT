@@ -2,10 +2,12 @@
 Test cases for the Config class, which handles the configuration settings
 for the AI and ensures it behaves as a singleton.
 """
+from unittest.mock import patch
 
 import pytest
+from openai import InvalidRequestError
 
-from autogpt.config import Config
+from autogpt.configurator import create_config
 
 
 def test_initial_values(config):
@@ -117,3 +119,55 @@ def test_set_debug_mode(config):
 
     # Reset debug mode
     config.set_debug_mode(debug_mode)
+
+
+@patch("openai.Model.list")
+def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config):
+    """
+    Test if models update to gpt-3.5-turbo if both are set to gpt-4.
+    """
+    fast_llm_model = config.fast_llm_model
+    smart_llm_model = config.smart_llm_model
+
+    config.fast_llm_model = "gpt-4"
+    config.smart_llm_model = "gpt-4"
+
+    mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
+
+    create_config(
+        config=config,
+        continuous=False,
+        continuous_limit=False,
+        ai_settings_file="",
+        prompt_settings_file="",
+        skip_reprompt=False,
+        speak=False,
+        debug=False,
+        gpt3only=False,
+        gpt4only=False,
+        memory_type="",
+        browser_name="",
+        allow_downloads=False,
+        skip_news=False,
+    )
+
+    assert config.fast_llm_model == "gpt-3.5-turbo"
+    assert config.smart_llm_model == "gpt-3.5-turbo"
+
+    # Reset config
+    config.set_fast_llm_model(fast_llm_model)
+    config.set_smart_llm_model(smart_llm_model)
+
+
+def test_missing_azure_config(config, workspace):
+    config_file = workspace.get_path("azure_config.yaml")
+    with pytest.raises(FileNotFoundError):
+        config.load_azure_config(str(config_file))
+
+    config_file.write_text("")
+    config.load_azure_config(str(config_file))
+
+    assert config.openai_api_type == "azure"
+    assert config.openai_api_base == ""
+    assert config.openai_api_version == "2023-03-15-preview"
+    assert config.azure_model_to_deployment_id_map == {}

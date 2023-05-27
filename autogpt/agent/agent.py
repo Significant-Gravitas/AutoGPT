@@ -7,17 +7,17 @@ from typing import Any, Dict, Optional, Tuple
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command_message
+
+from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config
+from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
-from autogpt.llm import (
-    Message,
-    chat_with_ai,
-    create_chat_completion,
-    create_chat_message,
-)
-from autogpt.llm.base import CommandError, CommandMessage
-from autogpt.llm.token_counter import count_string_tokens
+from autogpt.llm import Message
+from autogpt.llm.base import CommandError, CommandMessage, ChatSequence
+
+from autogpt.llm.chat import chat_with_ai, create_chat_completion
+from autogpt.llm.utils import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
@@ -27,6 +27,8 @@ from autogpt.log_cycle.log_cycle import (
     LogCycleHandler,
 )
 from autogpt.logs import logger, print_assistant_thoughts
+from autogpt.memory.message_history import MessageHistory
+from autogpt.memory.vector import VectorMemory
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
@@ -39,7 +41,6 @@ class Agent:
     Attributes:
         ai_name: The name of the agent.
         memory: The memory object to use.
-        full_message_history: The full message history.
         next_action_count: The number of actions to execute.
         system_prompt: The system prompt is the initial prompt that defines everything
           the AI needs to know to achieve its task successfully.
@@ -64,24 +65,19 @@ class Agent:
 
     def __init__(
         self,
-        ai_name,
-        memory,
-        full_message_history,
-        next_action_count,
-        command_registry,
-        config,
-        system_prompt,
-        triggering_prompt,
-        workspace_directory,
-    ) -> None:
+        ai_name: str,
+        memory: VectorMemory,
+        next_action_count: int,
+        command_registry: CommandRegistry,
+        config: AIConfig,
+        system_prompt: str,
+        triggering_prompt: str,
+        workspace_directory: str,
+    ):
         self.cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
-        self.summary_memory = (
-            "I was created."  # Initial memory necessary to avoid hallucination
-        )
-        self.last_memory_index = 0
-        self.full_message_history = full_message_history
+        self.history = MessageHistory(self)
         self.next_action_count = next_action_count
         self.command_registry = command_registry
         self.ai_config = config
@@ -89,12 +85,11 @@ class Agent:
         self.triggering_prompt = triggering_prompt
         self.workspace = Workspace(workspace_directory, self.cfg.restrict_to_workspace)
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_cycle_handler = LogCycleHandler()
         self.cycle_count = 0
+        self.log_cycle_handler = LogCycleHandler()
+
         self.error_count = 0
         self.errors: Dict[str, list[CommandError]] = defaultdict(list)
-
-        # Signal handler for interrupting y -N
 
     def start_interaction_loop(self) -> None:
         # Interaction Loop
@@ -111,7 +106,7 @@ class Agent:
                 self.ai_config.ai_name,
                 self.created_at,
                 self.cycle_count,
-                self.full_message_history,
+                [m.raw() for m in self.history],
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
 
@@ -124,13 +119,11 @@ class Agent:
                 break
 
             # Send message to AI, get response
-            with Spinner("Thinking... "):
+            with Spinner("Thinking... ", plain_output=self.cfg.plain_output):
                 assistant_reply = chat_with_ai(
                     self,
                     self.system_prompt,
                     self.triggering_prompt,
-                    self.full_message_history,
-                    self.memory,
                     self.cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
@@ -286,8 +279,7 @@ class Agent:
         else:
             logger.info(
                 "Command is invalid. Enter 's' to run self-feedback commands, "
-                "'n' to exit program, or enter feedback for "
-                f"{self.ai_name}..."
+                f"'n' to exit program, or enter feedback for {self.ai_name}..."
             )
 
             while True:
@@ -335,10 +327,8 @@ class Agent:
             command_name,
             arguments,
             self.ai_config.prompt_generator,
+            config=self.cfg,
         )
-
-        if self.next_action_count > 0:
-            self.next_action_count -= 1
 
         return self._validate_command_result(command_msg, str(command_result))
 
@@ -349,9 +339,7 @@ class Agent:
         arguments = command_msg.args
 
         if self._is_output_too_large(command_result):
-            self._add_error(
-                CommandError(command_name, arguments, "Too much " "output.")
-            )
+            self._add_error(CommandError(command_name, arguments, "Too much output."))
             result = (
                 f"Failure: command '{command_name}' returned too much "
                 f"output. Do not execute this command again with the same arguments."
@@ -364,7 +352,7 @@ class Agent:
                 f"again with the same arguments."
             )
         else:
-            result = f"Command {command_name} returned: {command_result}"
+            result = f"Command '{command_name}' returned: {command_result}"
 
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_post_command():
@@ -372,16 +360,17 @@ class Agent:
 
             result = plugin.post_command(command_name, result)
 
+        if self.next_action_count > 0:
+            self.next_action_count -= 1
+
         return result
 
     def _append_result_to_full_message_history(self, result: Optional[str]) -> None:
         if result is not None:
-            self.full_message_history.append(create_chat_message("system", result))
+            self.history.add("system", result, "action_result")
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
         else:
-            self.full_message_history.append(
-                create_chat_message("system", "Unable to execute command")
-            )
+            self.history.add("system", "Unable to execute command", "action_result")
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
 
     def _error_threshold_reached(self) -> bool:
@@ -392,7 +381,7 @@ class Agent:
             str(command_result), self.cfg.fast_llm_model
         )
         memory_tlength = count_string_tokens(
-            str(self.summary_memory), self.cfg.fast_llm_model
+            str(self.history.summary_message()), self.cfg.fast_llm_model
         )
 
         return result_tlength + memory_tlength + 600 > self.cfg.fast_token_limit
@@ -415,32 +404,16 @@ class Agent:
         thoughts = assistant_reply_json.get("thoughts", {})
 
         with Spinner("Getting self feedback... "):
-            messages, feedback = self._get_self_feedback_from_ai(
-                thoughts,
+            self_feedback_resp = self._get_self_feedback_from_ai(
+                thoughts, self.cfg.fast_llm_model
             )
 
-        self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            messages,
-            PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
-        )
-
-        self.log_cycle_handler.log_cycle(
-            self.ai_config.ai_name,
-            self.created_at,
-            self.cycle_count,
-            feedback,
-            SUPERVISOR_FEEDBACK_FILE_NAME,
-        )
-
         logger.typewriter_log(
-            f"SELF FEEDBACK: {feedback}",
+            f"SELF FEEDBACK: {self_feedback_resp}",
             Fore.YELLOW,
             "",
         )
-        user_input = feedback
+        user_input = self_feedback_resp
         command_name = "self_feedback"
 
         return CommandMessage(command_name, {}, user_input)
@@ -461,20 +434,32 @@ class Agent:
     def _get_self_feedback_from_ai(
         self,
         thoughts: dict,
-    ) -> Tuple[Dict[str, str], str]:
-        full_prompt = self.construct_self_feedback_prompt(thoughts)
+        llm_model: str,
+    ) -> str:
+        feedback_prompt = self.construct_self_feedback_prompt(thoughts)
 
-        feedback_prompt = {"role": "user", "content": full_prompt}
-        messages = [Message(**feedback_prompt)]
+        prompt = ChatSequence.for_model(llm_model)
+        prompt.add("user", feedback_prompt)
 
-        model = self.cfg.fast_llm_model  # TODO: Change model from hardcode to
-        # argument
-        assistant_reply = create_chat_completion(
-            model=model,
-            messages=messages,
+        self.log_cycle_handler.log_cycle(
+            self.ai_config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            prompt.raw(),
+            PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
         )
 
-        return feedback_prompt, assistant_reply
+        feedback = create_chat_completion(prompt)
+
+        self.log_cycle_handler.log_cycle(
+            self.ai_config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            feedback,
+            SUPERVISOR_FEEDBACK_FILE_NAME,
+        )
+
+        return feedback
 
     def construct_self_feedback_prompt(
         self,
@@ -542,6 +527,19 @@ class Agent:
                 f"arguments:\n"
                 f"{self._generate_error_list()}"
             )
+
+        # prompt = ChatSequence.for_model(llm_model)
+        # prompt.add("user", feedback_prompt + feedback_thoughts)
+        #
+        # self.log_cycle_handler.log_cycle(
+        #     self.config.ai_name,
+        #     self.created_at,
+        #     self.cycle_count,
+        #     prompt.raw(),
+        #     PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
+        # )
+        #
+        # feedback = create_chat_completion(prompt)
 
         return full_prompt
 
