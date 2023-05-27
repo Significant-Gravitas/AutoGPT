@@ -159,7 +159,7 @@ class TestCommandRegistry:
         registry.register(cmd)
         command_prompt = registry.command_prompt()
 
-        assert f"(arg1: int, arg2: str)" in command_prompt
+        assert "(arg1: int, arg2: str)" in command_prompt
 
     def test_import_mock_commands_module(self):
         """Test that the registry can import a module with mock command plugins."""
@@ -170,10 +170,7 @@ class TestCommandRegistry:
 
         assert "function_based" in registry.commands
         assert registry.commands["function_based"].name == "function_based"
-        assert (
-            registry.commands["function_based"].description
-            == "Function-based test command"
-        )
+        assert registry.commands["function_based"].description == "Function-based test command"
 
     def test_import_temp_command_file_module(self, tmp_path):
         """
@@ -199,7 +196,4 @@ class TestCommandRegistry:
 
         assert "function_based" in registry.commands
         assert registry.commands["function_based"].name == "function_based"
-        assert (
-            registry.commands["function_based"].description
-            == "Function-based test command"
-        )
+        assert registry.commands["function_based"].description == "Function-based test command"
