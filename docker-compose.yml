@@ -12,6 +12,8 @@ services:
     ports:
       - "8765:8765"
     environment:
+      MEMORY_BACKEND: ${MEMORY_BACKEND:-redis}
+      REDIS_HOST: ${REDIS_HOST:-redis}
       SUNCO_APP_ID: ${SUNCO_APP_ID}
       SUNCO_API_KEY: ${SUNCO_API_KEY}
       SUNCO_API_SECRET: ${SUNCO_API_SECRET}
@@ -25,3 +27,5 @@ services:
       - ./docker-compose.yml:/app/docker-compose.yml:ro
       - ./Dockerfile:/app/Dockerfile:ro
     profiles: ["exclude-from-up"]
+  redis:
+    image: "redis/redis-stack-server:latest"

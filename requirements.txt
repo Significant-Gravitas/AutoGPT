@@ -65,6 +65,11 @@ websockets
 requests
 PyJWT
 langchain[llms]
+zenpy
+sunshine-conversations-client
+websockets
+requests
+PyJWT
 
 # Items below this point will not be included in the Docker Image
 
