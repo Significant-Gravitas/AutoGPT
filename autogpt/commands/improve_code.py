@@ -23,13 +23,8 @@ def improve_code(suggestions: list[str], code: str) -> str:
         A result string from create chat completion. Improved code in response.
     """
 
-    function_string = (
-        "def generate_improved_code(suggestions: list[str], code: str) -> str:"
-    )
+    function_string = "def generate_improved_code(suggestions: list[str], code: str) -> str:"
     args = [json.dumps(suggestions), code]
-    description_string = (
-        "Improves the provided code based on the suggestions"
-        " provided, making no other changes."
-    )
+    description_string = "Improves the provided code based on the suggestions" " provided, making no other changes."
 
     return call_ai_function(function_string, args, description_string)
