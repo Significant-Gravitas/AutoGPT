@@ -59,7 +59,11 @@ def clean_input(prompt: str = "", talk=False):
                 return plugin_response
 
         # Ask for input, default when just pressing Enter is y
-        logger.info(f"{Fore.RED}>>> Cyberdyne Systems Model GPT-3.5-turbo optimized for chat {Fore.RESET}\n")
+        logger.info(
+            f"{Fore.RED}>>> Cyberdyne Systems Model GPT-3.5-turbo{Fore.RESET}"
+            f"{Fore.ORANGE}[TEXT-EMBEDDING 3,500 RPM, 90,000 TPM]{Fore.RESET}"
+            f"{Fore.YELLOW}[CHAT 3,500 RPM, 350,000 TPM]{Fore.RESET}\n"
+        )
         return input(prompt)
     except KeyboardInterrupt:
         logger.info("Auto-GPT interrupted")
