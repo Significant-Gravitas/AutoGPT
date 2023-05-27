@@ -6,7 +6,6 @@ import os
 import os.path
 from typing import Generator, Literal
 
-import charset_normalizer
 import requests
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
@@ -80,9 +79,7 @@ def file_operations_state(log_path: str) -> dict[str, str]:
     return state
 
 
-def is_duplicate_operation(
-    operation: Operation, filename: str, checksum: str | None = None
-) -> bool:
+def is_duplicate_operation(operation: Operation, filename: str, checksum: str | None = None) -> bool:
     """Check if the operation has already been performed
 
     Args:
@@ -96,9 +93,7 @@ def is_duplicate_operation(
     state = file_operations_state(CFG.file_logger_path)
     if operation == "delete" and filename not in state:
         return True
-    if operation == "write" and state.get(filename) == checksum:
-        return True
-    return False
+    return operation == "write" and state.get(filename) == checksum
 
 
 def log_operation(operation: str, filename: str, checksum: str | None = None) -> None:
@@ -116,9 +111,7 @@ def log_operation(operation: str, filename: str, checksum: str | None = None) ->
     append_to_file(CFG.file_logger_path, f"{log_entry}\n", should_log=False)
 
 
-def split_file(
-    content: str, max_length: int = 4000, overlap: int = 0
-) -> Generator[str, None, None]:
+def split_file(content: str, max_length: int = 4000, overlap: int = 0) -> Generator[str, None, None]:
     """
     Split text into chunks of a specified maximum length with a specified overlap
     between chunks.
@@ -163,10 +156,7 @@ def read_file(filename: str) -> str:
 
         # TODO: invalidate/update memory when file is edited
         file_memory = MemoryItem.from_text_file(content, filename)
-        if len(file_memory.chunks) > 1:
-            return file_memory.summary
-
-        return content
+        return file_memory.summary if len(file_memory.chunks) > 1 else content
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -222,9 +212,7 @@ def write_to_file(filename: str, text: str) -> str:
         return f"Error: {err}"
 
 
-@command(
-    "append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"'
-)
+@command("append_to_file", "Append to file", '"filename": "<filename>", "text": "<text>"')
 def append_to_file(filename: str, text: str, should_log: bool = True) -> str:
     """Append text to a file
 
@@ -288,9 +276,7 @@ def list_files(directory: str) -> list[str]:
         for file in files:
             if file.startswith("."):
                 continue
-            relative_path = os.path.relpath(
-                os.path.join(root, file), CFG.workspace_path
-            )
+            relative_path = os.path.relpath(os.path.join(root, file), CFG.workspace_path)
             found_files.append(relative_path)
 
     return found_files
@@ -337,7 +323,7 @@ def download_file(url, filename):
                         progress = f"{readable_file_size(downloaded_size)} / {readable_file_size(total_size)}"
                         spinner.update_message(f"{message} {progress}")
 
-            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(downloaded_size)})'
+            return f'Successfully downloaded and locally stored file: "{filename}"! (Size: {readable_file_size(downloaded_size)})'  # noqa: E501
     except requests.HTTPError as err:
         return f"Got an HTTP Error whilst trying to download file: {err}"
     except Exception as err:
