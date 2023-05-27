@@ -16,7 +16,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
     This is a BaseOpenAIPlugin class for generating Auto-GPT plugins.
     """
 
-    def __init__(self, manifests_specs_clients: dict):
+    def __init__(self, manifests_specs_clients: Dict):
         # super().__init__()
         self._name = manifests_specs_clients["manifest"]["name_for_model"]
         self._version = manifests_specs_clients["manifest"]["schema_version"]
@@ -60,9 +60,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
             bool: True if the plugin can handle the on_planning method."""
         return False
 
-    def on_planning(
-        self, prompt: PromptGenerator, messages: List[Message]
-    ) -> Optional[str]:
+    def on_planning(self, prompt: PromptGenerator, messages: List[Message]) -> Optional[str]:
         """This method is called before the planning chat completion is done.
         Args:
             prompt (PromptGenerator): The prompt generator.
@@ -141,9 +139,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
             bool: True if the plugin can handle the pre_command method."""
         return False
 
-    def pre_command(
-        self, command_name: str, arguments: Dict[str, Any]
-    ) -> Tuple[str, Dict[str, Any]]:
+    def pre_command(self, command_name: str, arguments: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         """This method is called before the command is executed.
         Args:
             command_name (str): The command name.
@@ -184,9 +180,7 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
               bool: True if the plugin can handle the chat_completion method."""
         return False
 
-    def handle_chat_completion(
-        self, messages: List[Message], model: str, temperature: float, max_tokens: int
-    ) -> str:
+    def handle_chat_completion(self, messages: List[Message], model: str, temperature: float, max_tokens: int) -> str:
         """This method is called when the chat completion is done.
         Args:
             messages (List[Message]): The messages.
