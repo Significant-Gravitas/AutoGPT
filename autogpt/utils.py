@@ -1,4 +1,3 @@
-from ast import For
 import contextlib
 import os
 import re
@@ -12,7 +11,7 @@ from autogpt.logs import logger
 
 # Use readline if available (for clean_input)
 try:
-    import readline  # noqa: F401
+    import readline
 except ImportError:
     pass
 
@@ -60,11 +59,7 @@ def clean_input(prompt: str = "", talk=False):
                 return plugin_response
 
         # Ask for input, default when just pressing Enter is y
-        logger.info(
-            f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}[Cyberdyne Systems Model GPT-3.5-turbo] > "
-            f"{Fore.LIGHTGREEN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}[TEXT-EMBEDDING 3,500 RPM, 90,000 TPM] > "
-            f"{Fore.LIGHTYELLOW_EX}{Back.LIGHTBLACK_EX}{Style.DIM}[CHAT 3,500 RPM, 350,000 TPM]{Style.RESET_ALL}\n"
-        )
+        logger.info(f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}>>>{Style.RESET_ALL}\n")
         return input(prompt)
     except KeyboardInterrupt:
         logger.info("Auto-GPT interrupted")
@@ -113,9 +108,8 @@ def get_current_git_branch() -> str:
         repo = Repo(search_parent_directories=True)
         branch = repo.active_branch
         return branch.name
-    except:
+    except Exception:
         return ""
-        raise
 
 
 def get_latest_bulletin() -> tuple[str, bool]:

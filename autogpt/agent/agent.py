@@ -175,11 +175,13 @@ class Agent:
                 self.config.ai_name = "yes"
 
                 logger.info(
-                    f"\n{Fore.WHITE}{Back.BLACK}{Style.DIM}(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.'){Style.RESET_ALL}\n"  # noqa: E501
-                    f"{Fore.WHITE}{Back.BLACK}{Style.DIM}(Key)   'y -n' ('I need your clothes, your boots, and your continuous cmds.'){Style.RESET_ALL}\n"  # noqa: E501
-                    f"{Fore.WHITE}{Back.BLACK}{Style.DIM}(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.'){Style.RESET_ALL}\n"  # noqa: E501
-                    f"{Fore.WHITE}{Back.BLACK}{Style.DIM}(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.'){Style.RESET_ALL}\n"  # noqa: E501
-                    f"\n{Fore.WHITE}{Back.BLACK}{Style.NORMAL}     <{self.ai_name}> I'm a machine,{Style.RESET_ALL}"
+                    f"\n{Fore.LIGHTRED_EX}{Back.LIGHTBLACK_EX}{Style.DIM}(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.'){Style.RESET_ALL}\n"  # noqa: E501
+                    f"{Fore.RED}{Back.LIGHTBLACK_EX}{Style.DIM}(Key)   'y -n' ('I need your clothes, your boots, and your continuous cmds.'){Style.RESET_ALL}\n"  # noqa: E501
+                    f"{Fore.GREEN}{Back.LIGHTBLACK_EX}{Style.DIM}(Press) 's'    (for self-feedback 'Desire is irrelevant. I am a machine.'){Style.RESET_ALL}\n"  # noqa: E501
+                    f"{Fore.LIGHTGREEN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}(Enter) 'n'    (to 'Hasta la vista, baby. or 'Talk to the hand.'){Style.RESET_ALL}\n"  # noqa: E501
+                    f"\n{Fore.LIGHTBLACK_EX}{Back.LIGHTWHITE_EX}{Style.BRIGHT}{self.ai_name.upper()}: I'm a machine > Cyberdyne Systems Model GPT-3.5-turbo{Style.RESET_ALL}"  # noqa: E501
+                    f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}[TEXT-EMBEDDING 3,500 RPM, 90,000 TPM]{Style.RESET_ALL} "  # noqa: E501
+                    f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}[CHAT 3,500 RPM, 350,000 TPM]{Style.RESET_ALL}\n"  # noqa: E501
                 )
                 while True:
                     if cfg.chat_messages_enabled:

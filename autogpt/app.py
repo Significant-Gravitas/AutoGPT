@@ -50,11 +50,11 @@ def get_command(response_json: Dict):
         if "command" not in response_json:
             return "Error:", "Missing 'command' object in JSON"
 
-        if not isinstance(response_json, dict):
+        if not isinstance(response_json, Dict):
             return "Error:", f"'response_json' object is not dictionary {response_json}"
 
         command = response_json["command"]
-        if not isinstance(command, dict):
+        if not isinstance(command, Dict):
             return "Error:", "'command' object is not a dictionary"
 
         if "name" not in command:
@@ -83,7 +83,11 @@ def map_command_synonyms(command_name: str):
         ("search", "google"),
     ]
     return next(
-        (actual_command_name for seen_command, actual_command_name in synonyms if command_name == seen_command),
+        (
+            actual_command_name
+            for seen_command, actual_command_name in synonyms
+            if command_name == seen_command
+        ),
         command_name,
     )
 
@@ -113,19 +117,23 @@ def execute_command(
         if command_name == "memory_add":
             return get_memory(CFG).add(arguments["string"])
 
-        return next(
-            (
-                command["function"](**arguments)
-                for command in prompt.commands
-                if command_name in [command["label"].lower(), command["name"].lower()]
-            ),
-            f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for available commands and only respond in the specified JSON format.",  # noqa: E501
-        )
+        else:
+            return next(
+                (
+                    command["function"](**arguments)
+                    for command in prompt.commands
+                    if command_name
+                    in [command["label"].lower(), command["name"].lower()]
+                ),
+                f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for available commands and only respond in the specified JSON format.",  # noqa: E501
+            )
     except Exception as e:
         return f"Error: {str(e)}"
 
 
-@command("get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"')
+@command(
+    "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
+)
 @validate_url
 def get_text_summary(url: str, question: str) -> str:
     """Get the text summary of a webpage
@@ -174,6 +182,8 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     Returns:
         str: The response of the agent
     """
+    agent_manager = AgentManager()
+
     # Remove underscores from name
     voice_name = name.replace("_", " ")
 
@@ -183,13 +193,13 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
         agent_intro = f"{voice_name} here, Reporting for duty!"
 
         say_text(agent_intro, 1)
-    key, ack = AgentManager.create_agent(task, first_message, model)
+    key, ack = agent_manager.create_agent(task, first_message, model)
 
     if CFG.speak_mode:
         say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
     # Assign task (prompt), get response
-    agent_response = AgentManager.message_agent(key, prompt)
+    agent_response = agent_manager.message_agent(key, prompt)
 
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
@@ -216,7 +226,9 @@ def list_agents() -> str:
     Returns:
         str: A list of all agents
     """
-    return "List of agents:\n" + "\n".join([f"{str(x[0])}: {x[1]}" for x in AgentManager().list_agents()])
+    return "List of agents:\n" + "\n".join(
+        [f"{str(x[0])}: {x[1]}" for x in AgentManager().list_agents()]
+    )
 
 
 @command("delete_agent", "Delete GPT Agent", '"key": "<key>"')
