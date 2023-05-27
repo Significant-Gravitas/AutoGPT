@@ -25,13 +25,8 @@ def write_tests(code: str, focus: list[str]) -> str:
           in response.
     """
 
-    function_string = (
-        "def create_test_cases(code: str, focus: Optional[str] = None) -> str:"
-    )
+    function_string = "def create_test_cases(code: str, focus: Optional[str] = None) -> str:"
     args = [code, json.dumps(focus)]
-    description_string = (
-        "Generates test cases for the existing code, focusing on"
-        " specific areas if required."
-    )
+    description_string = "Generates test cases for the existing code, focusing on" " specific areas if required."
 
     return call_ai_function(function_string, args, description_string)
