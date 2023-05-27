@@ -71,9 +71,7 @@ class ElevenLabsSpeech(VoiceBase):
         """
         from autogpt.logs import logger
 
-        tts_url = (
-            f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_index]}"
-        )
+        tts_url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._voices[voice_index]}"
         response = requests.post(tts_url, headers=self._headers, json={"text": text})
 
         if response.status_code == 200:
