@@ -1,5 +1,8 @@
 """Configuration class to store the state of bools for different scripts access."""
 import os
+import random
+import re
+from tkinter.messagebox import askquestion
 from typing import List
 
 import openai
@@ -239,13 +242,34 @@ class Config(metaclass=Singleton):
         """Set the memory backend name."""
         self.memory_backend = name
 
+    def is_question(self):
+        # this function checks if the input is a question
+        return (
+            re.search(
+                r"\b(question|who|what|where|when|why|how|which)\b",
+                self,
+                re.IGNORECASE,
+            )
+            is not None
+        )
+
+    fallback_responses = [
+        "I'm sorry. Could you please rephrase that?",
+        "I'm not sure I understand what you're asking. Can you give me more context?",
+        "I didn't catch that. Can you try asking again in a different way?", ]
+
+    def get_response(self):
+        # this function defines the bot's response to user input
+        if askquestion(self):
+            return "Good question! Let me see if I can help you with that."
+        else:
+            return random.choice(self.fallback_responses)
+
 
 def check_openai_api_key() -> None:
     """Check if the OpenAI API key is set in config.py or as an environment variable."""
     cfg = Config()
     if not cfg.openai_api_key:
-        print(
-            f"{Fore.RED}Please set your OpenAI API key in .env or as an environment variable.{Fore.RESET}"
-        )
+        print(f"{Fore.RED}Please set your OpenAI API key in .env or as an environment variable.{Fore.RESET}")
         print("You can get your key from https://platform.openai.com/account/api-keys")
         exit(1)
