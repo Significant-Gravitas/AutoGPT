@@ -211,7 +211,7 @@ def get_nobel_prize_agent(
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
     command_registry.import_commands("autogpt.commands.web_selenium")
-    
+
     ai_config = AIConfig(
         ai_name="Get-PhysicsNobelPrize",
         ai_role="An autonomous agent that specializes in physics history.",
