@@ -38,7 +38,6 @@ class ModelInfo:
     prompt_token_cost: float
     completion_token_cost: float
     max_tokens: int
-    soft_token_limit: int
 
 
 @dataclass
