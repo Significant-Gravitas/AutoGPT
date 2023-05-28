@@ -88,7 +88,7 @@ def main(
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
 
     Start an Auto-GPT assistant.
-    """
+    """  # noqa: E501
     # Put imports inside function to avoid importing everything when starting the CLI
     from autogpt.main import run_auto_gpt
 
