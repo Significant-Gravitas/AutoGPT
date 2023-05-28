@@ -182,15 +182,15 @@ class Agent:
                 )
                 while True:
                     if cfg.chat_messages_enabled:
-                        console_input = clean_input(f"{Fore.BLUE}INPUT: ")
+                        console_input = clean_input(f"{Fore.BLUE}CONSOLE INPUT: ")
                     else:
-                        console_input = clean_input(f"{Fore.MAGENTA}Input:{Style.RESET_ALL}")
+                        console_input = clean_input(f"{Fore.RED}console input:{Style.RESET_ALL} ")
                     if console_input.lower().strip() == cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
                     elif console_input.lower().strip() == "s":
                         logger.typewriter_log(
-                            "=-=-=-= THOUGHTS, REASONING, PLAN, AND CRITICISM WILL NOW BE VERIFIED BY THE AGENT =-=-=-="
+                            "\n=-==< THOUGHTS, REASONING, PLAN, AND CRITICISM WILL NOW BE VERIFIED BY THE AGENT >==-="
                         )
                         thoughts = assistant_reply_json.get("thoughts", {})
                         self_feedback_resp = self.get_self_feedback(thoughts, cfg.fast_llm_model)
@@ -279,10 +279,10 @@ class Agent:
             # Check for result from the command append it to the message history"
             if result is not None:
                 self.history.add("system", result, "action_result")
-                logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
+                logger.typewriter_log("\nSYSTEM: ", Fore.YELLOW, result)
             else:
                 self.history.add("system", "Unable to execute command", "action_result")
-                logger.typewriter_log("SYSTEM: ", Fore.RED, "Unable to execute command")
+                logger.typewriter_log("\nSYSTEM: ", Fore.RED, "Unable to execute command")
 
     def _resolve_pathlike_command_args(self, command_args):
         if "directory" in command_args and command_args["directory"] in {"", "/"}:

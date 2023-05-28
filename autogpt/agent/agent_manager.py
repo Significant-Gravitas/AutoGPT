@@ -15,32 +15,21 @@ class AgentManager(metaclass=Singleton):
         self.agents: dict[int, tuple[str, list[Message], str]] = {}  # key, (task, full_message_history, model)
         self.cfg = Config()
 
-    # Create new GPT agent
-    # TODO: Centralize use of create_chat_completion() to globally enforce token limit
+        # Create new GPT agent
+        # TODO: Centralize use of create_chat_completion() to globally enforce token limit
 
     def create_agent(self, task: str, creation_prompt: str, model: str) -> tuple[int, str]:
-        """Create a new agent and return its key
-
-        Args:
-            task: The task to perform
-            creation_prompt: Prompt passed to the LLM at creation
-            model: The model to use to run this agent
-
-        Returns:
-            The key of the new agent
-        """
+        # Create a new agent and return its key
         messages = ChatSequence.for_model(model, [Message("user", creation_prompt)])
-
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_pre_instruction():
                 continue
             if plugin_messages := plugin.pre_instruction(messages.raw()):
                 messages.extend([Message(**raw_msg) for raw_msg in plugin_messages])
+
         # Start GPT instance
         agent_reply = create_chat_completion(prompt=messages)
-
         messages.add("assistant", agent_reply)
-
         plugins_reply = ""
         for i, plugin in enumerate(self.cfg.plugins):
             if not plugin.can_handle_on_instruction():
@@ -48,35 +37,22 @@ class AgentManager(metaclass=Singleton):
             if plugin_result := plugin.on_instruction([m.raw() for m in messages]):
                 sep = "\n" if i else ""
                 plugins_reply = f"{plugins_reply}{sep}{plugin_result}"
-
         if plugins_reply and plugins_reply != "":
             messages.add("assistant", plugins_reply)
         key = self.next_key
-        # This is done instead of len(agents) to make keys unique even if agents
-        # are deleted
+
+        # We do this instead of len(agents) to make keys unique even if agents are deleted.
         self.next_key += 1
-
         self.agents[key] = (task, list(messages), model)
-
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_post_instruction():
                 continue
             agent_reply = plugin.post_instruction(agent_reply)
-
         return key, agent_reply
 
     def message_agent(self, key: str | int, message: str) -> str:
-        """Send a message to an agent and return its response
-
-        Args:
-            key: The key of the agent to message
-            message: The message to send to the agent
-
-        Returns:
-            The agent's response
-        """
-        task, messages, model = self.agents[int(key)]
-
+        # Send a message to an agent and return its response
+        messages, model = self.agents[int(key)]
         # Add user message to message history before sending to agent
         messages = ChatSequence.for_model(model, messages)
         messages.add("user", message)
@@ -99,6 +75,7 @@ class AgentManager(metaclass=Singleton):
             if plugin_result := plugin.on_instruction([m.raw() for m in messages]):
                 sep = "\n" if i else ""
                 plugins_reply = f"{plugins_reply}{sep}{plugin_result}"
+
         # Update full message history
         if plugins_reply and plugins_reply != "":
             messages.add("assistant", plugins_reply)
@@ -111,24 +88,13 @@ class AgentManager(metaclass=Singleton):
         return agent_reply
 
     def list_agents(self) -> list[tuple[str | int, str]]:
-        """Return a list of all agents
-
-        Returns:
-            A list of tuples of the form (key, task)
-        """
+        # A list of tuples of the form (key, task)
 
         # Return a list of agent keys and their tasks
         return [(key, task) for key, (task, _, _) in self.agents.items()]
 
     def delete_agent(self, key: str | int) -> bool:
-        """Delete an agent from the agent manager
-
-        Args:
-            key: The key of the agent to delete
-
-        Returns:
-            True if successful, False otherwise
-        """
+        # Delete an agent from the agent manager
 
         try:
             del self.agents[int(key)]
