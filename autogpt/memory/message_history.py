@@ -53,15 +53,12 @@ class MessageHistory:
         current_message_chain: list[Message],
     ) -> tuple[Message, list[Message]]:
         """
-        Returns a list of trimmed messages: messages which are in the message history
-        but not in current_message_chain.
+        This function returns two things:
+         1. A message with the new summary after adding trimmed messages
+         (i.e. messages in message history but not currently in context).
 
-        Args:
-            current_message_chain (list[Message]): The messages currently in the context.
-
-        Returns:
-            Message: A message with the new running summary after adding the trimmed messages.
-            list[Message]: A list of messages that are in full_message_history with an index higher than last_trimmed_index and absent from current_message_chain.
+         2. A list of messages from full_message_history with an index higher
+         than last_trimmed_index and absent from current_message_chain.
         """
         # Select messages in full_message_history with an index higher than last_trimmed_index
         new_messages = [msg for i, msg in enumerate(self) if i > self.last_trimmed_index]
@@ -79,6 +76,9 @@ class MessageHistory:
         self.last_trimmed_index = self.messages.index(last_message)
 
         return new_summary_message, new_messages_not_in_chain
+
+        # TODO: Implement more advanced message trimming with a delay
+        # to handle messages with no type or no content end region Message Summary Trimming Support.
 
     def per_cycle(self, messages: list[Message] | None = None):
         """
@@ -112,21 +112,25 @@ class MessageHistory:
 
     def update_running_summary(self, new_events: list[Message]) -> Message:
         """
-        This function takes a list of dictionaries representing new events and combines them with the current summary,
-        focusing on key and potentially important information to remember. The updated summary is returned in a message
-        formatted in the 1st person past tense.
+        This function takes a list of dictionaries representing new events and combines them
+        with the current summary. It focuses on key and important information to remember, and
+        returns the updated summary in a message formatted in 1st person past tense.
 
         Args:
-            new_events (List[Dict]): A list of dictionaries containing the latest events to be added to the summary.
-
+         new_events (List[Dict]): A list of dictionaries containing the latest events to be
+         added to the summary.
         Returns:
-            str: A message containing the updated summary of actions, formatted in the 1st person past tense.
+         str: A message containing the updated summary of actions, formatted in the 1st person
+         past tense.
 
         Example:
-            new_events = [{"event": "entered the kitchen."}, {"event": "found a scrawled note with the number 7"}]
-            update_running_summary(new_events)
-            # Returns: "This reminds you of these events from your past: \nI entered the kitchen and found a scrawled note saying 7."
+         new_events = [{"event": "entered the kitchen."}, {"event": "found a scrawled note with the number 7"}]
+         update_running_summary(new_events)
+
+        Returns:
+         "This reminds you of events from the past: \nI entered the kitchen and found a scrawled note saying 7"
         """
+
         cfg = Config()
 
         if not new_events:
@@ -157,20 +161,20 @@ class MessageHistory:
             elif event.role == "user":
                 new_events.remove(event)
 
-        prompt = f'''Your task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
+        prompt = f'''Your task as the assistant is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
+        You will receive the current summary and your latest actions. Combine them, adding relevant key information from the latest development in 1st person's past tense and keeping the summary concise.
+        You will also receive a new set of actions. Go ahead and add a new event to the summary.
 
-You will receive the current summary and the your latest actions. Combine them, adding relevant key information from the latest development in 1st person past tense and keeping the summary concise.
+        Summary So Far:
+        """
+        {self.summary}
+        """
 
-Summary So Far:
-"""
-{self.summary}
-"""
-
-Latest Development:
-"""
-{new_events or "Nothing new happened."}
-"""
-'''
+        Latest Development:
+        """
+        {new_events or "Nothing new happened."}
+        """
+        '''  # noqa: E501
 
         prompt = ChatSequence.for_model(cfg.fast_llm_model, [Message("user", prompt)])
         self.agent.log_cycle_handler.log_cycle(
