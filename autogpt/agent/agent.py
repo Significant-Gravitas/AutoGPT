@@ -158,7 +158,7 @@ class Agent:
                     f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
                 )
 
-            command_msg = self._validate_command_and_arguments(command_msg)
+            # command_msg = self._validate_command_and_arguments(command_msg)
 
             if isinstance(command_msg, CommandMessage):
                 if command_msg.user_input == "GENERATE NEXT COMMAND JSON":
@@ -197,6 +197,7 @@ class Agent:
 
         # Check if arguments are valid
         command_cls = self.command_registry.get_command(command_msg.name)
+
         hints = get_type_hints(command_cls.method, globalns=globals(), localns=locals())
 
         for arg_name, arg_value in command_msg.args.items():
