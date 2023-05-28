@@ -6,15 +6,8 @@ import yaml
 from colorama import Fore, Style
 from git.repo import Repo
 
-from autogpt.logs import logger
-
-# Use readline if available (for clean_input)
-try:
-    import readline
-except ImportError:
-    pass
-
 from autogpt.config import Config
+from autogpt.logs import logger
 
 
 def batch(iterable, max_batch_length: int, overlap: int = 0):

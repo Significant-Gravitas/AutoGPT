@@ -1,6 +1,6 @@
 """ Command and Control """
 import json
-from typing import Any, Dict, List, Union
+from typing import Dict, List, Union, Any
 
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.command import CommandRegistry, command
