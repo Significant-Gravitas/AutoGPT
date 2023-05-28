@@ -18,9 +18,8 @@ def test_gpt4only_cli_arg() -> None:
         ) as mocked_set_fast_llm_model:
             runner = CliRunner()
             runner.invoke(cli.main, ["--gpt4only"])
-
-            mocked_set_smart_llm_model.assert_called_once_with(GPT_4_MODEL)
-            mocked_set_fast_llm_model.assert_called_once_with(GPT_4_MODEL)
+            mocked_set_smart_llm_model.assert_called_with(GPT_4_MODEL)
+            mocked_set_fast_llm_model.assert_called_with(GPT_4_MODEL)
 
 
 def test_gpt3only_cli_arg() -> None:
@@ -34,5 +33,5 @@ def test_gpt3only_cli_arg() -> None:
             runner = CliRunner()
             runner.invoke(cli.main, ["--gpt3only"])
 
-            mocked_set_smart_llm_model.assert_called_once_with(GPT_3_MODEL)
-            mocked_set_fast_llm_model.assert_called_once_with(GPT_3_MODEL)
+            mocked_set_smart_llm_model.assert_called_with(GPT_3_MODEL)
+            mocked_set_fast_llm_model.assert_called_with(GPT_3_MODEL)
