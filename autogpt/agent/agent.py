@@ -211,7 +211,7 @@ class Agent:
                     "invalid_command",
                     {},
                     f"Command {command_msg.name} cannot be executed. "
-                    f"{arg_name} argument with is invalid.",
+                    f"{arg_name} argument s invalid.",
                 )
 
         return command_msg
@@ -447,7 +447,7 @@ class Agent:
         thoughts = assistant_reply_json.get("thoughts", {})
 
         with Spinner("Getting self feedback... "):
-            self_feedback_resp = self._get_self_feedback_from_ai(
+            self_feedback_resp = self.get_self_feedback(
                 thoughts, self.cfg.fast_llm_model
             )
 
@@ -474,7 +474,7 @@ class Agent:
                     )
         return command_args
 
-    def _get_self_feedback_from_ai(
+    def get_self_feedback(
         self,
         thoughts: dict,
         llm_model: str,

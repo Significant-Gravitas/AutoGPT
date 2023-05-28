@@ -137,6 +137,7 @@ def test_smart_and_fast_llm_models_set_to_gpt4(mock_list_models, config):
         config=config,
         continuous=False,
         continuous_limit=False,
+        error_threshold=0,
         ai_settings_file="",
         prompt_settings_file="",
         skip_reprompt=False,

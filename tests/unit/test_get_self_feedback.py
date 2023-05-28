@@ -43,6 +43,11 @@ def test_get_self_feedback(mocker):
     # Mock the cycle_count attribute of the Agent instance
     agent_mock.cycle_count = 0
 
+    # Mock the construct_self_feedback_prompt function
+    mocker.patch.object(
+        agent_mock, "construct_self_feedback_prompt", return_value="Feedback prompt"
+    )
+
     # Call the get_self_feedback method
     feedback = Agent.get_self_feedback(
         agent_mock,
