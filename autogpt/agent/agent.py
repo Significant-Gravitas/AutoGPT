@@ -4,9 +4,9 @@
 """
 import signal
 import sys
-
 from datetime import datetime
-from colorama import Fore, Back, Style
+
+from colorama import Back, Fore, Style
 
 from autogpt.app import execute_command, get_command
 from autogpt.commands.command import CommandRegistry
@@ -45,22 +45,20 @@ class Agent:
     FULL_MESSAGE_HISTORY:   The full message history.
     NEXT_ACTION_count:      The number of actions to execute.
 
-        SYSTEM_PROMPT:
-        The system prompt is the initial prompt that defines everything
+    SYSTEM_PROMPT:
+    The system prompt is the initial prompt that defines everything
     the AI needs to know to achieve its task successfully.
     Currently, the dynamic and customizable information
     in the system prompt are ai_name, description and ai_goals.
 
     TRIGGERING_PROMPT:
-        The last sentence the AI will see before answering is:
-
-    "Determine which next command to use, and respond using the format specified
-    above"
+    The last sentence the AI will see before answering is:
+    Determine next command to use, and respond using the format specified above
 
     The TRIGGERING_PROMPT is not part of the SYSTEM_PROMPT because between the
     SYSTEM_PROMPT and the TRIGGERING_PROMPT
     we have contextual information that can distract the AI and make it forget
-        that its goal is to find the next task to achieve.
+    that its goal is to find the next task to achieve.
 
     1. SYSTEM_PROMPT
     2. Contextual information (memory, previous conversations, anything relevant)
@@ -173,7 +171,6 @@ class Agent:
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 self.config.ai_name = "yes"
-
                 logger.info(
                     f"\n{Fore.LIGHTRED_EX}{Back.BLACK}{Style.DIM}(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.'){Style.RESET_ALL}\n"  # noqa: E501
                     f"{Fore.RED}{Back.BLACK}{Style.DIM}(Key)   'y -n' ('I need your clothes, your boots, and your continuous cmds.'){Style.RESET_ALL}\n"  # noqa: E501
@@ -193,7 +190,7 @@ class Agent:
                         break
                     elif console_input.lower().strip() == "s":
                         logger.typewriter_log(
-                            "=-=-=-=-= THOUGHTS, REASONING, PLAN, AND CRITICISM WILL NOW BE VERIFIED BY THE AGENT =-=-=-=-="  # noqa: E501
+                            "=-=-=-= THOUGHTS, REASONING, PLAN, AND CRITICISM WILL NOW BE VERIFIED BY THE AGENT =-=-=-="
                         )
                         thoughts = assistant_reply_json.get("thoughts", {})
                         self_feedback_resp = self.get_self_feedback(thoughts, cfg.fast_llm_model)
@@ -214,8 +211,8 @@ class Agent:
                             user_input = "GENERATE NEXT COMMAND JSON"
                         except ValueError:
                             logger.warn(
-                                "(Key) 'Y -N' 'I need your clothes, your boots,"
-                                "and your -number of continuous commands.'\n"
+                                "(Key) 'y -n' 'I need your clothes, your boots,"
+                                "and your -n umber of continuous commands.'\n"
                             )
                             continue
                         break
