@@ -49,6 +49,7 @@ def run_auto_gpt(
     check_openai_api_key()
 
     create_config(
+        cfg,
         continuous,
         continuous_limit,
         ai_settings,
