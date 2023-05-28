@@ -203,10 +203,9 @@ def kubernetes_agent(memory_json_file, workspace: Workspace):
 
     return agent
 
+
 @pytest.fixture
-def get_nobel_prize_agent(
-    agent_test_config, memory_local_cache, workspace: Workspace
-):
+def get_nobel_prize_agent(agent_test_config, memory_local_cache, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
