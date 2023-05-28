@@ -148,11 +148,9 @@ def run_auto_gpt(
     for command_category in command_categories:
         command_registry.import_commands(command_category)
 
-    ai_name = ""
     ai_config = construct_main_ai_config()
     ai_config.command_registry = command_registry
-    if ai_config.ai_name:
-        ai_name = ai_config.ai_name
+    ai_name = ai_config.ai_name or ""
     # print(prompt)
     # Initialize variables
     next_action_count = 0

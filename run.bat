@@ -16,6 +16,7 @@ exit /B 1
 
 :Found
 %PYTHON_CMD% scripts/check_requirements.py requirements.txt
+%PYTHON_CMD% scripts/install_plugin_deps.py requirements.txt
 if errorlevel 1 (
     echo Installing missing packages...
     %PYTHON_CMD% -m pip install -r requirements.txt
