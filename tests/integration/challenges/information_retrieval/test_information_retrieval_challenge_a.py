@@ -4,7 +4,7 @@ from autogpt.commands.file_operations import read_file
 from autogpt.config import Config
 from tests.integration.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
-
+import json
 CYCLE_COUNT = 3
 from autogpt.agent import Agent
 
