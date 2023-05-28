@@ -5,13 +5,13 @@ from pathlib import Path
 from colorama import Fore, Style
 
 from autogpt.agent import Agent
-from autogpt.commands.command import CommandRegistry
+from autogpt.workspace import Workspace
+from autogpt.commands.command import CommandRegistry, command
 from autogpt.config import Config, check_openai_api_key
 from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.plugins import scan_plugins
-
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
 from autogpt.utils import (
     get_current_git_branch,
@@ -19,16 +19,13 @@ from autogpt.utils import (
     get_legal_warning,
     markdown_to_ansi_style,
 )
-from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
+import os
+from dotenv import load_dotenv
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from autogpt.commands.code_generator import CodeGenerator
 
-# Import the functions from code_generator.py
-from code_generator import (
-    generate_code_signature,
-    generate_code_comment,
-    generate_code_docstring,
-    generate_code_fill_in,
-)
+load_dotenv()
 
 
 def run_auto_gpt(
@@ -47,7 +44,6 @@ def run_auto_gpt(
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
-    generated_code: str,  # Pass the generated code as an argument
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
@@ -150,6 +146,10 @@ def run_auto_gpt(
         "autogpt.commands.write_tests",
         "autogpt.app",
         "autogpt.commands.task_statuses",
+        "generate_code_signature",   # Command for generating code from function signature
+        "generate_code_comment",     # Command for generating code from comment
+        "generate_code_docstring",   # Command for generating code from docstring
+        "generate_code_fill_in",     # Command for generating code from fill in the middle prompt
     ]
     logger.debug(
         f"The following command categories are disabled: {cfg.disabled_command_categories}"
@@ -202,31 +202,22 @@ def run_auto_gpt(
     )
     agent.start_interaction_loop()
 
-# Call the code generation functions and pass the generated code
-generated_signature = generate_code_signature("print_hello_world", config)
-generated_comment = generate_code_comment("a python function that says hello", config)
-generated_docstring = generate_code_docstring("a python function that says hello", config)
-generated_fill_in = generate_code_fill_in("<fim_prefix>def print_one_two_three():\n    print('one')\n    <fim_suffix>\n    print('three')<fim_middle>", config)
 
-# Call the run_auto_gpt function and pass the generated code as arguments
-run_auto_gpt(
-    continuous,
-    continuous_limit,
-    ai_settings,
-    prompt_settings,
-    skip_reprompt,
-    speak,
-    debug,
-    gpt3only,
-    gpt4only,
-    memory_type,
-    browser_name,
-    allow_downloads,
-    skip_news,
-    workspace_directory,
-    install_plugin_deps,
-    generated_signature,
-)
-
-# ... Code after calling run_auto_gpt ...
-
+if __name__ == "__main__":
+    run_auto_gpt(
+        continuous=False,
+        continuous_limit=1,
+        ai_settings="",
+        prompt_settings="",
+        skip_reprompt=False,
+        speak=False,
+        debug=False,
+        gpt3only=False,
+        gpt4only=False,
+        memory_type="",
+        browser_name="",
+        allow_downloads=False,
+        skip_news=False,
+        workspace_directory=None,
+        install_plugin_deps=False,
+    )
