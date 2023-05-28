@@ -127,7 +127,6 @@ def run_auto_gpt(
     command_registry = CommandRegistry()
 
     command_categories = [
-        "autogpt.app",
         "autogpt.commands.analyze_code",
         "autogpt.commands.audio_text",
         "autogpt.commands.execute_code",
@@ -136,9 +135,10 @@ def run_auto_gpt(
         "autogpt.commands.google_search",
         "autogpt.commands.image_gen",
         "autogpt.commands.improve_code",
-        "autogpt.commands.task_statuses",
         "autogpt.commands.web_selenium",
         "autogpt.commands.write_tests",
+        "autogpt.app",
+        "autogpt.commands.task_statuses",
     ]
     logger.debug(f"The following command categories are disabled: {cfg.disabled_command_categories}")
     command_categories = [x for x in command_categories if x not in cfg.disabled_command_categories]
@@ -148,9 +148,11 @@ def run_auto_gpt(
     for command_category in command_categories:
         command_registry.import_commands(command_category)
 
+    ai_name = ""
     ai_config = construct_main_ai_config()
     ai_config.command_registry = command_registry
-    ai_name = ai_config.ai_name or ""
+    if ai_config.ai_name:
+        ai_name = ai_config.ai_name
     # print(prompt)
     # Initialize variables
     next_action_count = 0
