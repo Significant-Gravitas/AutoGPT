@@ -24,10 +24,11 @@ class AIConfig:
     A class object that contains the configuration information for the AI
 
     Attributes:
-        ai_name (str): The name of the AI.
-        ai_role (str): The description of the AI's role.
-        ai_goals (list): The list of objectives the AI is supposed to complete.
-        api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+    ai_name      (str): The name of the AI.
+    ai_role      (str): The description of the AI's role.
+    ai_goals    (list): The list of objectives the AI is supposed to complete.
+    ai_goals_sk  (str): The description defines if the goal is static or dynamic. (experimental)
+    api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
     """
 
     def __init__(
@@ -35,6 +36,7 @@ class AIConfig:
         ai_name: str = "",
         ai_role: str = "",
         ai_goals: list | None = None,
+        ai_goals_sk: str | None = None,
         api_budget: float = 0.0,
     ) -> None:
         """
@@ -44,6 +46,7 @@ class AIConfig:
             ai_name (str): The name of the AI.
             ai_role (str): The description of the AI's role.
             ai_goals (list): The list of objectives the AI is supposed to complete.
+            ai_goals_sk  (str): The description defines if the goal is static or dynamic. (experimental)
             api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
         Returns:
             None
@@ -53,6 +56,7 @@ class AIConfig:
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
+        self.ai_goals_sk = ai_goals_sk
         self.api_budget = api_budget
         self.prompt_generator: PromptGenerator | None = None
         self.command_registry: CommandRegistry | None = None
@@ -83,6 +87,7 @@ class AIConfig:
         ai_goals = [
             str(goal).strip("{}").replace("'", "").replace('"', "") if isinstance(goal, dict) else str(goal)
             for goal in config_params.get("ai_goals", [])
+            for goal in config_params.get("ai_goals_sk", [])
         ]
         api_budget = config_params.get("api_budget", 0.0)
         # type: Type[AIConfig]
@@ -104,6 +109,7 @@ class AIConfig:
             "ai_name": self.ai_name,
             "ai_role": self.ai_role,
             "ai_goals": self.ai_goals,
+            "ai_goals_sk": self.ai_goals_sk,
             "api_budget": self.api_budget,
         }
         with open(config_file, "w", encoding="utf-8") as file:
@@ -118,7 +124,7 @@ class AIConfig:
 
         Returns:
             full_prompt (str): A string containing the initial prompt for the user
-              including the ai_name, ai_role, ai_goals, and api_budget.
+              including the ai_name, ai_role, ai_goals, ai_goals_sk, and api_budget.
         """
 
         prompt_start = (
@@ -135,6 +141,7 @@ class AIConfig:
         if prompt_generator is None:
             prompt_generator = build_default_prompt_generator()
         prompt_generator.goals = self.ai_goals
+        prompt_generator.goals = self.ai_goals_sk
         prompt_generator.name = self.ai_name
         prompt_generator.role = self.ai_role
         prompt_generator.command_registry = self.command_registry

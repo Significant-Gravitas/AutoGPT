@@ -27,7 +27,7 @@ def create_config(
     browser_name: str,
     allow_downloads: bool,
     skip_news: bool,
-) -> None:  # sourcery skip: low-code-quality, no-long-functions
+) -> None:  # sourcery skip: low-code-quality, no-long-functions, snake-case-arguments
     """Updates the config object with the given arguments.
 
     Args:
@@ -133,9 +133,9 @@ def create_config(
         CFG.skip_news = True
 
 
-# TODO Rename this here and in `create_config`
-def _extracted_from_create_config_94(arg0, arg1, CFG):
-    file = arg0
+# It is a "helper" function.  It is only called from `create_config` and only when the user explicitly requested it.
+def _extracted_from_create_config_94(arg_0, arg_1, CFG):
+    file = arg_0
 
     # Validate file
     (validated, message) = utils.validate_yaml_file(file)
@@ -144,5 +144,5 @@ def _extracted_from_create_config_94(arg0, arg1, CFG):
         logger.double_check()
         exit(1)
 
-    logger.typewriter_log(arg1, Fore.GREEN, file)
+    logger.typewriter_log(arg_1, Fore.GREEN, file)
     return file

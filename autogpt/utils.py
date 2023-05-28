@@ -11,7 +11,8 @@ from autogpt.logs import logger
 
 # Use readline if available (for clean_input)
 try:
-    import readline
+    import readline  # type: ignore[import]  # noqa: F401  # pylint: disable=import-error,unused-import,
+
 except ImportError:
     pass
 
