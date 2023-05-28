@@ -161,6 +161,8 @@ class AIConfig:
         full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
             full_prompt += f"{i+1}. {goal}\n"
+        for i, goal in enumerate(self.ai_goals_sk):
+            full_prompt += f"{i+1}. {goal}\n"
         if self.api_budget > 0.0:
             full_prompt += f"\nIt takes money to let you run. Your API budget is ${self.api_budget:.3f}"
         self.prompt_generator = prompt_generator
