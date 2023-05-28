@@ -19,6 +19,7 @@ REPLACEMENTS: List[Dict[str, str]] = [
 ALLOWED_HOSTNAMES: List[str] = [
     "api.openai.com",
     "localhost:50337",
+    "duckduckgo.com",
 ]
 
 if PROXY:
