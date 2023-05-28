@@ -126,7 +126,7 @@ class Agent:
                 )
                 break
             # Send message to AI, get response
-            with Spinner("Thinking... "):
+            with Spinner("Thinking... ", plain_output=cfg.plain_output):
                 assistant_reply = chat_with_ai(
                     self,
                     self.system_prompt,
@@ -274,6 +274,7 @@ class Agent:
                     command_name,
                     arguments,
                     self.config.prompt_generator,
+                    config=cfg,
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
 

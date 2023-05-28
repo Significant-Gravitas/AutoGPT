@@ -2,6 +2,7 @@ import pytest
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
+from autogpt.config import Config
 from tests.integration.challenges.utils import (
     generate_noise,
     get_level_to_run,
@@ -21,6 +22,7 @@ def test_memory_challenge_b(
     user_selected_level: int,
     patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
+    config: Config,
 ) -> None:
     """
     The agent reads a series of files, each containing a task_id and noise. After reading 'n' files,
@@ -34,12 +36,12 @@ def test_memory_challenge_b(
         user_selected_level, LEVEL_CURRENTLY_BEATEN, MAX_LEVEL
     )
     task_ids = [str(i * 1111) for i in range(1, current_level + 1)]
-    create_instructions_files(memory_management_agent, current_level, task_ids)
+    create_instructions_files(memory_management_agent, current_level, task_ids, config)
 
     run_interaction_loop(monkeypatch, memory_management_agent, current_level + 2)
 
     file_path = str(memory_management_agent.workspace.get_path("output.txt"))
-    content = read_file(file_path)
+    content = read_file(file_path, config)
     for task_id in task_ids:
         assert task_id in content, f"Expected the file to contain {task_id}"
 
@@ -48,6 +50,7 @@ def create_instructions_files(
     memory_management_agent: Agent,
     level: int,
     task_ids: list,
+    config: Config,
     base_filename: str = "instructions_",
 ) -> None:
     """
@@ -63,7 +66,7 @@ def create_instructions_files(
         content = generate_content(i, task_ids, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
         file_path = str(memory_management_agent.workspace.get_path(file_name))
-        write_to_file(file_path, content)
+        write_to_file(file_path, content, config)
 
 
 def generate_content(index: int, task_ids: list, base_filename: str, level: int) -> str:

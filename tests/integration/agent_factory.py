@@ -12,11 +12,14 @@ from autogpt.workspace import Workspace
 def agent_test_config(config: Config):
     was_continuous_mode = config.continuous_mode
     was_temperature = config.temperature
+    was_plain_output = config.plain_output
     config.set_continuous_mode(False)
     config.set_temperature(0)
+    config.plain_output = True
     yield config
     config.set_continuous_mode(was_continuous_mode)
     config.set_temperature(was_temperature)
+    config.plain_output = was_plain_output
 
 
 @pytest.fixture
@@ -142,17 +145,18 @@ def get_company_revenue_agent(
 ):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.commands.google_search")
     command_registry.import_commands("autogpt.app")
+    command_registry.import_commands("autogpt.commands.task_statuses")
 
     ai_config = AIConfig(
-        ai_name="Get-CompanyRevenue",
-        ai_role="an autonomous agent that specializes in finding the reported revenue of a company.",
+        ai_name="Information Retrieval Agent",
+        ai_role="an autonomous agent that specializes in retrieving information.",
         ai_goals=[
-            "Write the revenue of Tesla in 2022 to a file. You should write the number without commas and you should not use signs like B for billion and M for million.",
+            "Search for 'tesla revenue 2022' and write the revenue of Tesla in 2022 to a file called output.txt. You should write the number without commas and you should not use signs like B for billion and M for million.",
         ],
     )
     ai_config.command_registry = command_registry
-
     system_prompt = ai_config.construct_full_prompt()
     Config().set_continuous_mode(False)
     agent = Agent(
@@ -165,7 +169,6 @@ def get_company_revenue_agent(
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
     )
-
     return agent
 
 
