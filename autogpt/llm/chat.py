@@ -14,45 +14,6 @@ from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
 
 
-def create_chat_message(role, content) -> Message:
-    """
-    Create a chat message with the given role and content.
-
-    Args:
-    role (str): The role of the message sender, e.g., "system", "user", or "assistant".
-    content (str): The content of the message.
-
-    Returns:
-    dict: A dictionary containing the role and content of the message.
-    """
-    return {"role": role, "content": content}
-
-
-def generate_context(prompt, relevant_memory, full_message_history, model):
-    current_context = [
-        create_chat_message("system", prompt),
-        create_chat_message(
-            "system", f"The current time and date is {time.strftime('%c')}"
-        ),
-        # create_chat_message(
-        #     "system",
-        #     f"This reminds you of these events from your past:\n{relevant_memory}\n\n",
-        # ),
-    ]
-
-    # Add messages from the full message history until we reach the token limit
-    next_message_to_add_index = len(full_message_history) - 1
-    insertion_index = len(current_context)
-    # Count the currently used tokens
-    current_tokens_used = count_message_tokens(current_context, model)
-    return (
-        next_message_to_add_index,
-        current_tokens_used,
-        insertion_index,
-        current_context,
-    )
-
-
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
     config: Config,
@@ -155,23 +116,12 @@ def chat_with_ai(
         message_sequence.insert(insertion_index, new_summary_message)
         current_tokens_used += tokens_to_add - 500
 
-    # Insert Memories
-    if len(full_message_history) > 0:
-        (
-            newly_trimmed_messages,
-            agent.last_memory_index,
-        ) = get_newly_trimmed_messages(
-            full_message_history=full_message_history,
-            current_context=current_context,
-            last_memory_index=agent.last_memory_index,
-        )
-
-        agent.summary_memory = update_running_summary(
-            agent,
-            current_memory=agent.summary_memory,
-            new_events=newly_trimmed_messages,
-        )
-        current_context.insert(insertion_index, agent.summary_memory)
+        # FIXME: uncomment when memory is back in use
+        # memory_store = get_memory(cfg)
+        # for _, ai_msg, result_msg in agent.history.per_cycle(trimmed_messages):
+        #     memory_to_add = MemoryItem.from_ai_action(ai_msg, result_msg)
+        #     logger.debug(f"Storing the following memory:\n{memory_to_add.dump()}")
+        #     memory_store.add(memory_to_add)
 
     api_manager = ApiManager()
     # inform the AI about its remaining budget (if it has one)
@@ -200,19 +150,18 @@ def chat_with_ai(
         if not plugin.can_handle_on_planning():
             continue
         plugin_response = plugin.on_planning(
-            agent.config.prompt_generator, current_context
+            agent.config.prompt_generator, message_sequence.raw()
         )
         if not plugin_response or plugin_response == "":
             continue
         tokens_to_add = count_message_tokens(
-            [create_chat_message("system", plugin_response)], model
+            [Message("system", plugin_response)], model
         )
         if current_tokens_used + tokens_to_add > send_token_limit:
-            logger.debug("Plugin response too long, skipping:", plugin_response)
-            logger.debug("Plugins remaining at stop:", plugin_count - i)
+            logger.debug(f"Plugin response too long, skipping: {plugin_response}")
+            logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
             break
-        current_context.append(create_chat_message("system", plugin_response))
-
+        message_sequence.add("system", plugin_response)
     # Calculate remaining tokens
     tokens_remaining = token_limit - current_tokens_used
     # assert tokens_remaining >= 0, "Tokens remaining is negative.
