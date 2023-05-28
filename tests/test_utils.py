@@ -1,13 +1,10 @@
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 import requests
-from colorama import Fore
-from git import Repo
 
 from autogpt.utils import (
-    clean_input,
     get_bulletin_from_web,
     get_current_git_branch,
     get_latest_bulletin,

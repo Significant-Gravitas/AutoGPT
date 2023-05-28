@@ -2,7 +2,6 @@ import pytest
 from _pytest.config import Config
 from _pytest.config.argparsing import Parser
 from _pytest.fixtures import FixtureRequest
-from _pytest.monkeypatch import MonkeyPatch
 
 
 def pytest_addoption(parser: Parser) -> None:

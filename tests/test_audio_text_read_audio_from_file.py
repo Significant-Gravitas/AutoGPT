@@ -7,6 +7,7 @@ from unittest.mock import mock_open, patch
 import pytest
 
 from autogpt.commands.audio_text import read_audio_from_file
+from autogpt.config import Config
 
 
 @pytest.fixture
@@ -22,7 +23,7 @@ class TestReadAudioFromFile:
         m = mock_open(read_data=mock_file_data)
 
         with patch("builtins.open", m):
-            result = read_audio_from_file("test_audio.wav")
+            result = read_audio_from_file("test_audio.wav", Config())
             assert result == "This is a sample text."
             m.assert_called_once_with("test_audio.wav", "rb")
 
@@ -33,14 +34,14 @@ class TestReadAudioFromFile:
         m = mock_open(read_data=mock_file_data)
 
         with patch("builtins.open", m):
-            result = read_audio_from_file("test_audio.wav")
+            result = read_audio_from_file("test_audio.wav", Config())
             assert result != "Incorrect text."
             m.assert_called_once_with("test_audio.wav", "rb")
 
     def test_error_read_audio_from_file(self):
         # Error test
         with pytest.raises(FileNotFoundError):
-            read_audio_from_file("non_existent_file.wav")
+            read_audio_from_file("non_existent_file.wav", Config())
 
     def test_edge_empty_audio_file(self, mock_read_audio):
         # Edge test
@@ -49,6 +50,6 @@ class TestReadAudioFromFile:
         m = mock_open(read_data=mock_file_data)
 
         with patch("builtins.open", m):
-            result = read_audio_from_file("empty_audio.wav")
+            result = read_audio_from_file("empty_audio.wav", Config())
             assert result == ""
             m.assert_called_once_with("empty_audio.wav", "rb")

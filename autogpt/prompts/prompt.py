@@ -3,7 +3,7 @@ from colorama import Fore
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
 from autogpt.config.prompt_config import PromptConfig
-from autogpt.llm import ApiManager
+from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.setup import prompt_user
