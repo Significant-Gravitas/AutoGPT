@@ -1,7 +1,7 @@
 import functools
 import importlib
 import inspect
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import Any, Callable, Optional
 
 from autogpt.config import Config
 from autogpt.logs import logger

@@ -51,6 +51,11 @@ jobs:
         run: mypy
         if: success() || failure()
 
+      - name: Check for unused imports and pass statements
+        run: |
+          cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports autogpt tests"
+          $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
+
   test:
     permissions:
       # Gives the action the necessary permissions for publishing new

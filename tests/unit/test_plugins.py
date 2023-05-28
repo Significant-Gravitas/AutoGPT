@@ -1,6 +1,5 @@
 import pytest
 
-from autogpt.config import Config
 from autogpt.plugins import denylist_allowlist_check, inspect_zip_for_modules
 
 PLUGINS_TEST_DIR = "tests/unit/data/test_plugins"

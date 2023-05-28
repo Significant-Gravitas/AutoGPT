@@ -6,7 +6,6 @@ import os
 import os.path
 from typing import TYPE_CHECKING, Generator, Literal
 
-import charset_normalizer
 import requests
 from colorama import Back, Fore
 from requests.adapters import HTTPAdapter, Retry
