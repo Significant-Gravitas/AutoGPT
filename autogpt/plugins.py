@@ -5,7 +5,7 @@ import json
 import os
 import zipfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List
 from urllib.parse import urlparse
 from zipimport import zipimporter
 
