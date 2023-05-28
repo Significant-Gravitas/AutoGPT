@@ -2,12 +2,12 @@ import signal
 import sys
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, Optional, get_type_hints
+from typing import Any, Dict, get_type_hints
 
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command_message
-from autogpt.commands.command import CommandRegistry, Command
+from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
@@ -31,7 +31,7 @@ from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
 
-ALTERNATE_COMMANDS = {"human_feedback", "self_feedback"}
+FEEDBACK_COMMANDS = {"human_feedback", "self_feedback"}
 
 
 class Agent:
@@ -181,10 +181,10 @@ class Agent:
     def _validate_command_and_arguments(
         self, command_msg: CommandMessage | CommandError
     ) -> CommandMessage | CommandError:
-        if isinstance(command_msg, CommandError):
-            return command_msg
-
-        if command_msg.name in ALTERNATE_COMMANDS:
+        if (
+            isinstance(command_msg, CommandError)
+            or command_msg.name in FEEDBACK_COMMANDS
+        ):
             return command_msg
 
         # Check if command name in registry
