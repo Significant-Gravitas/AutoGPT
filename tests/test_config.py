@@ -10,7 +10,6 @@ from autogpt.configurator import create_config
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 
 
-
 # import
 def test_initial_values(config):
     """
@@ -21,8 +20,14 @@ def test_initial_values(config):
     assert config.speak_mode == False
     assert config.fast_llm_model == "gpt-3.5-turbo"
     assert config.smart_llm_model == "gpt-4"
-    assert config.fast_token_limit == OPEN_AI_CHAT_MODELS.get(config.fast_llm_model).max_tokens
-    assert config.smart_token_limit == OPEN_AI_CHAT_MODELS.get(config.smart_llm_model).max_tokens
+    assert (
+        config.fast_token_limit
+        == OPEN_AI_CHAT_MODELS.get(config.fast_llm_model).max_tokens
+    )
+    assert (
+        config.smart_token_limit
+        == OPEN_AI_CHAT_MODELS.get(config.smart_llm_model).max_tokens
+    )
 
 
 def test_set_continuous_mode(config):

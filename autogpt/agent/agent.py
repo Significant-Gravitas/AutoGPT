@@ -12,8 +12,8 @@ from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
 from autogpt.llm.base import ChatSequence
 from autogpt.llm.chat import chat_with_ai, create_chat_completion
-from autogpt.llm.utils import count_string_tokens
 from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+from autogpt.llm.utils import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
