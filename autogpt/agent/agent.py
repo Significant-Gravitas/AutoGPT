@@ -2,7 +2,7 @@ import signal
 import sys
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from colorama import Fore, Style
 
@@ -524,19 +524,6 @@ class Agent:
                 f"arguments:\n"
                 f"{self._generate_error_list()}"
             )
-
-        # prompt = ChatSequence.for_model(llm_model)
-        # prompt.add("user", feedback_prompt + feedback_thoughts)
-        #
-        # self.log_cycle_handler.log_cycle(
-        #     self.config.ai_name,
-        #     self.created_at,
-        #     self.cycle_count,
-        #     prompt.raw(),
-        #     PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
-        # )
-        #
-        # feedback = create_chat_completion(prompt)
 
         return full_prompt
 

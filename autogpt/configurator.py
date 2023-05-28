@@ -79,7 +79,7 @@ def create_config(
 
         if error_threshold:
             logger.typewriter_log("Error Threshold: ", Fore.GREEN, f"{error_threshold}")
-            CFG.set_error_threshold(error_threshold)
+            config.set_error_threshold(error_threshold)
 
     # Check if continuous limit is used without continuous mode
     if continuous_limit and not continuous:

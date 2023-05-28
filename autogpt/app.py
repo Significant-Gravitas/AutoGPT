@@ -74,6 +74,15 @@ def get_command_message(response_json: Dict) -> CommandMessage | CommandError:
 
         command_name = command["name"]
 
+        if not command_name:
+            return CommandError(
+                "invalid_command",
+                {},
+                "Command 'name' is empty. Please refer to the 'COMMANDS' list "
+                "for available commands and only respond in the specified JSON "
+                "format.",
+            )
+
         # Use an empty dictionary if 'args' field is not present in 'command' object
         arguments = command.get("args", {})
 
