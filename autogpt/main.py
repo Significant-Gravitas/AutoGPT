@@ -1,4 +1,3 @@
-"""The application entry point.  Can be invoked by a CLI or any other front end application."""
 import logging
 import sys
 from pathlib import Path
@@ -12,6 +11,7 @@ from autogpt.configurator import create_config
 from autogpt.logs import logger
 from autogpt.memory.vector import get_memory
 from autogpt.plugins import scan_plugins
+
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT, construct_main_ai_config
 from autogpt.utils import (
     get_current_git_branch,
@@ -21,6 +21,14 @@ from autogpt.utils import (
 )
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
+
+# Import the functions from code_generator.py
+from code_generator import (
+    generate_code_signature,
+    generate_code_comment,
+    generate_code_docstring,
+    generate_code_fill_in,
+)
 
 
 def run_auto_gpt(
@@ -39,6 +47,7 @@ def run_auto_gpt(
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
+    generated_code: str,  # Pass the generated code as an argument
 ):
     # Configure logging before we do anything else.
     logger.set_level(logging.DEBUG if debug else logging.INFO)
@@ -192,3 +201,32 @@ def run_auto_gpt(
         workspace_directory=workspace_directory,
     )
     agent.start_interaction_loop()
+
+# Call the code generation functions and pass the generated code
+generated_signature = generate_code_signature("print_hello_world", config)
+generated_comment = generate_code_comment("a python function that says hello", config)
+generated_docstring = generate_code_docstring("a python function that says hello", config)
+generated_fill_in = generate_code_fill_in("<fim_prefix>def print_one_two_three():\n    print('one')\n    <fim_suffix>\n    print('three')<fim_middle>", config)
+
+# Call the run_auto_gpt function and pass the generated code as arguments
+run_auto_gpt(
+    continuous,
+    continuous_limit,
+    ai_settings,
+    prompt_settings,
+    skip_reprompt,
+    speak,
+    debug,
+    gpt3only,
+    gpt4only,
+    memory_type,
+    browser_name,
+    allow_downloads,
+    skip_news,
+    workspace_directory,
+    install_plugin_deps,
+    generated_signature,
+)
+
+# ... Code after calling run_auto_gpt ...
+

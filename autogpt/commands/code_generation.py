@@ -1,127 +1,122 @@
-import logging
 import os
+import logging
 from dotenv import load_dotenv
-from typing import Optional
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from autogpt.config import Config
 from autogpt.commands.command import command
 from autogpt.logs import logger
+import traceback
 
 load_dotenv()
 
-class CodeGenerationConfig:
-    def __init__(
-        self,
-        max_new_tokens: int = int(os.getenv("MAX_NEW_TOKENS", 128)),
-        temperature: float = float(os.getenv("TEMPERATURE", 0.2)),
-        top_k: int = int(os.getenv("TOP_K", 50)),
-        top_p: float = float(os.getenv("TOP_P", 0.1)),
-        repetition_penalty: float = float(os.getenv("REPETITION_PENALTY", 1.17))
-    ):
-        self.max_new_tokens = max_new_tokens
-        self.temperature = temperature
-        self.top_k = top_k
-        self.top_p = top_p
-        self.repetition_penalty = repetition_penalty
 
-@command(
-    "generate_code",
-    "Generate Code",
-    '"input_text": "<input_text>"',
-    lambda config: True,
-    "",
-)
-def generate_code(input_text: str, config: 'Config') -> str:
-    """Generate code using the input text.
+class CodeGenerator:
+    def __init__(self, checkpoint="bigcode/tiny_starcoder_py", device="cuda"):
+        self.checkpoint = checkpoint
+        self.device = device
+        self.tokenizer = AutoTokenizer.from_pretrained(self.checkpoint)
+        self.model = AutoModelForCausalLM.from_pretrained(self.checkpoint).to(self.device)
 
-    Args:
-        input_text (str): The input text for code generation.
-        config (Config): The configuration object.
-
-    Returns:
-        str: The generated code.
-    """
-    checkpoint = os.getenv("CHECKPOINT", "bigcode/tiny_starcoder_py")
-    device = os.getenv("DEVICE", "cuda")
-    tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-    model = AutoModelForCausalLM.from_pretrained(checkpoint).to(device)
-    code_config = CodeGenerationConfig()
-    logger = logging.getLogger("CodeGenerator")
+        self.prompt_methods = {
+            "Function Signature": self._generate_function_signature,
+            "Comment": self._generate_comment,
+            "Docstring": self._generate_docstring,
+            "Fill in the Middle": self._generate_fill_in_the_middle,
+        }
 
     def generate(
+        self,
         input_text: str,
-        config: Optional[CodeGenerationConfig] = None
+        max_new_tokens: int,
+        temperature: float = 0.8,
+        top_k: int = 100,
+        top_p: float = 0.9,
+        repetition_penalty: float = 1.0
     ) -> str:
-        config = config or code_config
-        inputs = tokenizer.encode(input_text, return_tensors="pt").to(device)
-        params = {
-            'max_new_tokens': config.max_new_tokens,
-            'temperature': config.temperature,
-            'top_k': config.top_k,
-            'top_p': config.top_p,
-            'repetition_penalty': config.repetition_penalty
-        }
+        inputs = self.tokenizer.encode(input_text, return_tensors="pt").to(self.device)
+
         try:
-            outputs = model.generate(inputs, pad_token_id=tokenizer.eos_token_id, **params)
-            return tokenizer.decode(outputs[0])
+            outputs = self.model.generate(
+                inputs,
+                pad_token_id=self.tokenizer.eos_token_id,
+                max_length=max_new_tokens + inputs.shape[-1],
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+                repetition_penalty=repetition_penalty
+            )
+            return self.tokenizer.decode(outputs[0])
         except Exception as e:
-            logger.error(f"Code generation failed with error: {str(e)}")
-            raise
+            error_message = f"Code generation failed with error: {str(e)}"
+            traceback.print_exc()  # Print the full traceback for debugging
+            raise ValueError(error_message) from e
 
-    def function_signature(signature: str) -> str:
-        if not isinstance(signature, str):
-            raise ValueError("Signature must be a string.")
-        if not signature.isidentifier():
-            raise ValueError("Invalid function signature. Signature must be a valid identifier.")
+    def _generate_fill_in_the_middle(self, input_text: str) -> str:
+        return self.generate(input_text, max_new_tokens=8000)
+
+    def _generate_function_signature(self, signature: str) -> str:
         try:
-            return generate(f"def {signature}:")
+            return self.generate(f"def {signature}:", max_new_tokens=8000)
         except Exception as e:
-            logger.error(f"Failed to generate code with function signature '{signature}': {str(e)}")
-            raise
+            error_message = f"Failed to generate code with function signature '{signature}': {str(e)}"
+            traceback.print_exc()  # Print the full traceback for debugging
+            raise ValueError(error_message) from e
 
-    def comment_prompt(comment: str) -> str:
-        if not isinstance(comment, str):
-            raise ValueError("Comment must be a string.")
+    def _generate_comment(self, comment: str) -> str:
         try:
-            return generate(f"# {comment}\n")
+            return self.generate(f"# {comment}\n", max_new_tokens=8000)
         except Exception as e:
-            logger.error(f"Failed to generate code with comment '{comment}': {str(e)}")
-            raise
+            error_message = f"Failed to generate code with comment '{comment}': {str(e)}"
+            traceback.print_exc()  # Print the full traceback for debugging
+            raise ValueError(error_message) from e
 
-    def docstring_prompt(docstring: str) -> str:
-        if not isinstance(docstring, str):
-            raise ValueError("Docstring must be a string.")
+    def _generate_docstring(self, docstring: str) -> str:
         try:
-            return generate(f"\"\"\" {docstring} \"\"\"\n")
+            return self.generate(f"\"\"\" {docstring} \"\"\"\n", max_new_tokens=8000)
         except Exception as e:
-            logger.error(f"Failed to generate code with docstring '{docstring}': {str(e)}")
-            raise
+            error_message = f"Failed to generate code with docstring '{docstring}': {str(e)}"
+            traceback.print_exc()  # Print the full traceback for debugging
+            raise ValueError(error_message) from e
 
-    def fill_in_middle(input_text: str) -> str:
-        if not isinstance(input_text, str):
-            raise ValueError("Input text must be a string.")
-        try:
-            return generate(input_text)
-        except Exception as e:
-            logger.error(f"Failed to generate code with input text '{input_text}': {str(e)}")
-            raise
 
-    # Prompt Style 1: Function Signature
-    function_signature_code = function_signature("print_hello_world")
-    logger.info(f"Function Signature Code:\n{function_signature_code}")
+code_generator = CodeGenerator()
 
-    # Prompt Style 2: A Comment
-    comment_code = comment_prompt("a python function that says hello")
-    logger.info(f"Comment Code:\n{comment_code}")
+@command(
+    "generate_code_signature",
+    "Generate Code From Function Signature",
+    args='"input_text": str',
+)
+def generate_code_signature(input_text: str, config: 'Config') -> str:
+    """Generate code using a function signature as the input text."""
+    return code_generator._generate_function_signature(input_text)
 
-    # Prompt Style 3: A Docstring
-    docstring_code = docstring_prompt("a python function that says hello")
-    logger.info(f"Docstring Code:\n{docstring_code}")
 
-    # Prompt Style 4: Fill in the Middle
-    input_text = "<fim_prefix>def print_one_two_three():\n    print('one')\n    <fim_suffix>\n    print('three')<fim_middle>"
-    fill_in_middle_code = fill_in_middle(input_text)
-    logger.info(f"Fill in the Middle Code:\n{fill_in_middle_code}")
+@command(
+    "generate_code_comment",
+    "Generate Code From Comment",
+    args='"input_text": str',
+)
+def generate_code_comment(input_text: str, config: 'Config') -> str:
+    """Generate code using a comment as the input text."""
+    return code_generator._generate_comment(input_text)
 
-    return ""  # Placeholder, replace with appropriate return statement
+
+@command(
+    "generate_code_docstring",
+    "Generate Code From Docstring",
+    args='"input_text": str',
+)
+def generate_code_docstring(input_text: str, config: 'Config') -> str:
+    """Generate code using a docstring as the input text."""
+    return code_generator._generate_docstring(input_text)
+
+
+@command(
+    "generate_code_fill_in",
+    "Generate Code From Fill In The Middle Prompt",
+    args='"input_text": str',
+)
+def generate_code_fill_in(input_text: str, config: 'Config') -> str:
+    """Generate code using a 'fill in the middle' input text."""
+    return code_generator._generate_fill_in_the_middle(input_text)
 
