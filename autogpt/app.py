@@ -32,7 +32,7 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response_json: Dict):
+def get_command(response_json: dict):
     """Parse the response and return the command name and arguments
 
     Args:
@@ -83,11 +83,7 @@ def map_command_synonyms(command_name: str):
         ("search", "google"),
     ]
     return next(
-        (
-            actual_command_name
-            for seen_command, actual_command_name in synonyms
-            if command_name == seen_command
-        ),
+        (actual_command_name for seen_command, actual_command_name in synonyms if command_name == seen_command),
         command_name,
     )
 
@@ -122,8 +118,7 @@ def execute_command(
                 (
                     command["function"](**arguments)
                     for command in prompt.commands
-                    if command_name
-                    in [command["label"].lower(), command["name"].lower()]
+                    if command_name in [command["label"].lower(), command["name"].lower()]
                 ),
                 f"Unknown command '{command_name}'. Please refer to the 'COMMANDS' list for available commands and only respond in the specified JSON format.",  # noqa: E501
             )
@@ -131,9 +126,7 @@ def execute_command(
         return f"Error: {str(e)}"
 
 
-@command(
-    "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
-)
+@command("get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"')
 @validate_url
 def get_text_summary(url: str, question: str) -> str:
     """Get the text summary of a webpage
@@ -226,9 +219,7 @@ def list_agents() -> str:
     Returns:
         str: A list of all agents
     """
-    return "List of agents:\n" + "\n".join(
-        [f"{str(x[0])}: {x[1]}" for x in AgentManager().list_agents()]
-    )
+    return "List of agents:\n" + "\n".join([f"{str(x[0])}: {x[1]}" for x in AgentManager().list_agents()])
 
 
 @command("delete_agent", "Delete GPT Agent", '"key": "<key>"')
