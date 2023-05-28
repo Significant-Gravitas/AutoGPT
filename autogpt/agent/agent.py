@@ -210,7 +210,8 @@ class Agent:
                 return CommandError(
                     "invalid_command",
                     {},
-                    f"Command {command_msg.name} cannot be handled by the AI",
+                    f"Command {command_msg.name} cannot be executed. "
+                    f"{arg_name} argument with is invalid.",
                 )
 
         return command_msg
