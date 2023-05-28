@@ -9,12 +9,13 @@ import openai
 import openai.api_resources.abstract.engine_api_resource as engine_api_resource
 import openai.util
 from colorama import Fore, Style
-from openai.error import APIError, RateLimitError
+from openai.error import APIError, AuthenticationError, RateLimitError
 from openai.openai_object import OpenAIObject
 
 from autogpt.config import Config
 from autogpt.logs import logger
 
+from ...exceptions import CriticalException
 from ..api_manager import ApiManager
 from ..base import ChatSequence, Message
 from .token_counter import *
@@ -85,6 +86,12 @@ def retry_openai_api(
             for attempt in range(1, num_attempts + 1):
                 try:
                     return func(*args, **kwargs)
+
+                except AuthenticationError:
+                    raise CriticalException(
+                        f"{Fore.RED}Error: Unable to authenticate with your OpenAI API key. Please check your "
+                        f"configuration.{Fore.RESET}",
+                    )
 
                 except RateLimitError:
                     if attempt == num_attempts:
