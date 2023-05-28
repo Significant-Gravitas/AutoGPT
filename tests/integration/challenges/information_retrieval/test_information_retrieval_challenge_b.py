@@ -34,7 +34,7 @@ def test_information_retrieval_challenge_b(
     :param patched_api_requestor: APIRequestor Patch to override the openai.api_requestor module for testing.
     """
 
-    input_sequence = ["y","y","EXIT"]
+    input_sequence = ["y", "y", "EXIT"]
     gen = input_generator(input_sequence)
     monkeypatch.setattr("builtins.input", lambda _: next(gen))
 
