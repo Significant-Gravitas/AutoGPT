@@ -212,10 +212,6 @@ class Config(metaclass=Singleton):
         """Set the smart LLM model value."""
         self.smart_llm_model = value
 
-    def set_smart_token_limit(self, value: int) -> None:
-        """Set the smart token limit value."""
-        self.smart_token_limit = value
-
     def set_embedding_model(self, value: str) -> None:
         """Set the model to use for creating embeddings."""
         self.embedding_model = value
