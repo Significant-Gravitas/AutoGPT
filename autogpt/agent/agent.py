@@ -46,19 +46,19 @@ class Agent:
     NEXT_ACTION_count:      The number of actions to execute.
 
     SYSTEM_PROMPT:
-    The system prompt is the initial prompt that defines everything
-    the AI needs to know to achieve its task successfully.
-    Currently, the dynamic and customizable information
-    in the system prompt are ai_name, description and ai_goals.
+     The system prompt is the initial prompt that defines everything
+     the AI needs to know to achieve its task successfully.
+     Currently, the dynamic and customizable information
+     in the system prompt are ai_name, description and ai_goals.
 
     TRIGGERING_PROMPT:
-    The last sentence the AI will see before answering is:
-    Determine next command to use, and respond using the format specified above
+     The last sentence the AI will see before answering is:
+     Determine next command to use, and respond using the format specified above
 
     The TRIGGERING_PROMPT is not part of the SYSTEM_PROMPT because between the
-    SYSTEM_PROMPT and the TRIGGERING_PROMPT
-    we have contextual information that can distract the AI and make it forget
-    that its goal is to find the next task to achieve.
+     SYSTEM_PROMPT and the TRIGGERING_PROMPT
+     we have contextual information that can distract the AI and make it forget
+     that its goal is to find the next task to achieve.
 
     1. SYSTEM_PROMPT
     2. Contextual information (memory, previous conversations, anything relevant)
@@ -140,6 +140,7 @@ class Agent:
             # Print Assistant thoughts
             if assistant_reply_json != {}:
                 validate_json(assistant_reply_json, LLM_DEFAULT_RESPONSE_FORMAT)
+
                 # Get command name and arguments
                 try:
                     print_assistant_thoughts(self.ai_name, assistant_reply_json, cfg.speak_mode)
@@ -167,9 +168,9 @@ class Agent:
             )
 
             if not cfg.continuous_mode and self.next_action_count == 0:
-                # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
-                # Get key press: Prompt the user to press enter to continue or escape
-                # to exit
+                """GET USER AUTHORIZATION TO EXECUTE COMMAND
+                PROMPT THE USER TO PRESS ENTER TO CONTINUE OR ESCAPE TO EXIT
+                """
                 self.config.ai_name = "yes"
                 logger.info(
                     f"\n{Fore.LIGHTRED_EX}{Back.BLACK}{Style.DIM}(Hit)   'y'    (to authorize 'I'm not programmed to follow your orders.'){Style.RESET_ALL}\n"  # noqa: E501
@@ -195,7 +196,7 @@ class Agent:
                         thoughts = assistant_reply_json.get("thoughts", {})
                         self_feedback_resp = self.get_self_feedback(thoughts, cfg.fast_llm_model)
                         logger.typewriter_log(
-                            f"SELF FEEDBACK: {self_feedback_resp}",
+                            f"\nSELF FEEDBACK: {self_feedback_resp}",
                             Fore.YELLOW,
                             "",
                         )
@@ -233,7 +234,7 @@ class Agent:
 
                 if user_input == "GENERATE NEXT COMMAND JSON":
                     logger.typewriter_log(
-                        "-=-=-=-=-=-=-=- COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=-",
+                        "\n-=-=-=-=-=-=-=- COMMAND AUTHORISED BY USER -=-=-=-=-=-=-=-",
                         Fore.MAGENTA,
                         "",
                     )
@@ -263,12 +264,10 @@ class Agent:
                     self.config.prompt_generator,
                 )
                 result = f"Command {command_name} returned: " + f"{command_result}"
-
                 result_tlength = count_string_tokens(str(command_result), cfg.fast_llm_model)
                 memory_tlength = count_string_tokens(str(self.history.summary_message()), cfg.fast_llm_model)
                 if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
                     result = f"Failure: {command_name} returned too much output."
-
                 for plugin in cfg.plugins:
                     if not plugin.can_handle_post_command():
                         continue
