@@ -12,7 +12,6 @@ from typing import Optional
 import distro
 import yaml
 
-from autogpt.commands.command import CommandRegistry
 from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
@@ -54,8 +53,8 @@ class AIConfig:
         self.ai_role = ai_role
         self.ai_goals = ai_goals
         self.api_budget = api_budget
-        self.prompt_generator: PromptGenerator | None = None
-        self.command_registry: CommandRegistry | None = None
+        self.prompt_generator = None
+        self.command_registry = None
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
