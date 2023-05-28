@@ -186,10 +186,10 @@ def create_chat_completion(
     """Create a chat completion using the OpenAI API
 
     Args:
-        messages (List[Message]): The messages to send to the chat completion
-        model (str, optional): The model to use. Defaults to None.
+        messages    (List[Message]): The messages to send to the chat completion
+        model       (str, optional): The model to use. Defaults to None.
         temperature (float, optional): The temperature to use. Defaults to 0.9.
-        max_tokens (int, optional): The max tokens to use. Defaults to None.
+        max_tokens  (int, optional): The max tokens to use. Defaults to None.
 
     Returns:
         str: The response from the chat completion
