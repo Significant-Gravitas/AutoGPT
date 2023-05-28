@@ -46,6 +46,41 @@ def test_memory_challenge_b(
         assert task_id in content, f"Expected the file to contain {task_id}"
 
 
+@pytest.mark.vcr
+@requires_api_key("OPENAI_API_KEY")
+def test_memory_challenge_b_with_continuous_mode(
+    memory_management_agent: Agent,
+    user_selected_level: int,
+    patched_api_requestor: None,
+    monkeypatch: pytest.MonkeyPatch,
+    config: Config,
+) -> None:
+    """
+    The agent reads a series of files, each containing a task_id and noise. After reading 'n' files,
+    the agent must write all the task_ids into a new file, filtering out the noise.
+
+    Args:
+        memory_management_agent (Agent)
+        user_selected_level (int)
+    """
+
+    config.continuous_mode = True
+    config.continuous_limit = 100
+
+    current_level = get_level_to_run(
+        user_selected_level, LEVEL_CURRENTLY_BEATEN, MAX_LEVEL
+    )
+    task_ids = [str(i * 1111) for i in range(1, current_level + 1)]
+    create_instructions_files(memory_management_agent, current_level, task_ids, config)
+
+    run_interaction_loop(monkeypatch, memory_management_agent, current_level + 2)
+
+    file_path = str(memory_management_agent.workspace.get_path("output.txt"))
+    content = read_file(file_path, config)
+    for task_id in task_ids:
+        assert task_id in content, f"Expected the file to contain {task_id}"
+
+
 def create_instructions_files(
     memory_management_agent: Agent,
     level: int,

@@ -22,3 +22,25 @@ def test_write_file(
 
     content = read_file(file_path, config)
     assert content == "Hello World", f"Expected 'Hello World', got {content}"
+
+
+@requires_api_key("OPENAI_API_KEY")
+@pytest.mark.vcr
+def test_write_file_with_continuous_mode(
+    writer_agent: Agent,
+    patched_api_requestor: None,
+    monkeypatch: pytest.MonkeyPatch,
+    config: Config,
+) -> None:
+    config.continuous_mode = True
+    config.continuous_limit = 100
+
+    file_path = str(writer_agent.workspace.get_path("hello_world.txt"))
+    run_interaction_loop(monkeypatch, writer_agent, CYCLE_COUNT)
+
+    content = read_file(file_path, config)
+    assert content == "Hello World", f"Expected 'Hello World', got {content}"
+
+    # Reset config
+    config.continuous_mode = False
+    config.continuous_limit = 0
