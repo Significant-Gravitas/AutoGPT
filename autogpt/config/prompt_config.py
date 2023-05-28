@@ -14,12 +14,13 @@ CFG = Config()
 
 class PromptConfig:
     """
-    A class object that contains the configuration information for the prompt, which is used by the prompt generator
+    A class object that contains the configuration information for the prompt,
+    which is used by the prompt generator
 
     Attributes:
-        constraints (list): Constraints list for the prompt generator.
-        resources (list): Resources list for the prompt generator.
-        performance_evaluations (list): Performance evaluation list for the prompt generator.
+     constraints (list): Constraints list for the prompt generator.
+     resources (list): Resources list for the prompt generator.
+     performance_evaluations (list): Performance evaluation list for the prompt generator.
     """
 
     def __init__(
@@ -27,16 +28,13 @@ class PromptConfig:
         config_file: str = CFG.prompt_settings_file,
     ) -> None:
         """
-        Initialize a class instance with parameters (constraints, resources, performance_evaluations) loaded from
-          yaml file if yaml file exists,
-        else raises error.
+        Initialize a class instance with parameters (constraints, resources, performance_evaluations)
+        loaded from yaml if exists else raises error.
 
         Parameters:
-            constraints (list): Constraints list for the prompt generator.
-            resources (list): Resources list for the prompt generator.
-            performance_evaluations (list): Performance evaluation list for the prompt generator.
-        Returns:
-            None
+         constraints (list): Constraints list for the prompt generator.
+         resources (list): Resources list for the prompt generator.
+         performance_evaluations (list): Performance evaluation list for the prompt generator.
         """
         # Validate file
         (validated, message) = utils.validate_yaml_file(config_file)
