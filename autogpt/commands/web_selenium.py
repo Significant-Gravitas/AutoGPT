@@ -29,7 +29,7 @@ from webdriver_manager.microsoft import EdgeChromiumDriverManager as EdgeDriverM
 
 from autogpt.commands.command import command
 from autogpt.logs import logger
-from autogpt.memory.vector import MemoryItem, NoMemory, get_memory
+from autogpt.memory.vector import MemoryItem, get_memory
 from autogpt.processing.html import extract_hyperlinks, format_hyperlinks
 from autogpt.url_utils.validators import validate_url
 

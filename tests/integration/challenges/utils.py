@@ -1,7 +1,7 @@
 import contextlib
 import random
 from functools import wraps
-from typing import Any, Callable, Dict, Generator, Optional, Tuple
+from typing import Any, Callable, Dict, Generator, Tuple
 
 import pytest
 

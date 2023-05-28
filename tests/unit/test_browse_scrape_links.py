@@ -2,7 +2,6 @@
 
 # Dependencies:
 # pip install pytest-mock
-import pytest
 
 from autogpt.commands.web_requests import scrape_links
 

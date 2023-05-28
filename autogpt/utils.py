@@ -10,7 +10,7 @@ from autogpt.logs import logger
 
 # Use readline if available (for clean_input)
 try:
-    import readline
+    pass
 except ImportError:
     pass
 
