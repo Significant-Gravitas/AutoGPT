@@ -36,7 +36,13 @@ By following these guidelines, your PRs are more likely to be merged quickly aft
 - [ ] I have considered potential risks and mitigations for my changes.
 - [ ] I have documented my changes clearly and comprehensively.
 - [ ] I have not snuck in any "extra" small tweaks changes. <!-- Submit these as separate Pull Requests, they are the easiest to merge! -->
-- [ ] I have run `black .` and `isort .` against my code to ensure it passes our linter.
+- [ ] I have run the following commands against my code to ensure it passes our linters:
+    ```shell
+    black .
+    isort .
+    mypy
+    autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports autogpt tests --in-place
+    ```
 
 <!-- If you haven't added tests, please explain why. If you have, check the appropriate box. If you've ensured your PR is atomic and well-documented, check the corresponding boxes. -->
 
