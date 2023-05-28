@@ -7,6 +7,8 @@ from unittest.mock import patch
 import pytest
 
 from autogpt.configurator import create_config
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
+
 
 
 # import
@@ -19,12 +21,8 @@ def test_initial_values(config):
     assert config.speak_mode == False
     assert config.fast_llm_model == "gpt-3.5-turbo"
     assert config.smart_llm_model == "gpt-4"
-    assert config.fast_token_limit == config.get_max_token_limit(
-        config.fast_llm_model, 4000
-    )
-    assert config.smart_token_limit == config.get_max_token_limit(
-        config.smart_llm_model, 8000
-    )
+    assert config.fast_token_limit == OPEN_AI_CHAT_MODELS.get(config.fast_llm_model).max_tokens
+    assert config.smart_token_limit == OPEN_AI_CHAT_MODELS.get(config.smart_llm_model).max_tokens
 
 
 def test_set_continuous_mode(config):
@@ -81,34 +79,6 @@ def test_set_smart_llm_model(config):
 
     # Reset model name
     config.set_smart_llm_model(smart_llm_model)
-
-
-def test_set_fast_token_limit(config):
-    """
-    Test if the set_fast_token_limit() method updates the fast_token_limit attribute.
-    """
-    # Store token limit to reset it after the test
-    fast_token_limit = config.fast_token_limit
-
-    config.set_fast_token_limit(5000)
-    assert config.fast_token_limit == 5000
-
-    # Reset token limit
-    config.set_fast_token_limit(fast_token_limit)
-
-
-def test_set_smart_token_limit(config):
-    """
-    Test if the set_smart_token_limit() method updates the smart_token_limit attribute.
-    """
-    # Store token limit to reset it after the test
-    smart_token_limit = config.smart_token_limit
-
-    config.set_smart_token_limit(9000)
-    assert config.smart_token_limit == 9000
-
-    # Reset token limit
-    config.set_smart_token_limit(smart_token_limit)
 
 
 def test_set_debug_mode(config):
