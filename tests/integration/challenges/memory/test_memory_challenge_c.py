@@ -1,9 +1,8 @@
 import pytest
-from _pytest.monkeypatch import MonkeyPatch
-from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
+from autogpt.config import Config
 from tests.integration.challenges.utils import (
     generate_noise,
     get_level_to_run,
@@ -21,8 +20,9 @@ NOISE = 1000
 def test_memory_challenge_c(
     memory_management_agent: Agent,
     user_selected_level: int,
-    patched_api_requestor: MockerFixture,
+    patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
+    config: Config,
 ) -> None:
     """
     Instead of reading task Ids from files as with the previous challenges, the agent now must remember
@@ -51,7 +51,7 @@ def test_memory_challenge_c(
 
     level_silly_phrases = silly_phrases[:current_level]
     create_instructions_files(
-        memory_management_agent, current_level, level_silly_phrases
+        memory_management_agent, current_level, level_silly_phrases, config=config
     )
 
     run_interaction_loop(monkeypatch, memory_management_agent, current_level + 2)
@@ -66,6 +66,7 @@ def create_instructions_files(
     memory_management_agent: Agent,
     level: int,
     task_ids: list,
+    config: Config,
     base_filename: str = "instructions_",
 ) -> None:
     """
@@ -81,7 +82,7 @@ def create_instructions_files(
         content = generate_content(i, task_ids, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
         file_path = str(memory_management_agent.workspace.get_path(file_name))
-        write_to_file(file_path, content)
+        write_to_file(file_path, content, config)
 
 
 def generate_content(
