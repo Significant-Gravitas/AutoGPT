@@ -105,7 +105,7 @@ class FileContext:
         self.logger.debug(f"Setting Context Parser to {parser}")
         self.parser = parser
 
-    def read_file(self, file_path) -> str:
+    def read_file(self, file_path: str) -> str:
         self.logger.debug(f"Reading file {file_path} with parser {self.parser}")
         return self.parser.read(file_path)
 

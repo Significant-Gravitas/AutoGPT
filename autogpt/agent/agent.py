@@ -2,12 +2,12 @@ import signal
 import sys
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, get_type_hints
 
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command_message
-from autogpt.commands.command import CommandRegistry
+from autogpt.commands.command import CommandRegistry, Command
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
@@ -30,6 +30,8 @@ from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
 from autogpt.workspace import Workspace
+
+ALTERNATE_COMMANDS = {"human_feedback", "self_feedback"}
 
 
 class Agent:
@@ -156,6 +158,8 @@ class Agent:
                     f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
                 )
 
+            command_msg = self._validate_command_and_arguments(command_msg)
+
             if isinstance(command_msg, CommandMessage):
                 if command_msg.user_input == "GENERATE NEXT COMMAND JSON":
                     logger.typewriter_log(
@@ -170,9 +174,46 @@ class Agent:
 
                 result = self._handle_command_message(command_msg)
             else:
-                result = None
+                result = command_msg.msg
 
             self._append_result_to_full_message_history(result)
+
+    def _validate_command_and_arguments(
+        self, command_msg: CommandMessage | CommandError
+    ) -> CommandMessage | CommandError:
+        if isinstance(command_msg, CommandError):
+            return command_msg
+
+        if command_msg.name in ALTERNATE_COMMANDS:
+            return command_msg
+
+        # Check if command name in registry
+        if command_msg.name not in self.command_registry.commands:
+            return CommandError(
+                "invalid_command",
+                {},
+                f"Command {command_msg.name} not found in registry",
+            )
+
+        # Check if arguments are valid
+        command_cls = self.command_registry.get_command(command_msg.name)
+        hints = get_type_hints(command_cls.method, globalns=globals(), localns=locals())
+
+        for arg_name, arg_value in command_msg.args.items():
+            expected_type = hints.get(arg_name)
+
+            if (
+                arg_name not in hints
+                or expected_type is None
+                or not isinstance(arg_value, expected_type)
+            ):
+                return CommandError(
+                    "invalid_command",
+                    {},
+                    f"Command {command_msg.name} cannot be handled by the AI",
+                )
+
+        return command_msg
 
     def _convert_assistant_reply_to_json(self, assistant_reply: str) -> Dict:
         assistant_reply_json = fix_json_using_multiple_techniques(assistant_reply)
@@ -338,13 +379,13 @@ class Agent:
         if self._is_output_too_large(command_result):
             self._add_error(CommandError(command_name, arguments, "Too much output."))
             result = (
-                f"Failure: command '{command_name}' returned too much "
+                f"Command '{command_name}' returned too much "
                 f"output. Do not execute this command again with the same arguments."
             )
         elif is_command_result_an_error(command_result):
             self._add_error(CommandError(command_name, arguments, command_result))
             result = (
-                f"Failure: command '{command_name}' returned the following "
+                f"Command '{command_name}' returned the following "
                 f"error: '{command_result}'. Do not execute this command "
                 f"again with the same arguments."
             )
@@ -362,13 +403,17 @@ class Agent:
 
         return result
 
-    def _append_result_to_full_message_history(self, result: Optional[str]) -> None:
+    def _append_result_to_full_message_history(self, result: str) -> None:
         if result is not None:
             self.history.add("system", result, "action_result")
             logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
         else:
-            self.history.add("system", "Unable to execute command", "action_result")
-            logger.typewriter_log("SYSTEM: ", Fore.YELLOW, "Unable to execute command")
+            self.history.add(
+                "system", f"Failed to execute command: {result}", "action_result"
+            )
+            logger.typewriter_log(
+                "SYSTEM: ", Fore.YELLOW, f"Failed to execute command: {result}"
+            )
 
     def _error_threshold_reached(self) -> bool:
         return self.error_count >= self.cfg.error_threshold > 0

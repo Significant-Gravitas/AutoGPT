@@ -1,7 +1,7 @@
 import functools
 import importlib
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Dict
 
 from autogpt.config import Config
 from autogpt.logs import logger
@@ -57,7 +57,7 @@ class CommandRegistry:
     """
 
     def __init__(self):
-        self.commands = {}
+        self.commands: Dict[str, Command] = {}
 
     def _import_module(self, module_name: str) -> Any:
         return importlib.import_module(module_name)
@@ -87,7 +87,7 @@ class CommandRegistry:
             if hasattr(reloaded_module, "register"):
                 reloaded_module.register(self)
 
-    def get_command(self, name: str) -> Callable[..., Any]:
+    def get_command(self, name: str) -> Command:
         return self.commands[name]
 
     def call(self, command_name: str, **kwargs) -> Any:

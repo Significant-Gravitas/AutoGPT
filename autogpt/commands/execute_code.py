@@ -170,7 +170,7 @@ def execute_shell(command_line: str, config: Config) -> str:
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config. Do not attempt to bypass the restriction.",
 )
-def execute_shell_popen(command_line, config: Config) -> str:
+def execute_shell_popen(command_line: str, config: Config) -> str:
     """Execute a shell command with Popen and returns an english description
     of the event and the process id
 
