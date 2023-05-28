@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from random import shuffle
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13,7 +12,6 @@ from autogpt.llm.base import ChatSequence, Message
 from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
-from autogpt.memory.vector import MemoryItem, get_memory
 
 cfg = Config()
 

@@ -5,7 +5,6 @@ for the AI and ensures it behaves as a singleton.
 from unittest.mock import patch
 
 import pytest
-from openai import InvalidRequestError
 
 from autogpt.configurator import create_config
 

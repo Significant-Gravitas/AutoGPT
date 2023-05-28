@@ -2,7 +2,6 @@
 import os
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import docker
 from docker.errors import ImageNotFound
