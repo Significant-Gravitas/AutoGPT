@@ -44,14 +44,10 @@ class ModelInfo:
 class ChatModelInfo(ModelInfo):
     """Struct for chat model information."""
 
-    pass
-
 
 @dataclass
 class TextModelInfo(ModelInfo):
     """Struct for text completion model information."""
-
-    pass
 
 
 @dataclass
