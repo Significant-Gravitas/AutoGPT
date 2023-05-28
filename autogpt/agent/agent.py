@@ -381,18 +381,18 @@ class Agent:
         if self._is_output_too_large(command_result):
             self._add_error(CommandError(command_name, arguments, "Too much output."))
             result = (
-                f"Command '{command_name}' returned too much "
+                f"Command {command_name} returned too much "
                 f"output. Do not execute this command again with the same arguments."
             )
         elif is_command_result_an_error(command_result):
             self._add_error(CommandError(command_name, arguments, command_result))
             result = (
-                f"Command '{command_name}' returned the following "
-                f"error: '{command_result}'. Do not execute this command "
+                f"Command {command_name} returned the following "
+                f"error: {command_result}. Do not execute this command "
                 f"again with the same arguments."
             )
         else:
-            result = f"Command '{command_name}' returned: {command_result}"
+            result = f"Command {command_name} returned: {command_result}"
 
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_post_command():
