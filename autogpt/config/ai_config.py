@@ -21,14 +21,14 @@ SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
 
 class AIConfig:
     """
-    A class object that contains the configuration information for the AI
+        A class object that contains the configuration information for the AI
 
-    Attributes:
-    ai_name      (str): The name of the AI.
-    ai_role      (str): The description of the AI's role.
-    ai_goals    (list): The list of objectives the AI is supposed to complete.
-    ai_goals_sk  (str): The description defines if the goal is static or dynamic. (experimental)
-    api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+        Attributes:
+         ai_name      (str): The name of the AI.
+         ai_role      (str): The description of the AI's role.
+         ai_goals    (list): The list of objectives the AI is supposed to complete.
+    TODO: add Attribute to defined a goal as permanent or temporary)
+         api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
     """
 
     def __init__(
@@ -36,18 +36,17 @@ class AIConfig:
         ai_name: str = "",
         ai_role: str = "",
         ai_goals: list | None = None,
-        ai_goals_sk: str | None = None,
         api_budget: float = 0.0,
     ) -> None:
         """
         Initialize a class instance
 
         Parameters:
-            ai_name (str): The name of the AI.
-            ai_role (str): The description of the AI's role.
-            ai_goals (list): The list of objectives the AI is supposed to complete.
-            ai_goals_sk  (str): The description defines if the goal is static or dynamic. (experimental)
-            api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+         ai_name (str): The name of the AI.
+         ai_role (str): The description of the AI's role.
+         ai_goals (list): The list of objectives the AI is supposed to complete.
+         api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+
         Returns:
             None
         """
@@ -56,17 +55,15 @@ class AIConfig:
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
-        self.ai_goals_sk = ai_goals_sk
         self.api_budget = api_budget
-        self.prompt_generator: PromptGenerator | None = None
-        self.command_registry: CommandRegistry | None = None
+        self.prompt_generator = PromptGenerator
+        self.command_registry = CommandRegistry
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
         """
-        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget) loaded from
-          yaml file if yaml file exists,
-        else returns class with no parameters.
+        Returns class object with parameters (ai_name, ai_role, ai_goals, api_budget)
+        loaded from ai_settings.yaml if file exists else returns class with no parameters.
 
         Parameters:
            config_file (int): The path to the config yaml file.
@@ -87,29 +84,25 @@ class AIConfig:
         ai_goals = [
             str(goal).strip("{}").replace("'", "").replace('"', "") if isinstance(goal, dict) else str(goal)
             for goal in config_params.get("ai_goals", [])
-            for goal in config_params.get("ai_goals_sk", [])
         ]
         api_budget = config_params.get("api_budget", 0.0)
-        # type: Type[AIConfig]
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
     def save(self, config_file: str = SAVE_FILE) -> None:
         """
-        Saves the class parameters to the specified file yaml file path as a yaml file.
+        Saves the class parameters to file path as a yaml file.
 
         Parameters:
-            config_file(str): The path to the config yaml file.
-              DEFAULT: "../ai_settings.yaml"
+         config_file(str): The path to the config yaml file.
+         DEFAULT: "../ai_settings.yaml"
 
         Returns:
-            None
+         None
         """
-
         config = {
             "ai_name": self.ai_name,
             "ai_role": self.ai_role,
             "ai_goals": self.ai_goals,
-            "ai_goals_sk": self.ai_goals_sk,
             "api_budget": self.api_budget,
         }
         with open(config_file, "w", encoding="utf-8") as file:
@@ -120,18 +113,17 @@ class AIConfig:
         Returns a prompt to the user with the class information in an organized fashion.
 
         Parameters:
-            None
+         None
 
         Returns:
-            full_prompt (str): A string containing the initial prompt for the user
-              including the ai_name, ai_role, ai_goals, ai_goals_sk, and api_budget.
+         full_prompt (str): A string containing the initial prompt for the user
+         including the ai_name, ai_role, ai_goals, and api_budget.
         """
 
         prompt_start = (
             "Your decisions should be made independently without"
             " seeking user assistance. Play to your strengths as an LLM and pursue"
             " simple strategies with no legal complications."
-            ""
         )
 
         from autogpt.config import Config
@@ -141,7 +133,6 @@ class AIConfig:
         if prompt_generator is None:
             prompt_generator = build_default_prompt_generator()
         prompt_generator.goals = self.ai_goals
-        prompt_generator.goals = self.ai_goals_sk
         prompt_generator.name = self.ai_name
         prompt_generator.role = self.ai_role
         prompt_generator.command_registry = self.command_registry
@@ -160,8 +151,6 @@ class AIConfig:
         # Construct full prompt
         full_prompt = f"You are {prompt_generator.name}, {prompt_generator.role}\n{prompt_start}\n\nGOALS:\n\n"
         for i, goal in enumerate(self.ai_goals):
-            full_prompt += f"{i+1}. {goal}\n"
-        for i, goal in enumerate(self.ai_goals_sk):
             full_prompt += f"{i+1}. {goal}\n"
         if self.api_budget > 0.0:
             full_prompt += f"\nIt takes money to let you run. Your API budget is ${self.api_budget:.3f}"
