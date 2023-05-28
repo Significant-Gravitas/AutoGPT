@@ -1,7 +1,7 @@
 import functools
 import importlib
 import inspect
-from typing import Any, Callable, Optional, Dict
+from typing import Any, Callable, Dict, Optional
 
 from autogpt.config import Config
 from autogpt.logs import logger
