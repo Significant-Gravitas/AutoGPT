@@ -38,7 +38,7 @@ def execute_python_file(filename: str, args: str = "") -> str:
 
     if we_are_running_in_a_docker_container():
         result = subprocess.run(
-            f"python {filename} {args}",
+            ["python", filename, args],
             capture_output=True,
             encoding="utf8",
             shell=True,
@@ -73,7 +73,7 @@ def execute_python_file(filename: str, args: str = "") -> str:
                     logger.info(status)
         container = client.containers.run(
             image_name,
-            f"python {Path(filename).relative_to(CFG.workspace_path)} {args}",
+            ["python", Path(filename).relative_to(CFG.workspace_path), args],
             volumes={
                 CFG.workspace_path: {
                     "bind": "/workspace",
