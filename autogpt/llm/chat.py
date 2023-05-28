@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from __future__ import annotations
+
 import time
 from typing import TYPE_CHECKING
 
@@ -116,12 +118,23 @@ def chat_with_ai(
         message_sequence.insert(insertion_index, new_summary_message)
         current_tokens_used += tokens_to_add - 500
 
-        # FIXME: uncomment when memory is back in use
-        # memory_store = get_memory(config)
-        # for _, ai_msg, result_msg in agent.history.per_cycle(trimmed_messages):
-        #     memory_to_add = MemoryItem.from_ai_action(ai_msg, result_msg)
-        #     logger.debug(f"Storing the following memory:\n{memory_to_add.dump()}")
-        #     memory_store.add(memory_to_add)
+    # Insert Memories
+    if len(full_message_history) > 0:
+        (
+            newly_trimmed_messages,
+            agent.last_memory_index,
+        ) = get_newly_trimmed_messages(
+            full_message_history=full_message_history,
+            current_context=current_context,
+            last_memory_index=agent.last_memory_index,
+        )
+
+        agent.summary_memory = update_running_summary(
+            agent,
+            current_memory=agent.summary_memory,
+            new_events=newly_trimmed_messages,
+        )
+        current_context.insert(insertion_index, agent.summary_memory)
 
     api_manager = ApiManager()
     # inform the AI about its remaining budget (if it has one)
@@ -150,18 +163,18 @@ def chat_with_ai(
         if not plugin.can_handle_on_planning():
             continue
         plugin_response = plugin.on_planning(
-            agent.config.prompt_generator, message_sequence.raw()
+            agent.config.prompt_generator, current_context
         )
         if not plugin_response or plugin_response == "":
             continue
         tokens_to_add = count_message_tokens(
-            [Message("system", plugin_response)], model
+            [create_chat_message("system", plugin_response)], model
         )
         if current_tokens_used + tokens_to_add > send_token_limit:
-            logger.debug(f"Plugin response too long, skipping: {plugin_response}")
-            logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
+            logger.debug("Plugin response too long, skipping:", plugin_response)
+            logger.debug("Plugins remaining at stop:", plugin_count - i)
             break
-        message_sequence.add("system", plugin_response)
+        current_context.append(create_chat_message("system", plugin_response))
 
     # Calculate remaining tokens
     tokens_remaining = token_limit - current_tokens_used
