@@ -27,8 +27,9 @@ class AIConfig:
          ai_name      (str): The name of the AI.
          ai_role      (str): The description of the AI's role.
          ai_goals    (list): The list of objectives the AI is supposed to complete.
-    TODO: add Attribute to defined a goal as permanent or temporary)
          api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+
+    TODO: add attribute to defined a goal as permanent or temporary
     """
 
     def __init__(
