@@ -24,28 +24,42 @@ def configure_logging():
     return logging.getLogger("AutoGPT-Ingestion")
 
 
-def ingest_directory(directory: str, memory: VectorMemory, config: Config):
+def ingest_directory(
+    directory: str, memory: VectorMemory, workspace: Workspace, config: Config
+):
     """
     Ingest all files in a directory by calling the ingest_file function for each file.
 
     Args:
         directory: The directory containing the files to ingest
         memory: The memory to ingest the files into
+        workspace: The workspace object containing the workspace path
         config: The Config object containing the workspace path
     """
     logger = logging.getLogger("AutoGPT-Ingestion")
     try:
-        files = list_files(directory, config)
+        files = list_files(str(workspace.get_path(directory)), config)
         for file in files:
-            ingest_file(os.path.join(config.workspace_path, file), memory)
+            ingest_file(str(workspace.get_path(file)), memory)
     except Exception as e:
         logger.error(f"Error while ingesting directory '{directory}': {str(e)}")
 
 
-def setup_workspace(cfg):
-    workspace_directory = Path(__file__).parent / "autogpt" / "auto_gpt_workspace"
+def setup_workspace(workspace_directory, cfg) -> Workspace:
+    """
+    Set up the workspace directory and return the workspace object.
+    Needed for Memory with file-based backend.
+    Needed for data ingestion file operations.
+    Args:
+        workspace_directory: The workspace directory
+        cfg: The Config
+
+    Returns: The Workspace
+
+    """
     workspace_directory = Workspace.make_workspace(workspace_directory)
     cfg.workspace_path = str(workspace_directory)
+    return Workspace(workspace_directory, cfg.restrict_to_workspace)
 
 
 def main() -> None:
@@ -61,41 +75,27 @@ def main() -> None:
         "--dir", type=str, help="The directory containing the files to ingest."
     )
     parser.add_argument(
-        "--init",
-        action="store_true",
-        help="Init the memory and wipe its content (default: False)",
-        default=False,
-    )
-    parser.add_argument(
-        "--overlap",
-        type=int,
-        help="The overlap size between chunks when ingesting files (default: 200)",
-        default=200,
-    )
-    parser.add_argument(
-        "--max_length",
-        type=int,
-        help="The max_length of each chunk when ingesting files (default: 4000)",
-        default=4000,
+        "--workspace-directory",
+        type=str,
+        help="The workspace directory where the data will be saved if the Memory is using a file-based backend.",
     )
     args = parser.parse_args()
 
-    # Setup workspace
-    setup_workspace(cfg)
+    workspace = setup_workspace(args.workspace_directory, cfg)
 
     # Initialize memory
-    memory = get_memory(cfg, init=args.init)
+    memory = get_memory(cfg)
     logger.debug("Using memory of type: " + memory.__class__.__name__)
 
     if args.file:
         try:
-            ingest_file(args.file, memory)
+            ingest_file(str(workspace.get_path(args.file)), memory)
             logger.info(f"File '{args.file}' ingested successfully.")
         except Exception as e:
             logger.error(f"Error while ingesting file '{args.file}': {str(e)}")
     elif args.dir:
         try:
-            ingest_directory(args.dir, memory, cfg)
+            ingest_directory(args.dir, memory, workspace, cfg)
             logger.info(f"Directory '{args.dir}' ingested successfully.")
         except Exception as e:
             logger.error(f"Error while ingesting directory '{args.dir}': {str(e)}")

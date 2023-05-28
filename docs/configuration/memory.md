@@ -163,35 +163,19 @@ usage: data_ingestion.py [-h] (--file FILE | --dir DIR) [--init] [--overlap OVER
 Ingest a file or a directory with multiple files into memory. Make sure to set your .env before running this script.
 
 options:
-  -h, --help               show this help message and exit
-  --file FILE              The file to ingest.
-  --dir DIR                The directory containing the files to ingest.
-  --init                   Init the memory and wipe its content (default: False)
-  --overlap OVERLAP        The overlap size between chunks when ingesting files (default: 200)
-  --max_length MAX_LENGTH  The max_length of each chunk when ingesting files (default: 4000)
+  -h, --help                    show this help message and exit
+  --file FILE                   The file to ingest.
+  --dir DIR                     The directory containing the files to ingest.
+  --workspace-directory DIR     The workspace directory where the data will be saved if the Memory is using a file-based backend.
 
-# python data_ingestion.py --dir DataFolder --init --overlap 100 --max_length 2000
+# python data_ingestion.py --dir DataFolder
 ```
 
-In the example above, the script initializes the memory, ingests all files within the `Auto-Gpt/autogpt/auto_gpt_workspace/DataFolder` directory into memory with an overlap between chunks of 100 and a maximum length of each chunk of 2000.
+In the example above, the script ingests all files within the `Auto-Gpt/autogpt/auto_gpt_workspace/DataFolder` directory into memory.
 
 Note that you can also use the `--file` argument to ingest a single file into memory and that data_ingestion.py will only ingest files within the `/auto_gpt_workspace` directory.
 
 The DIR path is relative to the auto_gpt_workspace directory, so `python data_ingestion.py --dir . --init` will ingest everything in `auto_gpt_workspace` directory.
-
-You can adjust the `max_length` and `overlap` parameters to fine-tune the way the
-    documents are presented to the AI when it "recall" that memory:
-
-- Adjusting the overlap value allows the AI to access more contextual information
-    from each chunk when recalling information, but will result in more chunks being
-    created and therefore increase memory backend usage and OpenAI API requests.
-- Reducing the `max_length` value will create more chunks, which can save prompt
-    tokens by allowing for more message history in the context, but will also
-    increase the number of chunks.
-- Increasing the `max_length` value will provide the AI with more contextual
-    information from each chunk, reducing the number of chunks created and saving on
-    OpenAI API requests. However, this may also use more prompt tokens and decrease
-    the overall context available to the AI.
 
 Memory pre-seeding is a technique for improving AI accuracy by ingesting relevant data
 into its memory. Chunks of data are split and added to memory, allowing the AI to access

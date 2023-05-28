@@ -34,7 +34,7 @@ class Workspace:
         return self._restrict_to_workspace
 
     @classmethod
-    def make_workspace(cls, workspace_directory: str | Path, *args, **kwargs) -> Path:
+    def make_workspace(cls, workspace_directory: str | Path = None) -> Path:
         """Create a workspace directory and return the path to it.
 
         Parameters
@@ -48,6 +48,13 @@ class Workspace:
             The path to the workspace directory.
 
         """
+        # TODO: have this directory live outside the repository (e.g. in a user's
+        #   home directory) and have it come in as a command line argument or part of
+        #   the env file.
+        if workspace_directory is None:
+            workspace_directory = Path(__file__).parent.parent / "auto_gpt_workspace"
+        else:
+            workspace_directory = Path(workspace_directory)
         # TODO: have this make the env file and ai settings file in the directory.
         workspace_directory = cls._sanitize_path(workspace_directory)
         workspace_directory.mkdir(exist_ok=True, parents=True)

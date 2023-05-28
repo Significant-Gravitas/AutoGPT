@@ -104,13 +104,6 @@ def run_auto_gpt(
     if install_plugin_deps:
         install_plugin_dependencies()
 
-    # TODO: have this directory live outside the repository (e.g. in a user's
-    #   home directory) and have it come in as a command line argument or part of
-    #   the env file.
-    if workspace_directory is None:
-        workspace_directory = Path(__file__).parent / "auto_gpt_workspace"
-    else:
-        workspace_directory = Path(workspace_directory)
     # TODO: pass in the ai_settings file and the env file and have them cloned into
     #   the workspace directory so we can bind them to the agent.
     workspace_directory = Workspace.make_workspace(workspace_directory)
