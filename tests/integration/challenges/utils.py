@@ -1,7 +1,7 @@
 import contextlib
 import random
 from functools import wraps
-from typing import Any, Callable, Dict, Generator, Optional, Tuple
+from typing import Any, Callable, Dict, Generator, Tuple
 
 import pytest
 
@@ -46,24 +46,6 @@ def generate_noise(noise_size: int) -> str:
             k=noise_size,
         )
     )
-
-
-def run_multiple_times(times: int) -> Callable:
-    """
-    Decorator that runs a test function multiple times.
-
-    :param times: The number of times the test function should be executed.
-    """
-
-    def decorator(test_func: Callable[..., Any]) -> Callable[..., Any]:
-        @wraps(test_func)
-        def wrapper(*args: Tuple[Any, ...], **kwargs: Dict[str, Any]) -> None:
-            for _ in range(times):
-                test_func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
 
 
 def setup_mock_input(monkeypatch: pytest.MonkeyPatch, cycle_count: int) -> None:

@@ -60,9 +60,14 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
               - ./data:/app/data
               ## allow auto-gpt to write logs to disk
               - ./logs:/app/logs
-              ## uncomment following lines if you have / want to make use of these files
-              #- ./azure.yaml:/app/azure.yaml
-              #- ./ai_settings.yaml:/app/ai_settings.yaml
+              ## uncomment following lines if you want to make use of these files
+              ## you must have them existing in the same folder as this docker-compose.yml
+              #- type: bind
+              #  source: ./azure.yaml
+              #  target: /app/azure.yaml
+              #- type: bind
+              #  source: ./ai_settings.yaml
+              #  target: /app/ai_settings.yaml
           redis:
             image: "redis/redis-stack-server:latest"
 
@@ -138,9 +143,9 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
 
         :::yaml
         # Please specify all of these values as double-quoted strings
-        # Replace string in angled brackets (<>) to your own ID
+        # Replace string in angled brackets (<>) to your own deployment Name
         azure_model_map:
-            fast_llm_model_deployment_id: "<my-fast-llm-deployment-id>"
+            fast_llm_model_deployment_id: "<auto-gpt-deployment>"
                 ...
 
     Details can be found in the [openai-python docs], and in the [Azure OpenAI docs] for the embedding model.
