@@ -120,11 +120,13 @@ class Agent:
             # Send message to AI, get response
             with Spinner("Thinking... ", plain_output=self.cfg.plain_output):
                 assistant_reply = chat_with_ai(
+                    self.cfg,
                     self,
                     self.system_prompt,
                     self.triggering_prompt,
                     self.cfg.fast_token_limit,
-                )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
+                    self.cfg.fast_llm_model,
+                )
 
             assistant_reply_json = self._convert_assistant_reply_to_json(
                 assistant_reply
