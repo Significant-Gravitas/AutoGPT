@@ -1,4 +1,4 @@
-# Creating Challenges for AutoGPT
+# Creating Challenges for Auto-GPT
 
 🏹 We're on the hunt for talented Challenge Creators! 🎯
 
@@ -14,7 +14,7 @@ Are you ready to play a pivotal role in Auto-GPT's journey? Apply now to become 
 
 
 # Getting Started
-Clone the original AutoGPT repo and checkout to master branch
+Clone the original Auto-GPT repo and checkout to master branch
 
 
 The challenges are not written using a specific framework. They try to be very agnostic
@@ -101,7 +101,6 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 @pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-@run_multiple_times(3)
 def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs

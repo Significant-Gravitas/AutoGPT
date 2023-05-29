@@ -68,7 +68,6 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
             prompt (PromptGenerator): The prompt generator.
             messages (List[str]): The list of messages.
         """
-        pass
 
     def can_handle_post_planning(self) -> bool:
         """This method is called to check that the plugin can
@@ -116,7 +115,6 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         Returns:
             Optional[str]: The resulting message.
         """
-        pass
 
     def can_handle_post_instruction(self) -> bool:
         """This method is called to check that the plugin can
@@ -196,7 +194,6 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         Returns:
             str: The resulting response.
         """
-        pass
 
     def can_handle_text_embedding(self, text: str) -> bool:
         """This method is called to check that the plugin can
@@ -214,7 +211,6 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         Returns:
             list: The text embedding.
         """
-        pass
 
     def can_handle_user_input(self, user_input: str) -> bool:
         """This method is called to check that the plugin can
@@ -237,8 +233,6 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
             str: The user input.
         """
 
-        pass
-
     def can_handle_report(self) -> bool:
         """This method is called to check that the plugin can
         handle the report method.
@@ -253,4 +247,3 @@ class BaseOpenAIPlugin(AutoGPTPluginTemplate):
         Args:
             message (str): The message to report.
         """
-        pass
