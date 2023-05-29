@@ -33,6 +33,7 @@ class Config(metaclass=Singleton):
 
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
+        self.self_feedback_key = os.getenv("SELF_FEEDBACK_KEY", "s")
 
         if disabled_command_categories := os.getenv("DISABLED_COMMAND_CATEGORIES"):
             self.disabled_command_categories = disabled_command_categories.split(",")
@@ -78,6 +79,7 @@ class Config(metaclass=Singleton):
         self.use_mac_os_tts = os.getenv("USE_MAC_OS_TTS")
 
         self.chat_messages_enabled = os.getenv("CHAT_MESSAGES_ENABLED") == "True"
+        self.is_question_enabled = os.getenv("SET_IS_QUESTION") == "True"
 
         self.use_brian_tts = False
         self.use_brian_tts = os.getenv("USE_BRIAN_TTS")
@@ -242,7 +244,7 @@ class Config(metaclass=Singleton):
         """Set the memory backend name."""
         self.memory_backend = name
 
-    def is_question(self):
+    def is_question_enabled(self):
         # this function checks if the input is a question
         return (
             re.search(
@@ -256,7 +258,8 @@ class Config(metaclass=Singleton):
     fallback_responses = [
         "I'm sorry. Could you please rephrase that?",
         "I'm not sure I understand what you're asking. Can you give me more context?",
-        "I didn't catch that. Can you try asking again in a different way?", ]
+        "I didn't catch that. Can you try asking again in a different way?",
+    ]
 
     def get_response(self):
         # this function defines the bot's response to user input
