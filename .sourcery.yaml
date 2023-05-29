@@ -1,12 +1,12 @@
 ignore:
+  - .env
   - .git
-  - venv
+  - .tox
   - .venv
   - env
-  - .env
-  - .tox
   - node_modules
   - vendor
+  - venv
 
 rule_settings:
   enable:
@@ -18,9 +18,9 @@ rule_settings:
     - reorder_python_imports
   disable: []
   rule_types:
+    - comment
     - refactoring
     - suggestion
-    - comment
   python_version: "3.11"
 
 rules:
