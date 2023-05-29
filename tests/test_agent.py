@@ -1,3 +1,4 @@
+from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
@@ -46,13 +47,27 @@ def test_agent_initialization(agent: Agent):
 
 @requires_api_key("OPENAI_API_KEY")
 def test_chat_with_ai_model_is_none(config: Config, agent: Agent):
-    chat_with_ai(
-        config=config,
-        agent=agent,
-        user_input="test",
-        token_limit=3000,
-        system_prompt="System prompt",
-    )
+    with mock.patch(
+        "autogpt.llm.chat.create_chat_completion"
+    ) as mock_create_chat_completion:
+        mock_create_chat_completion.return_value = "test"
+        with mock.patch(
+            "autogpt.llm.chat.count_message_tokens"
+        ) as mock_count_message_tokens:
+            mock_count_message_tokens.return_value = 3000
+            chat_with_ai(
+                config=config,
+                agent=agent,
+                user_input="test",
+                token_limit=3000,
+                system_prompt="System prompt",
+            )
+
+            args_list = mock_count_message_tokens.call_args
+            print(args_list)
+            assert any(
+                "gpt-4" in arg_tuple[1] for arg_tuple in args_list
+            ), "gpt-4 not found in args_list"
 
 
 # More test methods can be added for specific agent interactions
