@@ -1,8 +1,8 @@
 """ Tests for the CLI."""
 from unittest import mock
 
-from click.testing import CliRunner
 import pytest
+from click.testing import CliRunner
 
 from autogpt import cli
 from autogpt.config.config import Config
