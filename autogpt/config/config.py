@@ -156,7 +156,7 @@ class Config(metaclass=Singleton):
         Returns:
             The matching deployment id if found, otherwise an empty string.
         """
-        if hasattr(self, 'azure_model_to_deployment_id_map') == False:
+        if hasattr(self, "azure_model_to_deployment_id_map") == False:
             return None
 
         if model not in self.azure_model_to_deployment_id_map:
