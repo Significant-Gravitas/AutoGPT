@@ -33,7 +33,7 @@ class Config(metaclass=Singleton):
 
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
-        self.self_feedback_key = os.getenv("SELF_FEEDBACK_KEY", "s")
+        self.feedback_key = os.getenv("FEEDBACK_KEY", "s")
 
         if disabled_command_categories := os.getenv("DISABLED_COMMAND_CATEGORIES"):
             self.disabled_command_categories = disabled_command_categories.split(",")
