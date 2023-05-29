@@ -3,18 +3,33 @@ from _pytest.config import Config
 from _pytest.config.argparsing import Parser
 from _pytest.fixtures import FixtureRequest
 
+from tests.integration.challenges.challenge_decorator.challenge import Challenge
+
 
 def pytest_addoption(parser: Parser) -> None:
     parser.addoption(
         "--level", action="store", default=None, type=int, help="Specify test level"
     )
+    parser.addoption(
+        "--beat-challenges",
+        action="store_true",
+        help="Spepcifies whether the test suite should attempt to beat challenges",
+    )
 
 
 def pytest_configure(config: Config) -> None:
-    config.option.level = config.getoption("--level")
+    level = config.getoption("--level", default=None)
+    config.option.level = level
+    beat_challenges = config.getoption("--beat-challenges", default=False)
+    config.option.beat_challenges = beat_challenges
 
 
 @pytest.fixture
-def user_selected_level(request: FixtureRequest) -> int:
+def level_to_run(request: FixtureRequest) -> int:
     ## used for challenges in the goal oriented tests
     return request.config.option.level
+
+
+@pytest.fixture(autouse=True)
+def check_beat_challenges(request: FixtureRequest) -> None:
+    Challenge.BEAT_CHALLENGES = request.config.getoption("--beat-challenges")
