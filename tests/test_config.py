@@ -177,7 +177,7 @@ def test_azure_config(config, workspace):
     with pytest.raises(FileNotFoundError):
         config.load_azure_config(str(config_file))
 
-    azure_configuration= (
+    azure_configuration = (
         "azure_api_type: azure\n"
         "azure_api_base: https://test.openai.azure.com/\n"
         "azure_api_version: 2023-03-15-preview\n"
@@ -199,11 +199,23 @@ def test_azure_config(config, workspace):
         "text-embedding-ada-002": "gpt-embedding-ada",
     }
 
-    assert config.get_azure_deployment_id_for_model(config.fast_llm_model) == "gpt-3-5_playground"
-    assert config.get_azure_deployment_id_for_model(config.smart_llm_model) == "gpt-4_playground"
+    assert (
+        config.get_azure_deployment_id_for_model(config.fast_llm_model)
+        == "gpt-3-5_playground"
+    )
+    assert (
+        config.get_azure_deployment_id_for_model(config.smart_llm_model)
+        == "gpt-4_playground"
+    )
 
     config.set_fast_llm_model("gpt-4")
-    assert config.get_azure_deployment_id_for_model(config.fast_llm_model) == "gpt-4_playground"
-    assert config.get_azure_deployment_id_for_model(config.smart_llm_model) == "gpt-4_playground"
+    assert (
+        config.get_azure_deployment_id_for_model(config.fast_llm_model)
+        == "gpt-4_playground"
+    )
+    assert (
+        config.get_azure_deployment_id_for_model(config.smart_llm_model)
+        == "gpt-4_playground"
+    )
 
     assert config.get_azure_deployment_id_for_model("text-davince-03") is None
