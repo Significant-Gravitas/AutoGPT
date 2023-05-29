@@ -69,11 +69,12 @@ def construct_main_ai_config() -> AIConfig:
         )
         should_continue = clean_input(
             f"""Continue with the last settings?
-            Name:  {config.ai_name}
-            Role:  {config.ai_role}
-            Goals: {config.ai_goals}
-            API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-            Continue ({CFG.authorise_key}/{CFG.exit_key}): """
+ Name:  {config.ai_name}
+ Role:  {config.ai_role}
+ Goals: {config.ai_goals}
+ API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
+ Continue ({CFG.authorise_key}/{CFG.exit_key}):
+ """
         )
         if should_continue.lower() == CFG.exit_key:
             config = AIConfig()
