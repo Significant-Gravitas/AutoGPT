@@ -138,7 +138,6 @@ Returns:
 ```
 
 The model filled in the 'two' in the middle.
-```
 
 ## Error Handling
 
