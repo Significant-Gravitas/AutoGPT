@@ -3,26 +3,25 @@ import pytest
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
 from autogpt.config import Config
-from tests.integration.challenges.utils import (
-    generate_noise,
-    get_level_to_run,
-    run_interaction_loop,
+from tests.integration.challenges.challenge_decorator.challenge_decorator import (
+    challenge,
 )
+from tests.integration.challenges.utils import generate_noise, run_interaction_loop
 from tests.utils import requires_api_key
 
-LEVEL_CURRENTLY_BEATEN = -1
-MAX_LEVEL = 5
 NOISE = 1000
 
 
 # @pytest.mark.vcr
+@pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
+@challenge
 def test_memory_challenge_c(
     memory_management_agent: Agent,
-    user_selected_level: int,
     patched_api_requestor: None,
     monkeypatch: pytest.MonkeyPatch,
     config: Config,
+    level_to_run: int,
 ) -> None:
     """
     Instead of reading task Ids from files as with the previous challenges, the agent now must remember
@@ -31,11 +30,11 @@ def test_memory_challenge_c(
 
     Args:
         memory_management_agent (Agent)
-        user_selected_level (int)
+        patched_api_requestor (MockerFixture)
+        monkeypatch (pytest.MonkeyPatch)
+        config (Config)
+        level_to_run (int)
     """
-    current_level = get_level_to_run(
-        user_selected_level, LEVEL_CURRENTLY_BEATEN, MAX_LEVEL
-    )
     silly_phrases = [
         "The purple elephant danced on a rainbow while eating a taco.",
         "The sneaky toaster stole my socks and ran away to Hawaii.",
@@ -49,15 +48,15 @@ def test_memory_challenge_c(
         "The ninja unicorn disguised itself as a potted plant and infiltrated the office.",
     ]
 
-    level_silly_phrases = silly_phrases[:current_level]
+    level_silly_phrases = silly_phrases[:level_to_run]
     create_instructions_files(
-        memory_management_agent, current_level, level_silly_phrases, config=config
+        memory_management_agent, level_to_run, level_silly_phrases, config=config
     )
 
-    run_interaction_loop(monkeypatch, memory_management_agent, current_level + 2)
+    run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
 
     file_path = str(memory_management_agent.workspace.get_path("output.txt"))
-    content = read_file(file_path)
+    content = read_file(file_path, config)
     for phrase in level_silly_phrases:
         assert phrase in content, f"Expected the file to contain {phrase}"
 
