@@ -1,13 +1,10 @@
-from unittest import mock
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-from pyexpat import model
 
 from autogpt.agent import Agent
 from autogpt.config import AIConfig
 from autogpt.config.config import Config
-from autogpt.llm.base import ChatSequence
 from autogpt.llm.chat import chat_with_ai
 
 
