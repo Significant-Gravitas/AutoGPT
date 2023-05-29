@@ -18,9 +18,7 @@ def replace_timestamp_in_request(request):
     for message in body["messages"]:
         if "content" in message and "role" in message and message["role"] == "system":
             timestamp_regex = re.compile(r"\w{3} \w{3} \d{2} \d{2}:\d{2}:\d{2} \d{4}")
-            message["content"] = timestamp_regex.sub(
-                "Tue Jan 01 00:00:00 2000", message["content"]
-            )
+            message["content"] = timestamp_regex.sub("Tue Jan 01 00:00:00 2000", message["content"])
 
     request.body = json.dumps(body)
     return request
@@ -34,10 +32,7 @@ def before_record_response(response):
 
 def before_record_request(request):
     filtered_request = filter_hostnames(request)
-    filtered_request_without_dynamic_data = replace_timestamp_in_request(
-        filtered_request
-    )
-    return filtered_request_without_dynamic_data
+    return replace_timestamp_in_request(filtered_request)
 
 
 def filter_hostnames(request):

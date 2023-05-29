@@ -28,7 +28,7 @@ Additional aspects:
 - The 'validate_url' function uses the 'functools.wraps' decorator to preserve the original function's metadata, such as its name, docstring, and annotations.
 - The 'validate_url' function uses the 'urlparse' function from the 'urllib.parse' module to parse the URL and extract its components.
 - The 'validate_url' function uses the 'urljoin' function from the 'requests.compat' module to join the sanitized URL components back into a URL string.
-"""
+"""  # noqa: E501
 
 
 @validate_url
@@ -66,7 +66,7 @@ missing_loc = (("http://?query=q"),)
 
 
 @pytest.mark.parametrize("url", missing_loc)
-def test_url_validation_fails_bad_protocol(url):
+def test_url_validation_fails_bad_protocol(url):  # noqa: F811
     with raises(ValueError, match="Missing Scheme or Network location"):
         dummy_method(url)
 
@@ -100,16 +100,13 @@ class TestValidateUrl:
 
     # Tests that the function successfully validates a valid URL with additional path, parameters, and query string.
     def test_general_behavior_additional_path_parameters_query_string(self):
-        """Test that the function successfully validates a valid URL with additional path, parameters, and query string"""
+        """Test that the function successfully validates a valid URL with additional path, parameters, and query string"""  # noqa: E501
 
         @validate_url
         def test_func(url):
             return url
 
-        assert (
-            test_func("https://www.google.com/search?q=python")
-            == "https://www.google.com/search?q=python"
-        )
+        assert test_func("https://www.google.com/search?q=python") == "https://www.google.com/search?q=python"
 
     # Tests that the function raises a ValueError if the URL is missing scheme or network location.
     def test_edge_case_missing_scheme_or_network_location(self):
@@ -141,10 +138,7 @@ class TestValidateUrl:
         def test_func(url):
             return url
 
-        assert (
-            test_func("https://www.google.com/search?q=python#top")
-            == "https://www.google.com/search?q=python"
-        )
+        assert test_func("https://www.google.com/search?q=python#top") == "https://www.google.com/search?q=python"
 
     # Tests that the function raises a ValueError if the URL has an invalid format (e.g. missing slashes).
     def test_general_behavior_invalid_url_format(self):

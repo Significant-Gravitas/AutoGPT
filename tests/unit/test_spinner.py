@@ -22,7 +22,7 @@ Fields:
 - message: The message to display.
 - running: A boolean value that indicates whether the spinner animation is running.
 - spinner_thread: A threading.Thread object that runs the spin method in a separate thread.
-"""
+"""  # noqa: E501
 
 ALMOST_DONE_MESSAGE = "Almost done..."
 PLEASE_WAIT = "Please wait..."
@@ -49,22 +49,22 @@ def test_spinner_stops_spinning():
         time.sleep(1)
         spinner.update_message(ALMOST_DONE_MESSAGE)
         time.sleep(1)
-    assert spinner.running == False
+    assert spinner.running is False
 
 
 def test_spinner_updates_message_and_still_spins():
     """Tests that the spinner message can be updated while the spinner is running and the spinner continues spinning."""
     with Spinner() as spinner:
-        assert spinner.running == True
+        assert spinner.running is True
         time.sleep(1)
         spinner.update_message(ALMOST_DONE_MESSAGE)
         time.sleep(1)
         assert spinner.message == ALMOST_DONE_MESSAGE
-    assert spinner.running == False
+    assert spinner.running is False
 
 
 def test_spinner_can_be_used_as_context_manager():
     """Tests that the spinner can be used as a context manager."""
     with Spinner() as spinner:
-        assert spinner.running == True
-    assert spinner.running == False
+        assert spinner.running is True
+    assert spinner.running is False
