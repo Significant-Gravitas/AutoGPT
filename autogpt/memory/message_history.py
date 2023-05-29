@@ -25,7 +25,6 @@ class MessageHistory:
 
     messages: list[Message] = field(default_factory=list)
     summary: str = "I was created"
-
     last_trimmed_index: int = 0
 
     def __getitem__(self, i: int):

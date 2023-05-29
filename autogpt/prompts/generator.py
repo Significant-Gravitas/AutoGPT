@@ -9,13 +9,13 @@ if TYPE_CHECKING:
 class PromptGenerator:
     """
     A class for generating custom prompt strings based on constraints, commands,
-        resources, and performance evaluations.
+    resources, and performance evaluations.
     """
 
     def __init__(self) -> None:
         """
         Initialize the PromptGenerator object with empty lists of constraints,
-            commands, resources, and performance evaluations.
+        commands, resources, and performance evaluations.
         """
         self.constraints = []
         self.commands = []
@@ -23,7 +23,7 @@ class PromptGenerator:
         self.performance_evaluation = []
         self.goals = []
         self.command_registry: CommandRegistry | None = None
-        self.name = "Bob"
+        self.name = "Tha Auto-GPT"
         self.role = "AI"
         self.response_format = {
             "thoughts": {
@@ -56,18 +56,17 @@ class PromptGenerator:
         Add a command to the commands list with a label, name, and optional arguments.
 
         Args:
-            command_label (str): The label of the command.
-            command_name (str): The name of the command.
-            args (dict, optional): A dictionary containing argument names and their
-              values. Defaults to None.
-            function (callable, optional): A callable function to be called when
-                the command is executed. Defaults to None.
+         command_label (str): The label of the command.
+         command_name (str): The name of the command.
+         args (dict, optional): A dictionary containing argument names and their
+         values. Defaults to None.
+         function (callable, optional): A callable function to be called when
+         the command is executed. Defaults to None.
         """
         if args is None:
             args = {}
 
         command_args = dict(args.items())
-
         command = {
             "label": command_label,
             "name": command_name,
@@ -113,17 +112,18 @@ class PromptGenerator:
         Generate a numbered list from given items based on the item_type.
 
         Args:
-            items (list): A list of items to be numbered.
-            item_type (str, optional): The type of items in the list.
-                Defaults to 'list'.
+         items (list): A list of items to be numbered.
+         item_type (str, optional): The type of items in the list.
+         Defaults to 'list'.
 
         Returns:
-            str: The formatted numbered list.
+         str: The formatted numbered list.
         """
         if item_type == "command":
             command_strings = []
             if self.command_registry:
                 command_strings += [str(item) for item in self.command_registry.commands.values() if item.enabled]
+
             # terminate command is added manually
             command_strings += [self._generate_command_string(item) for item in items]
             return "\n".join(f"{i+1}. {item}" for i, item in enumerate(command_strings))
@@ -132,11 +132,11 @@ class PromptGenerator:
 
     def generate_prompt_string(self) -> str:
         """
-        Generate a prompt string based on the constraints, commands, resources,
-            and performance evaluations.
+         Generate a prompt string based on the constraints, commands, resources,
+         and performance evaluations.
 
         Returns:
-            str: The generated prompt string.
+         str: The generated prompt string.
         """
         formatted_response_format = json.dumps(self.response_format, indent=4)
         return (
