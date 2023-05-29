@@ -1,7 +1,8 @@
-from pyexpat import model
 from unittest import mock
 from unittest.mock import MagicMock, patch
+
 import pytest
+from pyexpat import model
 
 from autogpt.agent import Agent
 from autogpt.config import AIConfig
