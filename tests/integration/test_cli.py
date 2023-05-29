@@ -10,8 +10,9 @@ from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL
 from tests.utils import requires_api_key
 
 
+@pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_gpt4only_cli_arg() -> None:
+def test_gpt4only_cli_arg(patched_api_requestor: None) -> None:
     """
     Test that the --gpt4only CLI argument sets the smart and fast LLM models to GPT-4.
     """
@@ -28,8 +29,9 @@ def test_gpt4only_cli_arg() -> None:
                 mocked_set_fast_llm_model.assert_called_with(GPT_4_MODEL)
 
 
+@pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_gpt3only_cli_arg() -> None:
+def test_gpt3only_cli_arg(patched_api_requestor: None) -> None:
     """
     Test that the --gpt3only CLI argument sets the smart and fast LLM models to GPT-3.5.
     """
