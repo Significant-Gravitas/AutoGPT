@@ -4,7 +4,7 @@ import re
 
 import requests
 import yaml
-from colorama import Back, Fore, Style
+from colorama import Fore, Style
 from git.repo import Repo
 
 from autogpt.logs import logger
@@ -60,11 +60,11 @@ def clean_input(prompt: str = "", talk=False):
                 return plugin_response
 
         # Ask for input, default when just pressing Enter is y
-        logger.info(f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}>>>{Style.RESET_ALL}\n")
+        logger.info("")
         return input(prompt)
     except KeyboardInterrupt:
-        logger.info("Auto-GPT interrupted")
-        logger.info("  >>> executing self-destruct")
+        logger.info("\nAuto-GPT interrupted")
+        logger.info(">>> executing self-destruct")
         exit(0)
 
 

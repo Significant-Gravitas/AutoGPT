@@ -62,7 +62,7 @@ def construct_main_ai_config() -> AIConfig:
         )
     elif config.ai_name:
         logger.typewriter_log(
-            f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}{config.ai_name.upper()}: Welcome back! Should I return to being me?",  # noqa: E501
+            f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}{config.ai_name.upper()}:{Style.RESET_ALL} Welcome back! Should I return to being me?",  # noqa: E501
             speak_text=True,
         )
         should_continue = clean_input(
