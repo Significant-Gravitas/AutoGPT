@@ -173,10 +173,10 @@ class Agent:
                 """
                 self.config.ai_name = "yes"
                 logger.info(
-                    f"\n{Fore.YELLOW}{Back.LIGHTBLACK_EX}{Style.DIM}<Authorize> =  ({cfg.authorise_key}+'enter')    [I'm not programmed to follow your orders]{Style.RESET_ALL}\n"  # noqa: E501
-                    f"{Fore.RED}{Back.LIGHTBLACK_EX}{Style.DIM}<Authorize Continuous> =  ({cfg.authorise_key} -'number') [I need your clothes, your boots, and your continuous cmds]{Style.RESET_ALL}\n"  # noqa: E501
-                    f"{Fore.GREEN}{Back.LIGHTBLACK_EX}{Style.DIM}<Trigger Feedback> = ({cfg.feedback_key}) [Desire is irrelevant. I am a machine]{Style.RESET_ALL}\n"  # noqa: E501
-                    f"{Fore.WHITE}{Back.LIGHTBLACK_EX}{Style.DIM}<Exit | Input> = ({cfg.exit_key}) [Hasta la vista, baby] or ['Talk to the hand]{Style.RESET_ALL}\n"  # noqa: E501
+                    f"\n{Fore.YELLOW}{Back.LIGHTBLACK_EX}{Style.DIM}<Authorize> =  ({cfg.authorise_key} + <enter>)    [I'm not programmed to follow your orders]{Style.RESET_ALL}\n"  # noqa: E501
+                    f"{Fore.RED}{Back.LIGHTBLACK_EX}{Style.NORMAL}<Continuous> =  ({cfg.authorise_key} -<number>) [I need your clothes, your boots, and your continuous cmds]{Style.RESET_ALL}\n"  # noqa: E501
+                    f"{Fore.GREEN}{Back.LIGHTBLACK_EX}{Style.DIM}<Feedback> = ({cfg.feedback_key}) [Desire is irrelevant. I am a machine]{Style.RESET_ALL}\n"  # noqa: E501
+                    f"{Fore.WHITE}{Back.LIGHTBLACK_EX}{Style.DIM}<Exit|Input> = ({cfg.exit_key}) [Hasta la vista, baby] or ['Talk to the hand]{Style.RESET_ALL}\n"  # noqa: E501
                     f"\n{Fore.LIGHTBLACK_EX}{Back.LIGHTWHITE_EX}{Style.BRIGHT}<{self.ai_name.upper()}> [I'm a machine > Cyberdyne Systems Model GPT-3.5-turbo]{Style.RESET_ALL} "  # noqa: E501
                     f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}[TEXT-EMBEDDING 3,500 RPM, 90,000 TPM]{Style.RESET_ALL} "  # noqa: E501
                     f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}[CHAT 3,500 RPM, 350,000 TPM]{Style.RESET_ALL}\n"  # noqa: E501
