@@ -37,8 +37,11 @@ def execute_python_file(filename: str, args: str = "") -> str:
         return f"Error: File '{filename}' does not exist."
 
     if we_are_running_in_a_docker_container():
+        command = ["python", filename]
+        if args:
+            command += args
         result = subprocess.run(
-            ["python", filename] + args,
+            command,
             capture_output=True,
             encoding="utf8"
         )
@@ -70,9 +73,12 @@ def execute_python_file(filename: str, args: str = "") -> str:
                     logger.info(f"{status}: {progress}")
                 elif status:
                     logger.info(status)
+        command = ["python", Path(filename).relative_to(CFG.workspace_path)]
+        if args:
+            command += args
         container = client.containers.run(
             image_name,
-            ["python", Path(filename).relative_to(CFG.workspace_path)] + args,
+            command,
             volumes={
                 CFG.workspace_path: {
                     "bind": "/workspace",
