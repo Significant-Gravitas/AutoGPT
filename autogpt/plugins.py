@@ -1,21 +1,21 @@
 """Handles loading of plugins."""
-
-
-from auto_gpt_plugin_template import AutoGPTPluginTemplate
-from autogpt.config import Config
-from autogpt.logs import logger
-from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
-from openapi_python_client.config import Config as OpenAPIConfig
+import importlib.util
+import json
+import os
+import zipfile
 from pathlib import Path
 from typing import List
 from urllib.parse import urlparse
 from zipimport import zipimporter
-import importlib.util
-import json
+
 import openapi_python_client
-import os
 import requests
-import zipfile
+from auto_gpt_plugin_template import AutoGPTPluginTemplate
+from openapi_python_client.config import Config as OpenAPIConfig
+
+from autogpt.config import Config
+from autogpt.logs import logger
+from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
 
 def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:

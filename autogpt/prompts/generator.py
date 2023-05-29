@@ -76,7 +76,7 @@ class PromptGenerator:
 
         self.commands.append(command)
 
-    def _generate_command_string(self, command: Dict[str, Any]) -> str:
+    def _generate_command_string(self, command: dict[str, Any]) -> str:
         """
         Generate a formatted string representation of a command.
 

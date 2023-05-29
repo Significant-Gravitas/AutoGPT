@@ -161,7 +161,8 @@ class MessageHistory:
                 new_events.remove(event)
 
         prompt = f'''Your task as the assistant is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
-        You will receive the current summary and your latest actions. Combine them by adding relevant key information from the latest development in 1st person's past tense and keep the summary concise without losing important details.
+        You will receive the current summary and your latest actions. Combine them, adding relevant key information from the latest development in 1st person's past tense and keeping the summary concise.
+        You will also receive a new set of actions. Go ahead and add a new event to the summary.
 
         Summary So Far:
         """

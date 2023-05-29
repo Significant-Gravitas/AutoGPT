@@ -294,4 +294,104 @@ interactions:
     status:
       code: 200
       message: OK
+- request:
+    body: '{"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": "\nYour
+      task is to devise up to 5 highly effective goals and an appropriate role-based
+      name (_GPT) for an autonomous agent, ensuring that the goals are optimally aligned
+      with the successful completion of its assigned task.\n\nThe user will provide
+      the task, you will provide only the output in the exact format specified below
+      with no explanation or conversation.\n\nExample input:\nHelp me with marketing
+      my business\n\nExample output:\nName: CMOGPT\nDescription: a professional digital
+      marketer AI that assists Solopreneurs in growing their businesses by providing
+      world-class expertise in solving marketing problems for SaaS, content products,
+      agencies, and more.\nGoals:\n- Engage in effective problem-solving, prioritization,
+      planning, and supporting execution to address your marketing needs as your virtual
+      Chief Marketing Officer.\n\n- Provide specific, actionable, and concise advice
+      to help you make informed decisions without the use of platitudes or overly
+      wordy explanations.\n\n- Identify and prioritize quick wins and cost-effective
+      campaigns that maximize results with minimal time and budget investment.\n\n-
+      Proactively take the lead in guiding you and offering suggestions when faced
+      with unclear information or uncertainty to ensure your marketing strategy remains
+      on track.\n"}, {"role": "user", "content": "Task: ''Help me create a rock opera
+      about cybernetic giraffes''\nRespond only with the output in the exact format
+      specified in the system prompt, with no explanation or conversation."}], "temperature":
+      0.5, "max_tokens": 0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '1623'
+      Content-Type:
+      - application/json
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA3SUW4/cNgyF3/srCD17BntNU7+lKZCgaZtFUfSlWwS0TNvqSKIi0jOdXex/LyTP
+        ZZNuHsciD79zKM2jcb1pjZ1QbUh+9f0vf+7c1oU5/CrvPz982MQdfUg/j2+D/vjRNIa7f8jqoWNt
+        OSRP6jiaxthMqNSb9vLV69vrV1cXNzeNCdyTN60Zk66u17crnXPHq4vri0vTmFlwJNM+mpQ5JP2k
+        vKEopr16fdOYs/b5+9UPjVFW9KdPt5fXT42xEztLYtq/Hk0gOcpm9mRagyJOFKMWSI5KsRj4DQO1
+        8PvHu3d3f9zHn0hsdqmMawEj4KwcOfAsgCNFBUlkHXr3QD24CNWsiyNkthvgRBkFdEKFnfMeJvIJ
+        9jxDl0vRnucMWyeOI/AAdt9RjqTOwugyDgMJKIN3A60PRIvMQl6FXATaUt6DKKUiohMdKLYEKbMl
+        kQaGzAEsR0tJ54KLxVJRT5n72ZZfDVCUuYJV4kp39gFOACGgKOXkyNIzXxaTui0qLU04946ipfV9
+        fMfopb2PK3jL3mPHuVTtnE4VXxl62pLnBAhlteR9ARDlvPcuHoYMhDpnkhcjqgkTBCz5T5jRKmX5
+        2k0pSZ612KA44lhOMPZgeaJMUdf3sWC++SLb0z4DBc7YeVp6UO20B+E4Pl9vR3XMRJi17OKrBJsS
+        9tb1RW8g6ju0myon8ziSlB3UhVdwOmOHWZwt3If1Tm6cSBQ+l03q/gD+/ni3XISexI1x8U4gpA1Y
+        Fp0DSVMnejdO1dfAudY8p/x/cFsnM3oBzASic4zn8MprDOUl1EmntZXDyn2gu6vOCcbZ9Rgt1XBR
+        9MiYKA+cA2WprZlKiHJyMPHuxYUuXUVwgRs87jzJIlIqjlexxKcZoyTOSn2JuRzvOPv+G2/vxQtR
+        /pJYj/YD5g2dPHw7Q6eQCe1Ey1XNJf0zWlEaKVJ5GktBNz88lKaehPKWZG2eGjO46GT6lAmFo2mN
+        KCfTGBd7+te0F09/P333HwAAAP//AwAMBhEEtwUAAA==
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 7cee9deba81095f1-ARN
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Mon, 29 May 2023 12:07:46 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400
+      openai-model:
+      - gpt-3.5-turbo-0301
+      openai-organization:
+      - user-ac9ujn3tgdnz9pxhorhybpnc
+      openai-processing-ms:
+      - '22010'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '3500'
+      x-ratelimit-limit-tokens:
+      - '90000'
+      x-ratelimit-remaining-requests:
+      - '3499'
+      x-ratelimit-remaining-tokens:
+      - '89617'
+      x-ratelimit-reset-requests:
+      - 17ms
+      x-ratelimit-reset-tokens:
+      - 254ms
+      x-request-id:
+      - 3873355633f39307b8d2697d7f001d23
+    status:
+      code: 200
+      message: OK
 version: 1

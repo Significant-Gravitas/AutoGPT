@@ -67,7 +67,7 @@ def validate_json_string(json_string: str, schema_name: str) -> dict | None:
     try:
         json_loaded = json.loads(json_string)
         return validate_json(json_loaded, schema_name)
-    except:
+    except Exception:
         return None
 
 

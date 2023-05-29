@@ -57,8 +57,8 @@ class AIConfig:
         self.ai_role = ai_role
         self.ai_goals = ai_goals
         self.api_budget = api_budget
-        self.prompt_generator = PromptGenerator()
-        self.command_registry = CommandRegistry()
+        self.prompt_generator: PromptGenerator | None = None
+        self.command_registry: CommandRegistry | None = None
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
