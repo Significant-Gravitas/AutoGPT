@@ -5,12 +5,16 @@ openai==0.27.2
 playsound==1.2.2
 python-dotenv==1.0.0
 pyyaml==6.0
+PyPDF2
+python-docx
+markdown
+pylatexenc
 readability-lxml==0.8.1
 requests
 tiktoken==0.3.3
 gTTS==2.3.1
 docker
-duckduckgo-search
+duckduckgo-search==3.0.2
 google-api-python-client #(https://developers.google.com/custom-search/v1/overview)
 pinecone-client==2.2.1
 redis
@@ -19,7 +23,6 @@ Pillow
 selenium==4.1.4
 webdriver-manager
 jsonschema
-tweepy
 click
 charset-normalizer>=3.1.0
 spacy>=3.0.0,<4.0.0
@@ -33,10 +36,14 @@ pre-commit
 black
 isort
 gitpython==3.1.31
-auto-gpt-plugin-template
+auto-gpt-plugin-template @ git+https://github.com/Significant-Gravitas/Auto-GPT-Plugin-Template@0.1.0
 mkdocs
 pymdown-extensions
-
+mypy
+types-Markdown
+types-beautifulsoup4
+types-colorama
+types-Pillow
 
 # OpenAI and Generic plugins import
 openapi-python-client==0.13.4
@@ -53,3 +60,4 @@ pytest-integration
 pytest-mock
 vcrpy
 pytest-recording
+pytest-xdist

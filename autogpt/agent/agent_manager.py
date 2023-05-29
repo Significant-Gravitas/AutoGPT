@@ -1,10 +1,9 @@
 """Agent manager for managing GPT agents"""
 from __future__ import annotations
 
-from typing import List
-
-from autogpt.config.config import Config
-from autogpt.llm import Message, create_chat_completion
+from autogpt.config import Config
+from autogpt.llm.base import ChatSequence
+from autogpt.llm.chat import Message, create_chat_completion
 from autogpt.singleton import Singleton
 
 
@@ -13,55 +12,55 @@ class AgentManager(metaclass=Singleton):
 
     def __init__(self):
         self.next_key = 0
-        self.agents = {}  # key, (task, full_message_history, model)
+        self.agents: dict[
+            int, tuple[str, list[Message], str]
+        ] = {}  # key, (task, full_message_history, model)
         self.cfg = Config()
 
     # Create new GPT agent
     # TODO: Centralise use of create_chat_completion() to globally enforce token limit
 
-    def create_agent(self, task: str, prompt: str, model: str) -> tuple[int, str]:
+    def create_agent(
+        self, task: str, creation_prompt: str, model: str
+    ) -> tuple[int, str]:
         """Create a new agent and return its key
 
         Args:
             task: The task to perform
-            prompt: The prompt to use
-            model: The model to use
+            creation_prompt: Prompt passed to the LLM at creation
+            model: The model to use to run this agent
 
         Returns:
             The key of the new agent
         """
-        messages: List[Message] = [
-            {"role": "user", "content": prompt},
-        ]
+        messages = ChatSequence.for_model(model, [Message("user", creation_prompt)])
+
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_pre_instruction():
                 continue
-            if plugin_messages := plugin.pre_instruction(messages):
-                messages.extend(iter(plugin_messages))
+            if plugin_messages := plugin.pre_instruction(messages.raw()):
+                messages.extend([Message(**raw_msg) for raw_msg in plugin_messages])
         # Start GPT instance
-        agent_reply = create_chat_completion(
-            model=model,
-            messages=messages,
-        )
+        agent_reply = create_chat_completion(prompt=messages)
 
-        messages.append({"role": "assistant", "content": agent_reply})
+        messages.add("assistant", agent_reply)
 
         plugins_reply = ""
         for i, plugin in enumerate(self.cfg.plugins):
             if not plugin.can_handle_on_instruction():
                 continue
-            if plugin_result := plugin.on_instruction(messages):
+            if plugin_result := plugin.on_instruction([m.raw() for m in messages]):
                 sep = "\n" if i else ""
                 plugins_reply = f"{plugins_reply}{sep}{plugin_result}"
 
         if plugins_reply and plugins_reply != "":
-            messages.append({"role": "assistant", "content": plugins_reply})
+            messages.add("assistant", plugins_reply)
         key = self.next_key
         # This is done instead of len(agents) to make keys unique even if agents
         # are deleted
         self.next_key += 1
 
-        self.agents[key] = (task, messages, model)
+        self.agents[key] = (task, list(messages), model)
 
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_post_instruction():
@@ -83,33 +82,30 @@ class AgentManager(metaclass=Singleton):
         task, messages, model = self.agents[int(key)]
 
         # Add user message to message history before sending to agent
-        messages.append({"role": "user", "content": message})
+        messages = ChatSequence.for_model(model, messages)
+        messages.add("user", message)
 
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_pre_instruction():
                 continue
-            if plugin_messages := plugin.pre_instruction(messages):
-                for plugin_message in plugin_messages:
-                    messages.append(plugin_message)
+            if plugin_messages := plugin.pre_instruction([m.raw() for m in messages]):
+                messages.extend([Message(**raw_msg) for raw_msg in plugin_messages])
 
         # Start GPT instance
-        agent_reply = create_chat_completion(
-            model=model,
-            messages=messages,
-        )
+        agent_reply = create_chat_completion(prompt=messages)
 
-        messages.append({"role": "assistant", "content": agent_reply})
+        messages.add("assistant", agent_reply)
 
         plugins_reply = agent_reply
         for i, plugin in enumerate(self.cfg.plugins):
             if not plugin.can_handle_on_instruction():
                 continue
-            if plugin_result := plugin.on_instruction(messages):
+            if plugin_result := plugin.on_instruction([m.raw() for m in messages]):
                 sep = "\n" if i else ""
                 plugins_reply = f"{plugins_reply}{sep}{plugin_result}"
         # Update full message history
         if plugins_reply and plugins_reply != "":
-            messages.append({"role": "assistant", "content": plugins_reply})
+            messages.add("assistant", plugins_reply)
 
         for plugin in self.cfg.plugins:
             if not plugin.can_handle_post_instruction():

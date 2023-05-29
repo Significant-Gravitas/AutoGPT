@@ -10,11 +10,9 @@ from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.logs import logger
 
-CFG = Config()
-
 
 @command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
-def execute_python_file(filename: str) -> str:
+def execute_python_file(filename: str, config: Config) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
@@ -33,7 +31,7 @@ def execute_python_file(filename: str) -> str:
 
     if we_are_running_in_a_docker_container():
         result = subprocess.run(
-            f"python {filename}", capture_output=True, encoding="utf8", shell=True
+            ["python", filename], capture_output=True, encoding="utf8"
         )
         if result.returncode == 0:
             return result.stdout
@@ -65,9 +63,9 @@ def execute_python_file(filename: str) -> str:
                     logger.info(status)
         container = client.containers.run(
             image_name,
-            f"python {Path(filename).relative_to(CFG.workspace_path)}",
+            ["python", str(Path(filename).relative_to(config.workspace_path))],
             volumes={
-                CFG.workspace_path: {
+                config.workspace_path: {
                     "bind": "/workspace",
                     "mode": "ro",
                 }
@@ -97,16 +95,42 @@ def execute_python_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
+def validate_command(command: str, config: Config) -> bool:
+    """Validate a command to ensure it is allowed
+
+    Args:
+        command (str): The command to validate
+
+    Returns:
+        bool: True if the command is allowed, False otherwise
+    """
+    tokens = command.split()
+
+    if not tokens:
+        return False
+
+    if config.deny_commands and tokens[0] not in config.deny_commands:
+        return False
+
+    for keyword in config.allow_commands:
+        if keyword in tokens:
+            return True
+    if config.allow_commands:
+        return False
+
+    return True
+
+
 @command(
     "execute_shell",
     "Execute Shell Command, non-interactive commands only",
     '"command_line": "<command_line>"',
-    CFG.execute_local_commands,
+    lambda cfg: cfg.execute_local_commands,
     "You are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-    "in your config. Do not attempt to bypass the restriction.",
+    "in your config file: .env - do not attempt to bypass the restriction.",
 )
-def execute_shell(command_line: str) -> str:
+def execute_shell(command_line: str, config: Config) -> str:
     """Execute a shell command and return the output
 
     Args:
@@ -115,11 +139,14 @@ def execute_shell(command_line: str) -> str:
     Returns:
         str: The output of the command
     """
+    if not validate_command(command_line, config):
+        logger.info(f"Command '{command_line}' not allowed")
+        return "Error: This Shell Command is not allowed."
 
     current_dir = Path.cwd()
     # Change dir into workspace if necessary
-    if not current_dir.is_relative_to(CFG.workspace_path):
-        os.chdir(CFG.workspace_path)
+    if not current_dir.is_relative_to(config.workspace_path):
+        os.chdir(config.workspace_path)
 
     logger.info(
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
@@ -138,12 +165,12 @@ def execute_shell(command_line: str) -> str:
     "execute_shell_popen",
     "Execute Shell Command, non-interactive commands only",
     '"command_line": "<command_line>"',
-    CFG.execute_local_commands,
+    lambda config: config.execute_local_commands,
     "You are not allowed to run local shell commands. To execute"
     " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
     "in your config. Do not attempt to bypass the restriction.",
 )
-def execute_shell_popen(command_line) -> str:
+def execute_shell_popen(command_line, config: Config) -> str:
     """Execute a shell command with Popen and returns an english description
     of the event and the process id
 
@@ -153,11 +180,14 @@ def execute_shell_popen(command_line) -> str:
     Returns:
         str: Description of the fact that the process started and its id
     """
+    if not validate_command(command_line, config):
+        logger.info(f"Command '{command_line}' not allowed")
+        return "Error: This Shell Command is not allowed."
 
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
-    if CFG.workspace_path not in current_dir:
-        os.chdir(CFG.workspace_path)
+    if config.workspace_path not in current_dir:
+        os.chdir(config.workspace_path)
 
     logger.info(
         f"Executing command '{command_line}' in working directory '{os.getcwd()}'"

@@ -1,20 +1,29 @@
+import signal
+import sys
 from datetime import datetime
 
 from colorama import Fore, Style
 
 from autogpt.app import execute_command, get_command
+from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config
+from autogpt.config.ai_config import AIConfig
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
-from autogpt.llm import chat_with_ai, create_chat_completion, create_chat_message
-from autogpt.llm.token_counter import count_string_tokens
+from autogpt.llm.base import ChatSequence
+from autogpt.llm.chat import chat_with_ai, create_chat_completion
+from autogpt.llm.utils import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
     NEXT_ACTION_FILE_NAME,
+    PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
+    SUPERVISOR_FEEDBACK_FILE_NAME,
     USER_INPUT_FILE_NAME,
     LogCycleHandler,
 )
 from autogpt.logs import logger, print_assistant_thoughts
+from autogpt.memory.message_history import MessageHistory
+from autogpt.memory.vector import VectorMemory
 from autogpt.speech import say_text
 from autogpt.spinner import Spinner
 from autogpt.utils import clean_input
@@ -27,7 +36,6 @@ class Agent:
     Attributes:
         ai_name: The name of the agent.
         memory: The memory object to use.
-        full_message_history: The full message history.
         next_action_count: The number of actions to execute.
         system_prompt: The system prompt is the initial prompt that defines everything
           the AI needs to know to achieve its task successfully.
@@ -52,24 +60,19 @@ class Agent:
 
     def __init__(
         self,
-        ai_name,
-        memory,
-        full_message_history,
-        next_action_count,
-        command_registry,
-        config,
-        system_prompt,
-        triggering_prompt,
-        workspace_directory,
+        ai_name: str,
+        memory: VectorMemory,
+        next_action_count: int,
+        command_registry: CommandRegistry,
+        config: AIConfig,
+        system_prompt: str,
+        triggering_prompt: str,
+        workspace_directory: str,
     ):
         cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
-        self.summary_memory = (
-            "I was created."  # Initial memory necessary to avoid hallucination
-        )
-        self.last_memory_index = 0
-        self.full_message_history = full_message_history
+        self.history = MessageHistory(self)
         self.next_action_count = next_action_count
         self.command_registry = command_registry
         self.config = config
@@ -88,6 +91,20 @@ class Agent:
         arguments = None
         user_input = ""
 
+        # Signal handler for interrupting y -N
+        def signal_handler(signum, frame):
+            if self.next_action_count == 0:
+                sys.exit()
+            else:
+                print(
+                    Fore.RED
+                    + "Interrupt signal received. Stopping continuous command execution."
+                    + Style.RESET_ALL
+                )
+                self.next_action_count = 0
+
+        signal.signal(signal.SIGINT, signal_handler)
+
         while True:
             # Discontinue if continuous limit is reached
             self.cycle_count += 1
@@ -96,7 +113,7 @@ class Agent:
                 self.config.ai_name,
                 self.created_at,
                 self.cycle_count,
-                self.full_message_history,
+                [m.raw() for m in self.history],
                 FULL_MESSAGE_HISTORY_FILE_NAME,
             )
             if (
@@ -109,13 +126,11 @@ class Agent:
                 )
                 break
             # Send message to AI, get response
-            with Spinner("Thinking... "):
+            with Spinner("Thinking... ", plain_output=cfg.plain_output):
                 assistant_reply = chat_with_ai(
                     self,
                     self.system_prompt,
                     self.triggering_prompt,
-                    self.full_message_history,
-                    self.memory,
                     cfg.fast_token_limit,
                 )  # TODO: This hardcodes the model to use GPT3.5. Make this an argument
 
@@ -149,20 +164,20 @@ class Agent:
                 NEXT_ACTION_FILE_NAME,
             )
 
+            logger.typewriter_log(
+                "NEXT ACTION: ",
+                Fore.CYAN,
+                f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
+                f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+            )
+
             if not cfg.continuous_mode and self.next_action_count == 0:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
                 self.user_input = ""
-                logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                    f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-                )
-
                 logger.info(
-                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands or "
+                    "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
                     "'n' to exit program, or enter feedback for "
                     f"{self.ai_name}..."
                 )
@@ -235,19 +250,14 @@ class Agent:
                     logger.info("Exiting...")
                     break
             else:
-                # Print command
+                # Print authorized commands left value
                 logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}"
-                    f"  ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
+                    f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
                 )
 
             # Execute command
             if command_name is not None and command_name.lower().startswith("error"):
-                result = (
-                    f"Command {command_name} threw the following error: {arguments}"
-                )
+                result = f"Could not execute command: {arguments}"
             elif command_name == "human_feedback":
                 result = f"Human feedback: {user_input}"
             elif command_name == "self_feedback":
@@ -264,6 +274,7 @@ class Agent:
                     command_name,
                     arguments,
                     self.config.prompt_generator,
+                    config=cfg,
                 )
                 result = f"Command {command_name} returned: " f"{command_result}"
 
@@ -271,7 +282,7 @@ class Agent:
                     str(command_result), cfg.fast_llm_model
                 )
                 memory_tlength = count_string_tokens(
-                    str(self.summary_memory), cfg.fast_llm_model
+                    str(self.history.summary_message()), cfg.fast_llm_model
                 )
                 if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
                     result = f"Failure: command {command_name} returned too much output. \
@@ -287,12 +298,10 @@ class Agent:
             # Check if there's a result from the command append it to the message
             # history
             if result is not None:
-                self.full_message_history.append(create_chat_message("system", result))
+                self.history.add("system", result, "action_result")
                 logger.typewriter_log("SYSTEM: ", Fore.YELLOW, result)
             else:
-                self.full_message_history.append(
-                    create_chat_message("system", "Unable to execute command")
-                )
+                self.history.add("system", "Unable to execute command", "action_result")
                 logger.typewriter_log(
                     "SYSTEM: ", Fore.YELLOW, "Unable to execute command"
                 )
@@ -327,7 +336,25 @@ class Agent:
         plan = thoughts.get("plan", "")
         thought = thoughts.get("thoughts", "")
         feedback_thoughts = thought + reasoning + plan
-        return create_chat_completion(
-            [{"role": "user", "content": feedback_prompt + feedback_thoughts}],
-            llm_model,
+
+        prompt = ChatSequence.for_model(llm_model)
+        prompt.add("user", feedback_prompt + feedback_thoughts)
+
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            prompt.raw(),
+            PROMPT_SUPERVISOR_FEEDBACK_FILE_NAME,
         )
+
+        feedback = create_chat_completion(prompt)
+
+        self.log_cycle_handler.log_cycle(
+            self.config.ai_name,
+            self.created_at,
+            self.cycle_count,
+            feedback,
+            SUPERVISOR_FEEDBACK_FILE_NAME,
+        )
+        return feedback

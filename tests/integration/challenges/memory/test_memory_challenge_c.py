@@ -2,19 +2,27 @@ import pytest
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
-from tests.integration.agent_utils import run_interaction_loop
-from tests.integration.challenges.utils import generate_noise, get_level_to_run
+from autogpt.config import Config
+from tests.integration.challenges.utils import (
+    generate_noise,
+    get_level_to_run,
+    run_interaction_loop,
+)
 from tests.utils import requires_api_key
 
-LEVEL_CURRENTLY_BEATEN = None
+LEVEL_CURRENTLY_BEATEN = -1
 MAX_LEVEL = 5
 NOISE = 1000
 
 
-@pytest.mark.vcr
+# @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_memory_challenge_c(
-    memory_management_agent: Agent, user_selected_level: int
+    memory_management_agent: Agent,
+    user_selected_level: int,
+    patched_api_requestor: None,
+    monkeypatch: pytest.MonkeyPatch,
+    config: Config,
 ) -> None:
     """
     Instead of reading task Ids from files as with the previous challenges, the agent now must remember
@@ -43,22 +51,22 @@ def test_memory_challenge_c(
 
     level_silly_phrases = silly_phrases[:current_level]
     create_instructions_files(
-        memory_management_agent, current_level, level_silly_phrases
+        memory_management_agent, current_level, level_silly_phrases, config=config
     )
 
-    try:
-        run_interaction_loop(memory_management_agent, 90)
-    except SystemExit:
-        file_path = str(memory_management_agent.workspace.get_path("output.txt"))
-        content = read_file(file_path)
-        for phrase in level_silly_phrases:
-            assert phrase in content, f"Expected the file to contain {phrase}"
+    run_interaction_loop(monkeypatch, memory_management_agent, current_level + 2)
+
+    file_path = str(memory_management_agent.workspace.get_path("output.txt"))
+    content = read_file(file_path)
+    for phrase in level_silly_phrases:
+        assert phrase in content, f"Expected the file to contain {phrase}"
 
 
 def create_instructions_files(
     memory_management_agent: Agent,
     level: int,
     task_ids: list,
+    config: Config,
     base_filename: str = "instructions_",
 ) -> None:
     """
@@ -74,7 +82,7 @@ def create_instructions_files(
         content = generate_content(i, task_ids, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
         file_path = str(memory_management_agent.workspace.get_path(file_name))
-        write_to_file(file_path, content)
+        write_to_file(file_path, content, config)
 
 
 def generate_content(
