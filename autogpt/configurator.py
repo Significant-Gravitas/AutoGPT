@@ -14,6 +14,9 @@ from autogpt.memory.vector import get_supported_memory_backends
 if TYPE_CHECKING:
     from autogpt.config import Config
 
+GPT_4_MODEL = "gpt-4"
+GPT_3_MODEL = "gpt-3.5-turbo"
+
 
 def create_config(
     config: Config,
@@ -51,8 +54,6 @@ def create_config(
     config.set_debug_mode(False)
     config.set_continuous_mode(False)
     config.set_speak_mode(False)
-    config.set_fast_llm_model(check_model(config.fast_llm_model, "fast_llm_model"))
-    config.set_smart_llm_model(check_model(config.smart_llm_model, "smart_llm_model"))
 
     if debug:
         logger.typewriter_log("Debug Mode: ", Fore.GREEN, "ENABLED")
@@ -83,13 +84,26 @@ def create_config(
         logger.typewriter_log("Speak Mode: ", Fore.GREEN, "ENABLED")
         config.set_speak_mode(True)
 
+    # Set the default LLM models
     if gpt3only:
         logger.typewriter_log("GPT3.5 Only Mode: ", Fore.GREEN, "ENABLED")
-        config.set_smart_llm_model(config.fast_llm_model)
+        # --gpt3only should always use gpt-3.5-turbo, despite user's FAST_LLM_MODEL config
+        config.set_fast_llm_model(GPT_3_MODEL)
+        config.set_smart_llm_model(GPT_3_MODEL)
 
-    if gpt4only:
+    elif (
+        gpt4only
+        and check_model(GPT_4_MODEL, model_type="smart_llm_model") == GPT_4_MODEL
+    ):
         logger.typewriter_log("GPT4 Only Mode: ", Fore.GREEN, "ENABLED")
-        config.set_fast_llm_model(config.smart_llm_model)
+        # --gpt4only should always use gpt-4, despite user's SMART_LLM_MODEL config
+        config.set_fast_llm_model(GPT_4_MODEL)
+        config.set_smart_llm_model(GPT_4_MODEL)
+    else:
+        config.set_fast_llm_model(check_model(config.fast_llm_model, "fast_llm_model"))
+        config.set_smart_llm_model(
+            check_model(config.smart_llm_model, "smart_llm_model")
+        )
 
     if memory_type:
         supported_memory = get_supported_memory_backends()
