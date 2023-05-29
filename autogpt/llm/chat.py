@@ -13,29 +13,34 @@ from autogpt.llm.utils import count_message_tokens, create_chat_completion
 from autogpt.log_cycle.log_cycle import CURRENT_CONTEXT_FILE_NAME
 from autogpt.logs import logger
 
-cfg = Config()
-
 
 # TODO: Change debug from hardcode to argument
 def chat_with_ai(
+    config: Config,
     agent: Agent,
     system_prompt: str,
     user_input: str,
     token_limit: int,
+    model: str | None = None,
 ):
     """
     Interact with the OpenAI API, sending the prompt, user input,
         message history, and permanent memory.
 
     Args:
+        config (Config): The config to use.
+        agent (Agent): The agent to use.
         system_prompt (str): The prompt explaining the rules to the AI.
         user_input (str): The input from the user.
         token_limit (int): The maximum number of tokens allowed in the API call.
+        model (str, optional): The model to use. If None, the config.fast_llm_model will be used. Defaults to None.
 
     Returns:
     str: The AI's response.
     """
-    model = cfg.fast_llm_model  # TODO: Change model from hardcode to argument
+    if model is None:
+        model = config.fast_llm_model
+
     # Reserve 1000 tokens for the response
     logger.debug(f"Token limit: {token_limit}")
     send_token_limit = token_limit - 1000
@@ -140,8 +145,8 @@ def chat_with_ai(
     # Append user input, the length of this is accounted for above
     message_sequence.append(user_input_msg)
 
-    plugin_count = len(cfg.plugins)
-    for i, plugin in enumerate(cfg.plugins):
+    plugin_count = len(config.plugins)
+    for i, plugin in enumerate(config.plugins):
         if not plugin.can_handle_on_planning():
             continue
         plugin_response = plugin.on_planning(
@@ -157,7 +162,6 @@ def chat_with_ai(
             logger.debug(f"Plugins remaining at stop: {plugin_count - i}")
             break
         message_sequence.add("system", plugin_response)
-
     # Calculate remaining tokens
     tokens_remaining = token_limit - current_tokens_used
     # assert tokens_remaining >= 0, "Tokens remaining is negative.
