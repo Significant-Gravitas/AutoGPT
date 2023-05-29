@@ -73,7 +73,9 @@ def construct_main_ai_config() -> AIConfig:
             def load_data(self):
                 with open("prompts_welcome_msg.txt", "r") as f:
                     lines = f.readlines()
-                    return int(lines[0])
+                    index = int(lines[0])
+                    prompts = lines[1:]
+                    return prompts, index
 
             def save_data(self):
                 with open("prompts_welcome_msg.txt", "w") as f:
@@ -82,9 +84,7 @@ def construct_main_ai_config() -> AIConfig:
 
             def get_next_prompt(self):
                 prompt = self.prompts[self.index]
-                print(f"Current index: {self.index}")
                 self.index = (self.index + 1) % len(self.prompts)
-                print(f"New index: {self.index}")
                 self.save_data()
                 return prompt
 
@@ -95,13 +95,13 @@ def construct_main_ai_config() -> AIConfig:
             f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}{config.ai_name.upper()}{Style.RESET_ALL}: {prompt}",  # noqa: E501
             speak_text=True,
         )
-        should_continue = clean_input(
-            f"""
+    should_continue = clean_input(
+        f"""
 {Fore.BLACK}{Back.LIGHTRED_EX}{Style.DIM}API Budget:{Style.RESET_ALL} {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}\n
 {Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}ROLE:\n{Style.RESET_ALL}{config.ai_role}\n
 {Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}GOALS:\n{Style.RESET_ALL}{config.ai_goals}\n
 {Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}({CFG.authorise_key.upper()})RESERVE ({CFG.exit_key.upper()})DIT + <ENTER> >>> {Style.RESET_ALL}"""  # noqa: E501
-        )
+    )
 
     if should_continue.lower() == CFG.exit_key:
         config = AIConfig()
