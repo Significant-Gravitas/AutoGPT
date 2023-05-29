@@ -530,7 +530,7 @@ interactions:
       Combine them, adding relevant key information from the latest development in
       1st person past tense and keeping the summary concise.\n\nSummary So Far:\n\"\"\"\n{''role'':
       ''system'', ''content'': ''This reminds you of these events from your past:
-      \\nI was created and nothing new has happened.''}\n\"\"\"\n\nLatest Development:\n\"\"\"\nNothing
+      \\nI am the system and nothing new has happened.''}\n\"\"\"\n\nLatest Development:\n\"\"\"\nNothing
       new happened.\n\"\"\"\n"}], "temperature": 0, "max_tokens": 0}'
     headers:
       Accept:
@@ -649,7 +649,7 @@ interactions:
       \nEnsure the response can be parsed by Python json.loads"}, {"role": "system",
       "content": "The current time and date is Tue Jan  1 00:00:00 2000"}, {"role":
       "system", "content": "This reminds you of these events from your past: \nAs
-      a system, I recall that I was created and there have been no new developments
+      a system, I recall that I am the system and there have been no new developments
       to report."}, {"role": "user", "content": "Determine which next command to use,
       and respond using the format specified above:"}, {"role": "assistant", "content":
       "{\n    \"thoughts\": {\n        \"text\": \"I will use the browse_website command
@@ -2433,7 +2433,7 @@ interactions:
       \nEnsure the response can be parsed by Python json.loads"}, {"role": "system",
       "content": "The current time and date is Tue Jan  1 00:00:00 2000"}, {"role":
       "system", "content": "This reminds you of these events from your past: \nAs
-      a system, I recall that I was created and there have been no new developments
+      a system, I recall that I am the system and there have been no new developments
       to report."}, {"role": "user", "content": "Determine which next command to use,
       and respond using the format specified above:"}, {"role": "assistant", "content":
       "{\n    \"thoughts\": {\n        \"text\": \"I need to use the browse_website
@@ -2766,7 +2766,7 @@ interactions:
       \nEnsure the response can be parsed by Python json.loads"}, {"role": "system",
       "content": "The current time and date is Tue Jan  1 00:00:00 2000"}, {"role":
       "system", "content": "This reminds you of these events from your past: \nAs
-      a system, I recall that I was created and there have been no new developments
+      a system, I recall that I am the system and there have been no new developments
       to report."}, {"role": "user", "content": "Determine which next command to use,
       and respond using the format specified above:"}, {"role": "assistant", "content":
       "{\n    \"thoughts\": {\n        \"text\": \"I need to use the browse_website
@@ -3535,7 +3535,7 @@ interactions:
       {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
       can be parsed by Python json.loads"}, {"role": "system", "content": "The current
       time and date is Tue Jan  1 00:00:00 2000"}, {"role": "system", "content": "This
-      reminds you of these events from your past: \nI was created"}, {"role": "user",
+      reminds you of these events from your past: \nI am the system"}, {"role": "user",
       "content": "Determine which next command to use, and respond using the format
       specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
       \"I will use the browse_website command to visit http://books.toscrape.com/catalogue/meditations_33/index.html
@@ -3685,7 +3685,7 @@ interactions:
       {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
       can be parsed by Python json.loads"}, {"role": "system", "content": "The current
       time and date is Tue Jan  1 00:00:00 2000"}, {"role": "system", "content": "This
-      reminds you of these events from your past: \nI was created"}, {"role": "user",
+      reminds you of these events from your past: \nI am the system"}, {"role": "user",
       "content": "Determine which next command to use, and respond using the format
       specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
       \"I will use the browse_website command to visit http://books.toscrape.com/catalogue/meditations_33/index.html

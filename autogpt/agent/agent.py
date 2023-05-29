@@ -12,6 +12,15 @@ from autogpt.app import execute_command, get_command
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
+from autogpt.constants import (
+    AI_NAME_MSG,
+    AUTHORIZE_MSG,
+    CHAT_MSG,
+    CONTINUOUS_MSG,
+    EMBEDDING_MSG,
+    EXIT_MSG,
+    FEEDBACK_MSG,
+)
 from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
 from autogpt.llm.base import ChatSequence
@@ -171,15 +180,16 @@ class Agent:
                 """GET USER AUTHORIZATION TO EXECUTE COMMAND
                 PROMPT THE USER TO PRESS ENTER TO CONTINUE OR ESCAPE TO EXIT
                 """
+
                 self.config.ai_name = "yes"
                 logger.info(
-                    f"\n{Fore.YELLOW}{Back.LIGHTBLACK_EX}{Style.DIM}<Authorize>  = ({cfg.authorise_key} + <enter>){Style.RESET_ALL} [I'm not programmed to follow your orders]\n"  # noqa: E501
-                    f"{Fore.RED}{Back.BLACK}{Style.NORMAL}<Continuous> = ({cfg.authorise_key} -<number>){Style.RESET_ALL} [I need your clothes, your boots, and your continuous cmds]\n"  # noqa: E501
-                    f"{Fore.GREEN}{Back.BLACK}{Style.DIM}<Feedback>   = ({cfg.feedback_key}){Style.RESET_ALL}           [Desire is irrelevant. I am a machine]\n"  # noqa: E501
-                    f"{Fore.WHITE}{Back.BLACK}{Style.DIM}<Exit|Input> = ({cfg.exit_key}){Style.RESET_ALL}           [Hasta la vista, baby] or ['Talk to the hand]\n"  # noqa: E501
-                    f"\n{Fore.LIGHTBLACK_EX}{Back.LIGHTWHITE_EX}{Style.BRIGHT}<{self.ai_name.upper()}> [I'm a machine > Cyberdyne Systems Model GPT-3.5-turbo]{Style.RESET_ALL} "  # noqa: E501
-                    f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}[TEXT-EMBEDDING 3,500 RPM, 90,000 TPM]{Style.RESET_ALL} "  # noqa: E501
-                    f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}[CHAT 3,500 RPM, 350,000 TPM]{Style.RESET_ALL}\n"  # noqa: E501
+                    f"\n{Fore.YELLOW}{Back.LIGHTBLACK_EX}{Style.DIM}{AUTHORIZE_MSG}{Style.RESET_ALL}\n"
+                    f"{Fore.RED}{Back.BLACK}{Style.NORMAL}{CONTINUOUS_MSG}{Style.RESET_ALL}\n"
+                    f"{Fore.GREEN}{Back.BLACK}{Style.DIM}{FEEDBACK_MSG}{Style.RESET_ALL}\n"
+                    f"{Fore.WHITE}{Back.BLACK}{Style.DIM}{EXIT_MSG}{Style.RESET_ALL}\n"
+                    f"\n{Fore.LIGHTBLACK_EX}{Back.LIGHTWHITE_EX}{Style.BRIGHT}{AI_NAME_MSG}{Style.RESET_ALL} "
+                    f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}{EMBEDDING_MSG}{Style.RESET_ALL} "
+                    f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}{CHAT_MSG}{Style.RESET_ALL}\n"
                 )
                 while True:
                     if cfg.chat_messages_enabled:

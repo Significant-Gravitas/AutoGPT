@@ -1258,7 +1258,7 @@ interactions:
       {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
       can be parsed by Python json.loads"}, {"role": "system", "content": "The current
       time and date is Tue Jan  1 00:00:00 2000"}, {"role": "system", "content": "This
-      reminds you of these events from your past: \nI was created and nothing new
+      reminds you of these events from your past: \nI am the system and nothing new
       has happened."}, {"role": "user", "content": "Determine which next command to
       use, and respond using the format specified above:"}, {"role": "assistant",
       "content": "{\n    \"thoughts\": {\n        \"text\": \"I need to write ''Hello
@@ -1738,7 +1738,7 @@ interactions:
       {\n            \"arg name\": \"value\"\n        }\n    }\n} \nEnsure the response
       can be parsed by Python json.loads"}, {"role": "system", "content": "The current
       time and date is Tue Jan  1 00:00:00 2000"}, {"role": "system", "content": "This
-      reminds you of these events from your past: \nI was created"}, {"role": "user",
+      reminds you of these events from your past: \nI am the system"}, {"role": "user",
       "content": "Determine which next command to use, and respond using the format
       specified above:"}, {"role": "assistant", "content": "{\n    \"thoughts\": {\n        \"text\":
       \"I need to use the write_to_file command to write ''Hello World'' into a file

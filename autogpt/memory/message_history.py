@@ -24,7 +24,7 @@ class MessageHistory:
     agent: Agent
 
     messages: list[Message] = field(default_factory=list)
-    summary: str = "I was created"
+    summary: str = "I am the system"
     last_trimmed_index: int = 0
 
     def __getitem__(self, i: int):
