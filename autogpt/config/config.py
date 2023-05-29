@@ -206,25 +206,6 @@ class Config(metaclass=Singleton):
         )
         self.azure_model_to_deployment_id_map = config_params.get("azure_model_map", {})
 
-    def set_azure_deployment_id_for_model(self, model: str, deployment_id: str):
-        """
-        Sets the relevant deployment id for the model specified.
-        """
-
-        if model == self.fast_llm_model:
-            self.azure_model_to_deployment_id_map[
-                "fast_llm_model_deployment_id"
-            ] = deployment_id
-        elif model == self.smart_llm_model:
-            self.azure_model_to_deployment_id_map[
-                "smart_llm_model_deployment_id"
-            ] = deployment_id
-        elif model == "text-embedding-ada-002":
-            self.azure_model_to_deployment_id_map[
-                "embedding_model_deployment_id"
-            ] = deployment_id
-
-
     def set_continuous_mode(self, value: bool) -> None:
         """Set the continuous mode value."""
         self.continuous_mode = value
