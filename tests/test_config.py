@@ -170,3 +170,40 @@ def test_missing_azure_config(config, workspace):
     assert config.openai_api_base == ""
     assert config.openai_api_version == "2023-03-15-preview"
     assert config.azure_model_to_deployment_id_map == {}
+
+
+def test_azure_config(config, workspace):
+    config_file = workspace.get_path("azure_config.yaml")
+    with pytest.raises(FileNotFoundError):
+        config.load_azure_config(str(config_file))
+
+    azure_configuration= (
+        "azure_api_type: azure\n"
+        "azure_api_base: https://test.openai.azure.com/\n"
+        "azure_api_version: 2023-03-15-preview\n"
+        "azure_model_map:\n"
+        "   gpt-3.5-turbo: gpt-3-5_playground\n"
+        "   gpt-4: gpt-4_playground\n"
+        "   text-embedding-ada-002: gpt-embedding-ada\n"
+    )
+
+    config_file.write_text(azure_configuration)
+    config.load_azure_config(str(config_file))
+
+    assert config.openai_api_type == "azure"
+    assert config.openai_api_base == "https://test.openai.azure.com/"
+    assert config.openai_api_version == "2023-03-15-preview"
+    assert config.azure_model_to_deployment_id_map == {
+        "gpt-3.5-turbo": "gpt-3-5_playground",
+        "gpt-4": "gpt-4_playground",
+        "text-embedding-ada-002": "gpt-embedding-ada",
+    }
+
+    assert config.get_azure_deployment_id_for_model(config.fast_llm_model) == "gpt-3-5_playground"
+    assert config.get_azure_deployment_id_for_model(config.smart_llm_model) == "gpt-4_playground"
+
+    config.set_fast_llm_model("gpt-4")
+    assert config.get_azure_deployment_id_for_model(config.fast_llm_model) == "gpt-4_playground"
+    assert config.get_azure_deployment_id_for_model(config.smart_llm_model) == "gpt-4_playground"
+
+    assert config.get_azure_deployment_id_for_model("text-davince-03") is None
