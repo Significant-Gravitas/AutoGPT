@@ -205,7 +205,7 @@ def kubernetes_agent(memory_json_file, workspace: Workspace):
 
 
 @pytest.fixture
-def get_nobel_prize_agent(agent_test_config, memory_local_cache, workspace: Workspace):
+def get_nobel_prize_agent(agent_test_config, memory_json_file, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -222,10 +222,10 @@ def get_nobel_prize_agent(agent_test_config, memory_local_cache, workspace: Work
 
     system_prompt = ai_config.construct_full_prompt()
     Config().set_continuous_mode(False)
+
     agent = Agent(
         ai_name="Get-PhysicsNobelPrize",
-        memory=memory_local_cache,
-        full_message_history=[],
+        memory=memory_json_file,
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,

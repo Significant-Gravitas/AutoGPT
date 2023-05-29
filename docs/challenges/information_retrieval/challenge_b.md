@@ -1,6 +1,6 @@
 # Information Retrieval Challenge B
 
-**Status**: Current level to beat: level 2
+**Status**: Beaten
 
 **Command to try**:
 

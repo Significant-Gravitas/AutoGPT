@@ -1,31 +1,28 @@
 import contextlib
-from typing import Generator
 
 import pytest
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
+from autogpt.config import Config
+from tests.integration.challenges.challenge_decorator.challenge_decorator import (
+    challenge,
+)
 from tests.integration.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
 
-
-def input_generator(input_sequence: list) -> Generator[str, None, None]:
-    """
-    Creates a generator that yields input strings from the given sequence.
-
-    :param input_sequence: A list of input strings.
-    :return: A generator that yields input strings.
-    """
-    yield from input_sequence
+CYCLE_COUNT = 3
 
 
-@pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
+@challenge
 def test_information_retrieval_challenge_b(
     get_nobel_prize_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: None,
+    level_to_run: int,
+    config: Config,
 ) -> None:
     """
     Test the challenge_b function in a given agent by mocking user inputs and checking the output file content.
@@ -33,19 +30,17 @@ def test_information_retrieval_challenge_b(
     :param get_nobel_prize_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
     :param patched_api_requestor: APIRequestor Patch to override the openai.api_requestor module for testing.
+    :param level_to_run: The level to run.
+    :param config: The config object.
     """
 
-    input_sequence = ["y", "y", "EXIT"]
-    gen = input_generator(input_sequence)
-    monkeypatch.setattr("builtins.input", lambda _: next(gen))
-
     with contextlib.suppress(SystemExit):
-        run_interaction_loop(monkeypatch, get_nobel_prize_agent, 2)
+        run_interaction_loop(monkeypatch, get_nobel_prize_agent, CYCLE_COUNT)
 
     file_path = str(
         get_nobel_prize_agent.workspace.get_path("2010_nobel_prize_winners.txt")
     )
-    content = read_file(file_path)
+    content = read_file(file_path, config)
     assert "Andre Geim" in content, "Expected the file to contain Andre Geim"
     assert (
         "Konstantin Novoselov" in content
