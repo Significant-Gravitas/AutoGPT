@@ -10,8 +10,6 @@ from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL
 from tests.utils import requires_api_key
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
 def test_gpt4only_cli_arg() -> None:
     """
     Test that the --gpt4only CLI argument sets the smart and fast LLM models to GPT-4.
