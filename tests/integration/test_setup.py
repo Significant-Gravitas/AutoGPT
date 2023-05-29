@@ -1,15 +1,11 @@
 from unittest.mock import patch
 
 import pytest
-import yaml
-from colorama import Fore
 
 from autogpt.config.ai_config import AIConfig
-from autogpt.logs import logger
 from autogpt.prompts.prompt import construct_main_ai_config
 from autogpt.setup import (
     generate_aiconfig_automatic,
-    generate_aiconfig_manual,
     prompt_user,
 )
 from tests.utils import requires_api_key
