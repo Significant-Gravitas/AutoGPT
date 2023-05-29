@@ -19,12 +19,12 @@ CFG = Config()
     '"filename": "<filename>"',
     '"(optional) args": "<args>"',
 )
-def execute_python_file(filename: str, args: str = "") -> str:
+def execute_python_file(filename: str, args: list = []) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
         filename (str): The name of the file to execute
-        (optional) args (str): The arguments of the python script
+        (optional) args (list): The arguments of the python script
 
     Returns:
         str: The output of the file
@@ -37,11 +37,8 @@ def execute_python_file(filename: str, args: str = "") -> str:
         return f"Error: File '{filename}' does not exist."
 
     if we_are_running_in_a_docker_container():
-        command = ["python", filename]
-        if args:
-            command += args
         result = subprocess.run(
-            command,
+            ["python", filename] + args,
             capture_output=True,
             encoding="utf8"
         )
@@ -73,12 +70,9 @@ def execute_python_file(filename: str, args: str = "") -> str:
                     logger.info(f"{status}: {progress}")
                 elif status:
                     logger.info(status)
-        command = ["python", Path(filename).relative_to(CFG.workspace_path)]
-        if args:
-            command += args
         container = client.containers.run(
             image_name,
-            command,
+            ["python", Path(filename).relative_to(CFG.workspace_path)] + args,
             volumes={
                 CFG.workspace_path: {
                     "bind": "/workspace",
