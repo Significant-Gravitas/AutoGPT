@@ -32,7 +32,7 @@ def is_valid_int(value: str) -> bool:
         return False
 
 
-def get_command(response_json: dict):
+def get_command(response_json: Dict):
     """Parse the response and return the command name and arguments
 
     Args:

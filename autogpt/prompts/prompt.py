@@ -69,11 +69,11 @@ def construct_main_ai_config() -> AIConfig:
         )
         should_continue = clean_input(
             f"""Continue with the last settings?
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}
-API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-Continue ({CFG.authorise_key}/{CFG.exit_key}): """
+            Name:  {config.ai_name}
+            Role:  {config.ai_role}
+            Goals: {config.ai_goals}
+            API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
+            Continue ({CFG.authorise_key}/{CFG.exit_key}): """
         )
         if should_continue.lower() == CFG.exit_key:
             config = AIConfig()
@@ -84,7 +84,7 @@ Continue ({CFG.authorise_key}/{CFG.exit_key}): """
 
     if CFG.restrict_to_workspace:
         logger.typewriter_log(
-            "NOTE:All files/directories created by this agent can be found inside its workspace at:",
+            "NOTE: Created files/directories by this agent can be found inside its workspace at:",
             Fore.YELLOW,
             f"{CFG.workspace_path}",
         )
