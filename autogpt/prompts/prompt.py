@@ -1,4 +1,4 @@
-from colorama import Fore
+from colorama import Back, Fore, Style
 
 from autogpt.config.ai_config import AIConfig
 from autogpt.config.config import Config
@@ -62,18 +62,16 @@ def construct_main_ai_config() -> AIConfig:
         )
     elif config.ai_name:
         logger.typewriter_log(
-            "Welcome back! ",
-            Fore.GREEN,
-            f"Would you like me to return to being {config.ai_name}?",
+            f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}Welcome back! Should we return to being {config.ai_name}? ({CFG.authorise_key} = YEAH | {CFG.exit_key} = NOPE ): >>>{Style.RESET_ALL}\n?",  # noqa: E501
             speak_text=True,
         )
         should_continue = clean_input(
-            f"""Continue with the last settings?
- Name:  {config.ai_name}
-    Role:  {config.ai_role}
-        Goals: {config.ai_goals}
-            API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-                Continue? ({CFG.authorise_key}= Yes|{CFG.exit_key}= No ): """
+            f"""{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}({CFG.authorise_key}= Yes|{CFG.exit_key}= No ): >>>{Style.RESET_ALL}\n?
+
+API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
+Role:  {config.ai_role}
+Goals: {config.ai_goals}
+"""  # noqa: E501
         )
         if should_continue.lower() == CFG.exit_key:
             config = AIConfig()
