@@ -7,7 +7,6 @@ from autogpt.agent import Agent
 from autogpt.config import AIConfig
 from autogpt.config.config import Config
 from autogpt.llm.chat import chat_with_ai
-from tests.utils import requires_api_key
 
 
 @pytest.fixture
@@ -45,7 +44,6 @@ def test_agent_initialization(agent: Agent):
     assert agent.triggering_prompt == "Triggering prompt"
 
 
-@requires_api_key("OPENAI_API_KEY")
 def test_chat_with_ai_model_is_none(config: Config, agent: Agent):
     with mock.patch(
         "autogpt.llm.chat.create_chat_completion"
@@ -63,6 +61,7 @@ def test_chat_with_ai_model_is_none(config: Config, agent: Agent):
                 system_prompt="System prompt",
             )
 
+            mock_count_message_tokens.assert_called()
             args_list = mock_count_message_tokens.call_args
             print(args_list)
             assert any(
