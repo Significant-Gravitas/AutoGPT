@@ -146,7 +146,7 @@ class Config(metaclass=Singleton):
         else:
             self.plugins_denylist = []
 
-    def get_azure_deployment_id_for_model(self, model: str) -> str:
+    def get_azure_deployment_id_for_model(self, model: str) -> str | None:
         """
         Returns the relevant deployment id for the model specified.
 
@@ -157,22 +157,12 @@ class Config(metaclass=Singleton):
             The matching deployment id if found, otherwise an empty string.
         """
         if hasattr(self, 'azure_model_to_deployment_id_map') == False:
-            return ""
+            return None
 
-        if model == self.fast_llm_model:
-            return self.azure_model_to_deployment_id_map[
-                "fast_llm_model_deployment_id"
-            ]  # type: ignore
-        elif model == self.smart_llm_model:
-            return self.azure_model_to_deployment_id_map[
-                "smart_llm_model_deployment_id"
-            ]  # type: ignore
-        elif model == "text-embedding-ada-002":
-            return self.azure_model_to_deployment_id_map[
-                "embedding_model_deployment_id"
-            ]  # type: ignore
-        else:
-            return ""
+        if model not in self.azure_model_to_deployment_id_map:
+            return None
+
+        return self.azure_model_to_deployment_id_map[model]
 
     AZURE_CONFIG_FILE = os.path.join(os.path.dirname(__file__), "../..", "azure.yaml")
 
