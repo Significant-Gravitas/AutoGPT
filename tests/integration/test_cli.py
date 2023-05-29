@@ -10,9 +10,18 @@ from autogpt.configurator import GPT_3_MODEL, GPT_4_MODEL
 from tests.utils import requires_api_key
 
 
+@pytest.fixture
+def mocked_config():
+    """
+    Fixture to mock the config object.
+    """
+    with mock.patch("autogpt.cli.Config") as mocked_config:
+        yield mocked_config.return_value
+
+
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_gpt4only_cli_arg(patched_api_requestor: None) -> None:
+def test_gpt4only_cli_arg(patched_api_requestor) -> None:
     """
     Test that the --gpt4only CLI argument sets the smart and fast LLM models to GPT-4.
     """
@@ -23,8 +32,7 @@ def test_gpt4only_cli_arg(patched_api_requestor: None) -> None:
             with mock.patch("openai.Model.list") as mock_list_models:
                 # Test when correct model is returned
                 mock_list_models.return_value = {"data": [{"id": GPT_4_MODEL}]}
-                runner = CliRunner()
-                runner.invoke(cli.main, ["--gpt4only"])
+                cli.main(gpt4only=True)
                 mocked_set_smart_llm_model.assert_called_with(GPT_4_MODEL)
                 mocked_set_fast_llm_model.assert_called_with(GPT_4_MODEL)
 
