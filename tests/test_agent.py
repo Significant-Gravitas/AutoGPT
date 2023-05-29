@@ -1,9 +1,13 @@
-from unittest.mock import MagicMock
-
+from pyexpat import model
+from unittest import mock
+from unittest.mock import MagicMock, patch
 import pytest
 
 from autogpt.agent import Agent
 from autogpt.config import AIConfig
+from autogpt.config.config import Config
+from autogpt.llm.base import ChatSequence
+from autogpt.llm.chat import chat_with_ai
 
 
 @pytest.fixture
@@ -39,6 +43,16 @@ def test_agent_initialization(agent: Agent):
     assert agent.config == agent.config
     assert agent.system_prompt == "System prompt"
     assert agent.triggering_prompt == "Triggering prompt"
+
+
+def test_chat_with_ai_model_is_none(config: Config, agent: Agent):
+    chat_with_ai(
+        config=config,
+        agent=agent,
+        user_input="test",
+        token_limit=3000,
+        system_prompt="System prompt",
+    )
 
 
 # More test methods can be added for specific agent interactions
