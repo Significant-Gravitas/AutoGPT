@@ -37,6 +37,9 @@ def execute_python_file(filename: str, args: list = []) -> str:
         return f"Error: File '{filename}' does not exist."
 
     if we_are_running_in_a_docker_container():
+        logger.info(
+                f"Args type: {type(args)}, Args: {args}"
+            )
         result = subprocess.run(
             ["python", filename] + args,
             capture_output=True,
