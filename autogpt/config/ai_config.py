@@ -49,7 +49,7 @@ class AIConfig:
          api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
 
         Returns:
-            None
+         None
         """
         if ai_goals is None:
             ai_goals = []
@@ -57,8 +57,8 @@ class AIConfig:
         self.ai_role = ai_role
         self.ai_goals = ai_goals
         self.api_budget = api_budget
-        self.prompt_generator = PromptGenerator
-        self.command_registry = CommandRegistry
+        self.prompt_generator = PromptGenerator()
+        self.command_registry = CommandRegistry()
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
@@ -122,7 +122,7 @@ class AIConfig:
         """
 
         prompt_start = (
-            "Your decisions should be made independently without"
+            "Your decisions can be made independently without"
             " seeking user assistance. Play to your strengths as an LLM and pursue"
             " simple strategies with no legal complications."
         )
