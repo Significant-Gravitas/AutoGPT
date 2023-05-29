@@ -6,6 +6,7 @@ from autogpt.agent import Agent
 from autogpt.config import AIConfig
 from autogpt.config.config import Config
 from autogpt.llm.chat import chat_with_ai
+from tests.utils import requires_api_key
 
 
 @pytest.fixture
@@ -43,6 +44,7 @@ def test_agent_initialization(agent: Agent):
     assert agent.triggering_prompt == "Triggering prompt"
 
 
+@requires_api_key("OPENAI_API_KEY")
 def test_chat_with_ai_model_is_none(config: Config, agent: Agent):
     chat_with_ai(
         config=config,
