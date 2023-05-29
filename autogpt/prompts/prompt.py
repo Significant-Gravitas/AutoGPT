@@ -62,19 +62,19 @@ def construct_main_ai_config() -> AIConfig:
         )
     elif config.ai_name:
         logger.typewriter_log(
-            f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}Welcome back! Should we return to being {config.ai_name}? ({CFG.authorise_key} = YEAH | {CFG.exit_key} = NOPE ): >>>{Style.RESET_ALL}\n?",  # noqa: E501
+            f"{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}{config.ai_name.upper()}: Welcome back! Should I return to being me?",  # noqa: E501
             speak_text=True,
         )
         should_continue = clean_input(
-            f"""{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.DIM}({CFG.authorise_key}= Yes|{CFG.exit_key}= No ): >>>{Style.RESET_ALL}\n?
-
-API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}
-"""  # noqa: E501
+            f"""
+{Fore.BLACK}{Back.LIGHTRED_EX}{Style.DIM}API Budget:{Style.RESET_ALL} {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}\n
+{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}ROLE:\n{Style.RESET_ALL}{config.ai_role}\n
+{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}GOALS:\n{Style.RESET_ALL}{config.ai_goals}\n
+{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}({CFG.authorise_key.upper()})ROCEED ({CFG.exit_key.upper()})XIT ? >>> {Style.RESET_ALL}"""  # noqa: E501
         )
-        if should_continue.lower() == CFG.exit_key:
-            config = AIConfig()
+
+    if should_continue.lower() == CFG.exit_key:
+        config = AIConfig()
 
     if not config.ai_name:
         config = prompt_user()

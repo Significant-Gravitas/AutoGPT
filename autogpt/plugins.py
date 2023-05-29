@@ -228,7 +228,7 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
     if loaded_plugins:
         logger.info(f"\nPlugins found: {len(loaded_plugins)}\n" "--------------------")
     for plugin in loaded_plugins:
-        logger.info(f"{plugin._name}: {plugin._version} - {plugin._description}")
+        logger.info(f"{plugin._name}: {plugin._version} - {plugin._description}\n")
     return loaded_plugins
 
 
