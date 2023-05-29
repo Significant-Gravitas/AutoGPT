@@ -183,9 +183,9 @@ class Agent:
                 )
                 while True:
                     if cfg.chat_messages_enabled:
-                        console_input = clean_input(f"{Fore.BLUE}<CHAT INPUT>: ")
+                        console_input = clean_input(f"{Fore.BLUE}CHAT INPUT: ")
                     else:
-                        console_input = clean_input(f"{Fore.LIGHTBLUE_EX}<CONSOLE INPUT> :{Style.RESET_ALL} ")
+                        console_input = clean_input(f"{Fore.LIGHTBLUE_EX}CONSOLE INPUT: {Style.RESET_ALL}")
                     if console_input.lower().strip() == cfg.authorise_key:
                         user_input = "GENERATE NEXT COMMAND JSON"
                         break
