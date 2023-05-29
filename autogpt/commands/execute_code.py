@@ -43,6 +43,7 @@ def execute_python_file(filename: str, args: list = []) -> str:
         result = subprocess.run(
             ["python", filename] + args,
             capture_output=True,
+            shell=True,
             encoding="utf8"
         )
         if result.returncode == 0:
