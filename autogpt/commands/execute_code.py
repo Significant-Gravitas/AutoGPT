@@ -76,7 +76,7 @@ def execute_python_file(filename: str, args: list = []) -> str:
                     logger.info(status)
         container = client.containers.run(
             image_name,
-            ["python", Path(filename).relative_to(CFG.workspace_path)] + args,
+            ["python", str(Path(filename).relative_to(CFG.workspace_path))] + args,
             volumes={
                 CFG.workspace_path: {
                     "bind": "/workspace",
@@ -88,7 +88,6 @@ def execute_python_file(filename: str, args: list = []) -> str:
             stdout=True,
             detach=True,
         )
-
         container.wait()
         logs = container.logs().decode("utf-8")
         container.remove()
