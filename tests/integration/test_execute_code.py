@@ -48,7 +48,7 @@ def test_execute_python_file_args(python_test_file_args: str, random_string: str
     random_args = [random_string] * 2
     random_args_string = random_string + " " + random_string
     result = sut.execute_python_file(python_test_file_args, random_args)
-    assert result ==f"{random_args_string}\n"
+    assert result == f"{random_args_string}\n"
 
 
 def test_execute_python_file_invalid():

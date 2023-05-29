@@ -38,9 +38,7 @@ def execute_python_file(filename: str, args: list = []) -> str:
 
     if we_are_running_in_a_docker_container():
         result = subprocess.run(
-            ["python", filename] + args,
-            capture_output=True,
-            encoding="utf8"
+            ["python", filename] + args, capture_output=True, encoding="utf8"
         )
         if result.returncode == 0:
             return result.stdout
