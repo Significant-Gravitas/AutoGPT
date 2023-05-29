@@ -28,7 +28,7 @@
         },
         "memory_challenge_b": {
             "max_level": 5,
-            "max_level_beaten": 1
+            "max_level_beaten": null
         },
         "memory_challenge_c": {
             "max_level": 5,
