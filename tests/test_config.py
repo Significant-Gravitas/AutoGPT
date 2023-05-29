@@ -176,6 +176,8 @@ def test_missing_azure_config(config: Config, workspace: Workspace):
 
 
 def test_create_config_gpt4only(config: Config) -> None:
+    fast_llm_model = config.fast_llm_model
+    smart_llm_model = config.smart_llm_model
     with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
         mock_get_models.return_value = [{"id": GPT_4_MODEL}]
         create_config(
@@ -197,8 +199,14 @@ def test_create_config_gpt4only(config: Config) -> None:
         assert config.fast_llm_model == GPT_4_MODEL
         assert config.smart_llm_model == GPT_4_MODEL
 
+    # Reset config
+    config.set_fast_llm_model(fast_llm_model)
+    config.set_smart_llm_model(smart_llm_model)
 
-def test_create_config_gpt4only(config: Config) -> None:
+
+def test_create_config_gpt3only(config: Config) -> None:
+    fast_llm_model = config.fast_llm_model
+    smart_llm_model = config.smart_llm_model
     with mock.patch("autogpt.llm.api_manager.ApiManager.get_models") as mock_get_models:
         mock_get_models.return_value = [{"id": GPT_3_MODEL}]
         create_config(
@@ -219,3 +227,7 @@ def test_create_config_gpt4only(config: Config) -> None:
         )
         assert config.fast_llm_model == GPT_3_MODEL
         assert config.smart_llm_model == GPT_3_MODEL
+
+    # Reset config
+    config.set_fast_llm_model(fast_llm_model)
+    config.set_smart_llm_model(smart_llm_model)
