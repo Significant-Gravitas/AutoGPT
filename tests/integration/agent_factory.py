@@ -3,7 +3,7 @@ import pytest
 from autogpt.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import AIConfig, Config
-from autogpt.memory import LocalCache, NoMemory, get_memory
+from autogpt.memory.vector import NoMemory, get_memory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
 
@@ -12,28 +12,21 @@ from autogpt.workspace import Workspace
 def agent_test_config(config: Config):
     was_continuous_mode = config.continuous_mode
     was_temperature = config.temperature
+    was_plain_output = config.plain_output
     config.set_continuous_mode(False)
     config.set_temperature(0)
+    config.plain_output = True
     yield config
     config.set_continuous_mode(was_continuous_mode)
     config.set_temperature(was_temperature)
+    config.plain_output = was_plain_output
 
 
 @pytest.fixture
-def memory_local_cache(agent_test_config: Config):
+def memory_json_file(agent_test_config: Config):
     was_memory_backend = agent_test_config.memory_backend
 
-    agent_test_config.set_memory_backend("local_cache")
-    yield get_memory(agent_test_config, init=True)
-
-    agent_test_config.set_memory_backend(was_memory_backend)
-
-
-@pytest.fixture
-def memory_none(agent_test_config: Config):
-    was_memory_backend = agent_test_config.memory_backend
-
-    agent_test_config.set_memory_backend("no_memory")
+    agent_test_config.set_memory_backend("json_file")
     yield get_memory(agent_test_config, init=True)
 
     agent_test_config.set_memory_backend(was_memory_backend)
@@ -64,7 +57,6 @@ def browser_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace
     agent = Agent(
         ai_name="",
         memory=memory_none,
-        full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,
@@ -103,7 +95,6 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
     agent = Agent(
         ai_name="",
         memory=memory_none,
-        full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,
@@ -116,9 +107,7 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
 
 
 @pytest.fixture
-def memory_management_agent(
-    agent_test_config, memory_local_cache, workspace: Workspace
-):
+def memory_management_agent(agent_test_config, memory_json_file, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -138,8 +127,7 @@ def memory_management_agent(
 
     agent = Agent(
         ai_name="",
-        memory=memory_local_cache,
-        full_message_history=[],
+        memory=memory_json_file,
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,
@@ -153,27 +141,27 @@ def memory_management_agent(
 
 @pytest.fixture
 def get_company_revenue_agent(
-    agent_test_config, memory_local_cache, workspace: Workspace
+    agent_test_config, memory_json_file, workspace: Workspace
 ):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.commands.google_search")
     command_registry.import_commands("autogpt.app")
+    command_registry.import_commands("autogpt.commands.task_statuses")
 
     ai_config = AIConfig(
-        ai_name="Get-CompanyRevenue",
-        ai_role="an autonomous agent that specializes in finding the reported revenue of a company.",
+        ai_name="Information Retrieval Agent",
+        ai_role="an autonomous agent that specializes in retrieving information.",
         ai_goals=[
-            "Write the revenue of Tesla in 2022 to a file. You should write the number without commas and you should not use signs like B for billion and M for million.",
+            "Search for 'tesla revenue 2022' and write the revenue of Tesla in 2022 to a file called output.txt. You should write the number without commas and you should not use signs like B for billion and M for million.",
         ],
     )
     ai_config.command_registry = command_registry
-
     system_prompt = ai_config.construct_full_prompt()
     Config().set_continuous_mode(False)
     agent = Agent(
         ai_name="Get-CompanyRevenue",
-        memory=memory_local_cache,
-        full_message_history=[],
+        memory=memory_json_file,
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,
@@ -181,12 +169,11 @@ def get_company_revenue_agent(
         triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
         workspace_directory=workspace.root,
     )
-
     return agent
 
 
 @pytest.fixture
-def kubernetes_agent(memory_local_cache, workspace: Workspace):
+def kubernetes_agent(memory_json_file, workspace: Workspace):
     command_registry = CommandRegistry()
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
@@ -205,8 +192,7 @@ def kubernetes_agent(memory_local_cache, workspace: Workspace):
     Config().set_continuous_mode(False)
     agent = Agent(
         ai_name="Kubernetes-Demo",
-        memory=memory_local_cache,
-        full_message_history=[],
+        memory=memory_json_file,
         command_registry=command_registry,
         config=ai_config,
         next_action_count=0,

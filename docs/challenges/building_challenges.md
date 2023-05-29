@@ -1,4 +1,4 @@
-# Creating Challenges for AutoGPT
+# Creating Challenges for Auto-GPT
 
 🏹 We're on the hunt for talented Challenge Creators! 🎯
 
@@ -14,7 +14,7 @@ Are you ready to play a pivotal role in Auto-GPT's journey? Apply now to become 
 
 
 # Getting Started
-Clone the original AutoGPT repo and checkout to master branch
+Clone the original Auto-GPT repo and checkout to master branch
 
 
 The challenges are not written using a specific framework. They try to be very agnostic
@@ -33,7 +33,7 @@ Create your agent fixture.
 
 ```python
 def kubernetes_agent(
-    agent_test_config, memory_local_cache, workspace: Workspace
+    agent_test_config, memory_json_file, workspace: Workspace
 ):
     # Please choose the commands your agent will need to beat the challenges, the full list is available in the main.py
     # (we 're working on a better way to design this, for now you have to look at main.py)
@@ -56,7 +56,7 @@ def kubernetes_agent(
     agent = Agent(
         # We also give the AI a name 
         ai_name="Kubernetes-Demo",
-        memory=memory_local_cache,
+        memory=memory_json_file,
         full_message_history=[],
         command_registry=command_registry,
         config=ai_config,
@@ -101,7 +101,6 @@ def input_generator(input_sequence: list) -> Generator[str, None, None]:
 @pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-@run_multiple_times(3)
 def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs
@@ -131,5 +130,3 @@ def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> Non
 
 
 ```
-
-

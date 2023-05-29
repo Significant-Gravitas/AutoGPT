@@ -2,7 +2,7 @@ from datetime import datetime
 
 from autogpt.agent.agent import Agent
 from autogpt.config import AIConfig
-from autogpt.llm import create_chat_completion
+from autogpt.llm.chat import create_chat_completion
 from autogpt.log_cycle.log_cycle import LogCycleHandler
 
 

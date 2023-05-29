@@ -156,3 +156,19 @@ class TestValidateUrl:
 
         with pytest.raises(ValueError):
             test_func("https:www.google.com")
+
+    # Tests that the function can handle URLs that contain unusual but valid characters.
+    def test_url_with_special_chars(self):
+        url = "https://example.com/path%20with%20spaces"
+        assert dummy_method(url) == url
+
+    # Tests that the function raises a ValueError if the URL is over 2000 characters.
+    def test_extremely_long_url(self):
+        url = "http://example.com/" + "a" * 2000
+        with raises(ValueError, match="URL is too long"):
+            dummy_method(url)
+
+    # Tests that the function can handle internationalized URLs, which contain non-ASCII characters.
+    def test_internationalized_url(self):
+        url = "http://例子.测试"
+        assert dummy_method(url) == url
