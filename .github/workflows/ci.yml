@@ -5,6 +5,7 @@ on:
     branches: [ master, ci-test*]
     paths-ignore:
       - 'tests/Auto-GPT-test-cassettes'
+      - 'tests/integration/challenges/current_score.json'
   pull_request_target:
     branches: [ master, stable , ci-test*]
 
