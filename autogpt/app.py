@@ -1,4 +1,6 @@
 """ Command and Control """
+
+
 import json
 from typing import Dict, List, Union
 
@@ -98,7 +100,7 @@ def execute_command(
 
     Args:
         command_name (str): The name of the command to execute
-        arguments (dict): The arguments for the command
+        arguments (Dict): The arguments for the command
 
     Returns:
         str: The result of the command
