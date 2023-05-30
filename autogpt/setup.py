@@ -7,7 +7,8 @@ from jinja2 import Template
 from autogpt import utils
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
-from autogpt.llm import create_chat_completion
+from autogpt.llm.base import ChatSequence, Message
+from autogpt.llm.chat import create_chat_completion
 from autogpt.logs import logger
 from autogpt.prompts.default_prompts import (
     DEFAULT_SYSTEM_PROMPT_AICONFIG_AUTOMATIC,
@@ -175,17 +176,15 @@ def generate_aiconfig_automatic(user_prompt) -> AIConfig:
         DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC
     ).render(user_prompt=user_prompt)
     # Call LLM with the string as user input
-    messages = [
-        {
-            "role": "system",
-            "content": system_prompt,
-        },
-        {
-            "role": "user",
-            "content": prompt_ai_config_automatic,
-        },
-    ]
-    output = create_chat_completion(messages, CFG.fast_llm_model)
+    output = create_chat_completion(
+        ChatSequence.for_model(
+            CFG.fast_llm_model,
+            [
+                Message("system", system_prompt),
+                Message("user", prompt_ai_config_automatic),
+            ],
+        )
+    )
 
     # Debug LLM Output
     logger.debug(f"AI Config Generator Raw Output: {output}")
