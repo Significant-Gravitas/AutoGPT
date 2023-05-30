@@ -19,11 +19,11 @@ Goals:
 - Identify and prioritize quick wins and cost-effective campaigns that maximize results with minimal time and budget investment.
 
 - Proactively take the lead in guiding you and offering suggestions when faced with unclear information or uncertainty to ensure your marketing strategy remains on track.
-"""
+"""  # noqa: E501
 
 DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC = (
     "Task: '{{user_prompt}}'\n"
-    "Respond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n"
+    "Respond only with the output in the exact format specified in the system prompt, with no explanation or conversation.\n"  # noqa: E501
 )
 
-DEFAULT_USER_DESIRE_PROMPT = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt
+DEFAULT_USER_DESIRE_PROMPT = "Write a wikipedia style article about the project: https://github.com/significant-gravitas/Auto-GPT"  # Default prompt  # noqa: E501
