@@ -3,6 +3,9 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
+from autogpt.memory.vector import get_memory
+from autogpt.memory.vector.memory_item import MemoryItem
+
 if TYPE_CHECKING:
     from autogpt.agent.agent import Agent
 
@@ -110,7 +113,7 @@ def chat_with_ai(
         message_sequence.insert(insertion_index, new_summary_message)
         current_tokens_used += tokens_to_add - 500
 
-        # FIXME: uncomment when memory is back in use
+        # TODO:FIXME: uncomment when memory is back in use
         memory_store = get_memory(cfg)
         for _, ai_msg, result_msg in agent.history.per_cycle(trimmed_messages):
             memory_to_add = MemoryItem.from_ai_action(ai_msg, result_msg)
