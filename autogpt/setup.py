@@ -1,5 +1,6 @@
 """Set up the AI and its goals"""
 import re
+from typing import Optional
 
 from colorama import Fore, Style
 from jinja2 import Template
@@ -74,9 +75,13 @@ def prompt_user() -> AIConfig:
             return generate_aiconfig_manual()
 
 
-def generate_aiconfig_manual() -> AIConfig:
+def generate_aiconfig_manual(
+    ai_name: Optional[str] = None, max_goals: int = 5, config_file: Optional[str] = None
+) -> AIConfig:
     """
     Interactively create an AI configuration by prompting the user to provide the name, role, and goals of the AI.
+
+    If an AI name is provided, this function loads the existing configuration and allows the user to edit it.
 
     This function guides the user through a series of prompts to collect the necessary information to create
     an AIConfig object. The user will be asked to provide a name and role for the AI, as well as up to five
@@ -85,86 +90,172 @@ def generate_aiconfig_manual() -> AIConfig:
     Returns:
         AIConfig: An AIConfig object containing the user-defined or default AI name, role, and goals.
     """
+    # Load the existing configuration if provided
+    if config_file:
+        all_configs = AIConfig.load_all(config_file)
+        config = all_configs.get(
+            ai_name, None
+        )  # Extract the AI config for the given AI name
+    elif ai_name:
+        config = AIConfig.load(ai_name)
+    else:
+        config = None  # or create a new AIConfig object with default values here
+
+    # hold editing status
+    if ai_name:
+        editing = True
+    else:
+        editing = False
 
     # Manual Setup Intro
-    logger.typewriter_log(
-        "Create an AI-Assistant:",
-        Fore.GREEN,
-        "Enter the name of your AI and its role below. Entering nothing will load"
-        " defaults.",
-        speak_text=True,
-    )
+    if editing is not True:
+        logger.typewriter_log(
+            "Create an AI-Assistant:",
+            Fore.GREEN,
+            "Enter the name of your AI. Entering nothing will load the defaults.",
+            speak_text=True,
+        )
 
-    # Get AI Name from User
-    logger.typewriter_log(
-        "Name your AI: ", Fore.GREEN, "For example, 'Entrepreneur-GPT'"
-    )
-    ai_name = utils.clean_input("AI Name: ")
-    if ai_name == "":
-        ai_name = "Entrepreneur-GPT"
+    if editing:
+        logger.typewriter_log(
+            f"Edit the AI name (current: '{ai_name}').",
+            Fore.GREEN,
+            "Leave empty to use the current name.",
+            speak_text=True,
+        )
+    else:
+        logger.typewriter_log(
+            "Name your AI: ",
+            Fore.GREEN,
+            "For example, 'Entrepreneur-GPT'",
+            speak_text=True,
+        )
+
+    ai_name = utils.clean_input("AI Name: ") or ai_name
 
     logger.typewriter_log(
         f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
     )
 
-    # Get AI Role from User
-    logger.typewriter_log(
-        "Describe your AI's role: ",
-        Fore.GREEN,
-        "For example, 'an AI designed to autonomously develop and run businesses with"
-        " the sole goal of increasing your net worth.'",
-    )
-    ai_role = utils.clean_input(f"{ai_name} is: ")
-    if ai_role == "":
-        ai_role = "an AI designed to autonomously develop and run businesses with the"
-        " sole goal of increasing your net worth."
+    if editing:
+        logger.typewriter_log(
+            "Describe your AI's role:",
+            Fore.GREEN,
+            f"Current: '{config.ai_role}', use [Enter] to keep the current role / save the input.",
+            speak_text=True,
+        )
+    else:
+        logger.typewriter_log(
+            "Describe your AI's role:",
+            Fore.GREEN,
+            "For example, 'an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth.'",
+            speak_text=True,
+        )
 
-    # Enter up to 5 goals for the AI
-    logger.typewriter_log(
-        "Enter up to 5 goals for your AI: ",
-        Fore.GREEN,
-        "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage"
-        " multiple businesses autonomously'",
-    )
-    logger.info("Enter nothing to load defaults, enter nothing when finished.")
-    ai_goals = []
-    for i in range(5):
-        ai_goal = utils.clean_input(f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1}: ")
-        if ai_goal == "":
-            break
-        ai_goals.append(ai_goal)
-    if not ai_goals:
-        ai_goals = [
-            "Increase net worth",
-            "Grow Twitter Account",
-            "Develop and manage multiple businesses autonomously",
-        ]
+    ai_role = utils.clean_input(f"{ai_name} is: ") or config.ai_role
+
+    if ai_name and max_goals:
+        # Edit Existing Goals
+        default_goals = config.ai_goals if config else []
+        logger.typewriter_log(
+            f"Enter up to {max_goals} goals for your AI:",
+            Fore.GREEN,
+            "use [Enter] to keep the current goal / save the input.",
+            speak_text=True,
+        )
+
+        ai_goals = list(default_goals)  # start with a copy of the current goals
+
+        for i in range(len(ai_goals)):
+            logger.typewriter_log(
+                f"Current Goal {i+1}: {ai_goals[i]}",
+                Fore.LIGHTBLUE_EX,
+                speak_text=False,
+            )
+            action = utils.clean_input(
+                f"Do you want to [E]dit, [D]elete, or [K]eep this goal? "
+            )
+            if action.lower() == "e":
+                ai_goal = utils.clean_input(
+                    f"{Fore.LIGHTBLUE_EX}New Goal{Style.RESET_ALL} {i+1}: "
+                )
+                ai_goals[i] = ai_goal
+            elif action.lower() == "d":
+                del ai_goals[i]  # delete the goal
+
+        # add new goals if there's still room
+        if len(ai_goals) < max_goals:
+            logger.typewriter_log(
+                f"You can add up to {max_goals - len(ai_goals)} new goals.",
+                Fore.GREEN,
+                speak_text=False,
+            )
+            for i in range(len(ai_goals), max_goals):
+                ai_goal = utils.clean_input(
+                    f"{Fore.LIGHTBLUE_EX}New Goal{Style.RESET_ALL} {i+1}: "
+                )
+                if ai_goal == "":
+                    break  # end the input process if user enters nothing
+                ai_goals.append(ai_goal)  # add the new goal to the list
+    else:
+        # Entering new goals only, up to [x] (default=5) goals for the AI
+        default_goals = config.ai_goals if config else []
+        logger.typewriter_log(
+            f"Enter up to {max_goals} goals for your AI: ",
+            Fore.GREEN,
+            "For example: \nIncrease net worth, Grow Twitter Account, Develop and manage multiple businesses autonomously",
+            speak_text=True,
+        )
+        logger.info("Use [Enter] to save the input.")
+        ai_goals = []
+        for i in range(max_goals):
+            default_goal = default_goals[i] if i < len(default_goals) else None
+            ai_goal = utils.clean_input(
+                f"{Fore.LIGHTBLUE_EX}Goal{Style.RESET_ALL} {i+1} (current: '{default_goal}'): "
+            )
+            if ai_goal == "":
+                if default_goal is not None:
+                    ai_goals.append(default_goal)
+                break
+            ai_goals.append(ai_goal)
 
     # Get API Budget from User
-    logger.typewriter_log(
-        "Enter your budget for API calls: ",
-        Fore.GREEN,
-        "For example: $1.50",
-    )
-    logger.info("Enter nothing to let the AI run without monetary limit")
+    default_budget = config.api_budget if config else 0.0
+    if editing:
+        logger.typewriter_log(
+            "Enter your budget for API calls: ",
+            Fore.GREEN,
+            f"Current: ${default_budget}. For example: $1.50, leave empty to keep current budget.",
+            speak_text=True,
+        )
+        logger.info("Use [Enter] to save the input.")
+    else:
+        logger.typewriter_log(
+            "Enter your budget for API calls: ",
+            Fore.GREEN,
+            "For example: $1.50, leave empty for unlimited budget.",
+            speak_text=True,
+        )
+        logger.info("Use [Enter] to save the input.")
     api_budget_input = utils.clean_input(
         f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
     )
     if api_budget_input == "":
-        api_budget = 0.0
+        api_budget = default_budget
     else:
         try:
             api_budget = float(api_budget_input.replace("$", ""))
         except ValueError:
             logger.typewriter_log(
-                "Invalid budget input. Setting budget to unlimited.", Fore.RED
+                f"Invalid budget input. Using default budget (${default_budget}).",
+                Fore.RED,
             )
-            api_budget = 0.0
+            api_budget = default_budget
 
     return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
 
-def generate_aiconfig_automatic(user_prompt) -> AIConfig:
+def generate_aiconfig_automatic(user_prompt: str) -> AIConfig:
     """Generates an AIConfig object from the given string.
 
     Returns:
@@ -175,6 +266,7 @@ def generate_aiconfig_automatic(user_prompt) -> AIConfig:
     prompt_ai_config_automatic = Template(
         DEFAULT_TASK_PROMPT_AICONFIG_AUTOMATIC
     ).render(user_prompt=user_prompt)
+
     # Call LLM with the string as user input
     output = create_chat_completion(
         ChatSequence.for_model(
@@ -190,17 +282,25 @@ def generate_aiconfig_automatic(user_prompt) -> AIConfig:
     logger.debug(f"AI Config Generator Raw Output: {output}")
 
     # Parse the output
-    ai_name = re.search(r"Name(?:\s*):(?:\s*)(.*)", output, re.IGNORECASE).group(1)
-    ai_role = (
-        re.search(
-            r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
-            output,
-            re.IGNORECASE | re.DOTALL,
-        )
-        .group(1)
-        .strip()
+    match = re.search(r"Name(?:\s*):(?:\s*)(.*)", output, re.IGNORECASE)
+    ai_name = match.group(1) if match is not None else ""
+
+    match = re.search(
+        r"Description(?:\s*):(?:\s*)(.*?)(?:(?:\n)|Goals)",
+        output,
+        re.IGNORECASE | re.DOTALL,
     )
+    ai_role = match.group(1).strip() if match is not None else ""
+
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
     api_budget = 0.0  # TODO: parse api budget using a regular expression
+
+    # Fallback to manual when automatic generation failed
+    if not ai_name or not ai_role or not ai_goals:
+        logger.typewriter_log(
+            "Automatic generation failed. Falling back to manual generation...",
+            Fore.RED,
+        )
+        return generate_aiconfig_manual()
 
     return AIConfig(ai_name, ai_role, ai_goals, api_budget)
