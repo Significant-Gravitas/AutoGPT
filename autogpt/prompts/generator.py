@@ -110,7 +110,7 @@ class PromptGenerator:
         """
         self.performance_evaluation.append(evaluation)
 
-    def generate_numbered_list(self, items: List[Any], item_type="list") -> str:
+    def _generate_numbered_list(self, items: List[Any], item_type="list") -> str:
         """
         Generate a numbered list from given items based on the item_type.
 
@@ -146,12 +146,12 @@ class PromptGenerator:
         """
         formatted_response_format = json.dumps(self.response_format, indent=4)
         return (
-            f"Constraints:\n{self.generate_numbered_list(self.constraints)}\n\n"
+            f"Constraints:\n{self._generate_numbered_list(self.constraints)}\n\n"
             "Commands:\n"
-            f"{self.generate_numbered_list(self.commands, item_type='command')}\n\n"
-            f"Resources:\n{self.generate_numbered_list(self.resources)}\n\n"
+            f"{self._generate_numbered_list(self.commands, item_type='command')}\n\n"
+            f"Resources:\n{self._generate_numbered_list(self.resources)}\n\n"
             "Performance Evaluation:\n"
-            f"{self.generate_numbered_list(self.performance_evaluation)}\n\n"
+            f"{self._generate_numbered_list(self.performance_evaluation)}\n\n"
             "You should only respond in JSON format as described below \nResponse"
             f" Format: \n{formatted_response_format} \nEnsure the response can be"
             " parsed by Python json.loads"

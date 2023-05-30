@@ -153,6 +153,7 @@ class ChatModelResponse(LLMResponse):
 
 @dataclass(repr=True)
 class CommandMessage:
+    # timestamp: int
     name: str
     args: dict[str, Any]
     user_input: str
@@ -160,6 +161,7 @@ class CommandMessage:
 
 @dataclass(repr=True)
 class CommandError:
+    # timestamp: int
     name: str
     args: dict[str, Any]
     msg: str

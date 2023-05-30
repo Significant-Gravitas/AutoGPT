@@ -554,9 +554,9 @@ class Agent:
 
         full_prompt = (
             f"Constraints:\n"
-            f"{prompt_generator.generate_numbered_list(prompt_generator.constraints)}\n\n"
+            f"{prompt_generator._generate_numbered_list(prompt_generator.constraints)}\n\n"
             "Commands:\n"
-            f"{prompt_generator.generate_numbered_list(prompt_generator.commands, item_type='command')}\n\n"
+            f"{prompt_generator._generate_numbered_list(prompt_generator.commands, item_type='command')}\n\n"
             f"Thoughts: {thought}\n"
             f"Reasoning: {reasoning}\n"
             f"Plan:\n{plan}\n\n"
@@ -566,12 +566,12 @@ class Agent:
             "that will get us closer to our goals."
         )
 
-        if self.errors is not None:
+        if error_list := self._generate_error_list():
             full_prompt += (
                 f"\nThe course of action provided must also not repeat the "
                 f"errors below by using these combinations of commands and "
                 f"arguments:\n"
-                f"{self._generate_error_list()}"
+                f"{error_list}"
             )
 
         return full_prompt
