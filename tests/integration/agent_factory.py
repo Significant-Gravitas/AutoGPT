@@ -202,3 +202,36 @@ def kubernetes_agent(memory_json_file, workspace: Workspace):
     )
 
     return agent
+
+
+@pytest.fixture
+def get_nobel_prize_agent(agent_test_config, memory_json_file, workspace: Workspace):
+    command_registry = CommandRegistry()
+    command_registry.import_commands("autogpt.commands.file_operations")
+    command_registry.import_commands("autogpt.app")
+    command_registry.import_commands("autogpt.commands.web_selenium")
+
+    ai_config = AIConfig(
+        ai_name="Get-PhysicsNobelPrize",
+        ai_role="An autonomous agent that specializes in physics history.",
+        ai_goals=[
+            "Write to file the winner's name(s), affiliated university, and discovery of the 2010 nobel prize in physics. Write your final answer to 2010_nobel_prize_winners.txt.",
+        ],
+    )
+    ai_config.command_registry = command_registry
+
+    system_prompt = ai_config.construct_full_prompt()
+    Config().set_continuous_mode(False)
+
+    agent = Agent(
+        ai_name="Get-PhysicsNobelPrize",
+        memory=memory_json_file,
+        command_registry=command_registry,
+        config=ai_config,
+        next_action_count=0,
+        system_prompt=system_prompt,
+        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+        workspace_directory=workspace.root,
+    )
+
+    return agent
