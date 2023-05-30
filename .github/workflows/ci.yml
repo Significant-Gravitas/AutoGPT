@@ -182,7 +182,7 @@ jobs:
             echo "DIFF_EXISTS=false" >> $GITHUB_ENV
           fi
 
-      - name: Apply or remove ù change label and comment
+      - name: Apply or remove behaviour change label and comment
         if: ${{ github.event_name == 'pull_request_target' }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
