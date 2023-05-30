@@ -8,6 +8,78 @@ settings from a YAML file.
 """
 
 
+def test_save_file_without_ai_name(tmp_path):
+    """Test: if save when ai_name is empty."""
+    yaml_content = """configs:
+      :
+        ai_goals:
+        - 'Goal 1: Make a sandwich'
+        - 'Goal 2, Eat the sandwich'
+        - 'Goal 3 - Go to sleep'
+        - 'Goal 4: Wake up'
+        ai_role: A hungry AI
+        api_budget: 0.0
+    """
+
+    config_file = tmp_path / "ai_settings.yaml"
+    config_file.write_text(yaml_content)
+
+    ai_config = AIConfig(
+        ai_name="", ai_goals=[], ai_role="", api_budget=0.0
+    )  # Create an instance with empty ai_name
+    result = ai_config.save(config_file)  # Call save on the instance
+
+    assert result == "The AI name cannot be empty. The configuration was not saved."
+
+
+def test_delete_without_ai_name(tmp_path):
+    """Test if delete method returns the correct message when ai_name is empty."""
+    ai_config = AIConfig(ai_name="TestAI", ai_goals=[], ai_role="", api_budget=0.0)
+
+    result = ai_config.delete(ai_name="")  # Call delete with an empty ai_name
+
+    assert (
+        result
+        == "No AI name provided. Please provide an AI name to delete its configuration."
+    )
+
+
+def test_delete_with_no_configurations():
+    """Test if delete method returns the correct message when there are no configurations."""
+    config_file = "test123.yaml"  # Non-existent config file
+    ai_config = AIConfig(ai_name="TestAI", ai_goals=[], ai_role="", api_budget=0.0)
+
+    result = ai_config.delete(
+        config_file=config_file, ai_name="TestAI"
+    )  # Call delete on non-existent config file
+
+    assert result == "No configurations to delete."
+
+
+def test_delete_with_non_existent_ai_name(tmp_path):
+    """Test if delete method returns the correct message when AI name doesn't exist in configurations."""
+    yaml_content = """configs:
+      TestAI:
+        ai_goals:
+        - 'Goal 1: Make a sandwich'
+        - 'Goal 2, Eat the sandwich'
+        - 'Goal 3 - Go to sleep'
+        - 'Goal 4: Wake up'
+        ai_role: A hungry AI
+        api_budget: 0.0
+    """
+    config_file = tmp_path / "ai_settings.yaml"
+    config_file.write_text(yaml_content)
+
+    ai_config = AIConfig(ai_name="TestAI", ai_goals=[], ai_role="", api_budget=0.0)
+
+    result = ai_config.delete(
+        config_file=config_file, ai_name="NonExistentAI"
+    )  # Call delete with a non-existent ai_name
+
+    assert result == f"No configuration found for AI 'NonExistentAI'."
+
+
 def test_goals_are_always_lists_of_strings(tmp_path):
     """Test if the goals attribute is always a list of strings."""
 

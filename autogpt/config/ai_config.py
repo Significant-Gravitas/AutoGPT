@@ -126,8 +126,7 @@ class AIConfig:
         """
         # Prevent saving if the ai_name is an empty string
         if not self.ai_name:
-            print("The AI name cannot be empty. The configuration was not saved.")
-            return
+            return "The AI name cannot be empty. The configuration was not saved."
 
         new_config = {
             self.ai_name: {
@@ -153,7 +152,7 @@ class AIConfig:
         with open(config_file, "w", encoding="utf-8") as file:
             file.write(yaml.dump(all_configs, allow_unicode=True))
 
-    def delete(self, config_file: str = SAVE_FILE, ai_name: str = "") -> None:
+    def delete(self, config_file: str = SAVE_FILE, ai_name: str = "") -> str:
         """
         Deletes a configuration from the specified YAML file.
 
@@ -163,20 +162,16 @@ class AIConfig:
             ai_name(str): The name of the AI whose configuration is to be deleted.
 
         Returns:
-            None
+            str: Message indicating the result of the operation.
         """
 
         # If no AI name is provided, exit the function
         if ai_name == "":
-            print(
-                "No AI name provided. Please provide an AI name to delete its configuration."
-            )
-            return
+            return "No AI name provided. Please provide an AI name to delete its configuration."
 
         # Load the existing configurations
         if not os.path.exists(config_file):
-            print("No configurations to delete.")
-            return
+            return "No configurations to delete."
         else:
             with open(config_file, "r", encoding="utf-8") as file:
                 all_configs = yaml.safe_load(file)
@@ -185,7 +180,7 @@ class AIConfig:
         if ai_name in all_configs["configs"]:
             del all_configs["configs"][ai_name]
         else:
-            print(f"No configuration found for AI '{ai_name}'.")
+            return "No configuration found for AI '{}'.".format(ai_name)
 
         # Save the configurations back to the file
         with open(config_file, "w", encoding="utf-8") as file:

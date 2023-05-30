@@ -58,6 +58,8 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
     if config_file is None:
         config_file = AIConfig.SAVE_FILE
 
+    should_save_config = True
+
     while True:
         logger.typewriter_log(
             f"Attempting to load configuration from: {config_file}",
@@ -104,7 +106,7 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                         if num_goals_input == "":
                             num_goals = 5
                             logger.typewriter_log(
-                                "No input detected. Falling back to the default of 5 goals.",
+                                "No input detected. Falling back to the default: 5 goals.",
                                 Fore.YELLOW,
                             )
                         elif num_goals_input.isdigit():
@@ -174,6 +176,7 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                             # Save the new configuration
                             config.save(config_file, append=True)
                         else:
+                            should_save_config = False
                             logger.typewriter_log(
                                 "New configuration not saved.", Fore.RED
                             )
@@ -330,6 +333,11 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
             config = prompt_user()
             config.save(config_file)
             break
+
+    if should_save_config == False:
+        # User choose (n)o so call the function recursively
+        config = AIConfig()
+        return construct_main_ai_config(config_file)
 
     if CFG.skip_reprompt and config.ai_name:
         logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)

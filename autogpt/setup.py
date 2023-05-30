@@ -131,8 +131,13 @@ def generate_aiconfig_manual(
             speak_text=True,
         )
 
-    ai_name = utils.clean_input("AI Name: ") or ai_name
+    ai_name = utils.clean_input("AI Name: ") or ai_name or "new-GPT"
 
+    if ai_name == "new-GPT":
+        logger.typewriter_log(
+            "No input detected. Falling back to default name: new-GPT.",
+            Fore.YELLOW,
+        )
     logger.typewriter_log(
         f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
     )
@@ -152,7 +157,11 @@ def generate_aiconfig_manual(
             speak_text=True,
         )
 
-    ai_role = utils.clean_input(f"{ai_name} is: ") or config.ai_role
+    ai_role = utils.clean_input(f"{ai_name} is: ") or (
+        config.ai_role
+        if config is not None
+        else "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
+    )
 
     if ai_name and max_goals:
         # Edit Existing Goals
