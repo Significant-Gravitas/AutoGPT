@@ -100,7 +100,7 @@ def construct_main_ai_config() -> AIConfig:
 {Fore.BLACK}{Back.LIGHTRED_EX}{Style.DIM}API Budget:{Style.RESET_ALL} {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}\n
 {Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}ROLE:\n{Style.RESET_ALL}{config.ai_role}\n
 {Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}GOALS:\n{Style.RESET_ALL}{config.ai_goals}\n
-{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}({CFG.authorise_key.upper()})RESERVE ({CFG.exit_key.upper()})DIT + <ENTER> >>> {Style.RESET_ALL}"""  # noqa: E501
+{Fore.LIGHTCYAN_EX}{Back.LIGHTBLACK_EX}{Style.BRIGHT}({CFG.authorise_key.upper()})RESERVE ({CFG.exit_key.upper()})DIT + <ENTER> {Style.RESET_ALL}"""  # noqa: E501
     )
 
     if should_continue.lower() == CFG.exit_key:
