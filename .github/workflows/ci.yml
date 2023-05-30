@@ -119,6 +119,7 @@ jobs:
       - name: Run pytest tests with coverage
         run: |
           pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          python tests/integration/challenges/utils/build_current_score.py
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
@@ -131,11 +132,20 @@ jobs:
       - name: Update cassette submodule to push target if push event
         if: ${{ github.event_name == 'push' }}
         run: |
-          cd tests/Auto-GPT-test-cassettes
           current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
-          git fetch origin $current_branch
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
+          git add tests/integration/challenges/current_score.json
+
+          if ! git diff-index --quiet HEAD; then
+              git commit -m "Update current score"
+              git push origin HEAD:refs/heads/$current_branch
+          else
+              echo "The current score didn't change."
+          fi
+          
+          cd tests/Auto-GPT-test-cassettes
+          git fetch origin $current_branch
           git add .
 
           # Check if there are any changes
@@ -150,7 +160,7 @@ jobs:
               git commit -m "Update submodule reference"
               git push origin HEAD:refs/heads/$current_branch
           else
-              echo "No changes to commit"
+              echo "No cassettes changes to commit"
               exit 0
           fi
 
