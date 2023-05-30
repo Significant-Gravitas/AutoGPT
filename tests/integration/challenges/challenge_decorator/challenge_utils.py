@@ -13,13 +13,13 @@ def create_challenge(
     level_to_run: Optional[int] = None,
 ) -> Challenge:
     challenge_category, challenge_name = get_challenge_identifiers(func)
-
+    is_new_challenge = challenge_name not in current_score.get(challenge_category, {})
     max_level = get_max_level(current_score, challenge_category, challenge_name)
     max_level_beaten = get_max_level_beaten(
         current_score, challenge_category, challenge_name
     )
     level_to_run = get_level_to_run(
-        is_beat_challenges, level_to_run, max_level, max_level_beaten
+        is_beat_challenges, level_to_run, max_level, max_level_beaten, is_new_challenge
     )
 
     return Challenge(
@@ -28,6 +28,7 @@ def create_challenge(
         max_level=max_level,
         max_level_beaten=max_level_beaten,
         level_to_run=level_to_run,
+        is_new_challenge=is_new_challenge,
     )
 
 
@@ -36,7 +37,10 @@ def get_level_to_run(
     level_to_run: Optional[int],
     max_level: int,
     max_level_beaten: Optional[int],
+    is_new_challenge: bool,
 ) -> Optional[int]:
+    if is_new_challenge:
+        return 1
     if level_to_run is not None:
         if level_to_run > max_level:
             raise ValueError(
