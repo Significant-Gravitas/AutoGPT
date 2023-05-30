@@ -19,6 +19,12 @@
             "max_level_beaten": 1
         }
     },
+    "debug_code": {
+        "debug_code_challenge_a": {
+            "max_level": 1,
+            "max_level_beaten": 1
+        }
+    },
     "kubernetes": {
         "kubernetes_template_challenge_a": {
             "max_level": 1,
