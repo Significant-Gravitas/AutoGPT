@@ -6,7 +6,7 @@ from autogpt.config.prompt_config import PromptConfig
 from autogpt.llm.api_manager import ApiManager
 from autogpt.logs import logger
 from autogpt.prompts.generator import PromptGenerator
-from autogpt.setup import prompt_user
+from autogpt.setup import generate_aiconfig_manual, prompt_user
 from autogpt.utils import clean_input
 
 CFG = Config()
@@ -46,13 +46,291 @@ def build_default_prompt_generator() -> PromptGenerator:
     return prompt_generator
 
 
-def construct_main_ai_config() -> AIConfig:
+def construct_main_ai_config(config_file: str = None) -> AIConfig:
     """Construct the prompt for the AI to respond to
 
+    Args:
+        config_file (str, optional): The path to the AI configuration file. If not provided, the default SAVE_FILE will be used.
+
     Returns:
-        str: The prompt string
+        AIConfig: The chosen or created AIConfig instance
     """
-    config = AIConfig.load(CFG.ai_settings_file)
+    if config_file is None:
+        config_file = AIConfig.SAVE_FILE
+
+    while True:
+        logger.typewriter_log(
+            f"Attempting to load configuration from: {config_file}",
+            Fore.GREEN,
+        )
+        all_configs = AIConfig.load_all(config_file)
+
+        if config_file in all_configs:
+            config = all_configs[config_file]
+            break
+        elif len(all_configs) > 0:
+            logger.typewriter_log(
+                "Welcome back! ",
+                Fore.GREEN,
+                "Configuration(s) detected. Please select one:",
+                speak_text=True,
+            )
+            for i, cfg_name in enumerate(all_configs.keys(), start=1):
+                logger.typewriter_log(f"{i}. {cfg_name}")
+            logger.typewriter_log(f"{len(all_configs) + 1}. Create new configuration")
+            logger.typewriter_log(
+                f"{len(all_configs) + 2}. Change existing configuration"
+            )
+            logger.typewriter_log(
+                f"{len(all_configs) + 3}. Delete existing configuration"
+            )
+            selection = clean_input("Please choose a number: ")
+            if selection.isdigit() and 0 < int(selection) <= len(all_configs) + 3:
+                if int(selection) == len(all_configs) + 1:
+                    # Create new config: to be defined
+                    # Add the code to create a new configuration here
+                    config = AIConfig()
+
+                    # Initialize num_goals with an invalid value to enter the loop
+                    num_goals = -1
+
+                    while num_goals < 0 or num_goals > 20:
+                        # Ask the user for the number of goals
+                        num_goals_input = clean_input(
+                            "How many goals do you want to set? (0-20): "
+                        )
+
+                        # Validate the input
+                        if num_goals_input == "":
+                            num_goals = 5
+                            logger.typewriter_log(
+                                "No input detected. Falling back to the default of 5 goals.",
+                                Fore.YELLOW,
+                            )
+                        elif num_goals_input.isdigit():
+                            num_goals = int(num_goals_input)
+                            if num_goals > 20:
+                                logger.typewriter_log(
+                                    "More than 20 goals can be difficult to manage and should be set manually in the settings file.",
+                                    Fore.YELLOW,
+                                )
+                            elif num_goals == 0:
+                                num_goals = 5
+                                logger.typewriter_log(
+                                    "Falling back to the default of 5 goals.",
+                                    Fore.YELLOW,
+                                )
+                        else:
+                            logger.typewriter_log(
+                                "Invalid input. Please enter a number between 0 and 20.",
+                                Fore.YELLOW,
+                            )
+
+                    # Define the new configuration using user prompts
+                    config = generate_aiconfig_manual(
+                        max_goals=num_goals, config_file=config_file
+                    )
+
+                    # Check if required values are missing
+                    if (
+                        not (config.ai_name and config.ai_role and config.ai_goals)
+                        or config.ai_name == "null"
+                        or config.ai_name == ""
+                        or config.ai_role == "null"
+                        or config.ai_role == ""
+                        or not config.ai_goals
+                    ):
+                        logger.typewriter_log(
+                            "Required values are missing.",
+                            Fore.RED,
+                        )
+
+                        # Prompt user if they want to save the configuration with default values
+                        response = clean_input(
+                            "Do you want to save the configuration with default values? (y/n): "
+                        )
+
+                        if response.lower() == "y":
+                            # Assign default values if required
+                            if (
+                                not config.ai_name
+                                or config.ai_name == "null"
+                                or config.ai_name == ""
+                            ):
+                                config.ai_name = "Entrepreneur-GPT"
+                            if (
+                                not config.ai_role
+                                or config.ai_role == "null"
+                                or config.ai_role == ""
+                            ):
+                                config.ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
+                            if not config.ai_goals:
+                                config.ai_goals = [
+                                    "Increase net worth",
+                                    "Grow Twitter Account",
+                                    "Develop and manage multiple businesses autonomously",
+                                ]
+
+                            # Save the new configuration
+                            config.save(config_file, append=True)
+                        else:
+                            logger.typewriter_log(
+                                "New configuration not saved.", Fore.RED
+                            )
+                        break
+                    else:
+                        # Save the new configuration
+                        config.save(config_file, append=True)
+                    break
+                elif int(selection) == len(all_configs) + 2:
+                    # Edit config: Prompt user to select configuration to be edited
+                    logger.typewriter_log(
+                        "Please select configuration you want to change:",
+                        Fore.GREEN,
+                        speak_text=True,
+                    )
+                    while True:
+                        for i, cfg_name in enumerate(all_configs.keys(), start=1):
+                            logger.typewriter_log(f"{i}. {cfg_name}")
+                        logger.typewriter_log(
+                            f"{len(all_configs) + 1}. Go back to main menu"
+                        )
+                        selection = clean_input("Please choose a number: ")
+                        if (
+                            selection.isdigit()
+                            and 0 <= int(selection) <= len(all_configs) + 1
+                        ):
+                            if int(selection) == len(all_configs) + 1:
+                                # Go back to main menu
+                                logger.typewriter_log(
+                                    "Going back to main menu.",
+                                    Fore.GREEN,
+                                )
+                                break
+                            else:
+                                # Edit the configuration
+                                ai_name_to_edit = list(all_configs.keys())[
+                                    int(selection) - 1
+                                ]
+                                config_to_edit = all_configs[ai_name_to_edit]
+
+                                logger.typewriter_log(
+                                    f"Editing the configuration for: {ai_name_to_edit}.",
+                                    Fore.GREEN,
+                                )
+
+                                current_goal_count = len(config_to_edit.ai_goals)
+                                logger.typewriter_log(
+                                    f"The AI currently has {current_goal_count} goals.",
+                                    Fore.GREEN,
+                                )
+
+                                num_goals_input = clean_input(
+                                    "Enter a new goal count (0-20) or press Enter to keep the current count: "
+                                )
+                                if (
+                                    num_goals_input.isdigit()
+                                    and 0 <= int(num_goals_input) <= 20
+                                ):
+                                    num_goals = int(num_goals_input)
+                                else:
+                                    num_goals = current_goal_count
+
+                                logger.typewriter_log(
+                                    f"The AI will now have {num_goals} goals.",
+                                    Fore.GREEN,
+                                )
+
+                                config = generate_aiconfig_manual(
+                                    ai_name=ai_name_to_edit,
+                                    max_goals=num_goals,
+                                    config_file=config_file,
+                                )
+
+                                # Check if required values are missing
+                                if (
+                                    not (
+                                        config.ai_name
+                                        and config.ai_role
+                                        and config.ai_goals
+                                    )
+                                    or config.ai_name == "null"
+                                    or config.ai_name == ""
+                                    or config.ai_role == "null"
+                                    or config.ai_role == ""
+                                    or not config.ai_goals
+                                ):
+                                    logger.typewriter_log(
+                                        "Required values are missing, new configuration not saved.",
+                                        Fore.RED,
+                                    )
+                                else:
+                                    # Save the edited configuration and break the loop
+                                    logger.typewriter_log(
+                                        f"Saving the edited configuration for: {ai_name_to_edit}.",
+                                        Fore.GREEN,
+                                    )
+                                    config.save(
+                                        config_file,
+                                        append=True,
+                                        old_ai_name=ai_name_to_edit,
+                                    )
+                                break
+                elif int(selection) == len(all_configs) + 3:
+                    # Delete config
+                    # Add the code to delete an existing configuration here
+                    logger.typewriter_log(
+                        "Please select configuration to be deleted:",
+                        Fore.GREEN,
+                        speak_text=True,
+                    )
+                    while True:  # And this loop
+                        for i, cfg_name in enumerate(all_configs.keys(), start=1):
+                            logger.typewriter_log(f"{i}. {cfg_name}")
+                        logger.typewriter_log(
+                            f"{len(all_configs) + 1}. Go back to main menu"
+                        )
+                        selection = clean_input("Please choose a number: ")
+                        if (
+                            selection.isdigit()
+                            and 0 <= int(selection) <= len(all_configs) + 1
+                        ):
+                            if int(selection) == len(all_configs) + 1:
+                                # Go back to main menu
+                                logger.typewriter_log(
+                                    "Going back to main menu.",
+                                    Fore.GREEN,
+                                )
+                                break
+                            else:
+                                # Delete the configuration
+                                ai_name_to_delete = list(all_configs.keys())[
+                                    int(selection) - 1
+                                ]
+                                logger.typewriter_log(
+                                    f"Deleting the configuration for: {ai_name_to_delete}.",
+                                    Fore.RED,
+                                )
+                                AIConfig().delete(
+                                    config_file,
+                                    ai_name=ai_name_to_delete,
+                                )
+                                break
+                else:
+                    config_name = list(all_configs.keys())[int(selection) - 1]
+                    config = all_configs[config_name]
+                    break
+            else:
+                logger.typewriter_log(
+                    "Invalid selection. Please enter a valid number.",
+                    Fore.RED,
+                )
+        else:
+            config = AIConfig()
+            config = prompt_user()
+            config.save(config_file)
+            break
+
     if CFG.skip_reprompt and config.ai_name:
         logger.typewriter_log("Name :", Fore.GREEN, config.ai_name)
         logger.typewriter_log("Role :", Fore.GREEN, config.ai_role)
@@ -62,27 +340,6 @@ def construct_main_ai_config() -> AIConfig:
             Fore.GREEN,
             "infinite" if config.api_budget <= 0 else f"${config.api_budget}",
         )
-    elif config.ai_name:
-        logger.typewriter_log(
-            "Welcome back! ",
-            Fore.GREEN,
-            f"Would you like me to return to being {config.ai_name}?",
-            speak_text=True,
-        )
-        should_continue = clean_input(
-            f"""Continue with the last settings?
-Name:  {config.ai_name}
-Role:  {config.ai_role}
-Goals: {config.ai_goals}
-API Budget: {"infinite" if config.api_budget <= 0 else f"${config.api_budget}"}
-Continue ({CFG.authorise_key}/{CFG.exit_key}): """
-        )
-        if should_continue.lower() == CFG.exit_key:
-            config = AIConfig()
-
-    if not config.ai_name:
-        config = prompt_user()
-        config.save(CFG.ai_settings_file)
 
     if CFG.restrict_to_workspace:
         logger.typewriter_log(
