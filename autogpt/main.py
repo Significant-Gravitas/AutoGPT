@@ -22,6 +22,21 @@ from autogpt.utils import (
 from autogpt.workspace import Workspace
 from scripts.install_plugin_deps import install_plugin_dependencies
 
+COMMAND_CATEGORIES = [
+    "autogpt.commands.analyze_code",
+    "autogpt.commands.audio_text",
+    "autogpt.commands.execute_code",
+    "autogpt.commands.file_operations",
+    "autogpt.commands.git_operations",
+    "autogpt.commands.google_search",
+    "autogpt.commands.image_gen",
+    "autogpt.commands.improve_code",
+    "autogpt.commands.web_selenium",
+    "autogpt.commands.write_tests",
+    "autogpt.app",
+    "autogpt.commands.task_statuses",
+]
+
 
 def run_auto_gpt(
     continuous: bool,
@@ -128,30 +143,18 @@ def run_auto_gpt(
     # Create a CommandRegistry instance and scan default folder
     command_registry = CommandRegistry()
 
-    command_categories = [
-        "autogpt.commands.analyze_code",
-        "autogpt.commands.audio_text",
-        "autogpt.commands.execute_code",
-        "autogpt.commands.file_operations",
-        "autogpt.commands.git_operations",
-        "autogpt.commands.google_search",
-        "autogpt.commands.image_gen",
-        "autogpt.commands.improve_code",
-        "autogpt.commands.web_selenium",
-        "autogpt.commands.write_tests",
-        "autogpt.app",
-        "autogpt.commands.task_statuses",
-    ]
     logger.debug(
         f"The following command categories are disabled: {cfg.disabled_command_categories}"
     )
-    command_categories = [
-        x for x in command_categories if x not in cfg.disabled_command_categories
+    enabled_command_categories = [
+        x for x in COMMAND_CATEGORIES if x not in cfg.disabled_command_categories
     ]
 
-    logger.debug(f"The following command categories are enabled: {command_categories}")
+    logger.debug(
+        f"The following command categories are enabled: {enabled_command_categories}"
+    )
 
-    for command_category in command_categories:
+    for command_category in enabled_command_categories:
         command_registry.import_commands(command_category)
 
     ai_name = ""
