@@ -191,6 +191,15 @@ def test_azure_config(config, workspace):
     )
 
     config_file.write_text(azure_configuration)
+
+    # Store model name to reset it after the test
+    fast_llm_model = config.fast_llm_model
+    smart_llm_model = config.smart_llm_model
+    openai_api_type = config.openai_api_type
+    openai_api_base = config.openai_api_base
+    openai_api_version = config.openai_api_version
+    azure_model_to_deployment_id_map = config.azure_model_to_deployment_id_map
+
     config.load_azure_config(str(config_file))
 
     assert config.openai_api_type == "azure"
@@ -202,6 +211,8 @@ def test_azure_config(config, workspace):
         "text-embedding-ada-002": "gpt-embedding-ada",
     }
 
+    config.set_fast_llm_model("gpt-3.5-turbo")
+    config.set_smart_llm_model("gpt-4")
     assert (
         config.get_azure_deployment_id_for_model(config.fast_llm_model)
         == "gpt-3-5_playground"
@@ -222,6 +233,15 @@ def test_azure_config(config, workspace):
     )
 
     assert config.get_azure_deployment_id_for_model("text-davince-03") is None
+
+    # Reset config
+    config_file.write_text("")
+    config.set_fast_llm_model(fast_llm_model)
+    config.set_smart_llm_model(smart_llm_model)
+    config.openai_api_type = openai_api_type
+    config.openai_api_base = openai_api_base
+    config.openai_api_version = openai_api_version
+    config.azure_model_to_deployment_id_map = azure_model_to_deployment_id_map
 
 
 def test_create_config_gpt4only(config: Config) -> None:
