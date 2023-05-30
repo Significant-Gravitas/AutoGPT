@@ -157,13 +157,20 @@ def generate_aiconfig_manual(
     if ai_name and max_goals:
         # Edit Existing Goals
         default_goals = config.ai_goals if config else []
-        logger.typewriter_log(
-            f"Enter up to {max_goals} goals for your AI:",
-            Fore.GREEN,
-            "use [Enter] to keep the current goal / save the input.",
-            speak_text=True,
-        )
-
+        if editing:
+            logger.typewriter_log(
+                f"Enter up to {max_goals} goals for your AI:",
+                Fore.GREEN,
+                "use [Enter] to keep the current goal / save the input.",
+                speak_text=True,
+            )
+        else:
+            logger.typewriter_log(
+                f"Enter up to {max_goals} goals for your AI:",
+                Fore.GREEN,
+                "use [Enter] to save the input.",
+                speak_text=True,
+            )
         ai_goals = list(default_goals)  # start with a copy of the current goals
 
         for i in range(len(ai_goals)):
