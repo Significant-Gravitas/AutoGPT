@@ -25,8 +25,9 @@ def prompt_user() -> AIConfig:
     Returns:
         AIConfig: The AIConfig object tailored to the user's input
     """
-    ai_name = ""
-    ai_config = None
+    CFG.ai_name  # Prints the name of the AI. Should be the only line output. (e.g. "Literal(...)"
+    CFG.ai_config  # Prints all the options for the AI. Should be the only line output. (e.g. "  - task:...", "
+
 
     # Construct the prompt
     logger.typewriter_log(
