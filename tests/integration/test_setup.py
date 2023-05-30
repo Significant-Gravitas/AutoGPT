@@ -3,11 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from autogpt.config.ai_config import AIConfig
-from autogpt.setup import (
-    generate_aiconfig_automatic,
-    generate_aiconfig_manual,
-    prompt_user,
-)
+from autogpt.setup import generate_aiconfig_automatic, prompt_user
 from tests.utils import requires_api_key
 
 
