@@ -23,14 +23,14 @@ performance_evaluations:
     "Every command has a cost, so be smart and efficient. Aim to complete tasks in the least number of steps.",
     "Write all code to a file.",
   ]
-file_commands:
+file_operations:
   [
     "read_file:           args: 'filename'",
     "list_files:          args: 'directory'",
     "append_to_file:      args: 'filename' 'text'",
     "write_to_file:       args: 'filename' 'text'",
   ]
-execute_commands:
+execute_code:
   [
     "execute_shell:       args: 'command_line'",
     "execute_shell_popen: args: 'command_line'",
@@ -43,7 +43,7 @@ agent_commands:
     "message_agent:       args: 'key' 'message'",
     "delete_agent:        args: 'key'",
   ]
-code_commands:
+analyze_code:
   [
     "analyze_code:        args: 'code' <full_code_string>",
     "improve_code:        args: 'suggestions' <list_of_suggestions>' 'code' <full_code_string>",
