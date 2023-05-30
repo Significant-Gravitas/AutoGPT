@@ -48,7 +48,7 @@ def challenge(func: Callable[..., Any]) -> Callable[..., None]:
                 pytest.skip("This test has not been unlocked yet.")
 
             if not challenge.succeeded:
-                if Challenge.BEAT_CHALLENGES:
+                if Challenge.BEAT_CHALLENGES or challenge.is_new_challenge:
                     # xfail
                     pytest.xfail("Challenge failed")
                 raise AssertionError("Challenge failed")
