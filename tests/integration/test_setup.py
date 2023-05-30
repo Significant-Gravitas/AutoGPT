@@ -11,6 +11,7 @@ from tests.utils import requires_api_key
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_automatic_default(patched_api_requestor):
+    """Test: automatic configuration based on empty input."""
     user_inputs = [""]
     with patch("builtins.input", side_effect=user_inputs):
         ai_config = prompt_user()
@@ -24,6 +25,7 @@ def test_generate_aiconfig_automatic_default(patched_api_requestor):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_automatic_typical(patched_api_requestor):
+    """Test: automatic ai_name, ai_role, ai_goals based on input."""
     user_prompt = "Help me create a rock opera about cybernetic giraffes"
     ai_config = generate_aiconfig_automatic(user_prompt)
 
@@ -36,6 +38,7 @@ def test_generate_aiconfig_automatic_typical(patched_api_requestor):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
+    """Test: automatic manual fallback."""
     user_inputs = [
         "T&GF£OIBECC()!*",
         "Chef-GPT",
@@ -57,6 +60,7 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_prompt_user_manual_mode(patched_api_requestor):
+    """Test: use --manual flag."""
     user_inputs = [
         "--manual",
         "Chef-GPT",
@@ -78,7 +82,7 @@ def test_prompt_user_manual_mode(patched_api_requestor):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_delete_and_select(tmp_path):
-    """Test delete configuration and select."""
+    """Test: delete configuration and select."""
 
     # Temporary path / file
     temp_config_file = tmp_path / "ai_settings.yaml"
@@ -131,7 +135,7 @@ def test_generate_aiconfig_delete_and_select(tmp_path):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_change_and_select(tmp_path):
-    """Test change configuration and select."""
+    """Test: change configuration and select."""
 
     # Temporary path / file
     temp_config_file = tmp_path / "ai_settings.yaml"
@@ -189,7 +193,7 @@ def test_generate_aiconfig_change_and_select(tmp_path):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_create_and_select(tmp_path):
-    """Test change configuration and select."""
+    """Test: create configuration and select."""
 
     # Temporary path / file
     temp_config_file = tmp_path / "ai_settings.yaml"
@@ -246,7 +250,7 @@ def test_generate_aiconfig_create_and_select(tmp_path):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_create_first(tmp_path):
-    """Test create first configuration."""
+    """Test: create first configuration."""
 
     # Temporary path / file
     temp_config_file = tmp_path / "ai_settings.yaml"
@@ -285,7 +289,7 @@ def test_generate_aiconfig_create_first(tmp_path):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_generate_aiconfig_delete_and_create_new(tmp_path):
-    """Test delete and create new configuration."""
+    """Test: delete and create new configuration."""
 
     # Temporary path / file
     temp_config_file = tmp_path / "ai_settings.yaml"
