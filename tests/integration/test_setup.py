@@ -260,7 +260,15 @@ def test_generate_aiconfig_create_first(tmp_path):
         temp_file.write(config_content)
 
     # Sequence of user inputs:
-    user_inputs = ["scan the internet for new python code"]
+    user_inputs = [
+        "scan the internet for new python code",
+        "Simple-GPT",
+        "find python code on the internet",
+        "search the internet for the newest python code.",
+        "save the code in a text file and shutdown.",
+        "\n",
+        "0",
+    ]
 
     # Patch function to use the user_inputs list
     with patch("builtins.input", side_effect=user_inputs):
@@ -295,7 +303,17 @@ def test_generate_aiconfig_delete_and_create_new(tmp_path):
         temp_file.write(config_content)
 
     # Sequence of user inputs:
-    user_inputs = ["4", "1", "scan the internet for new python code"]
+    user_inputs = [
+        "4",
+        "1",
+        "scan the internet for new python code",
+        "Simple-GPT",
+        "find python code on the internet",
+        "search the internet for the newest python code.",
+        "save the code in a text file and shutdown.",
+        "\n",
+        "0",
+    ]
 
     # Patch function to use the user_inputs list
     with patch("builtins.input", side_effect=user_inputs):
