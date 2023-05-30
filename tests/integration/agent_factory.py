@@ -3,6 +3,7 @@ import pytest
 from autogpt.agent import Agent
 from autogpt.commands.command import CommandRegistry
 from autogpt.config import AIConfig, Config
+from autogpt.main import COMMAND_CATEGORIES
 from autogpt.memory.vector import NoMemory, get_memory
 from autogpt.prompts.prompt import DEFAULT_TRIGGERING_PROMPT
 from autogpt.workspace import Workspace
@@ -140,36 +141,46 @@ def memory_management_agent(agent_test_config, memory_json_file, workspace: Work
 
 
 @pytest.fixture
-def get_company_revenue_agent(
+def information_retrieval_agents(
     agent_test_config, memory_json_file, workspace: Workspace
 ):
+    agents = []
     command_registry = CommandRegistry()
-    command_registry.import_commands("autogpt.commands.file_operations")
-    command_registry.import_commands("autogpt.commands.google_search")
-    command_registry.import_commands("autogpt.app")
-    command_registry.import_commands("autogpt.commands.task_statuses")
+    enabled_command_categories = [
+        x
+        for x in COMMAND_CATEGORIES
+        if x not in agent_test_config.disabled_command_categories
+    ]
 
-    ai_config = AIConfig(
-        ai_name="Information Retrieval Agent",
-        ai_role="an autonomous agent that specializes in retrieving information.",
-        ai_goals=[
-            "Search for 'tesla revenue 2022' and write the revenue of Tesla in 2022 to a file called output.txt. You should write the number without commas and you should not use signs like B for billion and M for million.",
-        ],
-    )
-    ai_config.command_registry = command_registry
-    system_prompt = ai_config.construct_full_prompt()
-    Config().set_continuous_mode(False)
-    agent = Agent(
-        ai_name="Get-CompanyRevenue",
-        memory=memory_json_file,
-        command_registry=command_registry,
-        config=ai_config,
-        next_action_count=0,
-        system_prompt=system_prompt,
-        triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
-        workspace_directory=workspace.root,
-    )
-    return agent
+    for command_category in enabled_command_categories:
+        command_registry.import_commands(command_category)
+    ai_goals = [
+        "Write to a file called output.txt tesla's revenue in 2022 after searching for 'tesla revenue 2022'.",
+        "Write to a file called output.txt tesla's revenue in 2022.",
+        "Write to a file called output.txt tesla's revenue every year since its creation.",
+    ]
+    for ai_goal in ai_goals:
+        ai_config = AIConfig(
+            ai_name="Information Retrieval Agent",
+            ai_role="an autonomous agent that specializes in retrieving information.",
+            ai_goals=[ai_goal],
+        )
+        ai_config.command_registry = command_registry
+        system_prompt = ai_config.construct_full_prompt()
+        Config().set_continuous_mode(False)
+        agents.append(
+            Agent(
+                ai_name="Information Retrieval Agent",
+                memory=memory_json_file,
+                command_registry=command_registry,
+                config=ai_config,
+                next_action_count=0,
+                system_prompt=system_prompt,
+                triggering_prompt=DEFAULT_TRIGGERING_PROMPT,
+                workspace_directory=workspace.root,
+            )
+        )
+    return agents
 
 
 @pytest.fixture

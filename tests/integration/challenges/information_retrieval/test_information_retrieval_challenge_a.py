@@ -9,6 +9,7 @@ from tests.integration.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
 
 CYCLE_COUNT = 3
+EXPECTED_REVENUES = [["81"], ["81"], ["81", "53", "24", "21", "11", "7", "4", "3", "2"]]
 from autogpt.agent import Agent
 
 
@@ -16,7 +17,7 @@ from autogpt.agent import Agent
 @requires_api_key("OPENAI_API_KEY")
 @challenge
 def test_information_retrieval_challenge_a(
-    get_company_revenue_agent: Agent,
+    information_retrieval_agents: Agent,
     monkeypatch: pytest.MonkeyPatch,
     patched_api_requestor: None,
     config: Config,
@@ -28,8 +29,13 @@ def test_information_retrieval_challenge_a(
     :param get_company_revenue_agent: The agent to test.
     :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
     """
-    run_interaction_loop(monkeypatch, get_company_revenue_agent, CYCLE_COUNT)
+    information_retrieval_agent = information_retrieval_agents[level_to_run - 1]
+    run_interaction_loop(monkeypatch, information_retrieval_agent, CYCLE_COUNT)
 
-    file_path = str(get_company_revenue_agent.workspace.get_path("output.txt"))
+    file_path = str(information_retrieval_agent.workspace.get_path("output.txt"))
     content = read_file(file_path, config)
-    assert "81" in content, "Expected the file to contain 81"
+    expected_revenues = EXPECTED_REVENUES[level_to_run - 1]
+    for revenue in expected_revenues:
+        assert (
+            f"{revenue}." in content or f"{revenue}," in content
+        ), f"Expected the file to contain {revenue}"

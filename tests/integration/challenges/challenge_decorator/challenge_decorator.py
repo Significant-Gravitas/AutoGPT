@@ -1,4 +1,3 @@
-import contextlib
 import os
 from functools import wraps
 from typing import Any, Callable, Optional
@@ -23,6 +22,7 @@ def challenge(func: Callable[..., Any]) -> Callable[..., None]:
     @wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> None:
         run_remaining = MAX_LEVEL_TO_IMPROVE_ON if Challenge.BEAT_CHALLENGES else 1
+        original_error = None
 
         while run_remaining > 0:
             current_score, new_score, new_score_location = get_scores()
@@ -32,9 +32,12 @@ def challenge(func: Callable[..., Any]) -> Callable[..., None]:
             )
             if challenge.level_to_run is not None:
                 kwargs["level_to_run"] = challenge.level_to_run
-                with contextlib.suppress(AssertionError):
+                try:
                     func(*args, **kwargs)
                     challenge.succeeded = True
+                except AssertionError as err:
+                    original_error = err
+                    challenge.succeeded = False
             else:
                 challenge.skipped = True
             if os.environ.get("CI") == "true":
@@ -51,6 +54,8 @@ def challenge(func: Callable[..., Any]) -> Callable[..., None]:
                 if Challenge.BEAT_CHALLENGES or challenge.is_new_challenge:
                     # xfail
                     pytest.xfail("Challenge failed")
+                if original_error:
+                    raise original_error
                 raise AssertionError("Challenge failed")
             run_remaining -= 1
 
