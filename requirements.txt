@@ -58,6 +58,6 @@ pytest-benchmark
 pytest-cov
 pytest-integration
 pytest-mock
-vcrpy
+vcrpy @ git+https://github.com/Significant-Gravitas/vcrpy.git@master
 pytest-recording
 pytest-xdist
