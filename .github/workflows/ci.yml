@@ -182,7 +182,7 @@ jobs:
             echo "DIFF_EXISTS=false" >> $GITHUB_ENV
           fi
 
-      - name: Apply or remove prompt change label and comment
+      - name: Apply or remove behaviour change label and comment
         if: ${{ github.event_name == 'pull_request_target' }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
@@ -195,14 +195,14 @@ jobs:
             -H "Authorization: Bearer $TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels \
-            -d '{"labels":["prompt change"]}'
+            -d '{"labels":["behaviour change"]}'
 
             echo $TOKEN | gh auth login --with-token
-            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's prompt. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
+            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           else
             echo "Removing label..."
             curl -X DELETE \
             -H "Authorization: Bearer $TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels/prompt%20change
+            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels/behaviour%20change
           fi
