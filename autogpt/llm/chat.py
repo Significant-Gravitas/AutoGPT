@@ -111,11 +111,11 @@ def chat_with_ai(
         current_tokens_used += tokens_to_add - 500
 
         # FIXME: uncomment when memory is back in use
-        # memory_store = get_memory(cfg)
-        # for _, ai_msg, result_msg in agent.history.per_cycle(trimmed_messages):
-        #     memory_to_add = MemoryItem.from_ai_action(ai_msg, result_msg)
-        #     logger.debug(f"Storing the following memory:\n{memory_to_add.dump()}")
-        #     memory_store.add(memory_to_add)
+        memory_store = get_memory(cfg)
+        for _, ai_msg, result_msg in agent.history.per_cycle(trimmed_messages):
+            memory_to_add = MemoryItem.from_ai_action(ai_msg, result_msg)
+            logger.debug(f"Storing the following memory:\n{memory_to_add.dump()}")
+            memory_store.add(memory_to_add)
 
     api_manager = ApiManager()
     # inform the AI about its remaining budget (if it has one)

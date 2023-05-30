@@ -9,10 +9,7 @@ if TYPE_CHECKING:
     from autogpt.agent import Agent
 
 from autogpt.config import Config
-from autogpt.json_utils.utilities import (
-    LLM_DEFAULT_RESPONSE_FORMAT,
-    is_string_valid_json,
-)
+from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, is_string_valid_json
 from autogpt.llm.base import ChatSequence, Message, MessageRole, MessageType
 from autogpt.llm.utils import create_chat_completion
 from autogpt.log_cycle.log_cycle import PROMPT_SUMMARY_FILE_NAME, SUMMARY_FILE_NAME
@@ -160,9 +157,9 @@ class MessageHistory:
             elif event.role == "user":
                 new_events.remove(event)
 
-        prompt = f'''Your task as the assistant is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
-        You will receive the current summary and your latest actions. Combine them, adding relevant key information from the latest development in 1st person's past tense and keeping the summary concise.
-        You will also receive a new set of actions. Go ahead and add a new event to the summary.
+        prompt = f'''The AI task is to create a concise running summary of actions and information results in the provided text, focusing on key and potentially important information to remember.
+        The AI will receive the current summary and latest actions to combine them, adding relevant key information from the latest development in 3rd person's past tense and keeping the summary concise.
+
 
         Summary So Far:
         """
