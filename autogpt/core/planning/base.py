@@ -27,7 +27,7 @@ from autogpt.core.planning.schema import (
 #
 #     @abc.abstractmethod
 #     async def plan(self, context: PlanningContext) -> LanguageModelResponse:
-#         """Plan the next action for the Agent.
+#         """Plan the next ability for the Agent.
 #
 #         Args:
 #             context: A context object containing information about the agent's
@@ -35,7 +35,7 @@ from autogpt.core.planning.schema import (
 #
 #
 #         Returns:
-#             The next action the agent should take along with thoughts and reasoning.
+#             The next ability the agent should take along with thoughts and reasoning.
 #
 #         """
 #         ...
@@ -45,7 +45,7 @@ from autogpt.core.planning.schema import (
 #         self,
 #         context: ReflectionContext,
 #     ) -> LanguageModelResponse:
-#         """Reflect on a planned action and provide self-criticism.
+#         """Reflect on a planned ability and provide self-criticism.
 #
 #
 #         Args:

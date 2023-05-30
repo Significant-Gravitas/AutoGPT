@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from autogpt.core.agent.base import Agent
-from autogpt.core.command import CommandRegistrySettings, SimpleCommandRegistry
+from autogpt.core.ability import AbilityRegistrySettings, SimpleAbilityRegistry
 from autogpt.core.configuration import Configurable, SystemConfiguration, SystemSettings
 from autogpt.core.embedding import EmbeddingModelSettings, SimpleEmbeddingModel
 from autogpt.core.memory import MemorySettings, SimpleMemory
@@ -21,7 +21,7 @@ from autogpt.core.workspace.simple import SimpleWorkspace, WorkspaceSettings
 
 
 class AgentSystems(SystemConfiguration):
-    command_registry: PluginLocation
+    ability_registry: PluginLocation
     memory: PluginLocation
     embedding_model: PluginLocation
     openai_provider: PluginLocation
@@ -41,7 +41,7 @@ class AgentSystemSettings(SystemSettings):
 
 class AgentSettings(BaseModel):
     agent: AgentSystemSettings
-    command_registry: CommandRegistrySettings
+    ability_registry: AbilityRegistrySettings
     memory: MemorySettings
     embedding_model: EmbeddingModelSettings
     openai_provider: OpenAISettings
@@ -62,9 +62,9 @@ class SimpleAgent(Agent, Configurable):
             cycle_count=0,
             creation_time="",
             systems=AgentSystems(
-                command_registry=PluginLocation(
+                ability_registry=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
-                    storage_route="autogpt.core.command.SimpleCommandRegistry",
+                    storage_route="autogpt.core.ability.SimpleAbilityRegistry",
                 ),
                 memory=PluginLocation(
                     storage_format=PluginStorageFormat.INSTALLED_PACKAGE,
@@ -94,7 +94,7 @@ class SimpleAgent(Agent, Configurable):
         self,
         settings: AgentSystemSettings,
         logger: logging.Logger,
-        command_registry: SimpleCommandRegistry,
+        ability_registry: SimpleAbilityRegistry,
         memory: SimpleMemory,
         embedding_model: SimpleEmbeddingModel,
         openai_provider: OpenAIProvider,
@@ -103,7 +103,7 @@ class SimpleAgent(Agent, Configurable):
     ):
         self._configuration = settings.configuration
         self._logger = logger
-        self._command_registry = command_registry
+        self._ability_registry = ability_registry
         self._memory = memory
         self._embedding_model = embedding_model
         # FIXME: Need some work to make this work as a dict of providers
@@ -146,8 +146,8 @@ class SimpleAgent(Agent, Configurable):
             model_providers={"openai": agent_args["openai_provider"]},
         )
 
-        agent_args["command_registry"] = cls._get_system_instance(
-            "command_registry",
+        agent_args["ability_registry"] = cls._get_system_instance(
+            "ability_registry",
             agent_settings,
             logger,
         )
@@ -155,14 +155,15 @@ class SimpleAgent(Agent, Configurable):
             "memory",
             agent_settings,
             logger,
+            workspace=agent_args["workspace"],
         )
 
         return cls(**agent_args)
 
-    def step(self, user_feedback: str, *args, **kwargs):
+    async def step(self, user_feedback: str, *args, **kwargs):
         self._configuration.cycle_count += 1
-        self._planning.plan(user_feedback, self._memory)
-        pass
+        await self._planning.plan(user_feedback, self._memory)
+        return "hi"
 
     def __repr__(self):
         return "SimpleAgent()"

@@ -70,7 +70,7 @@ PLAN_PROMPT_HEADER = (
 )
 
 PLAN_PROMPT_INFO = [
-    "The OS you are running on is: {os_name}",
+    "The OS you are running on is: {os_info}",
     "It takes money to let you run. Your API budget is ${api_budget:.3f}",
     "The current time and date is {current_time}",
 ]
@@ -125,15 +125,15 @@ PLAN_TRIGGERING_PROMPT = (
 )
 
 PLAN_PROMPT_MAIN = (
-    "{prompt_header}\n\n"
+    "{header}\n\n"
     "GOALS:\n\n{goals}\n\n"
-    "Info:\n{prompt_info}\n\n"
-    "Constraints:\n{prompt_constraints}\n\n"
-    "Commands:\n{prompt_commands}\n\n"
-    "Resources:\n{prompt_resources}\n\n"
-    "Performance Evaluations:\n{prompt_performance_evaluations}\n\n"
+    "Info:\n{info}\n\n"
+    "Constraints:\n{constraints}\n\n"
+    "Commands:\n{commands}\n\n"
+    "Resources:\n{resources}\n\n"
+    "Performance Evaluations:\n{performance_evaluations}\n\n"
     "You should only respond in JSON format as described below\n"
-    "Response Format:\n{formatted_response_format}\n"
+    "Response Format:\n{response_json_structure}\n"
     "Ensure the response can be parsed by Python json.loads"
 )
 

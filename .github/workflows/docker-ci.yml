@@ -24,7 +24,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-ability@v2
 
     - if: runner.debug
       run: |
@@ -33,7 +33,7 @@ jobs:
 
     - id: build
       name: Build image
-      uses: docker/build-push-action@v3
+      uses: docker/build-push-ability@v3
       with:
         build-args: BUILD_TYPE=${{ matrix.build-type }}
         tags: ${{ env.IMAGE_NAME }}
@@ -83,11 +83,11 @@ jobs:
           submodules: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-ability@v2
 
       - id: build
         name: Build image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-ability@v3
         with:
           build-args: BUILD_TYPE=dev  # include pytest
           tags: ${{ env.IMAGE_NAME }}

@@ -4,10 +4,10 @@ from typing import Type
 
 from pydantic import BaseModel
 
-from autogpt.core.command import Command, CommandRegistry
+from autogpt.core.ability import Ability, AbilityRegistry
 from autogpt.core.configuration import SystemConfiguration, UserConfigurable
 from autogpt.core.memory import Memory
-from autogpt.core.planning import Planner
+# from autogpt.core.planning import Planner
 from autogpt.core.resource.model_providers import (
     EmbeddingModelProvider,
     LanguageModelProvider,
@@ -15,21 +15,21 @@ from autogpt.core.resource.model_providers import (
 
 # Expand to other types as needed
 PluginType = (
-    Type[Command]  # Swappable now
-    | Type[CommandRegistry]  # Swappable maybe never
+    Type[Ability]  # Swappable now
+    | Type[AbilityRegistry]  # Swappable maybe never
     | Type[LanguageModelProvider]  # Swappable soon
     | Type[EmbeddingModelProvider]  # Swappable soon
     | Type[Memory]  # Swappable now
-    | Type[Planner]  # Swappable soon
+#    | Type[Planner]  # Swappable soon
 )
 
 Plugin = (
-    Command
-    | CommandRegistry
+    Ability
+    | AbilityRegistry
     | EmbeddingModelProvider
     | LanguageModelProvider
     | Memory
-    | Planner
+#    | Planner
 )
 
 

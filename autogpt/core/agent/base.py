@@ -18,7 +18,7 @@ class Agent(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def step(self, *args, **kwargs):
+    async def step(self, *args, **kwargs):
         ...
 
     @abc.abstractmethod

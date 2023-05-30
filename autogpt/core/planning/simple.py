@@ -16,18 +16,16 @@ from autogpt.core.configuration import (
 from autogpt.core.memory import Memory
 from autogpt.core.planning import templates
 
-# from autogpt.core.planning.base import Planner
 from autogpt.core.planning.schema import (
     LanguageModelClassification,
     LanguageModelPrompt,
     LanguageModelResponse,
-    PlanningContext,
     ReflectionContext,
 )
 from autogpt.core.resource.model_providers import (
     LanguageModelProvider,
     MessageRole,
-    ModelMessage,
+    LanguageModelMessage,
     ModelProviderName,
     OpenAIModelName,
 )
@@ -147,11 +145,11 @@ class SimplePlanner(Configurable):
 
     @staticmethod
     def _build_name_and_goals_prompt(user_objective: str) -> LanguageModelPrompt:
-        system_message = ModelMessage(
+        system_message = LanguageModelMessage(
             role=MessageRole.SYSTEM,
             content=templates.OBJECTIVE_SYSTEM_PROMPT,
         )
-        user_message = ModelMessage(
+        user_message = LanguageModelMessage(
             role=MessageRole.USER,
             content=templates.DEFAULT_OBJECTIVE_USER_PROMPT_TEMPLATE.format(
                 user_objective=user_objective,
@@ -202,7 +200,7 @@ class SimplePlanner(Configurable):
         user_feedback: str,
         memory: Memory,
         send_token_limit: int,
-        remaining_budget: int,
+        remaining_budget: float,
     ) -> LanguageModelPrompt:
         template_args = {
             "agent_name": self._configuration.agent_name,
@@ -210,9 +208,6 @@ class SimplePlanner(Configurable):
             "os_info": get_os_info(),
             "api_budget": remaining_budget,
             "current_time": time.strftime("%c"),
-            "response_json_structure": json.dumps(
-                templates.PLAN_PROMPT_RESPONSE_DICT, indent=4
-            ),
         }
 
         main_prompt_args = {
@@ -229,12 +224,15 @@ class SimplePlanner(Configurable):
             "performance_evaluations": to_numbered_list(
                 templates.PLAN_PROMPT_PERFORMANCE_EVALUATIONS, **template_args
             ),
+            "response_json_structure": json.dumps(
+                templates.PLAN_PROMPT_RESPONSE_DICT, indent=4
+            ),
         }
-        main_prompt = ModelMessage(
+        main_prompt = LanguageModelMessage(
             role=MessageRole.SYSTEM,
             content=templates.PLAN_PROMPT_MAIN.format(**main_prompt_args),
         )
-        user_message = ModelMessage(
+        user_message = LanguageModelMessage(
             role=MessageRole.USER,
             content=user_feedback,
         )

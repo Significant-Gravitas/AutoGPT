@@ -43,10 +43,10 @@ class SimpleWorkspace(Configurable, Workspace):
 
     def __init__(
         self,
-        configuration: WorkspaceConfiguration,
+        settings: WorkspaceSettings,
         logger: logging.Logger,
     ):
-        self._configuration = configuration
+        self._configuration = settings.configuration
         self._logger = logger.getChild("workspace")
 
     @property

@@ -56,4 +56,4 @@ class ProviderSettings(SystemSettings):
 
 
 # Used both by model providers and memory providers
-Embedding = list[float] | np.ndarray[Any, np.dtype[float]]
+Embedding = list[float]

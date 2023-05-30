@@ -1,18 +1,18 @@
 import logging
 from pathlib import Path
 
-from autogpt.core.action.base import Action
-from autogpt.core.action.schema import (
-    ACTION_ARGUMENTS,
-    ActionRequirements,
-    ActionResult,
+from autogpt.core.ability.base import Ability
+from autogpt.core.ability.schema import (
+    AbilityArguments,
+    AbilityRequirements,
+    AbilityResult,
 )
 from autogpt.core.workspace import Workspace
 
 FILE_OPERATIONS_LOG_PATH = Path("logs/file_operations.log")
 
 
-class ReadFile(Action):
+class ReadFile(Ability):
     def __init__(
         self,
         logger: logging.Logger,
@@ -31,16 +31,16 @@ class ReadFile(Action):
 
     @property
     def arguments(self) -> list[str]:
-        return [ACTION_ARGUMENTS.filename]
+        return [AbilityArguments.FILENAME]
 
     @property
-    def requirements(self) -> ActionRequirements:
-        return ActionRequirements(
+    def requirements(self) -> AbilityRequirements:
+        return AbilityRequirements(
             packages=["charset_normalizer"],
             workspace=True,
         )
 
-    def _check_preconditions(self, filename: str) -> ActionResult | None:
+    def _check_preconditions(self, filename: str) -> AbilityResult | None:
         message = ""
         try:
             import charset_normalizer
@@ -57,13 +57,13 @@ class ReadFile(Action):
             message = str(e)
 
         if message:
-            return ActionResult(
+            return AbilityResult(
                 success=False,
                 message=message,
                 data=None,
             )
 
-    def __call__(self, filename: str) -> ActionResult:
+    def __call__(self, filename: str) -> AbilityResult:
         if result := self._check_preconditions(filename):
             return result
 
@@ -80,7 +80,7 @@ class ReadFile(Action):
             success = False
             message = str(e)
 
-        return ActionResult(
+        return AbilityResult(
             success=success,
             message=message,
             data=None,

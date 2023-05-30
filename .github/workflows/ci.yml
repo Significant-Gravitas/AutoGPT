@@ -58,11 +58,11 @@ jobs:
 
   test:
     permissions:
-      # Gives the action the necessary permissions for publishing new
+      # Gives the ability the necessary permissions for publishing new
       # comments in pull requests.
       pull-requests: write
-      # Gives the action the necessary permissions for pushing data to the
-      # python-coverage-comment-action branch, and for editing existing
+      # Gives the ability the necessary permissions for pushing data to the
+      # python-coverage-comment-ability branch, and for editing existing
       # comments (to avoid publishing multiple comments in the same PR)
       contents: write
     runs-on: ubuntu-latest
@@ -126,7 +126,7 @@ jobs:
           AGENT_TYPE: ${{ vars.AGENT_TYPE }}
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-ability@v3
 
       - name: Update cassette submodule to push target if push event
         if: ${{ github.event_name == 'push' }}

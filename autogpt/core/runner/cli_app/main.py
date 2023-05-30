@@ -35,25 +35,25 @@ async def run_auto_gpt(user_configuration: dict):
             agent_settings,
             client_logger,
         )
-        click.echo(parse_agent_name_and_goals(name_and_goals))
+        print(parse_agent_name_and_goals(name_and_goals))
         # Finally, update the agent settings with the name and goals.
         agent_settings.update_agent_name_and_goals(name_and_goals.content)
 
         # Step 3. Provision the agent.
         agent_workspace = SimpleAgent.provision_agent(agent_settings, client_logger)
-        click.echo("agent is provisioned")
+        print("agent is provisioned")
 
     # launch agent interaction loop
     agent = SimpleAgent.from_workspace(
         agent_workspace,
         client_logger,
     )
-    click.echo("agent is loaded")
+    print("agent is loaded")
 
-    user_input = ""
+    user_input = click.prompt("What do you want to say to the agent?")
     while True:
         agent_response = await agent.step(user_input)
-        click.echo(agent_response.content["text"])
+        print(agent_response.content["text"])
         user_input = click.prompt("What do you want to say to the agent?")
 
 
