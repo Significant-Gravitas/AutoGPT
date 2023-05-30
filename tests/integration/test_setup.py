@@ -268,8 +268,7 @@ def test_generate_aiconfig_create_first(tmp_path):
         "save the code in a text file.",
         "search the internet for the newest python code.",
         "save the code in a text file.",
-        "shutdown."
-        "0"
+        "shutdown." "0",
     ]
 
     # Patch function to use the user_inputs list
@@ -315,8 +314,7 @@ def test_generate_aiconfig_delete_and_create_new(tmp_path):
         "save the code in a text file.",
         "search the internet for the newest python code.",
         "save the code in a text file.",
-        "shutdown."
-        "0"
+        "shutdown." "0",
     ]
 
     # Patch function to use the user_inputs list
