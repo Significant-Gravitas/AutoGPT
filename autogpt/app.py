@@ -1,20 +1,15 @@
 """ Command and Control """
 import json
-from typing import Dict, List, NoReturn, Union
+from typing import Dict, List, Union
 
 from autogpt.agent.agent_manager import AgentManager
 from autogpt.commands.command import CommandRegistry, command
 from autogpt.commands.web_requests import scrape_links, scrape_text
 from autogpt.config import Config
-from autogpt.logs import logger
-from autogpt.memory import get_memory
 from autogpt.processing.text import summarize_text
 from autogpt.prompts.generator import PromptGenerator
 from autogpt.speech import say_text
 from autogpt.url_utils.validators import validate_url
-
-CFG = Config()
-AGENT_MANAGER = AgentManager()
 
 
 def is_valid_int(value: str) -> bool:
@@ -94,6 +89,7 @@ def execute_command(
     command_name: str,
     arguments,
     prompt: PromptGenerator,
+    config: Config,
 ):
     """Execute the command and return the result
 
@@ -109,29 +105,25 @@ def execute_command(
 
         # If the command is found, call it with the provided arguments
         if cmd:
-            return cmd(**arguments)
+            return cmd(**arguments, config=config)
 
         # TODO: Remove commands below after they are moved to the command registry.
         command_name = map_command_synonyms(command_name.lower())
 
-        if command_name == "memory_add":
-            return get_memory(CFG).add(arguments["string"])
-
         # TODO: Change these to take in a file rather than pasted code, if
         # non-file is given, return instructions "Input should be a python
         # filepath, write your code to file and try again
-        else:
-            for command in prompt.commands:
-                if (
-                    command_name == command["label"].lower()
-                    or command_name == command["name"].lower()
-                ):
-                    return command["function"](**arguments)
-            return (
-                f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
-                " list for available commands and only respond in the specified JSON"
-                " format."
-            )
+        for command in prompt.commands:
+            if (
+                command_name == command["label"].lower()
+                or command_name == command["name"].lower()
+            ):
+                return command["function"](**arguments)
+        return (
+            f"Unknown command '{command_name}'. Please refer to the 'COMMANDS'"
+            " list for available commands and only respond in the specified JSON"
+            " format."
+        )
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -140,8 +132,8 @@ def execute_command(
     "get_text_summary", "Get text summary", '"url": "<url>", "question": "<question>"'
 )
 @validate_url
-def get_text_summary(url: str, question: str) -> str:
-    """Return the results of a Google search
+def get_text_summary(url: str, question: str, config: Config) -> str:
+    """Get the text summary of a webpage
 
     Args:
         url (str): The url to scrape
@@ -151,14 +143,15 @@ def get_text_summary(url: str, question: str) -> str:
         str: The summary of the text
     """
     text = scrape_text(url)
-    summary = summarize_text(url, text, question)
+    summary, _ = summarize_text(text, question=question)
+
     return f""" "Result" : {summary}"""
 
 
-@command("get_hyperlinks", "Get text summary", '"url": "<url>"')
+@command("get_hyperlinks", "Get hyperlinks", '"url": "<url>"')
 @validate_url
-def get_hyperlinks(url: str) -> Union[str, List[str]]:
-    """Return the results of a Google search
+def get_hyperlinks(url: str, config: Config) -> Union[str, List[str]]:
+    """Get all hyperlinks on a webpage
 
     Args:
         url (str): The url to scrape
@@ -166,7 +159,7 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
     Returns:
         str or list: The hyperlinks on the page
     """
-    return scrape_links(url)
+    return scrape_links(url, config)
 
 
 @command(
@@ -174,7 +167,7 @@ def get_hyperlinks(url: str) -> Union[str, List[str]]:
     "Start GPT Agent",
     '"name": "<name>", "task": "<short_task_desc>", "prompt": "<prompt>"',
 )
-def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> str:
+def start_agent(name: str, task: str, prompt: str, config: Config, model=None) -> str:
     """Start an agent with a given name, task, and prompt
 
     Args:
@@ -186,6 +179,8 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     Returns:
         str: The response of the agent
     """
+    agent_manager = AgentManager()
+
     # Remove underscores from name
     voice_name = name.replace("_", " ")
 
@@ -193,48 +188,48 @@ def start_agent(name: str, task: str, prompt: str, model=CFG.fast_llm_model) -> 
     agent_intro = f"{voice_name} here, Reporting for duty!"
 
     # Create agent
-    if CFG.speak_mode:
+    if config.speak_mode:
         say_text(agent_intro, 1)
-    key, ack = AGENT_MANAGER.create_agent(task, first_message, model)
+    key, ack = agent_manager.create_agent(task, first_message, model)
 
-    if CFG.speak_mode:
+    if config.speak_mode:
         say_text(f"Hello {voice_name}. Your task is as follows. {task}.")
 
     # Assign task (prompt), get response
-    agent_response = AGENT_MANAGER.message_agent(key, prompt)
+    agent_response = agent_manager.message_agent(key, prompt)
 
     return f"Agent {name} created with key {key}. First response: {agent_response}"
 
 
 @command("message_agent", "Message GPT Agent", '"key": "<key>", "message": "<message>"')
-def message_agent(key: str, message: str) -> str:
+def message_agent(key: str, message: str, config: Config) -> str:
     """Message an agent with a given key and message"""
     # Check if the key is a valid integer
     if is_valid_int(key):
-        agent_response = AGENT_MANAGER.message_agent(int(key), message)
+        agent_response = AgentManager().message_agent(int(key), message)
     else:
         return "Invalid key, must be an integer."
 
     # Speak response
-    if CFG.speak_mode:
+    if config.speak_mode:
         say_text(agent_response, 1)
     return agent_response
 
 
-@command("list_agents", "List GPT Agents", "")
-def list_agents() -> str:
+@command("list_agents", "List GPT Agents", "() -> str")
+def list_agents(config: Config) -> str:
     """List all agents
 
     Returns:
         str: A list of all agents
     """
     return "List of agents:\n" + "\n".join(
-        [str(x[0]) + ": " + x[1] for x in AGENT_MANAGER.list_agents()]
+        [str(x[0]) + ": " + x[1] for x in AgentManager().list_agents()]
     )
 
 
 @command("delete_agent", "Delete GPT Agent", '"key": "<key>"')
-def delete_agent(key: str) -> str:
+def delete_agent(key: str, config: Config) -> str:
     """Delete an agent with a given key
 
     Args:
@@ -243,5 +238,5 @@ def delete_agent(key: str) -> str:
     Returns:
         str: A message indicating whether the agent was deleted or not
     """
-    result = AGENT_MANAGER.delete_agent(key)
+    result = AgentManager().delete_agent(key)
     return f"Agent {key} deleted." if result else f"Agent {key} does not exist."
