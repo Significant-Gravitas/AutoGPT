@@ -14,13 +14,13 @@ from autogpt.logs import logger
 
 
 class ParserStrategy:
-    def read(self, file_path: str):
+    def read(self, file_path: str) -> str:
         raise NotImplementedError
 
 
 # Basic text file reading
 class TXTParser(ParserStrategy):
-    def read(self, file_path):
+    def read(self, file_path: str) -> str:
         charset_match = charset_normalizer.from_path(file_path).best()
         logger.debug(f"Reading '{file_path}' with encoding '{charset_match.encoding}'")
         return str(charset_match)
@@ -28,7 +28,7 @@ class TXTParser(ParserStrategy):
 
 # Reading text from binary file using pdf parser
 class PDFParser(ParserStrategy):
-    def read(self, file_path):
+    def read(self, file_path: str) -> str:
         parser = PyPDF2.PdfReader(file_path)
         text = ""
         for page_idx in range(len(parser.pages)):
@@ -38,7 +38,7 @@ class PDFParser(ParserStrategy):
 
 # Reading text from binary file using docs parser
 class DOCXParser(ParserStrategy):
-    def read(self, file_path):
+    def read(self, file_path: str) -> str:
         doc_file = docx.Document(file_path)
         text = ""
         for para in doc_file.paragraphs:
@@ -48,7 +48,7 @@ class DOCXParser(ParserStrategy):
 
 # Reading as dictionary and returning string format
 class JSONParser(ParserStrategy):
-    def read(self, file_path):
+    def read(self, file_path: str) -> str:
         with open(file_path, "r") as f:
             data = json.load(f)
             text = str(data)
@@ -56,7 +56,7 @@ class JSONParser(ParserStrategy):
 
 
 class XMLParser(ParserStrategy):
-    def read(self, file_path):
+    def read(self, file_path: str) -> str:
         with open(file_path, "r") as f:
             soup = BeautifulSoup(f, "xml")
             text = soup.get_text()
@@ -65,7 +65,7 @@ class XMLParser(ParserStrategy):
 
 # Reading as dictionary and returning string format
 class YAMLParser(ParserStrategy):
-    def read(self, file_path):
+    def read(self, file_path: str) -> str:
         with open(file_path, "r") as f:
             data = yaml.load(f, Loader=yaml.FullLoader)
             text = str(data)
@@ -73,7 +73,7 @@ class YAMLParser(ParserStrategy):
 
 
 class HTMLParser(ParserStrategy):
-    def read(self, file_path):
+    def read(self, file_path: str) -> str:
         with open(file_path, "r") as f:
             soup = BeautifulSoup(f, "html.parser")
             text = soup.get_text()
@@ -81,7 +81,7 @@ class HTMLParser(ParserStrategy):
 
 
 class MarkdownParser(ParserStrategy):
-    def read(self, file_path):
+    def read(self, file_path: str) -> str:
         with open(file_path, "r") as f:
             html = markdown.markdown(f.read())
             text = "".join(BeautifulSoup(html, "html.parser").findAll(string=True))
@@ -89,7 +89,7 @@ class MarkdownParser(ParserStrategy):
 
 
 class LaTeXParser(ParserStrategy):
-    def read(self, file_path):
+    def read(self, file_path: str) -> str:
         with open(file_path, "r") as f:
             latex = f.read()
         text = LatexNodes2Text().latex_to_text(latex)
@@ -101,11 +101,11 @@ class FileContext:
         self.parser = parser
         self.logger = logger
 
-    def set_parser(self, parser: ParserStrategy):
+    def set_parser(self, parser: ParserStrategy) -> None:
         self.logger.debug(f"Setting Context Parser to {parser}")
         self.parser = parser
 
-    def read_file(self, file_path):
+    def read_file(self, file_path) -> str:
         self.logger.debug(f"Reading file {file_path} with parser {self.parser}")
         return self.parser.read(file_path)
 
@@ -144,7 +144,7 @@ def is_file_binary_fn(file_path: str):
     return False
 
 
-def read_textual_file(file_path: str, logger: logs.Logger):
+def read_textual_file(file_path: str, logger: logs.Logger) -> str:
     if not os.path.isfile(file_path):
         raise FileNotFoundError(f"{file_path} not found!")
     is_binary = is_file_binary_fn(file_path)

@@ -30,6 +30,7 @@ class Config(metaclass=Singleton):
 
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
+        self.plain_output = os.getenv("PLAIN_OUTPUT", "False") == "True"
 
         disabled_command_categories = os.getenv("DISABLED_COMMAND_CATEGORIES")
         if disabled_command_categories:
@@ -63,6 +64,7 @@ class Config(metaclass=Singleton):
         )
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_organization = os.getenv("OPENAI_ORGANIZATION")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
@@ -79,6 +81,9 @@ class Config(metaclass=Singleton):
             openai.api_version = self.openai_api_version
         elif os.getenv("OPENAI_API_BASE_URL", None):
             openai.api_base = os.getenv("OPENAI_API_BASE_URL")
+
+        if self.openai_organization is not None:
+            openai.organization = self.openai_organization
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
