@@ -9,6 +9,7 @@ import pytest
 from autogpt.commands.improve_code import improve_code
 from autogpt.config import Config
 
+
 @pytest.fixture
 def mock_call_ai_function(mocker):
     return mocker.patch("autogpt.commands.improve_code.call_ai_function")
