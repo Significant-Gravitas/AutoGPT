@@ -25,7 +25,7 @@ performance_evaluations:
   ]
 file_operations:
   [
-    "read_file:           args: 'filename'",
+    "read_file:           Read a file, args: 'filename': <filename>",
     "list_files:          args: 'directory'",
     "append_to_file:      args: 'filename' 'text'",
     "write_to_file:       args: 'filename' 'text'",
