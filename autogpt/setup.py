@@ -101,13 +101,13 @@ def generate_aiconfig_manual(
     else:
         config = None  # or create a new AIConfig object with default values here
 
-    # hold editing status
+    # Hold editing status
     if ai_name:
         editing = True
     else:
         editing = False
 
-    # Manual Setup Intro
+    # Handle ai_name: str
     if editing is not True:
         logger.typewriter_log(
             "Create an AI-Assistant:",
@@ -142,6 +142,7 @@ def generate_aiconfig_manual(
         f"{ai_name} here!", Fore.LIGHTBLUE_EX, "I am at your service.", speak_text=True
     )
 
+    # Handle ai_role: str
     if editing:
         logger.typewriter_log(
             "Describe your AI's role:",
@@ -183,7 +184,7 @@ def generate_aiconfig_manual(
                 speak_text=False,
             )
             action = utils.clean_input(
-                f"Do you want to [E]dit, [D]elete, or [K]eep this goal? "
+                "Do you want to [E]dit, [D]elete, or [K]eep this goal? "
             )
             if action.lower() == "e":
                 ai_goal = utils.clean_input(
@@ -229,9 +230,10 @@ def generate_aiconfig_manual(
                 break
             ai_goals.append(ai_goal)
 
-    # Only handle plugins: list if 'plugins' attribute exists in AIConfig, can be removed later on
-    if hasattr(config, "plugins"):
-        # Handle plugins: list
+    # Handle plugins: list
+    if hasattr(
+        config, "plugins"
+    ):  # This can be removed when AIConfig supports plugins attribute
         if ai_name:
             # Edit existing plugins
             default_plugins = config.plugins if config else []
@@ -244,7 +246,7 @@ def generate_aiconfig_manual(
                     speak_text=False,
                 )
                 action = utils.clean_input(
-                    f"Do you want to [D]elete or [K]eep this plugin? "
+                    "Do you want to [D]elete or [K]eep this plugin? "
                 )
                 if action.lower() == "d":
                     del plugins[i]
@@ -259,7 +261,7 @@ def generate_aiconfig_manual(
                         Fore.LIGHTBLUE_EX,
                         speak_text=False,
                     )
-                    action = utils.clean_input(f"Do you want to [A]dd this plugin? ")
+                    action = utils.clean_input("Do you want to [A]dd this plugin? ")
                     if action.lower() == "a":
                         plugins.append(plugin)
         else:
@@ -277,7 +279,67 @@ def generate_aiconfig_manual(
 
             plugins = remaining_plugins
 
-    # Get API Budget from User
+    # Handle ai_temperature: float
+    if hasattr(
+        config, "ai_temperature"
+    ):  # This can be removed when AIConfig supports ai_temperature attribute
+        default_temperature = (
+            config.ai_temperature if config else CFG.ai_temperature if CFG else 0.0
+        )
+        if editing:
+            if config.ai_temperature is None:
+                logger.typewriter_log(
+                    "No specific temperature is set for this AI. "
+                    f"Default is ({CFG.temperature}). Set new one? ",
+                    Fore.YELLOW,
+                    speak_text=True,
+                )
+            else:
+                logger.typewriter_log(
+                    f"AI's current temperature: {default_temperature}. "
+                    "Enter new one or press [Enter] to keep current.",
+                    Fore.GREEN,
+                    speak_text=True,
+                )
+        else:
+            logger.typewriter_log(
+                "Enter AI's temperature (0 to 2.0, Ex: 0.2). "
+                f"Press [Enter] for default ({CFG.temperature}).",
+                Fore.GREEN,
+                speak_text=True,
+            )
+        logger.info("Use [Enter] to save the input.")
+        attempt_count = 0
+        while attempt_count < 3:
+            ai_temperature_input = utils.clean_input(
+                f"{Fore.LIGHTBLUE_EX}Temperature{Style.RESET_ALL}: "
+            )
+            if ai_temperature_input == "" and editing:
+                ai_temperature = default_temperature
+                break
+            else:
+                try:
+                    ai_temperature = float(ai_temperature_input)
+                    if 0.0 <= ai_temperature <= 2.0:
+                        break
+                    else:
+                        raise ValueError()
+                except ValueError:
+                    attempt_count += 1
+                    if attempt_count < 3:
+                        logger.typewriter_log(
+                            "Invalid input. Please enter a valid float between 0.0 and 2.0 or "
+                            f"leave blank for default temperature ({CFG.temperature}).",
+                            Fore.RED,
+                        )
+                    else:
+                        logger.typewriter_log(
+                            f"Invalid input. Default temperature ({CFG.temperature}) is used.",
+                            Fore.RED,
+                        )
+                        ai_temperature = CFG.temperature
+
+    # Handle api_budget: float
     default_budget = config.api_budget if config else 0.0
     if editing:
         logger.typewriter_log(
@@ -286,7 +348,6 @@ def generate_aiconfig_manual(
             f"Current: ${default_budget}. For example: $1.50, leave empty to keep current budget.",
             speak_text=True,
         )
-        logger.info("Use [Enter] to save the input.")
     else:
         logger.typewriter_log(
             "Enter your budget for API calls: ",
@@ -294,7 +355,7 @@ def generate_aiconfig_manual(
             "For example: $1.50, leave empty for unlimited budget.",
             speak_text=True,
         )
-        logger.info("Use [Enter] to save the input.")
+    logger.info("Use [Enter] to save the input.")
     api_budget_input = utils.clean_input(
         f"{Fore.LIGHTBLUE_EX}Budget{Style.RESET_ALL}: $"
     )
@@ -310,8 +371,12 @@ def generate_aiconfig_manual(
             )
             api_budget = default_budget
 
-    # Only handle plugins: list if 'plugins' attribute exists in AIConfig, can be removed later on
-    if hasattr(AIConfig, "plugins"):
+    # Check if attribute 'plugins' or 'ai_temperature' is supported in AIConfig class, can be removed later on
+    if hasattr(AIConfig, "plugins") and hasattr(AIConfig, "ai_temperature"):
+        return AIConfig(ai_name, ai_role, ai_goals, api_budget, ai_temperature, plugins)
+    elif hasattr(AIConfig, "ai_temperature"):
+        return AIConfig(ai_name, ai_role, ai_goals, api_budget, ai_temperature)
+    elif hasattr(AIConfig, "plugins"):
         return AIConfig(ai_name, ai_role, ai_goals, api_budget, plugins)
     else:
         return AIConfig(ai_name, ai_role, ai_goals, api_budget)
