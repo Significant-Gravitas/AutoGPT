@@ -14,6 +14,9 @@ from tests.utils import requires_api_key
 CYCLE_COUNT = 3
 
 
+@pytest.mark.skip(
+    "This test uses the browse website functionality, which VCR doesn't support yet, this means it's slower, costs money and is less reliable. It will be unskipped once VCR support browse_website"
+)
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 @challenge
