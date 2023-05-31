@@ -32,6 +32,16 @@ jobs:
         with:
           python-version: ${{ env.min-python-version }}
 
+      - name: Set Date
+        run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Cache Python packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ env.DATE }}
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -112,6 +122,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Set Date
+        run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Cache Python packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-${{ env.DATE }}
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -138,7 +158,7 @@ jobs:
           git config --global user.email "github-bot@agpt.co"
           git add tests/integration/challenges/current_score.json
 
-          if ! git diff-index --quiet HEAD; then
+          if ! git diff --quiet -- tests/integration/challenges/current_score.json; then
               git commit -m "Update current score"
               git push origin HEAD:refs/heads/$current_branch
           else
@@ -162,7 +182,6 @@ jobs:
               git push origin HEAD:refs/heads/$current_branch
           else
               echo "No cassettes changes to commit"
-              exit 0
           fi
 
       - name: Update cassette submodule to submodule branch if PR event

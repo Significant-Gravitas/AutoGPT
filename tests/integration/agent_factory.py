@@ -75,14 +75,14 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
     command_registry.import_commands("autogpt.commands.file_operations")
     command_registry.import_commands("autogpt.app")
     command_registry.import_commands("autogpt.commands.task_statuses")
-
+    # dummy change
     ai_config = AIConfig(
         ai_name="write_to_file-GPT",
         ai_role="an AI designed to use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\" and then use the task_complete command to complete the task.",
         ai_goals=[
             "Use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\".",
             "Use the task_complete command to complete the task.",
-            "Do not use any other commands.",
+            "Do not use any other commands!!",
         ],
     )
     ai_config.command_registry = command_registry
