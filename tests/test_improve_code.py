@@ -7,7 +7,7 @@ import json
 import pytest
 
 from autogpt.commands.improve_code import improve_code
-
+from autogpt.config import Config
 
 @pytest.fixture
 def mock_call_ai_function(mocker):
@@ -20,7 +20,7 @@ class TestImproveCode:
         suggestions = ["Use better variable names", "Optimize loops"]
         code = "def example():\n    x = 5\n    for i in range(x):\n        print(i)"
         expected_result = "Improved code"
-        result = improve_code(suggestions, code)
+        result = improve_code(suggestions, code, Config)
         assert result == expected_result
         mock_call_ai_function.assert_called_once_with(
             "def generate_improved_code(suggestions: list[str], code: str) -> str:",
@@ -34,7 +34,7 @@ class TestImproveCode:
         code = "def example():\n    x = 5\n    for i in range(x):\n        print(i)"
         expected_result = "Original code"
 
-        result = improve_code(suggestions, code)
+        result = improve_code(suggestions, code, Config)
         assert result == expected_result
         mock_call_ai_function.assert_called_once_with(
             "def generate_improved_code(suggestions: list[str], code: str) -> str:",
@@ -48,7 +48,7 @@ class TestImproveCode:
         code = "def example():\n    x = 5\n    for i in range(x):\n        print(i)"
 
         with pytest.raises(Exception) as context:
-            improve_code(suggestions, code)
+            improve_code(suggestions, code, Config)
             assert str(context.exception) == "Error occurred"
             mock_call_ai_function.assert_called_once_with(
                 "def generate_improved_code(suggestions: list[str], code: str) -> str:",
@@ -62,7 +62,7 @@ class TestImproveCode:
         code = "def example():\n    pass"
         expected_result = "Improved code"
 
-        result = improve_code(suggestions, code)
+        result = improve_code(suggestions, code, Config)
         assert result == expected_result
         mock_call_ai_function.assert_called_once_with(
             "def generate_improved_code(suggestions: list[str], code: str) -> str:",
