@@ -7,21 +7,23 @@ from pytest_mock import MockerFixture
 from tests.conftest import PROXY
 from tests.vcr.vcr_filter import before_record_request, before_record_response
 
+BASE_VCR_CONFIG = {
+    "record_mode": "new_episodes",
+    "before_record_request": before_record_request,
+    "before_record_response": before_record_response,
+    "filter_headers": [
+        "Authorization",
+        "X-OpenAI-Client-User-Agent",
+        "User-Agent",
+    ],
+    "match_on": ["method", "body"],
+}
+
 
 @pytest.fixture(scope="session")
 def vcr_config():
     # this fixture is called by the pytest-recording vcr decorator.
-    return {
-        "record_mode": "new_episodes",
-        "before_record_request": before_record_request,
-        "before_record_response": before_record_response,
-        "filter_headers": [
-            "Authorization",
-            "X-OpenAI-Client-User-Agent",
-            "User-Agent",
-        ],
-        "match_on": ["method", "body"],
-    }
+    return BASE_VCR_CONFIG
 
 
 def patch_api_base(requestor):
