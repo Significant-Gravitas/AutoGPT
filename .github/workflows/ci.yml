@@ -198,6 +198,11 @@ jobs:
         run: |
           pytest -n auto tests/integration/challenges --beat-challenges --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
           python tests/integration/challenges/utils/build_current_score.py
+        env:
+          CI: true
+          PROXY: ${{ secrets.PROXY }}
+          AGENT_MODE: ${{ vars.AGENT_MODE }}
+          AGENT_TYPE: ${{ vars.AGENT_TYPE }}
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
