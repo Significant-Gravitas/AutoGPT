@@ -162,9 +162,6 @@ jobs:
               exit 0
           fi
 
-
-
-
       - name: Update cassette submodule to submodule branch if PR event
         if: ${{ github.event_name == 'pull_request_target' }}
         run: |
