@@ -163,21 +163,15 @@ def generate_aiconfig_manual(
         else "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
     )
 
+    # Handle ai_goals: list
     if ai_name and max_goals:
-        # Edit Existing Goals
+        # Edit existing goals
         default_goals = config.ai_goals if config else []
         if editing:
             logger.typewriter_log(
                 f"Enter up to {max_goals} goals for your AI:",
                 Fore.GREEN,
                 "use [Enter] to keep the current goal / save the input.",
-                speak_text=True,
-            )
-        else:
-            logger.typewriter_log(
-                f"Enter up to {max_goals} goals for your AI:",
-                Fore.GREEN,
-                "use [Enter] to save the input.",
                 speak_text=True,
             )
         ai_goals = list(default_goals)  # start with a copy of the current goals
@@ -197,9 +191,9 @@ def generate_aiconfig_manual(
                 )
                 ai_goals[i] = ai_goal
             elif action.lower() == "d":
-                del ai_goals[i]  # delete the goal
+                del ai_goals[i]
 
-        # add new goals if there's still room
+        # Add new goals if there's still room
         if len(ai_goals) < max_goals:
             logger.typewriter_log(
                 f"You can add up to {max_goals - len(ai_goals)} new goals.",
@@ -211,10 +205,10 @@ def generate_aiconfig_manual(
                     f"{Fore.LIGHTBLUE_EX}New Goal{Style.RESET_ALL} {i+1}: "
                 )
                 if ai_goal == "":
-                    break  # end the input process if user enters nothing
+                    break  # End the input process if input is empty
                 ai_goals.append(ai_goal)  # add the new goal to the list
     else:
-        # Entering new goals only, up to [x] (default=5) goals for the AI
+        # Entering new goals, up to [x] (default=5) goals for the AI
         default_goals = config.ai_goals if config else []
         logger.typewriter_log(
             f"Enter up to {max_goals} goals for your AI: ",
@@ -234,6 +228,54 @@ def generate_aiconfig_manual(
                     ai_goals.append(default_goal)
                 break
             ai_goals.append(ai_goal)
+
+    # Only handle plugins: list if 'plugins' attribute exists in AIConfig, can be removed later on
+    if hasattr(config, "plugins"):
+        # Handle plugins: list
+        if ai_name:
+            # Edit existing plugins
+            default_plugins = config.plugins if config else []
+            plugins = list(default_plugins)
+            i = len(plugins) - 1
+            while i >= 0:
+                logger.typewriter_log(
+                    f"Current plugin {i+1}: {plugins[i]}",
+                    Fore.LIGHTBLUE_EX,
+                    speak_text=False,
+                )
+                action = utils.clean_input(
+                    f"Do you want to [D]elete or [K]eep this plugin? "
+                )
+                if action.lower() == "d":
+                    del plugins[i]
+                i -= 1
+
+            # Offer to add plugins from allowlist
+            env_plugins = CFG.plugins_allowlist if CFG else []
+            for plugin in env_plugins:
+                if plugin not in plugins:
+                    logger.typewriter_log(
+                        f"New plugin available: {plugin}",
+                        Fore.LIGHTBLUE_EX,
+                        speak_text=False,
+                    )
+                    action = utils.clean_input(f"Do you want to [A]dd this plugin? ")
+                    if action.lower() == "a":
+                        plugins.append(plugin)
+        else:
+            # Select new plugins from allowlist
+            default_plugins = CFG.plugins_allowlist if CFG else []
+            env_plugins = list(default_plugins)
+
+            remaining_plugins = []
+            for i in range(len(env_plugins)):
+                action = utils.clean_input(
+                    f"Current plugin {i+1}: {env_plugins[i]} Do you want to [A]dd this plugin?"
+                )
+                if action.lower() == "a":
+                    remaining_plugins.append(env_plugins[i])
+
+            plugins = remaining_plugins
 
     # Get API Budget from User
     default_budget = config.api_budget if config else 0.0
@@ -268,7 +310,11 @@ def generate_aiconfig_manual(
             )
             api_budget = default_budget
 
-    return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+    # Only handle plugins: list if 'plugins' attribute exists in AIConfig, can be removed later on
+    if hasattr(AIConfig, "plugins"):
+        return AIConfig(ai_name, ai_role, ai_goals, api_budget, plugins)
+    else:
+        return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
 
 def generate_aiconfig_automatic(user_prompt: str) -> AIConfig:
