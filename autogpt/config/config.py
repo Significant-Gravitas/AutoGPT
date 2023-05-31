@@ -64,6 +64,7 @@ class Config(metaclass=Singleton):
         )
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_organization = os.getenv("OPENAI_ORGANIZATION")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
@@ -78,6 +79,9 @@ class Config(metaclass=Singleton):
             openai.api_type = self.openai_api_type
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
+
+        if self.openai_organization is not None:
+            openai.organization = self.openai_organization
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
