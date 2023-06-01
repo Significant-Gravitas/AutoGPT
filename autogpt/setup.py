@@ -59,6 +59,30 @@ def prompt_user() -> AIConfig:
             speak_text=True,
         )
         return generate_aiconfig_manual()
+    
+    if "--path" in user_desire:
+        #remove the --path from the user desire
+        user_desire = user_desire.replace("--path", "")
+        user_desire = user_desire.strip()
+
+        logger.typewriter_log(
+            "Path Mode Selected",
+            Fore.GREEN,
+            speak_text=True,
+        )
+        #try opening the file
+        try:
+            with open(user_desire, "r") as f:
+                true_user_desire = f.read()
+                return generate_aiconfig_automatic(true_user_desire)
+        except Exception as e:
+            logger.typewriter_log(
+                "Unable to open file",
+                Fore.RED,
+                "Falling back to manual mode.",
+                speak_text=True,
+            )
+            return generate_aiconfig_manual()
 
     else:
         try:
