@@ -267,6 +267,35 @@ def test_write_file_succeeds_if_content_different(
     )
     assert result == "File written to successfully."
 
+def test_update_file_all_occurrences(test_file, test_file_path):
+    old_content = "This is a test file.\n we test file here\na test is needed"
+    expected_content = (
+        "This is a update file.\n we update file here\na update is needed"
+    )
+    test_file.write(old_content)
+    test_file.close()
+    print(old_content)
+    file_ops.update_file(test_file_path, "test", "update")
+    with open(test_file_path) as f:
+        new_content = f.read()
+    print(new_content)
+
+    assert new_content == expected_content
+
+
+def test_update_file_one_occurrence(test_file, test_file_path):
+    old_content = "This is a test file.\n we test file here\na test is needed"
+    expected_content = "This is a test file.\n we update file here\na test is needed"
+    test_file.write(old_content)
+    test_file.close()
+    print(old_content)
+    file_ops.update_file(test_file_path, "test", "update", 1)
+    with open(test_file_path) as f:
+        new_content = f.read()
+    print(new_content)
+
+    assert new_content == expected_content
+
 
 def test_append_to_file(test_nested_file: Path, config):
     append_text = "This is appended text.\n"

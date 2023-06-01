@@ -55,3 +55,6 @@ skip = '''
     dist/*
 
 '''
+
+[tool.hatch.envs.default]
+python = "/usr/local/bin/python3"
