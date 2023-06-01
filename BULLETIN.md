@@ -14,46 +14,18 @@ We have to be somewhat selective in order to keep making progress, but this does
 mean you can't contribute. Check out the contribution guide on our wiki:
 https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing
 
-# 🚀 v0.3.1 Release 🚀
-Over a week and 47 pull requests have passed since v0.3.0, and we are happy to announce
-the release of v0.3.1!
+# 🚀 v0.4.0 Release 🚀
+Two weeks and 76 pull requests have passed since v0.3.1, and we are happy to announce
+the release of v0.4.0!
 
-Highlights and notable changes since v0.2.2:
+Highlights and notable changes since v0.3.1:
 
-## Changes to Docker configuration 🐋
- * The workdir has been changed from */home/appuser* to */app*.
-    Be sure to update any volume mounts accordingly!
- * Docker-compose 1.29.0 is now required.
-
-## Logging 🧾
- * Log functionality has been improved for better understanding
-    and easier summarization.
- * All LLM interactions are now logged to logs/DEBUG, to help with
-    debugging and development.
-
-## Other
- * Edge browser is now supported by the `browse_website` command.
- * Sets of commands can now be disabled using DISABLED_COMMAND_CATEGORIES in .env.
-
-# ⚠️ Command `send_tweet` is REMOVED
-Twitter functionality (and more) is now covered by plugins, see [Plugin support 🔌]
-
-## Plugin support 🔌
-Auto-GPT now has support for plugins! With plugins, you can extend Auto-GPT's abilities,
-adding support for third-party services and more.
-See https://github.com/Significant-Gravitas/Auto-GPT-Plugins for instructions and
-available plugins. Specific plugins can be allowlisted/denylisted in .env.
+## ⚠️ Command `send_tweet` is REMOVED
+Twitter functionality (and more) is now covered by plugins.
 
 ## Memory backend deprecation ⚠️
 The Milvus, Pinecone and Weaviate memory backends were rendered incompatible
 by work on the memory system, and have been removed in `master`. The Redis
-memory store was also temporarily removed but we aim to merge a new implementation
-before the next release.
+memory store was also temporarily removed; we will merge a new implementation ASAP.
 Whether built-in support for the others will be added back in the future is subject to
 discussion, feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
-
-# Challenge Workflow 🏆
-If you have been working on challenges... Thank You!
-But to run the debugger challenge or other challenges using cassettes and VCR in docker, You will now need to `pip uninstall vcrpy` and `pip install -r requirements.txt` again.
-This will install a new version of vcrpy that is compatible with running vcr in docker.
-This workflow will be fixed as soon as the maintainer from VCRpy merges our changes.
