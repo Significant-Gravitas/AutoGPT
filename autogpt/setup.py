@@ -231,113 +231,57 @@ def generate_aiconfig_manual(
             ai_goals.append(ai_goal)
 
     # Handle plugins: list
-    if hasattr(
-        config, "plugins"
-    ):  # This can be removed when AIConfig supports plugins attribute
-        if ai_name:
-            # Edit existing plugins
-            default_plugins = config.plugins if config else []
-            plugins = list(default_plugins)
-            i = len(plugins) - 1
-            while i >= 0:
+    if ai_name:
+        # Edit existing plugins
+        default_plugins = config.plugins if config else []
+        plugins = list(default_plugins)
+        deleted_plugins = []  # To keep track of deleted plugins
+        i = len(plugins) - 1
+        while i >= 0:
+            logger.typewriter_log(
+                f"Current plugin {i+1}: {plugins[i]}",
+                Fore.LIGHTBLUE_EX,
+                speak_text=False,
+            )
+            action = utils.clean_input(
+                "Do you want to [D]elete or [K]eep this plugin? "
+            )
+            if action.lower() == "d":
+                deleted_plugins.append(plugins[i])  # Keep track of deleted plugin
+                del plugins[i]
+            i -= 1
+
+        # Offer to add plugins from allowlist
+        env_plugins = CFG.plugins_allowlist if CFG else []
+        for plugin in env_plugins:
+            if (
+                plugin not in plugins and plugin not in deleted_plugins
+            ):  # Check if the plugin was not deleted
                 logger.typewriter_log(
-                    f"Current plugin {i+1}: {plugins[i]}",
+                    f"New plugin available: {plugin}",
                     Fore.LIGHTBLUE_EX,
                     speak_text=False,
                 )
                 action = utils.clean_input(
-                    "Do you want to [D]elete or [K]eep this plugin? "
-                )
-                if action.lower() == "d":
-                    del plugins[i]
-                i -= 1
-
-            # Offer to add plugins from allowlist
-            env_plugins = CFG.plugins_allowlist if CFG else []
-            for plugin in env_plugins:
-                if plugin not in plugins:
-                    logger.typewriter_log(
-                        f"New plugin available: {plugin}",
-                        Fore.LIGHTBLUE_EX,
-                        speak_text=False,
-                    )
-                    action = utils.clean_input("Do you want to [A]dd this plugin? ")
-                    if action.lower() == "a":
-                        plugins.append(plugin)
-        else:
-            # Select new plugins from allowlist
-            default_plugins = CFG.plugins_allowlist if CFG else []
-            env_plugins = list(default_plugins)
-
-            remaining_plugins = []
-            for i in range(len(env_plugins)):
-                action = utils.clean_input(
-                    f"Current plugin {i+1}: {env_plugins[i]} Do you want to [A]dd this plugin?"
+                    "Do you want to ignore [E]nter or [A]dd this plugin? "
                 )
                 if action.lower() == "a":
-                    remaining_plugins.append(env_plugins[i])
+                    plugins.append(plugin)
 
-            plugins = remaining_plugins
+    else:
+        # Select new plugins from allowlist
+        default_plugins = CFG.plugins_allowlist if CFG else []
+        env_plugins = list(default_plugins)
 
-    # Handle ai_temperature: float
-    if hasattr(
-        config, "ai_temperature"
-    ):  # This can be removed when AIConfig supports ai_temperature attribute
-        default_temperature = (
-            config.ai_temperature if config else CFG.ai_temperature if CFG else 0.0
-        )
-        if editing:
-            if config.ai_temperature is None:
-                logger.typewriter_log(
-                    "No specific temperature is set for this AI. "
-                    f"Default is ({CFG.temperature}). Set new one? ",
-                    Fore.YELLOW,
-                    speak_text=True,
-                )
-            else:
-                logger.typewriter_log(
-                    f"AI's current temperature: {default_temperature}. "
-                    "Enter new one or press [Enter] to keep current.",
-                    Fore.GREEN,
-                    speak_text=True,
-                )
-        else:
-            logger.typewriter_log(
-                "Enter AI's temperature (0 to 2.0, Ex: 0.2). "
-                f"Press [Enter] for default ({CFG.temperature}).",
-                Fore.GREEN,
-                speak_text=True,
+        remaining_plugins = []
+        for i in range(len(env_plugins)):
+            action = utils.clean_input(
+                f"Current plugin {i+1}: {env_plugins[i]} Do you want to ignore [E]nter or [A]dd adding this plugin? "
             )
-        logger.info("Use [Enter] to save the input.")
-        attempt_count = 0
-        while attempt_count < 3:
-            ai_temperature_input = utils.clean_input(
-                f"{Fore.LIGHTBLUE_EX}Temperature{Style.RESET_ALL}: "
-            )
-            if ai_temperature_input == "" and editing:
-                ai_temperature = default_temperature
-                break
-            else:
-                try:
-                    ai_temperature = float(ai_temperature_input)
-                    if 0.0 <= ai_temperature <= 2.0:
-                        break
-                    else:
-                        raise ValueError()
-                except ValueError:
-                    attempt_count += 1
-                    if attempt_count < 3:
-                        logger.typewriter_log(
-                            "Invalid input. Please enter a valid float between 0.0 and 2.0 or "
-                            f"leave blank for default temperature ({CFG.temperature}).",
-                            Fore.RED,
-                        )
-                    else:
-                        logger.typewriter_log(
-                            f"Invalid input. Default temperature ({CFG.temperature}) is used.",
-                            Fore.RED,
-                        )
-                        ai_temperature = CFG.temperature
+            if action.lower() == "a":
+                remaining_plugins.append(env_plugins[i])
+
+        plugins = remaining_plugins
 
     # Handle api_budget: float
     default_budget = config.api_budget if config else 0.0
@@ -371,15 +315,7 @@ def generate_aiconfig_manual(
             )
             api_budget = default_budget
 
-    # Check if attribute 'plugins' or 'ai_temperature' is supported in AIConfig class, can be removed later on
-    if hasattr(AIConfig, "plugins") and hasattr(AIConfig, "ai_temperature"):
-        return AIConfig(ai_name, ai_role, ai_goals, api_budget, ai_temperature, plugins)
-    elif hasattr(AIConfig, "ai_temperature"):
-        return AIConfig(ai_name, ai_role, ai_goals, api_budget, ai_temperature)
-    elif hasattr(AIConfig, "plugins"):
         return AIConfig(ai_name, ai_role, ai_goals, api_budget, plugins)
-    else:
-        return AIConfig(ai_name, ai_role, ai_goals, api_budget)
 
 
 def generate_aiconfig_automatic(user_prompt: str) -> AIConfig:
@@ -422,6 +358,11 @@ def generate_aiconfig_automatic(user_prompt: str) -> AIConfig:
     ai_goals = re.findall(r"(?<=\n)-\s*(.*)", output)
     api_budget = 0.0  # TODO: parse api budget using a regular expression
 
+    if CFG.plugins_allowlist:
+        plugins = CFG.plugins_allowlist
+    else:
+        plugins = []
+
     # Fallback to manual when automatic generation failed
     if not ai_name or not ai_role or not ai_goals:
         logger.typewriter_log(
@@ -430,4 +371,4 @@ def generate_aiconfig_automatic(user_prompt: str) -> AIConfig:
         )
         return generate_aiconfig_manual()
 
-    return AIConfig(ai_name, ai_role, ai_goals, api_budget)
+    return AIConfig(ai_name, ai_role, ai_goals, api_budget, plugins)

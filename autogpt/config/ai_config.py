@@ -28,6 +28,7 @@ class AIConfig:
         ai_role (str): The description of the AI's role.
         ai_goals (list): The list of objectives the AI is supposed to complete.
         api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+        plugins (list): The list of objectives the AI is supposed to complete.
     """
 
     SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
@@ -38,6 +39,7 @@ class AIConfig:
         ai_role: str = "",
         ai_goals: list | None = None,
         api_budget: float = 0.0,
+        plugins: list | None = None,
     ) -> None:
         """
         Initialize a class instance
@@ -47,15 +49,19 @@ class AIConfig:
             ai_role (str): The description of the AI's role.
             ai_goals (list): The list of objectives the AI is supposed to complete.
             api_budget (float): The maximum dollar value for API calls (0.0 means infinite)
+            plugins (list): The list of objectives the AI is supposed to complete.
         Returns:
             None
         """
         if ai_goals is None:
             ai_goals = []
+        if plugins is None:
+            plugins = []
         self.ai_name = ai_name
         self.ai_role = ai_role
         self.ai_goals = ai_goals
         self.api_budget = api_budget
+        self.plugins = plugins
         self.prompt_generator: PromptGenerator | None = None
         self.command_registry: CommandRegistry | None = None
 
@@ -99,7 +105,15 @@ class AIConfig:
                 for goal in config_params.get("ai_goals", [])
             ]
             api_budget = config_params.get("api_budget", 0.0)
-            ai_configs[ai_name] = AIConfig(ai_name, ai_role, ai_goals, api_budget)
+            plugins = [
+                str(plugin).strip("{}").replace("'", "").replace('"', "")
+                if isinstance(plugin, dict)
+                else str(plugin)
+                for plugin in config_params.get("plugins", [])
+            ]
+            ai_configs[ai_name] = AIConfig(
+                ai_name, ai_role, ai_goals, api_budget, plugins
+            )
 
         return ai_configs
 
@@ -130,9 +144,10 @@ class AIConfig:
 
         new_config = {
             self.ai_name: {
-                "ai_goals": self.ai_goals,
                 "ai_role": self.ai_role,
+                "ai_goals": self.ai_goals,
                 "api_budget": self.api_budget,
+                "plugins": self.plugins,
             }
         }
 
@@ -165,24 +180,24 @@ class AIConfig:
             str: Message indicating the result of the operation.
         """
 
-        # If no AI name is provided, exit the function
+        # If no AI name is provided, exit
         if ai_name == "":
             return "No AI name provided. Please provide an AI name to delete its configuration."
 
-        # Load the existing configurations
+        # Load existing configurations
         if not os.path.exists(config_file):
             return "No configurations to delete."
         else:
             with open(config_file, "r", encoding="utf-8") as file:
                 all_configs = yaml.safe_load(file)
 
-        # Check if the AI configuration exists
+        # Check if AI configuration exists
         if ai_name in all_configs["configs"]:
             del all_configs["configs"][ai_name]
         else:
             return "No configuration found for AI '{}'.".format(ai_name)
 
-        # Save the configurations back to the file
+        # Save configurations back to file
         with open(config_file, "w", encoding="utf-8") as file:
             file.write(yaml.dump(all_configs, allow_unicode=True))
 

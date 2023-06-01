@@ -89,20 +89,19 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
             selection = clean_input("Please choose a number: ")
             if selection.isdigit() and 0 < int(selection) <= len(all_configs) + 3:
                 if int(selection) == len(all_configs) + 1:
-                    # Create new config: to be defined
-                    # Add the code to create a new configuration here
+                    # Create new config
                     config = AIConfig()
 
-                    # Initialize num_goals with an invalid value to enter the loop
+                    # Initialize num_goals invalid
                     num_goals = -1
 
                     while num_goals < 0 or num_goals > 20:
-                        # Ask the user for the number of goals
+                        # Ask number of goals
                         num_goals_input = clean_input(
                             "How many goals do you want to set? (0-20): "
                         )
 
-                        # Validate the input
+                        # Validate input
                         if num_goals_input == "":
                             num_goals = 5
                             logger.typewriter_log(
@@ -128,12 +127,12 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                                 Fore.YELLOW,
                             )
 
-                    # Define the new configuration using user prompts
+                    # Define new configuration
                     config = generate_aiconfig_manual(
                         max_goals=num_goals, config_file=config_file
                     )
 
-                    # Check if required values are missing
+                    # Check required values
                     if (
                         not (config.ai_name and config.ai_role and config.ai_goals)
                         or config.ai_name == "null"
@@ -147,13 +146,13 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                             Fore.RED,
                         )
 
-                        # Prompt user if they want to save the configuration with default values
+                        # Prompt user to save with default values
                         response = clean_input(
                             "Do you want to save the configuration with default values? (y/n): "
                         )
 
                         if response.lower() == "y":
-                            # Assign default values if required
+                            # Assign default values
                             if (
                                 not config.ai_name
                                 or config.ai_name == "null"
@@ -173,7 +172,7 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                                     "Develop and manage multiple businesses autonomously",
                                 ]
 
-                            # Save the new configuration
+                            # Save
                             config.save(config_file, append=True)
                         else:
                             should_save_config = False
@@ -182,11 +181,11 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                             )
                         break
                     else:
-                        # Save the new configuration
+                        # Save
                         config.save(config_file, append=True)
                     break
                 elif int(selection) == len(all_configs) + 2:
-                    # Edit config: Prompt user to select configuration to be edited
+                    # Edit config:
                     logger.typewriter_log(
                         "Please select configuration you want to change:",
                         Fore.GREEN,
@@ -211,7 +210,7 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                                 )
                                 break
                             else:
-                                # Edit the configuration
+                                # Edit configuration
                                 ai_name_to_edit = list(all_configs.keys())[
                                     int(selection) - 1
                                 ]
@@ -250,7 +249,7 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                                     config_file=config_file,
                                 )
 
-                                # Check if required values are missing
+                                # Check required values
                                 if (
                                     not (
                                         config.ai_name
@@ -268,7 +267,7 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                                         Fore.RED,
                                     )
                                 else:
-                                    # Save the edited configuration and break the loop
+                                    # Save edited configuration, break loop
                                     logger.typewriter_log(
                                         f"Saving the edited configuration for: {ai_name_to_edit}.",
                                         Fore.GREEN,
@@ -281,13 +280,12 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                                 break
                 elif int(selection) == len(all_configs) + 3:
                     # Delete config
-                    # Add the code to delete an existing configuration here
                     logger.typewriter_log(
                         "Please select configuration to be deleted:",
                         Fore.GREEN,
                         speak_text=True,
                     )
-                    while True:  # And this loop
+                    while True:
                         for i, cfg_name in enumerate(all_configs.keys(), start=1):
                             logger.typewriter_log(f"{i}. {cfg_name}")
                         logger.typewriter_log(
@@ -335,7 +333,7 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
             break
 
     if should_save_config == False:
-        # User choose (n)o so call the function recursively
+        # User choose (n)o, call recursively
         config = AIConfig()
         return construct_main_ai_config(config_file)
 
@@ -355,11 +353,11 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
             Fore.YELLOW,
             f"{CFG.workspace_path}",
         )
-    # set the total api budget
+    # Set total api budget
     api_manager = ApiManager()
     api_manager.set_total_budget(config.api_budget)
 
-    # Agent Created, print message
+    # Agent Created
     logger.typewriter_log(
         config.ai_name,
         Fore.LIGHTBLUE_EX,
@@ -367,14 +365,17 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
         speak_text=True,
     )
 
-    # Print the ai config details
-    # Name
     logger.typewriter_log("Name:", Fore.GREEN, config.ai_name, speak_text=False)
-    # Role
     logger.typewriter_log("Role:", Fore.GREEN, config.ai_role, speak_text=False)
-    # Goals
     logger.typewriter_log("Goals:", Fore.GREEN, "", speak_text=False)
     for goal in config.ai_goals:
         logger.typewriter_log("-", Fore.GREEN, goal, speak_text=False)
+    logger.typewriter_log(
+        "Budget:", Fore.GREEN, str(config.api_budget), speak_text=False
+    )
+    if hasattr(config, "plugins"):
+        logger.typewriter_log("Plugins:", Fore.GREEN, "", speak_text=False)
+        for plugin in config.plugins:
+            logger.typewriter_log("-", Fore.GREEN, plugin, speak_text=False)
 
     return config

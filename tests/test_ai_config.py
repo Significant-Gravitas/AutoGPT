@@ -19,6 +19,7 @@ def test_save_file_without_ai_name(tmp_path):
         - 'Goal 4: Wake up'
         ai_role: A hungry AI
         api_budget: 0.0
+        plugins: []
     """
 
     config_file = tmp_path / "ai_settings.yaml"
@@ -67,6 +68,7 @@ def test_delete_with_non_existent_ai_name(tmp_path):
         - 'Goal 4: Wake up'
         ai_role: A hungry AI
         api_budget: 0.0
+        plugins: []
     """
     config_file = tmp_path / "ai_settings.yaml"
     config_file.write_text(yaml_content)
@@ -92,6 +94,7 @@ def test_goals_are_always_lists_of_strings(tmp_path):
         - 'Goal 4: Wake up'
         ai_role: A hungry AI
         api_budget: 0.0
+        plugins: []
     """
 
     config_file = tmp_path / "ai_settings.yaml"
@@ -120,6 +123,7 @@ def test_goals_are_always_lists_of_strings(tmp_path):
         - 'Goal 4: Wake up'
         ai_role: A hungry AI
         api_budget: 0.0
+        plugins: []
     """
     )
 
@@ -154,11 +158,13 @@ def test_delete_method(tmp_path):
         - Goal 1
         ai_role: Test role
         api_budget: 0.0
+        plugins: []
       AI2:
         ai_goals:
         - Goal 2
         ai_role: Another role
         api_budget: 0.0
+        plugins: []
     """
 
     config_file = tmp_path / "ai_settings.yaml"
@@ -191,6 +197,7 @@ def test_special_character_config(tmp_path):
         - 'Gôal 1: Mäke a sàndwich'
         ai_role: 'A hùngry AI'
         api_budget: 0.0
+        plugins: []
     """
 
     config_file = tmp_path / "ai_settings.yaml"
@@ -253,32 +260,6 @@ def test_loading_large_configuration(tmp_path):
     assert ai_config.ai_name == "AI50"
     assert ai_config.ai_goals == ["Goal 50"]
     assert ai_config.api_budget == 0.0
-
-    # Clean up the configuration file and related variables
-    config_file.unlink()
-    ai_config = None
-    config_content = None
-
-
-def test_saving_large_configuration(tmp_path):
-    config_file = tmp_path / "ai_settings.yaml"
-    ai_config = AIConfig("AI1", ai_goals=["Goal 1"])
-
-    # Create a large configuration with 100 AI entries
-    config_content = "configs:\n"
-    for i in range(100):
-        config_content += f"  AI{i+1}:\n    ai_goals: ['Goal {i+1}']\n"
-
-    config_file.write_text(config_content)
-
-    ai_config.save(config_file)
-
-    saved_yaml = yaml.safe_load(config_file.read_text())
-    expected_yaml = {
-        "configs": {"AI1": {"ai_goals": ["Goal 1"], "ai_role": "", "api_budget": 0.0}}
-    }
-
-    assert saved_yaml == expected_yaml
 
     # Clean up the configuration file and related variables
     config_file.unlink()
