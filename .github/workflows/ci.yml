@@ -99,11 +99,11 @@ jobs:
 
             git remote add base https://github.com/${{ github.event.pull_request.base.repo.full_name }}.git
 
-            git push base $new_branch:${{ github.event.pull_request.base.ref }}
+            git push base $new_branch
 
             gh pr create --title "Update Score In Pull Request Number ${{ github.event.pull_request.number }}" \
             --head "${{ github.event.pull_request.base.repo.full_name }}:$new_branch" \
-            --base "${{ github.event.pull_request.base.repo.full_name }}:${{ github.event.pull_request.base.ref }}" \
+            --base "${{ github.event.pull_request.base.ref }}" \
             --body "This pull request updates the current score of Auto-GPT. Please check the files changed and merge the pull request." \
             --repo ${{ github.event.pull_request.base.repo.full_name }}
           else
