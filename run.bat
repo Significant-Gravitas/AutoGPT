@@ -60,21 +60,17 @@ if errorlevel 1 (
     %PYTHON_CMD% -m pip install -r %~dp0requirements.txt
 )
 
-if defined AUTORUN (
-    rem Call the autorun script if it exists
-    if /i "!ACTIVATE:~-3!"=="ps1" (
-        powershell.exe -ExecutionPolicy RemoteSigned -File "%AUTORUN%"
-    ) else (
-        call "%AUTORUN%"
-    )
+rem Run the Auto-GPT command
+%PYTHON_CMD% -m autogpt %*
+set "AUTOGPT_STATUS=%errorlevel%"
+
+if %AUTOGPT_STATUS% EQU 0 (
+    :InstallPluginDeps
+    rem Install the plugin dependencies
+    echo Installing plugin dependencies ...
+    %PYTHON_CMD% scripts/install_plugin_deps.py
+
+    pause
 )
 
-rem Run the autogpt command
-%PYTHON_CMD% -m autogpt %*
-
-:InstallPluginDeps
-rem Install the plugin dependencies
-echo Installing plugin dependencies ...
-%PYTHON_CMD% scripts/install_plugin_deps.py
-
-pause
+exit /B %AUTOGPT_STATUS%
