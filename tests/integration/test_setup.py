@@ -10,8 +10,7 @@ from tests.utils import requires_api_key
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_default(patched_api_requestor):
-    """Test: automatic configuration based on empty input."""
+def test_generate_automatic_default(patched_api_requestor):
     user_inputs = [""]
     with patch("builtins.input", side_effect=user_inputs):
         ai_config = prompt_user()
@@ -24,8 +23,7 @@ def test_generate_aiconfig_automatic_default(patched_api_requestor):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_typical(patched_api_requestor):
-    """Test: automatic ai_name, ai_role, ai_goals based on input."""
+def test_generate_automatic_typical(patched_api_requestor):
     user_prompt = "Help me create a rock opera about cybernetic giraffes"
     ai_config = generate_aiconfig_automatic(user_prompt)
 
@@ -37,34 +35,7 @@ def test_generate_aiconfig_automatic_typical(patched_api_requestor):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_auto_fallback(patched_api_requestor):
-    """Test: automatic manual fallback."""
-    user_inputs = [
-        "T&GF£OIBECC()!*",
-        "Chef-GPT",
-        "an AI designed to browse bake a cake.",
-        "Purchase ingredients",
-        "Bake a cake",
-        "",
-        "",
-        "",
-        "",
-        "0",
-        "",
-    ]
-    with patch("builtins.input", side_effect=user_inputs):
-        ai_config = prompt_user()
-
-    assert isinstance(ai_config, AIConfig)
-    assert ai_config.ai_name == "Chef-GPT"
-    assert ai_config.ai_role == "an AI designed to browse bake a cake."
-    assert ai_config.ai_goals == ["Purchase ingredients", "Bake a cake"]
-
-
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
-    """Test: automatic manual fallback."""
+def test_generate_automatic_fallback(patched_api_requestor):
     user_inputs = [
         "T&GF£OIBECC()!*",
         "Chef-GPT",
@@ -90,7 +61,6 @@ def test_generate_aiconfig_automatic_fallback(patched_api_requestor):
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
 def test_prompt_user_manual_mode(patched_api_requestor):
-    """Test: use --manual flag."""
     user_inputs = [
         "--manual",
         "Chef-GPT",
@@ -101,7 +71,9 @@ def test_prompt_user_manual_mode(patched_api_requestor):
         "",
         "",
         "",
-        "0",
+        "1.20",
+        "",
+        "",
     ]
     with patch("builtins.input", side_effect=user_inputs):
         ai_config = prompt_user()
@@ -112,9 +84,7 @@ def test_prompt_user_manual_mode(patched_api_requestor):
     assert ai_config.ai_goals == ["Purchase ingredients", "Bake a cake"]
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_delete_and_select(tmp_path):
+def test_generate_delete_and_select(tmp_path, patched_api_requestor):
     """Test: delete configuration and select."""
 
     # Temporary path / file
@@ -167,9 +137,7 @@ def test_generate_aiconfig_delete_and_select(tmp_path):
     ]
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_change_and_select(tmp_path):
+def test_generate_change_and_select(tmp_path, patched_api_requestor):
     """Test: change configuration and select."""
 
     # Temporary path / file
@@ -230,9 +198,7 @@ def test_generate_aiconfig_change_and_select(tmp_path):
     ]
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_create_and_select(tmp_path):
+def test_generate_create_and_select(tmp_path, patched_api_requestor):
     """Test: create configuration and select."""
 
     # Temporary path / file
@@ -293,7 +259,7 @@ def test_generate_aiconfig_create_and_select(tmp_path):
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_create_first(tmp_path):
+def test_generate_create_first(tmp_path, patched_api_requestor):
     """Test: create first configuration."""
 
     # Temporary path / file
@@ -330,9 +296,7 @@ def test_generate_aiconfig_create_first(tmp_path):
     assert ai_config.ai_goals != []
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_delete_and_create_new(tmp_path):
+def test_generate_delete_and_create_new(tmp_path, patched_api_requestor):
     """Test: delete and create new configuration."""
 
     # Temporary path / file
@@ -365,6 +329,9 @@ def test_generate_aiconfig_delete_and_create_new(tmp_path):
         "search the internet for the newest python code.",
         "save the code in a text file.",
         "shutdown.",
+        "",
+        "",
+        "",
         "0",
     ]
 
@@ -378,19 +345,7 @@ def test_generate_aiconfig_delete_and_create_new(tmp_path):
     assert ai_config.ai_goals != []
 
 
-from unittest.mock import patch
-
-import pytest
-
-from autogpt.config.ai_config import AIConfig
-from autogpt.prompts.prompt import construct_main_ai_config
-from autogpt.setup import generate_aiconfig_automatic, prompt_user
-from tests.utils import requires_api_key
-
-
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_create_new_25(tmp_path):
+def test_generate_create_new_25(tmp_path, patched_api_requestor):
     """Test: create new configuration + some wrong values."""
 
     # Temporary path / file
@@ -439,9 +394,7 @@ def test_generate_aiconfig_create_new_25(tmp_path):
     assert ai_config.ai_name == "test-GPT"
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_required_values_missing(tmp_path):
+def test_generate_required_values_missing(tmp_path, patched_api_requestor):
     """Test: create new configuration without ai_name, ai_role or goals."""
 
     # Temporary path / file
@@ -484,9 +437,7 @@ def test_generate_aiconfig_required_values_missing(tmp_path):
     assert ai_config.ai_name == "new-GPT"
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_create_new_plugins(tmp_path, monkeypatch):
+def test_generate_create_new_plugins(tmp_path, monkeypatch):
     """Test: create new configuration + some wrong values."""
 
     # Temporary path / file
@@ -536,9 +487,7 @@ def test_generate_aiconfig_create_new_plugins(tmp_path, monkeypatch):
     ]
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_create_2_plugins(tmp_path, monkeypatch):
+def test_generate_create_2_plugins(tmp_path, monkeypatch):
     """Test: create new configuration + some wrong values."""
 
     # Temporary path / file
@@ -593,9 +542,7 @@ def test_generate_aiconfig_create_2_plugins(tmp_path, monkeypatch):
     ]
 
 
-@pytest.mark.vcr
-@requires_api_key("OPENAI_API_KEY")
-def test_generate_aiconfig_change_2_plugins(tmp_path, monkeypatch):
+def test_generate_change_2_plugins(tmp_path, monkeypatch):
     """Test: create new configuration + some wrong values."""
 
     # Temporary path / file
