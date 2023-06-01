@@ -1,13 +1,11 @@
 import json
 import tempfile
-from functools import partial
 from unittest import TestCase
 from xml.etree import ElementTree
 
 import docx
 import yaml
 from bs4 import BeautifulSoup
-from PyPDF2 import PdfWriter
 
 from autogpt.commands.file_operations_utils import is_file_binary_fn, read_textual_file
 from autogpt.logs import logger

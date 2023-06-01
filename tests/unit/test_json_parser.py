@@ -1,7 +1,6 @@
 from unittest import TestCase
 
 from autogpt.json_utils.json_fix_llm import fix_and_parse_json
-from tests.utils import skip_in_ci
 
 
 class TestParseJson(TestCase):

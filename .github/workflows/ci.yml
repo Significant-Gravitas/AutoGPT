@@ -2,9 +2,12 @@ name: Python CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, ci-test*]
+    paths-ignore:
+      - 'tests/Auto-GPT-test-cassettes'
+      - 'tests/integration/challenges/current_score.json'
   pull_request_target:
-    branches: [ master, stable ]
+    branches: [ master, stable , ci-test*]
 
 concurrency:
   group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
@@ -49,6 +52,11 @@ jobs:
         run: mypy
         if: success() || failure()
 
+      - name: Check for unused imports and pass statements
+        run: |
+          cmd="autoflake --remove-all-unused-imports --recursive --ignore-init-module-imports autogpt tests"
+          $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
+
   test:
     permissions:
       # Gives the action the necessary permissions for publishing new
@@ -59,6 +67,7 @@ jobs:
       # comments (to avoid publishing multiple comments in the same PR)
       contents: write
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       matrix:
         python-version: ["3.10"]
@@ -70,6 +79,33 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
+          submodules: true
+          token: ${{ secrets.PAT_REVIEW }}
+
+      - name: Use cassettes previously sent
+        if: ${{ github.event_name == 'pull_request_target' }}
+        run: |
+          new_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+          git config --global user.name "Github Actions"
+          git config --global user.email "github-actions@github.com"
+          cd tests/Auto-GPT-test-cassettes
+
+          if git ls-remote --exit-code --heads origin $new_branch ; then
+            git fetch origin $new_branch:$new_branch
+            git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }}
+            
+            git checkout $new_branch
+
+            if git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }}; then
+              echo "No merge conflict detected. We can use the cassettes previously sent."
+            else
+              echo "Merge conflict detected. This means we cannot use the cassettes previously sent, so we will take the cassettes of ${{ github.event.pull_request.base.ref }}."
+              git merge --abort
+              git checkout ${{ github.event.pull_request.base.ref }}
+            fi
+          else
+            echo "Branch $new_branch does not exist. We will use the cassettes of ${{ github.event.pull_request.base.ref }}"
+          fi
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
@@ -81,9 +117,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run unittest tests with coverage
+      - name: Run pytest tests with coverage
         run: |
           pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
+          python tests/integration/challenges/utils/build_current_score.py
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
@@ -93,48 +130,90 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
-      - name: Stage Files and Check for New Cassettes
-        id: stage_files_and_check
+      - name: Update cassette submodule to push target if push event
+        if: ${{ github.event_name == 'push' }}
         run: |
-          find tests -type f -name '*.yaml' -print0 | xargs -0 git add
-          # Check for new cassettes added in PR after the commit
-          NEW_CASSETTES_ADDED_IN_PR=$(git diff --name-only $(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)..HEAD -- 'tests/**/cassettes/**/*.yaml' | wc -l)
-          if [[ "$NEW_CASSETTES_ADDED_IN_PR" -gt 0 ]]
-          then 
-            echo "NEW_CASSETTES_ADDED_IN_PR=true" >> $GITHUB_ENV
-          else 
-            echo "NEW_CASSETTES_ADDED_IN_PR=false" >> $GITHUB_ENV
-          fi      
-
-      - name: Beat new challenges
-        if: ${{ env.NEW_CASSETTES_ADDED_IN_PR}}
-        run: |
-          echo "This step will run the challenges soon."
-
-      - name: Commit, Config, and Push
-        id: commit_and_push
-        run: |
-          git diff --cached --quiet tests && echo "No changes to commit" && exit 0
-          find tests -type f -name '*.yaml' -print0 | xargs -0 git add
-          echo '${{ secrets.PAT_REVIEW }}' | gh auth login --with-token
-          gh repo set-default ${{ github.repository }}
-          gh pr checkout ${{ github.event.pull_request.number }}
+          current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
-          git commit -m "Add new cassettes"
-          git push origin ${{ github.head_ref }}
-          TIMESTAMP_COMMIT=$(date +%Y%m%d%H%M%S) # generate a timestamp
-          echo "TIMESTAMP_COMMIT=$TIMESTAMP_COMMIT" >> $GITHUB_ENV
+          git add tests/integration/challenges/current_score.json
 
-      - name: Inform of auto commit.
-        if: ${{ env.TIMESTAMP_COMMIT != null }}
-        uses: thollander/actions-comment-pull-request@v2
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          message: |
-            We committed some changes to this branch, please run 
-            ```
-            git fetch
-            git rebase origin/${{ github.head_ref }}
-            ```
-            before pushing more changes to the remote.
+          if ! git diff-index --quiet HEAD; then
+              git commit -m "Update current score"
+              git push origin HEAD:refs/heads/$current_branch
+          else
+              echo "The current score didn't change."
+          fi
+          
+          cd tests/Auto-GPT-test-cassettes
+          git fetch origin $current_branch
+          git add .
+
+          # Check if there are any changes
+          if ! git diff-index --quiet HEAD; then
+              git commit -m "Auto-update cassettes after Push event"
+              git pull --rebase origin $current_branch
+
+              git push origin HEAD:refs/heads/$current_branch
+
+              cd ../..
+              git add tests/Auto-GPT-test-cassettes
+              git commit -m "Update submodule reference"
+              git push origin HEAD:refs/heads/$current_branch
+          else
+              echo "No cassettes changes to commit"
+              exit 0
+          fi
+
+      - name: Update cassette submodule to submodule branch if PR event
+        if: ${{ github.event_name == 'pull_request_target' }}
+        run: |
+          new_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+
+          cd tests/Auto-GPT-test-cassettes
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+          git add .
+
+          # Check if there are any changes
+          if ! git diff-index --quiet HEAD; then
+              git commit -m "Auto-update cassettes after merging PR #$pr_number"
+              git push -f origin HEAD:refs/heads/$new_branch
+              
+          else
+              echo "No changes to commit"
+              exit 0
+          fi
+          git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }} || echo "DIFF_EXISTS=false" >> $GITHUB_ENV
+          differences=$(git diff origin/$new_branch origin/${{ github.event.pull_request.base.ref }})
+    
+          if [ -n "$differences" ]; then
+            echo "DIFF_EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "DIFF_EXISTS=false" >> $GITHUB_ENV
+          fi
+
+      - name: Apply or remove behaviour change label and comment
+        if: ${{ github.event_name == 'pull_request_target' }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          TOKEN=${{ secrets.PAT_REVIEW }}
+          REPO=${{ github.repository }}
+
+          if [[ "${{ env.DIFF_EXISTS }}" == "true" ]]; then
+            echo "Adding label and comment..."
+            curl -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels \
+            -d '{"labels":["behaviour change"]}'
+
+            echo $TOKEN | gh auth login --with-token
+            gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
+          else
+            echo "Removing label..."
+            curl -X DELETE \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels/behaviour%20change
+          fi
