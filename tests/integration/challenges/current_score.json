@@ -4,11 +4,5 @@
             "max_level": 1,
             "max_level_beaten": 1
         }
-    },
-    "memory": {
-        "memory_challenge_c": {
-            "max_level": 5,
-            "max_level_beaten": null
-        }
     }
 }
