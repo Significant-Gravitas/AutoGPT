@@ -64,7 +64,7 @@ rem Run the Auto-GPT command
 %PYTHON_CMD% -m autogpt %*
 set "AUTOGPT_STATUS=%errorlevel%"
 
-if %AUTOGPT_STATUS% EQU 0 (
+if not %AUTOGPT_STATUS% EQU 0 (
     :InstallPluginDeps
     rem Install the plugin dependencies
     echo Installing plugin dependencies ...

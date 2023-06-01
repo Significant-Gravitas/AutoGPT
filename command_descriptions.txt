@@ -1,0 +1,11 @@
+list_agents
+This command lists all the available agents that can be started using the start_agent command. It takes no arguments.
+
+start_agent
+This command starts a new agent with the specified task, task description, short task description, and prompt. The task argument is the name of the task to run, and the task_desc argument is a brief description of the task. The short task description argument is a shorter version of the task description, and the prompt argument is a user prompt for the task.
+
+message_agent
+This command sends a message to the specified agent with the specified message content. The integer key argument is the numeric key of the agent, and the message argument is the content of the message.
+
+delete_agent
+This command deletes the agent with the specified integer key. The integer key argument is the numeric key of the agent to delete.

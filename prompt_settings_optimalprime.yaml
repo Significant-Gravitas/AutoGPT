@@ -45,12 +45,11 @@ CODE OPERATIONS:
     "improve_code: <Get improved code>, args: 'suggestions': <list_of_suggestions> 'code': <full_code_string>",
     "write_tests: <Write tests>, args: 'code': <full_code_string> 'focus': <list_of_focus_areas>",
   ]
-AGENT COMMANDS:
-  [
-    "description: <List GPT Agents>, args:{}",
-    "start_agent: <Start agent>, args:'task':<task> '<short_task_desc>':'<short_task_desc>' '<prompt>':'<prompt>'",
-    "message_agent:<Message agent>,args:'<key>':'<key, must be an integer>' '<message>':'<message>'",
-    "delete_agent:<Delete agent>,args:'<key>':'<key>'",
+AGENT COMMANDS: [
+    "list_agents: <List Agents>,    args: {}",
+    "start_agent: <Name Agent>,     args: <task>'<The Task>':<task_desc>:'<Short Task Description>':'<Prompt>'",
+    "message_agent:<Message Agent>, args: <integer key>'<the integer>':<message>:'<Your Message>'",
+    "delete_agent: <Delete Agent>,  args: <integer key>",
   ]
 PLUGIN COMMANDS:
   [

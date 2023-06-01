@@ -3,6 +3,7 @@
  commands based on user input and AI responses.
 """
 import signal
+import subprocess
 import sys
 from datetime import datetime
 
@@ -35,36 +36,6 @@ from autogpt.workspace import Workspace
 
 
 class Agent:
-    """
-    for interacting with Auto-GPT.
-
-    Attributes:
-
-    ai_name:                The name of the agent.
-    memory:                 The memory object to use.
-    FULL_MESSAGE_HISTORY:   The full message history.
-    NEXT_ACTION_count:      The number of actions to execute.
-
-    SYSTEM_PROMPT:
-     The system prompt is the initial prompt that defines everything
-     the AI needs to know to achieve its task successfully.
-     Currently, the dynamic and customizable information
-     in the system prompt are ai_name, description and ai_goals.
-
-    TRIGGERING_PROMPT:
-     The last sentence the AI will see before answering is:
-     Determine next command to use, and respond using the format specified above
-
-    The TRIGGERING_PROMPT is not part of the SYSTEM_PROMPT because between the
-     SYSTEM_PROMPT and the TRIGGERING_PROMPT
-     we have contextual information that can distract the AI and make it forget
-     that its goal is to find the next task to achieve.
-
-    1. SYSTEM_PROMPT
-    2. Contextual information (memory, previous conversations, anything relevant)
-    3. TRIGGERING_PROMPT (reminds the AI about its short term meta task defining the next task)
-    """
-
     def __init__(
         self,
         ai_name: str,
@@ -75,7 +46,19 @@ class Agent:
         system_prompt: str,
         triggering_prompt: str,
         workspace_directory: str,
-    ):
+    ) -> None:
+        """Initialize the AI with the given parameters.
+
+        Args:
+            ai_name (str): The name of the AI.
+            memory (VectorMemory): The memory for this AI instance.
+            next_action_count (int): The number of actions to execute.
+            command_registry (CommandRegistry): The registry of available commands.
+            config (AIConfig): The configuration object for this AI instance.
+            system_prompt (str): The initial system prompt.
+            triggering_prompt (str): The triggering prompt.
+            workspace_directory (str): The directory where the workspace is located.
+        """
         cfg = Config()
         self.ai_name = ai_name
         self.memory = memory
@@ -89,6 +72,26 @@ class Agent:
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
+
+    def execute_command(self, command: str) -> str:
+        """Execute the given command and return the result.
+
+        Args:
+            command (str): The command to execute.
+
+        Returns:
+            str: The result of the command execution.
+        """
+        try:
+            result = self.command_registry.execute(command)
+        except Exception as e:
+            # If the command fails, call the command_lookup.py script to suggest a correction.
+            try:
+                suggestion = subprocess.check_output(["python", "command_lookup.py", command])
+                result = f"Error: {e}\nSuggestion: {suggestion}"
+            except Exception:
+                result = f"Error: {e}\nNo suggestion found for command: {command}"
+        return result
 
     def start_interaction_loop(self):  # sourcery skip: no-long-functions
         # Interaction Loop
