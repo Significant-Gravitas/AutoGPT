@@ -51,3 +51,9 @@ memory store was also temporarily removed but we aim to merge a new implementati
 before the next release.
 Whether built-in support for the others will be added back in the future is subject to
 discussion, feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+
+# Challenge Workflow 🏆
+If you have been working on challenges... Thank You!
+But to run the debugger challenge or other challenges using cassettes and VCR in docker, You will now need to `pip uninstall vcrpy` and `pip install -r requirements.txt` again.
+This will install a new version of vcrpy that is compatible with running vcr in docker.
+This workflow will be fixed as soon as the maintainer from VCRpy merges our changes.
