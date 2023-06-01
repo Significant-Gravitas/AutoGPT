@@ -201,7 +201,7 @@ def test_special_character_config(tmp_path):
     """
 
     config_file = tmp_path / "ai_settings.yaml"
-    config_file.write_text(yaml_content)
+    config_file.write_text(yaml_content, encoding='utf-8')
 
     ai_config = AIConfig.load("SpécialAI", config_file)
 
