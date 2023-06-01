@@ -82,6 +82,32 @@ jobs:
           submodules: true
           token: ${{ secrets.PAT_REVIEW }}
 
+      - name: Create Pull Request
+        run: |
+          current_date_time=$(date +'%Y%m%d%H%M%S')
+          new_branch="update-score-${{ github.event.pull_request.number }}-$current_date_time"
+
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+          echo "test" >> tests/integration/challenges/current_score.json
+          if ! git diff --quiet -- tests/integration/challenges/current_score.json; then
+            git add tests/integration/challenges/current_score.json
+            git commit -m "Update score"
+            git checkout -b $new_branch
+            echo ${{ secrets.PAT_REVIEW }} | gh auth login --with-token
+            gh repo set-default ${{ github.event.pull_request.base.repo.full_name }}
+            git push origin $new_branch
+
+            gh pr create --title "Update Score In Pull Request Number ${{ github.event.pull_request.number }}" \
+            --head "${{ github.event.pull_request.base.repo.full_name }}:$new_branch" \
+            --base "${{ github.event.pull_request.head.ref }}" \
+            --body "This pull request updates the current score of Auto-GPT. Please check the files changed and merge the pull request." \
+            --repo ${{ github.event.pull_request.head.repo.full_name }}
+          else
+            echo "The current score didn't change."
+          fi
+    
+
       - name: Use cassettes previously sent
         if: ${{ github.event_name == 'pull_request_target' }}
         run: |
@@ -234,6 +260,7 @@ jobs:
             git commit -m "Update score"
             git checkout -b $new_branch
             echo ${{ secrets.PAT_REVIEW }} | gh auth login --with-token
+            gh repo set-default ${{ github.event.pull_request.base.repo.full_name }}
             git push origin $new_branch
           
             gh pr create --title "Update Score In Pull Request Number ${{ github.event.pull_request.number }}" \
