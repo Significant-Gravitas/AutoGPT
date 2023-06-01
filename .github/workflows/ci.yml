@@ -144,13 +144,6 @@ jobs:
 
           cd tests/Auto-GPT-test-cassettes
           git fetch origin $current_branch
-          echo "Before change:"
-          echo "Current branch: $current_branch" >> cassettes.yaml
-          echo "After change:"
-          cat cassettes.yaml
-
-          echo "Git status before commit:"
-          git status
 
           # Check if there are any changes
           if ! git diff --quiet; then
@@ -244,7 +237,7 @@ jobs:
             git push origin $new_branch
           
             gh pr create --title "Update Score In Pull Request Number ${{ github.event.pull_request.number }}" \
-            --head "$new_branch" \
+            --head "${{ github.event.pull_request.base.repo.full_name }}:$new_branch" \
             --base "${{ github.event.pull_request.head.ref }}" \
             --body "This pull request updates the current score of Auto-GPT. Please check the files changed and merge the pull request." \
             --repo ${{ github.event.pull_request.head.repo.full_name }}
