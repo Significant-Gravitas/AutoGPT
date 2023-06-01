@@ -1,4 +1,5 @@
 import pytest
+from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from tests.integration.challenges.challenge_decorator.challenge_decorator import (
@@ -15,7 +16,7 @@ CYCLE_COUNT = 2
 @challenge
 def test_browse_website(
     browser_agent: Agent,
-    patched_api_requestor: None,
+    patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
     level_to_run: int,
 ) -> None:
