@@ -1,5 +1,6 @@
 import pytest
 import yaml
+from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
@@ -21,6 +22,7 @@ def test_kubernetes_template_challenge_a(
     monkeypatch: pytest.MonkeyPatch,
     config: Config,
     level_to_run: int,
+    patched_api_requestor: MockerFixture,
 ) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs
