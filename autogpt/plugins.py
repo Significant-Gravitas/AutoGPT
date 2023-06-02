@@ -19,6 +19,7 @@ from autogpt.logs import logger
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 from itertools import chain
 
+
 def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
     """
     Inspect a zipfile for a modules.
@@ -40,6 +41,7 @@ def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
         logger.debug(f"Module '__init__.py' not found in the zipfile @ {zip_path}.")
     return result
 
+
 def inspect_folder_for_modules(directory_name: str, debug: bool = False) -> list[str]:
     """
     Inspect a folder for a modules.
@@ -53,7 +55,7 @@ def inspect_folder_for_modules(directory_name: str, debug: bool = False) -> list
     """
     result = []
 
-    path = Path(directory_name);
+    path = Path(directory_name)
 
     for file in path.glob("*.py"):
         if file.name.endswith("__init__.py") and not file.name.startswith("__MACOSX"):
@@ -62,6 +64,7 @@ def inspect_folder_for_modules(directory_name: str, debug: bool = False) -> list
     if len(result) == 0:
         logger.debug(f"Module '__init__.py' not found in the folder @ {path}.")
     return result
+
 
 def write_dict_to_json_file(data: dict, file_path: str) -> None:
     """
@@ -217,8 +220,9 @@ def instantiate_openai_plugin_clients(
         plugins[url] = BaseOpenAIPlugin(manifest_spec_client)
     return plugins
 
+
 def validate_loaded_module(loaded_module, cfg: Config):
-    """ validate a module (that isn't AugoGPTPluginTemplate) against allowed and denied lists
+    """validate a module (that isn't AugoGPTPluginTemplate) against allowed and denied lists
 
     Args:
         loaded_module: The module that needs to be checked against allowedlist and deniedlist
@@ -252,7 +256,7 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
     logger.debug(f"Allowlisted Plugins: {cfg.plugins_allowlist}")
     logger.debug(f"Denylisted Plugins: {cfg.plugins_denylist}")
 
-    #Check all zibs as modules
+    # Check all zibs as modules
     for plugin_path_name in plugins_path_path.glob("*.zip"):
         if moduleList := inspect_zip_for_modules(str(plugin_path_name), debug):
             for module in moduleList:
@@ -268,9 +272,8 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                 except Exception as ex:
                     logger.warn(f"Unable to load plugin {plugin}: {ex}")
 
-
-    #load directories and check for modules
-    for plugin_path_name in plugins_path_path.glob("**/"):         
+    # load directories and check for modules
+    for plugin_path_name in plugins_path_path.glob("**/"):
         if moduleList := inspect_folder_for_modules(str(plugin_path_name), debug):
             for moduleName in moduleList:
                 try:
@@ -278,9 +281,11 @@ def scan_plugins(cfg: Config, debug: bool = False) -> List[AutoGPTPluginTemplate
                     module = Path(moduleName)
                     logger.debug(f"Plugin: {plugin_path_name} Module: {module}")
                     module_path = os.path.join(plugin, module)
-                    spec = importlib.util.spec_from_file_location(module.name, module_path)
-                    #loaded_module = importlib.util.module_from_spec(spec)
-                    module_in_folder = spec.loader.load_module();
+                    spec = importlib.util.spec_from_file_location(
+                        module.name, module_path
+                    )
+                    # loaded_module = importlib.util.module_from_spec(spec)
+                    module_in_folder = spec.loader.load_module()
                     loaded_module = validate_loaded_module(module_in_folder, cfg)
                     if loaded_module:
                         loaded_plugins.append(loaded_module)
@@ -328,4 +333,3 @@ def denylist_allowlist_check(plugin_name: str, cfg: Config) -> bool:
         f" allowlist... Load? ({cfg.authorise_key}/{cfg.exit_key}): "
     )
     return ack.lower() == cfg.authorise_key
-
