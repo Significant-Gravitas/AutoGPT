@@ -155,6 +155,7 @@ def test_setup_create_first(tmp_path):
 
 
 def test_setup_manual_mode():
+    """Test: --manual flag"""
     user_inputs = [
         "--manual",
         "Chef-GPT",
@@ -166,9 +167,32 @@ def test_setup_manual_mode():
         "",
         "",
         "1.20",
-        "",
-        "",
     ]
+    
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = prompt_user()
+
+    assert isinstance(ai_config, AIConfig)
+    assert ai_config.ai_name == "Chef-GPT"
+    assert ai_config.ai_role == "an AI designed to browse bake a cake."
+    assert ai_config.ai_goals == ["Purchase ingredients", "Bake a cake"]
+
+
+def test_setup_automatic_fail():
+    """Test: test automatic agent creation fallback."""
+    user_inputs = [
+        "`````````",
+        "Chef-GPT",
+        "an AI designed to browse bake a cake.",
+        "Purchase ingredients",
+        "Bake a cake",
+        "",
+        "",
+        "",
+        "",
+        "1.20",
+    ]
+    
     with patch("builtins.input", side_effect=user_inputs):
         ai_config = prompt_user()
 
@@ -769,6 +793,109 @@ def test_setup_required_values(tmp_path):
     assert ai_config.ai_name.startswith("default-GPT-")
 
 
+def test_setup_edit_goals(tmp_path):
+    """Test: change configuration -> goals."""
+
+    # Temporary path / file
+    temp_config_file = tmp_path / "ai_settings.yaml"
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+        plugins: []
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "3",
+        "1",
+        "",
+        "",
+        "",
+        "e",
+        "save a text file test1.txt with the text i have changed a goal",
+        "e",
+        "wait for further instructions",
+        "",
+        "",
+        "",
+        "1.98",
+        "1",
+    ]
+
+    # Patch function to use the user_inputs list
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = construct_main_ai_config(str(temp_config_file))
+
+    # Asserts
+    assert ai_config.ai_name == "simple-GPT"
+    assert ai_config.ai_goals == [
+        "save a text file test1.txt with the text i have changed a goal",
+        "wait for further instructions"
+    ]
+
+
+def test_setup_edit_goals_add_extra_goal(tmp_path):
+    """Test: change configuration -> goals."""
+
+    # Temporary path / file
+    temp_config_file = tmp_path / "ai_settings.yaml"
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+        plugins: []
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "3",
+        "1",
+        "3",
+        "",
+        "",
+        "e",
+        "save a text file test1.txt with the text i have changed a goal",
+        "e",
+        "wait for further instructions",
+        "shutdown",
+        "",
+        "",
+        "",
+        "1.98",
+        "1",
+    ]
+
+    # Patch function to use the user_inputs list
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = construct_main_ai_config(str(temp_config_file))
+
+    # Asserts
+    assert ai_config.ai_name == "simple-GPT"
+    assert ai_config.ai_goals == [
+        "save a text file test1.txt with the text i have changed a goal",
+        "wait for further instructions","shutdown"
+    ]
+
+
 def test_setup_add_single_plugin(tmp_path):
     """Test: create new configuration + some wrong values."""
 
@@ -801,6 +928,53 @@ def test_setup_add_single_plugin(tmp_path):
         "",
         "a",
         "",
+        "1.98",
+    ]
+
+    # Patch function to use the user_inputs list
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = construct_main_ai_config(str(temp_config_file))
+
+    # Asserts
+    assert ai_config.ai_name == "test-GPT"
+    assert ai_config.plugins == [
+        "plugin2",
+    ]
+
+
+def test_setup_invalid_budget(tmp_path):
+    """Test: create new configuration + some wrong values."""
+
+    # Temporary path / file
+    temp_config_file = tmp_path / "ai_settings.yaml"
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+        plugins: []
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "2",
+        "2",
+        "test-GPT",
+        "an agent that tests code",
+        "search some python code on internet to test.",
+        "shutdown.",
+        "",
+        "a",
+        "",
+        "x",
         "1.98",
     ]
 
