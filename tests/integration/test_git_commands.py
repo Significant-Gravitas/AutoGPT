@@ -20,7 +20,7 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, config):
 
     expected_output = f"Cloned {url} to {clone_path}"
 
-    clone_result = clone_repository(url=url, clone_path=clone_path)
+    clone_result = clone_repository(url=url, clone_path=clone_path, config=config)
 
     assert clone_result == expected_output
     mock_clone_from.assert_called_once_with(
@@ -29,7 +29,7 @@ def test_clone_auto_gpt_repository(workspace, mock_clone_from, config):
     )
 
 
-def test_clone_repository_error(workspace, mock_clone_from):
+def test_clone_repository_error(workspace, mock_clone_from, config):
     url = "https://github.com/this-repository/does-not-exist.git"
     clone_path = str(workspace.get_path("does-not-exist"))
 
@@ -37,6 +37,6 @@ def test_clone_repository_error(workspace, mock_clone_from):
         "clone", "fatal: repository not found", ""
     )
 
-    result = clone_repository(url=url, clone_path=clone_path)
+    result = clone_repository(url=url, clone_path=clone_path, config=config)
 
     assert "Error: " in result

@@ -11,7 +11,7 @@ from regex import regex
 
 from autogpt.config import Config
 from autogpt.json_utils.json_fix_general import correct_json
-from autogpt.llm import call_ai_function
+from autogpt.llm.utils import call_ai_function
 from autogpt.logs import logger
 from autogpt.speech import say_text
 
