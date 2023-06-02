@@ -99,6 +99,8 @@ jobs:
 
             if git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }}; then
               echo "No merge conflict detected. We can use the cassettes previously sent. Commit: $(git rev-parse HEAD)"
+              git merge --abort
+              git checkout ${{ env.MIRROR_BRANCH_SUBMODULE}}
             else
               echo "Merge conflict detected. This means we cannot use the cassettes previously sent, so we will take the cassettes of ${{ github.event.pull_request.base.ref }}."
               git merge --abort
