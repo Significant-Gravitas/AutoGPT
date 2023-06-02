@@ -12,8 +12,8 @@ on:
     branches: [ master, ci-test* ]
 
 concurrency:
-  group: ${{ format('ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}
-  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') }}
+  group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') && github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target') }}
 
 jobs:
   lint:
