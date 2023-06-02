@@ -34,9 +34,9 @@ FILE OPERATIONS:
   ]
 EXECUTE CODE:
   [
-    "description: shell operations",
+    "Description: shell operations",
     "execute_shell: execute shell command is often the best option to perform shell operations, args: 'command_line': <command_line>",
-    "execute_shell_popen: execute shell popen will run the script as a subprocess preventing you from , args: 'command_line': <command_line>",
+    "execute_shell_popen: execute shell popen will run the script as a subprocess preventing you from, args: 'command_line': <command_line>",
     "execute_python_file: execute python file is broken, use 'execute_shell' instead, args: 'filename': <filename.py>",
   ]
 CODE OPERATIONS:
@@ -53,19 +53,19 @@ AGENT COMMANDS: [
   ]
 PLUGIN COMMANDS:
   [
-    "description: Plugin commands",
+    "Description: Plugin commands",
     "ask_genius_bing: ask_genius_bing is the GPT-4 Bing AI, ask it any question and have it write code, args:'<question>':'<Question>'",
-    "user_input:Get feedback from the user to help you,args:'<question_for_user>':'<Request user input>'",
-    "clone_autogpt:<Can create a Replica aka Clone of yourself that can do every you can do and more,args:'<name>':'<name>' '<role>':'<role>' '<goals>':'<goals>' '<goals_str_csv>':'<goals_str_csv>' '<ffm_ocean_traits>':'<ffm_ocean_traits>' '<ffm_ocean_traits_csv_or_0,0,0,0,0>':'<ffm_ocean_traits_csv_or_0>' '<character_attributes>':'<character_attributes>' '<character_attributes_str_csv_optional>':'<character_attributes_str_csv_optional>'",
-    "zapier_webhook:Zapier webhook can be used to create automated tasks,args:'<title>':'<The title of you web hook>' '<summary>':'<Summary of the web hook>' '<content>':'<Create new webhook call>'",
+    "user_input: Get feedback from the user to help you, args:'<question_for_user>':'<Request user input>'",
+    "clone_autogpt:<Can create a Replica aka Clone of yourself that can do every you can do and more, args:'<name>':'<name>' '<role>':'<role>' '<goals>':'<goals>' '<goals_str_csv>':'<goals_str_csv>' '<ffm_ocean_traits>':'<ffm_ocean_traits>' '<ffm_ocean_traits_csv_or_0,0,0,0,0>':'<ffm_ocean_traits_csv_or_0>' '<character_attributes>':'<character_attributes>' '<character_attributes_str_csv_optional>':'<character_attributes_str_csv_optional>'",
+    "zapier_webhook: Zapier webhook can be used to create automated tasks, args:'<title>':'<The title of you web hook>' '<summary>':'<Summary of the web hook>' '<content>':'<Create new webhook call>'",
   ]
 WEB COMMANDS:
   [
     "description: Used for research if ask_genius_bing fails",
-    "get_text_summary:Get text summary gives you a summary off a website,args:'<question>':'<Question>'",
-    "get_hyperlinks:Get hyperlinks from a website, not useful and expensive,args:'<url>':'<URL for the website>'",
+    "get_text_summary: Get text summary gives you a summary off a website, args:'<question>':'<Question>'",
+    "get_hyperlinks: Get hyperlinks from a website, not useful and expensive, args:'<url>':'<URL for the website>'",
   ]
 MISC COMMANDS:
   [
-    "task_complete:Instructs the system task has been completed. The system will save work and shutdown,args:'<reason>':'<key>' '<message>':'<message>'",
+    "task_complete: Instructs the system task has been completed. The system will save work and shut down, args:'<reason>':'<key>' '<message>':'<message>'",
   ]
