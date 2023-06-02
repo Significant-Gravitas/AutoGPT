@@ -31,7 +31,7 @@ repos:
     hooks:
       - id: autoflake
         name: autoflake
-        entry: autoflake --in-place --remove-all-unused-imports --recursive --ignore-init-module-imports autogpt tests
+        entry: autoflake --in-place --remove-all-unused-imports --recursive --ignore-init-module-imports --ignore-pass-after-docstring autogpt tests
         language: python
         types: [ python ]
       - id: pytest-check

@@ -39,7 +39,7 @@ def mock_config_openai_plugin():
 
         plugins_dir = PLUGINS_TEST_DIR
         plugins_openai = [PLUGIN_TEST_OPENAI]
-        plugins_denylist = ["AutoGPTPVicuna"]
+        plugins_denylist = ["AutoGPTPVicuna", "auto_gpt_guanaco"]
         plugins_allowlist = [PLUGIN_TEST_OPENAI]
 
     return MockConfig()
@@ -60,7 +60,7 @@ def mock_config_generic_plugin():
         plugins_dir = PLUGINS_TEST_DIR
         plugins_openai = []
         plugins_denylist = []
-        plugins_allowlist = ["AutoGPTPVicuna"]
+        plugins_allowlist = ["AutoGPTPVicuna", "auto_gpt_guanaco"]
 
     return MockConfig()
 
@@ -68,4 +68,4 @@ def mock_config_generic_plugin():
 def test_scan_plugins_generic(mock_config_generic_plugin):
     # Test that the function returns the correct number of plugins
     result = scan_plugins(mock_config_generic_plugin, debug=True)
-    assert len(result) == 1
+    assert len(result) == 2
