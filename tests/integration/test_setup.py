@@ -168,7 +168,7 @@ def test_setup_manual_mode():
         "",
         "1.20",
     ]
-    
+
     with patch("builtins.input", side_effect=user_inputs):
         ai_config = prompt_user()
 
@@ -192,7 +192,7 @@ def test_setup_automatic_fail():
         "",
         "1.20",
     ]
-    
+
     with patch("builtins.input", side_effect=user_inputs):
         ai_config = prompt_user()
 
@@ -840,7 +840,7 @@ def test_setup_edit_goals(tmp_path):
     assert ai_config.ai_name == "simple-GPT"
     assert ai_config.ai_goals == [
         "save a text file test1.txt with the text i have changed a goal",
-        "wait for further instructions"
+        "wait for further instructions",
     ]
 
 
@@ -892,7 +892,8 @@ def test_setup_edit_goals_add_extra_goal(tmp_path):
     assert ai_config.ai_name == "simple-GPT"
     assert ai_config.ai_goals == [
         "save a text file test1.txt with the text i have changed a goal",
-        "wait for further instructions","shutdown"
+        "wait for further instructions",
+        "shutdown",
     ]
 
 
