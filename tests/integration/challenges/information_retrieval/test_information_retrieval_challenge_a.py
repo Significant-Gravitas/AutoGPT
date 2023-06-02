@@ -1,4 +1,5 @@
 import pytest
+from pytest_mock import MockerFixture
 
 from autogpt.commands.file_operations import read_file
 from autogpt.config import Config
@@ -19,7 +20,7 @@ from autogpt.agent import Agent
 def test_information_retrieval_challenge_a(
     information_retrieval_agents: Agent,
     monkeypatch: pytest.MonkeyPatch,
-    patched_api_requestor: None,
+    patched_api_requestor: MockerFixture,
     config: Config,
     level_to_run: int,
 ) -> None:
