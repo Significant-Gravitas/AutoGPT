@@ -11,6 +11,7 @@
       "userGid": "1000",
       "upgradePackages": "true"
     },
+    "ghcr.io/devcontainers-contrib/features/cyclonedx-python:1": {}
     "ghcr.io/devcontainers/features/desktop-lite:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/python:1": "none",
@@ -26,20 +27,8 @@
     "vscode": {
       // Set *default* container specific settings.json values on container create.
       "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python",
-        "python.testing.pytestEnabled": true,
-        "python.testing.unittestEnabled": false
-      },
-      "extensions": [
-        "ms-python.python",
-        "VisualStudioExptTeam.vscodeintellicode",
-        "ms-python.vscode-pylance",
-        "ms-python.black-formatter",
-        "ms-python.isort",
-        "GitHub.vscode-pull-request-github",
-        "GitHub.copilot",
-        "github.vscode-github-actions"
-      ]
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
     }
   },
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
