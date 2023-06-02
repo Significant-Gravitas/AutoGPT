@@ -5,7 +5,7 @@ import json
 import os
 import zipfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List
 from urllib.parse import urlparse
 from zipimport import zipimporter
 
@@ -17,7 +17,6 @@ from openapi_python_client.cli import Config as OpenAPIConfig
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
-from itertools import chain
 
 
 def inspect_zip_for_modules(zip_path: str, debug: bool = False) -> list[str]:
