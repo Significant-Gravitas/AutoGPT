@@ -7,12 +7,13 @@
     "ghcr.io/devcontainers/features/common-utils:2": {
       "installZsh": "true",
       "username": "vscode",
-      "userUid": "6942",
-      "userGid": "6942",
+      "userUid": "1000",
+      "userGid": "1000",
       "upgradePackages": "true"
     },
     "ghcr.io/devcontainers-contrib/features/cyclonedx-python:1": {}
     "ghcr.io/devcontainers/features/desktop-lite:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/python:1": "none",
     "ghcr.io/devcontainers/features/node:1": "none",
     "ghcr.io/devcontainers/features/git:1": {
@@ -27,10 +28,7 @@
       // Set *default* container specific settings.json values on container create.
       "settings": {
         "python.defaultInterpreterPath": "/usr/local/bin/python"
-	},
-	"extensions": [
-		"ms-vscode-remote.remote-containers"
-	]
+      }
     }
   },
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
@@ -40,5 +38,8 @@
   // "postCreateCommand": "pip3 install --user -r requirements.txt",
 
   // Set `remoteUser` to `root` to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
-  "remoteUser": "vscode"
+  "remoteUser": "vscode",
+
+  // Add the freshly containerized repo to the list of safe repositories
+  "postCreateCommand": "git config --global --add safe.directory /workspace/Auto-GPT && pip3 install --user -r requirements.txt"
 }

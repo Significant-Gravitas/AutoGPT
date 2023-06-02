@@ -7,12 +7,14 @@ from __future__ import annotations
 import os
 import platform
 from pathlib import Path
-from typing import Any, Optional, Type
+from typing import TYPE_CHECKING, Optional
 
 import distro
 import yaml
 
-from autogpt.prompts.generator import PromptGenerator
+if TYPE_CHECKING:
+    from autogpt.commands.command import CommandRegistry
+    from autogpt.prompts.generator import PromptGenerator
 
 # Soon this will go in a folder where it remembers more stuff about the run(s)
 SAVE_FILE = str(Path(os.getcwd()) / "ai_settings.yaml")
@@ -53,8 +55,8 @@ class AIConfig:
         self.ai_role = ai_role
         self.ai_goals = ai_goals
         self.api_budget = api_budget
-        self.prompt_generator = None
-        self.command_registry = None
+        self.prompt_generator: PromptGenerator | None = None
+        self.command_registry: CommandRegistry | None = None
 
     @staticmethod
     def load(config_file: str = SAVE_FILE) -> "AIConfig":
@@ -73,7 +75,7 @@ class AIConfig:
 
         try:
             with open(config_file, encoding="utf-8") as file:
-                config_params = yaml.load(file, Loader=yaml.FullLoader)
+                config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
         except FileNotFoundError:
             config_params = {}
 
