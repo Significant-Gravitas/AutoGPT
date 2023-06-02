@@ -128,7 +128,7 @@ jobs:
           AGENT_MODE: ${{ vars.AGENT_MODE }}
           AGENT_TYPE: ${{ vars.AGENT_TYPE }}
 
-      - name: Update cassette submodule to push target [Push event only]
+      - name: Update cassette submodule and current score to push target [Push event only]
         if: ${{ github.event_name == 'push' }}
         run: |
           current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
