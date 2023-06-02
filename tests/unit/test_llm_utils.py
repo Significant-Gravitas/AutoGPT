@@ -111,22 +111,18 @@ def test_check_model(api_manager):
     Test if check_model() returns gpt-3.5-turbo when model is invalid.
     """
     with patch("openai.Model.list") as mock_list_models:
-        _extracted_from_test_check_model_8(
-            "gpt-4", mock_list_models, "smart_llm_model", api_manager
-        )
-        _extracted_from_test_check_model_8(
-            "gpt-3.5-turbo", mock_list_models, "fast_llm_model", api_manager
-        )
-
-
-# TODO Rename this here and in `test_check_model`
-def _extracted_from_test_check_model_8(arg0, mock_list_models, arg2, api_manager):
         # Test when correct model is returned
-    mock_list_models.return_value = {"data": [{"id": arg0}]}
-    result = llm_utils.check_model("gpt-4", arg2)
-    assert result == arg0
+        mock_list_models.return_value = {"data": [{"id": "gpt-4"}]}
+        result = llm_utils.check_model("gpt-4", "smart_llm_model")
+        assert result == "gpt-4"
 
-    # Reset api manager models
-    api_manager.models = None
+        # Reset api manager models
+        api_manager.models = None
 
-    return result
+        # Test when incorrect model is returned
+        mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
+        result = llm_utils.check_model("gpt-4", "fast_llm_model")
+        assert result == "gpt-3.5-turbo"
+
+        # Reset api manager models
+        api_manager.models = None

@@ -18,6 +18,7 @@ REPLACEMENTS: List[Dict[str, str]] = [
 ALLOWED_HOSTNAMES: List[str] = [
     "api.openai.com",
     "localhost:50337",
+    "duckduckgo.com",
 ]
 
 if PROXY:
@@ -47,10 +48,15 @@ def replace_timestamp_in_request(request: Any) -> Any:
 
     if "messages" not in body:
         return request
-    body["max_tokens"] = 0  # this field is inconsistent between requests and not used at the moment.
+    body[
+        "max_tokens"
+    ] = 0  # this field is inconsistent between requests and not used at the moment.
     for message in body["messages"]:
-        if "content" in message and "role" in message and message["role"] == "system":
-            message["content"] = replace_message_content(message["content"], REPLACEMENTS)
+        if "content" in message and "role" in message:
+            if message["role"] == "system":
+                message["content"] = replace_message_content(
+                    message["content"], REPLACEMENTS
+                )
 
     request.body = json.dumps(body)
     return request
@@ -66,10 +72,13 @@ def before_record_request(request: Any) -> Any:
     request = replace_request_hostname(request, ORIGINAL_URL, NEW_URL)
 
     filtered_request = filter_hostnames(request)
-    return replace_timestamp_in_request(filtered_request)
+    filtered_request_without_dynamic_data = replace_timestamp_in_request(
+        filtered_request
+    )
+    return filtered_request_without_dynamic_data
 
 
-from urllib.parse import urlparse, urlunparse  # noqa: E402
+from urllib.parse import urlparse, urlunparse
 
 
 def replace_request_hostname(request: Any, original_url: str, new_hostname: str) -> Any:
@@ -77,7 +86,9 @@ def replace_request_hostname(request: Any, original_url: str, new_hostname: str)
 
     if parsed_url.hostname in original_url:
         new_path = parsed_url.path.replace("/proxy_function", "")
-        request.uri = urlunparse(parsed_url._replace(netloc=new_hostname, path=new_path, scheme="https"))
+        request.uri = urlunparse(
+            parsed_url._replace(netloc=new_hostname, path=new_path, scheme="https")
+        )
 
     return request
 

@@ -17,7 +17,7 @@ def agent():
     triggering_prompt = "Triggering prompt"
     workspace_directory = "workspace_directory"
 
-    return Agent(
+    agent = Agent(
         ai_name,
         memory,
         next_action_count,
@@ -27,6 +27,7 @@ def agent():
         triggering_prompt,
         workspace_directory,
     )
+    return agent
 
 
 def test_agent_initialization(agent: Agent):

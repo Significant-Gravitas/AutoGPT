@@ -7,12 +7,12 @@ from autogpt.logs import remove_color_codes
     "raw_text, clean_text",
     [
         (
-            "COMMAND = \x1b[36mbrowse_website\x1b[0m  ARGUMENTS = \x1b[36m{'url': 'https://www.google.com', 'question': 'What is the capital of France?'}\x1b[0m",  # noqa: E501
-            "COMMAND = browse_website  ARGUMENTS = {'url': 'https://www.google.com', 'question': 'What is the capital of France?'}",  # noqa: E501
+            "COMMAND = \x1b[36mbrowse_website\x1b[0m  ARGUMENTS = \x1b[36m{'url': 'https://www.google.com', 'question': 'What is the capital of France?'}\x1b[0m",
+            "COMMAND = browse_website  ARGUMENTS = {'url': 'https://www.google.com', 'question': 'What is the capital of France?'}",
         ),
         (
-            "{'Schaue dir meine Projekte auf github () an, als auch meine Webseiten': 'https://github.com/Significant-Gravitas/Auto-GPT, https://discord.gg/autogpt und https://twitter.com/SigGravitas'}",  # noqa: E501
-            "{'Schaue dir meine Projekte auf github () an, als auch meine Webseiten': 'https://github.com/Significant-Gravitas/Auto-GPT, https://discord.gg/autogpt und https://twitter.com/SigGravitas'}",  # noqa: E501
+            "{'Schaue dir meine Projekte auf github () an, als auch meine Webseiten': 'https://github.com/Significant-Gravitas/Auto-GPT, https://discord.gg/autogpt und https://twitter.com/SigGravitas'}",
+            "{'Schaue dir meine Projekte auf github () an, als auch meine Webseiten': 'https://github.com/Significant-Gravitas/Auto-GPT, https://discord.gg/autogpt und https://twitter.com/SigGravitas'}",
         ),
         ("", ""),
         ("hello", "hello"),

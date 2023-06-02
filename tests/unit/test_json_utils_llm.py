@@ -27,11 +27,11 @@ Additional aspects:
 - The function uses two techniques to fix the JSON string: parsing and finding outermost brackets.
 - The function logs an error if the JSON string cannot be fixed and returns an empty dictionary.
 - The function uses the 'CFG' object to determine whether to speak the error message or not.
-"""  # noqa: E501
+"""
 
 
 class TestFixJsonUsingMultipleTechniques:
-    # Tests that the function successfully fixes and parses a JSON string that is already compliant with both techniques.  # noqa: E501
+    # Tests that the function successfully fixes and parses a JSON string that is already compliant with both techniques.
     def test_fix_and_parse_json_happy_path(self):
         # Happy path test case where the JSON string is already compliant with both techniques
         json_string = '{"text": "Hello world", "confidence": 0.9}'
@@ -57,7 +57,7 @@ class TestFixJsonUsingMultipleTechniques:
         expected_output = ["Add type hints", "Move docstrings", "Consider using"]
         assert fix_json_using_multiple_techniques(json_string) == expected_output
 
-    # Tests that the function returns an empty dictionary when the JSON string is not parseable and cannot be fixed using either technique.  # noqa: E501
+    # Tests that the function returns an empty dictionary when the JSON string is not parseable and cannot be fixed using either technique.
     # @requires_api_key("OPEN_API_KEY")
     def test_fix_and_parse_json_can_not(self, mocker):
         # Edge case test case where the JSON string is not parseable and cannot be fixed using either technique

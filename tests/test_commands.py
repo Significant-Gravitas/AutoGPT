@@ -7,6 +7,8 @@ import pytest
 
 from autogpt.commands.command import Command, CommandRegistry
 
+SIGNATURE = "(arg1: int, arg2: str) -> str"
+
 
 class TestCommand:
     """Test cases for the Command class."""
@@ -23,6 +25,7 @@ class TestCommand:
             name="example",
             description="Example command",
             method=self.example_command_method,
+            signature=SIGNATURE,
         )
 
         assert cmd.name == "example"
@@ -47,18 +50,10 @@ class TestCommand:
             name="example",
             description="Example command",
             method=self.example_command_method,
+            signature=SIGNATURE,
         )
         with pytest.raises(TypeError):
             cmd(arg1="invalid", does_not_exist="test")
-
-    def test_command_default_signature(self):
-        """Test that the default signature is generated correctly."""
-        cmd = Command(
-            name="example",
-            description="Example command",
-            method=self.example_command_method,
-        )
-        assert cmd.signature == "(arg1: int, arg2: str) -> str"
 
     def test_command_custom_signature(self):
         custom_signature = "custom_arg1: int, custom_arg2: str"
@@ -84,6 +79,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
+            signature=SIGNATURE,
         )
 
         registry.register(cmd)
@@ -98,6 +94,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
+            signature=SIGNATURE,
         )
 
         registry.register(cmd)
@@ -112,6 +109,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
+            signature=SIGNATURE,
         )
 
         registry.register(cmd)
@@ -133,6 +131,7 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
+            signature=SIGNATURE,
         )
 
         registry.register(cmd)
@@ -154,12 +153,13 @@ class TestCommandRegistry:
             name="example",
             description="Example command",
             method=self.example_command_method,
+            signature=SIGNATURE,
         )
 
         registry.register(cmd)
         command_prompt = registry.command_prompt()
 
-        assert "(arg1: int, arg2: str)" in command_prompt
+        assert f"(arg1: int, arg2: str)" in command_prompt
 
     def test_import_mock_commands_module(self):
         """Test that the registry can import a module with mock command plugins."""
@@ -170,7 +170,10 @@ class TestCommandRegistry:
 
         assert "function_based" in registry.commands
         assert registry.commands["function_based"].name == "function_based"
-        assert registry.commands["function_based"].description == "Function-based test command"
+        assert (
+            registry.commands["function_based"].description
+            == "Function-based test command"
+        )
 
     def test_import_temp_command_file_module(self, tmp_path):
         """
@@ -196,4 +199,7 @@ class TestCommandRegistry:
 
         assert "function_based" in registry.commands
         assert registry.commands["function_based"].name == "function_based"
-        assert registry.commands["function_based"].description == "Function-based test command"
+        assert (
+            registry.commands["function_based"].description
+            == "Function-based test command"
+        )
