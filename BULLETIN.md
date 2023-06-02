@@ -30,8 +30,5 @@ memory store was also temporarily removed; we will merge a new implementation AS
 Whether built-in support for the others will be added back in the future is subject to
 discussion, feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
 
-## Refactoring of global state
-The config object 'singleton' has been refactored to ease the path to our re-arch.
-
 ## Further fixes and changes
 Take a look at the Release Notes on Github! https://github.com/Significant-Gravitas/Auto-GPT/releases/tag/v0.4.0
