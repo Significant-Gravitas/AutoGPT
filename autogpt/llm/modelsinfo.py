@@ -7,4 +7,5 @@ COSTS = {
     "gpt-4-32k": {"prompt": 0.06, "completion": 0.12},
     "gpt-4-32k-0314": {"prompt": 0.06, "completion": 0.12},
     "text-embedding-ada-002": {"prompt": 0.0004, "completion": 0.0},
+    "text-davinci-003": {"prompt": 0.02, "completion": 0.02},
 }

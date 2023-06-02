@@ -35,7 +35,7 @@ Highlights and notable changes since v0.2.2:
  * Edge browser is now supported by the `browse_website` command.
  * Sets of commands can now be disabled using DISABLED_COMMAND_CATEGORIES in .env.
 
-# ⚠️ Command `send_tweet` is DEPRECATED, and will be removed in v0.4.0 ⚠️
+# ⚠️ Command `send_tweet` is REMOVED
 Twitter functionality (and more) is now covered by plugins, see [Plugin support 🔌]
 
 ## Plugin support 🔌
@@ -43,3 +43,17 @@ Auto-GPT now has support for plugins! With plugins, you can extend Auto-GPT's ab
 adding support for third-party services and more.
 See https://github.com/Significant-Gravitas/Auto-GPT-Plugins for instructions and
 available plugins. Specific plugins can be allowlisted/denylisted in .env.
+
+## Memory backend deprecation ⚠️
+The Milvus, Pinecone and Weaviate memory backends were rendered incompatible
+by work on the memory system, and have been removed in `master`. The Redis
+memory store was also temporarily removed but we aim to merge a new implementation
+before the next release.
+Whether built-in support for the others will be added back in the future is subject to
+discussion, feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+
+# Challenge Workflow 🏆
+If you have been working on challenges... Thank You!
+But to run the debugger challenge or other challenges using cassettes and VCR in docker, You will now need to `pip uninstall vcrpy` and `pip install -r requirements.txt` again.
+This will install a new version of vcrpy that is compatible with running vcr in docker.
+This workflow will be fixed as soon as the maintainer from VCRpy merges our changes.

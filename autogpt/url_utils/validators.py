@@ -31,6 +31,9 @@ def validate_url(func: Callable[..., Any]) -> Any:
         # Restrict access to local files
         if check_local_file_access(url):
             raise ValueError("Access to local files is restricted")
+        # Check URL length
+        if len(url) > 2000:
+            raise ValueError("URL is too long")
 
         return func(sanitize_url(url), *args, **kwargs)
 
