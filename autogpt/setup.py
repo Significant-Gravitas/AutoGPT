@@ -165,7 +165,7 @@ def generate_aiconfig_manual(
     )
 
     # Handle ai_goals: list
-    if ai_name and max_goals:
+    if editing and max_goals:
         # Edit existing goals
         default_goals = config.ai_goals if config else []
         if editing:
@@ -175,7 +175,9 @@ def generate_aiconfig_manual(
                 "use [Enter] to keep the current goal / save the input.",
                 speak_text=True,
             )
-        ai_goals = list(default_goals)  # start with a copy of the current goals
+        ai_goals = list(default_goals)
+        kept_goals = []
+        deleted_goals_indices = []
 
         for i in range(len(ai_goals)):
             logger.typewriter_log(
@@ -190,9 +192,16 @@ def generate_aiconfig_manual(
                 ai_goal = utils.clean_input(
                     f"{Fore.LIGHTBLUE_EX}New Goal{Style.RESET_ALL} {i+1}: "
                 )
-                ai_goals[i] = ai_goal
+                if ai_goal != "":
+                    kept_goals.append(ai_goal)
+                else:
+                    kept_goals.append(ai_goals[i])
             elif action.lower() == "d":
-                del ai_goals[i]
+                deleted_goals_indices.append(i)
+            else:
+                kept_goals.append(ai_goals[i])
+
+        ai_goals = kept_goals
 
         # Add new goals if there's still room
         if len(ai_goals) < max_goals:
@@ -206,8 +215,8 @@ def generate_aiconfig_manual(
                     f"{Fore.LIGHTBLUE_EX}New Goal{Style.RESET_ALL} {i+1}: "
                 )
                 if ai_goal == "":
-                    break  # End the input process if input is empty
-                ai_goals.append(ai_goal)  # add the new goal to the list
+                    break
+                ai_goals.append(ai_goal)
     else:
         # Entering new goals, up to [x] (default=5) goals for the AI
         default_goals = config.ai_goals if config else []
@@ -231,13 +240,13 @@ def generate_aiconfig_manual(
             ai_goals.append(ai_goal)
 
     # Handle plugins: list
-    if ai_name:
+    if editing:
         # Edit existing plugins
         default_plugins = config.plugins if config else []
         plugins = list(default_plugins)
         deleted_plugins = []  # To keep track of deleted plugins
-        i = len(plugins) - 1
-        while i >= 0:
+        i = 0
+        while i < len(plugins):
             logger.typewriter_log(
                 f"Current plugin {i+1}: {plugins[i]}",
                 Fore.LIGHTBLUE_EX,
@@ -249,7 +258,8 @@ def generate_aiconfig_manual(
             if action.lower() == "d":
                 deleted_plugins.append(plugins[i])  # Keep track of deleted plugin
                 del plugins[i]
-            i -= 1
+            else:
+                i += 1
 
         # Offer to add plugins from allowlist
         env_plugins = CFG.plugins_allowlist if CFG else []

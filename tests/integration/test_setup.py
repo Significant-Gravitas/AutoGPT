@@ -231,6 +231,283 @@ def test_setup_delete_and_select(tmp_path):
     ]
 
 
+def test_setup_delete_add_goals(tmp_path):
+    """Test: edit configuration and delete + add goals."""
+
+    # Temporary path / file
+    temp_config_file = tmp_path / "ai_settings.yaml"
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  use list_files to confirm the file test1.txt does exist
+        -  delete file test1.txt
+        -  list_files the text file to confirm it does not exist
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+        plugins: []
+    normal-GPT:
+        ai_goals:
+        -  save a text file test2.txt with the text "hello space"
+        -  use read_file to confirm the file test2.txt contains the words "hello space"
+        -  rename file test2.txt to test-2.txt
+        -  delete file test-2.txt
+        -  shutdown
+        ai_role: do a normal file task
+        api_budget: 0.0
+        plugins: []
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "4",
+        "1",
+        "5",
+        "",
+        "",
+        "d",
+        "d",
+        "",
+        "",
+        "",
+        "this is the new goal 4",
+        "this is the new goal 5",
+        "a",
+        "a",
+        "",
+        "0",
+        "2",
+    ]
+
+    # Patch function to use the user_inputs list
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = construct_main_ai_config(str(temp_config_file))
+
+    # Asserts
+    assert ai_config.ai_name == "simple-GPT"
+    assert ai_config.ai_role == "do a simple file task"
+    assert ai_config.ai_goals == [
+        "delete file test1.txt",
+        "list_files the text file to confirm it does not exist",
+        "shutdown",
+        "this is the new goal 4",
+        "this is the new goal 5",
+    ]
+
+
+def test_setup_delete_main_menu(tmp_path):
+    """Test: select delete and go back main menu."""
+
+    # Temporary path / file
+    temp_config_file = tmp_path / "ai_settings.yaml"
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  use list_files to confirm the file test1.txt does exist
+        -  delete file test1.txt
+        -  list_files the text file to confirm it does not exist
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+        plugins: []
+    normal-GPT:
+        ai_goals:
+        -  save a text file test2.txt with the text "hello space"
+        -  use read_file to confirm the file test2.txt contains the words "hello space"
+        -  rename file test2.txt to test-2.txt
+        -  delete file test-2.txt
+        -  shutdown
+        ai_role: do a normal file task
+        api_budget: 0.0
+        plugins: []
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "4",
+        "1",
+        "5",
+        "",
+        "",
+        "d",
+        "d",
+        "",
+        "",
+        "",
+        "this is the new goal 4",
+        "this is the new goal 5",
+        "a",
+        "a",
+        "",
+        "0",
+        "2",
+    ]
+
+    # Patch function to use the user_inputs list
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = construct_main_ai_config(str(temp_config_file))
+
+    # Asserts
+    assert ai_config.ai_name == "simple-GPT"
+    assert ai_config.ai_role == "do a simple file task"
+    assert ai_config.ai_goals == [
+        "delete file test1.txt",
+        "list_files the text file to confirm it does not exist",
+        "shutdown",
+        "this is the new goal 4",
+        "this is the new goal 5",
+    ]
+
+
+def test_setup_create_without_values_no(tmp_path):
+    """Test: select delete and go back main menu, create without values, then say no."""
+
+    # Temporary path / file
+    temp_config_file = tmp_path / "ai_settings.yaml"
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  use list_files to confirm the file test1.txt does exist
+        -  delete file test1.txt
+        -  list_files the text file to confirm it does not exist
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+        plugins: []
+    normal-GPT:
+        ai_goals:
+        -  save a text file test2.txt with the text "hello space"
+        -  use read_file to confirm the file test2.txt contains the words "hello space"
+        -  rename file test2.txt to test-2.txt
+        -  delete file test-2.txt
+        -  shutdown
+        ai_role: do a normal file task
+        api_budget: 0.0
+        plugins: []
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "5",
+        "3",
+        "3",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "n",
+        "1",
+    ]
+
+    # Patch function to use the user_inputs list
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = construct_main_ai_config(str(temp_config_file))
+
+    # Asserts
+    assert ai_config.ai_name == "simple-GPT"
+    assert ai_config.ai_role == "do a simple file task"
+    assert ai_config.ai_goals == [
+        'save a text file test1.txt with the text "hello world"',
+        "use list_files to confirm the file test1.txt does exist",
+        "delete file test1.txt",
+        "list_files the text file to confirm it does not exist",
+        "shutdown",
+    ]
+
+
+def test_setup_create_without_values_yes(tmp_path):
+    """Test: select delete and go back main menu, create without values, then say yes."""
+
+    # Temporary path / file
+    temp_config_file = tmp_path / "ai_settings.yaml"
+
+    # Temporary config
+    config_content = """configs:
+    simple-GPT:
+        ai_goals:
+        -  save a text file test1.txt with the text "hello world"
+        -  use list_files to confirm the file test1.txt does exist
+        -  delete file test1.txt
+        -  list_files the text file to confirm it does not exist
+        -  shutdown
+        ai_role: do a simple file task
+        api_budget: 0.0
+        plugins: []
+    normal-GPT:
+        ai_goals:
+        -  save a text file test2.txt with the text "hello space"
+        -  use read_file to confirm the file test2.txt contains the words "hello space"
+        -  rename file test2.txt to test-2.txt
+        -  delete file test-2.txt
+        -  shutdown
+        ai_role: do a normal file task
+        api_budget: 0.0
+        plugins: []
+    """
+
+    # Write to the temporary file
+    with open(temp_config_file, "w") as temp_file:
+        temp_file.write(config_content)
+
+    # Sequence of user inputs:
+    user_inputs = [
+        "5",
+        "3",
+        "3",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "0",
+        "y",
+        "y",
+    ]
+
+    # Patch function to use the user_inputs list
+    with patch("builtins.input", side_effect=user_inputs):
+        ai_config = construct_main_ai_config(str(temp_config_file))
+
+    # Asserts
+    assert ai_config.ai_name.startswith("default-GPT-")
+    assert (
+        ai_config.ai_role
+        == "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
+    )
+    assert ai_config.ai_goals == [
+        "Increase net worth",
+        "Grow Twitter Account",
+        "Develop and manage multiple businesses autonomously",
+    ]
+
+
 def test_setup_change_and_select(tmp_path):
     """Test: change configuration and select."""
 
@@ -480,7 +757,7 @@ def test_setup_required_values(tmp_path):
         "",
         "",
         "",
-        "y",
+        "",
         "y",
     ]
 
@@ -489,7 +766,7 @@ def test_setup_required_values(tmp_path):
         ai_config = construct_main_ai_config(str(temp_config_file))
 
     # Asserts
-    assert ai_config.ai_name == "new-GPT"
+    assert ai_config.ai_name.startswith("default-GPT-")
 
 
 def test_setup_add_single_plugin(tmp_path):

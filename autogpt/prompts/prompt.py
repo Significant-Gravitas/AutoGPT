@@ -134,13 +134,20 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
 
                     # Check required values
                     if (
-                        not (config.ai_name and config.ai_role and config.ai_goals)
-                        or config.ai_name == "null"
-                        or config.ai_name == ""
-                        or config.ai_role == "null"
-                        or config.ai_role == ""
-                        or not config.ai_goals
-                    ):
+                        hasattr(config, "ai_name")
+                        and config.ai_name
+                        and config.ai_name != "null"
+                        and config.ai_name != ""
+                        and hasattr(config, "ai_role")
+                        and config.ai_role
+                        and config.ai_role != "null"
+                        and config.ai_role != ""
+                        and hasattr(config, "ai_goals")
+                        and config.ai_goals
+                    ):  # Save
+                        config.save(config_file, append=True)
+                        break
+                    else:
                         logger.typewriter_log(
                             "Required values are missing.",
                             Fore.RED,
@@ -152,38 +159,38 @@ def construct_main_ai_config(config_file: str = None) -> AIConfig:
                         )
 
                         if response.lower() == "y":
-                            # Assign default values
-                            if (
-                                not config.ai_name
-                                or config.ai_name == "null"
-                                or config.ai_name == ""
-                            ):
-                                config.ai_name = "Entrepreneur-GPT"
-                            if (
-                                not config.ai_role
-                                or config.ai_role == "null"
-                                or config.ai_role == ""
-                            ):
-                                config.ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
-                            if not config.ai_goals:
-                                config.ai_goals = [
-                                    "Increase net worth",
-                                    "Grow Twitter Account",
-                                    "Develop and manage multiple businesses autonomously",
-                                ]
+                            config = AIConfig()
+
+                            # Load existing configurations
+                            existing_configs = AIConfig.load_all(config_file)
+
+                            # Get the list of existing ai_names
+                            existing_names = list(existing_configs.keys())
+
+                            # Generate unique ai_name
+                            config_count = len(existing_configs)
+                            new_name = f"default-GPT-{config_count+1}"
+                            while new_name in existing_names:
+                                config_count += 1
+                                new_name = f"default-GPT-{config_count+1}"
+
+                            config.ai_name = new_name
+                            config.ai_role = "an AI designed to autonomously develop and run businesses with the sole goal of increasing your net worth."
+                            config.ai_goals = [
+                                "Increase net worth",
+                                "Grow Twitter Account",
+                                "Develop and manage multiple businesses autonomously",
+                            ]
 
                             # Save
                             config.save(config_file, append=True)
+
                         else:
                             should_save_config = False
                             logger.typewriter_log(
                                 "New configuration not saved.", Fore.RED
                             )
                         break
-                    else:
-                        # Save
-                        config.save(config_file, append=True)
-                    break
                 elif int(selection) == len(all_configs) + 2:
                     # Edit config:
                     logger.typewriter_log(
