@@ -89,7 +89,8 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
 
-      - name: Check out cassettes
+      - id: checkout_cassettes
+        name: Check out cassettes
         if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
           cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
@@ -110,9 +111,11 @@ jobs:
               git merge --abort
               git checkout ${{ github.event.pull_request.base.ref }}
             fi
+            echo "cassette_branch=$(git branch --show-current)" >> $GITHUB_OUTPUT
           else
             echo "Branch '$cassette_branch' does not exist in cassette submodule."\
               "Using cassettes from ${{ github.event.pull_request.base.ref }}."
+            echo "cassette_branch=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -166,6 +169,7 @@ jobs:
           if [[ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]]; then
             is_pull_request=true
             cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+            cassette_source_branch="${{ steps.checkout_cassettes.outputs.cassette_branch }}"
             base_branch="${{ github.event.pull_request.base.ref }}"
           else
             current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
@@ -173,13 +177,16 @@ jobs:
           fi
 
           cd tests/Auto-GPT-test-cassettes
-          git fetch origin $cassette_branch
+          git fetch origin $cassette_source_branch
 
           # Commit & push changes to cassettes if any
-          if ! git diff-index --quiet $cassette_branch; then
+          if ! git diff-index --quiet $cassette_source_branch; then
+            if ! [ "$cassette_branch" = "$cassette_source_branch" ]; then
+              git checkout -b $cassette_branch
+            fi
             git add .
             git commit -m "Auto-update cassettes"
-            git pull --rebase origin $cassette_branch
+            git pull --rebase origin $cassette_source_branch
 
             git push origin HEAD:$cassette_branch
 
