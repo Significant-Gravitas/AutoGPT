@@ -2,6 +2,7 @@
 import json
 import os.path
 import re
+import typing
 
 from jsonschema import Draft7Validator
 
@@ -30,7 +31,7 @@ def extract_char_position(error_message: str) -> int:
         raise ValueError("Character position not found in the error message.")
 
 
-def validate_json(json_object: object, schema_name: str) -> dict | None:
+def validate_json(json_object: object, schema_name: str) -> typing.Union[dict, None]:
     """
     :type schema_name: object
     :param schema_name: str
@@ -57,7 +58,7 @@ def validate_json(json_object: object, schema_name: str) -> dict | None:
     return json_object
 
 
-def validate_json_string(json_string: str, schema_name: str) -> dict | None:
+def validate_json_string(json_string: str, schema_name: str) -> typing.Union[dict, None]:
     """
     :type schema_name: object
     :param schema_name: str
