@@ -34,7 +34,6 @@ jobs:
 
       - name: Set Date
         run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-        shell: bash
 
       - name: Cache Python packages
         uses: actions/cache@v3
@@ -124,7 +123,6 @@ jobs:
 
       - name: Set Date
         run: echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-        shell: bash
 
       - name: Cache Python packages
         uses: actions/cache@v3
