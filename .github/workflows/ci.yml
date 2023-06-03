@@ -157,7 +157,7 @@ jobs:
           git add tests/integration/challenges/current_score.json
 
           if ! git diff-index --quiet HEAD; then
-          git commit -m "Update current score"
+              git commit -m "Update current score"
               git push origin HEAD:refs/heads/$current_branch
           else
               echo "The current score didn't change."
