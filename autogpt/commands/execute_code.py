@@ -109,7 +109,7 @@ def validate_command(command: str, config: Config) -> bool:
     if not tokens:
         return False
 
-    if config.deny_commands and tokens[0] not in config.deny_commands:
+    if config.deny_commands and tokens[0] in config.deny_commands:
         return False
 
     for keyword in config.allow_commands:
