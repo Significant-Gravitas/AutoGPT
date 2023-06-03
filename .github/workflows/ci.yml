@@ -161,6 +161,7 @@ jobs:
               git push origin HEAD:refs/heads/$current_branch
           else
               echo "The current score didn't change."
+              exit 0
           fi
           
           cd tests/Auto-GPT-test-cassettes
