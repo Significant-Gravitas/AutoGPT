@@ -1,6 +1,8 @@
 """Main script for the autogpt package."""
 import click
 
+from scripts.install_plugin_deps import install_plugin_dependencies
+
 
 @click.group(invoke_without_command=True)
 @click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
@@ -65,6 +67,11 @@ import click
     is_flag=True,
     help="Installs external dependencies for 3rd party plugins.",
 )
+@click.option(
+    "--only-install-plugin-deps",
+    is_flag=True,
+    help="Installs external dependencies for 3rd party plugins and then exits.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -83,6 +90,7 @@ def main(
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
+    only_install_plugin_deps: bool,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -91,6 +99,10 @@ def main(
     """
     # Put imports inside function to avoid importing everything when starting the CLI
     from autogpt.main import run_auto_gpt
+
+    if only_install_plugin_deps:
+        install_plugin_dependencies()
+        return
 
     if ctx.invoked_subcommand is None:
         run_auto_gpt(

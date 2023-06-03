@@ -29,6 +29,7 @@ FROM autogpt-base as autogpt-dev
 RUN pip install --no-cache-dir -r requirements.txt
 WORKDIR /app
 ONBUILD COPY . ./
+ONBUILD RUN python -m autogpt --only-install-plugin-deps
 
 # release build -> include bare minimum
 FROM autogpt-base as autogpt-release
@@ -39,5 +40,6 @@ ONBUILD COPY autogpt/ ./autogpt
 ONBUILD COPY scripts/ ./scripts
 ONBUILD COPY plugins/ ./plugins
 ONBUILD RUN mkdir ./data
+ONBUILD RUN python -m autogpt --only-install-plugin-deps
 
 FROM autogpt-${BUILD_TYPE} AS auto-gpt
