@@ -19,6 +19,10 @@
         "information_retrieval_challenge_a": {
             "max_level": 3,
             "max_level_beaten": 1
+        },
+        "information_retrieval_challenge_b": {
+            "max_level": 1,
+            "max_level_beaten": 1
         }
     },
     "kubernetes": {
