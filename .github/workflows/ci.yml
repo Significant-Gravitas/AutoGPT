@@ -161,7 +161,6 @@ jobs:
               git push origin HEAD:refs/heads/$current_branch
           else
               echo "The current score didn't change."
-              exit 0
           fi
           
           cd tests/Auto-GPT-test-cassettes
@@ -181,6 +180,7 @@ jobs:
               git push origin HEAD:refs/heads/$current_branch
           else
               echo "No cassettes changes to commit"
+              exit 0
           fi
 
       - name: Update cassette submodule to submodule branch if PR event
