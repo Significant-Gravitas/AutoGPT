@@ -1,9 +1,31 @@
+from typing import Any, Dict, Optional
+
 import pytest
 from _pytest.config import Config
 from _pytest.config.argparsing import Parser
 from _pytest.fixtures import FixtureRequest
 
 from tests.integration.challenges.challenge_decorator.challenge import Challenge
+from tests.integration.conftest import BASE_VCR_CONFIG
+from tests.vcr.vcr_filter import before_record_response
+
+
+def before_record_response_filter_errors(
+    response: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """In challenges we don't want to record errors (See issue #4461)"""
+    if response["status"]["code"] >= 400:
+        return None
+
+    return before_record_response(response)
+
+
+@pytest.fixture(scope="module")
+def vcr_config() -> Dict[str, Any]:
+    # this fixture is called by the pytest-recording vcr decorator.
+    return BASE_VCR_CONFIG | {
+        "before_record_response": before_record_response_filter_errors,
+    }
 
 
 def pytest_addoption(parser: Parser) -> None:
