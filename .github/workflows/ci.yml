@@ -156,8 +156,8 @@ jobs:
           git config --global user.email "github-bot@agpt.co"
           git add tests/integration/challenges/current_score.json
 
-          if ! git diff --quiet -- tests/integration/challenges/current_score.json; then
-              git commit -m "Update current score"
+          if ! git diff-index --quiet HEAD; then
+          git commit -m "Update current score"
               git push origin HEAD:refs/heads/$current_branch
           else
               echo "The current score didn't change."
