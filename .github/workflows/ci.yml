@@ -145,8 +145,10 @@ jobs:
         name: Set up git token authentication
         run: |
           config_key="http.${{ github.server_url }}/.extraheader"
-          git config "$config_key" \
+          git config --list
+          git config --global "$config_key" \
             "Authorization: Basic $(echo -n "x-access-token:${{ secrets.PAT_REVIEW }}" | base64 -w0)"
+          git config --list
 
           echo "config_key=$config_key" >> $GITHUB_OUTPUT
 
@@ -188,7 +190,8 @@ jobs:
             git commit -m "Auto-update cassettes"
             git pull --rebase origin $cassette_source_branch
 
-            git push origin HEAD:$cassette_branch
+            git config --list
+            GIT_TRACE=2 GIT_CURL_VERBOSE=2 git push origin HEAD:$cassette_branch
 
             cd ../..
             if [ $is_pull_request ]; then
