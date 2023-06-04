@@ -82,7 +82,7 @@ def writer_agent(agent_test_config, memory_none: NoMemory, workspace: Workspace)
         ai_goals=[
             "Use the write_to_file command to write 'Hello World' into a file named \"hello_world.txt\".",
             "Use the task_complete command to complete the task.",
-            "Do not use any other commands.",
+            "Do not use any other commands!",
         ],
     )
     ai_config.command_registry = command_registry
