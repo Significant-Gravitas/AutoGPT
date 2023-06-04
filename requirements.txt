@@ -1,9 +1,9 @@
 beautifulsoup4>=4.12.2
 colorama==0.4.6
 distro==1.8.0
-openai==0.27.2
+openai==0.27.7
 playsound==1.2.2
-python-dotenv==1.0.0
+python-dotenv==0.21.1
 pyyaml==6.0
 PyPDF2
 python-docx
