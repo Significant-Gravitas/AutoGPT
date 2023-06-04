@@ -146,7 +146,7 @@ jobs:
         run: |
           config_key="http.${{ github.server_url }}/.extraheader"
           git config "$config_key" \
-            "Authorization: Basic x-access-token:${{ secrets.PAT_REVIEW }}"
+            "Authorization: Basic $(echo -n "x-access-token:${{ secrets.PAT_REVIEW }}" | base64 -w0)"
 
           echo "config_key=$config_key" >> $GITHUB_OUTPUT
 
