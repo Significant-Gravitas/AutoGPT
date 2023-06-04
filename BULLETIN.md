@@ -18,7 +18,7 @@ https://github.com/Significant-Gravitas/Auto-GPT/wiki/Contributing
 Two weeks and 76 pull requests have passed since v0.3.1, and we are happy to announce
 the release of v0.4.0!
 
-Highlights and notable changes since v0.3.1:
+Highlights and notable changes since v0.3.0:
 
 ## ⚠️ Command `send_tweet` is REMOVED
 Twitter functionality (and more) is now covered by plugins.
