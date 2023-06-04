@@ -228,8 +228,8 @@ def write_to_file(filename: str, text: str, config: Config) -> str:
 @command(
     "update_file",
     "Update file",
-    '"filename": "<filename>",'
-    '"old_text": "<old_text>","new_text": "<new_text>",'
+    '"filename": "<filename>", '
+    '"old_text": "<old_text>", "new_text": "<new_text>", '
     '"occurrence_index": "<occurrence_index>"',
 )
 def update_file(
@@ -240,8 +240,8 @@ def update_file(
 
     Args:
         filename (str): The name of the file
-        old_text (str): String to be replaced. \n will be stripped from string.
-        new_text (str): New string. \n will be stripped from string.
+        old_text (str): String to be replaced. \n will be stripped from the end.
+        new_text (str): New string. \n will be stripped from the end.
         occurrence_index (int): Optional index of the occurrence to replace. If None, all occurrences will be replaced.
 
     Returns:
