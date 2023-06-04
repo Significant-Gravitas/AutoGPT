@@ -271,7 +271,7 @@ jobs:
           REPO=${{ github.repository }}
           echo ${{ secrets.PAT_REVIEW }} | gh auth login --with-token
           COMMENT_BODY=""
-          SCORE_CHANGED_MESSAGE="The pipeline will fail until you merge the updated score: ${{ steps.get_cassettes_diff.outputs.pr_url }}"
+          SCORE_CHANGED_MESSAGE="The pipeline will fail until you merge the updated score: ${{ steps.create_pr.outputs.pr_url }}"
           
           if [[ "${{ steps.push_cassettes.outputs.updated }}" == "true" ]]; then
             echo "Adding label and comment..."
@@ -284,7 +284,7 @@ jobs:
             COMMENT_BODY="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged. "
           fi
           
-          if [[ -n "${{ steps.get_cassettes_diff.outputs.pr_url }}" ]]; then
+          if [[ -n "${{ steps.create_pr.outputs.pr_url }}" ]]; then
             COMMENT_BODY="$COMMENT_BODY$SCORE_CHANGED_MESSAGE"
           fi
           
@@ -292,7 +292,7 @@ jobs:
             gh api repos/$REPO/issues/${{ github.event.pull_request.number }}/comments -X POST -F body="$COMMENT_BODY"
           fi
           
-          if [[ -n "${{ steps.get_cassettes_diff.outputs.pr_url }}" ]]; then
+          if [[ -n "${{ steps.create_pr.outputs.pr_url }}" ]]; then
             echo "$SCORE_CHANGED_MESSAGE"
             exit 1
           fi
