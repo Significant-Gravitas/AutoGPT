@@ -22,7 +22,7 @@
         },
         "information_retrieval_challenge_b": {
             "max_level": 1,
-            "max_level_beaten": 1
+            "max_level_beaten": null
         }
     },
     "kubernetes": {
