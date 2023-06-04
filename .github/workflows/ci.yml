@@ -144,13 +144,17 @@ jobs:
       - id: setup_git_auth
         name: Set up git token authentication
         run: |
+          base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
           config_key="http.${{ github.server_url }}/.extraheader"
-          git config --list
-          git config --global "$config_key" \
-            "Authorization: Basic $(echo -n "x-access-token:${{ secrets.PAT_REVIEW }}" | base64 -w0)"
-          git config --list
+          git config "$config_key" \
+            "Authorization: Basic $base64_pat"
 
+          cd tests/Auto-GPT-test-cassettes 
+          git config "$config_key" \
+            "Authorization: Basic $base64_pat"
           echo "config_key=$config_key" >> $GITHUB_OUTPUT
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
 
       - name: Push updated challenge scores
         if: github.event_name == 'push'
@@ -179,25 +183,27 @@ jobs:
           fi
 
           cd tests/Auto-GPT-test-cassettes
-          git fetch origin $cassette_source_branch:$cassette_source_branch
+          git fetch origin
 
           # Commit & push changes to cassettes if any
-          if ! git diff-index --quiet $cassette_source_branch --; then
+          if ! git diff --quiet; then
             if ! [ "$cassette_branch" = "$cassette_source_branch" ]; then
               git checkout -b $cassette_branch
             fi
             git add .
             git commit -m "Auto-update cassettes"
-            git pull --rebase origin $cassette_source_branch
 
-            git config --list
-            GIT_TRACE=2 GIT_CURL_VERBOSE=2 git push origin HEAD:$cassette_branch
-
-            cd ../..
             if [ $is_pull_request ]; then
+              git checkout -b $cassette_branch || git checkout $cassette_branch
+              git push -f origin $cassette_branch
+              cd ../..
+
               git fetch origin $base_branch
-              cassette_diff=$(git diff $cassette_branch origin/$base_branch)
+              cassette_diff=$(git diff origin/$base_branch)
             else
+              git push origin HEAD:$cassette_branch
+              cd ../..
+
               git add tests/Auto-GPT-test-cassettes
               git commit -m "Update cassette submodule"
               git push origin HEAD:$current_branch
