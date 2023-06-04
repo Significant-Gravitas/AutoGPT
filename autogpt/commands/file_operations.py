@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import os.path
+import re
 from typing import TYPE_CHECKING, Generator, Literal
 
 import requests

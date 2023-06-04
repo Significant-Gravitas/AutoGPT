@@ -267,6 +267,7 @@ def test_write_file_succeeds_if_content_different(
     )
     assert result == "File written to successfully."
 
+
 # Update file testing
 def test_update_file_all_occurrences(test_file, test_file_path, config):
     old_content = "This is a test file.\n we test file here\na test is needed"
@@ -278,7 +279,8 @@ def test_update_file_all_occurrences(test_file, test_file_path, config):
     file_ops.update_file(test_file_path, "test", "update", config)
     with open(test_file_path) as f:
         new_content = f.read()
-
+    print(new_content)
+    print(expected_content)
     assert new_content == expected_content
 
 
@@ -287,7 +289,7 @@ def test_update_file_one_occurrence(test_file, test_file_path, config):
     expected_content = "This is a test file.\n we update file here\na test is needed"
     test_file.write(old_content)
     test_file.close()
-    file_ops.update_file(test_file_path, "test", "update", config, occurrence_index = 1)
+    file_ops.update_file(test_file_path, "test", "update", config, occurrence_index=1)
     with open(test_file_path) as f:
         new_content = f.read()
 
@@ -303,7 +305,7 @@ def test_update_file_multiline_old_text(test_file, test_file_path, config):
         test_file_path,
         "\ntest for testing\nhow well this function\nworks when the input\n",
         "\nfile. succeeded test\n",
-        config
+        config,
     )
     with open(test_file_path) as f:
         new_content = f.read()
