@@ -177,10 +177,10 @@ jobs:
           fi
 
           cd tests/Auto-GPT-test-cassettes
-          git fetch origin $cassette_source_branch
+          git fetch origin $cassette_source_branch:$cassette_source_branch
 
           # Commit & push changes to cassettes if any
-          if ! git diff-index --quiet $cassette_source_branch; then
+          if ! git diff-index --quiet $cassette_source_branch --; then
             if ! [ "$cassette_branch" = "$cassette_source_branch" ]; then
               git checkout -b $cassette_branch
             fi
