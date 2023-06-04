@@ -259,7 +259,7 @@ def update_file(
         new_text = new_text.rstrip("\n")
 
         if occurrence_index is None:
-            new_content = re.sub(re.escape(old_text), new_text, content)
+            new_content = content.replace(old_text, new_text)
         else:
             matches = list(re.finditer(re.escape(old_text), content))
             if not matches:
