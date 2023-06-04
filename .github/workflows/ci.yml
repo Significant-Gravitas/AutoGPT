@@ -94,8 +94,6 @@ jobs:
         if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
           cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
-          git config --global user.name "Auto-GPT-Bot"
-          git config --global user.email "github-bot@agpt.co"
           cd tests/Auto-GPT-test-cassettes
 
           if git ls-remote --exit-code --heads origin $cassette_branch ; then
@@ -110,6 +108,9 @@ jobs:
               echo "Could not merge upstream changes to cassettes. Using cassettes from ${{ github.event.pull_request.base.ref }}."
               git merge --abort
               git checkout ${{ github.event.pull_request.base.ref }}
+
+              # Delete branch to prevent conflict when re-creating it
+              git branch -D $cassette_branch
             fi
             echo "cassette_branch=$(git branch --show-current)" >> $GITHUB_OUTPUT
           else
@@ -144,17 +145,20 @@ jobs:
       - id: setup_git_auth
         name: Set up git token authentication
         run: |
-          base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+
           config_key="http.${{ github.server_url }}/.extraheader"
+          base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+
           git config "$config_key" \
             "Authorization: Basic $base64_pat"
 
-          cd tests/Auto-GPT-test-cassettes 
+          cd tests/Auto-GPT-test-cassettes
           git config "$config_key" \
             "Authorization: Basic $base64_pat"
+
           echo "config_key=$config_key" >> $GITHUB_OUTPUT
-          git config --global user.name "Auto-GPT-Bot"
-          git config --global user.email "github-bot@agpt.co"
 
       - name: Push updated challenge scores
         if: github.event_name == 'push'
@@ -172,7 +176,7 @@ jobs:
       - id: push_cassettes
         name: Push updated cassettes
         run: |
-          if [[ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]]; then
+          if [ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]; then
             is_pull_request=true
             cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
             cassette_source_branch="${{ steps.checkout_cassettes.outputs.cassette_branch }}"
@@ -183,27 +187,27 @@ jobs:
           fi
 
           cd tests/Auto-GPT-test-cassettes
-          git fetch origin
+          git fetch origin $cassette_source_branch:$cassette_source_branch
 
           # Commit & push changes to cassettes if any
-          if ! git diff --quiet; then
-            if ! [ "$cassette_branch" = "$cassette_source_branch" ]; then
+          if ! git diff --quiet $cassette_source_branch --; then
+            if [ "$cassette_branch" != "$cassette_source_branch" ]; then
               git checkout -b $cassette_branch
             fi
             git add .
             git commit -m "Auto-update cassettes"
 
             if [ $is_pull_request ]; then
-              git checkout -b $cassette_branch || git checkout $cassette_branch
-              git push -f origin $cassette_branch
-              cd ../..
+              git push --force origin HEAD:$cassette_branch
+            else
+              git push origin HEAD:$cassette_branch
+            fi
 
+            cd ../..
+            if [ $is_pull_request ]; then
               git fetch origin $base_branch
               cassette_diff=$(git diff origin/$base_branch)
             else
-              git push origin HEAD:$cassette_branch
-              cd ../..
-
               git add tests/Auto-GPT-test-cassettes
               git commit -m "Update cassette submodule"
               git push origin HEAD:$current_branch
@@ -219,8 +223,10 @@ jobs:
           fi
 
       - name: Post Set up git token auth
+        if: steps.setup_git_auth.outcome == 'success'
         run: |
-          git config --unset "${{ steps.setup_git_auth.outputs.config_key }}"
+          git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
+          git submodule foreach git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
 
       - name: Apply or remove behaviour change label and comment on PR
         if: ${{ startsWith(github.event_name, 'pull_request') }}
