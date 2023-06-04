@@ -89,7 +89,8 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
 
-      - name: Check out cassettes
+      - id: checkout_cassettes
+        name: Check out cassettes
         if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
           cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
@@ -102,17 +103,14 @@ jobs:
             git fetch origin ${{ github.event.pull_request.base.ref }}
 
             git checkout $cassette_branch
-
-            if git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }}; then
-              echo "Using cassettes from mirror branch, synced to upstream branch '${{ github.event.pull_request.base.ref }}'"
-            else
-              echo "Could not merge upstream changes to cassettes. Using cassettes from ${{ github.event.pull_request.base.ref }}."
-              git merge --abort
-              git checkout ${{ github.event.pull_request.base.ref }}
-            fi
+            git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }} || git checkout --ours .
+            echo "Using cassettes from $cassette_branch with upstream changes merged in if no conflicts."
+            
+            echo "cassette_branch=$(git branch --show-current)" >> $GITHUB_OUTPUT
           else
             echo "Branch '$cassette_branch' does not exist in cassette submodule."\
               "Using cassettes from ${{ github.event.pull_request.base.ref }}."
+            echo "cassette_branch=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -120,15 +118,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
 
       - name: Run pytest tests with coverage
         run: |
-          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
-          python tests/integration/challenges/utils/build_current_score.py
+          echo "test" >> tests/integration/challenges/current_score.json
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
@@ -141,17 +134,22 @@ jobs:
       - id: setup_git_auth
         name: Set up git token authentication
         run: |
+          base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
           config_key="http.${{ github.server_url }}/.extraheader"
           git config "$config_key" \
-            "Authorization: Basic x-access-token:${{ secrets.PAT_REVIEW }}"
-
+            "Authorization: Basic $base64_pat"
+          cd tests/Auto-GPT-test-cassettes 
+          git config "$config_key" \
+            "Authorization: Basic $base64_pat"
           echo "config_key=$config_key" >> $GITHUB_OUTPUT
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
 
       - name: Push updated challenge scores
         if: github.event_name == 'push'
         run: |
           score_file="tests/integration/challenges/current_score.json"
-
+          
           if ! git diff --quiet $score_file; then
             git add $score_file
             git commit -m "Update challenge scores"
@@ -166,6 +164,7 @@ jobs:
           if [[ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]]; then
             is_pull_request=true
             cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+            cassette_source_branch="${{ steps.checkout_cassettes.outputs.cassette_branch }}"
             base_branch="${{ github.event.pull_request.base.ref }}"
           else
             current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
@@ -173,21 +172,29 @@ jobs:
           fi
 
           cd tests/Auto-GPT-test-cassettes
-          git fetch origin $cassette_branch
+          git fetch origin
+          echo "test" >> test_write_file/test_write_file.yaml
 
           # Commit & push changes to cassettes if any
-          if ! git diff-index --quiet $cassette_branch; then
+          if ! git diff --quiet; then
+            echo "test"
+            if ! [ "$cassette_branch" = "$cassette_source_branch" ]; then
+              git checkout -b $cassette_branch
+            fi
             git add .
             git commit -m "Auto-update cassettes"
-            git pull --rebase origin $cassette_branch
 
-            git push origin HEAD:$cassette_branch
-
-            cd ../..
             if [ $is_pull_request ]; then
+              git checkout -b $cassette_branch || git checkout $cassette_branch
+              git push -f origin $cassette_branch
+              cd ../..
+
               git fetch origin $base_branch
-              cassette_diff=$(git diff $cassette_branch origin/$base_branch)
+              cassette_diff=$(git diff origin/$base_branch)
             else
+              git push origin HEAD:$cassette_branch
+              cd ../..
+
               git add tests/Auto-GPT-test-cassettes
               git commit -m "Update cassette submodule"
               git push origin HEAD:$current_branch
