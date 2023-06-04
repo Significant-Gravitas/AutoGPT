@@ -226,13 +226,13 @@ def write_to_file(filename: str, text: str, config: Config) -> str:
 
 
 @command(
-    "update_file",
-    "Update file",
+    "replace_in_file",
+    "Replace text or code in a file",
     '"filename": "<filename>", '
     '"old_text": "<old_text>", "new_text": "<new_text>", '
     '"occurrence_index": "<occurrence_index>"',
 )
-def update_file(
+def replace_in_file(
     filename: str, old_text: str, new_text: str, config: Config, occurrence_index=None
 ):
     """Update a file by replacing one or all occurrences of old_text with new_text using Python's built-in string
