@@ -17,8 +17,8 @@ class Config(metaclass=Singleton):
 
     def __init__(self) -> None:
         """Initialize the Config class"""
-        self.workspace_path = None
-        self.file_logger_path = None
+        self.workspace_path: str = None
+        self.file_logger_path: str = None
 
         self.debug_mode = False
         self.continuous_mode = False
@@ -30,6 +30,7 @@ class Config(metaclass=Singleton):
 
         self.authorise_key = os.getenv("AUTHORISE_COMMAND_KEY", "y")
         self.exit_key = os.getenv("EXIT_KEY", "n")
+        self.plain_output = os.getenv("PLAIN_OUTPUT", "False") == "True"
 
         disabled_command_categories = os.getenv("DISABLED_COMMAND_CATEGORIES")
         if disabled_command_categories:
@@ -37,20 +38,33 @@ class Config(metaclass=Singleton):
         else:
             self.disabled_command_categories = []
 
+        deny_commands = os.getenv("DENY_COMMANDS")
+        if deny_commands:
+            self.deny_commands = deny_commands.split(",")
+        else:
+            self.deny_commands = []
+
+        allow_commands = os.getenv("ALLOW_COMMANDS")
+        if allow_commands:
+            self.allow_commands = allow_commands.split(",")
+        else:
+            self.allow_commands = []
+
         self.ai_settings_file = os.getenv("AI_SETTINGS_FILE", "ai_settings.yaml")
+        self.prompt_settings_file = os.getenv(
+            "PROMPT_SETTINGS_FILE", "prompt_settings.yaml"
+        )
         self.fast_llm_model = os.getenv("FAST_LLM_MODEL", "gpt-3.5-turbo")
         self.smart_llm_model = os.getenv("SMART_LLM_MODEL", "gpt-4")
         self.fast_token_limit = int(os.getenv("FAST_TOKEN_LIMIT", 4000))
         self.smart_token_limit = int(os.getenv("SMART_TOKEN_LIMIT", 8000))
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
-        self.embedding_tokenizer = os.getenv("EMBEDDING_TOKENIZER", "cl100k_base")
-        self.embedding_token_limit = int(os.getenv("EMBEDDING_TOKEN_LIMIT", 8191))
-        self.browse_chunk_max_length = int(os.getenv("BROWSE_CHUNK_MAX_LENGTH", 3000))
         self.browse_spacy_language_model = os.getenv(
             "BROWSE_SPACY_LANGUAGE_MODEL", "en_core_web_sm"
         )
 
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.openai_organization = os.getenv("OPENAI_ORGANIZATION")
         self.temperature = float(os.getenv("TEMPERATURE", "0"))
         self.use_azure = os.getenv("USE_AZURE") == "True"
         self.execute_local_commands = (
@@ -65,6 +79,9 @@ class Config(metaclass=Singleton):
             openai.api_type = self.openai_api_type
             openai.api_base = self.openai_api_base
             openai.api_version = self.openai_api_version
+
+        if self.openai_organization is not None:
+            openai.organization = self.openai_organization
 
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_1_id = os.getenv("ELEVENLABS_VOICE_1_ID")
@@ -83,28 +100,6 @@ class Config(metaclass=Singleton):
 
         self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.custom_search_engine_id = os.getenv("CUSTOM_SEARCH_ENGINE_ID")
-
-        self.pinecone_api_key = os.getenv("PINECONE_API_KEY")
-        self.pinecone_region = os.getenv("PINECONE_ENV")
-
-        self.weaviate_host = os.getenv("WEAVIATE_HOST")
-        self.weaviate_port = os.getenv("WEAVIATE_PORT")
-        self.weaviate_protocol = os.getenv("WEAVIATE_PROTOCOL", "http")
-        self.weaviate_username = os.getenv("WEAVIATE_USERNAME", None)
-        self.weaviate_password = os.getenv("WEAVIATE_PASSWORD", None)
-        self.weaviate_scopes = os.getenv("WEAVIATE_SCOPES", None)
-        self.weaviate_embedded_path = os.getenv("WEAVIATE_EMBEDDED_PATH")
-        self.weaviate_api_key = os.getenv("WEAVIATE_API_KEY", None)
-        self.use_weaviate_embedded = (
-            os.getenv("USE_WEAVIATE_EMBEDDED", "False") == "True"
-        )
-
-        # milvus or zilliz cloud configuration.
-        self.milvus_addr = os.getenv("MILVUS_ADDR", "localhost:19530")
-        self.milvus_username = os.getenv("MILVUS_USERNAME")
-        self.milvus_password = os.getenv("MILVUS_PASSWORD")
-        self.milvus_collection = os.getenv("MILVUS_COLLECTION", "autogpt")
-        self.milvus_secure = os.getenv("MILVUS_SECURE") == "True"
 
         self.image_provider = os.getenv("IMAGE_PROVIDER")
         self.image_size = int(os.getenv("IMAGE_SIZE", 256))
@@ -131,14 +126,13 @@ class Config(metaclass=Singleton):
             " (KHTML, like Gecko) Chrome/83.0.4103.97 Safari/537.36",
         )
 
+        self.memory_backend = os.getenv("MEMORY_BACKEND", "json_file")
+        self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt-memory")
+
         self.redis_host = os.getenv("REDIS_HOST", "localhost")
-        self.redis_port = os.getenv("REDIS_PORT", "6379")
+        self.redis_port = int(os.getenv("REDIS_PORT", "6379"))
         self.redis_password = os.getenv("REDIS_PASSWORD", "")
         self.wipe_redis_on_start = os.getenv("WIPE_REDIS_ON_START", "True") == "True"
-        self.memory_index = os.getenv("MEMORY_INDEX", "auto-gpt")
-        # Note that indexes must be created on db 0 in redis, this is not configurable.
-
-        self.memory_backend = os.getenv("MEMORY_BACKEND", "local")
 
         self.plugins_dir = os.getenv("PLUGINS_DIR", "plugins")
         self.plugins: List[AutoGPTPluginTemplate] = []
@@ -195,7 +189,7 @@ class Config(metaclass=Singleton):
             None
         """
         with open(config_file) as file:
-            config_params = yaml.load(file, Loader=yaml.FullLoader)
+            config_params = yaml.load(file, Loader=yaml.FullLoader) or {}
         self.openai_api_type = config_params.get("azure_api_type") or "azure"
         self.openai_api_base = config_params.get("azure_api_base") or ""
         self.openai_api_version = (
@@ -235,18 +229,6 @@ class Config(metaclass=Singleton):
         """Set the model to use for creating embeddings."""
         self.embedding_model = value
 
-    def set_embedding_tokenizer(self, value: str) -> None:
-        """Set the tokenizer to use when creating embeddings."""
-        self.embedding_tokenizer = value
-
-    def set_embedding_token_limit(self, value: int) -> None:
-        """Set the token limit for creating embeddings."""
-        self.embedding_token_limit = value
-
-    def set_browse_chunk_max_length(self, value: int) -> None:
-        """Set the browse_website command chunk max length value."""
-        self.browse_chunk_max_length = value
-
     def set_openai_api_key(self, value: str) -> None:
         """Set the OpenAI API key value."""
         self.openai_api_key = value
@@ -270,14 +252,6 @@ class Config(metaclass=Singleton):
     def set_custom_search_engine_id(self, value: str) -> None:
         """Set the custom search engine id value."""
         self.custom_search_engine_id = value
-
-    def set_pinecone_api_key(self, value: str) -> None:
-        """Set the Pinecone API key value."""
-        self.pinecone_api_key = value
-
-    def set_pinecone_region(self, value: str) -> None:
-        """Set the Pinecone region value."""
-        self.pinecone_region = value
 
     def set_debug_mode(self, value: bool) -> None:
         """Set the debug mode value."""
