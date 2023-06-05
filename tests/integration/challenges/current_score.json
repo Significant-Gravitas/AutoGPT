@@ -12,7 +12,7 @@
     "debug_code": {
         "debug_code_challenge_a": {
             "max_level": 1,
-            "max_level_beaten": 1
+            "max_level_beaten": null
         }
     },
     "information_retrieval": {
