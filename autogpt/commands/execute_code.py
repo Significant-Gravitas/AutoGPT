@@ -8,7 +8,37 @@ from docker.errors import ImageNotFound
 
 from autogpt.commands.command import command
 from autogpt.config import Config
+from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
+
+
+@command(
+    "execute_python_code", "Execute Python Code", '"code": "<code>", "name": "<name>"'
+)
+def execute_python_code(code: str, name: str, config: Config) -> str:
+    """Execute Python code in a Docker container and returns the STDOUT of the
+    executed code. If there is any data that needs to be captured use a print
+    statement
+
+    Args:
+        code (str): The python code to run
+        name (str): A short lower_snake_cased name to be used for storage and retrieval
+
+    Returns:
+        str: The STDOUT captured from the code when it ran
+    """
+    ai_name = AIConfig.load(config.ai_settings_file).ai_name
+    directory = os.path.join(config.workspace_path, ai_name, "executed_code")
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, name + ".py")
+
+    try:
+        with open(path, "w+", encoding="utf-8") as f:
+            f.write(code)
+
+        return execute_python_file(f.name, config)
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 
 @command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
