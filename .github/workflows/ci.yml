@@ -2,19 +2,24 @@ name: Python CI
 
 on:
   push:
-    branches: [ master, ci-test*]
+    branches: [ master, ci-test* ]
     paths-ignore:
       - 'tests/Auto-GPT-test-cassettes'
       - 'tests/integration/challenges/current_score.json'
+  pull_request:
+    branches: [ stable, master ]
   pull_request_target:
-    branches: [ master, stable , ci-test*]
+    branches: [ master, ci-test* ]
 
 concurrency:
   group: ${{ format('ci-{0}', github.head_ref && format('pr-{0}', github.event.pull_request.number) || github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull_request') && github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target') }}
 
 jobs:
   lint:
+    # eliminate duplicate runs on master
+    if: github.event_name == 'push' || github.ref_name != 'master' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
+
     runs-on: ubuntu-latest
     env:
       min-python-version: "3.10"
@@ -67,6 +72,9 @@ jobs:
           $cmd --check || (echo "You have unused imports or pass statements, please run '${cmd} --in-place'" && exit 1)
 
   test:
+    # eliminate duplicate runs on master
+    if: github.event_name == 'push' || github.ref_name != 'master' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
+
     permissions:
       # Gives the action the necessary permissions for publishing new
       # comments in pull requests.
@@ -89,31 +97,35 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
-          token: ${{ secrets.PAT_REVIEW }}
 
-      - name: Use cassettes previously sent
-        if: ${{ github.event_name == 'pull_request_target' }}
+      - id: checkout_cassettes
+        name: Check out cassettes
+        if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
-          new_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
-          git config --global user.name "Github Actions"
-          git config --global user.email "github-actions@github.com"
+          cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
           cd tests/Auto-GPT-test-cassettes
 
-          if git ls-remote --exit-code --heads origin $new_branch ; then
-            git fetch origin $new_branch:$new_branch
-            git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }}
-            
-            git checkout $new_branch
+          if git ls-remote --exit-code --heads origin $cassette_branch ; then
+            git fetch origin $cassette_branch
+            git fetch origin ${{ github.event.pull_request.base.ref }}
+
+            git checkout $cassette_branch
 
             if git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }}; then
-              echo "No merge conflict detected. We can use the cassettes previously sent."
+              echo "Using cassettes from mirror branch, synced to upstream branch '${{ github.event.pull_request.base.ref }}'"
             else
-              echo "Merge conflict detected. This means we cannot use the cassettes previously sent, so we will take the cassettes of ${{ github.event.pull_request.base.ref }}."
+              echo "Could not merge upstream changes to cassettes. Using cassettes from ${{ github.event.pull_request.base.ref }}."
               git merge --abort
               git checkout ${{ github.event.pull_request.base.ref }}
+
+              # Delete branch to prevent conflict when re-creating it
+              git branch -D $cassette_branch
             fi
+            echo "cassette_branch=$(git branch --show-current)" >> $GITHUB_OUTPUT
           else
-            echo "Branch $new_branch does not exist. We will use the cassettes of ${{ github.event.pull_request.base.ref }}"
+            echo "Branch '$cassette_branch' does not exist in cassette submodule."\
+              "Using cassettes from ${{ github.event.pull_request.base.ref }}."
+            echo "cassette_branch=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -148,77 +160,100 @@ jobs:
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
 
-      - name: Update cassette submodule to push target if push event
-        if: ${{ github.event_name == 'push' }}
+      - id: setup_git_auth
+        name: Set up git token authentication
         run: |
-          current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
           git config --global user.name "Auto-GPT-Bot"
           git config --global user.email "github-bot@agpt.co"
-          git add tests/integration/challenges/current_score.json
 
-          if ! git diff-index --quiet HEAD; then
-              git commit -m "Update current score"
-              git push origin HEAD:refs/heads/$current_branch
-          else
-              echo "The current score didn't change."
-          fi
-          
+          config_key="http.${{ github.server_url }}/.extraheader"
+          base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+
+          git config "$config_key" \
+            "Authorization: Basic $base64_pat"
+
           cd tests/Auto-GPT-test-cassettes
-          git fetch origin $current_branch
-          git add .
+          git config "$config_key" \
+            "Authorization: Basic $base64_pat"
 
-          # Check if there are any changes
-          if ! git diff-index --quiet HEAD; then
-              git commit -m "Auto-update cassettes after Push event"
-              git pull --rebase origin $current_branch
+          echo "config_key=$config_key" >> $GITHUB_OUTPUT
 
-              git push origin HEAD:refs/heads/$current_branch
+      - name: Push updated challenge scores
+        if: github.event_name == 'push'
+        run: |
+          score_file="tests/integration/challenges/current_score.json"
 
-              cd ../..
+          if ! git diff --quiet $score_file; then
+            git add $score_file
+            git commit -m "Update challenge scores"
+            git push origin HEAD:${{ github.ref }}
+          else
+            echo "The challenge scores didn't change."
+          fi
+
+      - id: push_cassettes
+        name: Push updated cassettes
+        run: |
+          if [ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]; then
+            is_pull_request=true
+            cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+            cassette_source_branch="${{ steps.checkout_cassettes.outputs.cassette_branch }}"
+            base_branch="${{ github.event.pull_request.base.ref }}"
+          else
+            current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
+            cassette_branch=$current_branch
+          fi
+
+          cd tests/Auto-GPT-test-cassettes
+          git fetch origin $cassette_source_branch:$cassette_source_branch
+
+          # Commit & push changes to cassettes if any
+          if ! git diff --quiet $cassette_source_branch --; then
+            if [ "$cassette_branch" != "$cassette_source_branch" ]; then
+              git checkout -b $cassette_branch
+            fi
+            git add .
+            git commit -m "Auto-update cassettes"
+
+            if [ $is_pull_request ]; then
+              git push --force origin HEAD:$cassette_branch
+            else
+              git push origin HEAD:$cassette_branch
+            fi
+
+            cd ../..
+            if [ $is_pull_request ]; then
+              git fetch origin $base_branch
+              cassette_diff=$(git diff origin/$base_branch)
+            else
               git add tests/Auto-GPT-test-cassettes
-              git commit -m "Update submodule reference"
-              git push origin HEAD:refs/heads/$current_branch
+              git commit -m "Update cassette submodule"
+              git push origin HEAD:$current_branch
+            fi
           else
-              echo "No cassettes changes to commit"
-              exit 0
+            echo "No cassette changes to commit"
           fi
 
-      - name: Update cassette submodule to submodule branch if PR event
-        if: ${{ github.event_name == 'pull_request_target' }}
+          if [ -n "$cassette_diff" ]; then
+            echo "updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "updated=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post Set up git token auth
+        if: steps.setup_git_auth.outcome == 'success'
         run: |
-          new_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
+          git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
+          git submodule foreach git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
 
-          cd tests/Auto-GPT-test-cassettes
-          git config --global user.name "Auto-GPT-Bot"
-          git config --global user.email "github-bot@agpt.co"
-          git add .
-
-          # Check if there are any changes
-          if ! git diff-index --quiet HEAD; then
-              git commit -m "Auto-update cassettes after merging PR #$pr_number"
-              git push -f origin HEAD:refs/heads/$new_branch
-              
-          else
-              echo "No changes to commit"
-              exit 0
-          fi
-          git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }} || echo "DIFF_EXISTS=false" >> $GITHUB_ENV
-          differences=$(git diff origin/$new_branch origin/${{ github.event.pull_request.base.ref }})
-    
-          if [ -n "$differences" ]; then
-            echo "DIFF_EXISTS=true" >> $GITHUB_ENV
-          else
-            echo "DIFF_EXISTS=false" >> $GITHUB_ENV
-          fi
-
-      - name: Apply or remove behaviour change label and comment
-        if: ${{ github.event_name == 'pull_request_target' }}
+      - name: Apply or remove behaviour change label and comment on PR
+        if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
           TOKEN=${{ secrets.PAT_REVIEW }}
           REPO=${{ github.repository }}
 
-          if [[ "${{ env.DIFF_EXISTS }}" == "true" ]]; then
+          if [[ "${{ steps.push_cassettes.outputs.updated }}" == "true" ]]; then
             echo "Adding label and comment..."
             curl -X POST \
             -H "Authorization: Bearer $TOKEN" \
