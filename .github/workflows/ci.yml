@@ -98,8 +98,12 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           submodules: true
 
-      - id: checkout_cassettes
-        name: Check out cassettes
+      - name: Setup git username and email
+        run: |
+          git config --global user.name "Auto-GPT-Bot"
+          git config --global user.email "github-bot@agpt.co"
+
+      - name: Check out cassettes
         if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
           cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
@@ -111,21 +115,12 @@ jobs:
 
             git checkout $cassette_branch
 
-            if git merge --no-commit --no-ff ${{ github.event.pull_request.base.ref }}; then
-              echo "Using cassettes from mirror branch, synced to upstream branch '${{ github.event.pull_request.base.ref }}'"
-            else
-              echo "Could not merge upstream changes to cassettes. Using cassettes from ${{ github.event.pull_request.base.ref }}."
-              git merge --abort
-              git checkout ${{ github.event.pull_request.base.ref }}
-
-              # Delete branch to prevent conflict when re-creating it
-              git branch -D $cassette_branch
-            fi
-            echo "cassette_branch=$(git branch --show-current)" >> $GITHUB_OUTPUT
+            git merge --no-commit --strategy-option ours origin/${{ github.event.pull_request.base.ref }}
+            echo "Using cassettes from mirror branch, synced to upstream branch '${{ github.event.pull_request.base.ref }}' if no conflicts."
           else
+            git checkout -b $cassette_branch
             echo "Branch '$cassette_branch' does not exist in cassette submodule."\
               "Using cassettes from ${{ github.event.pull_request.base.ref }}."
-            echo "cassette_branch=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Set up Python ${{ matrix.python-version }}
@@ -162,10 +157,8 @@ jobs:
 
       - id: setup_git_auth
         name: Set up git token authentication
+        if: always() && (startsWith(github.event_name, 'pull_request') || success())
         run: |
-          git config --global user.name "Auto-GPT-Bot"
-          git config --global user.email "github-bot@agpt.co"
-
           config_key="http.${{ github.server_url }}/.extraheader"
           base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
 
@@ -193,51 +186,31 @@ jobs:
 
       - id: push_cassettes
         name: Push updated cassettes
+        if: always() && (startsWith(github.event_name, 'pull_request') || success())
         run: |
           if [ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]; then
             is_pull_request=true
             cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
-            cassette_source_branch="${{ steps.checkout_cassettes.outputs.cassette_branch }}"
-            base_branch="${{ github.event.pull_request.base.ref }}"
           else
-            current_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
-            cassette_branch=$current_branch
+            cassette_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
           fi
 
           cd tests/Auto-GPT-test-cassettes
-          git fetch origin $cassette_source_branch:$cassette_source_branch
-
           # Commit & push changes to cassettes if any
-          if ! git diff --quiet $cassette_source_branch --; then
-            if [ "$cassette_branch" != "$cassette_source_branch" ]; then
-              git checkout -b $cassette_branch
-            fi
+          if ! git diff --quiet; then
             git add .
             git commit -m "Auto-update cassettes"
-
-            if [ $is_pull_request ]; then
-              git push --force origin HEAD:$cassette_branch
-            else
-              git push origin HEAD:$cassette_branch
-            fi
-
-            cd ../..
-            if [ $is_pull_request ]; then
-              git fetch origin $base_branch
-              cassette_diff=$(git diff origin/$base_branch)
-            else
+            git push origin HEAD:$cassette_branch
+            if [ ! $is_pull_request ]; then
+              cd ../..
               git add tests/Auto-GPT-test-cassettes
               git commit -m "Update cassette submodule"
-              git push origin HEAD:$current_branch
+              git push origin HEAD:$cassette_branch
             fi
-          else
-            echo "No cassette changes to commit"
-          fi
-
-          if [ -n "$cassette_diff" ]; then
             echo "updated=true" >> $GITHUB_OUTPUT
           else
             echo "updated=false" >> $GITHUB_OUTPUT
+            echo "No cassette changes to commit"
           fi
 
       - name: Post Set up git token auth
@@ -246,7 +219,7 @@ jobs:
           git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
           git submodule foreach git config --unset-all '${{ steps.setup_git_auth.outputs.config_key }}'
 
-      - name: Apply or remove behaviour change label and comment on PR
+      - name: Apply "behaviour change" label and comment on PR
         if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
@@ -263,10 +236,4 @@ jobs:
 
             echo $TOKEN | gh auth login --with-token
             gh api repos/$REPO/issues/$PR_NUMBER/comments -X POST -F body="You changed AutoGPT's behaviour. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
-          else
-            echo "Removing label..."
-            curl -X DELETE \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$REPO/issues/$PR_NUMBER/labels/behaviour%20change
           fi
