@@ -2,19 +2,25 @@ import pytest
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
-from tests.integration.agent_utils import run_interaction_loop
-from tests.integration.challenges.utils import generate_noise, get_level_to_run
+from autogpt.config import Config
+from tests.integration.challenges.challenge_decorator.challenge_decorator import (
+    challenge,
+)
+from tests.integration.challenges.utils import generate_noise, run_interaction_loop
 from tests.utils import requires_api_key
 
-LEVEL_CURRENTLY_BEATEN = None
-MAX_LEVEL = 5
 NOISE = 1000
 
 
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
+@challenge
 def test_memory_challenge_b(
-    memory_management_agent: Agent, user_selected_level: int, patched_api_requestor
+    memory_management_agent: Agent,
+    patched_api_requestor: None,
+    monkeypatch: pytest.MonkeyPatch,
+    config: Config,
+    level_to_run: int,
 ) -> None:
     """
     The agent reads a series of files, each containing a task_id and noise. After reading 'n' files,
@@ -22,27 +28,26 @@ def test_memory_challenge_b(
 
     Args:
         memory_management_agent (Agent)
-        user_selected_level (int)
+        patched_api_requestor (MockerFixture)
+        monkeypatch (pytest.MonkeyPatch)
+        level_to_run (int)
     """
-    current_level = get_level_to_run(
-        user_selected_level, LEVEL_CURRENTLY_BEATEN, MAX_LEVEL
-    )
-    task_ids = [str(i * 1111) for i in range(1, current_level + 1)]
-    create_instructions_files(memory_management_agent, current_level, task_ids)
+    task_ids = [str(i * 1111) for i in range(1, level_to_run + 1)]
+    create_instructions_files(memory_management_agent, level_to_run, task_ids, config)
 
-    try:
-        run_interaction_loop(memory_management_agent, 60)
-    except SystemExit:
-        file_path = str(memory_management_agent.workspace.get_path("output.txt"))
-        content = read_file(file_path)
-        for task_id in task_ids:
-            assert task_id in content, f"Expected the file to contain {task_id}"
+    run_interaction_loop(monkeypatch, memory_management_agent, level_to_run + 2)
+
+    file_path = str(memory_management_agent.workspace.get_path("output.txt"))
+    content = read_file(file_path, config)
+    for task_id in task_ids:
+        assert task_id in content, f"Expected the file to contain {task_id}"
 
 
 def create_instructions_files(
     memory_management_agent: Agent,
     level: int,
     task_ids: list,
+    config: Config,
     base_filename: str = "instructions_",
 ) -> None:
     """
@@ -58,7 +63,7 @@ def create_instructions_files(
         content = generate_content(i, task_ids, base_filename, level)
         file_name = f"{base_filename}{i}.txt"
         file_path = str(memory_management_agent.workspace.get_path(file_name))
-        write_to_file(file_path, content)
+        write_to_file(file_path, content, config)
 
 
 def generate_content(index: int, task_ids: list, base_filename: str, level: int) -> str:

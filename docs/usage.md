@@ -23,10 +23,13 @@ Running with `--help` lists all the possible command line arguments you can pass
 Here are some common arguments you can use when running Auto-GPT:
 
 * Run Auto-GPT with a different AI Settings file
-
-        :::shell
-        ./run.sh --ai-settings <filename>
-
+    ``` shell
+    ./run.sh --ai-settings <filename>
+    ```
+* Run Auto-GPT with a different Prompt Settings file
+    ``` shell
+    ./run.sh --prompt-settings <filename>
+    ```
 * Specify a memory backend
 
         :::shell

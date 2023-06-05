@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
 from autogpt.commands.command import command
-from autogpt.llm import call_ai_function
+from autogpt.llm.utils import call_ai_function
+
+if TYPE_CHECKING:
+    from autogpt.config import Config
 
 
 @command(
@@ -11,7 +15,7 @@ from autogpt.llm import call_ai_function
     "Get Improved Code",
     '"suggestions": "<list_of_suggestions>", "code": "<full_code_string>"',
 )
-def improve_code(suggestions: list[str], code: str) -> str:
+def improve_code(suggestions: list[str], code: str, config: Config) -> str:
     """
     A function that takes in code and suggestions and returns a response from create
       chat completion api call.
@@ -32,4 +36,4 @@ def improve_code(suggestions: list[str], code: str) -> str:
         " provided, making no other changes."
     )
 
-    return call_ai_function(function_string, args, description_string)
+    return call_ai_function(function_string, args, description_string, config=config)

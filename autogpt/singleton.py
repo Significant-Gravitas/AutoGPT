@@ -20,5 +20,3 @@ class AbstractSingleton(abc.ABC, metaclass=Singleton):
     """
     Abstract singleton class for ensuring only one instance of a class.
     """
-
-    pass
