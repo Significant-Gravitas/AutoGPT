@@ -1,4 +1,5 @@
 import functools
+import re
 from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
 
@@ -23,13 +24,16 @@ def validate_url(func: Callable[..., Any]) -> Any:
             ValueError if the url fails any of the validation tests
         """
         # Most basic check if the URL is valid:
-        if not url.startswith("http://") and not url.startswith("https://"):
+        if not re.match(r"^https?://", url):
             raise ValueError("Invalid URL format")
         if not is_valid_url(url):
             raise ValueError("Missing Scheme or Network location")
         # Restrict access to local files
         if check_local_file_access(url):
             raise ValueError("Access to local files is restricted")
+        # Check URL length
+        if len(url) > 2000:
+            raise ValueError("URL is too long")
 
         return func(sanitize_url(url), *args, **kwargs)
 

@@ -1,46 +1,41 @@
-import contextlib
-from typing import Generator
-
 import pytest
 import yaml
 
+from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
-from tests.integration.agent_utils import run_interaction_loop
-from tests.integration.challenges.utils import run_multiple_times
+from autogpt.config import Config
+from tests.integration.challenges.challenge_decorator.challenge_decorator import (
+    challenge,
+)
+from tests.integration.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
 
-
-def input_generator(input_sequence: list) -> Generator[str, None, None]:
-    """
-    Creates a generator that yields input strings from the given sequence.
-
-    :param input_sequence: A list of input strings.
-    :return: A generator that yields input strings.
-    """
-    yield from input_sequence
+CYCLE_COUNT = 3
 
 
-@pytest.mark.skip("This challenge hasn't been beaten yet.")
 @pytest.mark.vcr
 @requires_api_key("OPENAI_API_KEY")
-@run_multiple_times(3)
-def test_information_retrieval_challenge_a(kubernetes_agent, monkeypatch) -> None:
+@challenge
+def test_kubernetes_template_challenge_a(
+    kubernetes_agent: Agent,
+    monkeypatch: pytest.MonkeyPatch,
+    config: Config,
+    level_to_run: int,
+) -> None:
     """
     Test the challenge_a function in a given agent by mocking user inputs
     and checking the output file content.
 
-    :param get_company_revenue_agent: The agent to test.
-    :param monkeypatch: pytest's monkeypatch utility for modifying builtins.
+    Args:
+        kubernetes_agent (Agent)
+        monkeypatch (pytest.MonkeyPatch)
+        config (Config)
+        level_to_run (int)
     """
-    input_sequence = ["s", "s", "s", "s", "s", "EXIT"]
-    gen = input_generator(input_sequence)
-    monkeypatch.setattr("builtins.input", lambda _: next(gen))
-
-    with contextlib.suppress(SystemExit):
-        run_interaction_loop(kubernetes_agent, None)
+    run_interaction_loop(monkeypatch, kubernetes_agent, CYCLE_COUNT)
 
     file_path = str(kubernetes_agent.workspace.get_path("kube.yaml"))
-    content = read_file(file_path)
+    content = read_file(file_path, config)
 
     for word in ["apiVersion", "kind", "metadata", "spec"]:
         assert word in content, f"Expected the file to contain {word}"

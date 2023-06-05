@@ -3,6 +3,9 @@ import importlib
 import inspect
 from typing import Any, Callable, Optional
 
+from autogpt.config import Config
+from autogpt.logs import logger
+
 # Unique identifier for auto-gpt commands
 AUTO_GPT_COMMAND_IDENTIFIER = "auto_gpt_command"
 
@@ -22,19 +25,23 @@ class Command:
         description: str,
         method: Callable[..., Any],
         signature: str = "",
-        enabled: bool = True,
+        enabled: bool | Callable[[Config], bool] = True,
         disabled_reason: Optional[str] = None,
     ):
         self.name = name
         self.description = description
         self.method = method
-        self.signature = signature if signature else str(inspect.signature(self.method))
+        self.signature = signature
         self.enabled = enabled
         self.disabled_reason = disabled_reason
 
     def __call__(self, *args, **kwargs) -> Any:
+        if hasattr(kwargs, "config") and callable(self.enabled):
+            self.enabled = self.enabled(kwargs["config"])
         if not self.enabled:
-            return f"Command '{self.name}' is disabled: {self.disabled_reason}"
+            if self.disabled_reason:
+                return f"Command '{self.name}' is disabled: {self.disabled_reason}"
+            return f"Command '{self.name}' is disabled"
         return self.method(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -59,6 +66,10 @@ class CommandRegistry:
         return importlib.reload(module)
 
     def register(self, cmd: Command) -> None:
+        if cmd.name in self.commands:
+            logger.warn(
+                f"Command '{cmd.name}' already registered and will be overwritten!"
+            )
         self.commands[cmd.name] = cmd
 
     def unregister(self, command_name: str):
@@ -127,11 +138,21 @@ class CommandRegistry:
 def command(
     name: str,
     description: str,
-    signature: str = "",
-    enabled: bool = True,
+    signature: str,
+    enabled: bool | Callable[[Config], bool] = True,
     disabled_reason: Optional[str] = None,
 ) -> Callable[..., Any]:
     """The command decorator is used to create Command objects from ordinary functions."""
+
+    # TODO: Remove this in favor of better command management
+    CFG = Config()
+
+    if callable(enabled):
+        enabled = enabled(CFG)
+    if not enabled:
+        if disabled_reason is not None:
+            logger.debug(f"Command '{name}' is disabled: {disabled_reason}")
+        return lambda func: func
 
     def decorator(func: Callable[..., Any]) -> Command:
         cmd = Command(
