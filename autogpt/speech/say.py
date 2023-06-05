@@ -2,7 +2,7 @@
 import threading
 from threading import Semaphore
 
-from autogpt.config import Config
+from autogpt.config.config import Config
 from autogpt.speech.base import VoiceBase
 from autogpt.speech.brian import BrianSpeech
 from autogpt.speech.eleven_labs import ElevenLabsSpeech
