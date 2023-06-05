@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from autogpt.llm import COSTS, ApiManager
+from autogpt.llm.api_manager import COSTS, ApiManager
 
 api_manager = ApiManager()
 
@@ -39,6 +39,7 @@ class TestApiManager:
 
         with patch("openai.ChatCompletion.create") as mock_create:
             mock_response = MagicMock()
+            del mock_response.error
             mock_response.usage.prompt_tokens = 10
             mock_response.usage.completion_tokens = 20
             mock_create.return_value = mock_response
@@ -55,6 +56,7 @@ class TestApiManager:
 
         with patch("openai.ChatCompletion.create") as mock_create:
             mock_response = MagicMock()
+            del mock_response.error
             mock_response.usage.prompt_tokens = 0
             mock_response.usage.completion_tokens = 0
             mock_create.return_value = mock_response
@@ -76,6 +78,7 @@ class TestApiManager:
 
         with patch("openai.ChatCompletion.create") as mock_create:
             mock_response = MagicMock()
+            del mock_response.error
             mock_response.usage.prompt_tokens = 10
             mock_response.usage.completion_tokens = 20
             mock_create.return_value = mock_response
@@ -115,3 +118,13 @@ class TestApiManager:
         assert api_manager.get_total_prompt_tokens() == 50
         assert api_manager.get_total_completion_tokens() == 100
         assert api_manager.get_total_cost() == (50 * 0.002 + 100 * 0.002) / 1000
+
+    @staticmethod
+    def test_get_models():
+        """Test if getting models works correctly."""
+        with patch("openai.Model.list") as mock_list_models:
+            mock_list_models.return_value = {"data": [{"id": "gpt-3.5-turbo"}]}
+            result = api_manager.get_models()
+
+            assert result[0]["id"] == "gpt-3.5-turbo"
+            assert api_manager.models[0]["id"] == "gpt-3.5-turbo"
