@@ -268,6 +268,53 @@ def test_write_file_succeeds_if_content_different(
     assert result == "File written to successfully."
 
 
+# Update file testing
+def test_replace_in_file_all_occurrences(test_file, test_file_path, config):
+    old_content = "This is a test file.\n we test file here\na test is needed"
+    expected_content = (
+        "This is a update file.\n we update file here\na update is needed"
+    )
+    test_file.write(old_content)
+    test_file.close()
+    file_ops.replace_in_file(test_file_path, "test", "update", config)
+    with open(test_file_path) as f:
+        new_content = f.read()
+    print(new_content)
+    print(expected_content)
+    assert new_content == expected_content
+
+
+def test_replace_in_file_one_occurrence(test_file, test_file_path, config):
+    old_content = "This is a test file.\n we test file here\na test is needed"
+    expected_content = "This is a test file.\n we update file here\na test is needed"
+    test_file.write(old_content)
+    test_file.close()
+    file_ops.replace_in_file(
+        test_file_path, "test", "update", config, occurrence_index=1
+    )
+    with open(test_file_path) as f:
+        new_content = f.read()
+
+    assert new_content == expected_content
+
+
+def test_replace_in_file_multiline_old_text(test_file, test_file_path, config):
+    old_content = "This is a multi_line\ntest for testing\nhow well this function\nworks when the input\nis multi-lined"
+    expected_content = "This is a multi_line\nfile. succeeded test\nis multi-lined"
+    test_file.write(old_content)
+    test_file.close()
+    file_ops.replace_in_file(
+        test_file_path,
+        "\ntest for testing\nhow well this function\nworks when the input\n",
+        "\nfile. succeeded test\n",
+        config,
+    )
+    with open(test_file_path) as f:
+        new_content = f.read()
+
+    assert new_content == expected_content
+
+
 def test_append_to_file(test_nested_file: Path, config):
     append_text = "This is appended text.\n"
     file_ops.write_to_file(test_nested_file, append_text, config)
