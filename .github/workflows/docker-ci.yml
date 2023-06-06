@@ -121,3 +121,5 @@ jobs:
           $test_output
           \`\`\`
           $EOF
+
+          exit $test_failure
