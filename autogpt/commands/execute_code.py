@@ -10,6 +10,7 @@ from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.logs import logger
 from autogpt.setup import CFG
+from autogpt.workspace.workspace import Workspace
 
 
 @command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
@@ -29,7 +30,8 @@ def execute_python_file(filename: str, config: Config) -> str:
     if not filename.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    if not os.path.isfile(filename):
+    path = Workspace(config.workspace_path, True).get_path(filename)
+    if not os.path.isfile(path):
         # Mimic the response that you get from the command line so that it's easier to identify
         return (
             f"python: can't open file '{filename}': [Errno 2] No such file or directory"
@@ -37,7 +39,7 @@ def execute_python_file(filename: str, config: Config) -> str:
 
     if we_are_running_in_a_docker_container():
         result = subprocess.run(
-            ["python", filename],
+            ["python", path],
             capture_output=True,
             encoding="utf8",
             cwd=CFG.workspace_path,
