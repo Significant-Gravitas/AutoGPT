@@ -1,4 +1,5 @@
 import pytest
+from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
@@ -18,7 +19,7 @@ NOISE = 1000
 @challenge
 def test_memory_challenge_c(
     memory_management_agent: Agent,
-    patched_api_requestor: None,
+    patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
     config: Config,
     level_to_run: int,
