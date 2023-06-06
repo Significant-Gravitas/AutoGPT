@@ -1,5 +1,6 @@
 import pytest
 import yaml
+from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
@@ -19,6 +20,7 @@ CYCLE_COUNT = 3
 def test_kubernetes_template_challenge_a(
     kubernetes_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
+    patched_api_requestor: MockerFixture,
     config: Config,
     level_to_run: int,
 ) -> None:
