@@ -5,7 +5,7 @@ from _pytest.config import Config
 from _pytest.config.argparsing import Parser
 from _pytest.fixtures import FixtureRequest
 
-from tests.integration.challenges.challenge_decorator.challenge import Challenge
+from tests.challenges.challenge_decorator.challenge import Challenge
 from tests.integration.conftest import BASE_VCR_CONFIG
 from tests.vcr.vcr_filter import before_record_response
 
