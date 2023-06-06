@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from tests.integration.challenges.challenge_decorator.challenge import Challenge
+from tests.challenges.challenge_decorator.challenge import Challenge
 
 CHALLENGE_PREFIX = "test_"
 
