@@ -28,6 +28,7 @@ nav:
       - Information retrieval:
         - Introduction: challenges/information_retrieval/introduction.md
         - Information Retrieval Challenge A: challenges/information_retrieval/challenge_a.md
+        - Information Retrieval Challenge B: challenges/information_retrieval/challenge_b.md
   - Submit a Challenge: challenges/submit.md
   - Beat a Challenge: challenges/beat.md
 

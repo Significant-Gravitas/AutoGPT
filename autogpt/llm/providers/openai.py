@@ -1,49 +1,125 @@
 import functools
 import time
 from typing import List
+from unittest.mock import patch
 
 import openai
+import openai.api_resources.abstract.engine_api_resource as engine_api_resource
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError, Timeout
+from openai.openai_object import OpenAIObject
 
-from autogpt.llm.base import ChatModelInfo, EmbeddingModelInfo, Message
+from autogpt.llm.api_manager import ApiManager
+from autogpt.llm.base import ChatModelInfo, EmbeddingModelInfo, MessageDict, TextModelInfo
 from autogpt.logs import logger
 
 OPEN_AI_CHAT_MODELS = {
-    "gpt-3.5-turbo": ChatModelInfo(
-        name="gpt-3.5-turbo",
-        prompt_token_cost=0.002,
-        completion_token_cost=0.002,
-        max_tokens=4096,
-    ),
-    "gpt-4": ChatModelInfo(
-        name="gpt-4",
-        prompt_token_cost=0.03,
-        completion_token_cost=0.06,
-        max_tokens=8192,
-    ),
-    "gpt-4-32k": ChatModelInfo(
-        name="gpt-4-32k",
-        prompt_token_cost=0.06,
-        completion_token_cost=0.12,
-        max_tokens=32768,
-    ),
+    info.name: info
+    for info in [
+        ChatModelInfo(
+            name="gpt-3.5-turbo",
+            prompt_token_cost=0.002,
+            completion_token_cost=0.002,
+            max_tokens=4096,
+        ),
+        ChatModelInfo(
+            name="gpt-3.5-turbo-0301",
+            prompt_token_cost=0.002,
+            completion_token_cost=0.002,
+            max_tokens=4096,
+        ),
+        ChatModelInfo(
+            name="gpt-4",
+            prompt_token_cost=0.03,
+            completion_token_cost=0.06,
+            max_tokens=8192,
+        ),
+        ChatModelInfo(
+            name="gpt-4-0314",
+            prompt_token_cost=0.03,
+            completion_token_cost=0.06,
+            max_tokens=8192,
+        ),
+        ChatModelInfo(
+            name="gpt-4-32k",
+            prompt_token_cost=0.06,
+            completion_token_cost=0.12,
+            max_tokens=32768,
+        ),
+        ChatModelInfo(
+            name="gpt-4-32k-0314",
+            prompt_token_cost=0.06,
+            completion_token_cost=0.12,
+            max_tokens=32768,
+        ),
+    ]
+}
+
+OPEN_AI_TEXT_MODELS = {
+    info.name: info
+    for info in [
+        TextModelInfo(
+            name="text-davinci-003",
+            prompt_token_cost=0.02,
+            completion_token_cost=0.02,
+            max_tokens=4097,
+        ),
+    ]
 }
 
 OPEN_AI_EMBEDDING_MODELS = {
-    "text-embedding-ada-002": EmbeddingModelInfo(
-        name="text-embedding-ada-002",
-        prompt_token_cost=0.0004,
-        completion_token_cost=0.0,
-        max_tokens=8191,
-        embedding_dimensions=1536,
-    ),
+    info.name: info
+    for info in [
+        EmbeddingModelInfo(
+            name="text-embedding-ada-002",
+            prompt_token_cost=0.0004,
+            completion_token_cost=0.0,
+            max_tokens=8191,
+            embedding_dimensions=1536,
+        ),
+    ]
 }
 
-OPEN_AI_MODELS = {
+OPEN_AI_MODELS: dict[str, ChatModelInfo | EmbeddingModelInfo | TextModelInfo] = {
     **OPEN_AI_CHAT_MODELS,
+    **OPEN_AI_TEXT_MODELS,
     **OPEN_AI_EMBEDDING_MODELS,
 }
+
+
+def meter_api(func):
+    """Adds ApiManager metering to functions which make OpenAI API calls"""
+    api_manager = ApiManager()
+
+    openai_obj_processor = openai.util.convert_to_openai_object
+
+    def update_usage_with_response(response: OpenAIObject):
+        try:
+            usage = response.usage
+            logger.debug(f"Reported usage from call to model {response.model}: {usage}")
+            api_manager.update_cost(
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens if "completion_tokens" in usage else 0,
+                response.model,
+            )
+        except Exception as err:
+            logger.warn(f"Failed to update API costs: {err.__class__.__name__}: {err}")
+
+    def metering_wrapper(*args, **kwargs):
+        openai_obj = openai_obj_processor(*args, **kwargs)
+        if isinstance(openai_obj, OpenAIObject) and "usage" in openai_obj:
+            update_usage_with_response(openai_obj)
+        return openai_obj
+
+    def metered_func(*args, **kwargs):
+        with patch.object(
+            engine_api_resource.util,
+            "convert_to_openai_object",
+            side_effect=metering_wrapper,
+        ):
+            return func(*args, **kwargs)
+
+    return metered_func
 
 
 def retry_api(
@@ -99,19 +175,20 @@ def retry_api(
     return _wrapper
 
 
+@meter_api
 @retry_api()
 def create_chat_completion(
-    messages: List[Message],
+    messages: List[MessageDict],
     *_,
     **kwargs,
-) -> openai.ChatCompletion:
+) -> OpenAIObject:
     """Create a chat completion using the OpenAI API
 
     Args:
         messages: A list of messages to feed to the chatbot.
         kwargs: Other arguments to pass to the OpenAI API chat completion call.
     Returns:
-        openai.ChatCompletion: The chat completion object.
+        OpenAIObject: The ChatCompletion response from OpenAI
 
     """
     return openai.ChatCompletion.create(
@@ -120,19 +197,42 @@ def create_chat_completion(
     )
 
 
+@meter_api
+@retry_api()
+def create_text_completion(
+    prompt: str,
+    *_,
+    **kwargs,
+) -> OpenAIObject:
+    """Create a text completion using the OpenAI API
+
+    Args:
+        prompt: A text prompt to feed to the LLM
+        kwargs: Other arguments to pass to the OpenAI API text completion call.
+    Returns:
+        OpenAIObject: The Completion response from OpenAI
+
+    """
+    return openai.Completion.create(
+        prompt=prompt,
+        **kwargs,
+    )
+
+
+@meter_api
 @retry_api()
 def create_embedding(
     text: str,
     *_,
     **kwargs,
-) -> openai.Embedding:
+) -> OpenAIObject:
     """Create an embedding using the OpenAI API
 
     Args:
         text: The text to embed.
         kwargs: Other arguments to pass to the OpenAI API embedding call.
     Returns:
-        openai.Embedding: The embedding object.
+        OpenAIObject: The Embedding response from OpenAI
 
     """
     return openai.Embedding.create(
