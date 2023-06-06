@@ -16,9 +16,8 @@ from autogpt.logs import logger
     "execute_python_code", "Execute Python Code", '"code": "<code>", "name": "<name>"'
 )
 def execute_python_code(code: str, name: str, config: Config) -> str:
-    """Execute Python code in a Docker container and returns the STDOUT of the
-    executed code. If there is any data that needs to be captured use a print
-    statement
+    """Creates and executes a Python file in a Docker container and returns the STDOUT of the
+    executed code. If there is any data that needs to be captured use a print statement
 
     Args:
         code (str): The python code to run
