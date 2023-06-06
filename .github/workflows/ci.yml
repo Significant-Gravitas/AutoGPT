@@ -184,7 +184,7 @@ jobs:
           if ! git diff --quiet $score_file; then
             git add $score_file
             git commit -m "Update challenge scores"
-            git push origin HEAD:${{ github.ref }}
+            git push origin HEAD:${{ github.ref_name }}
           else
             echo "The challenge scores didn't change."
           fi
@@ -198,7 +198,7 @@ jobs:
             is_pull_request=true
             cassette_branch="${{ github.event.pull_request.user.login }}-${{ github.event.pull_request.head.ref }}"
           else
-            cassette_branch=$(echo ${{ github.ref }} | sed -e "s/refs\/heads\///g")
+            cassette_branch="${{ github.ref_name }}"
           fi
 
           cd tests/Auto-GPT-test-cassettes
