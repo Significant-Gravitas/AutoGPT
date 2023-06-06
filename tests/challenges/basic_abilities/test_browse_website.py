@@ -1,9 +1,7 @@
 import pytest
 
 from autogpt.agent import Agent
-from tests.challenges.challenge_decorator.challenge_decorator import (
-    challenge,
-)
+from tests.challenges.challenge_decorator.challenge_decorator import challenge
 from tests.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
 

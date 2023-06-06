@@ -5,9 +5,7 @@ from typing import Any, Callable, Optional
 import pytest
 
 from tests.challenges.challenge_decorator.challenge import Challenge
-from tests.challenges.challenge_decorator.challenge_utils import (
-    create_challenge,
-)
+from tests.challenges.challenge_decorator.challenge_utils import create_challenge
 from tests.challenges.challenge_decorator.score_utils import (
     get_scores,
     update_new_score,

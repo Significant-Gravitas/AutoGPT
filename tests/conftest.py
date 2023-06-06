@@ -10,8 +10,6 @@ from autogpt.workspace import Workspace
 
 pytest_plugins = ["tests.integration.agent_factory", "tests.integration.memory.utils"]
 
-PROXY = os.environ.get("PROXY")
-
 
 @pytest.fixture()
 def vcr_cassette_dir(request):

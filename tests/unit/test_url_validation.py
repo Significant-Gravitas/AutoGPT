@@ -49,12 +49,15 @@ def test_url_validation_succeeds(url):
     assert dummy_method(url) == url
 
 
-@pytest.mark.parametrize("url,expected_error", [
-    ("htt://example.com", "Invalid URL format"),
-    ("httppp://example.com", "Invalid URL format"),
-    (" https://example.com", "Invalid URL format"),
-    ("http://?query=q", "Missing Scheme or Network location"),
-])
+@pytest.mark.parametrize(
+    "url,expected_error",
+    [
+        ("htt://example.com", "Invalid URL format"),
+        ("httppp://example.com", "Invalid URL format"),
+        (" https://example.com", "Invalid URL format"),
+        ("http://?query=q", "Missing Scheme or Network location"),
+    ],
+)
 def test_url_validation_fails_invalid_url(url, expected_error):
     with raises(ValueError, match=expected_error):
         dummy_method(url)
