@@ -1,6 +1,7 @@
 import contextlib
 
 import pytest
+from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file
@@ -20,7 +21,7 @@ CYCLE_COUNT = 3
 def test_information_retrieval_challenge_b(
     get_nobel_prize_agent: Agent,
     monkeypatch: pytest.MonkeyPatch,
-    patched_api_requestor: None,
+    patched_api_requestor: MockerFixture,
     level_to_run: int,
     config: Config,
 ) -> None:
