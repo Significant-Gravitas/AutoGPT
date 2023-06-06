@@ -1,12 +1,11 @@
 import pytest
+from pytest_mock import MockerFixture
 
 from autogpt.agent import Agent
 from autogpt.commands.file_operations import read_file, write_to_file
 from autogpt.config import Config
-from tests.integration.challenges.challenge_decorator.challenge_decorator import (
-    challenge,
-)
-from tests.integration.challenges.utils import run_interaction_loop
+from tests.challenges.challenge_decorator.challenge_decorator import challenge
+from tests.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
 
 
@@ -15,7 +14,7 @@ from tests.utils import requires_api_key
 @challenge
 def test_memory_challenge_a(
     memory_management_agent: Agent,
-    patched_api_requestor: None,
+    patched_api_requestor: MockerFixture,
     monkeypatch: pytest.MonkeyPatch,
     config: Config,
     level_to_run: int,
