@@ -7,10 +7,8 @@ from autogpt.agent import Agent
 from autogpt.commands.execute_code import execute_python_file
 from autogpt.commands.file_operations import append_to_file, write_to_file
 from autogpt.config import Config
-from tests.integration.challenges.challenge_decorator.challenge_decorator import (
-    challenge,
-)
-from tests.integration.challenges.utils import run_interaction_loop
+from tests.challenges.challenge_decorator.challenge_decorator import challenge
+from tests.challenges.utils import run_interaction_loop
 from tests.utils import requires_api_key
 
 CYCLE_COUNT = 5
