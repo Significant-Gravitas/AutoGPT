@@ -18,7 +18,7 @@ concurrency:
 jobs:
   lint:
     # eliminate duplicate runs on master
-    if: github.event_name == 'push' || github.ref_name != 'master' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
+    if: github.event_name == 'push' || github.base_ref != 'master' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
 
     runs-on: ubuntu-latest
     env:
@@ -74,7 +74,7 @@ jobs:
 
   test:
     # eliminate duplicate runs on master
-    if: github.event_name == 'push' || github.ref_name != 'master' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
+    if: github.event_name == 'push' || github.base_ref != 'master' || (github.event.pull_request.head.repo.fork == (github.event_name == 'pull_request_target'))
 
     permissions:
       # Gives the action the necessary permissions for publishing new
