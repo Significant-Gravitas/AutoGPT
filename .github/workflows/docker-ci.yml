@@ -108,12 +108,13 @@ jobs:
           set +e
           test_output=$(
             docker run --env CI --env OPENAI_API_KEY --entrypoint python ${{ env.IMAGE_NAME }} -m \
-            pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term 2>&1
+            pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term \
+              tests/unit tests/integration 2>&1
           )
           test_failure=$?
-  
+
           echo "$test_output"
-  
+
           cat << $EOF >> $GITHUB_STEP_SUMMARY
           # Tests $([ $test_failure = 0 ] && echo '✅' || echo '❌')
           \`\`\`
