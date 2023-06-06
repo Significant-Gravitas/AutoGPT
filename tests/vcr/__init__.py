@@ -25,6 +25,12 @@ def vcr_config():
     return BASE_VCR_CONFIG
 
 
+@pytest.fixture()
+def vcr_cassette_dir(request):
+    test_name = os.path.splitext(request.node.name)[0]
+    return os.path.join("tests/Auto-GPT-test-cassettes", test_name)
+
+
 def patch_api_base(requestor):
     new_api_base = f"{PROXY}/v1"
     requestor.api_base = new_api_base
