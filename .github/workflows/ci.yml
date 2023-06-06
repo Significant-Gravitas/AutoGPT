@@ -5,7 +5,7 @@ on:
     branches: [ master, ci-test* ]
     paths-ignore:
       - 'tests/Auto-GPT-test-cassettes'
-      - 'tests/integration/challenges/current_score.json'
+      - 'tests/challenges/current_score.json'
   pull_request:
     branches: [ stable, master ]
   pull_request_target:
@@ -148,8 +148,9 @@ jobs:
 
       - name: Run pytest with coverage
         run: |
-          pytest -n auto --cov=autogpt --cov-report term-missing --cov-branch --cov-report xml --cov-report term
-          python tests/integration/challenges/utils/build_current_score.py
+          pytest -n auto --cov=autogpt --cov-branch --cov-report term-missing --cov-report xml \
+            tests/unit tests/integration tests/challenges
+          python tests/challenges/utils/build_current_score.py
         env:
           CI: true
           PROXY: ${{ secrets.PROXY }}
@@ -179,7 +180,7 @@ jobs:
       - name: Push updated challenge scores
         if: github.event_name == 'push'
         run: |
-          score_file="tests/integration/challenges/current_score.json"
+          score_file="tests/challenges/current_score.json"
 
           if ! git diff --quiet $score_file; then
             git add $score_file

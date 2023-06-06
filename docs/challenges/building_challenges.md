@@ -70,7 +70,7 @@ def kubernetes_agent(
 ```
 
 ## Creating your challenge
-Go to `tests/integration/challenges`and create a file that is called `test_your_test_description.py` and add it to the appropriate folder. If no category exists you can create a new one.
+Go to `tests/challenges`and create a file that is called `test_your_test_description.py` and add it to the appropriate folder. If no category exists you can create a new one.
 
 Your test could look something like this 
 
@@ -84,7 +84,7 @@ import yaml
 
 from autogpt.commands.file_operations import read_file, write_to_file
 from tests.integration.agent_utils import run_interaction_loop
-from tests.integration.challenges.utils import run_multiple_times
+from tests.challenges.utils import run_multiple_times
 from tests.utils import requires_api_key
 
 
