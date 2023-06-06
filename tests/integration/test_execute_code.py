@@ -48,3 +48,11 @@ def test_execute_python_file_invalid(config):
 def test_execute_shell(config_allow_execute, random_string, config):
     result = sut.execute_shell(f"echo 'Hello {random_string}!'", config)
     assert f"Hello {random_string}!" in result
+
+
+def test_execute_shell_deny_command(
+    python_test_file: str, config_allow_execute: bool, config: Config
+):
+    config.deny_commands = ["echo"]
+    result = sut.execute_shell(f"echo 'Hello {random_string}!'", config)
+    assert "Error:" in result and "not allowed" in result
