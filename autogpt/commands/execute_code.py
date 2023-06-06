@@ -9,6 +9,7 @@ from docker.errors import ImageNotFound
 from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.logs import logger
+from autogpt.setup import CFG
 
 
 @command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
@@ -21,17 +22,25 @@ def execute_python_file(filename: str, config: Config) -> str:
     Returns:
         str: The output of the file
     """
-    logger.info(f"Executing file '{filename}'")
+    logger.info(
+        f"Executing python file '{filename}' in working directory '{CFG.workspace_path}'"
+    )
 
     if not filename.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
     if not os.path.isfile(filename):
-        return f"Error: File '{filename}' does not exist."
+        # Mimic the response that you get from the command line so that it's easier to identify
+        return (
+            f"python: can't open file '{filename}': [Errno 2] No such file or directory"
+        )
 
     if we_are_running_in_a_docker_container():
         result = subprocess.run(
-            ["python", filename], capture_output=True, encoding="utf8"
+            ["python", filename],
+            capture_output=True,
+            encoding="utf8",
+            cwd=CFG.workspace_path,
         )
         if result.returncode == 0:
             return result.stdout

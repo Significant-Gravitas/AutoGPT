@@ -229,6 +229,14 @@ def test_read_file(
     assert content.replace("\r", "") == file_content
 
 
+def test_read_file_not_found(config: Config):
+    content = file_ops.read_file("does_not_exist.txt", config)
+    assert (
+        content.replace("\r", "")
+        == "Error: read_file: does_not_exist.txt: no such file or directory"
+    )
+
+
 def test_write_to_file(test_file_path: Path, config):
     new_content = "This is new content.\n"
     file_ops.write_to_file(str(test_file_path), new_content, config)
