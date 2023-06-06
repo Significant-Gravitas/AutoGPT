@@ -40,8 +40,7 @@ def google_search(query: str, config: Config, num_results: int = 8) -> str:
             return json.dumps(search_results)
 
         results = DDGS().text(query)
-        for item in islice(results, num_results):
-            search_results.append(item)
+        search_results = list(islice(results, num_results))
 
         if search_results:
             break
