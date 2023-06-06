@@ -1,16 +1,14 @@
 from typing import Any, overload
 
 import numpy as np
-import openai
 
 from autogpt.config import Config
-from autogpt.llm.utils import metered, retry_openai_api
+from autogpt.llm.base import TText
+from autogpt.llm.providers import openai as iopenai
 from autogpt.logs import logger
 
 Embedding = list[np.float32] | np.ndarray[Any, np.dtype[np.float32]]
 """Embedding vector"""
-TText = list[int]
-"""Token array representing text"""
 
 
 @overload
@@ -23,8 +21,6 @@ def get_embedding(input: list[str] | list[TText]) -> list[Embedding]:
     ...
 
 
-@metered
-@retry_openai_api()
 def get_embedding(
     input: str | TText | list[str] | list[TText],
 ) -> Embedding | list[Embedding]:
@@ -57,10 +53,10 @@ def get_embedding(
         + (f" via Azure deployment '{kwargs['engine']}'" if cfg.use_azure else "")
     )
 
-    embeddings = openai.Embedding.create(
-        input=input,
-        api_key=cfg.openai_api_key,
+    embeddings = iopenai.create_embedding(
+        input,
         **kwargs,
+        api_key=cfg.openai_api_key,
     ).data
 
     if not multiple:

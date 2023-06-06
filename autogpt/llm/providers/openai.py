@@ -15,6 +15,7 @@ from autogpt.llm.base import (
     EmbeddingModelInfo,
     MessageDict,
     TextModelInfo,
+    TText,
 )
 from autogpt.logs import logger
 
@@ -227,20 +228,20 @@ def create_text_completion(
 @meter_api
 @retry_api()
 def create_embedding(
-    text: str,
+    input: str | TText | List[str] | List[TText],
     *_,
     **kwargs,
 ) -> OpenAIObject:
     """Create an embedding using the OpenAI API
 
     Args:
-        text: The text to embed.
+        input: The text to embed.
         kwargs: Other arguments to pass to the OpenAI API embedding call.
     Returns:
         OpenAIObject: The Embedding response from OpenAI
 
     """
     return openai.Embedding.create(
-        input=text,
+        input=input,
         **kwargs,
     )
