@@ -1,19 +1,15 @@
-"""Unit tests for the commands module"""
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
+from pytest_mock import MockerFixture
 
 from autogpt.app import list_agents, start_agent
-from tests.utils import requires_api_key
+from autogpt.config import Config
 
 
-@pytest.mark.vcr
-@pytest.mark.integration_test
-@requires_api_key("OPENAI_API_KEY")
-def test_make_agent(patched_api_requestor, config) -> None:
+def test_make_agent(config: Config, mocker: MockerFixture) -> None:
     """Test that an agent can be created"""
     # Use the mock agent manager to avoid creating a real agent
-    with patch("openai.ChatCompletion.create") as mock:
+    with mocker.patch("openai.ChatCompletion.create") as mock:
         response = MagicMock()
         # del response.error
         response.choices[0].messages[0].content = "Test message"

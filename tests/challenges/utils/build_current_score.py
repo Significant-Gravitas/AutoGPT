@@ -27,10 +27,10 @@ def recursive_sort_dict(data: dict) -> dict:
 
 cwd = os.getcwd()  # get current working directory
 new_score_filename_pattern = os.path.join(
-    cwd, "tests/integration/challenges/new_score_*.json"
+    cwd, "tests/challenges/new_score_*.json"
 )
 current_score_filename = os.path.join(
-    cwd, "tests/integration/challenges/current_score.json"
+    cwd, "tests/challenges/current_score.json"
 )
 
 merged_data: Dict[str, Any] = {}

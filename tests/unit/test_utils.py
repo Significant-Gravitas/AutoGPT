@@ -151,7 +151,3 @@ def test_get_current_git_branch_failure(mock_repo):
     branch_name = get_current_git_branch()
 
     assert branch_name == ""
-
-
-if __name__ == "__main__":
-    pytest.main()

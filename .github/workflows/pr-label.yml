@@ -6,7 +6,7 @@ on:
     branches: [ master ]
     paths-ignore:
       - 'tests/Auto-GPT-test-cassettes'
-      - 'tests/integration/challenges/current_score.json'
+      - 'tests/challenges/current_score.json'
   # So that the `dirtyLabel` is removed if conflicts are resolve
   # We recommend `pull_request_target` so that github secrets are available.
   # In `pull_request` we wouldn't be able to change labels of fork PRs
