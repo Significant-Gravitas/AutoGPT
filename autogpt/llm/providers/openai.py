@@ -10,7 +10,12 @@ from openai.error import APIError, RateLimitError, Timeout
 from openai.openai_object import OpenAIObject
 
 from autogpt.llm.api_manager import ApiManager
-from autogpt.llm.base import ChatModelInfo, EmbeddingModelInfo, MessageDict, TextModelInfo
+from autogpt.llm.base import (
+    ChatModelInfo,
+    EmbeddingModelInfo,
+    MessageDict,
+    TextModelInfo,
+)
 from autogpt.logs import logger
 
 OPEN_AI_CHAT_MODELS = {
