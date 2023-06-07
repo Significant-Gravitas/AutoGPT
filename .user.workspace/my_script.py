@@ -1,1 +1,0 @@
-print('Script created successfully.')
