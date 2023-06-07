@@ -12,6 +12,7 @@ from autogpt.json_utils.json_fix_llm import fix_json_using_multiple_techniques
 from autogpt.json_utils.utilities import LLM_DEFAULT_RESPONSE_FORMAT, validate_json
 from autogpt.llm.base import ChatSequence
 from autogpt.llm.chat import chat_with_ai, create_chat_completion
+from autogpt.llm.providers.openai import OPEN_AI_CHAT_MODELS
 from autogpt.llm.utils import count_string_tokens
 from autogpt.log_cycle.log_cycle import (
     FULL_MESSAGE_HISTORY_FILE_NAME,
@@ -82,6 +83,7 @@ class Agent:
         self.created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.cycle_count = 0
         self.log_cycle_handler = LogCycleHandler()
+        self.fast_token_limit = OPEN_AI_CHAT_MODELS.get(cfg.fast_llm_model).max_tokens
 
     def start_interaction_loop(self):
         # Interaction Loop
@@ -132,7 +134,7 @@ class Agent:
                     self,
                     self.system_prompt,
                     self.triggering_prompt,
-                    cfg.fast_token_limit,
+                    self.fast_token_limit,
                     cfg.fast_llm_model,
                 )
 
@@ -290,7 +292,7 @@ class Agent:
                 memory_tlength = count_string_tokens(
                     str(self.history.summary_message()), cfg.fast_llm_model
                 )
-                if result_tlength + memory_tlength + 600 > cfg.fast_token_limit:
+                if result_tlength + memory_tlength + 600 > self.fast_token_limit:
                     result = f"Failure: command {command_name} returned too much output. \
                         Do not execute this command again with the same arguments."
 
