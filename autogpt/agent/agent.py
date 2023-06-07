@@ -166,6 +166,8 @@ class Agent:
                 NEXT_ACTION_FILE_NAME,
             )
 
+            # First log new-line so user can differentiate sections better in console
+            logger.typewriter_log("\n")
             logger.typewriter_log(
                 "NEXT ACTION: ",
                 Fore.CYAN,
@@ -177,14 +179,6 @@ class Agent:
                 # ### GET USER AUTHORIZATION TO EXECUTE COMMAND ###
                 # Get key press: Prompt the user to press enter to continue or escape
                 # to exit
-                # First log new-line so user can differentiate sections better in console
-                logger.typewriter_log("\n")
-                logger.typewriter_log(
-                    "NEXT ACTION: ",
-                    Fore.CYAN,
-                    f"COMMAND = {Fore.CYAN}{command_name}{Style.RESET_ALL}  "
-                    f"ARGUMENTS = {Fore.CYAN}{arguments}{Style.RESET_ALL}",
-                )
                 self.user_input = ""
                 logger.info(
                     "Enter 'y' to authorise command, 'y -N' to run N continuous commands, 's' to run self-feedback commands, "
