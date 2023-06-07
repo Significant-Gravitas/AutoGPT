@@ -1,10 +1,13 @@
 """Task Statuses module."""
 from __future__ import annotations
 
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
 from autogpt.commands.command import command
 from autogpt.logs import logger
+
+if TYPE_CHECKING:
+    from autogpt.config import Config
 
 
 @command(
@@ -12,7 +15,7 @@ from autogpt.logs import logger
     "Task Complete (Shutdown)",
     '"reason": "<reason>"',
 )
-def task_complete(reason: str) -> NoReturn:
+def task_complete(reason: str, config: Config) -> NoReturn:
     """
     A function that takes in a string and exits the program
 
