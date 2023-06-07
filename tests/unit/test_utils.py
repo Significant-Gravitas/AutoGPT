@@ -1,7 +1,6 @@
 import os
 from unittest.mock import patch
 
-import pytest
 import requests
 
 from autogpt.utils import (
@@ -151,7 +150,3 @@ def test_get_current_git_branch_failure(mock_repo):
     branch_name = get_current_git_branch()
 
     assert branch_name == ""
-
-
-if __name__ == "__main__":
-    pytest.main()
