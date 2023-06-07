@@ -10,7 +10,6 @@ auto_gpt_workspace/*
 *.mpeg
 .env
 azure.yaml
-outputs/*
 ai_settings.yaml
 last_run_ai_settings.yaml
 .vscode
@@ -21,6 +20,8 @@ log-ingestion.txt
 logs
 *.log
 *.mp3
+mem.sqlite3
+venvAutoGPT
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -95,6 +96,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+site/
 
 # PyBuilder
 target/
@@ -157,3 +159,8 @@ vicuna-*
 
 # mac
 .DS_Store
+
+openai/
+
+# news
+CURRENT_BULLETIN.md

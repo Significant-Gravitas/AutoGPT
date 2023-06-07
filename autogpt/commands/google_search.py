@@ -2,15 +2,27 @@
 from __future__ import annotations
 
 import json
+import time
+from itertools import islice
+from typing import TYPE_CHECKING
 
-from duckduckgo_search import ddg
+from duckduckgo_search import DDGS
 
-from autogpt.config import Config
+from autogpt.commands.command import command
 
-CFG = Config()
+if TYPE_CHECKING:
+    from autogpt.config import Config
+
+DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 
-def google_search(query: str, num_results: int = 8) -> str:
+@command(
+    "google",
+    "Google Search",
+    '"query": "<query>"',
+    lambda config: not config.google_api_key,
+)
+def google_search(query: str, config: Config, num_results: int = 8) -> str:
     """Return the results of a Google search
 
     Args:
@@ -21,20 +33,35 @@ def google_search(query: str, num_results: int = 8) -> str:
         str: The results of the search.
     """
     search_results = []
-    if not query:
-        return json.dumps(search_results)
+    attempts = 0
 
-    results = ddg(query, max_results=num_results)
-    if not results:
-        return json.dumps(search_results)
+    while attempts < DUCKDUCKGO_MAX_ATTEMPTS:
+        if not query:
+            return json.dumps(search_results)
 
-    for j in results:
-        search_results.append(j)
+        results = DDGS().text(query)
+        search_results = list(islice(results, num_results))
 
-    return json.dumps(search_results, ensure_ascii=False, indent=4)
+        if search_results:
+            break
+
+        time.sleep(1)
+        attempts += 1
+
+    results = json.dumps(search_results, ensure_ascii=False, indent=4)
+    return safe_google_results(results)
 
 
-def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
+@command(
+    "google",
+    "Google Search",
+    '"query": "<query>"',
+    lambda config: bool(config.google_api_key) and bool(config.custom_search_engine_id),
+    "Configure google_api_key and custom_search_engine_id.",
+)
+def google_official_search(
+    query: str, config: Config, num_results: int = 8
+) -> str | list[str]:
     """Return the results of a Google search using the official Google API
 
     Args:
@@ -50,8 +77,8 @@ def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
 
     try:
         # Get the Google API key and Custom Search Engine ID from the config file
-        api_key = CFG.google_api_key
-        custom_search_engine_id = CFG.custom_search_engine_id
+        api_key = config.google_api_key
+        custom_search_engine_id = config.custom_search_engine_id
 
         # Initialize the Custom Search API service
         service = build("customsearch", "v1", developerKey=api_key)
@@ -82,6 +109,26 @@ def google_official_search(query: str, num_results: int = 8) -> str | list[str]:
             return "Error: The provided Google API key is invalid or missing."
         else:
             return f"Error: {e}"
+    # google_result can be a list or a string depending on the search results
 
     # Return the list of search result URLs
-    return search_results_links
+    return safe_google_results(search_results_links)
+
+
+def safe_google_results(results: str | list) -> str:
+    """
+        Return the results of a google search in a safe format.
+
+    Args:
+        results (str | list): The search results.
+
+    Returns:
+        str: The results of the search.
+    """
+    if isinstance(results, list):
+        safe_message = json.dumps(
+            [result.encode("utf-8", "ignore").decode("utf-8") for result in results]
+        )
+    else:
+        safe_message = results.encode("utf-8", "ignore").decode("utf-8")
+    return safe_message
