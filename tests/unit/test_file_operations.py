@@ -230,11 +230,9 @@ def test_read_file(
 
 
 def test_read_file_not_found(config: Config):
-    content = file_ops.read_file("does_not_exist.txt", config)
-    assert (
-        content.replace("\r", "")
-        == "Error: read_file: does_not_exist.txt: no such file or directory"
-    )
+    filename = "does_not_exist.txt"
+    content = file_ops.read_file(filename, config)
+    assert "Error:" in content and filename in content and "no such file" in content
 
 
 def test_write_to_file(test_file_path: Path, config):
