@@ -1,0 +1,8 @@
+# Ignore the contents of the .user.workspace directory
+.user.workspace/*
+
+# Ignore any file or directory named "temp"
+temp
+
+# Ignore the "node_modules" directory
+node_modules

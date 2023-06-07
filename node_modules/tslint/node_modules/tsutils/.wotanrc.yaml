@@ -1,0 +1,5 @@
+extends: wotan:recommended
+rules:
+    # TODO enable once https://github.com/Microsoft/TypeScript/issues/24706 is resolved
+    no-useless-assertion: off
+    no-useless-predicate: off

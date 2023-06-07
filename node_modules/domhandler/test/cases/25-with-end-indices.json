@@ -1,0 +1,86 @@
+{
+  "name": "withEndIndices adds correct endIndex properties",
+  "options": {"withStartIndices": true,"withEndIndices": true},
+  "streaming": false,
+  "html": "<!DOCTYPE html> <html> <title>The Title</title> <body class='foo'>Hello world <p></p></body> <!-- the comment --> </html> ",
+  "expected": [
+    {
+      "endIndex": null,
+      "name": "!doctype",
+      "data": "!DOCTYPE html",
+      "type": "directive"
+    },
+    {
+      "type": "text",
+      "data": " ",
+      "endIndex": 15
+    },
+    {
+      "endIndex": 120,
+      "type": "tag",
+      "name": "html",
+      "attribs": {},
+      "parent": null,
+      "children": [
+        {
+          "endIndex": 22,
+          "type": "text",
+          "data": " "
+        },
+        {
+          "endIndex": 46,
+          "type": "tag",
+          "name": "title",
+          "attribs": {},
+          "children": [
+            {
+              "endIndex": 38,
+              "data": "The Title",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "endIndex": 47,
+          "type": "text",
+          "data": " "
+        },
+        {
+          "endIndex": 91,
+          "type": "tag",
+          "name": "body",
+          "attribs": {"class": "foo"},
+          "children": [
+            {
+              "endIndex": 77,
+              "data": "Hello world ",
+              "type": "text"
+            },
+            {
+              "endIndex": 84,
+              "type": "tag",
+              "name": "p",
+              "attribs": {},
+              "children": []
+            }
+          ]
+        },
+        {
+          "endIndex": 92,
+          "type": "text",
+          "data": " "
+        },
+        {
+          "endIndex": 112,
+          "type": "comment",
+          "data": " the comment "
+        },
+        {
+          "endIndex": 113,
+          "type": "text",
+          "data": " "
+        }
+      ]
+    }
+  ]
+}

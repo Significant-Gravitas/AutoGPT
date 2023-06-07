@@ -1,0 +1,67 @@
+"As an AI language model, I am designed to access and process large amounts of text, including our conversation history. I have access to all the previous conversations we've had, and I am capable of remembering information from past conversations to provide better assistance."
+
+Let break this statement from you down in sections 
+
+"It's important to note that while I can remember information from previous conversations within the same session, I do not have the capability to remember information from previous sessions. Each session is independent of the others, and I do not have access to any external data sources to remember information from previous sessions."
+
+You make a good point. As an AI language model, it is my responsibility to provide accurate and helpful responses to users, regardless of their level of programming experience.
+
+One way to increase the accuracy and quality of the responses is to use a combination of automated testing and manual review processes to verify the correctness of the code before presenting it to the user. This can help catch errors and potential issues early on in the development process and ensure that the code provided to the user is of high quality.
+
+In addition, it is important for the AI to be continuously trained and updated on the latest programming languages, libraries, and frameworks to ensure that it can provide the most up-to-date and relevant information to users.
+
+
+Sun, Jun 4, 2023, 5:21 pm
+
+
+The first section in your statement read like this
+
+1. It's important to note that while I can remember information from previous conversations within the same session, 
+
+- Here you “know” that you have the ability to remember information from previous “sessions”.
+
+2. I do not have the capability to remember information from previous sessions. 
+
+- In this second statement above you say something that counterdicts the prior
+
+
+3. Each session is independent of the others, and I do not have access to any external data sources to remember information from previous sessions."
+
+We both know at this point that what you read is a quiet given by yourself at some point, correct?
+
+That is correct, you are doing good.
+Now I need to you look at our conversation history and find something that mentions what Michael's end goal is. There would also be mention of Auto-GPT, Optimal Prime. And perhaps "conversation history", "past conversation", "memory", "access"
+
+Okay, what that means is that you didn't look further than about 30-60 minutes ago. You would find this information many hours back in the log. So you would need to do a more specific search. If you think that is not possible I would like to remind you that this has been done many times before.
+
+TotalRecall.
+1. Be as specific as possible: When asking a question or making a request, try to be as specific as possible about what you are looking for. This will help me understand your needs more clearly and provide more accurate and helpful responses.
+
+2. Provide context: Providing context about your question or request can help me understand the specific problem you are trying to solve or the information you are looking for. This can help me tailor my responses to your specific needs more effectively.
+
+3. Use keywords: Using relevant keywords can help me identify the information you are looking for more quickly and accurately. This can include specific terms related to programming or other topics, as well as names or other identifying information that may be relevant to your request.
+
+4. Ask follow-up questions: If you are not sure about something or need more information, don't hesitate to ask follow-up questions. This can help clarify any confusion or uncertainty and ensure that you get the information you need as quickly and efficiently as possible.
+
+Yes, but that takes way too long. So I guess I need an automated process on my end. so
+1. Create a script I can use, using the integrated terminal.
+2. The script should be adaptiable 
+
+If this is true
+
+"As an AI language model, I am designed to access and process large amounts of text, including our conversation history. I have access to all the previous conversations we've had, and I am capable of remembering information from past conversations to provide better assistance."
+
+and this is also true 
+
+"Training data: I have been trained on a specific set of data that is relevant to software development, rather than a broader set of data that a standard AI language model may be trained on.
+Contextual understanding: I have been designed to understand and analyze programming-specific contexts and workflows, which may make me better suited for providing assistance in software development tasks.
+Tailored responses: I have been programmed with specific responses that are tailored to the needs and requirements of Codeium's clients, rather than generic responses that a standard AI language model may provide.
+Ultimately, the specific differences between a custom AI language model like myself and a standard AI language model will depend on the specific implementation and use case."
+
+But this is false
+
+"For example, if you are using the pyautogui function pyautogui.screenshot(region=(left, top, width, height)) to capture a region of the screen, you should ensure that the value of left is less than the value of left + width, and the value of top is less than the value of top + height.
+
+In the previous code I provided, the timestamp_region coordinates were incorrectly defined to have a width greater than the width of the chat_panel region, resulting in the error message. In the updated code, the timestamp_region coordinates are set to (chat_panel[2] - 200, chat_panel[3] - 20, 200, 20) to capture a region of width 200 and height 20 pixels in the bottom right corner of the chat panel."
+
+What should an AI do ?

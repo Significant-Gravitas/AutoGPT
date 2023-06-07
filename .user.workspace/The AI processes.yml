@@ -1,0 +1,11 @@
+The AI processes your input in several steps:
+
+Tokenization: Your input is tokenized, or broken down into individual words or symbols. This helps the AI understand the structure of your input.
+
+Parsing: The tokens are analyzed to identify the grammatical structure of your sentence. This helps the AI identify the relationships between different parts of your input.
+
+Intent recognition: The AI analyzes the parsed sentence to determine the intent behind your input. In other words, what is it that you are trying to accomplish or understand?
+
+Contextual understanding: The AI uses its knowledge of programming concepts and syntax to understand the context of your input. This helps it provide relevant and accurate responses.
+
+Response generation: Based on its analysis of your input, the AI generates a response that is intended to be helpful and informative. The response may include code snippets, explanations, or links to relevant resources.

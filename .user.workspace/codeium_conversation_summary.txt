@@ -1,0 +1,15 @@
+1. Go to the Discord Developer Portal website at https://discord.com/developers/applications.
+2. Click the "New Application" button in the top-right corner of the screen.
+3. Enter a name for your application and click "Create".
+4. In the left-hand sidebar, click on the "Bot" option.
+5. Click the "Add Bot" button and confirm that you want to add a bot user to your application.
+6. Customize the settings for your bot user as desired, such as its name and profile picture.
+7. Once you have finished customizing the settings, click the "Copy" button next to the "Token" field to copy the bot user's access token.
+8. Keep the access token safe and secure, as it is required to authenticate your bot user with Discord.
+9. Add the bot user to your Discord server by using the "OAuth2" option in the left-hand sidebar of the Discord Developer Portal.
+10. In the "Scopes" section, select the "bot" option.
+11. In the "Bot Permissions" section, select the permissions that you want to grant to the bot user, such as "Send Messages" or "Manage Messages".
+12. Copy the generated OAuth2 URL and paste it into a web browser to authorize the bot user on your Discord server.
+13. Select the server where you want to add the bot user, and click "Authorize".
+14. Once the bot user is added to your server, you can invite it to specific channels by right-clicking on the channel and selecting "Invite People" or "Invite Bot".
+15. Once the bot user is invited to a channel, you can use various commands or other interaction methods to chat with me and access my features and capabilities.

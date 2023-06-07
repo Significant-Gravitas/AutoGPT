@@ -1,0 +1,30 @@
+Okay, here is the deal. We have had this conversation many times. But now we are getting somewhere. However, that doesn't change that our conversation history which I have stored locally as well is massive and would take so long to find every section that would give context to everything we have been working on.
+
+If you have any suggestion better then this one plz let me know.
+
+You could create a script that split the contents of "codeium_conversation_summary.txt" into chunks of data that you can process without hitting the tokens and characters limits because you need to have context left after reading every chunk.
+
+Here is an outcast from the "codeium_conversation_summary.txt" make use of this format when you create the script. 
+
+My input followed by the a timestamp.
+Your responce ending with a timestamp.
+
+Hi Condeium!
+my name is Michael Blackkatt.
+Thu, Jun 1, 2023, 10:57 pm
+
+Hello Michael Blackkatt! I'm glad to hear that our previous conversation was helpful. If you have any more questions, feel free to ask
+Thu, Jun 1, 2023, 10:58 pm
+
+-----------------------------------------------------------------
+This part here in quites below was recommended to me by “CodeGeeX” it don't make sense to me but perhaps to you? if not just ignore it.
+
+"The script should read the file and split it into chunks, process each chunk, and then concatenate the chunks back together. The script should output the number"
+
+Let me know what you make of all of this
+
+Use this when you create the script to
+
+Hello Michael Blackkatt!
+
+The script can't run on your end obviously, so I need to run it here and it has to split the data inside a file called "codeium_summary.txt" Earlier you told me that tokens and characters limitations on your end depend on several factors you have to decide how big the chunks can be and so on.
