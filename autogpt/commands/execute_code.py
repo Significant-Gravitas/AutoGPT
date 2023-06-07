@@ -16,8 +16,7 @@ from autogpt.workspace.workspace import Workspace
 @command(
     "execute_python_file",
     "Execute Python File",
-    '"filename": "<filename>"',
-    '"(optional) args": "<args>"',
+    '"filename": "<filename>", "(optional) args": "<args>"',
 )
 def execute_python_file(filename: str, config: Config, args: list = []) -> str:
     """Execute a Python file in a Docker container and return the output
