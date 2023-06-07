@@ -1,7 +1,8 @@
 ## Original ignores
 autogpt/keys.py
 autogpt/*.json
-auto_gpt_workspace/*
+**/auto_gpt_workspace/*
+
 *.mpeg
 .env
 azure.yaml
