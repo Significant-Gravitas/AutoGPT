@@ -140,8 +140,13 @@ def create_chat_completion(
         **chat_completion_kwargs,
     )
     logger.debug(f"Response: {response}")
+
+    resp = ""
     if not hasattr(response, "error"):
         resp = response.choices[0].message["content"]
+    else:
+        resp = str(response.error)
+        logger.error(response.error)
 
     for plugin in cfg.plugins:
         if not plugin.can_handle_on_response():
