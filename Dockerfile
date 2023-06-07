@@ -4,11 +4,15 @@ ARG BUILD_TYPE=dev
 # Use an official Python base image from the Docker Hub
 FROM python:3.10-slim AS autogpt-base
 
-# Install dependencies
-RUN apt-get -y update \
-    && apt-get -y install git curl jq wget chromium-driver ca-certificates firefox-esr \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Install browsers
+RUN apt-get update && apt-get install -y \
+    chromium-driver firefox-esr ca-certificates \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install utilities
+RUN apt-get update && apt-get install -y \
+    curl jq wget git \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables
 ENV PIP_NO_CACHE_DIR=yes \
