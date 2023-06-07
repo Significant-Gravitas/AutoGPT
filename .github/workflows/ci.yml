@@ -217,7 +217,7 @@ jobs:
             if [ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]; then
               git checkout -b $challenge_scores_branch
               git remote add base_repo \
-                https://github.com/${{ github.event.pull_request.base.repo.owner.login }}/${{ github.event.pull_request.base.repo.name }}.git
+                ${{ github.event.pull_request.base.repo.clone_url }}
               git push -f base_repo $challenge_scores_branch
               echo "updated_score=true" >> $GITHUB_OUTPUT
             else
