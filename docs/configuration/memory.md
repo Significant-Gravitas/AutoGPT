@@ -1,3 +1,9 @@
+!!! warning
+    The Pinecone, Milvus and Weaviate memory backends were rendered incompatible
+    by work on the memory system, and have been removed in `master`.
+    Whether support will be added back in the future is subject to discussion,
+    feel free to pitch in: https://github.com/Significant-Gravitas/Auto-GPT/discussions/4280
+
 ## Setting Your Cache Type
 
 By default, Auto-GPT set up with Docker Compose will use Redis as its memory backend.
@@ -6,7 +12,7 @@ Otherwise, the default is LocalCache (which stores memory in a JSON file).
 To switch to a different backend, change the `MEMORY_BACKEND` in `.env`
 to the value that you want:
 
-* `local` uses a local JSON cache file
+* `json_file` uses a local JSON cache file
 * `pinecone` uses the Pinecone.io account you configured in your ENV settings
 * `redis` will use the redis cache that you configured
 * `milvus` will use the milvus cache that you configured
