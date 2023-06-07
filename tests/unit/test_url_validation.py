@@ -49,25 +49,17 @@ def test_url_validation_succeeds(url):
     assert dummy_method(url) == url
 
 
-bad_protocol_data = (
-    ("htt://example.com"),
-    ("httppp://example.com"),
-    (" https://example.com"),
+@pytest.mark.parametrize(
+    "url,expected_error",
+    [
+        ("htt://example.com", "Invalid URL format"),
+        ("httppp://example.com", "Invalid URL format"),
+        (" https://example.com", "Invalid URL format"),
+        ("http://?query=q", "Missing Scheme or Network location"),
+    ],
 )
-
-
-@pytest.mark.parametrize("url", bad_protocol_data)
-def test_url_validation_fails_bad_protocol(url):
-    with raises(ValueError, match="Invalid URL format"):
-        dummy_method(url)
-
-
-missing_loc = (("http://?query=q"),)
-
-
-@pytest.mark.parametrize("url", missing_loc)
-def test_url_validation_fails_bad_protocol(url):
-    with raises(ValueError, match="Missing Scheme or Network location"):
+def test_url_validation_fails_invalid_url(url, expected_error):
+    with raises(ValueError, match=expected_error):
         dummy_method(url)
 
 
@@ -156,3 +148,19 @@ class TestValidateUrl:
 
         with pytest.raises(ValueError):
             test_func("https:www.google.com")
+
+    # Tests that the function can handle URLs that contain unusual but valid characters.
+    def test_url_with_special_chars(self):
+        url = "https://example.com/path%20with%20spaces"
+        assert dummy_method(url) == url
+
+    # Tests that the function raises a ValueError if the URL is over 2000 characters.
+    def test_extremely_long_url(self):
+        url = "http://example.com/" + "a" * 2000
+        with raises(ValueError, match="URL is too long"):
+            dummy_method(url)
+
+    # Tests that the function can handle internationalized URLs, which contain non-ASCII characters.
+    def test_internationalized_url(self):
+        url = "http://例子.测试"
+        assert dummy_method(url) == url
