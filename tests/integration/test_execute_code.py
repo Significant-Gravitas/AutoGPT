@@ -68,7 +68,7 @@ def test_execute_python_code_overwrites_file(
     with open(destination, "w+") as f:
         f.write("This will be overwritten")
 
-    sut.execute_python_code(random_code, "test_code", config)
+    sut.execute_python_code(random_code, "test_code.py", config)
 
     # Check that the file is updated with the new code
     with open(destination) as f:

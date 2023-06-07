@@ -17,15 +17,15 @@ from autogpt.workspace.workspace import Workspace
 @command(
     "execute_python_code",
     "Create a Python file and execute it",
-    '"code": "<code>", "name": "<name>"',
+    '"code": "<code>", "basename": "<basename>"',
 )
-def execute_python_code(code: str, name: str, config: Config) -> str:
-    """Creates and executes a Python file in a Docker container and returns the STDOUT of the
+def execute_python_code(code: str, basename: str, config: Config) -> str:
+    """Create and execute a Python file in a Docker container and return the STDOUT of the
     executed code. If there is any data that needs to be captured use a print statement
 
     Args:
-        code (str): The python code to run
-        name (str): A short lower_snake_cased name to be used for storage and retrieval
+        code (str): The Python code to run
+        basename (str): A name to be given to the Python file
 
     Returns:
         str: The STDOUT captured from the code when it ran
@@ -33,7 +33,11 @@ def execute_python_code(code: str, name: str, config: Config) -> str:
     ai_name = AIConfig.load(config.ai_settings_file).ai_name
     directory = os.path.join(config.workspace_path, ai_name, "executed_code")
     os.makedirs(directory, exist_ok=True)
-    path = os.path.join(directory, name + ".py")
+
+    if not basename.endswith(".py"):
+        basename = basename + ".py"
+
+    path = os.path.join(directory, basename)
 
     try:
         with open(path, "w+", encoding="utf-8") as f:
