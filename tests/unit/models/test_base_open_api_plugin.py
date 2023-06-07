@@ -1,20 +1,15 @@
-from typing import Any, Dict, List, Optional, Tuple
-
 import pytest
 
-from autogpt.models.base_open_ai_plugin import (
-    BaseOpenAIPlugin,
-    Message,
-    PromptGenerator,
-)
+from autogpt.models.base_open_ai_plugin import BaseOpenAIPlugin
 
 
 class DummyPlugin(BaseOpenAIPlugin):
-    pass
+    """A dummy plugin for testing purposes."""
 
 
 @pytest.fixture
 def dummy_plugin():
+    """A dummy plugin for testing purposes."""
     manifests_specs_clients = {
         "manifest": {
             "name_for_model": "Dummy",
@@ -28,22 +23,27 @@ def dummy_plugin():
 
 
 def test_dummy_plugin_inheritance(dummy_plugin):
+    """Test that the DummyPlugin class inherits from the BaseOpenAIPlugin class."""
     assert isinstance(dummy_plugin, BaseOpenAIPlugin)
 
 
 def test_dummy_plugin_name(dummy_plugin):
+    """Test that the DummyPlugin class has the correct name."""
     assert dummy_plugin._name == "Dummy"
 
 
 def test_dummy_plugin_version(dummy_plugin):
+    """Test that the DummyPlugin class has the correct version."""
     assert dummy_plugin._version == "1.0"
 
 
 def test_dummy_plugin_description(dummy_plugin):
+    """Test that the DummyPlugin class has the correct description."""
     assert dummy_plugin._description == "A dummy plugin for testing purposes"
 
 
 def test_dummy_plugin_default_methods(dummy_plugin):
+    """Test that the DummyPlugin class has the correct default methods."""
     assert not dummy_plugin.can_handle_on_response()
     assert not dummy_plugin.can_handle_post_prompt()
     assert not dummy_plugin.can_handle_on_planning()

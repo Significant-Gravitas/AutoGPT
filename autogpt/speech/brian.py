@@ -1,4 +1,4 @@
-""" Brian speech module for autogpt """
+import logging
 import os
 
 import requests
@@ -12,7 +12,6 @@ class BrianSpeech(VoiceBase):
 
     def _setup(self) -> None:
         """Setup the voices, API key, etc."""
-        pass
 
     def _speech(self, text: str, _: int = 0) -> bool:
         """Speak text using Brian with the streamelements API
@@ -35,6 +34,9 @@ class BrianSpeech(VoiceBase):
             os.remove("speech.mp3")
             return True
         else:
-            print("Request failed with status code:", response.status_code)
-            print("Response content:", response.content)
+            logging.error(
+                "Request failed with status code: %s, response content: %s",
+                response.status_code,
+                response.content,
+            )
             return False
