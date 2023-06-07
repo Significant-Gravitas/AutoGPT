@@ -166,6 +166,8 @@ class Agent:
                 NEXT_ACTION_FILE_NAME,
             )
 
+            # First log new-line so user can differentiate sections better in console
+            logger.typewriter_log("\n")
             logger.typewriter_log(
                 "NEXT ACTION: ",
                 Fore.CYAN,
@@ -252,6 +254,8 @@ class Agent:
                     logger.info("Exiting...")
                     break
             else:
+                # First log new-line so user can differentiate sections better in console
+                logger.typewriter_log("\n")
                 # Print authorized commands left value
                 logger.typewriter_log(
                     f"{Fore.CYAN}AUTHORISED COMMANDS LEFT: {Style.RESET_ALL}{self.next_action_count}"
