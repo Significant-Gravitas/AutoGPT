@@ -191,7 +191,7 @@ Once you have a recent version of Docker Compose, run the commands below in your
 
     By default, this will also start and attach a Redis memory backend. If you do not
     want this, comment or remove the `depends: - redis` and `redis:` sections from
-    `docker docker-compose.yml`.
+    `docker-compose.yml`.
 
     For related settings, see [Memory > Redis setup](./configuration/memory.md#redis-setup).
 
