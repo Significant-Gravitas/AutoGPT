@@ -1,0 +1,8 @@
+.*
+*.template
+*.yaml
+*.yml
+
+*.md
+*.png
+!BULLETIN.md
