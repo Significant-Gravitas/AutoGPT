@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import pytest
@@ -8,15 +7,11 @@ from autogpt.config.config import Config
 from autogpt.llm.api_manager import ApiManager
 from autogpt.workspace import Workspace
 
-pytest_plugins = ["tests.integration.agent_factory", "tests.integration.memory.utils"]
-
-PROXY = os.environ.get("PROXY")
-
-
-@pytest.fixture()
-def vcr_cassette_dir(request):
-    test_name = os.path.splitext(request.node.name)[0]
-    return os.path.join("tests/Auto-GPT-test-cassettes", test_name)
+pytest_plugins = [
+    "tests.integration.agent_factory",
+    "tests.integration.memory.utils",
+    "tests.vcr",
+]
 
 
 @pytest.fixture()

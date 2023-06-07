@@ -9,6 +9,7 @@ class Challenge:
         name: str,
         category: str,
         max_level: int,
+        is_new_challenge: bool,
         max_level_beaten: Optional[int],
         level_to_run: Optional[int] = None,
     ) -> None:
@@ -19,3 +20,4 @@ class Challenge:
         self.succeeded = False
         self.skipped = False
         self.level_to_run = level_to_run
+        self.is_new_challenge = is_new_challenge
