@@ -40,4 +40,5 @@ for filename in glob.glob(new_score_filename_pattern):
 sorted_data = recursive_sort_dict(merged_data)
 
 with open(current_score_filename, "w") as f_current:
-    json.dump(sorted_data, f_current, indent=4)
+    json_data = json.dumps(sorted_data, indent=4)
+    f_current.write(json_data + "\n")
