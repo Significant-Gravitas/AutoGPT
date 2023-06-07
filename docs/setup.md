@@ -40,7 +40,7 @@ Get your OpenAI API key from: [https://platform.openai.com/account/api-keys](htt
         mkdir Auto-GPT
         cd Auto-GPT
 
-3. In the project directory, create a file called `compose.yml` with the following contents:
+3. In the project directory, create a file called `docker-compose.yml` with the following contents:
 
         :::yaml
         version: "3.9"
@@ -191,13 +191,13 @@ Once you have a recent version of Docker Compose, run the commands below in your
 
     By default, this will also start and attach a Redis memory backend. If you do not
     want this, comment or remove the `depends: - redis` and `redis:` sections from
-    `docker compose.yml`.
+    `docker docker-compose.yml`.
 
     For related settings, see [Memory > Redis setup](./configuration/memory.md#redis-setup).
 
 You can pass extra arguments, e.g. running with `--gpt3only` and `--continuous`:
 ``` shell
-docker-compose run --rm auto-gpt --gpt3only --continuous
+docker compose run --rm auto-gpt --gpt3only --continuous
 ```
 
 If you dare, you can also build and run it with "vanilla" docker commands:
@@ -207,7 +207,7 @@ docker run -it --env-file=.env -v $PWD:/app auto-gpt
 docker run -it --env-file=.env -v $PWD:/app --rm auto-gpt --gpt3only --continuous
 ```
 
-[Docker Compose file]: https://github.com/Significant-Gravitas/Auto-GPT/blob/stable/compose.yml
+[Docker Compose file]: https://github.com/Significant-Gravitas/Auto-GPT/blob/stable/docker-compose.yml
 
 
 ### Run with Dev Container
