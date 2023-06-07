@@ -1517,3 +1517,5 @@ node_modules/yocto-queue/index.d.ts
 node_modules/yocto-queue/index.js
 node_modules/yocto-queue/license
 node_modules/yocto-queue/readme.md
+.user.workspace/ 
+private.user.workspace/ 
