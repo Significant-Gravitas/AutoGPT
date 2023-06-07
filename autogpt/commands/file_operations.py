@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 import os.path
+import re
 from typing import TYPE_CHECKING, Generator, Literal
 
 import requests
@@ -222,6 +223,68 @@ def write_to_file(filename: str, text: str, config: Config) -> str:
         return "File written to successfully."
     except Exception as err:
         return f"Error: {err}"
+
+
+@command(
+    "replace_in_file",
+    "Replace text or code in a file",
+    '"filename": "<filename>", '
+    '"old_text": "<old_text>", "new_text": "<new_text>", '
+    '"occurrence_index": "<occurrence_index>"',
+)
+def replace_in_file(
+    filename: str, old_text: str, new_text: str, config: Config, occurrence_index=None
+):
+    """Update a file by replacing one or all occurrences of old_text with new_text using Python's built-in string
+    manipulation and regular expression modules for cross-platform file editing similar to sed and awk.
+
+    Args:
+        filename (str): The name of the file
+        old_text (str): String to be replaced. \n will be stripped from the end.
+        new_text (str): New string. \n will be stripped from the end.
+        occurrence_index (int): Optional index of the occurrence to replace. If None, all occurrences will be replaced.
+
+    Returns:
+        str: A message indicating whether the file was updated successfully or if there were no matches found for old_text
+        in the file.
+
+    Raises:
+        Exception: If there was an error updating the file.
+    """
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        old_text = old_text.rstrip("\n")
+        new_text = new_text.rstrip("\n")
+
+        if occurrence_index is None:
+            new_content = content.replace(old_text, new_text)
+        else:
+            matches = list(re.finditer(re.escape(old_text), content))
+            if not matches:
+                return f"No matches found for {old_text} in {filename}"
+
+            if int(occurrence_index) >= len(matches):
+                return f"Occurrence index {occurrence_index} is out of range for {old_text} in {filename}"
+
+            match = matches[int(occurrence_index)]
+            start, end = match.start(), match.end()
+            new_content = content[:start] + new_text + content[end:]
+
+        if content == new_content:
+            return f"No matches found for {old_text} in {filename}"
+
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(new_content)
+
+        with open(filename, "r", encoding="utf-8") as f:
+            checksum = text_checksum(f.read())
+        log_operation("update", filename, config, checksum=checksum)
+
+        return f"File {filename} updated successfully."
+    except Exception as e:
+        return "Error: " + str(e)
 
 
 @command(

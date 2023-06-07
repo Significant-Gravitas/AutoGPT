@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import time
 from itertools import islice
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,8 @@ from autogpt.commands.command import command
 
 if TYPE_CHECKING:
     from autogpt.config import Config
+
+DUCKDUCKGO_MAX_ATTEMPTS = 3
 
 
 @command(
@@ -30,15 +33,20 @@ def google_search(query: str, config: Config, num_results: int = 8) -> str:
         str: The results of the search.
     """
     search_results = []
-    if not query:
-        return json.dumps(search_results)
+    attempts = 0
 
-    results = DDGS().text(query)
-    if not results:
-        return json.dumps(search_results)
+    while attempts < DUCKDUCKGO_MAX_ATTEMPTS:
+        if not query:
+            return json.dumps(search_results)
 
-    for item in islice(results, num_results):
-        search_results.append(item)
+        results = DDGS().text(query)
+        search_results = list(islice(results, num_results))
+
+        if search_results:
+            break
+
+        time.sleep(1)
+        attempts += 1
 
     results = json.dumps(search_results, ensure_ascii=False, indent=4)
     return safe_google_results(results)
