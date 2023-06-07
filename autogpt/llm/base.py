@@ -89,7 +89,7 @@ class ChatSequence:
 
         if not model_name in OPEN_AI_CHAT_MODELS:
             raise ValueError(f"Unknown chat model '{model_name}'")
-
+        # For test
         return ChatSequence(
             model=OPEN_AI_CHAT_MODELS[model_name], messages=list(messages)
         )
