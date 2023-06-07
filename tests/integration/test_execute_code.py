@@ -13,7 +13,7 @@ from autogpt.config.ai_config import AIConfig
 
 
 @pytest.fixture
-def config_allow_execute(config: Config, mocker: MockerFixture):
+def config_allow_execute(config: Config, mocker: MockerFixture) -> Callable:
     yield mocker.patch.object(config, "execute_local_commands", True)
 
 
@@ -80,13 +80,19 @@ def test_execute_python_file_invalid(config: Config):
         s in sut.execute_python_file("not_python", config).lower()
         for s in ["error:", "invalid", ".py"]
     )
+
+
+def test_execute_python_file_not_found(config: Config):
     assert all(
         s in sut.execute_python_file("notexist.py", config).lower()
-        for s in ["error:", "does not exist"]
+        for s in [
+            "python: can't open file 'notexist.py'",
+            "[errno 2] no such file or directory",
+        ]
     )
 
 
-def test_execute_shell(config_allow_execute, random_string, config):
+def test_execute_shell(config_allow_execute: bool, random_string: str, config: Config):
     result = sut.execute_shell(f"echo 'Hello {random_string}!'", config)
     assert f"Hello {random_string}!" in result
 

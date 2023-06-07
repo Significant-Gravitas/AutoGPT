@@ -10,10 +10,14 @@ from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.config.ai_config import AIConfig
 from autogpt.logs import logger
+from autogpt.setup import CFG
+from autogpt.workspace.workspace import Workspace
 
 
 @command(
-    "execute_python_code", "Execute Python Code", '"code": "<code>", "name": "<name>"'
+    "execute_python_code",
+    "Create a Python file and execute it",
+    '"code": "<code>", "name": "<name>"',
 )
 def execute_python_code(code: str, name: str, config: Config) -> str:
     """Creates and executes a Python file in a Docker container and returns the STDOUT of the
@@ -50,17 +54,28 @@ def execute_python_file(filename: str, config: Config) -> str:
     Returns:
         str: The output of the file
     """
-    logger.info(f"Executing file '{filename}'")
+    logger.info(
+        f"Executing python file '{filename}' in working directory '{CFG.workspace_path}'"
+    )
 
     if not filename.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    if not os.path.isfile(filename):
-        return f"Error: File '{filename}' does not exist."
+    workspace = Workspace(config.workspace_path, config.restrict_to_workspace)
+
+    path = workspace.get_path(filename)
+    if not path.is_file():
+        # Mimic the response that you get from the command line so that it's easier to identify
+        return (
+            f"python: can't open file '{filename}': [Errno 2] No such file or directory"
+        )
 
     if we_are_running_in_a_docker_container():
         result = subprocess.run(
-            ["python", filename], capture_output=True, encoding="utf8"
+            ["python", str(path)],
+            capture_output=True,
+            encoding="utf8",
+            cwd=CFG.workspace_path,
         )
         if result.returncode == 0:
             return result.stdout
@@ -92,7 +107,7 @@ def execute_python_file(filename: str, config: Config) -> str:
                     logger.info(status)
         container = client.containers.run(
             image_name,
-            ["python", str(Path(filename).relative_to(config.workspace_path))],
+            ["python", str(path.relative_to(workspace.root))],
             volumes={
                 config.workspace_path: {
                     "bind": "/workspace",
