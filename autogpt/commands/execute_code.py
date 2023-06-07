@@ -1,7 +1,13 @@
 """Execute code in a Docker container"""
+import ast
+import importlib
 import os
+import pkgutil
 import subprocess
+import sys
+import time
 from pathlib import Path
+from typing import List
 
 import docker
 from docker.errors import ImageNotFound
@@ -9,8 +15,141 @@ from docker.errors import ImageNotFound
 from autogpt.commands.command import command
 from autogpt.config import Config
 from autogpt.logs import logger
-from autogpt.setup import CFG
-from autogpt.workspace.workspace import Workspace
+
+# Exclusion list for imports built in python:3-alpine image
+BUILT_IN_MODULES = set(
+    [
+        "sys",
+        "os",
+        "math",
+        "random",
+        "datetime",
+        "json",
+        "re",
+        "subprocess",
+        "time",
+        "threading",
+        "logging",
+        "collections",
+        "itertools",
+        "functools",
+        "operator",
+        "pathlib",
+        "shutil",
+        "tempfile",
+        "pickle",
+        "io",
+        "argparse",
+        "typing",
+        "unittest",
+        "contextlib",
+        "abc",
+        "heapq",
+        "bisect",
+        "copy",
+        "decimal",
+        "fractions",
+        "hashlib",
+        "secrets",
+        "statistics",
+        "difflib",
+        "doctest",
+        "enum",
+        "inspect",
+        "traceback",
+        "weakref",
+        "gc",
+        "mmap",
+        "msvcrt",
+        "winreg",
+        "array",
+        "audioop",
+        "binascii",
+        "cProfile",
+        "concurrent.futures",
+        "configparser",
+        "csv",
+        "ctypes",
+        "dateutil",
+        "dis",
+        "fnmatch",
+        "getopt",
+        "glob",
+        "gzip",
+        "pdb",
+        "pprint",
+        "profile",
+        "pstats",
+        "queue",
+        "socket",
+        "sqlite3",
+        "ssl",
+        "struct",
+        "tarfile",
+        "telnetlib",
+        "timeit",
+        "tokenize",
+        "uuid",
+        "xml",
+        "zipfile",
+        "zlib",
+    ]
+)
+
+
+def get_imports(path: str) -> List[str]:
+    """
+    Returns a list of libraries that need to be imported by the file at the given path.
+    """
+    with open(path, "r") as file:
+        root = ast.parse(file.read(), path)
+
+    imports = []
+    for node in ast.iter_child_nodes(root):
+        if isinstance(node, ast.Import):
+            module_names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            module_names = [node.module]
+        else:
+            continue
+
+        for name in module_names:
+            # Exclude built-in modules
+            if name not in BUILT_IN_MODULES:
+                imports.append(name)
+
+    return imports
+
+
+def write_requirements(filename: str, requirements_filepath: str):
+    imports = get_imports(filename)
+
+    with open(requirements_filepath, "w") as file:
+        for module in imports:
+            file.write(module + "\n")
+
+
+def pull_docker_image(client: docker.DockerClient, image_name: str):
+    try:
+        client.images.get(image_name)
+        logger.warn(f"Image '{image_name}' found locally")
+    except ImageNotFound:
+        logger.info(f"Image '{image_name}' not found locally, pulling from Docker Hub")
+        low_level_client = docker.APIClient()
+        for line in low_level_client.pull(image_name, stream=True, decode=True):
+            status = line.get("status")
+            progress = line.get("progress")
+            if status and progress:
+                logger.info(f"{status}: {progress}")
+            elif status:
+                logger.info(status)
+
+
+def exec_command(container, command):
+    exit_code, output = container.exec_run(command)
+    if exit_code != 0:
+        return exit_code, output.decode("utf-8")
+    return exit_code, output.decode("utf-8")
 
 
 @command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
@@ -23,28 +162,17 @@ def execute_python_file(filename: str, config: Config) -> str:
     Returns:
         str: The output of the file
     """
-    logger.info(
-        f"Executing python file '{filename}' in working directory '{CFG.workspace_path}'"
-    )
+    logger.info(f"Executing file '{filename}'")
 
     if not filename.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    workspace = Workspace(config.workspace_path, config.restrict_to_workspace)
-
-    path = workspace.get_path(filename)
-    if not path.is_file():
-        # Mimic the response that you get from the command line so that it's easier to identify
-        return (
-            f"python: can't open file '{filename}': [Errno 2] No such file or directory"
-        )
+    if not os.path.isfile(filename):
+        return f"Error: File '{filename}' does not exist."
 
     if we_are_running_in_a_docker_container():
         result = subprocess.run(
-            ["python", str(path)],
-            capture_output=True,
-            encoding="utf8",
-            cwd=CFG.workspace_path,
+            ["python", filename], capture_output=True, encoding="utf8"
         )
         if result.returncode == 0:
             return result.stdout
@@ -53,30 +181,48 @@ def execute_python_file(filename: str, config: Config) -> str:
 
     try:
         client = docker.from_env()
-        # You can replace this with the desired Python image/version
-        # You can find available Python images on Docker Hub:
-        # https://hub.docker.com/_/python
-        image_name = "python:3-alpine"
-        try:
-            client.images.get(image_name)
-            logger.warn(f"Image '{image_name}' found locally")
-        except ImageNotFound:
-            logger.info(
-                f"Image '{image_name}' not found locally, pulling from Docker Hub"
-            )
-            # Use the low-level API to stream the pull response
-            low_level_client = docker.APIClient()
-            for line in low_level_client.pull(image_name, stream=True, decode=True):
-                # Print the status and progress, if available
-                status = line.get("status")
-                progress = line.get("progress")
-                if status and progress:
-                    logger.info(f"{status}: {progress}")
-                elif status:
-                    logger.info(status)
+
+        # Here another python docker image can be chosen
+        image_name = "python:3.9"
+        pull_docker_image(client, image_name)
+
+        # Create the list of commands to be run
+        commands = [
+            ["apt-get", "update"],
+            ["apt-get", "-qq", "install", "-y", "gcc", "python3-dev", "apt-utils"],
+        ]
+
+        # Parse the system_requirements.txt file and add the apt-get install commands
+        system_requirements_filepath = Path(filename).parent / "system_requirements.txt"
+        if system_requirements_filepath.exists():
+            with open(system_requirements_filepath) as f:
+                for line in f:
+                    package = line.strip()
+                    commands.append(["apt-get", "-qq", "install", "-y", package])
+
+        # Add the Python package installation command
+        requirements_filepath = Path(filename).parent / "requirements.txt"
+        write_requirements(filename, requirements_filepath)
+        commands.append(
+            [
+                "python",
+                "-m",
+                "pip",
+                "install",
+                "--quiet",
+                str(requirements_filepath.relative_to(config.workspace_path)),
+            ]
+        )
+
+        # Add the Python script execution command
+        commands.append(
+            ["python", str(Path(filename).relative_to(config.workspace_path))]
+        )
+
+        # Create and start a container with an interactive bash session
         container = client.containers.run(
             image_name,
-            ["python", str(path.relative_to(workspace.root))],
+            command="/bin/bash",
             volumes={
                 config.workspace_path: {
                     "bind": "/workspace",
@@ -84,28 +230,46 @@ def execute_python_file(filename: str, config: Config) -> str:
                 }
             },
             working_dir="/workspace",
-            stderr=True,
-            stdout=True,
+            tty=True,  # allocate a pseudo-TTY
             detach=True,
         )
 
-        container.wait()
-        logs = container.logs().decode("utf-8")
+        output = ""
+        # Run the commands
+        for cmd in commands:
+            exit_code, output = container.exec_run(cmd)
+            if exit_code != 0:
+                container.stop()
+                container.remove()
+                return f"Error: Command '{' '.join(cmd)}' failed with exit code {exit_code}. Output was: {output.decode('utf-8')}"
+
+        container.stop()
         container.remove()
 
-        # print(f"Execution complete. Output: {output}")
-        # print(f"Logs: {logs}")
+        # If everything is successful, return the output of the Python script
+        return output.decode("utf-8")
 
-        return logs
+    except docker.errors.BuildError as build_err:
+        # This exception will be raised if there's an error installing dependencies
+        logger.error(f"Error installing dependencies: {str(build_err)}")
+        raise build_err
 
-    except docker.errors.DockerException as e:
+    except docker.errors.APIError as api_err:
+        # This exception will be raised if there's an error executing the Python file
+        logger.error(f"Error executing Python file: {str(api_err)}")
+        raise api_err
+
+    except docker.errors.DockerException as docker_err:
+        # This exception covers other Docker-related errors
         logger.warn(
             "Could not run the script in a container. If you haven't already, please install Docker https://docs.docker.com/get-docker/"
         )
-        return f"Error: {str(e)}"
+        raise docker_err
 
     except Exception as e:
-        return f"Error: {str(e)}"
+        # This exception covers any other unexpected errors
+        logger.error(f"Unexpected error occurred: {str(e)}")
+        raise e
 
 
 def validate_command(command: str, config: Config) -> bool:
@@ -122,7 +286,7 @@ def validate_command(command: str, config: Config) -> bool:
     if not tokens:
         return False
 
-    if config.deny_commands and tokens[0] in config.deny_commands:
+    if config.deny_commands and tokens[0] not in config.deny_commands:
         return False
 
     for keyword in config.allow_commands:
