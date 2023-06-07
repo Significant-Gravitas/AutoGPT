@@ -1,0 +1,32 @@
+name: PR Closed CI
+
+on:
+  pull_request_target:
+    branches: [ stable, master, ci-test* ]
+    types: [closed]
+
+jobs:
+  cleanup_job:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Delete Branch and PR used to update challenge scores
+      run: |
+        echo ${{ secrets.PAT_REVIEW }} | gh auth login --with-token
+
+        # Define variables
+        base_repo_owner=${{ github.event.pull_request.base.repo.owner.login }}
+        base_repo_name=${{ github.event.pull_request.base.repo.name }}
+        challenge_scores_branch="challenge-scores-${{ github.event.pull_request.number }}"
+
+        pr_number=$(gh api repos/$base_repo_owner/$base_repo_name/pulls -q ".[] | select(.head.ref == \"$challenge_scores_branch\") | .number")
+
+        if [ -n "$pr_number" ]; then
+          gh api -X PATCH repos/$base_repo_owner/$base_repo_name/pulls/$pr_number -f state=closed
+          echo "Close PR $pr_number if not already closed"
+        fi
+
+        # Delete branch
+        gh api -X DELETE repos/$base_repo_owner/$base_repo_name/git/refs/heads/$challenge_scores_branch \
+          &&  echo "Branch $challenge_scores_branch deleted." \
+          || echo "Branch $challenge_scores_branch not found or already deleted."
+        echo "Score didn't change."
